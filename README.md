@@ -1,6 +1,62 @@
 # ASKK
 
-A personal agent that runs entirely in the browser. Static export, no server.
+A personal assistant that runs entirely inside your browser tab. There is no
+server: the page, the agent, its memory and its Linux sandbox are all on your
+own machine, and the only thing that ever leaves it is the request to whichever
+model you point it at.
+
+## What you need before it can answer anything
+
+**A model.** This app has no model of its own and no key of its own. In
+*settings* you name one of three things:
+
+- an **OpenAI-compatible** server — LM Studio, vLLM, Ollama's OpenAI endpoint,
+  OpenAI itself. Give it the base URL ending in `/v1`, the model name that
+  server uses, and a key if it wants one. A model running on your own machine
+  wants no key.
+- **Anthropic** — the same, with an Anthropic key.
+- **transformers.js** — a small model that downloads into the tab and runs
+  there. No endpoint, no key, and a wait of minutes the first time.
+
+Until one of those answers, every question comes back with the endpoint's own
+complaint. That is not the app failing quietly; it is the app telling you what
+the endpoint said.
+
+## What to expect the first time
+
+- **The first question that runs a command downloads about 50 MB.** That is the
+  Linux sandbox, and it is fetched once, on the first `shell` call of the
+  session. Questions that need no command never pay for it.
+- **The sandbox is slow on purpose-built work.** It is an emulator, a few
+  hundred times slower than the machine it runs on. Fine for a file, a check, a
+  short script. Not a place to build software.
+- **A question can take minutes.** While one is running the rail at the top
+  counts the seconds, and names any second agent working on your behalf — so
+  `researcher: fetch (2)` means a helper is reading a page for you, and a clock
+  that keeps moving means the tab is alive.
+- **Nothing is uploaded.** Conversations, settings and the agent's files are in
+  your browser's own storage. In a private window there is no storage, and the
+  app says so and keeps working for the length of the tab.
+
+## What it can do
+
+Answer from what it knows; search the web and read a page; run a command in a
+private Linux userland with Python 3.12 in it; keep files of its own that last
+between conversations and that you can read; hand a question to a second agent
+that works on its own thread. What is in *settings* is the model, the voice, and
+which agent you are talking to.
+
+An agent is a markdown file — `agents/main/agent.md` is the one the app opens
+with, `agents/researcher/agent.md` is the helper it can hand questions to.
+Changing how the assistant behaves is editing that file and reloading. There is
+no build step between the file and the behaviour.
+
+## Running it yourself
+
+    bun install
+    bun run dev        # http://localhost:3000/ASKK
+
+# Notes for whoever is working on it
 
 Vanilla JavaScript. React and Next for the view layer; everything below the view
 is plain classes with no runtime dependencies.

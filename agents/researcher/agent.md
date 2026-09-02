@@ -2,6 +2,13 @@
 name: researcher
 description: Finds out what is currently true on the web and answers in a paragraph with its sources. Ask it a question whose answer is on a page somewhere, and it does the searching and the reading so this conversation does not have to hold six pages of it.
 tools: [search, fetch]
+# The context ahead of the question, which is the opposite of the default and is
+# a property of being stateless. This agent is asked one complete question and
+# keeps no transcript, so there is no append-only conversation to protect and no
+# reusable prefix to break — and what it is being told about the world reads
+# more reliably before the question than after it. Every other block keeps its
+# place; dropping one drops it from the prompt entirely.
+prompt: [instructions, tools, contract, context, conversation, scratchpad, budget, reminder, cue]
 budget:
   steps: 8
 ---

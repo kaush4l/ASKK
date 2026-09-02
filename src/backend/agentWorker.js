@@ -25,6 +25,7 @@ import { describeEnvironment } from '../core/agent/Environment.js'
 import { buildAgent, resolveTools } from '../core/agent/loadAgent.js'
 import { createInference } from '../core/inference/index.js'
 import { Outcome, Reason } from '../core/Outcome.js'
+import { Toolbox } from '../core/tools/Toolbox.js'
 import { browserHttp } from './browserHttp.js'
 
 /**
@@ -48,19 +49,6 @@ function catalogueFor(basePath = '') {
   return made
 }
 
-/**
- * The tool names in a `result` that holds calls.
- *
- * The whole call is not sent: an argument can be a page of text, and the
- * parent's live view is a status rail rather than a second transcript. A name
- * is what the reader needs — "reading a page" versus "searching" — and it is
- * taken off the front of each call rather than parsed, because this is a label
- * and `Toolbox` is the thing that has to be exactly right about the call.
- */
-function toolNames(text) {
-  return [...String(text).matchAll(/([A-Za-z_][\w-]*)\s*\(/g)].map((found) => found[1])
-}
-
 /** Task id -> the stop for the run that is answering it. */
 const running = new Map()
 
@@ -72,8 +60,17 @@ self.addEventListener('message', async (event) => {
     return
   }
 
+  // The stop is registered BEFORE the first await, not just before the run.
+  // Everything below here is asynchronous — a fetch for the agent file on first
+  // use, then a build — and a cancel that arrived during it used to find
+  // nothing in `running` and be dropped, after which the thread ran its whole
+  // budget for a caller that had already given up.
+  const controller = new AbortController()
+  running.set(id, controller)
+
   const spec = await catalogueFor(basePath ?? '').spec(name)
   if (!spec.ok) {
+    running.delete(id)
     self.postMessage({ id, ...Outcome.failed(Reason.NOT_FOUND, spec.failure.message).toJSON() })
     return
   }
@@ -111,6 +108,7 @@ self.addEventListener('message', async (event) => {
     context: describeEnvironment(),
   })
   if (!agent.ok) {
+    running.delete(id)
     self.postMessage({ id, ...agent.toJSON() })
     return
   }
@@ -118,8 +116,8 @@ self.addEventListener('message', async (event) => {
   // A sub-agent has no memory of its own: it is asked one complete question and
   // answers it. Keeping a transcript per sub-agent would make the same call
   // return different things at different times, which is not what a tool is.
-  const controller = new AbortController()
-  running.set(id, controller)
+  // Already aborted, before a single token was spent: a stop that arrived while
+  // the file was being fetched is honoured here rather than ignored.
   const answered = await agent.value.run([{ role: 'user', text: task }], {
     // The sub-agent's OWN terms, off its own file. The parent's budget is not
     // shared: two agents spending one allowance would make the second one's
@@ -144,7 +142,17 @@ self.addEventListener('message', async (event) => {
           // The tool names it called, or nothing when it answered. `result`
           // holds the calls verbatim on this contract, so the names are read
           // off the front of each call rather than invented here.
-          doing: parsed?.isAnswer === false ? toolNames(parsed?.answer ?? '') : [],
+          // The NAMES, not the calls: an argument can be a page of text and
+          // this is a status line, not a second transcript. Read with the
+          // toolbox's own parser rather than a regex of this file's own — a
+          // second reader of one grammar is the duplication `Toolbox` argues
+          // against, and the label would drift from the call that ran.
+          doing:
+            parsed?.isAnswer === false
+              ? Toolbox.parse(parsed?.answer ?? '')
+                  .flat()
+                  .map((call) => call.name)
+              : [],
           answered: parsed?.isAnswer !== false,
         },
       })

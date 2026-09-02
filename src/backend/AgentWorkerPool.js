@@ -128,6 +128,11 @@ export class AgentWorkerPool {
       const timer = setTimeout(() => {
         this._pending.delete(id)
         this._watching.delete(id)
+        // The thread is told, not merely abandoned. Giving up on the promise
+        // used to leave the run going on its own budget for a caller that had
+        // stopped waiting — the same defect the signal below exists to fix,
+        // reached by the other door.
+        worker.postMessage({ id, cancel: true })
         resolve({
           ok: false,
           failure: {

@@ -68,8 +68,14 @@ export default function Page() {
   // here that is measured rather than estimated, so it is kept beside the
   // estimates rather than replacing them.
   const [usage, setUsage] = useState(null)
-  /** The sub-agent working right now, if one is: `{agent, step, doing, answered}`. */
-  const [delegate, setDelegate] = useState(null)
+  /**
+   * The sub-agents working right now, keyed by name.
+   *
+   * A map and not one slot: calls written on ONE line run at the same time, so
+   * two delegations are two threads reporting at once, and a single slot showed
+   * whichever reported last while claiming to be the state of the run.
+   */
+  const [delegates, setDelegates] = useState({})
   /**
    * Seconds since this turn started, while it is running.
    *
@@ -226,7 +232,7 @@ export default function Page() {
           // has room for a line, and what a reader needs is what the delegate
           // is doing NOW — the history of a delegated run belongs to the
           // delegate, and the parent already records the answer it returned.
-          setDelegate(data)
+          setDelegates((current) => ({ ...current, [data.agent]: data }))
           return
         }
         if (name === EventName.STEP) {
@@ -287,7 +293,7 @@ export default function Page() {
     // whatever it was doing is finished and folded into the answer, and a
     // leftover "researcher: fetch (3)" on the rail would be a claim that
     // something is still running.
-    setDelegate(null)
+    setDelegates({})
     // After the steps, so a file view that reloads on this reads a workspace the
     // turn has finished writing to.
     setTurnsDone((count) => count + 1)
@@ -427,14 +433,12 @@ export default function Page() {
     // and `researcher·1` says a thread exists where `researcher: fetch (3)`
     // says it is working and on what. The threads line stays underneath it,
     // because it survives the turn and this does not.
-    delegate
-      ? {
-          text: delegate.answered
-            ? `${delegate.agent}: answered`
-            : `${delegate.agent}: ${delegate.doing?.join(', ') || 'thinking'} (${delegate.step})`,
-          live: !delegate.answered,
-        }
-      : null,
+    ...Object.values(delegates).map((one) => ({
+      text: one.answered
+        ? `${one.agent}: answered`
+        : `${one.agent}: ${one.doing?.join(', ') || 'thinking'} (${one.step})`,
+      live: !one.answered,
+    })),
     ...threads.map((t) => ({ text: `${t.confirmedName ?? t.name}·${t.calls}`, live: true })),
     listening ? { text: 'listening', live: true } : null,
     // The clock, beside the word. `4:07` past a minute, `47s` under one — a

@@ -10,12 +10,18 @@
  * Two answer yes and are refused here, each for a stated reason rather than a
  * cautious one:
  *
- * - `read_file` and `write_file` reach `Workspace`, which is one queue over one
- *   IndexedDB store. `composition.js` builds exactly one and says why twice: two
- *   instances are two write queues over one store, which is the interleaving the
- *   queue exists to stop. A sub-agent thread cannot share the parent's instance
- *   — an object does not survive `postMessage` — so a sub-agent with file tools
- *   would be a second writer by construction.
+ * - `read_file` and `write_file` reach `Workspace`, whose every write is a
+ *   whole-record `put` — there is no appending and no partial write, which is
+ *   argued in that file. Two agents holding it at once is therefore
+ *   last-write-wins over a whole file, in two realms, with nothing between them:
+ *   a sub-agent saving `notes.md` while the parent saves `notes.md` silently
+ *   discards one of the two, and neither agent is told. A thread cannot share
+ *   the parent's instance either — an object does not survive `postMessage` —
+ *   so a sub-agent with file tools is a second writer by construction. (This
+ *   comment said "one write queue over one store" for one wave. There is no
+ *   queue in `Workspace`: `grep -n 'queue' src/backend/files/Workspace.js`
+ *   returns nothing, and a reason that cites a mechanism which does not exist
+ *   is worse than no reason.)
  * - `shell` reaches `C2wSandbox`, whose guest is a 50.2 MiB download that
  *   inflates to 143 MB in the realm holding it. One per thread is one per
  *   thread: two agents delegating at once would hold three guests on a laptop.

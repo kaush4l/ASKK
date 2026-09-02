@@ -45,9 +45,20 @@ the file, and `client/highlight.js` colours it — a hand-written scanner over c
 js, json, md, py and sh, chosen over CodeMirror at a measured price
 (`CAPABILITIES.md`, *Viewing and editing a file*).
 
-The boundary is enforced by the realm, not by convention. A component cannot
-import a service and quietly bypass the protocol — the import would fail at
-runtime, because that code is not in the page's realm.
+The boundary is a rule the realm makes expensive to break and does NOT enforce.
+That sentence used to read *"a component cannot import a service … the import
+would fail at runtime, because that code is not in the page's realm"*, and it is
+false: `Kernel.js` imports nothing but `Outcome` and the envelope, and
+`IndexedDb`, `Workspace` and every service run perfectly well in a page. A
+component that imported one would bypass the protocol and work, and every step
+of the gate would stay green — measured by adding that import.
+
+So it is checked instead of asserted. `test/architecture/layers.test.js` reads
+the import lines of every file under `src/app/` and fails on one that names
+`backend/` or `core/`, which is the direction with no runtime consequence to
+catch it. The OTHER direction — a worker file reaching for the DOM — has one:
+`docs/GATE.md` rows 6 and 7 measure which step notices, and the answer is only
+the browser smoke.
 
 Which is a claim about the boundary, not about the checks. A file can compile
 for a realm it cannot run in, and for a long time nothing here executed a realm
@@ -170,12 +181,19 @@ turns the opening `---` into an `<hr>` and the metadata into an `<h2>`. The body
 is kept as raw markdown and never rendered: it is a prompt, and a model reads
 markdown.
 
-**The agent decides when the work is done.** There is no step ceiling and no
-repeat ceiling; `max_steps` and `repeat_limit` are retired, and a file still
-carrying one is told so in a note rather than left believing a limit is in
-force. A counter cannot tell the difference between an agent that is stuck and
-an agent three steps into something that needs nine, so a counter ending the run
-is a guess overruling the only party that knows.
+**The agent decides when the work is done, inside terms it is told.** What was
+retired is the HIDDEN ceiling, not the number: `repeat_limit` is gone, and
+`max_steps` became the step line of a `Budget` — `AgentSpec` reads it, and
+`Budget` applies 24 steps, 250k tokens and 600 seconds when a file names none.
+This paragraph said "there is no step ceiling" for two waves after that change
+and was simply wrong; `Budget.js:63` is the default and `ReActEngine` ends the
+run on it.
+
+The difference that survives is which party knows. A budget is rendered INTO the
+prompt and the last turn is told it is the last, so the agent spends what it has
+and writes an answer; the ceiling it replaced ended runs silently from outside,
+which is a counter overruling the only party that can tell being stuck from
+being three steps into something that needs nine.
 
 What replaces a ceiling is telling the agent what it is doing. A repeated call
 is not executed again — the result would be identical — and the observation says
@@ -188,7 +206,7 @@ agent file says what is different about this agent and nothing more.
 | default | why |
 |---|---|
 | `maxTokens` 131072 | An agent that has read anything needs room to reason about it. A small default truncates long work silently. |
-| *(no step or repeat ceiling)* | The agent decides when its work is done — see below. |
+| `budget` 24 steps · 250k tokens · 600 s | Terms the agent is TOLD, not a ceiling applied to it — see below. `repeat_limit` is retired; `max_steps` became the step line. |
 
 ## Tools
 
@@ -579,8 +597,15 @@ The rules that follow from it:
 - **A failure keeps what succeeded.** `chat.send` persists the user's message
   before calling the model, so a failed turn returns the failure *and* the saved
   message.
-- **`Outcome.attempt` is the only place foreign code is wrapped**, and the
-  Kernel's try/catch is a backstop for defects, not the mechanism.
+- **`Outcome.attempt` is where foreign code becomes a value**, and the Kernel's
+  try/catch is a backstop for defects, not the mechanism. It is not the only
+  `try` in the tree and the claim that it was is retired: `grep -rc 'try {' src`
+  counts 22, and each of the others is a place a bare `try` says something
+  `attempt` cannot — a `finally` that must clear a deadline on every path
+  (`browserHttp.js`), a loop that keeps what arrived before it broke
+  (`Inference.js`), an event-callback boundary that has no promise to attach to
+  (`IndexedDb.js`, `Speech.js`). What the rule actually forbids is a `throw`
+  crossing a seam, and nothing in `src/` does.
 - **No abstract-constructor guards.** Instantiating a base class is a mistake in
   code, not a state the running flow reaches; its methods return
   `NOT_IMPLEMENTED` outcomes instead of throwing on a user's machine.
@@ -637,12 +662,16 @@ as every other correction.
 
 **Per agent.** An agent file may declare its own order, and `researcher` does:
 
-    prompt: [instructions, contract, context, conversation, reminder, cue]
+    prompt: [instructions, tools, contract, context, conversation, scratchpad, budget, reminder, cue]
 
 Because it is stateless. Every call brings a different single question, so its
 conversation block is not append-only and nothing after it could have been
 reused anyway. With no prefix left to protect, context moves ahead of the
-question, where the model reads it more reliably. **The right order depends on
+question, where the model reads it more reliably. Only that one block moves:
+this example stood here for a wave as a six-name list that silently dropped
+`tools`, `scratchpad` and `budget` — an agent adopting it would have rendered no
+tool block at all and been unable to call anything, which `PromptTemplate.of`
+would have reported as a note nobody was reading. **The right order depends on
 what an agent actually carries** — which is the reason this is a template and
 not a method.
 
