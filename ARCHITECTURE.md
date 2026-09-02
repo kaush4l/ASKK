@@ -732,6 +732,15 @@ lost. And the lock cannot see the composer: a person pressing send in the same
 tab is guarded by a `busy` ref read twice, at the top of the tick and again
 immediately before the turn starts, because three awaits sit between them.
 
+**Two tabs on one conversation are still last-write-wins, and the scheduler now
+makes that easier to hit.** `page.jsx` opens the first conversation it lists, so
+a second tab lands in the same transcript; each tab's worker holds its own
+append queue, and the queue serialises writes within one realm because that is
+all a promise can do. A scheduled turn in tab A while tab B is being typed in is
+exactly the interleaving. The schedule lock does not help — it serialises TICKS,
+not the transcript — and the fix is the single-writer election below, which is
+still open.
+
 **A schedule that outlives the conversation switch it was decided in is asked in
 the conversation it belongs to, named explicitly.** `askRef` holds the newest
 `ask`, whose default is whatever is open now, so a question recorded as run and
@@ -1269,10 +1278,15 @@ files from the page, and the model has never been told the guest has Python.
    true — and a diff, a rewind and an editor are all downstream of the same
    missing route.
 
-3. **Single-writer election** — `navigator.locks` in the worker, so two open tabs
-   cannot both drive the same run (`grep -rn "navigator.locks" src` → 0). The
-   lock must be held by a promise that never settles, or it releases the moment
-   the callback returns.
+3. **Single-writer election, for the TRANSCRIPT.** `navigator.locks` is in the
+   tree now and it holds exactly one thing: the scheduler's tick, in the page,
+   so that one tab asks a due question where the browser has Web Locks. What it
+   does not hold is the conversation. Two tabs open the same transcript by
+   construction — `page.jsx` opens the first one it lists — and each worker's
+   append queue only serialises its own realm, so a scheduled turn in one tab
+   while the other is being typed in is last-write-wins over the record. The
+   lock for that has to be held by a promise that never settles, or it releases
+   the moment its callback returns.
 
 4. **The model has been told what is in the guest. What goes in next is now a
    budget question.** `ShellTool.js:223` says *"BusyBox, the Alpine base tools
@@ -1292,7 +1306,14 @@ files from the page, and the model has never been told the guest has Python.
    formatter, a linter and `git` are an `apk add` line, and 52,602,121 of
    GitHub's 104,857,600 is already spent.
 
-5. **Done, by the wave that wrote this paragraph, and its residue with it.**
+5. **Done, and done again.** Sub-agents are constructed, they report what they
+   are doing, and a question can now be handed over and read back on a later
+   turn — the three sections above have the whole account. What is left is a
+   thing the browser cannot give: a task dies with the tab, because the run is a
+   thread in this worker. Making one survive a reload means moving the RUN, not
+   the record, and there is nowhere to move it to that is still "no server".
+
+   **Old note, kept.**
    *Sub-agents that are actually constructed* — the roster is two agents, `main`
    names `researcher` in `tools:`, and `bun run smoke` starts the thread, drives
    its own tools and asserts the name the worker reported for itself. *And they
