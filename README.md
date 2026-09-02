@@ -43,9 +43,16 @@ waiting for your first question to fail.
 
 Answer from what it knows; search the web and read a page; run a command in a
 private Linux userland with Python 3.12 in it; keep files of its own that last
-between conversations and that you can read; hand a question to a second agent
-that works on its own thread; and ask itself a question on a period — hourly,
-daily — in the conversation you set it up in, for as long as that tab is open. What is in *settings* is the model, the voice, and
+between conversations and that you can read; ask itself a question on a period —
+hourly, daily — in the conversation you set it up in, for as long as that tab is
+open; and hand a question to a second agent that works on its own thread.
+
+That last one has two shapes, and the assistant chooses. It can wait for the
+helper, which is what you want when the helper's answer is the reply; or it can
+hand the question over and carry on, in which case it says so, the bar at the
+top says something is running in the background, and it reads the answer back on
+a later turn. Either way the helper does its reading in its own conversation and
+you get the paragraph, not the six pages. What is in *settings* is the model, the voice, and
 which agent you are talking to.
 
 An agent is a markdown file — `agents/main/agent.md` is the one the app opens
