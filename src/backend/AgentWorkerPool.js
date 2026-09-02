@@ -39,9 +39,21 @@ export class AgentWorkerPool {
    * which is the opposite of what `agentWorker` says it does. Eleven minutes is
    * the 600-second budget plus a minute for the thread to notice.
    */
-  constructor({ timeout = 660_000, basePath = '' } = {}) {
+  constructor({ timeout = 660_000, basePath = '', spawn = null } = {}) {
     this.timeout = timeout
     this.basePath = basePath
+    /**
+     * How a thread is made, so that the rest of this class can be measured.
+     *
+     * The default is the real `new Worker`, and nothing in the app passes
+     * anything else. It exists because the parts of this file most worth
+     * testing are the ones a real thread makes unreachable: what happens when
+     * ONE worker dies while another's call is in flight, what a task record
+     * holds when the worker never answers, and whether a cancel that arrives
+     * before the run starts is honoured. Every one of those was a defect found
+     * by reading rather than by running, which is the argument for the seam.
+     */
+    this._spawn = spawn
     this._workers = new Map()
     this._pending = new Map()
     /**
@@ -83,7 +95,11 @@ export class AgentWorkerPool {
    * wants the answer, and the page wants to know something is running.
    */
   tasks() {
-    return [...this._tasks.values()].sort((a, b) => b.startedAt - a.startedAt)
+    // By the SEQUENCE they were started in, not by the clock. Two tasks handed
+    // over in the same millisecond — one line of the model's reply can start
+    // both — tie on `startedAt`, and a tie makes the order arbitrary in a list
+    // whose whole claim is "newest first".
+    return [...this._tasks.values()].sort((a, b) => b.seq - a.seq)
   }
 
   /** One, by id, or undefined. */
@@ -139,9 +155,11 @@ export class AgentWorkerPool {
    * @returns {{id: string, agent: string}} the receipt, immediately
    */
   start(name, task, settings, { owner = '' } = {}) {
-    const id = `t${++this._seq}`
+    const seq = ++this._seq
+    const id = `t${seq}`
     const record = {
       id,
+      seq,
       agent: name,
       task,
       // WHOSE task this is. The pool is one per tab and holds every task in it,
@@ -212,10 +230,12 @@ export class AgentWorkerPool {
 
     // The URL must be a literal for the bundler to find the chunk; the name is
     // what makes this thread identifiable as this agent.
-    const worker = new Worker(new URL('./agentWorker.js', import.meta.url), {
-      type: 'module',
-      name,
-    })
+    const worker = this._spawn
+      ? this._spawn(name)
+      : new Worker(new URL('./agentWorker.js', import.meta.url), {
+          type: 'module',
+          name,
+        })
     worker.addEventListener('message', (event) => {
       if (event.data?.type === 'ready') {
         const thread = this._threads.get(name)
