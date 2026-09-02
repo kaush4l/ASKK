@@ -32,7 +32,7 @@ const said = (seconds) =>
 
 /** When it last ran, in the terms a person asks the question in. */
 function lastRan(at) {
-  if (!at) return 'not yet'
+  if (!at) return 'never run'
   const minutes = Math.round(Math.max(0, Date.now() - at) / 60_000)
   if (minutes < 1) return 'just now'
   if (minutes < 60) return `${minutes}m ago`
@@ -105,7 +105,11 @@ export function SchedulePanel({
               <div className="plan-what">{one.text}</div>
               <div className="plan-when">
                 <span>{said(one.everySeconds)}</span>
-                <span className="dim">last {lastRan(one.lastRanAt)}</span>
+                {/* "last not yet" read as a typo. The two cases are different
+                    sentences, not one sentence with a hole in it. */}
+                <span className="dim">
+                  {one.lastRanAt ? `last ran ${lastRan(one.lastRanAt)}` : 'never run yet'}
+                </span>
                 {/* Which conversation it belongs to, said only when that is not
                     this one. A schedule asks in the chat it was made in, and a
                     list that looked identical in every chat would have someone

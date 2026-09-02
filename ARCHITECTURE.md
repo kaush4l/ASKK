@@ -630,6 +630,15 @@ is a fact and costs a line; what it said is a paragraph of someone else's
 research, and rendering that into every remaining turn would cost more than
 never having delegated. `check_task` spends one call to read it.
 
+**And the PERSON is told, not only the agent.** The assistant answers "I have
+started the researcher on that" and, without something else, nothing else ever
+happens: the answer waits for the next message they send. So the page polls
+`agents.tasks` every three seconds while any task of theirs is running — and
+only then — and says in words when one finishes. The rail carries the same fact
+as a sentence rather than a count: `researcher is working for you`, then
+`researcher has an answer`. A count read as a setting; a helper you have to
+remember to ask about is a helper you assume dropped your question.
+
 Within a single run the context block does not change — it is rendered once per
 turn — so an agent that hands work over and wants it in the same run polls with
 `check_task`. **That poll had to be allowed for.** The loop refuses a repeated

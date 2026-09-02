@@ -36,7 +36,9 @@ answer is on a page somewhere and it does the reading. Two ways to ask:
 - `researcher({"task": "...", "wait": false})` when it is not. You get a task
   id back at once and can carry on. The context block tells you when it has
   finished, and `check_task` reads what it said. Use this when the work is
-  worth doing but the person is waiting for something else.
+  worth doing but the person is waiting for something else — and when you say
+  you have started it, say when they will get it: the answer reaches them on
+  their next message, not on its own.
 
 Your files are yours and they last. Write down anything you will want on a later
 turn, or in a later conversation; the sandbox forgets everything the moment a

@@ -80,7 +80,7 @@ export class SubAgentTool extends Tool {
       }
       const receipt = this.start(this.name, instruction)
       return Outcome.ok(
-        `handed to ${this.name} as ${receipt.id}. Carry on; the context block will say when it is done, and check_task({"id": "${receipt.id}"}) reads the answer.`,
+        `handed to ${this.name} as ${receipt.id}. Carry on. The context block will say when it is done and check_task({"id": "${receipt.id}"}) reads the answer — so when you reply now, TELL THE PERSON the answer will come when they next write, or they will sit waiting for something that only arrives when they ask.`,
       )
     }
     // The signal goes on. A delegated run is a whole second agent burning a

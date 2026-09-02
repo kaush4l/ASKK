@@ -319,6 +319,53 @@ export default function Page() {
     }
   }, [ready, conversationId])
 
+  /**
+   * Watch handed-over work, and SAY when it finishes.
+   *
+   * The assistant answers "I have started the researcher on that" and then,
+   * without this, nothing else ever happens: the answer waits for the next
+   * message the person sends, the rail keeps saying one thing is in the
+   * background, and a helper you have to remember to ask about is a helper you
+   * assume dropped your question.
+   *
+   * Three seconds while something is running, and nothing at all when nothing
+   * is: the poll is one call into the backend worker in the same tab, and it
+   * exists only for the window between a task finishing and a person noticing.
+   */
+  useEffect(() => {
+    if (!ready) return undefined
+    if (!tasks.some((task) => task.state === 'running')) return undefined
+    let stopped = false
+
+    const look = async () => {
+      const handed = await clientRef.current.call('agents.tasks')
+      if (stopped || !handed.ok) return
+      const before = new Map(tasks.map((task) => [task.id, task.state]))
+      const finished = handed.value.filter(
+        (task) =>
+          task.owner === conversationId &&
+          task.state !== 'running' &&
+          before.get(task.id) === 'running',
+      )
+      setTasks(handed.value)
+      // Named, and in the words of what happens next. "Done" would leave a
+      // person waiting for an answer that only arrives when they ask for it.
+      for (const task of finished) {
+        const said =
+          task.state === 'failed'
+            ? `${task.agent} could not finish what you handed over.`
+            : `${task.agent} has finished. Send anything and it will read the answer back to you.`
+        setNotes((current) => (current.includes(said) ? current : [...current, said]))
+      }
+    }
+
+    const timer = setInterval(look, 3000)
+    return () => {
+      stopped = true
+      clearInterval(timer)
+    }
+  }, [ready, tasks, conversationId])
+
   // One interval for the whole turn, torn down when it ends. `busy` is the only
   // dependency: a timer that outlives the run it is timing is a clock counting
   // up on a finished answer.
@@ -650,25 +697,39 @@ export default function Page() {
     // something would happen here that could not.
     schedules.filter((one) => one.conversationId === conversationId).length
       ? {
-          text: `${schedules.filter((one) => one.conversationId === conversationId).length} scheduled`,
+          text: `${schedules.filter((one) => one.conversationId === conversationId).length} scheduled here`,
         }
       : null,
     // Handed over and still going, with nobody waiting. Counted rather than
     // named: the agent reads the detail in its own context block, and what a
     // person needs from the rail is that something is happening for them.
-    tasks.filter((one) => one.state === 'running').length
-      ? {
-          text: `${tasks.filter((one) => one.state === 'running').length} in the background`,
-          live: true,
-        }
-      : null,
+    // In the words of who is doing what, not as a bare count. "1 in the
+    // background" reads as a setting or a stuck process; a person cannot tell
+    // from it that a helper is working on the question they just asked.
+    ...tasks
+      .filter((one) => one.owner === conversationId && one.state === 'running')
+      .map((one) => ({ text: `${one.agent} is working for you`, live: true })),
+    ...tasks
+      .filter((one) => one.owner === conversationId && one.state !== 'running' && !one.read)
+      .map((one) => ({
+        text:
+          one.state === 'failed' ? `${one.agent} could not finish` : `${one.agent} has an answer`,
+        live: true,
+      })),
     ...Object.values(delegates).map((one) => ({
       text: one.answered
         ? `${one.agent}: answered`
         : `${one.agent}: ${one.doing?.join(', ') || 'thinking'} · step ${one.step}`,
       live: !one.answered,
     })),
-    ...threads.map((t) => ({ text: `${t.confirmedName ?? t.name}·${t.calls}`, live: true })),
+    // Was `researcher·3`, which is a name, a dot and a number with no subject —
+    // read as a version, or as a second researcher. The word is what a person
+    // needs; the count is only interesting to whoever is debugging the pool,
+    // and `agents.threads` still carries it for them.
+    ...threads.map((t) => ({
+      text: `${t.confirmedName ?? t.name} ${t.calls === 1 ? 'ran once' : `ran ${t.calls} times`}`,
+      live: true,
+    })),
     listening ? { text: 'listening', live: true } : null,
     // The clock, beside the word. `4:07` past a minute, `47s` under one — a
     // reader wants "is it moving", and two units say that more plainly than
@@ -677,7 +738,7 @@ export default function Page() {
       ? {
           text: stopping
             ? 'stopping'
-            : `working ${elapsed >= 60 ? `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}` : `${elapsed}s`}`,
+            : `working ${elapsed >= 60 ? `${Math.floor(elapsed / 60)}m ${elapsed % 60}s` : `${elapsed}s`}`,
           live: true,
         }
       : null,
