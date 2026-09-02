@@ -24,6 +24,11 @@ export class CheckTaskTool extends Tool {
       name: 'check_task',
       description:
         'Read back a task you handed to another agent without waiting. The context block lists which ones exist and whether they are done.',
+      // The one tool in this tree that means something different every time it
+      // is asked: it reports whether another agent has finished YET. The loop's
+      // repeat guard would otherwise answer the second poll with "the result
+      // would be identical", which is exactly wrong here.
+      repeatable: true,
       parameters: {
         id: {
           type: 'string',

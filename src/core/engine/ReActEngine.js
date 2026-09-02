@@ -391,6 +391,16 @@ export class ReActEngine extends Engine {
         // Skipped when the budget is closing: the last turn was told it is the
         // last, and spending its final step on a check would end the run with
         // no answer at all, which is worse than an unchecked one.
+        // Said out loud when the terms of the run swallowed it. An author who
+        // declared a check and a one-step budget has claimed a test that never
+        // runs, and silence there is the same defect as a `max_steps` that
+        // stopped a run without telling anyone.
+        if (this.check && !checked && budget.closing) {
+          checked = true
+          notes.push(
+            `this agent's check did not run: the ${budget.closing} budget was spent, and the last turn is for answering`,
+          )
+        }
         if (this.check && !checked && this.toolbox && !this.toolbox.isEmpty && !budget.closing) {
           checked = true
           const ran = await Promise.race([this.toolbox.run(this.check, signal), until(signal)])
@@ -505,6 +515,14 @@ export class ReActEngine extends Engine {
    * the information, including choosing to answer.
    */
   async observe(parsed, times = 1, signal = null) {
+    // A tool may declare that asking it twice is the point. `check_task` does:
+    // it reports whether another agent has finished YET, so the second poll is
+    // a different question wearing the same words, and the sentence below —
+    // "the result would be identical" — is false about it rather than merely
+    // unhelpful. Everything else is guarded exactly as before.
+    if (times > 1 && this.toolbox?.isRepeatable?.(String(parsed.answer))) {
+      return (await this.toolbox.run(String(parsed.answer), signal)).observation
+    }
     if (times > 1) {
       return `this exact call was already made ${times - 1} time(s), so it was not run again — the result would be identical. Do something different: another tool, different arguments, or answer with what you have.`
     }

@@ -632,7 +632,26 @@ never having delegated. `check_task` spends one call to read it.
 
 Within a single run the context block does not change — it is rendered once per
 turn — so an agent that hands work over and wants it in the same run polls with
-`check_task`. Between turns it is simply told.
+`check_task`. **That poll had to be allowed for.** The loop refuses a repeated
+call with *"the result would be identical"*, which is its whole defence against
+going nowhere and is right about every other tool; it is false about this one,
+whose answer is a moment rather than a computation. So a `Tool` declares
+`repeatable`, `check_task` is the only thing that sets it, and the guard asks
+the toolbox before it refuses.
+
+**A task belongs to the conversation it was started in.** The pool is one per
+tab and holds every task in it; unscoped, a question handed over in one
+conversation was announced in every other conversation's prompt and could be
+read there — one person's research answering a different question.
+`ChatService` builds the port per turn, filtered by conversation, so `core/`
+never learns what a conversation is.
+
+**And a notification can be over.** Reading a finished task acknowledges it, and
+an acknowledged task leaves the context block: without that it sat in every
+prompt for the life of the tab, inviting the agent to read it again — a line and
+a whole extra step, per task, every turn. The pool also keeps at most fifty
+records and drops read ones first, because a record holds its whole instruction
+and its whole answer.
 
 The gate drives the whole loop through the built page: one typed question that
 hands the work over and answers immediately, and a second where the context
@@ -660,7 +679,24 @@ last turn was told it is the last, and spending its final step on a check ends
 the run with no answer at all, which is worse than an unchecked one.
 
 A file that names a `check` which is not a tool call keeps the agent and loses
-the line, with a note, like every other setting `AgentSpec` cannot honour.
+the line, with a note, like every other setting `AgentSpec` cannot honour. Two
+more ways it can be wrong are caught at the same place: a check naming a tool
+this agent does not have is dropped by `loadAgent` — left in, it reached the
+toolbox at the end of a run, came back *"there is no tool called shell"*, and
+the agent was told to fix a problem it could do nothing about — and a check
+swallowed by a budget with no room left says so in a note, because a claim to a
+test that never runs is worse than no claim.
+
+**A reviewer with no stake proposed deleting this feature**, on the grounds that
+its mechanism is "run one tool call the agent already owns, then tell the agent
+to look at the output", which an agent's own body can say in a sentence. That is
+a real argument and the tree has cut a feature on exactly it before —
+`Budget`'s running counters. The measurement that would settle it is written
+down rather than assumed: two arms over the blind panel's tasks, one with
+`check: shell({"command": "bun test"})` and one with the same instruction as a
+sentence in the body, same model, n≥8 per task, comparing pass rate and steps.
+Nothing in this tree declares a `check` yet, so the feature is built and
+unproven, and `CAPABILITIES.md` says so rather than claiming a measurement.
 
 ## Questions that ask themselves
 

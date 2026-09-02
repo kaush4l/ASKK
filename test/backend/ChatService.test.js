@@ -710,3 +710,119 @@ describe('an mcp server that was down when it was first asked', () => {
     expect(second.notes.some((note) => note.includes('offered 1 tool(s)'))).toBe(true)
   })
 })
+
+/**
+ * Whose handed-over work an agent is told about.
+ *
+ * The pool is one per tab and holds every task in it. Unscoped, a question
+ * handed over in one conversation was announced in every other conversation's
+ * prompt and could be read there — one person's research answering a different
+ * question. And a finished task with no acknowledgement was announced for the
+ * life of the tab, a line and an invitation to re-read it on every turn.
+ */
+describe('handed-over work in the prompt', () => {
+  const withPeer = AgentSpec.of({
+    metadata: { name: 'main', tools: ['helper', 'check_task'] },
+    body: 'be brief',
+    source: 'test',
+  }).value
+  const helper = AgentSpec.of({ metadata: { name: 'helper' }, body: 'help', source: 'test' }).value
+
+  /** A pool that holds tasks the way the real one does, without threads. */
+  const holding = (tasks) => ({
+    ask: async () => Outcome.ok(''),
+    tasks: () => tasks,
+    task: (id) => tasks.find((one) => one.id === id) ?? null,
+    acknowledge: (id) => {
+      const found = tasks.find((one) => one.id === id)
+      if (found) found.read = true
+      return Boolean(found)
+    },
+    start: (name, task, _settings, { owner } = {}) => {
+      const record = {
+        id: `t${tasks.length + 1}`,
+        agent: name,
+        task,
+        owner,
+        state: 'running',
+        startedAt: Date.now(),
+        endedAt: 0,
+        progress: null,
+        result: null,
+        read: false,
+      }
+      tasks.push(record)
+      return { id: record.id, agent: name }
+    },
+  })
+
+  const chatWithPool = (pool, replies) =>
+    chatWith(replies, {
+      pool,
+      catalogue: {
+        async spec() {
+          return Outcome.ok(withPeer)
+        },
+        async all() {
+          return Outcome.ok([withPeer, helper])
+        },
+      },
+    })
+
+  const promptsOf = (service, id, text) => {
+    const seen = []
+    return service
+      .send({ id, text }, (name, data) => {
+        if (name === EventName.PROMPT) seen.push(data)
+      })
+      .then(() => seen.map((event) => JSON.stringify(event)).join('\n'))
+  }
+
+  test('a task started here is named here, and one started elsewhere is not', async () => {
+    const tasks = []
+    const pool = holding(tasks)
+    const { service } = chatWithPool(pool, [answerTurn('ok'), answerTurn('ok')])
+
+    // Started by hand, as another conversation would have.
+    pool.start('helper', 'someone else’s question', {}, { owner: 'other-chat' })
+    pool.start('helper', 'this chat’s question', {}, { owner: 'c1' })
+
+    const prompt = await promptsOf(service, 'c1', 'anything')
+
+    // By id, because the line names the task and not the question: what it was
+    // ASKED is the other conversation's business, and rendering it here would
+    // leak the thing this scope exists to keep out.
+    expect(prompt).toContain('handed over')
+    expect(prompt).toContain('t2')
+    expect(prompt).not.toContain('t1:')
+  })
+
+  test('a finished task is announced until it is read, and then it is not', async () => {
+    const tasks = [
+      {
+        id: 't1',
+        agent: 'helper',
+        task: 'go',
+        owner: 'c1',
+        state: 'done',
+        startedAt: 1000,
+        endedAt: 2000,
+        progress: null,
+        result: { ok: true, value: 'the answer', failure: null, notes: [] },
+        read: false,
+      },
+    ]
+    const pool = holding(tasks)
+    const { service } = chatWithPool(pool, [
+      toolTurn('check_task({"id": "t1"})'),
+      answerTurn('read it'),
+      answerTurn('nothing new'),
+    ])
+
+    const first = await promptsOf(service, 'c1', 'what happened?')
+    expect(first).toContain('handed over')
+
+    const second = await promptsOf(service, 'c1', 'and now?')
+    expect(second).not.toContain('handed over')
+  })
+})

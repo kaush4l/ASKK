@@ -89,3 +89,42 @@ describe('buildAgent', () => {
     expect(built.notes.some((note) => note.includes('"nope"'))).toBe(true)
   })
 })
+
+/**
+ * A check that names a tool the agent does not have.
+ *
+ * Left in, it reached the toolbox at the end of a run, came back "there is no
+ * tool called shell", and the agent was told to fix a problem it could do
+ * nothing about — a step spent, and a confusing turn, for a line the author
+ * believed was a test. It is dropped at load with a note instead, like every
+ * other line this tree cannot honour.
+ */
+describe('the check an agent file declares', () => {
+  const build = (metadata) =>
+    buildAgent({
+      spec: AgentSpec.of({ metadata: { name: 'a', ...metadata }, body: 'be brief' }).value,
+      inference: {},
+      services: { http: async () => ({}) },
+    })
+
+  test('is kept when the agent has the tool it names', () => {
+    const built = build({ tools: ['fetch'], check: 'fetch({"url": "https://example.com/"})' })
+    expect(built.value.check).toBe('fetch({"url": "https://example.com/"})')
+    expect(built.notes.some((note) => note.includes('check'))).toBe(false)
+  })
+
+  test('is dropped, with the missing name said out loud, when it is not', () => {
+    const built = build({ tools: ['fetch'], check: 'shell({"command": "true"})' })
+    expect(built.value.check).toBe('')
+    expect(built.notes.some((note) => note.includes('shell'))).toBe(true)
+  })
+
+  test('is dropped when it is a name and a bracket that never closes', () => {
+    // `AgentSpec` accepts this — its check is a shape, `name(` — and the
+    // toolbox is what knows a call needs balanced brackets. Where the two
+    // disagree the toolbox is right, because it is the thing that would run it.
+    const built = build({ tools: ['fetch'], check: 'fetch(' })
+    expect(built.value.check).toBe('')
+    expect(built.notes.some((note) => note.includes('not a call this loop can run'))).toBe(true)
+  })
+})

@@ -19,10 +19,25 @@ export class Tool {
    * @param {{name: string, description: string, parameters?: object}} options
    *   `parameters` is `{ name: { type, description, required } }`.
    */
-  constructor({ name, description = '', parameters = {} } = {}) {
+  constructor({ name, description = '', parameters = {}, repeatable = false } = {}) {
     this.name = name
     this.description = description
     this.parameters = parameters
+    /**
+     * Whether asking this the same way twice can give a different answer.
+     *
+     * False for almost everything, and the loop's repeat guard depends on it:
+     * reading the same file or running the same command twice in a run returns
+     * the same bytes, so the second call is a sign of going nowhere and is
+     * answered with a sentence instead of a round trip.
+     *
+     * True for a tool whose answer is a MOMENT rather than a computation.
+     * `check_task` is the one: it exists to be asked again, because what it
+     * reports is whether another agent has finished yet. Refusing that repeat
+     * told the agent "the result would be identical" — which is not merely
+     * unhelpful there, it is false.
+     */
+    this.repeatable = repeatable
   }
 
   /**

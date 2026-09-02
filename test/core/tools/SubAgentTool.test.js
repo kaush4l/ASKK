@@ -105,7 +105,7 @@ describe('a task handed over rather than awaited', () => {
    * has to mean the same thing as `false`, and everything else — including
    * nothing at all — has to keep the waiting behaviour nobody asked to change.
    */
-  test('only false and "false" hand over; anything else waits', async () => {
+  test('the spellings a model actually writes all hand over; anything else waits', async () => {
     const waited = []
     const tool = new SubAgentTool({
       spec,
@@ -116,10 +116,15 @@ describe('a task handed over rather than awaited', () => {
       start: () => ({ id: 't1', agent: 'researcher' }),
     })
 
-    expect((await tool.call({ task: 'a', wait: 'false' })).value).toContain('t1')
+    // Every one of these is something a model writes for "do not wait", and
+    // each used to wait in silence except the first two.
+    for (const written of [false, 'false', 'no', 0, '0', 'async', 'background']) {
+      expect((await tool.call({ task: 'x', wait: written })).value).toContain('t1')
+    }
     expect((await tool.call({ task: 'b' })).value).toBe('answered')
     expect((await tool.call({ task: 'c', wait: true })).value).toBe('answered')
-    expect(waited).toEqual(['b', 'c'])
+    expect((await tool.call({ task: 'd', wait: 'yes' })).value).toBe('answered')
+    expect(waited).toEqual(['b', 'c', 'd'])
   })
 
   test('a realm that cannot hold a task says so instead of waiting anyway', async () => {

@@ -61,7 +61,17 @@ export class SubAgentTool extends Tool {
     // Read strictly — `false` and `"false"`, not "anything falsy" — because a
     // model writing nothing at all must still get the waiting behaviour it did
     // not ask to change.
-    const handOver = wait === false || String(wait).trim().toLowerCase() === 'false'
+    // A model writes what it writes, and this argument's whole job is to be
+    // read the way it was meant. `false`, `"false"`, `"no"`, `0` and
+    // `"async"` all mean hand it over; anything else waits, which is the
+    // behaviour nobody has to ask for. Before this, `wait: 0` and `wait: "no"`
+    // silently waited — the parameter said boolean and the model was not wrong
+    // to write either.
+    const written = String(wait ?? '')
+      .trim()
+      .toLowerCase()
+    const handOver =
+      wait === false || wait === 0 || ['false', 'no', '0', 'async', 'background'].includes(written)
     if (handOver) {
       if (!this.start) {
         return Outcome.ok(

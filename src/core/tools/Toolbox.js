@@ -20,6 +20,19 @@ export class Toolbox {
     }
   }
 
+  /**
+   * Is every call in this text one that can honestly be made again?
+   *
+   * Asked by the loop before it refuses a repeat. A line of calls counts as
+   * repeatable only if EVERY call in it is: a line that reads a file and polls
+   * a task would return the same file bytes on the second pass, so refusing it
+   * is right and running it again is waste.
+   */
+  isRepeatable(text) {
+    const calls = Toolbox.parse(text).flat()
+    return calls.length > 0 && calls.every((call) => this.tools.get(call.name)?.repeatable === true)
+  }
+
   get isEmpty() {
     return this.tools.size === 0
   }

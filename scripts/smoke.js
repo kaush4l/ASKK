@@ -130,6 +130,8 @@ const HANDOVER_STARTED = 'main-4a9d0: started it and carried on'
 const HANDOVER_READ = 'main-51e7c: the handed-over answer came back'
 /** What a scheduled question says, so it can be found in the transcript. */
 const SCHEDULED_MARK = 'scheduled-6d24b'
+/** What an OVERDUE schedule says — one whose period elapsed while nobody was here. */
+const OVERDUE_MARK = 'overdue-31c7a'
 /** A line only the researcher's own file carries, which is how a child prompt is known. */
 const CHILD_MARK = 'answering one question for another agent'
 
@@ -897,6 +899,75 @@ if (!fired?.asked)
 
 console.log(
   `smoke: a scheduled question asked itself on the next open — ${JSON.stringify(fired.asked)}`,
+)
+
+// --- and the overdue one, which is the case a closed tab makes ---------------
+//
+// The check above proves a NEW schedule fires. It cannot prove the case that
+// actually happens — a schedule whose period elapsed while the tab was shut —
+// because a fresh record carries `lastRanAt: 0` and is due for a different
+// reason. This plants a record that ran two hours ago on an hourly period, which
+// is only reachable by writing the store directly: a gate may not wait an hour.
+const overdue = await evaluate(
+  `(async () => {
+     const { DB_NAME, DB_VERSION, STORE_CONVERSATIONS, STORE_SETTINGS, STORE_FILES, STORE_SCHEDULES } =
+       await import(${JSON.stringify(`${SRC_URL}/backend/composition.js`)})
+     const { IndexedDb } = await import(${JSON.stringify(`${SRC_URL}/backend/repositories/IndexedDb.js`)})
+     const { IndexedDbRepository } = await import(${JSON.stringify(`${SRC_URL}/backend/repositories/IndexedDbRepository.js`)})
+     const db = new IndexedDb(DB_NAME, DB_VERSION, [
+       STORE_CONVERSATIONS,
+       STORE_SETTINGS,
+       STORE_FILES,
+       STORE_SCHEDULES,
+     ])
+     await db.open()
+     // The conversation the page will open, which is the first one it lists.
+     // A schedule belonging to any other conversation is correctly ignored, so
+     // planting one there would prove the opposite of what this checks.
+     const conversations = await new IndexedDbRepository('Conversation', db, STORE_CONVERSATIONS).list()
+     const conversationId = conversations.value?.[0]?.id
+     if (!conversationId) return { where: 'there is no conversation to schedule into' }
+     const hour = 60 * 60 * 1000
+     const saved = await new IndexedDbRepository('Schedule', db, STORE_SCHEDULES).put({
+       id: 'overdue-check',
+       text: 'say ' + ${JSON.stringify(OVERDUE_MARK)},
+       everySeconds: 3600,
+       conversationId,
+       createdAt: Date.now() - 4 * hour,
+       lastRanAt: Date.now() - 2 * hour,
+     })
+     return { planted: saved.ok, conversationId }
+   })()`,
+  session,
+  true,
+)
+if (!overdue?.planted)
+  await fail(`could not plant an overdue schedule: ${JSON.stringify(overdue)}`, problems)
+
+await send('Page.navigate', { url }, session)
+const asked = await evaluate(
+  `(async () => {
+     for (let i = 0; i < 400; i++) {
+       const said = [...document.querySelectorAll('.turn.user .text')].find((node) =>
+         node.textContent.includes(${JSON.stringify(OVERDUE_MARK)}),
+       )
+       if (said) return { asked: said.textContent }
+       await new Promise((r) => setTimeout(r, 50))
+     }
+     return { asked: '' }
+   })()`,
+  session,
+  true,
+)
+if (!asked?.asked)
+  await fail('a schedule that came due while the tab was shut was never asked', [
+    'What is due comes from ScheduleService.due, which compares now against',
+    'lastRanAt — see the overdue-not-skipped argument in that file.',
+    ...problems,
+  ])
+
+console.log(
+  `smoke: a schedule overdue by an hour asked itself on reopening — ${JSON.stringify(asked.asked)}`,
 )
 
 // --- realm two: the classic worker nothing bundles --------------------------

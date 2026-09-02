@@ -83,6 +83,28 @@ export function buildAgent({
   // the default — which is the point of a default.
   const arranged = PromptTemplate.of(spec.prompt, { source: spec.source ?? spec.name })
 
+  // A check that names a tool this agent does not have is a check that cannot
+  // run. Left in, it reached the toolbox at the end of a run, came back "there
+  // is no tool called shell", and the agent was told to fix a problem it could
+  // do nothing about — costing a step and a confusing turn. The author is told
+  // instead, at load, in the same breath as every other unhonoured line.
+  const toolbox = new Toolbox([...resolved.value, ...extraTools])
+  const checkNotes = []
+  let check = spec.check
+  if (check) {
+    const called = Toolbox.parse(check)
+      .flat()
+      .map((call) => call.name)
+    const missing = called.filter((name) => !toolbox.tools.has(name))
+    if (!called.length) {
+      checkNotes.push(`check ${JSON.stringify(check)} is not a call this loop can run; ignored`)
+      check = ''
+    } else if (missing.length) {
+      checkNotes.push(`check calls ${missing.join(', ')}, which this agent does not have; ignored`)
+      check = ''
+    }
+  }
+
   const built = createEngine({
     loop: spec.engine,
     name: spec.name,
@@ -90,10 +112,11 @@ export function buildAgent({
     responseModel: getResponseModel(spec.response),
     // Tools discovered at runtime — an MCP server's, which cannot be known
     // until the server has been asked — join the ones the file named.
-    toolbox: new Toolbox([...resolved.value, ...extraTools]),
-    // The agent's own check, off its own file. A loop runs it; nothing here
-    // judges it — see `ReActEngine.run`.
-    check: spec.check,
+    toolbox,
+    // The agent's own check, off its own file — and only if it names tools this
+    // agent actually has. A loop runs it; nothing here judges its output, which
+    // is argued in `ReActEngine.run`.
+    check,
     // The caller supplies the facts, because they are facts about the caller's
     // realm — what is stored, which model was chosen — and an agent file cannot
     // know them.
@@ -101,7 +124,12 @@ export function buildAgent({
     template: arranged.template,
     inference,
   })
-  return Outcome.ok(built.value, [...resolved.notes, ...arranged.notes, ...built.notes])
+  return Outcome.ok(built.value, [
+    ...resolved.notes,
+    ...checkNotes,
+    ...arranged.notes,
+    ...built.notes,
+  ])
 }
 
 export { AgentSpec }

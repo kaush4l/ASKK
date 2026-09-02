@@ -107,10 +107,11 @@ export class ChatService {
       // legitimate thing to be handed — `SubAgentTool` says so to the model
       // when `wait: false` has nowhere to go — and a port that existed but
       // threw would turn that into a broken turn instead of a sentence.
-      tasks:
-        typeof pool?.tasks === 'function' && typeof pool?.task === 'function'
-          ? { list: () => pool.tasks(), get: (id) => pool.task(id) ?? null }
-          : undefined,
+      // Scoped to ONE conversation, and `_tasksFor` below is where the scope
+      // is applied. Unscoped, a question handed over in one conversation was
+      // announced in every other conversation's prompt and could be read
+      // there — one person's research answering a different question.
+      tasks: undefined,
     }
     this._inference = null
     this._signature = ''
@@ -238,11 +239,41 @@ export class ChatService {
    * rendering that into every remaining turn of the conversation would cost
    * more than never having delegated. `check_task` spends the call to read it.
    */
-  _backgroundContext(context) {
-    const running = this.services.tasks?.list?.() ?? []
-    if (!running.length) return context
-    context.push(['handed over', running.map((task) => describeTask(task)).join('\n')])
+  _backgroundContext(context, tasks) {
+    // Still running, or finished and not yet read. A finished task that has
+    // been read is history: leaving it here put a line in every prompt for the
+    // life of the tab, each turn inviting the agent to read it again — a line
+    // and a whole extra step, per task, forever.
+    const news = (tasks?.list?.() ?? []).filter((task) => task.state === 'running' || !task.read)
+    if (!news.length) return context
+    context.push(['handed over', news.map((task) => describeTask(task)).join('\n')])
     return context
+  }
+
+  /**
+   * The task port for ONE conversation.
+   *
+   * The pool is one per tab and holds every task in it; a conversation may only
+   * see its own. Built per turn because the scope is the turn's, and handed to
+   * the tools rather than to the pool, so `core/` never learns what a
+   * conversation is.
+   */
+  _tasksFor(conversationId) {
+    const pool = this.pool
+    if (typeof pool?.tasks !== 'function' || typeof pool?.task !== 'function') return undefined
+    const mine = (task) => task && task.owner === conversationId
+    return {
+      list: () => pool.tasks().filter(mine),
+      get: (id) => {
+        const found = pool.task(id)
+        if (!mine(found)) return null
+        // Reading it is what ends the notification. `check_task` is the only
+        // reader, so acknowledging here rather than in the tool keeps `core/`
+        // free of the idea that a notification can be dismissed.
+        pool.acknowledge?.(id)
+        return found
+      },
+    }
   }
 
   /**
@@ -318,6 +349,9 @@ export class ChatService {
 
     // The agent — its instructions, loop, contract and toolkit — comes from its
     // file. Nothing here supplies behaviour of its own.
+    // This conversation's handed-over work, and nothing else's.
+    const tasks = this._tasksFor(id)
+
     const agent = buildAgent({
       spec: spec.value,
       inference: inference.value,
@@ -339,7 +373,7 @@ export class ChatService {
       // whole point.
       start:
         typeof this.pool?.start === 'function'
-          ? (name, task) => this.pool.start(name, task, settings.value)
+          ? (name, task) => this.pool.start(name, task, settings.value, { owner: id })
           : null,
       dispatch: (name, task, stop) =>
         this.pool.ask(
@@ -349,8 +383,8 @@ export class ChatService {
           stop ?? signal,
           emit ? (progress) => emit(EventName.DELEGATE, progress) : null,
         ),
-      context: this._backgroundContext(await this._context(notes)),
-      services: this.services,
+      context: this._backgroundContext(await this._context(notes), tasks),
+      services: { ...this.services, tasks },
       extraTools: mcp.value,
     })
     if (!agent.ok) return agent

@@ -1013,3 +1013,97 @@ describe('the check an agent declares', () => {
     expect(toolbox.ran).toEqual(['shell({"command": "ls"})'])
   })
 })
+
+/**
+ * A tool that means something different every time it is asked.
+ *
+ * The loop's repeat guard is its whole defence against going nowhere, and it is
+ * right about almost everything: reading one file twice in a run returns the
+ * same bytes. `check_task` is the exception by construction — it reports
+ * whether ANOTHER agent has finished yet — and the guard answered its second
+ * poll with "the result would be identical", which is not unhelpful there but
+ * false.
+ */
+describe('a repeatable tool', () => {
+  const polling = (answers) => {
+    const asked = []
+    return {
+      isEmpty: false,
+      names: ['check_task'],
+      render: () => '- check_task',
+      asked,
+      isRepeatable: () => true,
+      async run(text) {
+        asked.push(text)
+        return { observation: answers[asked.length - 1] ?? answers.at(-1), count: 1 }
+      },
+    }
+  }
+
+  test('is run again on a repeat, and the loop reads what it says the second time', async () => {
+    const toolbox = polling(['t1: still working (2s so far)', 't1: finished and said: hello'])
+    const engine = new ReActEngine({
+      inference: new ScriptedInference({
+        replies: [
+          'think: []\n\nplan: []\n\nact: tool\n\nresult: check_task({"id": "t1"})',
+          'think: []\n\nplan: []\n\nact: tool\n\nresult: check_task({"id": "t1"})',
+          'think: []\n\nplan: []\n\nact: answer\n\nresult: it said hello',
+        ],
+      }),
+      toolbox,
+    })
+
+    const run = await engine.run([{ role: 'user', text: 'wait for it' }])
+
+    expect(toolbox.asked).toHaveLength(2)
+    expect(run.value.answer).toBe('it said hello')
+  })
+
+  test('a toolbox that says nothing is repeatable still refuses the repeat', async () => {
+    const toolbox = { ...polling(['ran']), isRepeatable: () => false }
+    const engine = new ReActEngine({
+      inference: new ScriptedInference({
+        replies: [
+          'think: []\n\nplan: []\n\nact: tool\n\nresult: read_file({"path": "a"})',
+          'think: []\n\nplan: []\n\nact: tool\n\nresult: read_file({"path": "a"})',
+          'think: []\n\nplan: []\n\nact: answer\n\nresult: done',
+        ],
+      }),
+      toolbox,
+    })
+
+    await engine.run([{ role: 'user', text: 'read it' }])
+
+    expect(toolbox.asked).toHaveLength(1)
+  })
+})
+
+/**
+ * And the two ways a declared check can quietly do nothing, both of which the
+ * author has to be told about — a claim to a test that never runs is worse than
+ * no claim.
+ */
+describe('a check that cannot run', () => {
+  test('a budget with no room says so instead of skipping in silence', async () => {
+    const toolbox = {
+      isEmpty: false,
+      names: ['shell'],
+      render: () => '- shell',
+      async run() {
+        return { observation: 'OK', count: 1 }
+      },
+    }
+    const engine = new ReActEngine({
+      inference: new ScriptedInference({
+        replies: ['think: []\n\nplan: []\n\nact: answer\n\nresult: done'],
+      }),
+      toolbox,
+      check: 'shell({"command": "true"})',
+    })
+
+    const run = await engine.run([{ role: 'user', text: 'go' }], { budget: { steps: 1 } })
+
+    expect(run.ok).toBe(true)
+    expect(run.notes.some((note) => note.includes('check did not run'))).toBe(true)
+  })
+})

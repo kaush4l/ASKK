@@ -1,4 +1,15 @@
 import { Outcome, Reason } from '../core/Outcome.js'
+import { TaskState } from '../core/tools/TasksPort.js'
+
+/**
+ * How many handed-over tasks a tab remembers.
+ *
+ * Each record holds the whole instruction and the whole answer, so this is a
+ * memory bound as well as a prompt bound. Fifty is far more than a conversation
+ * will produce and small enough that a runaway agent cannot grow the worker's
+ * heap without limit; read tasks are dropped first, oldest first.
+ */
+const TASK_CEILING = 50
 
 /**
  * The threads sub-agents run on — one per agent, created on first use.
@@ -81,6 +92,38 @@ export class AgentWorkerPool {
   }
 
   /**
+   * Say a finished task has been read, so it stops being announced.
+   *
+   * Without this a finished task was in every prompt of every turn for the life
+   * of the tab, each turn inviting the agent to read it again — a line of
+   * prompt and a whole extra step, per task, forever. Acknowledgement is what
+   * turns a notification into something that can be over.
+   */
+  acknowledge(id) {
+    const found = this._tasks.get(id)
+    if (found) found.read = true
+    return Boolean(found)
+  }
+
+  /**
+   * Keep the newest `TASK_CEILING` and drop read ones first.
+   *
+   * A task record holds its whole instruction and its whole answer, and nothing
+   * ever removed one. A long session with a chatty agent is unbounded memory in
+   * the backend worker and an unbounded context block in front of the model.
+   */
+  _forget() {
+    if (this._tasks.size <= TASK_CEILING) return
+    const droppable = [...this._tasks.values()]
+      .filter((task) => task.state !== TaskState.RUNNING)
+      .sort((a, b) => Number(b.read) - Number(a.read) || a.endedAt - b.endedAt)
+    for (const task of droppable) {
+      if (this._tasks.size <= TASK_CEILING) return
+      this._tasks.delete(task.id)
+    }
+  }
+
+  /**
    * Hand a question over and come straight back with a receipt.
    *
    * The difference from `ask` is only who waits: the same thread, the same
@@ -95,30 +138,58 @@ export class AgentWorkerPool {
    *
    * @returns {{id: string, agent: string}} the receipt, immediately
    */
-  start(name, task, settings) {
+  start(name, task, settings, { owner = '' } = {}) {
     const id = `t${++this._seq}`
     const record = {
       id,
       agent: name,
       task,
-      state: 'running',
+      // WHOSE task this is. The pool is one per tab and holds every task in it,
+      // so without an owner a question handed over in one conversation was
+      // announced in every other conversation's prompt — and could be read
+      // there, which is one person's research answering someone else's
+      // question. The owner is a conversation id and it is the caller's, not
+      // the pool's, because the pool has no idea what a conversation is.
+      owner,
+      state: TaskState.RUNNING,
       startedAt: Date.now(),
       endedAt: 0,
       progress: null,
       result: null,
+      // Whether anyone has read it back. A finished task that nobody has read
+      // is news; one that has been read is history, and history does not belong
+      // in every prompt.
+      read: false,
     }
     this._tasks.set(id, record)
 
     // Not awaited on purpose: this method's whole contract is that it returns
     // before the work does. The promise cannot reject — `ask` answers with an
     // Outcome on every path — so there is nothing here to catch.
+    // The catch is not decoration. This comment said "the promise cannot
+    // reject" and `ask` does answer with an Outcome on every path it REACHES —
+    // but it calls `_worker` first, and `new Worker` throws synchronously on a
+    // URL a realm will not load, which an async function turns into a
+    // rejection. Left uncaught that was an unhandled rejection in the backend
+    // worker and a record that read "still working" in every prompt until the
+    // page was reloaded.
     this.ask(name, task, settings, null, (progress) => {
       record.progress = progress
-    }).then((answered) => {
-      record.state = answered.ok ? 'done' : 'failed'
-      record.endedAt = Date.now()
-      record.result = answered.toJSON()
     })
+      .then((answered) => {
+        record.state = answered.ok ? TaskState.DONE : TaskState.FAILED
+        record.endedAt = Date.now()
+        record.result = answered.toJSON()
+      })
+      .catch((err) => {
+        record.state = TaskState.FAILED
+        record.endedAt = Date.now()
+        record.result = Outcome.failed(
+          Reason.INTERNAL,
+          `${name} could not be started: ${err?.message ?? err}`,
+        ).toJSON()
+      })
+    this._forget()
 
     return { id, agent: name }
   }

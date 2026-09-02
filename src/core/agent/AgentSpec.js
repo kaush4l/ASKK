@@ -242,9 +242,14 @@ export class AgentSpec {
       }
     }
 
-    // One tool call the agent's own author wrote, run once before this agent is
-    // allowed to finish. A string and not a list: a check that is three calls
-    // is a script, and a script belongs in a file the guest can run.
+    // The tool call an agent's own author wrote, run once before this agent is
+    // allowed to finish. Written as one call, and a string rather than a list
+    // for that reason — but `Toolbox.run` executes every call the string
+    // contains, so two on one line really do both run. Said here rather than
+    // enforced: refusing a second call would be this parser overruling a
+    // grammar the toolbox already has, and the honest thing is to say what
+    // happens. `loadAgent` is where a check naming a tool this agent does not
+    // have is dropped with a note.
     const check = String(raw.check ?? '').trim()
     if (check && !/^[A-Za-z_][\w-]*\s*\(/.test(check)) {
       notes.push(
