@@ -1,0 +1,361 @@
+{
+  "at": "2026-09-01T23:47:34.112Z",
+  "config": {
+    "baseUrl": "http://127.0.0.1:8873/v1",
+    "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+    "temperature": 0,
+    "seed": 7,
+    "maxTokens": 1200,
+    "thinking": true,
+    "requestTimeoutMs": 300000,
+    "maxTurns": 12
+  },
+  "skipped": [],
+  "runs": [
+    {
+      "task": "median-bug",
+      "scaffold": "ours",
+      "index": 1,
+      "pass": true,
+      "checks": [
+        {
+          "name": "median is actually fixed (hidden test)",
+          "ok": true
+        },
+        {
+          "name": "the agent wrote test_median.py",
+          "ok": true
+        },
+        {
+          "name": "the agent's own test passes",
+          "ok": true
+        }
+      ],
+      "turns": 9,
+      "stop": "answered",
+      "tokens": {
+        "prompt": 13352,
+        "completion": 6084,
+        "total": 19436
+      },
+      "promptSize": {
+        "messages": 1,
+        "chars": 3488,
+        "systemChars": 0
+      },
+      "ms": 198433,
+      "toolCalls": 6,
+      "models": [
+        "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp"
+      ],
+      "replies": [
+        {
+          "at": 1,
+          "state": "whole",
+          "finish": "stop",
+          "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+          "prompt": 924,
+          "completion": 198,
+          "ms": 9470
+        },
+        {
+          "at": 2,
+          "state": "thinking",
+          "finish": "length",
+          "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+          "prompt": 1022,
+          "completion": 1200,
+          "ms": 34193
+        },
+        {
+          "at": 3,
+          "state": "whole",
+          "finish": "stop",
+          "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+          "prompt": 1112,
+          "completion": 588,
+          "ms": 17170
+        },
+        {
+          "at": 4,
+          "state": "cut",
+          "finish": "length",
+          "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+          "prompt": 1477,
+          "completion": 1200,
+          "ms": 36393
+        },
+        {
+          "at": 5,
+          "state": "whole",
+          "finish": "stop",
+          "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+          "prompt": 1522,
+          "completion": 313,
+          "ms": 13783
+        },
+        {
+          "at": 6,
+          "state": "cut",
+          "finish": "length",
+          "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+          "prompt": 1681,
+          "completion": 1200,
+          "ms": 35535
+        },
+        {
+          "at": 7,
+          "state": "whole",
+          "finish": "stop",
+          "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+          "prompt": 1755,
+          "completion": 256,
+          "ms": 14132
+        },
+        {
+          "at": 8,
+          "state": "whole",
+          "finish": "stop",
+          "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+          "prompt": 1796,
+          "completion": 381,
+          "ms": 15764
+        },
+        {
+          "at": 9,
+          "state": "whole",
+          "finish": "stop",
+          "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+          "prompt": 2063,
+          "completion": 748,
+          "ms": 21905
+        }
+      ],
+      "workdir": "/Users/kaush/Downloads/Dev/ASKK/bench/work/p9-median-bug/1",
+      "transcript": "/Users/kaush/Downloads/Dev/ASKK/bench/runs/2026-09-01-p9-n3/transcripts-median-bug/median-bug/ours/1.md"
+    },
+    {
+      "task": "median-bug",
+      "scaffold": "ours",
+      "index": 2,
+      "pass": true,
+      "checks": [
+        {
+          "name": "median is actually fixed (hidden test)",
+          "ok": true
+        },
+        {
+          "name": "the agent wrote test_median.py",
+          "ok": true
+        },
+        {
+          "name": "the agent's own test passes",
+          "ok": true
+        }
+      ],
+      "turns": 5,
+      "stop": "answered",
+      "tokens": {
+        "prompt": 6241,
+        "completion": 3107,
+        "total": 9348
+      },
+      "promptSize": {
+        "messages": 1,
+        "chars": 3488,
+        "systemChars": 0
+      },
+      "ms": 97871,
+      "toolCalls": 5,
+      "models": [
+        "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp"
+      ],
+      "replies": [
+        {
+          "at": 1,
+          "state": "whole",
+          "finish": "stop",
+          "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+          "prompt": 924,
+          "completion": 174,
+          "ms": 8405
+        },
+        {
+          "at": 2,
+          "state": "thinking",
+          "finish": "length",
+          "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+          "prompt": 1022,
+          "completion": 1200,
+          "ms": 33440
+        },
+        {
+          "at": 3,
+          "state": "whole",
+          "finish": "stop",
+          "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+          "prompt": 1112,
+          "completion": 562,
+          "ms": 15844
+        },
+        {
+          "at": 4,
+          "state": "whole",
+          "finish": "stop",
+          "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+          "prompt": 1449,
+          "completion": 651,
+          "ms": 21890
+        },
+        {
+          "at": 5,
+          "state": "whole",
+          "finish": "stop",
+          "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+          "prompt": 1734,
+          "completion": 520,
+          "ms": 18207
+        }
+      ],
+      "workdir": "/Users/kaush/Downloads/Dev/ASKK/bench/work/p9-median-bug/2",
+      "transcript": "/Users/kaush/Downloads/Dev/ASKK/bench/runs/2026-09-01-p9-n3/transcripts-median-bug/median-bug/ours/2.md"
+    },
+    {
+      "task": "median-bug",
+      "scaffold": "ours",
+      "index": 3,
+      "pass": true,
+      "checks": [
+        {
+          "name": "median is actually fixed (hidden test)",
+          "ok": true
+        },
+        {
+          "name": "the agent wrote test_median.py",
+          "ok": true
+        },
+        {
+          "name": "the agent's own test passes",
+          "ok": true
+        }
+      ],
+      "turns": 8,
+      "stop": "answered",
+      "tokens": {
+        "prompt": 11453,
+        "completion": 5207,
+        "total": 16660
+      },
+      "promptSize": {
+        "messages": 1,
+        "chars": 3488,
+        "systemChars": 0
+      },
+      "ms": 169711,
+      "toolCalls": 6,
+      "models": [
+        "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp"
+      ],
+      "replies": [
+        {
+          "at": 1,
+          "state": "whole",
+          "finish": "stop",
+          "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+          "prompt": 924,
+          "completion": 173,
+          "ms": 7885
+        },
+        {
+          "at": 2,
+          "state": "thinking",
+          "finish": "length",
+          "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+          "prompt": 1022,
+          "completion": 1200,
+          "ms": 33463
+        },
+        {
+          "at": 3,
+          "state": "whole",
+          "finish": "stop",
+          "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+          "prompt": 1112,
+          "completion": 600,
+          "ms": 16428
+        },
+        {
+          "at": 4,
+          "state": "thinking",
+          "finish": "length",
+          "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+          "prompt": 1486,
+          "completion": 1200,
+          "ms": 33440
+        },
+        {
+          "at": 5,
+          "state": "cut",
+          "finish": "length",
+          "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+          "prompt": 1576,
+          "completion": 1200,
+          "ms": 34873
+        },
+        {
+          "at": 6,
+          "state": "whole",
+          "finish": "stop",
+          "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+          "prompt": 1648,
+          "completion": 133,
+          "ms": 10649
+        },
+        {
+          "at": 7,
+          "state": "whole",
+          "finish": "stop",
+          "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+          "prompt": 1689,
+          "completion": 406,
+          "ms": 17011
+        },
+        {
+          "at": 8,
+          "state": "whole",
+          "finish": "stop",
+          "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+          "prompt": 1996,
+          "completion": 295,
+          "ms": 15852
+        }
+      ],
+      "workdir": "/Users/kaush/Downloads/Dev/ASKK/bench/work/p9-median-bug/3",
+      "transcript": "/Users/kaush/Downloads/Dev/ASKK/bench/runs/2026-09-01-p9-n3/transcripts-median-bug/median-bug/ours/3.md"
+    }
+  ],
+  "summary": {
+    "ours": {
+      "runs": 3,
+      "passed": 3,
+      "refused": 0,
+      "tokens": 45444,
+      "ms": 466015,
+      "turns": 22,
+      "completionTokens": {
+        "n": 22,
+        "min": 133,
+        "median": 575,
+        "max": 1200
+      },
+      "replyStates": {
+        "whole": 15,
+        "thinking": 4,
+        "cut": 3
+      },
+      "models": [
+        "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp"
+      ]
+    }
+  }
+}

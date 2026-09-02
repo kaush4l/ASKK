@@ -2,9 +2,10 @@
  * OUR scaffold, lifted from the tree rather than rewritten.
  *
  * Nothing in this file is a paraphrase of our design. Every part that decides
- * what the model sees is the real module, imported by relative path out of
- * `src/`, which bun loads unchanged because there is no transpile over `src/`
- * and because none of these modules touches a browser global — `Environment.js`
+ * what the model sees — and, since this slice, every part that decides what
+ * happens next — is the real module, imported by relative path out of `src/`,
+ * which bun loads unchanged because there is no transpile over `src/` and
+ * because none of these modules touches a browser global — `Environment.js`
  * reads `Intl`, which exists here, and that is the whole of it.
  *
  * ── what comes from where ───────────────────────────────────────────────────
@@ -22,46 +23,43 @@
  *                      `spec.response` through `getResponseModel`, and the
  *                      prompt arrangement from `spec.prompt` through
  *                      `PromptTemplate.of`. This file chooses none of them.
+ *   THE LOOP           `ReActEngine.run`, called once per run with the task as
+ *                      the conversation and the agent file's own budget terms,
+ *                      exactly as `ChatService` calls it. It assembles every
+ *                      prompt, parses every reply, keeps the scratchpad,
+ *                      applies the repeat rule, sends an unsaid reply and an
+ *                      overrun back as turns, counts one streak for both, and
+ *                      ends the run through its own endings. This file never
+ *                      calls `plan`, `parse`, `observe` or `step`; the grep
+ *                      that proves it is pinned in
+ *                      `test/bench/oursScaffold.test.js`.
  *   prompt order       `src/core/prompt/PromptTemplate.js` DEFAULT_ORDER, via
- *                      `Engine.blocks()` and `Engine.plan()`.
+ *                      `Engine.blocks()` inside the loop.
  *   tool rendering     `src/core/tools/Tool.js` `signature` + `render`.
  *   tool listing       `src/core/tools/Toolbox.js` `render`.
- *   call syntax+parse  `Toolbox.parse` / `_parseLine` / `runOne` / `run`.
+ *   call syntax+parse  `Toolbox.parse` / `_parseLine` / `runOne` / `run`,
+ *                      reached by the loop through `ReActEngine.observe`.
  *   response contract  `src/core/response/ReActResponse.js` FIELDS, rendered by
  *                      `BaseResponse.instructions` and `BaseResponse.reminder`.
- *                      There is no prose block behind the field table any more —
- *                      the `formatNotes` hook an earlier draft of this file
- *                      named was deleted with its last caller, and this scaffold
- *                      sends what the tree sends today.
- *   reply parsing      `BaseResponse.parse` — TOON, then JSON as a repair, then
- *                      the whole reply as the answer. One argument: the `Format`
- *                      enum it used to take is gone.
- *   scratchpad         `ReActEngine.run` keeps actions and observations OUT of
- *                      the conversation and puts them in a `WORK SO FAR` block
- *                      (`Engine.blocks`), and answers a repeated call without
- *                      running it (`ReActEngine.observe`). Both are used here.
- *   the budget         `src/core/engine/Budget.js`, constructed from the agent
- *                      file's own terms exactly as `ChatService` does, and
- *                      opened / closed / measured at the three moments
- *                      `ReActEngine.run` and `Engine.step` do it.
+ *   reply parsing      `BaseResponse.parse`, inside `Engine.step` — TOON, then
+ *                      JSON as a repair, then the whole reply as the answer.
+ *   the budget         `src/core/engine/Budget.js`, constructed by the loop
+ *                      from the agent file's own terms, opened / closed /
+ *                      measured where `ReActEngine.run` and `Engine.step` do it.
  *   context facts      `src/core/agent/Environment.js` describeEnvironment(),
  *                      which is what `ChatService` passes in production.
  *   one user message   `src/core/inference/OpenAICompatible.js` sends the whole
- *                      assembled prompt as a single `user` message. That is a
- *                      real property of our scaffold and it is preserved here.
- *                      Note where the single message now comes from: the class's
- *                      own `_body` builds it in production, and `request()`
- *                      below builds it here, because the rig's transport takes a
- *                      message array so that the reference arm can send its two.
- *                      Same shape, one hop further out; `bench/transport.js`
- *                      argues that override.
+ *                      assembled prompt as a single `user` message. Preserved:
+ *                      the recording port `bench/driver.js` hands the loop
+ *                      wraps the prompt the loop gives it as that one message,
+ *                      because the rig's transport takes a message array so
+ *                      that the reference arm can send its two. Same shape,
+ *                      one hop further out; `bench/transport.js` argues that
+ *                      override.
  *   the transport      `src/core/inference/OpenAICompatible.js` itself, through
- *                      `bench/transport.js`. GENUINE, and it was not: the rig
- *                      carried its own fetch and its own `message.content ?? ''`
- *                      until this slice, so this arm was measured WITHOUT the
- *                      four-state classifier that is the whole of what our
- *                      transport contributes. Twelve of the thirty-four replies
- *                      in `bench/transcripts/` are replies it refuses.
+ *                      `bench/transport.js`, behind the port the driver hands
+ *                      in. The loop reads `Reason.OVERRUN` off its Outcome and
+ *                      takes another turn, as in production.
  *   the shell tool     `src/core/tools/ShellTool.js`, the real class, holding a
  *                      real `Sandbox` port — the tree's own pattern, a
  *                      capability that needs the outside world arriving as a
@@ -70,17 +68,42 @@
  *
  * ── what is reimplemented, and why ─────────────────────────────────────────
  *
- * 1. THE LOOP BODY, and nothing else. `ReActEngine.run` owns its own
- *    `while (true)` and calls `this.inference` itself. The rig's driver owns the
- *    HTTP call, the transcript and the 12-turn cap, so the loop cannot be
- *    imported — it would be a second loop inside the first. What is
- *    reimplemented is the SEQUENCING; every decision inside it is delegated back
- *    to the real modules: the answer/tool branch reads `parsed.isAnswer`, the
- *    scratchpad entries are `{action, observation}` in the shape `Engine.blocks`
- *    reads, the repeat rule and the dispatch are the real `ReActEngine.observe`,
- *    and the budget is the real `Budget`. Note that our engine has NO turn cap
- *    of its own — the cap here is the rig's, imposed identically on both arms,
- *    and that difference is a finding rather than a fix.
+ * 1. NOT THE LOOP, ANY MORE. This file used to reconstruct the loop's
+ *    sequencing — `engine.plan`, then the driver's call, then
+ *    `responseModel.parse`, then `engine.observe`, its own scratchpad push and
+ *    its own `stopped()` — on the argument that the driver owned the HTTP call
+ *    and the loop "would be a second loop inside the first". It was a
+ *    paraphrase, and it drifted the first time the loop changed: `ReActEngine`
+ *    learned to send an overrun back as a turn and this file, which never
+ *    called `run`, went on ending on it — 8 of ours' 15 runs in the third
+ *    panel's set, 0 recovered, every one of the eighteen `median-bug` and
+ *    `slugify-module` cells lost (`docs/LEDGER.md` row S62). The loop is now
+ *    the loop. What this file adds around `run` is RECORDING, and the two
+ *    things below are the whole of it.
+ *
+ *    a. Each pass, as an `action`. The loop reports every pass through
+ *       `onStep` as the parsed response it holds — or `null` for a pass whose
+ *       reply the transport refused — and `actionOf` writes that down in the
+ *       rig's event shape so `blind.js` renders both arms with one grammar.
+ *       It reads the response's own `isAnswer` / `isUnsaid` and copies its
+ *       `toJSON`; it decides nothing.
+ *
+ *    b. Each observation, read back off the next prompt. The loop reports the
+ *       prompt it is about to send (`onPrompt`) and the reply it got
+ *       (`onStep`), and NOT what it wrote into the scratchpad between them —
+ *       there is no `onObserve` in `ReActEngine.run`, and `ChatService` never
+ *       needed one because the page shows steps, not observations. The
+ *       scratchpad IS in the next prompt, under WORK SO FAR, and the assembly
+ *       indexes it by block id (`plan.parts`), so `scratchpadAdded` takes the
+ *       bytes that block gained since the last prompt and reads the
+ *       observation off them. That is the text the model read, byte for byte,
+ *       rather than a copy of it. Its cost is stated rather than hidden: it
+ *       depends on `Engine.blocks` rendering a pair as `action: …` /
+ *       `observation: …` and on the block only growing at its end, both of
+ *       which the test pins against the real engine; and the observation of a
+ *       turn the loop ends on — the budget's hard stop after a tool call — is
+ *       never in a later prompt and so is not recorded. A hook in `src/` would
+ *       delete this paragraph and is not this file's to add.
  *
  * 2. THREE OF THE FOUR TOOLS. Our tree ships `shell`, `search` and `fetch`, plus
  *    whatever an MCP server offers. It has no read_file / write_file /
@@ -105,13 +128,11 @@ import { parseAgentFile } from '../../src/core/agent/AgentFile.js'
 import { AgentSpec } from '../../src/core/agent/AgentSpec.js'
 import { describeEnvironment } from '../../src/core/agent/Environment.js'
 import { buildAgent } from '../../src/core/agent/loadAgent.js'
-import { Budget } from '../../src/core/engine/Budget.js'
 import { Role } from '../../src/core/Message.js'
 import { Outcome } from '../../src/core/Outcome.js'
 import { Sandbox } from '../../src/core/sandbox/Sandbox.js'
 import { ShellTool } from '../../src/core/tools/ShellTool.js'
 import { Tool } from '../../src/core/tools/Tool.js'
-import { Toolbox } from '../../src/core/tools/Toolbox.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = resolve(HERE, '..', '..')
@@ -335,8 +356,8 @@ export function loadSpec() {
  *
  * `tools` is passed, which is the one thing this differs in: given a list,
  * `buildAgent` skips `resolveTools` and attaches exactly these. `inference` is
- * null because the driver owns the HTTP call — the engine is never `run`, only
- * `plan`ned and `observe`d.
+ * the port the driver hands `run` — the shared transport, recording — and it
+ * is null only for a caller that wants the engine to look at and not to run.
  *
  * `which` is the PATH lookup `hostRuntimes` uses, carried through because the
  * shell description this builds is derived from the host and nothing else here
@@ -344,13 +365,83 @@ export function loadSpec() {
  * leaves it out; its writer is the test that asks for a host with neither
  * runtime.
  */
-export function buildRigAgent(spec, shared, which) {
+export function buildRigAgent(spec, shared, { which, inference = null } = {}) {
   return buildAgent({
     spec,
-    inference: null,
+    inference,
     tools: ourTools(shared, which),
     context: describeEnvironment(),
   })
+}
+
+/**
+ * The scratchpad block as rendered into `plan`, and what it gained.
+ *
+ * `ReActEngine.run` pushes one `{action, observation}` pair per pass and
+ * `Engine.blocks` renders the block `action: A\nobservation: O`, pairs joined
+ * by a blank line, growing only at its end (`Volatility.APPEND`). So the block
+ * in this prompt is the block in the last prompt plus one pair, and the
+ * observation is what follows the pair's own `observation:` label. The block
+ * is found by id in `plan.parts` rather than by searching the text, because
+ * the assembly already knows where every block starts and ends.
+ *
+ * Read from the END of the added text, not the start: an action is a tool
+ * call line, and a call's arguments may carry any string a model writes,
+ * including one that looks like a label. The observation's label is the last
+ * `\nobservation: ` the loop wrote, and it is the one this finds. That leaves
+ * one string that could fool it — an OBSERVATION carrying `\nobservation: `,
+ * in which case the recorded observation is its tail — and `bench/tools.js`
+ * output is the only observation text a model does not write.
+ *
+ * `null` when nothing was added, which is the first prompt and no other.
+ */
+export function scratchpadAdded(previous, plan) {
+  const part = plan.parts.find((entry) => entry.id === 'scratchpad')
+  const rendered = part ? plan.text.slice(part.start, part.end) : ''
+  if (!rendered.startsWith(previous)) return { rendered, observation: null }
+  const added = rendered.slice(previous.length)
+  const label = '\nobservation: '
+  const at = added.lastIndexOf(label)
+  return { rendered, observation: at < 0 ? null : added.slice(at + label.length) }
+}
+
+/**
+ * One pass of the loop, in the rig's action shape.
+ *
+ * `parsed` is what `ReActEngine.run` hands `onStep`: the response it holds,
+ * or `null` for the pass whose reply the transport refused with
+ * `Reason.OVERRUN` and the loop sent back as a turn. Three of the four kinds
+ * are read off the response's own fields; the fourth is the null. `parsed` is
+ * copied through `toJSON` so `blind.js` can render `think` and `plan` as
+ * reasoning, and the reply text is NOT copied in beside it — the `reply` event
+ * at the same turn already carries it, and an action that repeated a
+ * 1,200-token reply doubled every transcript for no reader.
+ */
+export function actionOf(parsed, refused) {
+  if (parsed === null) {
+    return {
+      kind: 'malformed',
+      reason: 'overran',
+      note: refused ? `${refused.message} — ${refused.hint}` : '',
+    }
+  }
+  if (parsed.isUnsaid) {
+    return { kind: 'malformed', reason: parsed.unsaidBecause, parsed: parsed.toJSON() }
+  }
+  if (parsed.isAnswer) {
+    return { kind: 'answer', text: String(parsed.answer ?? ''), parsed: parsed.toJSON() }
+  }
+  return { kind: 'tool', call: String(parsed.answer).trim(), parsed: parsed.toJSON() }
+}
+
+/** The task, as the conversation the loop is given. One user turn. */
+export function taskHistory(task, tools) {
+  return [
+    {
+      role: Role.USER,
+      text: `${task.prompt}\n\nThe workspace is ${tools.workdir}. Every path is relative to it.`,
+    },
+  ]
 }
 
 export const scaffold = {
@@ -379,100 +470,63 @@ export const scaffold = {
     },
   ],
 
-  init({ task, tools }) {
-    const spec = loadSpec()
-    const built = buildRigAgent(spec.value, tools)
-    return {
-      engine: built.value,
-      notes: [...spec.notes, ...built.notes],
-      workdir: tools.workdir,
-      // The terms the agent file declares, or none — in which case `Budget`
-      // applies its own, which is what `ChatService` passes too. Not the rig's
-      // 12-turn cap: writing the cap in here would hand our arm a "this is your
-      // last turn" sentence that agent-zero has no equivalent of, which is a
-      // difference the rig invented rather than one it found.
-      budget: new Budget(spec.value.budget),
-      // Our engine keeps the conversation and the scratchpad apart on purpose.
-      // Both live here in the same two shapes it uses.
-      history: [
-        {
-          role: Role.USER,
-          text: `${task.prompt}\n\nThe workspace is ${tools.workdir}. Every path is relative to it.`,
-        },
-      ],
-      scratchpad: [],
-      seen: new Map(),
-    }
-  },
-
-  request(state) {
-    // The three budget moments, in the order the real loop takes them:
-    // `ReActEngine.run` closes before assembling, `Engine.step` opens with the
-    // assembled cost, and `observe` below measures once the endpoint has said
-    // what the pass really cost.
-    state.budget.close()
-    const assembled = state.engine.plan(state.history, state.scratchpad, state.budget)
-    state.budget.open(assembled.total)
-    // OpenAICompatible — one user message carrying the whole prompt.
-    return { messages: [{ role: 'user', content: assembled.text }] }
-  },
-
-  parse(replyText, state) {
-    const parsed = state.engine.responseModel.parse(String(replyText ?? ''))
-    if (parsed.isAnswer) {
-      return {
-        kind: 'answer',
-        text: parsed.answer,
-        raw: String(replyText ?? ''),
-        parsed: parsed.toJSON(),
-      }
-    }
-    return {
-      kind: 'tool',
-      call: String(parsed.answer).trim(),
-      raw: String(replyText ?? ''),
-      parsed: parsed.toJSON(),
-    }
-  },
-
-  async act(action, state) {
-    const call = action.call ?? ''
-    const times = (state.seen.get(call) ?? 0) + 1
-    state.seen.set(call, times)
-    // The real repeat rule and the real dispatch, both from
-    // `ReActEngine.observe` / `Toolbox.run` — reached through the engine so the
-    // text the model reads is the tree's text.
-    const observation = await state.engine.observe({ answer: call }, times)
-    const ran = Toolbox.parse(call)
-      .flat()
-      .map((c) => ({ name: c.name, args: c.argText }))
-    return { observation, ran }
-  },
-
-  observe(state, { action, observation, usage }) {
-    state.budget.measure(usage)
-    state.scratchpad.push({ action: action.call ?? '', observation })
-  },
-
   /**
-   * The hard stop behind the last word, which `ReActEngine.run` checks at the
-   * top of every iteration.
+   * The run IS `ReActEngine.run`. Everything else here writes down what it
+   * reported.
    *
-   * `Budget.render` writes "THIS IS YOUR LAST TURN" into the prompt when the
-   * next step would exhaust the run; the engine then refuses to run a tool
-   * call written after that sentence, so a run cannot end with a severed rope
-   * dressed as an answer. Omitting it here left our arm reading the sentence
-   * with nothing behind it. It is reachable: `agents/main/agent.md` declares no
-   * budget, so `Budget` applies its own 600 seconds, and a run on this endpoint
-   * spends 30 to 60 of them per task.
+   * `budget` is the agent file's own terms, or none — in which case `Budget`
+   * applies its own, which is what `ChatService` passes too. NOT the rig's
+   * 12-turn cap: writing the cap in here would hand our arm a "this is your
+   * last turn" sentence that agent-zero has no equivalent of, which is a
+   * difference the rig invented rather than one it found. The cap reaches
+   * this arm as the port refusing the thirteenth call and pulling `signal`,
+   * so the loop ends the way it ends when its user presses stop.
    *
-   * The driver calls this after a turn's observation, which is the same
-   * position — `ReActEngine` reads the `closing` its PREVIOUS `close()` set.
+   * `ran` is left empty on every observation this arm records. The reference
+   * arm's adapters name the shared function they called; this loop runs its
+   * tools itself, out of the rig's sight, and a list parsed back off the call
+   * line would be a guess wearing a record's shape — the observation text is
+   * the record, and nothing in `bench/` reads `ran`.
+   *
+   * `pending` is the one piece of state the recording needs: whether the last
+   * pass was one the loop writes an observation for. An answer is not — the
+   * run is over — so the next prompt, if any, adds nothing. A pass that WAS,
+   * followed by a prompt that added nothing readable, is recorded as exactly
+   * that rather than dropped: a transcript missing a result would read as a
+   * tool the loop never ran, which is the defect this tree keeps shipping.
    */
-  stopped(state) {
-    return state.budget.closing
-      ? `${state.budget.closing} is spent and the last turn wrote a tool call instead of an answer`
-      : ''
+  async run({ task, tools, inference, signal, record }) {
+    const spec = loadSpec()
+    const built = buildRigAgent(spec.value, tools, { inference })
+    let rendered = ''
+    let pending = false
+
+    const ran = await built.value.run(taskHistory(task, tools), {
+      budget: spec.value.budget,
+      signal,
+      onPrompt: (plan) => {
+        const added = scratchpadAdded(rendered, plan)
+        rendered = added.rendered
+        if (!pending) return
+        record.observation(
+          added.observation ??
+            '(the rig could not read this observation back out of the next prompt)',
+        )
+        pending = null
+      },
+      onStep: ({ parsed }) => {
+        const action = actionOf(parsed, inference.lastReply?.failure)
+        record.action(action)
+        pending = action.kind !== 'answer'
+      },
+    })
+
+    if (!ran.ok) return { answer: '', ended: ran.failure.message }
+    const last = ran.value
+    // A stopped run comes back ok holding whatever the loop had — a tool
+    // call, or nothing — and only an answer is an answer.
+    if (typeof last === 'string') return { answer: last, ended: '' }
+    return { answer: last?.isAnswer ? String(last.answer ?? '') : '', ended: '' }
   },
 }
 

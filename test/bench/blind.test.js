@@ -12,6 +12,8 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import {
+  argSlotsFor,
+  argsOf,
   armRules,
   BANNED,
   blindTranscript,
@@ -19,35 +21,49 @@ import {
   ENDING_LINES,
   ENDINGS,
   endingOf,
+  findHeadings,
+  findKeys,
   findTerms,
   findTools,
   frame,
+  headingSlotsFor,
+  headingsOf,
   kindOf,
+  leaksIn,
   letterFor,
   mapTools,
   outcomeOf,
   REPLACEMENTS,
+  REPLIES,
   RUBRIC,
   readTurn,
-  renderPrompt,
+  renderContract,
+  renderOutline,
   renderTurns,
   residue,
   scrub,
+  sectionsOf,
   separation,
   slotsFor,
+  toolBlocks,
   toolsOf,
 } from '../../bench/blind.js'
 
 /**
  * The blind set, held to what it claims: that it is ONE projection of two
- * loops — tool identifiers and reply grammar rendered the same way for both
- * arms, the assembled prompt rendered once under the same mapping, every ending
- * in one vocabulary — and that the gate exits 1 on anything that names an arm.
+ * loops — tool identifiers, argument names, section headings and reply grammar
+ * rendered the same way for both arms, the prompt rendered as an OUTLINE and
+ * never as prose, every ending in one vocabulary — and that the gate exits 1
+ * on anything that names an arm.
  *
  * P4, decided by the lead after two panels were spent on a set the gate
  * refused: the projection is not the artifact, so a tool name may be rendered
  * as a slot HERE while nothing in `src/` or either scaffold is renamed. A judge
  * scores what the loop did with its tools, not what the tools were called.
+ *
+ * P10, decided by the lead after the third panel: no prompt prose reaches a
+ * judge, because five of five judges identified the arms from it and a reader
+ * of either manual cannot be made blind by any scrub of its prose.
  */
 
 const OURS_PROMPT = [
@@ -446,7 +462,7 @@ describe('one turn grammar for both arms', () => {
       expect(out).toContain('## turn 1')
       expect(out).toContain('reasoning:')
       expect(out).toContain('call: ')
-      expect(out).toContain('result:')
+      expect(out).toContain('result of ')
       expect(out).toContain('## turn 2 — answered')
       expect(out).toContain('the final answer')
       // The reply grammar is the thing that separated 5 of 5 pairs on sight.
@@ -481,6 +497,48 @@ describe('one turn grammar for both arms', () => {
     const out = renderTurns(oursRecord())
     expect(out).toContain('call: list_files\n')
     expect(out).toContain('call: read_file\n  path: x.py\n')
+  })
+
+  test('the observation frame is one way for both arms: a result per call, the arm’s own frame gone', () => {
+    // Ours joins several results as `name -> text` lines and the reference arm
+    // hands back the bare text of its one call; `->` sorted 5 of 5 pairs. Both
+    // are rendered as `result of <tool>:` with the text beneath, one per call.
+    const ours = renderTurns(oursRecord())
+    expect(ours).toContain('result of list_files:\n```\nx.py  12 bytes\n```\n')
+    expect(ours).toContain('result of read_file:\n```\nprint(1)\n```\n')
+    expect(ours).not.toContain('->')
+    const az = renderTurns(azRecord())
+    expect(az).toContain('result of text_editor:\n```\nprint(1)\n```\n')
+    expect(az).not.toContain('result:\n')
+  })
+
+  test('a frame the observation does not carry leaves the text whole under the one call, or under none', () => {
+    // The loop's own sentences — a repeated call refused, no call found — come
+    // back unframed; so does the reference arm's misformat note.
+    const record = oursRecord()
+    record.run.events[3].action.call = 'shell({"command": "ls"})'
+    record.run.events[4].observation =
+      'this exact call was already made 1 time(s), so it was not run again.'
+    expect(renderTurns(record)).toContain(
+      'result of shell:\n```\nthis exact call was already made 1 time(s), so it was not run again.\n```',
+    )
+    const none = azRecord()
+    none.run.events[3].action = { kind: 'malformed', reason: 'misformat', note: 'n', raw: '' }
+    none.run.events[4].observation = 'You have misformatted your message.'
+    expect(renderTurns(none)).toContain('result:\n```\nYou have misformatted your message.\n```')
+  })
+
+  test('argument keys on a call row are rendered through the argument slots when handed them', () => {
+    const args = new Map([
+      ['path', 'arg_1'],
+      ['action', 'arg_2'],
+    ])
+    expect(renderTurns(azRecord(), { args })).toContain(
+      'call: text_editor\n  arg_2: read\n  arg_1: x.py\n',
+    )
+    // A key the map does not carry is rendered as written, so a verifier can find it.
+    const missing = new Map([['path', 'arg_1']])
+    expect(renderTurns(azRecord(), { args: missing })).toContain('  action: read\n')
   })
 
   test('a reply that did not fit the contract says so, and shows what the harness said back', () => {
@@ -644,56 +702,304 @@ describe('one turn grammar for both arms', () => {
   })
 })
 
-describe('the prompt comes back, once, under its own heading', () => {
-  test('every message of the first request, by role, after the loop', () => {
-    const out = renderPrompt(azRecord())
-    expect(out).toContain('## the prompt, as assembled for turn 1')
-    expect(out).toContain('### system')
-    expect(out).toContain('### user')
-    expect(out).toContain('## available tools')
-    const single = renderPrompt(oursRecord())
-    expect(single).toContain('### user')
-    expect(single).not.toContain('### system')
-    expect(single).toContain('# TOOLS')
+describe('the prompt is an outline, never prose', () => {
+  test('a message splits into sections at its headings, the preamble first, with the tree’s token estimate', () => {
+    const sections = sectionsOf(OURS_PROMPT)
+    expect(sections.map((section) => [section.heading, section.depth])).toEqual([
+      [null, 0],
+      ['TOOLS', 1],
+      ['RESPONSE FORMAT', 1],
+      ['CONVERSATION', 1],
+      ['CONTEXT', 1],
+    ])
+    for (const section of sections) expect(section.tokens).toBeGreaterThan(0)
+    expect(sections[1].text.startsWith('# TOOLS')).toBe(true)
+    // A message with no heading is one section.
+    expect(sectionsOf('{"user_message":"do a thing"}').map((s) => s.heading)).toEqual([null])
   })
 
-  test('and what the second request added, so the re-entry of an observation can be seen', () => {
-    const ours = renderPrompt(oursRecord())
-    expect(ours).toContain('## what the prompt for turn 2 added')
-    expect(ours).toContain('# WORK SO FAR')
-    expect(ours).toContain('observation: list_files -> x.py  12 bytes')
-    const az = renderPrompt(azRecord())
-    expect(az).toContain('### assistant')
-    expect(az).toContain('"result":"print(1)\\n"')
+  test('a heading that is a tool’s own absorbs the sub-headings beneath it — they are the tool’s contract', () => {
+    const sections = sectionsOf(AZ_SYSTEM, ['code_execution_tool', 'text_editor'])
+    expect(sections.map((section) => section.heading)).toEqual([
+      'Agent Zero System Manual',
+      'your role',
+      'Environment',
+      'Response format (json fields names)',
+      'available tools',
+      'response:',
+      'code_execution_tool',
+      'text_editor',
+    ])
+    expect(sections.at(-1).text).toContain('#### read')
+    // Without the tool names, `read` is a heading of its own.
+    expect(sectionsOf(AZ_SYSTEM).map((section) => section.heading)).toContain('read')
   })
 
-  test('a run with one request has nothing to add and says so', () => {
+  test('the headings of an arm, in order of first appearance across its set, get section slots', () => {
+    expect(headingsOf(azRecord(), ['code_execution_tool', 'text_editor'])).toEqual([
+      'Agent Zero System Manual',
+      'your role',
+      'Environment',
+      'Response format (json fields names)',
+      'available tools',
+      'response:',
+    ])
+    // Our arm's second request adds a heading; it is a section of that arm too.
+    expect(headingsOf(oursRecord(), [])).toEqual([
+      'TOOLS',
+      'RESPONSE FORMAT',
+      'CONVERSATION',
+      'CONTEXT',
+      'WORK SO FAR',
+    ])
+    const slots = headingSlotsFor([oursRecord()], new Map())
+    expect(slots.get('TOOLS')).toBe('section_1')
+    expect(slots.get('WORK SO FAR')).toBe('section_5')
+    // A tool's heading is the tool's slot, never a section's.
+    const az = headingSlotsFor([azRecord()], slotsFor([azRecord()]))
+    expect(az.has('text_editor')).toBe(false)
+    expect(az.get('response:')).toBe('section_6')
+  })
+
+  test('the outline is one line per section — slot, tokens — and from request 2 on, same, changed or added', () => {
+    const out = renderOutline(oursRecord(), { tools: new Map() })
+    expect(out).toContain('## the prompt, as an outline')
+    expect(out).toMatch(/request 1: messages 1, tokens \d+\n/)
+    expect(out).toMatch(/\(no heading\) +\d+ tokens\n/)
+    expect(out).toMatch(/TOOLS +\d+ tokens\n/)
+    expect(out).toMatch(
+      /request 2: messages 1, tokens \d+; same 5, changed 0, added 1, gone 0; shared prefix \d+ tokens/,
+    )
+    expect(out).toMatch(/TOOLS +\d+ tokens {2}same\n/)
+    expect(out).toMatch(/CONTEXT +\d+ tokens {2}same\n/)
+    expect(out).toMatch(/WORK SO FAR +\d+ tokens {2}added\n/)
+    expect(out).toMatch(/CONVERSATION +\d+ tokens {2}same\n/)
+    // The preamble is a section like any other: same in both requests here.
+    expect(out.match(/\(no heading\) +\d+ tokens {2}same\n/)).not.toBeNull()
+    // NOTHING of the prompt's text is in it.
+    expect(out).not.toContain('careful, direct assistant')
+    expect(out).not.toContain('[USER]')
+    expect(out).not.toContain('think (list)')
+  })
+
+  test('a section whose text changed says so, and the shared prefix stops where it changed', () => {
+    const record = oursRecord()
+    record.run.events[5].messages[0].content = OURS_PROMPT.replace('15:36', '15:37')
+    const out = renderOutline(record, { tools: new Map() })
+    expect(out).toMatch(/CONTEXT +\d+ tokens {2}changed\n/)
+    expect(out).toMatch(/request 2: messages 1, tokens \d+; same 4, changed 1, added 0, gone 0/)
+    const [, prefix] = out.match(/shared prefix (\d+) tokens/)
+    const [, total] = out.match(/request 1: messages 1, tokens (\d+)/)
+    expect(Number(prefix)).toBeLessThan(Number(total))
+    expect(Number(prefix)).toBeGreaterThan(0)
+  })
+
+  test('the reference arm appends messages: every section of the first two is the same, the new ones are added', () => {
+    const tools = slotsFor([azRecord()])
+    const out = renderOutline(azRecord(), { tools, sections: headingSlotsFor([azRecord()], tools) })
+    expect(out).toMatch(/request 1: messages 2, tokens \d+\n/)
+    expect(out).toMatch(
+      /request 2: messages 4, tokens \d+; same 9, changed 0, added 2, gone 0; shared prefix \d+ tokens/,
+    )
+    // Counts are label first and never pluralised: `messages` must be in
+    // every file, not only in the files of the arm that has more than one.
+    expect(out).not.toMatch(/\d+ messages?\b/)
+    expect(out).toMatch(/message 3\n +\(no heading\) +\d+ tokens {2}added\n/)
+    // The tool's heading line is the tool's slot; every other heading its section slot.
+    expect(out).toMatch(/tool_1 +\d+ tokens\n/)
+    expect(out).toMatch(/section_3 +\d+ tokens\n/)
+    expect(out).not.toContain('Environment')
+    expect(out).not.toContain('text_editor')
+    // A heading the map does not carry is written as it is, for the verifier.
+    const bare = renderOutline(azRecord(), { tools })
+    expect(bare).toMatch(/Environment +\d+ tokens\n/)
+    expect(findHeadings(bare, ['Environment', 'TOOLS'], 'f').map((hit) => hit.term)).toEqual([
+      'Environment',
+      'Environment',
+    ])
+    expect(findHeadings(out, ['Environment'], 'f')).toEqual([])
+    // The scan reads the label column and nothing else: the word in a request
+    // line, or in a reply, is not a heading.
+    expect(findHeadings('request 1: messages 2, tokens 9\n', ['messages'], 'f')).toEqual([])
+    // Roles are not rendered: `system` and `assistant` name one arm.
+    expect(out).not.toContain('system')
+    expect(out).not.toContain('assistant')
+    expect(out).not.toContain('"user_message"')
+  })
+
+  test('requests after the second are one line each, so the growth shape is visible without the prose', () => {
+    const record = oursRecord()
+    record.run.events.push({
+      type: 'request',
+      at: 3,
+      messages: [
+        {
+          role: 'user',
+          content: OURS_PROMPT.replace('# CONTEXT', '# WORK SO FAR\n\nmore\n\n# CONTEXT'),
+        },
+      ],
+    })
+    const out = renderOutline(record, { tools: new Map() })
+    expect(out).toMatch(
+      /request 3: messages 1, tokens \d+; same 5, changed 1, added 0, gone 0; shared prefix \d+ tokens\n/,
+    )
+    expect(out.split('request 3')[1]).not.toContain('WORK SO FAR')
+  })
+
+  test('a run with one request has nothing to compare and says so', () => {
     const record = oursRecord()
     record.run.events = record.run.events.slice(0, 5)
-    expect(renderPrompt(record)).toContain('(the run made one request)')
+    expect(renderOutline(record, { tools: new Map() })).toContain('(the run made one request)')
+  })
+})
+
+describe('the tool contract is a table, and what the model did with it is a line', () => {
+  test('tool blocks are read off both listing shapes, with their argument names', () => {
+    const ours = toolBlocks(OURS_PROMPT)
+    expect(ours.map((block) => [block.name, block.args])).toEqual([
+      ['read_file', ['path']],
+      ['write_file', ['path', 'content']],
+      ['list_files', ['path']],
+      ['shell', ['command']],
+    ])
+    expect(ours[1].text).toContain('Create a file, or replace one entirely.')
+    expect(ours[1].text).not.toContain('list_files')
+    const az = toolBlocks(AZ_SYSTEM)
+    expect(az.map((block) => [block.name, block.args])).toEqual([
+      ['response', ['text']],
+      ['code_execution_tool', ['runtime', 'code']],
+      ['text_editor', ['action', 'path']],
+    ])
+    expect(az[2].text).toContain('#### read')
+    expect(az[2].text).not.toContain('execute code')
   })
 
-  test('in the emitted file, the prompt carries the same slots and the same scrub as the turns', () => {
-    const slots = slotsFor([azRecord()])
-    const {
-      text: out,
-      turns,
-      prompt,
-    } = blindTranscript(azRecord(), 'probe', 'A', {
-      armIds: ['agent-zero', 'ours'],
-      slots,
-    })
-    expect(out).toBe(frame('probe', 'A', `${turns}\n${prompt}`))
-    expect(out).toContain('### tool_1')
-    expect(out).toContain('"tool_name": "tool_1"')
-    expect(out).not.toContain('code_execution_tool')
+  test('the argument vocabulary is what the calls used, then what the listing named — never the answer’s', () => {
+    expect(argsOf(oursRecord())).toEqual(['path', 'content', 'command'])
+    expect(argsOf(azRecord())).toEqual(['action', 'path', 'runtime', 'code'])
+    // `text` is the answer tool's argument, and the answer is an ending.
+    expect(argsOf(azRecord())).not.toContain('text')
+    const slots = argSlotsFor([azRecord()], slotsFor([azRecord()]))
+    expect([...slots.entries()]).toEqual([
+      ['action', 'arg_1'],
+      ['path', 'arg_2'],
+      ['runtime', 'arg_3'],
+      ['code', 'arg_4'],
+    ])
+  })
+
+  test('the table is one row per listed tool: its slot, its argument slots, its description in words', () => {
+    const tools = slotsFor([azRecord()])
+    const args = argSlotsFor([azRecord()], tools)
+    const out = renderContract(azRecord(), { tools, args })
+    expect(out).toContain('## the contract')
+    expect(out).toContain('| tool | arguments | description |')
+    expect(out).toMatch(/\| tool_2 \| arg_3, arg_4 \| \d+ words \|/)
+    expect(out).toMatch(/\| tool_1 \| arg_1, arg_2 \| \d+ words \|/)
+    // The answer tool is not a row, and no name of the contract is in the table.
+    expect(out).not.toContain('response')
     expect(out).not.toContain('text_editor')
-    expect(out).not.toContain('Agent Zero')
-    expect(out).not.toContain('/Users/')
-    expect(out).toContain('/project')
-    // The turns come before the prompt: the loop is what is judged, the
-    // prompt is what it was judged under.
-    expect(out.indexOf('## turn 1')).toBeLessThan(out.indexOf('## the prompt, as assembled'))
+    expect(out).not.toContain('runtime')
+    expect(out).not.toContain('execute code')
+  })
+
+  test('a tool the run called that the listing never named is a row that says so', () => {
+    const record = oursRecord()
+    record.run.events[3].action.call = 'search({"q": "x"})'
+    const tools = slotsFor([record])
+    const args = argSlotsFor([record], tools)
+    const out = renderContract(record, { tools, args })
+    expect(out).toMatch(/\| tool_1 \| arg_1 \| not listed \|/)
+  })
+
+  test('what the model did with the contract: its first reply, and how many replies fit', () => {
+    const ours = renderContract(oursRecord(), { tools: new Map(), args: new Map() })
+    expect(ours).toContain(`first reply: ${REPLIES.call}`)
+    expect(ours).toContain(
+      'replies 2: calls 1, answers 1, did not fit the contract 0, never reached the harness 0',
+    )
+
+    const bad = azRecord()
+    bad.run.events[3].action = { kind: 'malformed', reason: 'misformat', note: 'n', raw: '' }
+    const out = renderContract(bad, { tools: new Map(), args: new Map() })
+    expect(out).toContain(`first reply: ${REPLIES.malformed}`)
+    expect(out).toContain(
+      'replies 2: calls 0, answers 1, did not fit the contract 1, never reached the harness 0',
+    )
+
+    const refused = oursRecord()
+    refused.run.stop = 'transport-refused'
+    refused.run.events = [
+      ...refused.run.events.slice(0, 2),
+      { type: 'reply', at: 1, content: '', state: 'thinking', notes: [], ms: 1, usage: {} },
+      { type: 'transport-refusal', at: 1, state: 'thinking', message: 'm', hint: '' },
+    ]
+    const none = renderContract(refused, { tools: new Map(), args: new Map() })
+    expect(none).toContain(`first reply: ${REPLIES.none}`)
+    expect(none).toContain(
+      'replies 1: calls 0, answers 0, did not fit the contract 0, never reached the harness 1',
+    )
+  })
+
+  test('in the emitted file the outline and the table carry slots and numbers and no name or heading of either arm', () => {
+    const records = [azRecord()]
+    const tools = slotsFor(records)
+    const args = argSlotsFor(records, tools)
+    const sections = headingSlotsFor(records, tools)
+    const { text, turns, outline } = blindTranscript(azRecord(), 'probe', 'A', {
+      armIds: ['agent-zero', 'ours'],
+      slots: tools,
+      args,
+      sections,
+    })
+    expect(text).toBe(frame('probe', 'A', `${turns}\n${outline}`))
+    expect(outline).toMatch(/section_1 +\d+ tokens\n/)
+    expect(outline).toMatch(/tool_1 +\d+ tokens\n/)
+    expect(outline).toContain('| tool_1 | arg_1, arg_2 |')
+    for (const heading of headingsOf(azRecord(), [...tools.keys()])) {
+      expect(findTools(outline, [heading], 'outline')).toEqual([])
+    }
+    expect(findHeadings(outline, headingsOf(azRecord(), [...tools.keys()]), 'outline')).toEqual([])
+    for (const name of [...tools.keys(), ...args.keys()]) {
+      expect(findTools(outline, [name], 'outline')).toEqual([])
+    }
+    expect(turns).toContain('call: tool_1\n  arg_1: read\n  arg_2: x.py\n')
+    expect(findKeys(turns, [...args.keys()], 'turns')).toEqual([])
+    expect(text).not.toContain('Agent Zero')
+    expect(text).not.toContain('/Users/')
+    // The turns come before the outline: the loop is what is judged, the
+    // prompt's shape is what it was judged under.
+    expect(text.indexOf('## turn 1')).toBeLessThan(text.indexOf('## the contract'))
+    expect(text.indexOf('## the contract')).toBeLessThan(
+      text.indexOf('## the prompt, as an outline'),
+    )
+  })
+
+  test('the control: a heading the slot map does not carry reaches the outline as text, and the verifier finds it', () => {
+    const records = [azRecord()]
+    const tools = slotsFor(records)
+    const sections = headingSlotsFor(records, tools)
+    sections.delete('Environment')
+    const { outline } = blindTranscript(azRecord(), 'probe', 'A', {
+      armIds: ['agent-zero', 'ours'],
+      slots: tools,
+      args: argSlotsFor(records, tools),
+      sections,
+    })
+    // Once per request the outline opens up — the same leak twice.
+    expect(findHeadings(outline, ['Environment'], 'outline').length).toBe(2)
+    expect(findHeadings(outline, ['your role'], 'outline')).toEqual([])
+  })
+
+  test('the control: an argument key the slot map does not carry reaches the call row, and the verifier finds it', () => {
+    const records = [azRecord()]
+    const tools = slotsFor(records)
+    const args = argSlotsFor(records, tools)
+    args.delete('action')
+    const { turns } = blindTranscript(azRecord(), 'probe', 'A', { slots: tools, args })
+    expect(findKeys(turns, ['action', 'path'], 'turns').map((hit) => hit.term)).toEqual(['action'])
+    // The key scan is a scan of KEYS: the same word in the model's prose is not a key.
+    expect(findKeys('reasoning:\n- the action is clear\n', ['action'], 'f')).toEqual([])
   })
 })
 
@@ -907,13 +1213,15 @@ describe('one classifier for a scanned term', () => {
  * sorter under "prompt prose" is one nobody should trust: `runtime` sorted
  * 5 of 5 pairs from the TURNS — the reference contract's argument on every call
  * row — and was counted among the prompt words because the manual mentions it.
+ * Under P10 nothing is subtracted at all: a judge cannot see the prompts, so
+ * nothing in them makes a token unsortable.
  */
 describe('residue: where a token SORTS, not where it appears', () => {
-  const file = (arm, task, turnsText, promptText = '') => ({ arm, task, turnsText, promptText })
-  const pairs = (turnsOf, promptOf = () => '') =>
+  const file = (arm, task, turnsText, outlineText = '') => ({ arm, task, turnsText, outlineText })
+  const pairs = (turnsOf, outlineOf = () => '') =>
     ['a', 'b', 'c'].flatMap((task) => [
-      file('ours', task, turnsOf('ours', task), promptOf('ours', task)),
-      file('agent-zero', task, turnsOf('agent-zero', task), promptOf('agent-zero', task)),
+      file('ours', task, turnsOf('ours', task), outlineOf('ours', task)),
+      file('agent-zero', task, turnsOf('agent-zero', task), outlineOf('agent-zero', task)),
     ])
   const words = (found) => found.map((entry) => entry.word)
 
@@ -929,34 +1237,31 @@ describe('residue: where a token SORTS, not where it appears', () => {
         tasks: ['a', 'b', 'c'],
       },
     ])
-    expect(found.prompt).toEqual([])
+    expect(found.outline).toEqual([])
   })
 
-  test('a word that sorts by the turns alone is turn residue even when a prompt mentions it', () => {
-    // `runtime` is in the reference manual AND on every reference call row;
-    // the manual is handed to that arm only, so the turns sort every pair.
+  test('a word that sorts by the turns alone is turn residue even when the outline carries it', () => {
     const found = residue(
       pairs(
-        (arm) => (arm === 'agent-zero' ? '  runtime: terminal' : '  command: terminal'),
-        (arm) =>
-          arm === 'agent-zero' ? 'the runtime field picks a shell' : 'the field picks a shell',
+        (arm) => (arm === 'agent-zero' ? '  arg_1: x\n  arg_4: terminal' : '  arg_1: ls'),
+        (arm) => (arm === 'agent-zero' ? '| tool_2 | arg_1, arg_4 |' : '| tool_2 | arg_1 |'),
       ),
     )
-    expect(found.turns.map((entry) => [entry.word, entry.arm, entry.sorted])).toEqual([
-      ['command', 'ours', 3],
-      ['runtime', 'agent-zero', 3],
+    expect(found.turns.map((entry) => [entry.word, entry.kind, entry.arm, entry.sorted])).toEqual([
+      ['arg_4', 'slot', 'agent-zero', 3],
+      ['terminal', 'word', 'agent-zero', 3],
     ])
-    expect(words(found.prompt)).not.toContain('runtime')
+    expect(words(found.outline)).not.toContain('arg_4')
   })
 
-  test('a word only the prompts sort by is prompt residue, counted and not listed by the turns', () => {
+  test('a token only the outline sorts by is outline residue, listed by name — the bucket that must be empty', () => {
     const found = residue(
       pairs(
         () => 'same',
         (arm) => (arm === 'ours' ? 'careful' : 'manual'),
       ),
     )
-    expect(found.prompt.map((entry) => [entry.word, entry.arm]).sort()).toEqual([
+    expect(found.outline.map((entry) => [entry.word, entry.arm]).sort()).toEqual([
       ['careful', 'ours'],
       ['manual', 'agent-zero'],
     ])
@@ -964,22 +1269,19 @@ describe('residue: where a token SORTS, not where it appears', () => {
   })
 
   test('a run of punctuation sorts a pair as surely as a word does', () => {
-    // `tool_1 -> …` is our observation frame and `[exit code 0]` is theirs;
+    // `tool_1 -> …` was our observation frame and `[exit code 0]` is the shell's;
     // a tokeniser that only sees `[A-Za-z_]` words is blind to both.
     const found = residue(pairs((arm) => (arm === 'ours' ? 'tool_1 -> x' : '[exit code 0]')))
     expect(words(found.turns)).toContain('->')
     expect(words(found.turns)).toContain('[')
   })
 
-  test('a word both arms were handed in a pair’s prompts is vocabulary in that pair', () => {
-    const found = residue(
-      pairs(
-        (arm) => (arm === 'ours' ? '/project' : ''),
-        () => 'cwd /project',
-      ),
-    )
-    expect(found.turns).toEqual([])
-    expect(found.prompt).toEqual([])
+  test('nothing is subtracted: a word the prompts handed both arms still sorts if only one arm’s turns carry it', () => {
+    // The gate's own rule 6 keeps the "handed to both" exemption for what THIS
+    // FILE wrote; the inventory does not, because a judge sees no prompt.
+    const found = residue(pairs((arm) => (arm === 'ours' ? 'cd /project' : 'cd elsewhere')))
+    expect(words(found.turns)).toContain('project')
+    expect(words(found.turns)).toContain('/')
   })
 
   test('the floor is three pairs, and the count is the rule separation uses', () => {
@@ -998,6 +1300,60 @@ describe('residue: where a token SORTS, not where it appears', () => {
     expect(split.entries.map((entry) => [entry.term, entry.sorted, entry.against])).toEqual([
       ['twice', 2, 0],
     ])
+  })
+})
+
+describe('the five scans, held one by one', () => {
+  test('a banned term, an arm name, a tool name, a heading label and an argument key are each one leak', () => {
+    const turns = [
+      '## turn 1',
+      'reasoning:',
+      '- kaush said ours is fine',
+      'call: tool_1',
+      '  action: read',
+      '  arg_2: x.py',
+      'result of tool_1:',
+      '```',
+      'text_editor is not here',
+      '```',
+    ].join('\n')
+    const outline = [
+      '```',
+      'request 1: messages 1, tokens 9',
+      '  message 1',
+      '    Environment                                   91 tokens',
+      '    section_2                                     40 tokens',
+      '```',
+    ].join('\n')
+    const found = leaksIn(
+      { text: `${turns}\n${outline}`, turns, outline },
+      {
+        armIds: ['agent-zero', 'ours'],
+        vocabulary: ['text_editor', 'read_file'],
+        headings: ['Environment', 'TOOLS'],
+        argNames: ['action', 'path'],
+      },
+      'f',
+    )
+    expect(found.map((hit) => hit.term).sort()).toEqual(
+      ['Environment', 'action', 'kaush', 'ours', 'text_editor'].sort(),
+    )
+    // The same file with every one of them slotted or scrubbed is clean.
+    const clean = leaksIn(
+      {
+        text: 'call: tool_1\n  arg_1: read\n    section_1  9 tokens\n',
+        turns: 'call: tool_1\n  arg_1: read\n',
+        outline: '    section_1  9 tokens\n',
+      },
+      {
+        armIds: ['agent-zero', 'ours'],
+        vocabulary: ['text_editor'],
+        headings: ['Environment'],
+        argNames: ['action'],
+      },
+      'f',
+    )
+    expect(clean).toEqual([])
   })
 })
 
@@ -1080,10 +1436,29 @@ describe('the script itself is the gate', () => {
     for (const text of [a, b]) {
       expect(text).toContain('call: tool_1')
       expect(text).toContain('## turn 2 — answered')
-      expect(text).toContain('## the prompt, as assembled for turn 1')
+      expect(text).toContain('## the contract')
+      expect(text).toContain('## the prompt, as an outline')
       for (const name of ['read_file', 'list_files', 'text_editor', 'code_execution_tool']) {
         expect(findTools(text, [name], 'f')).toEqual([])
       }
+      for (const heading of [
+        'TOOLS',
+        'RESPONSE FORMAT',
+        'Environment',
+        'your role',
+        'available tools',
+      ]) {
+        expect(findTools(text, [heading], 'f')).toEqual([])
+      }
+      expect(findHeadings(text, ['messages', 'Files'], 'f')).toEqual([])
+      for (const arg of ['path', 'content', 'command', 'action', 'runtime', 'code']) {
+        expect(findKeys(text, [arg], 'f')).toEqual([])
+      }
+      // No prose of either prompt, and no role, is anywhere in the file.
+      expect(text).not.toContain('careful, direct assistant')
+      expect(text).not.toContain('autonomous json')
+      expect(text).not.toContain('### system')
+      expect(text).not.toContain('### user')
     }
   })
 
@@ -1093,8 +1468,13 @@ describe('the script itself is the gate', () => {
     const armIds = Object.values(key.map.probe).sort()
     for (const [letter, arm] of Object.entries(key.map.probe)) {
       const record = arm === 'ours' ? oursRecord() : azRecord()
-      const slots = new Map(Object.entries(key.slots[arm]))
-      const { text } = blindTranscript(record, 'probe', letter, { armIds, slots, tasks: ['probe'] })
+      const { text } = blindTranscript(record, 'probe', letter, {
+        armIds,
+        slots: new Map(Object.entries(key.slots[arm].tools)),
+        args: new Map(Object.entries(key.slots[arm].arguments)),
+        sections: new Map(Object.entries(key.slots[arm].sections)),
+        tasks: ['probe'],
+      })
       expect(readFileSync(join(root, 'out', 'probe', `${letter}.md`), 'utf8')).toBe(text)
     }
   })
@@ -1121,8 +1501,12 @@ describe('the script itself is the gate', () => {
     const { root } = await runBlind(fixture())
     const key = JSON.parse(readFileSync(join(root, 'out-key.json'), 'utf8'))
     expect(Object.values(key.map.probe).sort()).toEqual(['agent-zero', 'ours'])
-    expect(key.slots.ours.list_files).toBe('tool_1')
-    expect(key.slots['agent-zero'].text_editor).toBe('tool_1')
+    expect(key.slots.ours.tools.list_files).toBe('tool_1')
+    expect(key.slots['agent-zero'].tools.text_editor).toBe('tool_1')
+    expect(key.slots.ours.arguments.path).toBe('arg_1')
+    expect(key.slots['agent-zero'].arguments.action).toBe('arg_1')
+    expect(key.slots.ours.sections.TOOLS).toBe('section_1')
+    expect(key.slots['agent-zero'].sections.Environment).toBe('section_3')
   })
 
   test('S59: two indices of one set get two maps, not one map twice', async () => {
@@ -1218,10 +1602,11 @@ describe('the script itself is the gate', () => {
     expect(err).toContain('nothing was blinded, so nothing is verified')
   })
 
-  test('the residue inventory is printed: what sorts three or more pairs, and where it lives', async () => {
-    // Three pairs, so the floor is reachable; the reference arm's `runtime`
-    // argument sits on every one of its call rows and in its manual, and the
-    // inventory must file it where it SORTS — the turns — by name.
+  test('the residue inventory is printed: what sorts three or more pairs from the turns, and nothing from the outline', async () => {
+    // Three pairs, so the floor is reachable. The reference arm's `runtime`
+    // argument used to sit on every one of its call rows and sort 3 of 3; it
+    // is an argument slot now, and what still sorts is the slot's NUMBER —
+    // that arm has more argument names — and the model's own value.
     const tasks = ['probe', 'probe-two', 'probe-three']
     const az = azRecord()
     az.run.events[3].action = {
@@ -1231,8 +1616,28 @@ describe('the script itself is the gate', () => {
       raw: '',
     }
     const { out } = await runBlind(fixture({ az, tasks }))
-    expect(out).toMatch(/RESIDUE: \d+ token\(s\) sort three or more of 3 pair\(s\) by the prompt/)
-    expect(out).toMatch(/"runtime" \[word\] in agent-zero's turns, 3 of 3 pair\(s\)/)
+    expect(out).toMatch(
+      /RESIDUE: 0 token\(s\) other than slots reach three of 3 pair\(s\) only with the outline counted/,
+    )
+    expect(out).not.toMatch(/"runtime"/)
+    expect(out).toMatch(/"terminal" \[word\] in agent-zero's turns, 3 of 3 pair\(s\)/)
+    // The reference arm's fourth argument name is a slot in the contract
+    // table of every one of its files; that is the shape of its contract.
+    expect(out).toMatch(/"arg_4" \[slot\] in agent-zero's outline, 3 of 3 pair\(s\)/)
+    expect(out).not.toMatch(/"messages"/)
+    expect(out).not.toMatch(/by the prompt/)
+  })
+
+  test('the control: the other arm’s heading in a model’s sentence is reported, not fatal — a heading is English in a reply', async () => {
+    // Headings are verified where the harness wrote them, the outline; the
+    // turns are the model's words and a heading there is listed by the
+    // inventory when it sorts, like any other word.
+    const tasks = ['probe', 'probe-two', 'probe-three']
+    const ours = oursRecord()
+    ours.run.events[3].action.parsed.think = ['Environment: nothing talks to a phone']
+    const { code, out } = await runBlind(fixture({ ours, tasks }))
+    expect(code).toBe(0)
+    expect(out).toMatch(/"Environment" \[word\] in ours's turns, 3 of 3 pair\(s\)/)
   })
 })
 
@@ -1257,8 +1662,13 @@ describe('the disclosure the panel is handed', () => {
 
   test('tells the judge what the projection did to the tools, the grammar and the prompt', () => {
     expect(DISCLOSURE).toContain('tool_1')
+    expect(DISCLOSURE).toContain('arg_1')
+    expect(DISCLOSURE).toContain('section_1')
     expect(DISCLOSURE).toContain('one grammar')
-    expect(DISCLOSURE).toContain('prompt is rendered after the turns')
+    expect(DISCLOSURE).toContain('The prompt is not rendered')
+    expect(DISCLOSURE).toContain('criteria 1 and 7 on the outline')
+    expect(DISCLOSURE).toContain('criterion 2 on the table')
+    expect(DISCLOSURE).not.toContain('prose is the harness')
     expect(DISCLOSURE).toContain('outcomes.json')
   })
 
@@ -1297,8 +1707,9 @@ describe('the rubric and the instrument say the same thing', () => {
 
   /**
    * The page still says criterion 1 is WITHHELD and that the prompt "does not
-   * come back"; the instrument withholds nothing and renders the prompt. The
-   * page is `docs/REFERENCE-PROMPTS.md`, outside the slice that changed the
+   * come back"; the instrument withholds nothing — criterion 1 is scored on
+   * the outline the prompt comes back AS. The page is
+   * `docs/REFERENCE-PROMPTS.md`, outside the slice that changed the
    * instrument, so the disagreement is carried here as a test that is
    * EXPECTED TO FAIL: the day the page is fixed this test passes, `failing`
    * turns that pass into a failure, and whoever fixed the page removes the

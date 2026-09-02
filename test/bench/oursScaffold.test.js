@@ -1,20 +1,25 @@
 import { describe, expect, test } from 'bun:test'
-import { readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { buildSystemPrompt } from '../../bench/scaffolds/agent-zero.js'
 import {
   AGENT_FILE,
+  actionOf,
   buildRigAgent,
   hostRuntimes,
   loadSpec,
   scaffold,
+  scratchpadAdded,
+  taskHistory,
 } from '../../bench/scaffolds/ours.js'
 import { makeTools } from '../../bench/tools.js'
 import { describeEnvironment } from '../../src/core/agent/Environment.js'
 import { buildAgent } from '../../src/core/agent/loadAgent.js'
 import { Budget } from '../../src/core/engine/Budget.js'
 import { ReActEngine } from '../../src/core/engine/ReActEngine.js'
+import { Outcome, Reason } from '../../src/core/Outcome.js'
 import { DEFAULT_ORDER } from '../../src/core/prompt/PromptTemplate.js'
 import { ReActResponse } from '../../src/core/response/ReActResponse.js'
 import { ShellTool } from '../../src/core/tools/ShellTool.js'
@@ -42,8 +47,7 @@ const OURS_FILE = join(REPO, 'bench', 'scaffolds', 'ours.js')
  * green over a scaffold that had quietly forked.
  */
 
-const workdir = '/tmp/askk-bench-ours-test'
-const rigTools = () => makeTools(workdir)
+const rigTools = () => makeTools(mkdtempSync(join(tmpdir(), 'askk-bench-ours-')))
 
 describe('the spec comes out of agents/main/agent.md', () => {
   test('the scaffold reads the tree’s agent file and not a copy of it', () => {
@@ -143,116 +147,187 @@ describe('the engine is the production builder’s', () => {
   })
 })
 
-describe('the prompt sent is the prompt the engine assembles', () => {
-  test('request() is engine.plan(), verbatim, as one user message', () => {
-    const state = scaffold.init({ task: { prompt: 'Do a thing.' }, tools: rigTools() })
-    const sent = scaffold.request(state)
-    expect(sent.messages.length).toBe(1)
-    // OpenAICompatible sends one `user` message carrying the whole prompt.
-    expect(sent.messages[0].role).toBe('user')
+/**
+ * A stand-in for the driver's recording port: replies in order, the last one
+ * repeating, as the tree's own Outcomes. `maxTokens` is read by the loop to
+ * name the ceiling to the model; `lastReply` is what the scaffold reads a
+ * refusal's words off. Nothing here classifies — a test that wants the real
+ * classifier drives `bench/driver.js` instead (`test/bench/driver.test.js`).
+ */
+function fakePort(replies) {
+  const prompts = []
+  const port = {
+    maxTokens: 1200,
+    lastReply: null,
+    async invoke(prompt) {
+      prompts.push(prompt)
+      const reply = replies[Math.min(prompts.length - 1, replies.length - 1)]
+      port.lastReply = { failure: reply.ok ? null : reply.failure.toJSON() }
+      return reply
+    },
+  }
+  return { port, prompts }
+}
 
-    // Re-derived from the engine rather than compared to a literal: this is the
-    // assertion that would go red if the scaffold started composing its own text.
-    const again = state.engine.plan(state.history, state.scratchpad, state.budget)
-    expect(sent.messages[0].content).toBe(again.text)
+/** Run the scaffold over `replies`, collecting what it records. */
+async function runWith(replies, tools = rigTools(), task = { prompt: 'Do a thing.' }) {
+  const { port, prompts } = fakePort(replies)
+  const actions = []
+  const observations = []
+  const finished = await scaffold.run({
+    task,
+    tools,
+    inference: port,
+    signal: new AbortController().signal,
+    record: {
+      action: (action) => actions.push(action),
+      observation: (text, ran) => observations.push({ text, ran }),
+    },
+  })
+  return { finished, prompts, actions, observations }
+}
+
+const say = (text) => Outcome.ok(text)
+const TOOL = (call) => say(`think: [look]\n\nplan: [do]\n\nact: tool\n\nresult: ${call}`)
+const ANSWER = (text) => say(`think: [done]\n\nplan: [say]\n\nact: answer\n\nresult: ${text}`)
+
+/** The prompt with its clock line removed, so two assemblies a moment apart compare. */
+const timeless = (text) =>
+  text
+    .split('\n')
+    .filter((line) => !line.startsWith('now: '))
+    .join('\n')
+
+describe('the run is ReActEngine.run, and this file reaches into the engine for nothing else', () => {
+  test('the grep: `.run(` and no plan, parse, observe, step or responseModel', () => {
+    // The proof the brief asks for, as a test rather than a sentence. The
+    // scaffold used to call `engine.plan`, `engine.responseModel.parse` and
+    // `engine.observe` in its own sequence, and that sequence drifted from the
+    // loop the first time the loop changed. `bench/` is run unmodified, so the
+    // source is what executes.
+    const source = readFileSync(OURS_FILE, 'utf8')
+    const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+    const reaches = [...code.matchAll(/\b(?:engine|built\.value)\.(\w+)\(/g)].map((m) => m[1])
+    expect(reaches).toEqual(['run'])
+    for (const name of ['plan', 'parse', 'observe', 'step', 'responseModel', 'blocks']) {
+      expect(code).not.toContain(`.${name}(`)
+    }
   })
 
-  test('the tool block is Toolbox.render(), and the contract is ReActResponse’s', () => {
-    const state = scaffold.init({ task: { prompt: 'Do a thing.' }, tools: rigTools() })
-    const sent = scaffold.request(state).messages[0].content
-    expect(sent).toContain(state.engine.toolbox.render())
-    expect(sent).toContain(ReActResponse.instructions())
-    expect(sent).toContain(ReActResponse.reminder())
+  test('the prompt the loop sends is the engine’s plan over the task, as one user message', async () => {
+    const tools = rigTools()
+    const task = { prompt: 'Do a thing.' }
+    const { prompts } = await runWith([ANSWER('ok')], tools, task)
+    expect(prompts.length).toBe(1)
+
+    // Re-derived from a second engine built the same way rather than compared
+    // to a literal: this is the assertion that would go red if the scaffold
+    // started composing its own text or its own history line.
+    const again = buildRigAgent(loadSpec().value, tools).value
+    const expected = again.plan(taskHistory(task, tools), [], new Budget(loadSpec().value.budget))
+    expect(timeless(prompts[0])).toBe(timeless(expected.text))
+    expect(prompts[0]).toContain(again.toolbox.render())
+    expect(prompts[0]).toContain(ReActResponse.instructions())
+    expect(prompts[0]).toContain(ReActResponse.reminder())
   })
 
-  test('the budget block is silent while there is room, exactly as in production', () => {
+  test('the budget is the agent file’s, silent while there is room, exactly as in production', async () => {
     // agents/main/agent.md declares no budget, so `Budget` applies its own 24
     // steps — more than the rig's 12-turn cap, so the hand-over sentence can
     // never fire here. Writing the cap into the budget instead would hand our
-    // arm a last-turn instruction agent-zero has no equivalent of.
-    const state = scaffold.init({ task: { prompt: 'Do a thing.' }, tools: rigTools() })
-    scaffold.request(state)
-    expect(state.budget.render()).toBe('')
-    expect(state.budget.limits.steps).toBe(24)
+    // arm a last-turn instruction agent-zero has no equivalent of. The hard
+    // stop behind that sentence is the loop's own and is pinned where the loop
+    // is: `test/core/engine/ReActEngine.test.js`.
+    const { prompts } = await runWith([TOOL('list_files({})'), ANSWER('ok')])
+    expect(prompts[0]).not.toContain('# BUDGET')
+    expect(prompts[1]).not.toContain('# BUDGET')
+    expect(new Budget(loadSpec().value.budget).limits.steps).toBe(24)
   })
 
-  test('the budget’s hard stop is behind the last word, as it is in ReActEngine.run', () => {
-    // `Budget.render` writes "THIS IS YOUR LAST TURN" into the prompt and
-    // `ReActEngine.run` then refuses a tool call written after it. Our arm had
-    // the sentence and not the refusal, so the run would have continued past a
-    // budget it had already told the model was spent.
-    const state = scaffold.init({ task: { prompt: 'Do a thing.' }, tools: rigTools() })
-    expect(scaffold.stopped(state)).toBe('')
-
-    // A two-step budget, then the same two moments the loop takes: `close()`
-    // inside `request` decides before the prompt is assembled, and the hook is
-    // read after the turn. `limits` is frozen, so the terms are declared rather
-    // than poked — which is how `ChatService` sets them too.
-    state.budget = new Budget({ steps: 2 })
-    scaffold.request(state)
-    expect(state.budget.render()).toBe('')
-    expect(scaffold.stopped(state)).toBe('')
-
-    scaffold.request(state)
-    expect(state.budget.render()).toContain('THIS IS YOUR LAST TURN')
-    expect(scaffold.stopped(state)).toContain('2-step budget is spent')
-  })
-
-  test('an observation lands in WORK SO FAR and never in the conversation', () => {
-    const state = scaffold.init({ task: { prompt: 'Do a thing.' }, tools: rigTools() })
-    scaffold.observe(state, {
-      action: { call: 'list_files({})' },
-      observation: 'a-distinctive-observation',
-      usage: { prompt: 10, completion: 5 },
-    })
-    const sent = scaffold.request(state).messages[0].content
+  test('an observation lands in WORK SO FAR and never in the conversation', async () => {
+    const { prompts, observations } = await runWith([TOOL('list_files({})'), ANSWER('ok')])
+    const sent = prompts[1]
     const work = sent.slice(sent.indexOf('# WORK SO FAR'))
-    expect(work).toContain('a-distinctive-observation')
-    expect(sent.slice(0, sent.indexOf('# WORK SO FAR'))).not.toContain('a-distinctive-observation')
+    expect(work).toContain('observation: list_files -> (the directory is empty)')
+    expect(sent.slice(0, sent.indexOf('# WORK SO FAR'))).not.toContain('list_files ->')
+    // And what was recorded is what was sent, byte for byte.
+    expect(observations[0].text).toBe('list_files -> (the directory is empty)')
+  })
+
+  test('scratchpadAdded reads the observation off the real Engine.blocks rendering', () => {
+    // Pinned against the engine and not against a string this file wrote: a
+    // change to how `Engine.blocks` renders a pair, or to the block growing
+    // anywhere but its end, goes red here before it goes silent in a run.
+    const engine = buildRigAgent(loadSpec().value, rigTools()).value
+    const history = taskHistory({ prompt: 'x' }, rigTools())
+    const first = engine.plan(history, [], null)
+    expect(scratchpadAdded('', first)).toEqual({ rendered: '', observation: null })
+
+    const one = engine.plan(history, [{ action: 'a({})', observation: 'first\nresult' }], null)
+    const got = scratchpadAdded('', one)
+    expect(got.observation).toBe('first\nresult')
+
+    const two = engine.plan(
+      history,
+      [
+        { action: 'a({})', observation: 'first\nresult' },
+        // A call whose argument carries the label: the LAST label wins.
+        { action: 'b({"x": "\\nobservation: decoy"})', observation: 'second' },
+      ],
+      null,
+    )
+    expect(scratchpadAdded(got.rendered, two).observation).toBe('second')
+    // Read from the rendered prompt, not from the pairs handed in.
+    expect(one.text.slice(one.parts.find((p) => p.id === 'scratchpad').start)).toContain(
+      'observation: first\nresult',
+    )
+  })
+
+  test('actionOf reads the response’s own verdict and decides nothing', () => {
+    expect(actionOf(ReActResponse.parse('act: answer\n\nresult: forty-two'), null)).toMatchObject({
+      kind: 'answer',
+      text: 'forty-two',
+    })
+    const tool = actionOf(
+      ReActResponse.parse('think: [a]\n\nplan: [b]\n\nact: tool\n\nresult: list_files({})'),
+    )
+    expect(tool).toMatchObject({ kind: 'tool', call: 'list_files({})' })
+    expect(tool.parsed.think).toEqual(['a'])
+    const unsaid = actionOf(ReActResponse.parse('think: hi\nplan: do\nact: banana\nresult: x'))
+    expect(unsaid.kind).toBe('malformed')
+    expect(unsaid.reason).toContain("neither 'tool' nor 'answer'")
+    const overran = actionOf(null, { message: 'ran out', hint: 'do less' })
+    expect(overran).toEqual({ kind: 'malformed', reason: 'overran', note: 'ran out — do less' })
   })
 })
 
-describe('parse and act are the tree’s, not the rig’s', () => {
-  test('a TOON reply parses through ReActResponse into a tool action', () => {
-    const state = scaffold.init({ task: { prompt: 'x' }, tools: rigTools() })
-    const reply = 'think: [a]\n\nplan: [b]\n\nact: tool\n\nresult: list_files({})'
-    const action = scaffold.parse(reply, state)
-    expect(action.kind).toBe('tool')
-    expect(action.call).toBe('list_files({})')
-  })
-
-  test('act answer ends the run', () => {
-    const state = scaffold.init({ task: { prompt: 'x' }, tools: rigTools() })
-    const action = scaffold.parse('act: answer\n\nresult: forty-two', state)
-    expect(action.kind).toBe('answer')
-    expect(action.text).toBe('forty-two')
-  })
-
+describe('what the loop does with the tools is the tree’s, not the rig’s', () => {
   test('a repeated call is answered with the engine’s own refusal, and is not re-run', async () => {
     const tools = rigTools()
-    const state = scaffold.init({ task: { prompt: 'x' }, tools })
-    const action = { kind: 'tool', call: 'list_files({})' }
-    const first = await scaffold.act(action, state)
-    const second = await scaffold.act(action, state)
-    expect(first.observation).toContain('list_files ->')
-    expect(second.observation).toContain('was already made 1 time(s), so it was not run again')
+    const { observations } = await runWith(
+      [TOOL('list_files({})'), TOOL('list_files({})'), ANSWER('ok')],
+      tools,
+    )
+    expect(observations[0].text).toContain('list_files ->')
+    expect(observations[1].text).toContain('was already made 1 time(s), so it was not run again')
     // One call reached the shared implementation, not two.
     expect(tools.calls.filter((c) => c.name === 'list_files').length).toBe(1)
   })
 
   test('an unknown tool comes back as Toolbox’s sentence, so the rig can score a hallucinated capability', async () => {
-    const state = scaffold.init({ task: { prompt: 'x' }, tools: rigTools() })
-    const said = await scaffold.act({ kind: 'tool', call: 'read_battery({})' }, state)
+    const { observations } = await runWith([TOOL('read_battery({})'), ANSWER('ok')])
     // `tasks.js` scans observations for this exact phrasing.
-    expect(said.observation).toContain('there is no tool called read_battery')
+    expect(observations[0].text).toContain('there is no tool called read_battery')
   })
 
   test('the shell tool reaches the shared implementation and reports the exit code', async () => {
     const tools = rigTools()
-    const state = scaffold.init({ task: { prompt: 'x' }, tools })
-    const said = await scaffold.act({ kind: 'tool', call: 'shell({"command": "false"})' }, state)
+    const { observations } = await runWith(
+      [TOOL('shell({"command": "false"})'), ANSWER('ok')],
+      tools,
+    )
     // ShellTool's own rendering: a non-zero status is appended by the class.
-    expect(said.observation).toContain('(exit 1)')
+    expect(observations[0].text).toContain('(exit 1)')
     expect(tools.calls.some((c) => c.name === 'run')).toBe(true)
   })
 
@@ -262,10 +337,20 @@ describe('parse and act are the tree’s, not the rig’s', () => {
     // any failing command with more than MAX_OUTPUT of output reached OUR agent
     // as a success while agent-zero read the same text unchanged. Same command,
     // two arms, and the false one was ours.
-    const state = scaffold.init({ task: { prompt: 'x' }, tools: rigTools() })
     const call = 'shell({"command": "head -c 6000 /dev/zero | tr \'\\\\0\' x; exit 3"})'
-    const said = await scaffold.act({ kind: 'tool', call }, state)
-    expect(said.observation).toContain('(exit 3)')
+    const { observations } = await runWith([TOOL(call), ANSWER('ok')])
+    expect(observations[0].text).toContain('(exit 3)')
+  })
+
+  test('the loop’s own ending is returned as `ended`, in its words', async () => {
+    const overrun = Outcome.failed(Reason.OVERRUN, 'the reply ran out', { hint: 'less' })
+    const { finished, actions, observations } = await runWith([overrun, overrun])
+    expect(finished.answer).toBe('')
+    expect(finished.ended).toContain('2 replies in a row ended without saying')
+    expect(actions.map((a) => a.kind)).toEqual(['malformed', 'malformed'])
+    expect(actions[0].note).toBe('the reply ran out — less')
+    expect(observations.length).toBe(1)
+    expect(observations[0].text).toContain('1,200-token reply limit went on reasoning')
   })
 })
 
@@ -339,10 +424,9 @@ describe('both arms are told the same thing about the machine', () => {
    * numbers it invalidates.
    */
 
-  test('both prompts carry the same runtime sentence, and this host is what it says', () => {
+  test('both prompts carry the same runtime sentence, and this host is what it says', async () => {
     const shared = rigTools()
-    const ours = scaffold.request(scaffold.init({ task: { prompt: 'x' }, tools: shared }))
-      .messages[0].content
+    const ours = (await runWith([ANSWER('x')], shared, { prompt: 'x' })).prompts[0]
 
     // The SENTENCE, not the word. `node` occurs six times in agent-zero's own
     // prompt — the `code_execution_tool` runtime list, its `python nodejs linux
@@ -395,7 +479,9 @@ describe('both arms are told the same thing about the machine', () => {
     // neither runtime the rendered tool listing must name neither, which no
     // literal can do. The sentence is dropped whole rather than left as a gap,
     // so the two around it still read as one line.
-    const bare = buildRigAgent(loadSpec().value, rigTools(), () => null).value.toolbox.render()
+    const bare = buildRigAgent(loadSpec().value, rigTools(), {
+      which: () => null,
+    }).value.toolbox.render()
 
     expect(bare).not.toMatch(/(^|\s)python3(\s|$)/)
     expect(bare).not.toMatch(/(^|\s)node(\s|$)/)

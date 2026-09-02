@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { DEFAULTS, drive, MAX_TURNS } from '../../bench/driver.js'
+import { makeTools } from '../../bench/tools.js'
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), '..', 'support', 'fixtures')
 const capture = (name) => JSON.parse(readFileSync(join(FIXTURES, `${name}.json`), 'utf8'))
@@ -226,5 +228,234 @@ describe('what the driver records', () => {
     const run = await drive({ scaffold: stubScaffold('ours'), task, tools })
     expect(run.answer).toBe('DONE: x')
     expect(run.events.find((e) => e.type === 'reply').reasoning).toBe('private working')
+  })
+})
+
+/**
+ * Our arm's run IS `ReActEngine.run`. The driver records it; it does not drive
+ * it.
+ *
+ * Every case here is driven through the real `bench/scaffolds/ours.js` against
+ * a stubbed endpoint, because the whole finding of the third panel was that the
+ * rig's loop and the tree's loop had drifted: `Reason.OVERRUN` was sent back as
+ * a turn in `src/` and ended the run in `bench/`, and 484 green tests could not
+ * see it because nothing drove the two together. A test of the shipped loop
+ * through a stub scaffold proves nothing about the arm the results table names.
+ */
+describe('our arm runs the loop this tree ships', () => {
+  const ours = () => import('../../bench/scaffolds/ours.js').then((m) => m.scaffold)
+  const rigTools = () => makeTools(mkdtempSync(join(tmpdir(), 'askk-bench-driver-')))
+  const toolReply = (call) => ({
+    message: {
+      role: 'assistant',
+      content: `think: [look]\n\nplan: [list, then answer]\n\nact: tool\n\nresult: ${call}`,
+    },
+  })
+  const answerReply = (text) => ({
+    message: {
+      role: 'assistant',
+      content: `think: [done]\n\nplan: [say it]\n\nact: answer\n\nresult: ${text}`,
+    },
+  })
+  const asBody = (reply, finish = 'stop') => ({
+    choices: [{ message: reply.message, finish_reason: finish }],
+    usage: { prompt_tokens: 11, completion_tokens: 7, total_tokens: 18 },
+    model: DEFAULTS.model,
+  })
+
+  test('an overrun is sent back as a turn, and the run recovers — RED at 1412ce1', async () => {
+    // THE TEST THE BRIEF NAMES. Call one: the model's scratchpad arrives on
+    // the answer channel at the token limit — `Reply.THINKING`, which the
+    // transport refuses with `Reason.OVERRUN`. Call two: a complete tool call.
+    // Call three: an answer. At 1412ce1 this records ONE turn and
+    // `transport-refused`, because `bench/driver.js` ended every run on
+    // `!reply.ok` and never called `ReActEngine.run`.
+    serveBodies([
+      capture('truncated-in-think'),
+      asBody(toolReply('list_files({})')),
+      asBody(answerReply('two files')),
+    ])
+    const run = await drive({ scaffold: await ours(), task, tools: rigTools() })
+
+    expect(run.stop).toBe('answered')
+    expect(run.turns).toBe(3)
+    expect(run.answer).toBe('two files')
+
+    // Turn 1 is recorded as what it was: a reply the transport refused, an
+    // action that fit no contract, and the loop's own sentence back to the
+    // model — the same three events the reference arm records for a cut
+    // reply, so `blind.js` renders both with one grammar.
+    const first = run.events.filter((event) => event.at === 1).map((event) => event.type)
+    expect(first).toEqual(['request', 'reply', 'action', 'observation'])
+    expect(run.events.find((e) => e.type === 'reply' && e.at === 1).state).toBe('thinking')
+    const overran = run.events.find((e) => e.type === 'action' && e.at === 1).action
+    expect(overran.kind).toBe('malformed')
+    expect(overran.reason).toBe('overran')
+    expect(overran.note).toContain('still thinking')
+    const sentBack = run.events.find((e) => e.type === 'observation' && e.at === 1)
+    expect(sentBack.observation).toContain('nothing was run and nothing was shown to the user')
+    expect(sentBack.observation).toContain('1,200-token reply limit went on reasoning')
+
+    // The recovery: turn 2's prompt carries the correction in WORK SO FAR, and
+    // turn 2's reply is read as the tool call it is.
+    const second = run.events.find((e) => e.type === 'request' && e.at === 2)
+    expect(second.messages[0].content).toContain(
+      'action: the reply ran out of tokens inside its private reasoning',
+    )
+    expect(run.events.find((e) => e.type === 'action' && e.at === 2).action).toMatchObject({
+      kind: 'tool',
+      call: 'list_files({})',
+    })
+    expect(run.events.find((e) => e.type === 'observation' && e.at === 2).observation).toContain(
+      'list_files ->',
+    )
+    // No transport-refusal was recorded: the refusal was a turn, not an ending.
+    expect(run.events.some((e) => e.type === 'transport-refusal')).toBe(false)
+    // And the refused text still went nowhere.
+    expect(JSON.stringify(run.events)).not.toContain(
+      capture('truncated-in-think').choices[0].message.content.slice(0, 40),
+    )
+  })
+})
+
+describe('our arm, the loop’s own endings and the rig’s', () => {
+  const ours = () => import('../../bench/scaffolds/ours.js').then((m) => m.scaffold)
+  const rigTools = () => makeTools(mkdtempSync(join(tmpdir(), 'askk-bench-driver-')))
+  const asBody = (content, finish = 'stop') => ({
+    choices: [{ message: { role: 'assistant', content }, finish_reason: finish }],
+    usage: { prompt_tokens: 11, completion_tokens: 7, total_tokens: 18 },
+    model: DEFAULTS.model,
+  })
+  const tool = (call) => asBody(`think: [look]\n\nplan: [do]\n\nact: tool\n\nresult: ${call}`)
+
+  test('two overruns in a row end the run through the loop’s own ceiling, not the transport’s', async () => {
+    serveBodies([capture('truncated-in-think'), capture('spent-in-think')])
+    const run = await drive({ scaffold: await ours(), task, tools: rigTools() })
+    expect(run.stop).toBe('scaffold-stop')
+    expect(run.turns).toBe(2)
+    // Both passes are recorded as turns; the second has no observation because
+    // nothing was sent back — the loop ended instead, and says why in its own
+    // words. `unreadable` in `ReActEngine.js`.
+    expect(run.events.map((e) => `${e.at}:${e.type}`)).toEqual([
+      '0:task',
+      '1:request',
+      '1:reply',
+      '1:action',
+      '1:observation',
+      '2:request',
+      '2:reply',
+      '2:action',
+      '2:scaffold-stop',
+    ])
+    const stop = run.events.at(-1)
+    expect(stop.reason).toContain('2 replies in a row ended without saying')
+    expect(stop.reason).toContain('ran out of tokens inside its private reasoning')
+    // The refused states are both on the record.
+    expect(run.events.filter((e) => e.type === 'reply').map((e) => e.state)).toEqual([
+      'thinking',
+      'spent',
+    ])
+    expect(run.events.some((e) => e.type === 'transport-refusal')).toBe(false)
+    // And both were paid for.
+    expect(run.tokens.completion).toBe(220 + 120)
+  })
+
+  test('a reply that never said what to do is sent back, and the loop’s correction is the observation', async () => {
+    serveBodies([
+      asBody('think: hi\nplan: do\nact: banana\nresult: x'),
+      asBody('think: [ok]\n\nplan: [say]\n\nact: answer\n\nresult: fine'),
+    ])
+    const run = await drive({ scaffold: await ours(), task, tools: rigTools() })
+    expect(run.stop).toBe('answered')
+    expect(run.answer).toBe('fine')
+    const unsaid = run.events.find((e) => e.type === 'action' && e.at === 1).action
+    expect(unsaid.kind).toBe('malformed')
+    expect(unsaid.reason).toContain("neither 'tool' nor 'answer'")
+    expect(unsaid.parsed.act).toBe('unsaid')
+    expect(run.events.find((e) => e.type === 'observation' && e.at === 1).observation).toContain(
+      "set act to exactly 'tool' or exactly 'answer'",
+    )
+  })
+
+  test('a repeated call is answered by the loop without running the tool, and that is the observation', async () => {
+    serveBodies([
+      tool('list_files({})'),
+      tool('list_files({})'),
+      asBody('act: answer\n\nresult: nothing there'),
+    ])
+    const tools = rigTools()
+    const run = await drive({ scaffold: await ours(), task, tools })
+    const observed = run.events.filter((e) => e.type === 'observation').map((e) => e.observation)
+    expect(observed[0]).toContain('list_files ->')
+    expect(observed[1]).toContain('was already made 1 time(s), so it was not run again')
+    expect(tools.calls.filter((c) => c.name === 'list_files').length).toBe(1)
+    // `ran` is the reference arm's adapters saying what they called; this
+    // loop runs its tools out of the rig's sight, so it says nothing there.
+    expect(run.events.find((e) => e.type === 'observation').ran).toEqual([])
+  })
+
+  test('the rig’s turn cap falls on our arm at the same turn as on the reference arm', async () => {
+    // A loop that never answers. Our engine has no turn cap of its own — its
+    // bounds are `Budget` (24 steps, 600 s) and its unsaid ceiling — so the 12
+    // must reach it from the rig, at the port, and record the same event the
+    // driver's loop records for the reference arm.
+    sent = []
+    stubEndpoint([{ message: { role: 'assistant', content: 'not an answer' } }])
+    const theirs = await drive({ scaffold: stubScaffold('agent-zero'), task, tools })
+    sent = []
+    serveBodies([tool('shell({"command": "true"})')])
+    const mine = await drive({ scaffold: await ours(), task, tools: rigTools() })
+
+    expect([theirs.turns, mine.turns]).toEqual([MAX_TURNS, MAX_TURNS])
+    expect([theirs.stop, mine.stop]).toEqual(['cap', 'cap'])
+    expect(sent.length).toBe(MAX_TURNS)
+    expect(mine.events.at(-1)).toEqual({ type: 'turn-cap', at: MAX_TURNS, limit: MAX_TURNS })
+    // Every one of the twelve turns has its observation, the twelfth
+    // included: the loop assembled a thirteenth prompt before the port
+    // refused the call, and that prompt is where the twelfth result was read.
+    expect(mine.events.filter((e) => e.type === 'observation').map((e) => e.at)).toEqual(
+      Array.from({ length: MAX_TURNS }, (_, i) => i + 1),
+    )
+    expect(mine.events.filter((e) => e.type === 'request').length).toBe(MAX_TURNS)
+    expect(mine.answer).toBe('')
+  })
+
+  test('an endpoint failure is not scored as our arm’s either', async () => {
+    globalThis.fetch = async () => new Response('upstream is down', { status: 503 })
+    const run = await drive({ scaffold: await ours(), task, tools: rigTools() })
+    expect(run.stop).toBe('endpoint-error')
+    expect(run.turns).toBe(1)
+    expect(run.events.at(-1).error).toContain('HTTP 503')
+    expect(run.events.some((e) => e.type === 'scaffold-stop')).toBe(false)
+  })
+
+  test('a refusal that is not an overrun still ends the run as the transport’s', async () => {
+    // The shape guard: a 200 whose choice carries no message content and whose
+    // finish reason is not `length`. Not reachable on this endpoint; reachable
+    // in a test, and the one refusal the loop does NOT take another turn on.
+    serveBodies([{ choices: [{ message: { role: 'assistant' }, finish_reason: 'stop' }] }])
+    const run = await drive({ scaffold: await ours(), task, tools: rigTools() })
+    expect(run.stop).toBe('transport-refused')
+    expect(run.turns).toBe(1)
+    expect(run.events.at(-1)).toMatchObject({ type: 'transport-refusal', at: 1 })
+    expect(run.events.at(-1).message).toContain('no message content')
+  })
+
+  test('the sampling parameters our loop’s calls carry are the rig’s, same as the reference arm’s', async () => {
+    sent = []
+    stubEndpoint([{ message: { role: 'assistant', content: 'DONE' } }])
+    await drive({ scaffold: stubScaffold('agent-zero'), task, tools, config: { temperature: 0.4 } })
+    serveBodies([asBody('act: answer\n\nresult: x')])
+    await drive({ scaffold: await ours(), task, tools: rigTools(), config: { temperature: 0.4 } })
+    const [theirs, mine] = sent
+    for (const field of ['model', 'temperature', 'seed', 'max_tokens']) {
+      expect(`${field}=${JSON.stringify(mine[field])}`).toBe(
+        `${field}=${JSON.stringify(theirs[field])}`,
+      )
+    }
+    // One user message carrying the whole prompt — `OpenAICompatible._body`'s
+    // shape, through the port.
+    expect(mine.messages.length).toBe(1)
+    expect(mine.messages[0].role).toBe('user')
   })
 })

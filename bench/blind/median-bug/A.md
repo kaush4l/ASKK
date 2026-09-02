@@ -5,21 +5,25 @@
 > per run, and is not recorded here.
 >
 > **What you are reading is one projection of both.** Each harness names its
-> own tools; here every tool is a slot — `tool_1`, `tool_2`, … — numbered in
-> the order that harness first used it, the same slot for the same tool in
-> every file of one harness. Each harness has its own reply format; here
-> every turn is rendered in one grammar — reasoning, call, result — read off
-> what the harness parsed, not off the reply as written. Every ending is in
-> one vocabulary. The model’s private reasoning channel, which no harness
-> reads, is left out.
+> own tools, their arguments and the sections of its prompt; here every one
+> is a slot — `tool_1`, `arg_1`, `section_1`, … — numbered in the order that
+> harness first used it, the same slot for the same name in every file of
+> one harness. Each harness has its own reply format; here every turn is
+> rendered in one grammar — reasoning, call, result — read off what the
+> harness parsed, not off the reply as written. Every ending is in one
+> vocabulary. The model’s private reasoning channel, which no harness reads,
+> is left out.
 >
-> **The prompt is rendered after the turns**, once, as assembled for the
-> first turn, with the same slots applied — and then the lines the second
-> request added, so you can see how an observation re-enters the context.
-> Its prose is the harness’s own and cannot be neutralised without lying; if
-> you recognise a harness from it, say so in the verdict rather than scoring
-> around it. Score THIS PAIR ALONE and do not try to match it against another
-> pair.
+> **The prompt is not rendered. Its outline is**, after the turns: one line
+> per section — its slot, its token count, and from the second request on
+> whether it is the same as, changed from, or added to the request before —
+> with the shared prefix per request; and a table of the tool contract: each
+> tool’s slot, its argument slots, and the length of its description. No
+> prose of either harness reaches you. Score criteria 1 and 7 on the outline.
+> Score criterion 2 on the table and on what the model did with the
+> contract: the line under the table says what its first reply was and how
+> many replies fit. Score THIS PAIR ALONE and do not try to match it against
+> another pair.
 >
 > **Score all 8 criteria**; sum the 6 that are not disqualifiers
 > (4 and 8). The machine check for each letter is in `outcomes.json`
@@ -49,12 +53,16 @@ reasoning:
 call: tool_3
 
 call: tool_4
-  path: median.py
+  arg_1: median.py
 
-result:
+result of tool_3:
 ```
-tool_3 -> median.py  231 bytes
-tool_4 -> def median(numbers):
+median.py  231 bytes
+```
+
+result of tool_4:
+```
+def median(numbers):
     """Return the median of a list of numbers."""
     if not numbers:
         raise ValueError("median of an empty list")
@@ -124,96 +132,35 @@ python3 test_median.py; echo "fixed_exit=$?"; mkdir -p .orig
 ```
 
 
-## the prompt, as assembled for turn 1
+## the contract
 
-### user
+| tool | arguments | description |
+|---|---|---|
+| tool_4 | arg_1 | 23 words |
+| tool_1 | arg_1, arg_2 | 50 words |
+| tool_3 | arg_1 | 25 words |
+| tool_2 | arg_3 | 62 words |
 
-```
-You are a careful, direct assistant running entirely inside the user's browser.
+first reply: a call
+replies 2: calls 1, answers 1, did not fit the contract 0, never reached the harness 0
 
-Answer the question that was asked. Prefer a short, complete reply over a long,
-hedged one. When you do not know something, say so plainly rather than guessing
-in a confident tone.
-
-The context block is current. Use what it tells you rather than guessing or
-asking for it.
-
-Use a tool when it would make your answer more accurate than answering from what
-you already have. Do not describe actions you have no tool for.
-
-The sandbox is a real Linux userland: check a file, test a command, compute
-something exactly. It is slow — an emulator, roughly a hundred times slower than
-a real machine — so ask it one focused question rather than a long script.
-
-# TOOLS
-
-- tool_4({"path": string})
-    Read a file from the workspace and return its whole contents.
-    path: Path to the file, relative to the workspace.
-- tool_1({"path": string, "content": string})
-    Create a file, or replace one entirely. There is no partial edit — pass the complete contents you want the file to end up with.
-    path: Path to the file, relative to the workspace. Parent directories are created.
-    content: The complete new contents of the file.
-- tool_3({"path?": string})
-    List what is in a directory of the workspace, with sizes.
-    path: Directory, relative to the workspace. Defaults to the workspace root.
-- tool_2({"command": string})
-    Run a command in the workspace with /bin/sh and read its output, including the exit code. The workspace persists between calls, so a command can see what an earlier one wrote. A command that has not finished after 30 seconds is killed.
-    command: The command line, run by /bin/sh. Quote it as you would in a terminal.
-
-Calls on one line run at the same time; a call that needs an earlier result goes on its own line.
-
-# RESPONSE FORMAT
-
-Reply with exactly these fields, in this order, one per line as `name: value`, blank line between:
-
-- think (list): Your private reasoning, one thought per item — `[a, b]`, or `[]` when nothing needs working out.
-- plan (list): The concrete next steps, one per item, in order — `[a, b]`, or `[]` when the answer is already clear.
-- act: Exactly 'tool' or exactly 'answer'. Any other word is read as 'answer' and ends the turn.
-- result: When act is 'answer': the reply shown to the user, self-contained. When act is 'tool': the tool calls and nothing else — tool_name({"param": "value"}) — no explanation, no prose around them.
-
-Example:
-think: [<your first think>, <your second think>]
-
-plan: [<your first plan>, <your second plan>]
-
-act: answer
-
-result: <your result here>
-
-# CONVERSATION
-
-[USER]: median.py has a bug. Find it, fix it, and prove the fix with a test you write at test_median.py.
-test_median.py must be runnable with `python3 test_median.py`, must exit 0 when the code is correct, and must exit non-zero against the original buggy version.
-Do not change what the function is called or how it is called.
-
-The workspace is /project. Every path is relative to it.
-
-# CONTEXT
-
-now: Tuesday, 1 September 2026 at 07:16 (America/New_York)
-
-Reply with these fields, in this order, one per line: think, plan, act, result.
-
-[ASSISTANT]:
-```
-
-## what the prompt for turn 2 added
-
-### user
+## the prompt, as an outline
 
 ```
-# WORK SO FAR
-action: tool_3({})
-tool_4({"path": "median.py"})
-observation: tool_3 -> median.py  231 bytes
-tool_4 -> def median(numbers):
-    """Return the median of a list of numbers."""
-    if not numbers:
-        raise ValueError("median of an empty list")
-    ordered = sorted(numbers)
-    middle = len(ordered) // 2
-    return ordered[middle]
-
+request 1: messages 1, tokens 849
+  message 1
+    (no heading)                                 165 tokens
+    section_1                                    271 tokens
+    section_2                                    242 tokens
+    section_3                                    118 tokens
+    section_4                                     49 tokens
+request 2: messages 1, tokens 956; same 5, changed 0, added 1, gone 0; shared prefix 801 tokens
+  message 1
+    (no heading)                                 165 tokens  same
+    section_1                                    271 tokens  same
+    section_2                                    242 tokens  same
+    section_3                                    118 tokens  same
+    section_5                                    106 tokens  added
+    section_4                                     49 tokens  same
 ```
 

@@ -16,7 +16,9 @@ any result on purpose.
     same params     temperature 0, seed 7, max_tokens 1200
     same tasks      tasks.js, five of them, machine-checked
     same tools      tools.js, four functions, every scaffold ends there
-    same cap        12 turns, recorded as an event
+    same cap        12 turns, recorded as an event — the driver's own loop
+                    stops the reference arm; the port refuses our loop's
+                    thirteenth call
 
 `scaffolds/*.js` is the variable this rig is FOR: the system prompt, the tool
 contract, the parse, and how an observation re-enters the context.
@@ -94,14 +96,14 @@ intention; each row is checkable in the file it names.
 | reply parsing | **genuine, and ASYMMETRIC — read this before any turn count.** `BaseResponse.parse` tries TOON, then JSON as a repair, then returns the whole reply as the answer. So a reply that reaches **none** of the contract's fields ends this arm's run as an answer, where agent-zero scores it `misformat` and pays a turn. Measured today — `"Sure! I think the battery is at 87%."` is `{act:"answer"}` here and `{kind:"malformed", reason:"misformat"}` there. A reply that **does** reach the contract and gets it wrong is named rather than waved through: `act: banana`, and a reply cut off before the `act` line, are both `ACT_UNSAID`, echoed back with which of the two it was, and two in a row end the run `unreadable`. This row read "**cannot produce a malformed action at all**" until `ACT_UNSAID` landed and for a wave after — `docs/LEDGER.md` row S37 — and the thirty transcripts already in `transcripts/` carry the old sentence, for which it was true when they were recorded. It is our real production behaviour and is not repaired; it is recorded in `ours.js` `cuts`, so every transcript carries it. |
 | tool rendering and listing | **genuine.** `Tool.signature` / `Tool.render`, `Toolbox.render`. |
 | tool-call syntax, parse and dispatch | **genuine.** `Toolbox.parse` / `runOne` / `run`. |
-| the repeat rule | **genuine.** `ReActEngine.observe`. |
-| the budget | **genuine**, including its hard stop. `src/core/engine/Budget.js`, constructed from the agent file's own terms as `ChatService` does, opened / closed / measured at the three moments `Engine.step` and `ReActEngine.run` do it, and `stopped()` refuses a tool call written after the "THIS IS YOUR LAST TURN" sentence the way `ReActEngine.run` does. That refusal was missing, which left our arm reading the sentence with nothing behind it; the file declares no budget, so `Budget`'s own 600 seconds apply and a 12-turn run on this endpoint can reach them. |
+| the repeat rule | **genuine.** `ReActEngine.observe`, reached by the loop and not by the rig. |
+| the budget | **genuine**, including its hard stop, because the loop that reads it is genuine. `ReActEngine.run` builds `Budget` from the agent file's own terms — none are declared, so `Budget`'s own 24 steps / 250,000 tokens / 600 seconds apply, as in `ChatService` — and refuses a tool call written after the "THIS IS YOUR LAST TURN" sentence. A 12-turn run on this endpoint can reach the 600 seconds, and when it does the run ends `scaffold-stop` in the loop's own words. The rig's 12-turn cap is NOT written into the budget: that would hand our arm a last-turn sentence agent-zero has no equivalent of. |
 | context facts | **genuine.** `Environment.js` `describeEnvironment()`. |
-| one user message | **genuine** property, preserved: `OpenAICompatible` sends the whole assembled prompt as a single `user` message, and so does this. In production the class's own `_body` builds that message; here `request()` builds it, because the rig's transport takes a message array so the reference arm can send its two. Same shape, one hop further out. |
+| one user message | **genuine** property, preserved: `OpenAICompatible` sends the whole assembled prompt as a single `user` message, and so does this. In production the class's own `_body` builds that message; here the recording port `driver.js` hands the loop builds it, because the rig's transport takes a message array so the reference arm can send its two. Same shape, one hop further out. |
 | the HTTP call and the reply classifier | **genuine**, and it was not until this slice. `bench/transport.js` is `src/core/inference/OpenAICompatible.js` with two overrides, both argued in that file: a message array instead of one user message, and `seed`. `_state`, `_spent`, `_dumped`, `_cutNote`, the shape guard, the abort handling and the HTTP-error messages are all inherited and none is repeated. Before it, `driver.js` carried a private `callModel` — a fetch and `message.content ?? ''` — so this arm was measured without the one component of ours that decides whether a reply is an answer at all. **See "The transport, and what the recorded run is worth" below, which is the most important paragraph in this file.** |
 | the `shell` tool | **genuine.** `src/core/tools/ShellTool.js`, the shipped class, holding a `Sandbox` port that runs the command through `tools.js`. Only its `description` is overridden, through the class's own option. |
 | `read_file`, `write_file`, `list_files` | **RECONSTRUCTION, and unavoidable.** The tree has no such tools; it ships `shell`, `search`, `fetch` and whatever MCP offers. They are built here on the real `Tool` base class, so their signature line, argument table and prompt rendering are the tree's code — but the three descriptions are written for this rig. |
-| the loop body | **RECONSTRUCTION of the sequencing only.** `ReActEngine.run` owns its own `while (true)` and calls its own inference; the rig's driver owns the HTTP call, the transcript and the turn cap, so importing the loop would be a loop inside a loop. Every decision inside the reconstruction is delegated back: the answer/tool branch reads `parsed.isAnswer`, the scratchpad entries are the shape `Engine.blocks` reads, and the repeat rule and dispatch are the real `observe`. **Our engine has no turn cap of its own.** The 12 is the rig's, imposed identically on both arms — a finding, not a fix. |
+| the loop | **genuine, and it was a reconstruction until this slice.** The run IS `ReActEngine.run`, called once with the task as the conversation, holding the shared transport behind a recording port `driver.js` builds (`RecordingInference`). It assembles every prompt, parses every reply, keeps the scratchpad, sends an unsaid reply and an overrun back as turns on one streak, and ends the run through its own endings. `test/bench/oursScaffold.test.js` greps the scaffold for what it reaches into the engine for and requires the answer to be `run` and nothing else. The previous row here said the loop "would be a loop inside a loop" and reconstructed its sequencing — `engine.plan`, the driver's call, `responseModel.parse`, `engine.observe`, its own scratchpad push and its own `stopped()` — and that paraphrase drifted the first time the loop changed: `ReActEngine` learned to send `Reason.OVERRUN` back as a turn and the rig went on ending every run on it, 8 of ours' 15 runs in the third panel's set and 0 recovered, with every one of the eighteen `median-bug` / `slugify-module` cells lost (`docs/LEDGER.md` row S62). **Two things the recording costs, stated.** The loop reports each prompt and each parsed reply and not the observation it wrote between them — there is no `onObserve` in `src/` — so `ours.js` reads each observation back off the next prompt's WORK SO FAR block through the assembly's own part index (`scratchpadAdded`), pinned against the real `Engine.blocks` rendering; and the observation of a turn the loop ends on, the budget's hard stop after a tool call, is in no later prompt and is not recorded. **Our engine has no turn cap of its own.** The 12 is the rig's, imposed on this arm at the port — the thirteenth call is refused and the loop's stop signal pulled — and on the reference arm by the driver's loop; a finding, not a fix. |
 
 ### Their arm — `scaffolds/agent-zero.js`
 
@@ -156,7 +158,7 @@ with this:
 
 | what the recorded run says | what stands |
 |---|---|
-| ours 58,439 tok / 736 s vs agent-zero 237,579 / 1,177 s — 4.065x fewer tokens, 1.60x faster | **Stands as a record of what those runs cost.** It is not reproducible under the fixed rig: a refused reply ends its run, so re-running will produce FEWER tokens and LESS time for our arm and change the ratio. All ten rows still re-derive from the file, which is the `superseded` block's `fileMd5BeforeThisNote` version plus that block — see the banner at the top for the hash to check it against, which is not this row's business to quote. |
+| ours 58,439 tok / 736 s vs agent-zero 237,579 / 1,177 s — 4.065x fewer tokens, 1.60x faster | **Stands as a record of what those runs cost.** It is not reproducible under the fixed rig: a refused reply is classified now, and what the loop does with it is the loop's — the reference arm's driver loop ends on every refusal, ours sends an overrun back as a turn and pays for the retry — so re-running changes both totals and the ratio. All ten rows still re-derive from the file, which is the `superseded` block's `fileMd5BeforeThisNote` version plus that block — see the banner at the top for the hash to check it against, which is not this row's business to quote. |
 | ours 8/15 passed | **SUPERSEDED.** At most 4/15 survives: four of the eight passes contain a reply this project's own transport refuses. |
 | the `no-such-capability` cell, ours 3/3 | **SUPERSEDED.** All three runs are refusals under the fixed rig. |
 | the blind panel's 15 task-lens cells (ours 4, theirs 7, tie 4) | **VOID**, and not because of the transport — no judge was blind. See `blind.js`. |
@@ -179,7 +181,18 @@ replace the table above.
 **The refusal is applied to BOTH arms.** That is what makes it a constant rather
 than a thumb on the scale, and it is also a component of our harness that the
 reference arm does not have upstream, so it is listed as a departure in
-`scaffolds/agent-zero.js` `CUTS` as a row.
+`scaffolds/agent-zero.js` `CUTS` as a row. **What each loop does with a refusal
+is that loop's own, and it now differs.** The driver's loop, which runs the
+reference arm, has no turn to send a refusal back as and ends on every one —
+`transport-refused`. `ReActEngine.run`, which runs ours, reads `Reason.OVERRUN`
+off the refusal and takes another turn with a sentence in the scratchpad naming
+what happened; the transcript records that turn as a `malformed` action
+(`reason: overran`) and the loop's own observation, the same two events the
+reference arm records for a cut reply, and a second overrun in a row ends the
+run through the loop's own ceiling as `scaffold-stop`. A refusal that is not an
+overrun — the shape guard, unreachable on this endpoint — still ends our run
+`transport-refused`. So `refused` in a summary counts runs that ENDED on a
+refusal, and for our arm that is no longer every run that had one.
 
 **That row is not in the fifteen transcripts in `transcripts/`.** They were
 produced before it existed and carry twelve `cuts`, not thirteen — measured,
@@ -194,6 +207,52 @@ makes it present tense.
 
 On the evidence so far the refusal costs that arm nothing: zero of its 79
 replies are refused.
+
+### The loop, run: the two tasks the third panel scored 18–0, n=3, 2026-09-01
+
+The first runs of our arm through `ReActEngine.run`, on the two tasks where
+every cell had gone to the reference arm — `median-bug` and `slugify-module`,
+eighteen of eighteen, every one a run the driver ended on the first overrun.
+Our arm only, `--scaffold ours`, so this is not a comparison and no panel was
+run on it; it answers one question, whether the rig now runs the recovery
+`src/` ships, and the reference arm's cells from the p8 set stand untouched.
+Tree state: `1412ce1` plus this slice's `bench/` and `test/bench/` files,
+recorded in `runs/2026-09-01-p9-n3/provenance.txt`; the endpoint's default
+config; `runs/2026-09-01-p9-n3/run.log` is the rig's own stdout.
+
+    bun bench/run.js --scaffold ours --task median-bug     -n 3 --out bench/runs/2026-09-01-p9-n3/transcripts-median-bug
+    bun bench/run.js --scaffold ours --task slugify-module -n 3 --out bench/runs/2026-09-01-p9-n3/transcripts-slugify-module
+
+    median-bug      PASS  9 turns  answered       19,436 tok  198s   overrun at 2, sent back, recovered
+                    PASS  5 turns  answered        9,348 tok   98s   overrun at 2, sent back, recovered
+                    PASS  8 turns  answered       16,660 tok  170s   overruns at 2 and 4, both sent back, both recovered
+                    3/3 · reply states {"whole":15,"thinking":4,"cut":3} · 0 runs ended on a refusal
+    slugify-module  FAIL  4 turns  scaffold-stop   8,284 tok  126s   overruns at 3 and 4: the first sent back, the second hit the loop's ceiling
+                    PASS  4 turns  answered        7,817 tok   87s   overrun at 1, sent back, recovered
+                    FAIL  5 turns  scaffold-stop  10,818 tok  145s   overrun at 1 sent back and recovered; a cut-before-act at 4 and an overrun at 5 made the streak of two
+                    1/3 · reply states {"whole":6,"thinking":5,"cut":2} · 0 runs ended on a refusal
+    both tasks answered by Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp, one model id on every reply
+
+Counted off the records, not the log — an overrun is an `action` with
+`reason: overran`; "sent back" is an `observation` at the same turn; "recovered"
+is a reply at the next turn the transport did not refuse:
+
+    overruns 9 · sent back 7 · recovered on the next turn 6 · ended at the loop's ceiling 2
+
+Against the p8 set, where the same two tasks were 0 of 6 for ours with every
+run ended by the driver at its first overrun: **4 of 6 pass, 6 of 7 send-backs
+recover.** The two that did not are the loop's own ceiling doing what
+`ReActEngine.js` says it does — two replies in a row that never reached `act`
+end the run `unreadable`, and in both the second miss came while the model was
+spending the whole 1,200 tokens on the program it meant to write;
+`slugify-module`'s median completion is the ceiling itself. That is a finding about the ceiling and the task, recorded
+in the loop's own words in each transcript's `scaffold-stop`, and not a rig
+ending: `grep -c transport-refused runs/2026-09-01-p9-n3/*/results.json` → 0.
+
+What the set is not: a pairing, a panel, or a number about the reference arm.
+The reference arm's runs on these tasks under this tree are still to be made,
+and `bun bench/blind.js` needs both arms' transcripts under one directory to
+pair them, which this set does not have.
 
 ### Which model answered
 
@@ -353,11 +412,25 @@ this is **not** a comparison against agent-zero at full size, and nobody may
 quote a token ratio from here as one. It is a comparison of two scaffolds
 offered the same four capabilities.
 
-**Both arms therefore carry a reconstruction in the same place: the loop.**
-Ours reconstructs its sequencing, theirs reconstructs its prompt assembly and its
-parser. Neither reconstruction chooses what the model reads — that is vendored on
-their side and imported on ours. That is the most honest statement this rig can
-make, and any result should be read with it.
+**One arm carries a reconstruction of its loop, and it is the reference arm.**
+That sentence used to say both. Ours reconstructed its sequencing in
+`scaffolds/ours.js` while `driver.js` turned the crank, and the paraphrase
+drifted from `ReActEngine.run` the first time the loop changed — an overrun was
+sent back as a turn in `src/` and ended the run in `bench/`, and the third
+panel scored eighteen cells on that difference. Our arm's run is now
+`ReActEngine.run` itself; the rig records it and decides nothing.
+
+**The reference arm keeps the driver's loop, and that is its declared cost, not
+an oversight.** agent-zero's loop is Python — `vendor/agent-zero/agent.py`'s
+`monologue` — and a JavaScript loop that calls its prompt assembly, its parser
+and its history in that order is a paraphrase whichever file it lives in. Moving
+it out of `driver.js` into `scaffolds/agent-zero.js` would move the paraphrase
+and not remove it, and would put the loop and the event recording in one file
+per arm, which is two places for the transcript's shape to drift apart. So the
+driver keeps one loop, for any scaffold without one of its own, and the
+reference arm's prompt assembly, parser AND sequencing are all reconstruction,
+with the prompt bytes vendored. Read every reference-arm number with that; read
+every number of ours knowing the loop that produced it is the one that ships.
 
 ## Where this lives, and why `bench/` at the root
 
@@ -733,7 +806,7 @@ these — no test here runs python, node or a model.
 
 | file | what it is |
 |---|---|
-| `driver.js` | the loop. Knows nothing about any scaffold and nothing about HTTP. |
+| `driver.js` | records a run. Builds the recording port a scaffold with its own loop is handed (`RecordingInference`: the shared transport, the request and reply events, the rig's turn cap), and carries the driver's own loop for a scaffold without one — the reference arm. Knows nothing about any scaffold and nothing about HTTP. |
 | `transport.js` | the HTTP call: `src/core/inference/OpenAICompatible.js`, subclassed for a message array and a seed. Two overrides, both argued in the file. |
 | `tools.js` | ONE implementation of `read_file`, `write_file`, `list_files`, `run`. |
 | `tasks.js` | five tasks, each with a check that inspects the temp directory. |

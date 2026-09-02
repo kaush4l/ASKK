@@ -1,0 +1,33 @@
+· median-bug / ours / 1 PASS (9 turns, answered, 198s)
+· median-bug / ours / 2 PASS (5 turns, answered, 98s)
+· median-bug / ours / 3 PASS (8 turns, answered, 170s)
+
+| task | scaffold | pass | turns | stop | tokens | wall |
+|---|---|---|---|---|---|---|
+| median-bug | ours | PASS | 9 | answered | 19436 | 198s |
+| median-bug | ours | PASS | 5 | answered | 9348 | 98s |
+| median-bug | ours | PASS | 8 | answered | 16660 | 170s |
+
+ours: 3/3 passed · 45444 tokens · 466s total
+ours: completion tokens per reply — n 22, min 133, median 575, max 1200
+ours: reply states {"whole":15,"thinking":4,"cut":3}
+ours: first request 3488–3488 characters in 1 message(s)
+ours: answered by Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp
+exit(median-bug)=0
+· slugify-module / ours / 1 FAIL (4 turns, scaffold-stop, 126s)
+· slugify-module / ours / 2 PASS (4 turns, answered, 87s)
+· slugify-module / ours / 3 FAIL (5 turns, scaffold-stop, 145s)
+
+| task | scaffold | pass | turns | stop | tokens | wall |
+|---|---|---|---|---|---|---|
+| slugify-module | ours | FAIL | 4 | scaffold-stop | 8284 | 126s |
+| slugify-module | ours | PASS | 4 | answered | 7817 | 87s |
+| slugify-module | ours | FAIL | 5 | scaffold-stop | 10818 | 145s |
+
+ours: 1/3 passed · 26919 tokens · 358s total
+ours: completion tokens per reply — n 13, min 414, median 1200, max 1200
+ours: reply states {"whole":6,"thinking":5,"cut":2}
+ours: first request 3613–3613 characters in 1 message(s)
+ours: answered by Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp
+exit(slugify-module)=0
+Wed Sep  2 00:01:18 UTC 2026

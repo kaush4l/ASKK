@@ -202,8 +202,12 @@ export function summarise(runs) {
   return {
     runs: runs.length,
     passed: runs.filter((run) => run.pass).length,
-    // Runs the tree's transport refused a reply in. Not the same as runs that
-    // FAILED: four of the ten our arm produced in `transcripts/` were scored
+    // Runs that ENDED on a reply the tree's transport refused. Not runs that
+    // had one: our loop sends an overrun back as a turn, so a refused reply
+    // shows in `replyStates` as `thinking` or `spent` without ending anything,
+    // and only a loop that ends on refusals — the driver's, for the reference
+    // arm — counts here for every refusal. Not the same as runs that FAILED
+    // either: four of the ten our arm produced in `transcripts/` were scored
     // PASS by a rig that never asked the transport.
     refused: runs.filter((run) => run.stop === 'transport-refused').length,
     tokens: runs.reduce((sum, run) => sum + run.tokens.total, 0),
