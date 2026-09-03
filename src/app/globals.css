@@ -165,6 +165,44 @@ button {
   cursor: pointer;
 }
 
+/*
+ * Off the screen and not out of the document.
+ *
+ * `display: none` and `visibility: hidden` both remove an element from the
+ * accessibility tree, which is the opposite of what a heading nobody needs to
+ * SEE is for.
+ */
+.offscreen {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Present for a keyboard and out of the way of everything else. */
+.skip {
+  position: absolute;
+  top: 0.4rem;
+  left: 0.4rem;
+  z-index: 60;
+  padding: 0.5rem 0.8rem;
+  border: 1px solid var(--signal);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--signal);
+  font-size: var(--t-small);
+  text-decoration: none;
+  transform: translateY(-200%);
+}
+
+.skip:focus {
+  transform: none;
+}
+
 /* ── frame ──────────────────────────────────────────────────────────────── */
 
 .shell {

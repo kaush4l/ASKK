@@ -108,7 +108,7 @@ export function Composer({
         </p>
       ) : null}
 
-      <div className="composerbox">
+      <div className="composerbox" id="composer">
         {attachments.length ? (
           <div className="attachrow" data-testid="attachments">
             {attachments.map((one, index) => (

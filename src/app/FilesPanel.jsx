@@ -306,6 +306,18 @@ export function FilesPanel({ client, turnsDone, storage = null }) {
             add a file
           </button>
         </div>
+        {/* The two things this cannot do, beside the one thing it can. A person
+            hunting for "new file" or a delete looks at the row that holds the
+            actions, and finding neither there is not an answer — the reader who
+            reported this went away thinking the buttons had gone missing rather
+            than that they had never existed. Neither can be added from here:
+            there is no route that removes a file and no tool that deletes one,
+            which `core/tools/FilesPort.js` argues at length. So what is owed is
+            the true sentence, in the place the button would have been. */}
+        <p className="hint" data-testid="files-actions">
+          A file can be added from your machine and edited here, but nothing in this app makes an
+          empty file or deletes one.
+        </p>
         <ol className="filelist" data-testid="file-list">
           {files?.map((file) => (
             <li key={file.path}>
@@ -315,7 +327,22 @@ export function FilesPanel({ client, turnsDone, storage = null }) {
                 onClick={() => read(file.path)}
                 data-testid={`file-${file.path}`}
               >
-                {file.path}
+                {/* The open file's name is printed here and the pane's header
+                    below no longer repeats it. Of the two, the list is the one
+                    that cannot give its copy up — a list of files with the
+                    names taken out is not a list of anything — and the row is
+                    already where a person pointed and the only line drawn in
+                    the signal colour, so the header's copy was the one that
+                    said nothing the eye had not just read one line above.
+                    `file-open` travels with the name rather than being left on
+                    an empty element: it means "the name of the file the pane is
+                    showing", and it still means exactly that, because it is
+                    rendered on the one row `open.path` names. */}
+                {open?.path === file.path ? (
+                  <span data-testid="file-open">{file.path}</span>
+                ) : (
+                  file.path
+                )}
                 {reading === file.path ? <span className="badge">reading…</span> : null}
               </button>
             </li>
@@ -330,9 +357,12 @@ export function FilesPanel({ client, turnsDone, storage = null }) {
         {open ? (
           <div className="fileview">
             <header>
-              <span className="id" data-testid="file-open">
-                {open.path}
-              </span>
+              {/* No name in this bar: the row above holds it, and this bar is
+                  left as the thing it is for, which is what can be done to the
+                  file. The states where a person could be in doubt about which
+                  file the bytes belong to are the ones that already say the
+                  path out loud — gone, empty, shown plain, in no language this
+                  view colours, and being edited. */}
               <div className="steps">
                 {draft ? (
                   <>
@@ -462,9 +492,18 @@ export function FilesPanel({ client, turnsDone, storage = null }) {
             ) : null}
           </div>
         ) : (
+          {/* Said in the words the rest of this app says them in. It named a
+              tool, it called the machine a "sandbox", and it printed both
+              inside backticks that nothing here renders — three ways of
+              answering a person with the inside of the program.
+              `backend/sandbox/C2wSandbox.js` writes the rule down: everything a
+              reader can see calls it "the Linux machine in this tab", and
+              "sandbox", "guest" and "image" stay in the comments, where the
+              reader is somebody editing the file. */}
           <p className="hint" data-testid="files-hint">
             The agent's own files live in this browser. Open one to read or edit it, or add one of
-            your own — it is the same workspace `read_file` and the sandbox see.
+            your own — the agent reads and writes these same files, and a command run on the Linux
+            machine in this tab is handed them too.
           </p>
         )}
       </div>
