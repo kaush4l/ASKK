@@ -132,9 +132,11 @@ export async function buildKernel() {
     .register('settings', settings)
     .register('chat', chat)
     .register('agents', new AgentService(catalogue, pool))
-    // Read-only, and `FilesService` argues why at length. The short version:
-    // the store is safe from interleaving and it is not safe from a person
-    // saving a file the agent rewrote while they were reading it.
+    // The page reads freely and writes only against a precondition, which
+    // `FilesService` argues at length. The short version: the store is safe
+    // from interleaving and it was never safe from a person saving a file the
+    // agent rewrote while they were reading it, so the page has to say what it
+    // expected to find and is refused when that is no longer what is there.
     .register('files', new FilesService(files))
     // Whether a QUESTION can be answered, which every other boot note is silent
     // about: storage, the worker and the guest can all be fine while the model

@@ -146,3 +146,97 @@ describe('Workspace', () => {
     expect(wrote.failure.message).toContain('quota')
   })
 })
+
+/**
+ * The precondition, and the writer it was added for.
+ *
+ * `Workspace.write` was unconditional for two waves and that was correct while
+ * both writers ran inside one turn. A person is the third writer and is the
+ * slow one: they open a file, read it for two minutes, and save over work the
+ * agent did ninety seconds ago. Nothing recorded that the agent's version had
+ * ever existed, which is the same defect this tree already shipped when two
+ * writers disagreed about a schema and one silently erased `thinking`.
+ */
+describe('writing against what the writer last saw', () => {
+  test('an unconditional write is still unconditional, which is the agent’s path', async () => {
+    const files = workspace()
+    await files.write('notes.md', 'first')
+    const again = await files.write('notes.md', 'second')
+    expect(again.ok).toBe(true)
+    expect((await files.read('notes.md')).value.text).toBe('second')
+  })
+
+  test('expect null creates, and refuses to overwrite', async () => {
+    const files = workspace()
+    const made = await files.write('new.md', 'hello', { expect: null })
+    expect(made.ok).toBe(true)
+    expect(made.value.created).toBe(true)
+
+    const again = await files.write('new.md', 'clobber', { expect: null })
+    expect(again.ok).toBe(false)
+    expect(again.failure.code).toBe(Reason.BAD_REQUEST)
+    expect(again.failure.message).toContain('already exists')
+    // And the refusal is a refusal: the store still holds the first text.
+    expect((await files.read('new.md')).value.text).toBe('hello')
+  })
+
+  test('expect text saves when nothing moved', async () => {
+    const files = workspace()
+    await files.write('plan.md', 'one')
+    const saved = await files.write('plan.md', 'two', { expect: 'one' })
+    expect(saved.ok).toBe(true)
+    expect(saved.value.created).toBe(false)
+    expect((await files.read('plan.md')).value.text).toBe('two')
+  })
+
+  test('the lost update is refused, and the message says how far it moved', async () => {
+    const files = workspace()
+    await files.write('plan.md', 'what the person read')
+    // The agent rewrites it while the person is reading.
+    await files.write('plan.md', 'what the agent wrote instead, which is longer')
+
+    const saved = await files.write('plan.md', 'the person’s edit', {
+      expect: 'what the person read',
+    })
+    expect(saved.ok).toBe(false)
+    expect(saved.failure.message).toContain('changed since it was read')
+    // Both byte counts, because "it changed" does not tell a person whether to
+    // re-read or to give up.
+    expect(saved.failure.message).toContain('45 bytes now')
+    expect(saved.failure.message).toContain('not 20')
+    expect(saved.failure.hint).toContain('Re-read it')
+    // The agent's version survives, which is the entire point.
+    expect((await files.read('plan.md')).value.text).toBe(
+      'what the agent wrote instead, which is longer',
+    )
+  })
+
+  test('a file that went away under the reader says so, and is not recreated', async () => {
+    const files = workspace()
+    const saved = await files.write('gone.md', 'my edit', { expect: 'what I read' })
+    expect(saved.ok).toBe(false)
+    expect(saved.failure.message).toContain('not in the workspace any more')
+    expect((await files.read('gone.md')).value).toBe(null)
+  })
+
+  test('an empty file is a text, not an absence', async () => {
+    const files = workspace()
+    await files.write('empty.md', '')
+    // `'' !== null` is the whole assertion: a truthiness test here would read an
+    // empty file as a missing one and let a create clobber it.
+    const clobber = await files.write('empty.md', 'x', { expect: null })
+    expect(clobber.ok).toBe(false)
+    const saved = await files.write('empty.md', 'x', { expect: '' })
+    expect(saved.ok).toBe(true)
+  })
+
+  test('the size cap is checked before the precondition, so a refusal names the real fault', async () => {
+    const files = workspace()
+    await files.write('big.md', 'small')
+    const huge = await files.write('big.md', 'x'.repeat(MAX_FILE_BYTES + 1), { expect: 'stale' })
+    expect(huge.ok).toBe(false)
+    // Not "it changed since you read it" — a person who fixed that and saved
+    // again would be refused a second time for the reason nobody mentioned.
+    expect(huge.failure.message).toContain('limit is')
+  })
+})

@@ -1280,22 +1280,47 @@ files from the page, and the model has never been told the guest has Python.
    and one push, then a `curl` that answers 200. See *Getting it to the visitor*
    above.
 
-2. **A way IN to the agent's files.** The reading half is done (above). Nothing
-   goes the other way: `FilesPort` has a `write` the kernel does not expose to
-   the page, `FilesPanel` has no upload and no editor, and `read-only` is on
-   screen. Until a human can hand the agent a file, "we have files" is half
-   true — and a diff, a rewind and an editor are all downstream of the same
-   missing route.
+2. **Done — a way IN to the agent's files.** `files.write` is on the kernel and
+   `FilesPanel` has a picker and an editor. The route arrived with the
+   compare-and-set its own docblock had been describing for two waves: `expect`
+   is required, `null` means *this must not exist*, a string means *this must
+   still be exactly what I read*, and a write off the wire without one is
+   refused. `test/backend/composition.test.js` no longer pins "no way to write"
+   — it pins that the unsafe shape is refused and the safe one is not.
 
-3. **Single-writer election, for the TRANSCRIPT.** `navigator.locks` is in the
-   tree now and it holds exactly one thing: the scheduler's tick, in the page,
-   so that one tab asks a due question where the browser has Web Locks. What it
-   does not hold is the conversation. Two tabs open the same transcript by
-   construction — `page.jsx` opens the first one it lists — and each worker's
-   append queue only serialises its own realm, so a scheduled turn in one tab
-   while the other is being typed in is last-write-wins over the record. The
-   lock for that has to be held by a promise that never settles, or it releases
-   the moment its callback returns.
+   The half that is easy to get wrong and is what the gate actually watches:
+   the editor holds the text the edit STARTED from, not whatever a turn-end
+   re-read replaced it with. `bun run smoke` hands a file in through the picker,
+   opens it, makes the agent rewrite the same path while the editor is open, and
+   requires the save to be refused, the agent's text to survive, and the same
+   edit to land once it is put back on top of what is there.
+
+   Still downstream and still absent: a diff and a rewind. Both now want a
+   second version of a file, which this store does not keep.
+
+3. **Done — single-writer election, for the TRANSCRIPT.** `page.jsx` requests
+   `askk-conversation:<id>` and holds it with a promise that never settles,
+   which is the whole mechanism: `navigator.locks` releases when the callback's
+   promise settles, not when the tab closes. Two requests rather than one — an
+   `ifAvailable` request answers definitively, so a tab that LOST knows it lost
+   instead of sitting at "still deciding" and believing it may write, and a
+   queued request behind it promotes that tab the moment the holder goes away.
+   A losing tab says which and its composer is disabled. The scheduler's own
+   `askk-schedule` lease is gone: it guarded the turn and not the transcript the
+   turn appends to, and being one lock for the whole app it made two tabs on
+   *different* conversations take turns for no reason.
+
+   **Two defects here were only reachable by running it in two real tabs**, and
+   both are recorded because neither is visible to a unit test: Web Locks
+   refuses `ifAvailable` beside an `AbortSignal` and rejects the call, which
+   left `writer` at `null` for ever and took the scheduler down with it; and a
+   page in the **back/forward cache goes on holding the lock**, so a person who
+   navigated away rather than closing left their other tab read-only with no way
+   out. The release is on `pagehide` and the re-election on `pageshow`.
+
+   What is still not locked is the workspace. Two tabs writing one file are
+   ordered by item 2's precondition instead, which refuses the second write
+   rather than serialising it.
 
 4. **The model has been told what is in the guest. What goes in next is now a
    budget question.** `ShellTool.js:223` says *"BusyBox, the Alpine base tools
@@ -1334,10 +1359,8 @@ files from the page, and the model has never been told the guest has Python.
    watched by a `MutationObserver` while it happens, and the parent's answer in
    the transcript.
 
-   What a delegated run still cannot do is **outlive the turn that asked for
-   it**. `SubAgentTool.call` awaits one promise, so the parent is blocked for as
-   long as the child takes; there is no way to hand a question over, get on with
-   something else, and be told later. That is the next thing on this list, and
-   it is what the goal calls a status check and a notification: a delegated run
-   that has an id, a record that survives the turn, and a way to be told it
-   finished.
+   *(That note ended by naming what a delegated run could not yet do — outlive
+   the turn that asked for it. `wait: false`, `check_task` and the context
+   block's line about what is outstanding are that, and the paragraph above this
+   one is the account of them. It is left here rather than deleted because the
+   note is what the item looked like before it was built.)*

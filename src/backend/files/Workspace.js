@@ -96,8 +96,30 @@ export class Workspace {
    * notes.md" are different events to the thing that asked, and a caller that
    * has to read before writing to tell them apart pays a round trip for a fact
    * the write already knew.
+   *
+   * ## `expect`, and what it is and is not for
+   *
+   * Omit it and the write is unconditional, which is what both of the agent's
+   * writers do: `WriteFileTool` and `ShellTool`'s harvest run inside one turn
+   * in one realm, and a turn is the unit that owns its own files.
+   *
+   * Pass it and the write is a compare-and-set: `null` means *this file must
+   * not exist*, a string means *what is stored must still be exactly this*.
+   * It exists for the writer that arrived last and is slowest — a person, who
+   * opens a file, reads it for two minutes and saves. The agent may have
+   * rewritten it ninety seconds ago, and an unconditional `put` would erase
+   * that with nothing anywhere recording that it happened. The precondition is
+   * the text itself, so there is no version field to become a second author of
+   * a fact the file already holds.
+   *
+   * **It is not a transaction, and the honest bound is worth stating.** The
+   * `get` and the `put` below are two IndexedDB transactions with an `await`
+   * between them, so two writes that interleave inside that window can both
+   * pass their check. Both writers live in this one worker and the window is
+   * one microtask; what it forecloses is the two-minute human lost update,
+   * which is the whole of what it was asked to stop.
    */
-  async write(path, content) {
+  async write(path, content, { expect } = {}) {
     const named = workspacePath(path)
     if (!named.ok) return named
 
@@ -113,6 +135,27 @@ export class Workspace {
 
     const existing = await this.repository.get(named.value)
     if (!existing.ok) return existing
+
+    if (expect !== undefined) {
+      const stored = existing.value ? (existing.value.text ?? '') : null
+      if (stored !== expect) {
+        // The message says WHICH of the three things happened, because "the
+        // file changed" leaves a person to guess whether to re-read, rename or
+        // give up, and those are different actions.
+        const what =
+          expect === null
+            ? `${named.value} already exists`
+            : stored === null
+              ? `${named.value} is not in the workspace any more`
+              : `${named.value} changed since it was read — it is ${Workspace.bytesOf(stored)} bytes now, not ${Workspace.bytesOf(expect)}`
+        return Outcome.failed(Reason.BAD_REQUEST, what, {
+          hint:
+            expect === null
+              ? 'Choose another name, or open it and edit it instead.'
+              : 'Re-read it, put your change back on top of what is there now, and save again.',
+        })
+      }
+    }
 
     const written = await this.repository.put({ id: named.value, text })
     if (!written.ok) return written

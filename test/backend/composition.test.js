@@ -337,18 +337,43 @@ describe('the files routes', () => {
   })
 
   /**
-   * The decision, pinned. Read-only is argued at length in `FilesService`, and
-   * an argument in a comment is not a constraint — this is. A `files.write`
-   * appearing on the kernel means somebody added a route without the
-   * compare-and-set that comment says it must arrive with.
+   * The decision, pinned. This test read `no way for the page to write one`
+   * for two waves and was the constraint that held the route out until it could
+   * arrive with a compare-and-set. It has arrived, so the constraint moves
+   * rather than being deleted: what may not happen now is a `files.write` that
+   * takes an unconditional write off the wire.
+   *
+   * An argument in a comment is not a constraint, and neither is a route list.
+   * This asks the built kernel to do the unsafe thing and requires it to
+   * refuse.
    */
-  test('and there is no way for the page to write one', async () => {
+  test('and the page can only write against what it says it read', async () => {
     const { kernel } = await buildKernel()
 
     expect(kernel.methods.filter((name) => name.startsWith('files.'))).toEqual([
       'files.list',
       'files.read',
+      'files.write',
     ])
+
+    const blind = await kernel.handle({
+      type: 'Request',
+      id: 'r1',
+      method: 'files.write',
+      params: { path: 'notes.md', text: 'no idea what is there' },
+    })
+    expect(blind.ok).toBe(false)
+    expect(blind.error.message).toContain('must say what it expects')
+
+    // And the safe shape goes through, so the refusal above is a precondition
+    // check and not a route that refuses everything.
+    const made = await kernel.handle({
+      type: 'Request',
+      id: 'r2',
+      method: 'files.write',
+      params: { path: 'notes.md', text: 'handed in', expect: null },
+    })
+    expect(made.ok).toBe(true)
   })
 })
 

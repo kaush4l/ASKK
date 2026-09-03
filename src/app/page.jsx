@@ -138,6 +138,14 @@ export default function Page() {
   const [tasks, setTasks] = useState([])
   /** What is scheduled, so the rail can say so and the panel can list it. */
   const [schedules, setSchedules] = useState([])
+  /**
+   * Whether THIS tab is the one that may write to the open conversation.
+   *
+   * `null` until the question has been asked, so "still deciding" and "another
+   * tab has it" are different things on screen — they were the same thing for
+   * one draft and every first paint said the conversation was taken.
+   */
+  const [writer, setWriter] = useState(null)
   const [listening, setListening] = useState(false)
   const [heard, setHeard] = useState('')
   const [download, setDownload] = useState(null)
@@ -217,6 +225,10 @@ export default function Page() {
    * created; reading `busy` there would read whatever it was when the effect
    * last ran, and a schedule would start a second turn on top of a live one.
    */
+  /** The election's answer, readable from a timer that closed over an old render. */
+  const writerRef = useRef(null)
+  writerRef.current = writer
+
   const busyRef = useRef(false)
   useEffect(() => {
     busyRef.current = busy
@@ -233,14 +245,140 @@ export default function Page() {
   askRef.current = ask
 
   /**
+   * One writer per conversation, elected with a Web Lock.
+   *
+   * Two tabs open the same transcript by construction — this page opens the
+   * first conversation it lists — and each worker's append queue only
+   * serialises its own realm. So a scheduled turn in one tab while the other is
+   * being typed in is last-write-wins over the record, and the half that loses
+   * leaves nothing behind saying it existed.
+   *
+   * The lock is held by a promise that NEVER SETTLES on its own. That is the
+   * whole mechanism and it is easy to get wrong in the direction that looks
+   * fine: `navigator.locks` releases when the callback's promise settles, not
+   * when the tab closes, so a callback that returns — or an `async` one with
+   * nothing to await — holds the lock for a microtask and hands it to everyone.
+   * The resolver is kept and called by the cleanup below; a tab that crashes or
+   * is closed releases it the way locks are meant to be released, by going
+   * away.
+   *
+   * The request does NOT pass `ifAvailable`. A second tab QUEUES, and becomes
+   * the writer the moment the first one lets go — which is what a person
+   * expects when they close the tab they were typing in. `ifAvailable` would
+   * answer "no" once and leave the second tab read-only until it was reloaded.
+   */
+  useEffect(() => {
+    if (!ready || !conversationId) return undefined
+    const locks = globalThis.navigator?.locks
+    if (!locks?.request) {
+      // No Web Locks. One tab is still correct and two would interleave, which
+      // is exactly the state this app was in before this effect existed.
+      setWriter(true)
+      return undefined
+    }
+
+    const name = `askk-conversation:${conversationId}`
+    let controller = new AbortController()
+    let release = null
+    let won = false
+
+    /** Hold it, and keep holding it until this tab lets go. */
+    const hold = () => {
+      won = true
+      setWriter(true)
+      return new Promise((resolve) => {
+        release = resolve
+      })
+    }
+
+    /**
+     * Ask, and find out which of the two answers this tab got.
+     *
+     * TWO requests, and the first one is why there is no timer here. A queued
+     * request alone cannot tell "granted in a microtask because nobody else
+     * wanted it" from "waiting behind another tab", so a page that only ever
+     * learns it WON leaves a losing tab sitting at `null` — believing it may
+     * write, which is the whole thing this election exists to prevent and
+     * exactly what shipped in the first draft of it.
+     *
+     * No `signal` on the first request: Web Locks REFUSES `ifAvailable`
+     * together with an abort signal and rejects the call outright. That
+     * rejection landed in the catch below, left `writer` at `null` forever, and
+     * took the scheduler — which is gated on this election — down with it in
+     * every tab.
+     */
+    const elect = () => {
+      setWriter(null)
+      won = false
+      locks
+        .request(name, { ifAvailable: true }, (held) => (held ? hold() : undefined))
+        .then(() => {
+          if (won || controller.signal.aborted) return
+          setWriter(false)
+          // Queued, deliberately without `ifAvailable`: this is the request
+          // that makes a reader tab become the writer when the tab holding it
+          // goes away, with no reload and nothing to poll.
+          return locks.request(name, { signal: controller.signal }, hold)
+        })
+        .catch(() => {
+          // An aborted request is the ordinary way this ends — the conversation
+          // changed, or the page went away, while still queued behind another
+          // tab. It is not a fault and there is nobody to tell.
+        })
+    }
+
+    const letGo = () => {
+      controller.abort()
+      release?.()
+      release = null
+      won = false
+      setWriter(null)
+    }
+
+    /**
+     * A page in the back/forward cache is still holding the lock.
+     *
+     * Measured, and it is the reason this pair of listeners exists rather than
+     * a tidiness argument: with the holder navigated away to another URL, the
+     * second tab sat at `reader` with the lock still recorded as held by the
+     * first tab's client id, and it stayed that way. A person who navigates
+     * away rather than closing the tab would have left their other tab
+     * read-only with nothing on screen explaining why and no way to fix it
+     * except a reload.
+     *
+     * `pagehide` is the last thing that runs before a document is frozen, and
+     * `pageshow` with `persisted` is how it comes back. Releasing there is what
+     * every long-held web lock has to do; nothing else in this tree holds one
+     * long enough for it to matter.
+     */
+    const onHide = () => letGo()
+    const onShow = (event) => {
+      if (!event.persisted) return
+      controller = new AbortController()
+      elect()
+    }
+
+    globalThis.addEventListener('pagehide', onHide)
+    globalThis.addEventListener('pageshow', onShow)
+    elect()
+
+    return () => {
+      globalThis.removeEventListener('pagehide', onHide)
+      globalThis.removeEventListener('pageshow', onShow)
+      letGo()
+    }
+  }, [ready, conversationId])
+
+  /**
    * The scheduler: look for a question that has come due, and ask it.
    *
-   * Under a `navigator.locks` lease, which is the whole of the multi-tab story.
-   * Two tabs are two pages holding two workers over one database, and without a
-   * lease both would find the same schedule due and ask it twice. `ifAvailable`
-   * means the tab that does not get the lock does nothing at all rather than
-   * queueing behind it — a tick that waits for a lease it will get in twenty
-   * seconds is a tick that runs twice in a row.
+   * Only in the tab that won the conversation above, which is the whole of the
+   * multi-tab story and is no longer a second lock. This ticked under its own
+   * `askk-schedule` lease for one wave, and that lease was both too weak and
+   * too strong: too weak because it guarded the scheduled turn and not the
+   * transcript the turn appends to, and too strong because it is one lock for
+   * the whole app, so two tabs on DIFFERENT conversations took turns to ask
+   * questions that could not possibly have collided.
    *
    * A schedule runs in the conversation it was made in, and only while that
    * conversation is open. The alternative — sending into a transcript that is
@@ -248,7 +386,7 @@ export default function Page() {
    * whole live view is what makes a run legible.
    */
   useEffect(() => {
-    if (!ready || !conversationId) return undefined
+    if (!ready || !conversationId || !writer) return undefined
     let stopped = false
 
     const runOne = async () => {
@@ -298,17 +436,7 @@ export default function Page() {
 
     const tick = async () => {
       if (stopped) return
-      const locks = globalThis.navigator?.locks
-      if (!locks?.request) {
-        // No Web Locks — an older browser, or a context that refuses them. One
-        // tab is still correct; two would double up, and saying nothing about
-        // that would be worse than the alternative of not scheduling at all.
-        await runOne()
-        return
-      }
-      await locks.request('askk-schedule', { ifAvailable: true }, async (held) => {
-        if (held) await runOne()
-      })
+      await runOne()
     }
 
     const timer = setInterval(tick, TICK_MS)
@@ -317,7 +445,7 @@ export default function Page() {
       stopped = true
       clearInterval(timer)
     }
-  }, [ready, conversationId])
+  }, [ready, conversationId, writer])
 
   /**
    * Watch handed-over work, and SAY when it finishes.
@@ -399,6 +527,10 @@ export default function Page() {
     // live one interleaves two transcripts. `send` reads React state, the
     // scheduler reads a ref, and only this sees every caller.
     if (busyRef.current || !into) return
+    // And the same argument one realm out: a turn appends to a record another
+    // tab may be appending to. `writerRef` and not `writer`, because a schedule
+    // fires out of an interval that closed over an older render.
+    if (writerRef.current === false) return
     setProblem(null)
     setBusy(true)
     setStopping(false)
@@ -1055,12 +1187,28 @@ export default function Page() {
           </div>
 
           <div className="dock">
+            {/* Said where the person is about to type, and said as the reason
+                rather than as an error: another tab of theirs is holding this
+                conversation, which is not a fault and is fixed by closing it.
+                A composer that is simply dead reads as a bug in the app. */}
+            {writer === false ? (
+              <p className="hint" data-testid="reader-only">
+                Another tab has this conversation open and is the one that can write to it. Close
+                it, or switch this tab to a different conversation, and this composer comes back.
+              </p>
+            ) : null}
             <form className="composer" onSubmit={send}>
               <input
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
-                placeholder={ready ? 'Ask anything' : 'starting the engine…'}
-                disabled={!ready || busy}
+                placeholder={
+                  writer === false
+                    ? 'another tab is writing this conversation'
+                    : ready
+                      ? 'Ask anything'
+                      : 'starting the engine…'
+                }
+                disabled={!ready || busy || writer === false}
                 data-testid="input"
               />
               {/* Not disabled while a turn is in flight. Dictating the next
@@ -1093,7 +1241,7 @@ export default function Page() {
                   stop
                 </button>
               ) : (
-                <button type="submit" disabled={!ready || !draft.trim()}>
+                <button type="submit" disabled={!ready || !draft.trim() || writer === false}>
                   send
                 </button>
               )}

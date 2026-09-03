@@ -62,6 +62,19 @@ export function FilesPanel({ client, turnsDone }) {
   const [open, setOpen] = useState(null)
   const [problem, setProblem] = useState('')
   const [reading, setReading] = useState('')
+  /**
+   * The edit in progress, or `null`.
+   *
+   * `base` is the exact text the edit STARTED from and is what goes back as the
+   * write's precondition — not `open.text`, which the turn-end re-read below
+   * replaces under a person who is typing. Taking the precondition from `open`
+   * would mean an edit begun before the agent rewrote a file saves cleanly over
+   * it, which is the lost update this route exists to refuse arriving through
+   * the one door nobody watches.
+   */
+  const [draft, setDraft] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const picker = useRef(null)
   // The path whose reply this view still wants. Two clicks in quick succession
   // are two calls in flight and the backend answers whichever finishes first,
   // so without this the first reply's `setReading('')` cleared the second's
@@ -127,8 +140,71 @@ export function FilesPanel({ client, turnsDone }) {
   // effect doing both would leave a stale body behind a fresh listing.
   // biome-ignore lint/correctness/useExhaustiveDependencies: `turnsDone` is the trigger; re-reading on `open` would loop
   useEffect(() => {
-    if (turnsDone && open?.path) read(open.path)
+    // Not while someone is typing into it. A re-read here would swap the text
+    // under an open editor and take the change with it — and the person would
+    // watch their own words vanish with no error and nothing to re-read.
+    if (turnsDone && open?.path && !draft) read(open.path)
   }, [turnsDone])
+
+  /**
+   * Save the edit, on the terms it began under.
+   *
+   * The backend refuses this outright unless `expect` is what is stored, and a
+   * refusal is shown as it comes back: the message says which of the three
+   * things happened and the hint says what to do about it, and neither is
+   * something this component is in a position to improve on.
+   */
+  const commit = useCallback(async () => {
+    if (!draft) return
+    setSaving(true)
+    const result = await client.call('files.write', {
+      path: draft.path,
+      text: draft.text,
+      expect: draft.base,
+    })
+    setSaving(false)
+    if (!result.ok) {
+      setProblem(`${result.error.message}${result.error.hint ? ` — ${result.error.hint}` : ''}`)
+      return
+    }
+    setProblem('')
+    setDraft(null)
+    await read(draft.path)
+    await list()
+  }, [client, draft, read, list])
+
+  /**
+   * Take a file off the person's machine.
+   *
+   * Text only, and the refusal is measured rather than guessed: a `NUL` byte is
+   * what a decoded binary carries and what nothing this workspace is for
+   * contains, so it is the one test that separates them without a MIME sniff
+   * that lies about `.txt`.
+   *
+   * The name is sanitised to the workspace's own grammar and the RESULT is
+   * shown, because a picker hands over names with spaces in them and a person
+   * who is told only "invalid path" cannot act on it.
+   */
+  const take = useCallback(
+    async (file) => {
+      if (!file) return
+      const path = file.name.replaceAll(/[^A-Za-z0-9._/-]+/g, '-').replace(/^[-/]+/, '')
+      const text = await file.text()
+      if (text.includes('\0')) {
+        setProblem(`${file.name} is not text, and this workspace holds text the agent can read.`)
+        return
+      }
+      const result = await client.call('files.write', { path, text, expect: null })
+      if (!result.ok) {
+        setProblem(`${result.error.message}${result.error.hint ? ` — ${result.error.hint}` : ''}`)
+        return
+      }
+      setProblem('')
+      await list()
+      await read(path)
+    },
+    [client, list, read],
+  )
 
   // Memoised on the open file, because this component's parent re-renders once
   // per streamed chunk — `OpenAICompatible.stream` calls `onDelta` per SSE
@@ -167,10 +243,11 @@ export function FilesPanel({ client, turnsDone }) {
               <b>{open.bytes.toLocaleString()}</b> bytes
             </span>
           ) : null}
-          {/* Said out loud rather than implied by the absence of a save button.
-              A person who can see their files and cannot change them is owed the
-              reason, not left to discover it by trying. */}
-          <span className="measured">read-only</span>
+          {/* What the person may do, said out loud. This read `read-only` for
+              two waves and was the honest thing to say then; a save button now
+              exists and the sentence that would still be true is the one about
+              what a save is checked against. */}
+          <span className="measured">{draft ? 'editing' : 'saved against what you read'}</span>
         </p>
       </div>
 
@@ -181,6 +258,28 @@ export function FilesPanel({ client, turnsDone }) {
       ) : null}
 
       <div className="files-body">
+        <div className="filelist-head">
+          {/* The input is the thing that opens the picker and the button is the
+              thing a person sees; a bare file input cannot be styled and cannot
+              say what it is for. */}
+          <input
+            ref={picker}
+            type="file"
+            hidden
+            data-testid="file-picker"
+            onChange={(event) => {
+              const [file] = event.target.files ?? []
+              // Cleared so that picking the SAME file twice fires twice: the
+              // second pick is not a change, and a person re-uploading after a
+              // refusal would otherwise get nothing at all.
+              event.target.value = ''
+              take(file)
+            }}
+          />
+          <button type="button" onClick={() => picker.current?.click()} data-testid="file-add">
+            add a file
+          </button>
+        </div>
         <ol className="filelist" data-testid="file-list">
           {files?.map((file) => (
             <li key={file.path}>
@@ -197,7 +296,7 @@ export function FilesPanel({ client, turnsDone }) {
           ))}
           {files?.length === 0 ? (
             <li className="none" data-testid="files-empty">
-              The agent has not written anything yet.
+              The agent has not written anything yet, and neither have you.
             </li>
           ) : null}
         </ol>
@@ -209,30 +308,98 @@ export function FilesPanel({ client, turnsDone }) {
                 {open.path}
               </span>
               <div className="steps">
-                <button type="button" onClick={() => read(open.path)}>
-                  re-read
-                </button>
-                {open.text != null ? (
-                  <button type="button" onClick={() => save(open)} data-testid="file-download">
-                    download
-                  </button>
-                ) : null}
+                {draft ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={commit}
+                      disabled={saving}
+                      data-testid="file-save"
+                    >
+                      {saving ? 'saving…' : 'save'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const { path } = draft
+                        setDraft(null)
+                        setProblem('')
+                        // Re-read, and not merely close the editor. Turn-end
+                        // re-reads are suppressed while a draft exists, so the
+                        // pane behind an editor is as old as the edit — and the
+                        // one moment a person is most likely to cancel is right
+                        // after being told the file changed under them. Closing
+                        // back onto the stale text would answer "what does it
+                        // say now" with the thing they were just told is wrong.
+                        read(path)
+                      }}
+                      data-testid="file-cancel"
+                    >
+                      cancel
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button type="button" onClick={() => read(open.path)}>
+                      re-read
+                    </button>
+                    {open.text != null ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setDraft({ path: open.path, base: open.text, text: open.text })
+                        }
+                        data-testid="file-edit"
+                      >
+                        edit
+                      </button>
+                    ) : null}
+                    {open.text != null ? (
+                      <button type="button" onClick={() => save(open)} data-testid="file-download">
+                        download
+                      </button>
+                    ) : null}
+                  </>
+                )}
               </div>
             </header>
 
-            {open.text == null ? (
+            {draft ? (
+              <>
+                {/* The editor and the viewer are the same pane on purpose: a
+                    person editing a file should be looking at the place they
+                    were just reading, not at a second window with its own idea
+                    of what the file says. Colour is dropped while typing —
+                    re-highlighting on every keystroke is a full scan of the
+                    file per character, and the cap above exists because that
+                    scan is not free. */}
+                <textarea
+                  className="code editing"
+                  value={draft.text}
+                  spellCheck={false}
+                  data-testid="file-editor"
+                  onChange={(event) => setDraft({ ...draft, text: event.target.value })}
+                />
+                <p className="hint" data-testid="file-editing">
+                  Saved only if {draft.path} is still exactly what you opened. If the agent has
+                  written to it since, this is refused and says so rather than replacing its work.
+                </p>
+              </>
+            ) : null}
+
+            {!draft && open.text == null ? (
               <p className="hint" data-testid="file-gone">
                 {open.path} is not in the workspace any more.
               </p>
             ) : null}
 
-            {open.text === '' ? (
+            {!draft && open.text === '' ? (
               <p className="hint" data-testid="file-empty">
                 {open.path} is there and has nothing in it.
               </p>
             ) : null}
 
-            {tokens.length > MAX_COLOURED_TOKENS ? (
+            {!draft && tokens.length > MAX_COLOURED_TOKENS ? (
               <p className="hint" data-testid="file-plain">
                 {tokens.length.toLocaleString()} coloured runs is more than this view will draw, so{' '}
                 {open.path} is shown plain. All {open.bytes.toLocaleString()} bytes of it are here.
@@ -245,14 +412,14 @@ export function FilesPanel({ client, turnsDone }) {
                 one of them; this is the list saying which. It is the module's
                 own `LANGUAGES`, so a language added there says so here without
                 a second list to keep in step. */}
-            {open.text && !languageOf(open.path) ? (
+            {!draft && open.text && !languageOf(open.path) ? (
               <p className="hint" data-testid="file-unknown-language">
                 Nothing here knows what {open.path} is written in, so it is shown plain. This view
                 colours {LANGUAGES.join(', ')}.
               </p>
             ) : null}
 
-            {open.text ? (
+            {!draft && open.text ? (
               <pre className="code" data-language={languageOf(open.path)} data-testid="file-text">
                 {coloured
                   ? spans.map((token) =>
@@ -270,8 +437,8 @@ export function FilesPanel({ client, turnsDone }) {
           </div>
         ) : (
           <p className="hint" data-testid="files-hint">
-            The agent's own files live in this browser. Open one to read it; it is the same
-            workspace `read_file` and the sandbox see.
+            The agent's own files live in this browser. Open one to read or edit it, or add one of
+            your own — it is the same workspace `read_file` and the sandbox see.
           </p>
         )}
       </div>

@@ -1,3 +1,5 @@
+import { Outcome, Reason } from '../../core/Outcome.js'
+
 /**
  * The agent's workspace, as routes the page can call.
  *
@@ -6,7 +8,7 @@
  * wire. This class is the whole of that translation, which is why it is three
  * statements and a page of argument.
  *
- * ## Read-only, and how the two writers were going to disagree
+ * ## Two writers, and how they were going to disagree
  *
  * The agent writes here through `WriteFileTool` and the guest writes here
  * through `ShellTool`'s harvest, both inside the backend worker, both through
@@ -28,18 +30,26 @@
  * two writers disagreed about a schema and one silently erased `thinking` —
  * `services/ChatService.js` carries the account of it.
  *
- * What would make a save safe is small and is deliberately not here: the reader
- * is already handed the exact text it is looking at, so a `write` that carried
- * that text back as a precondition — refuse unless what is stored is still what
- * was read, and say what changed — is a compare-and-set with no new stored
- * field, and no version number to become a second author of a fact the text
- * already holds. It is maybe fifteen lines. It is not written because nothing
- * asks for it: the owner asked to *view* files and code, no component would
- * call a `write` route today, and a route with no caller is this tree's
- * signature defect — it has shipped as `AgentState::phase`, as
- * `## observations`, and as `AgentWorkerPool.terminate`. The day the view
- * edits, the route arrives with its caller and the precondition above is the
- * design it arrives with.
+ * What makes a save safe was described here for two waves as "small and
+ * deliberately not here", and it is now here because the caller arrived: the
+ * reader is already handed the exact text it is looking at, so a `write` that
+ * carries that text back as a precondition — refuse unless what is stored is
+ * still what was read, and say what changed — is a compare-and-set with no new
+ * stored field and no version number to become a second author of a fact the
+ * text already holds. `app/FilesPanel.jsx` edits and uploads through it, and
+ * `Workspace.write` states the bound the precondition does and does not have.
+ *
+ * The rule that kept it out until now is unchanged and is why it arrived in
+ * this shape: a route with no caller is this tree's signature defect — it has
+ * shipped as `AgentState::phase`, as `## observations`, and as
+ * `AgentWorkerPool.terminate`. What changed is not the rule, it is that a
+ * person can now hand the agent a file, which is the half of "we have files"
+ * that was missing.
+ *
+ * **The page must always state a precondition; the agent never does.** That
+ * asymmetry is the whole safety argument, so it is enforced here rather than
+ * trusted: a `write` off the wire with no `expect` is refused. The agent's own
+ * writers reach `Workspace` directly and are not affected.
  *
  * ## What a reader is told about a file that moved under it
  *
@@ -86,5 +96,35 @@ export class FilesService {
    */
   async read({ path } = {}) {
     return this.workspace.read(path)
+  }
+
+  /**
+   * Put a file into the workspace, on the reader's own terms.
+   *
+   * `expect` is required and may be `null`, which is the difference between
+   * *this is new* and *this is the text I was shown*. It is not defaulted:
+   * a defaulted precondition is no precondition, and the one caller that would
+   * have benefited from the convenience is exactly the one whose lost update
+   * this route exists to refuse.
+   *
+   * The check is on the VALUE and not on `'expect' in params`, which was the
+   * first version and was wrong in the one direction that matters: `{expect:
+   * undefined}` satisfies `in`, so a page that built its params object with an
+   * undefined in it — the shape a missing state variable produces — was handed
+   * an unconditional write while believing it had asked for a safe one. A
+   * precondition has exactly two legal shapes, `null` and a string, and
+   * anything else is refused rather than interpreted.
+   */
+  async write(params = {}) {
+    const { expect } = params
+    if (expect !== null && typeof expect !== 'string') {
+      return Outcome.failed(
+        Reason.BAD_REQUEST,
+        'a write from the page must say what it expects to find',
+        { hint: 'Pass expect: null for a new file, or the exact text that was read.' },
+      )
+    }
+    const { path, text } = params
+    return this.workspace.write(path, text, { expect })
   }
 }

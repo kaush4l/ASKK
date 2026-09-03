@@ -1005,6 +1005,58 @@ select:disabled {
   tab-size: 2;
 }
 
+/* The editor is the viewer with a caret in it: the same face, the same size and
+   the same leading, so that turning `edit` on does not reflow the file under
+   the person about to change it. Only the ground and the border move, because
+   an editable surface has to look editable. */
+.fileview textarea.code.editing {
+  margin: 0;
+  padding: 0.6rem 1rem 1.5rem;
+  min-height: 12rem;
+  flex: 1;
+  resize: none;
+  border: 0;
+  border-top: 1px solid var(--rule-soft);
+  outline: none;
+  background: var(--panel);
+  overflow: auto;
+  white-space: pre;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  line-height: 1.6;
+  color: var(--text);
+  tab-size: 2;
+}
+
+.fileview textarea.code.editing:focus {
+  box-shadow: inset 0 0 0 1px var(--signal-soft);
+}
+
+/* The one way IN to the workspace, and it sits above the listing rather than
+   inside the open file: adding a file is a thing you do to the workspace, not
+   to whatever happens to be open. */
+.filelist-head {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--rule-soft);
+}
+
+.filelist-head button {
+  width: 100%;
+  padding: 0.35rem 0.5rem;
+  font: inherit;
+  font-size: 0.72rem;
+  color: var(--dim);
+  background: transparent;
+  border: 1px dashed var(--rule);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.filelist-head button:hover {
+  color: var(--text);
+  border-color: var(--signal);
+}
+
 /* Four colours and no more. A palette that names every construct turns reading
    into decoding a legend; these are the four a person actually scans for —
    what is not code, what is literal, what is a value, and what is structure. */

@@ -136,6 +136,23 @@ const OVERDUE_MARK = 'overdue-31c7a'
 const CHILD_MARK = 'answering one question for another agent'
 
 /**
+ * The two writers, and the file they are made to disagree over.
+ *
+ * `FilesService` refuses a save whose precondition has moved, and the only way
+ * to watch that refusal happen for real is to have the agent move it — which
+ * needs the person's edit to be OPEN while a turn runs. That is the scenario
+ * the page's own suppressed re-read exists for, so a fake second writer would
+ * be testing a different thing from the one that ships.
+ */
+const CONFLICT_PATH = 'shared-note.md'
+const CONFLICT_READ = 'what the person opened: 3ba71'
+const CONFLICT_AGENT = 'what the agent wrote instead: 6ce20'
+const CONFLICT_QUESTION = 'rewrite the shared note: 0d4fa'
+const CONFLICT_DONE = 'main-7f21b: the note is rewritten'
+const EDITED_TEXT = 'what the person typed while the agent was writing: b41e9'
+const CONFLICT_ACCEPTED = 'the same edit, put back on top of what is there: 91c7d'
+
+/**
  * The scripted reply, in the contract the tree's own `ReActResponse` renders.
  *
  * Turn one sends it to the page above; turn two, recognised by that page's text
@@ -152,6 +169,14 @@ function scriptedReply(prompt) {
     return prompt.includes(PAGE_TEXT)
       ? `think: [the page said what it says]\n\nplan: []\n\nact: answer\n\nresult: ${DELEGATED_ANSWER}`
       : `think: [read the page]\n\nplan: [fetch it]\n\nact: tool\n\nresult: fetch({"url": "${PAGE_URL}"})`
+  }
+  // The one turn that writes a file, and it is first because its question is a
+  // literal marker: every branch below reads evidence that a delegating run
+  // leaves behind, and this run delegates nothing.
+  if (prompt.includes(CONFLICT_QUESTION)) {
+    return prompt.includes(CONFLICT_AGENT)
+      ? `think: [written]\n\nplan: []\n\nact: answer\n\nresult: ${CONFLICT_DONE}`
+      : `think: [rewrite it]\n\nplan: [write the file]\n\nact: tool\n\nresult: write_file({"path": "${CONFLICT_PATH}", "content": "${CONFLICT_AGENT}"})`
   }
   // The parent, in four states, and each is read off evidence in the prompt
   // rather than off a counter this file keeps — a reply that arrived in the
@@ -401,7 +426,7 @@ const view = await evaluate(
        // going to zero while everything above still passes.
        coloured: body.querySelectorAll('span.tok').length,
        plain: Boolean(pick('file-plain')),
-       readonly: (pick('files-readout')?.textContent ?? '').includes('read-only'),
+       terms: (pick('files-readout')?.textContent ?? '').includes('saved against what you read'),
        unknown: await (async () => {
          pick('file-owner-view.rst')?.click()
          const said = await until(() => pick('file-unknown-language'))
@@ -450,13 +475,14 @@ if (!view.unknown.includes('owner-view.rst') || !view.unknown.includes('js, json
     'See LANGUAGES in src/client/highlight.js and the hint that prints it in',
     'src/app/FilesPanel.jsx.',
   ])
-// Said on screen, because a person who can see their files and cannot change
-// them is owed the reason. It is a sentence, and a sentence nobody renders is
-// this tree's signature defect.
-if (!view.readonly) await fail('the file view never says it is read-only', problems)
+// Said on screen, because a person who can now change their files is owed the
+// terms they are changed under. It is a sentence, and a sentence nobody renders
+// is this tree's signature defect — this one replaced `read-only`, which was
+// true for two waves and stopped being true the moment a save button existed.
+if (!view.terms) await fail('the file view never says what a save is checked against', problems)
 
 console.log(
-  `smoke: the owner opened ${view.opened} through the rail — ${view.coloured} coloured runs, read-only`,
+  `smoke: the owner opened ${view.opened} through the rail — ${view.coloured} coloured runs`,
 )
 
 // --- realm four: a sub-agent's own thread ------------------------------------
@@ -968,6 +994,272 @@ if (!asked?.asked)
 
 console.log(
   `smoke: a schedule overdue by an hour asked itself on reopening — ${JSON.stringify(asked.asked)}`,
+)
+
+// --- a person writing into the agent's files, against the agent -------------
+
+// The reading half of the workspace was proved above. This is the way IN, and
+// it is proved against the writer it was built to lose to: the agent rewrites
+// the same file while a person has it open in the editor, and the save is
+// refused rather than silently taking the agent's work with it. A unit test can
+// show the precondition returning false; only this can show that the page holds
+// the text the edit STARTED from and not the text a turn-end re-read replaced
+// it with, which is the one way this design can be got wrong and still pass.
+const edit = await evaluate(
+  `(async () => {
+     const pick = (id) => document.querySelector('[data-testid="' + id + '"]')
+     const until = async (get, ms = 6000) => {
+       for (let i = 0; i < ms / 50; i++) {
+         const value = get()
+         if (value) return value
+         await new Promise((r) => setTimeout(r, 50))
+       }
+       return null
+     }
+     const type = (node, text) => {
+       const proto = node.tagName === 'TEXTAREA' ? HTMLTextAreaElement : HTMLInputElement
+       Object.getOwnPropertyDescriptor(proto.prototype, 'value').set.call(node, text)
+       node.dispatchEvent(new Event('input', { bubbles: true }))
+     }
+
+     if (!pick('file-list')) {
+       const toggle = pick('files-toggle')
+       if (!toggle) return { where: 'the rail has no files button' }
+       toggle.click()
+       if (!(await until(() => pick('file-list')))) return { where: 'the files pane never opened' }
+     }
+
+     // IN, through the control a person actually has: a file off their machine,
+     // handed to the picker the way the browser hands one over.
+     const picker = pick('file-picker')
+     if (!picker) return { where: 'there is no way to add a file' }
+     const carrier = new DataTransfer()
+     carrier.items.add(
+       new File([${JSON.stringify(CONFLICT_READ)}], ${JSON.stringify(CONFLICT_PATH)}, {
+         type: 'text/plain',
+       }),
+     )
+     picker.files = carrier.files
+     picker.dispatchEvent(new Event('change', { bubbles: true }))
+
+     const shown = await until(() => {
+       const body = pick('file-text')
+       return body && body.textContent.includes(${JSON.stringify(CONFLICT_READ)})
+         ? body.textContent
+         : null
+     })
+     if (!shown) return { where: 'the added file never came back through the store' }
+
+     // The edit begins HERE, and this text is the precondition from now on.
+     const start = pick('file-edit')
+     if (!start) return { where: 'an open file offers no way to edit it' }
+     start.click()
+     const editor = await until(() => pick('file-editor'))
+     if (!editor) return { where: 'the editor never rendered' }
+     type(editor, ${JSON.stringify(EDITED_TEXT)})
+
+     // And now the other writer runs, with the edit still open. The turn-end
+     // re-read is suppressed while a draft exists — if it were not, the pane
+     // would take the agent's text and the save below would sail through.
+     const input = pick('input')
+     if (!input) return { where: 'there is no composer' }
+     type(input, ${JSON.stringify(CONFLICT_QUESTION)})
+     input.form.requestSubmit()
+     const finished = await until(() =>
+       [...document.querySelectorAll('.turn .text')].some((node) =>
+         node.textContent.includes(${JSON.stringify(CONFLICT_DONE)}),
+       ),
+     )
+     if (!finished) return { where: 'the agent never rewrote the file' }
+
+     const stillEditing = pick('file-editor')?.value ?? ''
+
+     // The save, which must be refused.
+     pick('file-save')?.click()
+     const refusal = await until(() => {
+       const said = pick('files-problem')
+       return said && said.textContent.includes('changed since') ? said.textContent : null
+     })
+
+     // Give it up, re-read, and see whose text survived.
+     pick('file-cancel')?.click()
+     const after = await until(() => {
+       const body = pick('file-text')
+       return body && body.textContent.includes(${JSON.stringify(CONFLICT_AGENT)})
+         ? body.textContent
+         : null
+     })
+
+     // Then the same edit, on the text that is actually there, which must land.
+     pick('file-edit')?.click()
+     const second = await until(() => pick('file-editor'))
+     if (!second) return { where: 'the editor never came back' }
+     type(second, ${JSON.stringify(CONFLICT_ACCEPTED)})
+     pick('file-save')?.click()
+     const saved = await until(() => {
+       const body = pick('file-text')
+       return body && body.textContent.includes(${JSON.stringify(CONFLICT_ACCEPTED)})
+         ? body.textContent
+         : null
+     })
+
+     return { shown, stillEditing, refusal: refusal ?? '', after: after ?? '', saved: saved ?? '' }
+   })()`,
+  session,
+  true,
+  // Six waits, a real turn and a store round trip in one expression: the
+  // default ceiling is ten seconds and this block can legitimately spend more
+  // than that before it has anything to say.
+  60_000,
+)
+
+if (edit?.where) await fail(`the way in to the agent's files: ${edit.where}`, problems)
+// The editor still holds the person's own text, and not the agent's. This is
+// the assertion the whole block exists for: a re-read that fired here would
+// make every other line below pass while the design was broken.
+if (edit.stillEditing !== EDITED_TEXT)
+  await fail(
+    `the editor's text moved under the person: ${JSON.stringify(edit.stillEditing)}`,
+    problems,
+  )
+if (!edit.refusal.includes(CONFLICT_PATH))
+  await fail(
+    `a save over the agent's rewrite was not refused — the page said ${JSON.stringify(edit.refusal)}`,
+    [
+      'Workspace.write takes { expect } and FilesService refuses a write without one.',
+      'FilesPanel keeps draft.base, which is the text the edit started from.',
+      ...problems,
+    ],
+  )
+if (!edit.refusal.includes('Re-read it'))
+  await fail(
+    `the refusal never said what to do about it: ${JSON.stringify(edit.refusal)}`,
+    problems,
+  )
+// The agent's work is still there, which is what the refusal was protecting.
+if (!edit.after.includes(CONFLICT_AGENT))
+  await fail(`the refused save took the agent's text with it anyway`, problems)
+if (!edit.saved.includes(CONFLICT_ACCEPTED))
+  await fail(`a save against the current text was refused as well`, problems)
+
+console.log(
+  `smoke: a file was handed in through the picker, the agent rewrote it under an open editor, ` +
+    `the save was refused (${JSON.stringify(edit.refusal.slice(0, 58))}…) and the same edit landed on a re-read`,
+)
+
+// --- two tabs, one transcript, one writer -----------------------------------
+
+// The lock is held by a promise that never settles, which is the whole
+// mechanism and the one part of it that cannot be unit tested: `navigator.locks`
+// releases when the callback's promise SETTLES, so a callback that returns
+// holds the lock for a microtask and hands it to everybody. Two real tabs is
+// the only place that difference is visible.
+const { result: secondTab } = await send('Target.createTarget', { url })
+const { result: secondAttached } = await send('Target.attachToTarget', {
+  targetId: secondTab.targetId,
+  flatten: true,
+})
+const other = secondAttached.sessionId
+await send('Runtime.enable', {}, other)
+
+const readerState = async (which) =>
+  evaluate(
+    `(async () => {
+       const pick = (id) => document.querySelector('[data-testid="' + id + '"]')
+       for (let i = 0; i < 200; i++) {
+         if (document.querySelector('.wordmark')?.dataset.live === 'true') break
+         await new Promise((r) => setTimeout(r, 50))
+       }
+       // One more settle, because the election is a lock request and the first
+       // paint after the live flag can be either side of its answer.
+       await new Promise((r) => setTimeout(r, 400))
+       // The lock itself, so a disagreement between the two tabs can be read as
+       // what it is: two tabs on two DIFFERENT conversations are both writers
+       // and that is correct, which a banner assertion alone cannot tell from
+       // an election that simply did not happen.
+       const state = await navigator.locks.query()
+       const mine = (list) =>
+         list.filter((entry) => entry.name.startsWith('askk-conversation:')).map((e) => e.name)
+       return {
+         says: pick('reader-only')?.textContent ?? '',
+         disabled: Boolean(pick('input')?.disabled),
+         placeholder: pick('input')?.placeholder ?? '',
+         held: mine(state.held ?? []),
+         waiting: mine(state.pending ?? []),
+       }
+     })()`,
+    which,
+    true,
+    30_000,
+  )
+
+const reader = await readerState(other)
+const holder = await readerState(session)
+
+if (!reader.says.includes('Another tab has this conversation open'))
+  await fail(
+    `a second tab on the same conversation was not made a reader: ${JSON.stringify(reader)}`,
+    [
+      'The election is the useEffect in src/app/page.jsx that requests',
+      'askk-conversation:<id> and holds it with a promise that never settles.',
+      ...problems,
+    ],
+  )
+if (!reader.disabled) await fail('the second tab could still type into the transcript', problems)
+if (holder.says) await fail('the tab that holds the lock also called itself a reader', problems)
+if (holder.disabled) await fail('the tab that holds the lock cannot write either', problems)
+
+// And the promotion, which is why the request queues instead of asking
+// `ifAvailable` once: the tab that was waiting becomes the writer when the one
+// holding it goes away, without being reloaded.
+await send('Page.navigate', { url: 'about:blank' }, session)
+const promoted = await evaluate(
+  `(async () => {
+     const pick = (id) => document.querySelector('[data-testid="' + id + '"]')
+     for (let i = 0; i < 200; i++) {
+       if (!pick('reader-only') && pick('input') && !pick('input').disabled) return { promoted: true }
+       await new Promise((r) => setTimeout(r, 50))
+     }
+     const state = await navigator.locks.query()
+     const names = (list) => (list ?? []).map((entry) => entry.name + ':' + entry.clientId)
+     return {
+       promoted: false,
+       reader: Boolean(pick('reader-only')),
+       disabled: Boolean(pick('input')?.disabled),
+       held: names(state.held),
+       waiting: names(state.pending),
+     }
+   })()`,
+  other,
+  true,
+  30_000,
+)
+if (!promoted?.promoted)
+  await fail(
+    `the waiting tab never became the writer after the holder went away: ${JSON.stringify(promoted)}`,
+    [
+      'A request with ifAvailable answers once and leaves the second tab read-only',
+      'until it is reloaded; this one queues. See the election in src/app/page.jsx.',
+      ...problems,
+    ],
+  )
+
+await send('Target.closeTarget', { targetId: secondTab.targetId })
+await send('Page.navigate', { url }, session)
+{
+  const back = Date.now()
+  let live = 'none'
+  while (Date.now() - back < 15000) {
+    live = await evaluate(`document.querySelector('.wordmark')?.dataset.live ?? 'none'`, session)
+    if (live === 'true') break
+    await Bun.sleep(50)
+  }
+  if (live !== 'true') await fail('the page did not come back after the two-tab check', problems)
+}
+
+console.log(
+  'smoke: two tabs on one conversation elected one writer, the other said so and could not type, ' +
+    'and it was promoted when the holder went away',
 )
 
 // --- realm two: the classic worker nothing bundles --------------------------
