@@ -31,10 +31,14 @@ waiting for your first question to fail.
 - **The sandbox is slow on purpose-built work.** It is an emulator, a few
   hundred times slower than the machine it runs on. Fine for a file, a check, a
   short script. Not a place to build software.
-- **A question can take minutes.** While one is running, the bar across the top
-  counts the seconds and names any second agent working on your behalf — so
-  `researcher: fetch · step 2` means a helper is on its second pass, reading a
-  page for you. A clock that keeps moving means the tab is alive.
+- **A question can take minutes.** While one is running, the line across the top
+  of the screen says what is happening in words — *researcher is reading a
+  page*, *working · 47s*, *Linux machine 38%* — and it says the one thing you
+  are most likely to be waiting for rather than all of them at once. A clock
+  that keeps moving means the tab is alive.
+- **You can see what it actually did.** Each pass of a run appears in the
+  conversation as a line you can open: what it ran, word for word, and what came
+  back. They stay after the answer arrives.
 - **Nothing is uploaded.** Conversations, settings and the agent's files are in
   your browser's own storage. In a private window there is no storage, and the
   app says so and keeps working for the length of the tab.
@@ -44,16 +48,30 @@ waiting for your first question to fail.
 Answer from what it knows; search the web and read a page; run a command in a
 private Linux userland with Python 3.12 in it; keep files of its own that last
 between conversations and that you can read; ask itself a question on a period —
-hourly, daily — in the conversation you set it up in, for as long as that tab is
-open; and hand a question to a second agent that works on its own thread.
+hourly, daily, at a time of day you choose — in the conversation you set it up
+in, for as long as that tab is open; and hand a question to a second agent that
+works on its own thread.
+
+It also listens and speaks. Dictation runs either on the browser's own
+recogniser or on a speech model that downloads into the tab, and the words
+appear in the box as they are revised; a reply can be read aloud, in a voice
+this device already has or in one that downloads. You can attach a picture to a
+question if the model you named can see one. None of that is needed to ask
+anything.
 
 That last one has two shapes, and the assistant chooses. It can wait for the
 helper, which is what you want when the helper's answer is the reply; or it can
 hand the question over and carry on, in which case it says so, the bar at the
 top says something is running in the background, and it reads the answer back on
 a later turn. Either way the helper does its reading in its own conversation and
-you get the paragraph, not the six pages. What is in *settings* is the model, the voice, and
-which agent you are talking to.
+you get the paragraph, not the six pages.
+
+*Settings* asks for the model first and folds everything else — the voice, and
+how the model answers — underneath it, because naming a model is the only thing
+you have to do before it can reply. *Activity*, beside it, is where the app
+keeps what it knows about itself: the work of the last run, the prompt exactly
+as it was sent, the agent's files, what is scheduled, and the agent's own
+instructions, tools and spending limit.
 
 An agent is a markdown file — `agents/main/agent.md` is the one the app opens
 with, `agents/researcher/agent.md` is the helper it can hand questions to.
