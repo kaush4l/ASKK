@@ -166,6 +166,20 @@ export class C2wSandbox extends Sandbox {
     this._announced = false
   }
 
+  /**
+   * Bytes of the guest arriving. Assigned by whoever is watching, never
+   * subclassed — the same seam `TransformersInference` and `Transcriber` use,
+   * and for the same reason: the reporting hook belongs to the caller, and a
+   * class per listener would be a class per caller.
+   *
+   * It matters more here than for either of those. The guest is the single
+   * largest thing this app fetches, it is fetched on the FIRST command an agent
+   * runs rather than at boot, and until this existed that download reported
+   * nothing at all — `CAPABILITIES.md` records a real one at 40,030,146 bytes,
+   * and `docs/LEDGER.md` row S24 is that none of it reached a user surface.
+   */
+  onProgress(_event) {}
+
   get available() {
     return Boolean(this.imageUrl && this.workerUrl)
   }
@@ -264,6 +278,21 @@ export class C2wSandbox extends Sandbox {
   }
 
   _receive(data, resolveBoot) {
+    if (data?.type === 'boot-progress') {
+      // The same four fields `core/progress.js` gives a weights download, so a
+      // page draws one bar and not two. `percent` is 0 when the host sent no
+      // `content-length`, which a reader must show as a byte count rather than
+      // a bar stuck at nothing.
+      const total = Number(data.total) || 0
+      this.onProgress({
+        status: 'progress',
+        file: 'linux guest',
+        loaded: Number(data.loaded) || 0,
+        total,
+        percent: total ? Math.round(((Number(data.loaded) || 0) / total) * 100) : 0,
+      })
+      return
+    }
     if (data?.type === 'booted') {
       resolveBoot(Outcome.ok({ bytes: data.bytes, transferred: data.transferred }))
       return

@@ -384,6 +384,66 @@ describe('the record a turn leaves behind', () => {
     expect(observed[0].observation.length).toBeGreaterThan(0)
   })
 
+  test('the guest download reports itself on the same channel the weights do', async () => {
+    // `docs/LEDGER.md` row S24: the guest is the largest thing this app fetches
+    // — tens of megabytes, fetched on the FIRST shell call rather than at boot
+    // — and none of that arrival reached a user surface. The hook existed on
+    // `TransformersInference` for weights and had no counterpart here.
+    const events = []
+    // The hook is a plain assignable property, exactly as it is on the real
+    // sandbox and on `TransformersInference`. A resolver rather than a bare
+    // function because `send` assigns it several awaits in, and a report fired
+    // before that assignment would be testing the stand-in.
+    const watching = Promise.withResolvers()
+    const sandbox = {
+      _report: () => {},
+      get onProgress() {
+        return this._report
+      },
+      set onProgress(fn) {
+        this._report = fn
+        watching.resolve(fn)
+      },
+      async run() {},
+    }
+    const { service } = chatWith([answerTurn('done')], { sandbox })
+
+    const turn = service.send({ id: 'c1', text: 'run a command' }, (name, payload) =>
+      events.push([name, payload]),
+    )
+    const report = await watching.promise
+    // Reported DURING the turn: the emitter is set for the call and cleared
+    // when it ends, so a bar cannot be drawn for a turn that is over.
+    report({
+      status: 'progress',
+      file: 'linux guest',
+      loaded: 1_048_576,
+      total: 52_602_121,
+      percent: 2,
+    })
+    await turn
+
+    const progress = events
+      .filter(([name]) => name === EventName.PROGRESS)
+      .map(([, event]) => event)
+    expect(progress).toHaveLength(1)
+    expect(progress[0].file).toBe('linux guest')
+    expect(progress[0].loaded).toBe(1_048_576)
+    expect(progress[0].percent).toBe(2)
+
+    // And the hook is let go with the call. Left in place, the next turn's
+    // download would report into a request that has already been answered.
+    events.length = 0
+    sandbox.onProgress({
+      status: 'progress',
+      file: 'linux guest',
+      loaded: 2,
+      total: 3,
+      percent: 66,
+    })
+    expect(events).toEqual([])
+  })
+
   test('a reply with no text in it is written down as having said nothing', async () => {
     // Found by mutation: replacing the stand-in with `''` left every test in
     // this file green. A model that answers with an empty string still made a

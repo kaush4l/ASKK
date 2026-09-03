@@ -334,6 +334,21 @@ export class ChatService {
         : () => {}
     }
 
+    // And the guest, on the same channel and for the same reason. It is the
+    // larger of the two by far — tens of megabytes, fetched on the FIRST shell
+    // call rather than at boot — and it reported nothing at all, so a person
+    // who asked a question that needed a command watched a step sit there for
+    // however long their connection took. `docs/LEDGER.md` row S24.
+    //
+    // The sandbox already reports in `core/progress.js`'s four fields, so it is
+    // NOT passed through `describeProgress`: that function reads a
+    // transformers.js event, and running a report that is already in the right
+    // shape through it would zero every field.
+    const sandbox = this.services.sandbox
+    if (typeof sandbox?.onProgress === 'function') {
+      sandbox.onProgress = emit ? (event) => emit(EventName.PROGRESS, event) : () => {}
+    }
+
     // Every other agent is a possible tool. Which of them this one actually
     // gets is decided by its own file's `tools:` list, not by what exists.
     const roster = await this.catalogue.all()
@@ -433,6 +448,7 @@ export class ChatService {
     // turn's download would report itself to a request that has already been
     // answered, and the page would draw a bar for a turn that is over.
     if (typeof inference.value?.onProgress === 'function') inference.value.onProgress = () => {}
+    if (typeof sandbox?.onProgress === 'function') sandbox.onProgress = () => {}
 
     if (!answered.ok) {
       // The user's turn is already saved, so the failure is reported against a
