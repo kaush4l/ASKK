@@ -50,6 +50,22 @@ export const DEFAULT_SETTINGS = Object.freeze({
   // same question — which voice — and the engine already knows what it means.
   ttsVoice: '',
   speakReplies: false,
+
+  // How fast and how high the browser voice reads. `SpeechService.speak` and
+  // `Speaker` have taken both since they were written and nothing ever sent
+  // one, so a reply was read at whatever the operating system defaults to —
+  // which on several machines is noticeably too fast to follow.
+  ttsRate: 1,
+  ttsPitch: 1,
+
+  // Where a local speech model runs and at what precision. Both are arguments
+  // `SpeechService.dictate` already takes. `wasm` rather than `webgpu` because
+  // the encoder of every model here falls back to wasm for at least one
+  // operator, and a device that is requested and unavailable fails the whole
+  // build rather than degrading — `TransformersTranscriber` owns that
+  // measurement.
+  sttDevice: 'wasm',
+  sttDtype: 'fp32',
 })
 
 export class SettingsService {
@@ -136,6 +152,37 @@ export class SettingsService {
       if (!String(next[field] ?? '').trim()) next[field] = defaultModelFor(kind)
     }
     next.speakReplies = Boolean(next.speakReplies)
+
+    // Clamped rather than refused, like temperature above. The Web Speech
+    // ranges are the spec's: rate 0.1–10, pitch 0–2. A value outside them is
+    // not an error a person can act on — the browser simply ignores the
+    // utterance — so it is corrected and reported.
+    for (const [field, low, high] of [
+      ['ttsRate', 0.1, 10],
+      ['ttsPitch', 0, 2],
+    ]) {
+      const value = Number(next[field])
+      if (!Number.isFinite(value) || value < low || value > high) {
+        notes.push(
+          `${field} ${JSON.stringify(next[field])} is outside ${low}–${high}; used ${DEFAULT_SETTINGS[field]}`,
+        )
+        next[field] = DEFAULT_SETTINGS[field]
+      } else {
+        next[field] = value
+      }
+    }
+
+    // The backend a local model runs on, and the precision it is built at.
+    // Corrected to the default rather than passed through, because an unknown
+    // string here fails minutes into a download rather than at the save.
+    if (!['wasm', 'webgpu'].includes(next.sttDevice)) {
+      notes.push(`sttDevice ${JSON.stringify(next.sttDevice)} is not a backend here; used wasm`)
+      next.sttDevice = DEFAULT_SETTINGS.sttDevice
+    }
+    if (!['fp32', 'fp16', 'q8', 'q4'].includes(next.sttDtype)) {
+      notes.push(`sttDtype ${JSON.stringify(next.sttDtype)} is not a precision here; used fp32`)
+      next.sttDtype = DEFAULT_SETTINGS.sttDtype
+    }
 
     const written = await this.repository.put(next)
     if (!written.ok) notes.push(`not saved for next time: ${written.failure.message}`)

@@ -4,6 +4,7 @@ import {
   earOwnsInput,
   MODEL_SAMPLE_RATE,
   voiceOwnsOutput,
+  WebSpeechSpeaker,
 } from '../core/speech/index.js'
 import { EventName } from '../protocol/Envelope.js'
 import { BackendClient } from './BackendClient.js'
@@ -280,6 +281,12 @@ export class Dictation {
           kind: this.settings.sttKind,
           model: this.settings.sttModel,
           language: this.settings.sttLanguage,
+          // Forwarded, and they were not. `SpeechService.dictate` has taken
+          // both since it was written and this call named neither, so the
+          // quantisation and the backend a person chose were settings with
+          // nowhere to go.
+          dtype: this.settings.sttDtype,
+          device: this.settings.sttDevice,
         },
         (name, data) => {
           if (name === EventName.PARTIAL) this.onPartial(data.text)
@@ -371,9 +378,16 @@ export class Voice {
       const built = createSpeaker({
         kind: this.settings.ttsKind,
         voice: this.settings.ttsVoice,
+        rate: this.settings.ttsRate,
+        pitch: this.settings.ttsPitch,
       })
       this._native = built.value
     }
+    // Re-applied on every reply, not only when the speaker is first built: the
+    // object is kept for the tab and a person who moves the rate slider between
+    // two replies would otherwise be heard on the third.
+    this._native.rate = this.settings.ttsRate ?? this._native.rate
+    this._native.pitch = this.settings.ttsPitch ?? this._native.pitch
     const spoken = await this._native.speak(text)
     return spoken.ok
       ? { ok: true, notes: spoken.notes }
@@ -392,6 +406,8 @@ export class Voice {
         kind: this.settings.ttsKind,
         model: this.settings.ttsModel,
         voice: this.settings.ttsVoice,
+        rate: this.settings.ttsRate,
+        pitch: this.settings.ttsPitch,
       },
       (name, data) => {
         if (name === EventName.PROGRESS) this.onProgress(data)
@@ -403,6 +419,45 @@ export class Voice {
       ? { ok: true, notes: result.notes }
       : { ok: false, error: played.error, notes: result.notes }
   }
+}
+
+/**
+ * Every voice this device can speak with.
+ *
+ * Here rather than on `Voice` because the caller is a settings form and not a
+ * speaker: nothing has to be built, nothing has to be loaded, and a form that
+ * had to construct a `Voice` to ask what voices exist would be constructing one
+ * before the person had chosen anything.
+ */
+export async function installedVoices() {
+  return await WebSpeechSpeaker.voices()
+}
+
+/**
+ * Fetch a speech model's weights without using them.
+ *
+ * `SpeechService.load` has existed since the service was written and had zero
+ * callers repo-wide. The first load of whisper is minutes, and without this the
+ * only way to spend them is to press the microphone and talk into a page that
+ * is not listening yet. Here a person spends them deliberately, from a control
+ * that says what it is doing.
+ */
+export async function preloadSpeech(settings = {}, onProgress = () => {}) {
+  const result = await speechBackend().call(
+    'speech.load',
+    {
+      kind: settings.sttKind,
+      model: settings.sttModel,
+      dtype: settings.sttDtype,
+      device: settings.sttDevice,
+    },
+    (name, data) => {
+      if (name === EventName.PROGRESS) onProgress(data)
+    },
+  )
+  return result.ok
+    ? { ok: true, model: result.value, notes: result.notes }
+    : { ok: false, error: result.error, notes: result.notes }
 }
 
 /** Sources still sounding, so `stop` can silence a reply that is halfway read. */

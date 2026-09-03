@@ -92,22 +92,51 @@ export class WebSpeechSpeaker extends Speaker {
    * arrives and waiting for it forever would be worse than speaking in the
    * default one.
    */
+  /**
+   * Every voice this device has, as `{name, lang, local}` records.
+   *
+   * Static and plain because the caller is a settings form, not a speaker: the
+   * app asked a person to TYPE the name of an installed voice, which is
+   * recall in a place that could have offered recognition — nobody knows what
+   * their operating system's voices are called, and a name that is one
+   * character out silently falls back to the default.
+   *
+   * The wait is the same one `_voice` needs and for the same measured reason:
+   * Chrome answers `getVoices()` with an empty list until it has loaded them
+   * and fires `voiceschanged` when it has, so a form that asked once at mount
+   * would offer no voices at all on a cold page.
+   */
+  static async voices() {
+    const synthesis = WebSpeechSpeaker._api()
+    if (!synthesis) return []
+    const found = await WebSpeechSpeaker._settled(synthesis)
+    return found.map((voice) => ({
+      name: voice.name,
+      lang: voice.lang ?? '',
+      local: voice.localService !== false,
+    }))
+  }
+
+  /** The voice list, once the browser has one. */
+  static async _settled(synthesis) {
+    const voices = synthesis.getVoices()
+    if (voices.length) return voices
+    return await new Promise((resolve) => {
+      const done = setTimeout(() => resolve(synthesis.getVoices()), 1000)
+      synthesis.addEventListener(
+        'voiceschanged',
+        () => {
+          clearTimeout(done)
+          resolve(synthesis.getVoices())
+        },
+        { once: true },
+      )
+    })
+  }
+
   async _voice(synthesis) {
     if (!this.voice) return null
-    let voices = synthesis.getVoices()
-    if (!voices.length) {
-      voices = await new Promise((resolve) => {
-        const done = setTimeout(() => resolve(synthesis.getVoices()), 1000)
-        synthesis.addEventListener(
-          'voiceschanged',
-          () => {
-            clearTimeout(done)
-            resolve(synthesis.getVoices())
-          },
-          { once: true },
-        )
-      })
-    }
+    const voices = await WebSpeechSpeaker._settled(synthesis)
     const wanted = this.voice.toLowerCase()
     return (
       voices.find((voice) => voice.name.toLowerCase() === wanted) ??
