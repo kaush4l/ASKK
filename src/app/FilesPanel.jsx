@@ -30,6 +30,17 @@ const MAX_COLOURED_TOKENS = 4000
 const clock = (millis) => new Date(millis).toLocaleTimeString()
 
 /**
+ * The noun that goes with a number.
+ *
+ * Used at every count this view prints, including the ones that cannot be one
+ * today. `1 files` shipped because the rule was "pluralise where one is
+ * reachable", which asks the writer of each line to work out whether it is —
+ * and the line that got it wrong was the count a fresh workspace reaches
+ * first. A rule that holds at every site needs deciding once.
+ */
+const plural = (n, noun) => (n === 1 ? noun : `${noun}s`)
+
+/**
  * The agent's files, for the person who owns them.
  *
  * The store has existed for a wave and the page had no route to it — the
@@ -242,12 +253,13 @@ export function FilesPanel({ client, turnsDone, storage = null }) {
       <div className="readout files" data-testid="files-readout">
         <p className="figures">
           <span>
-            <b>{files ? files.length.toLocaleString() : '—'}</b> files
+            <b>{files ? files.length.toLocaleString() : '—'}</b>{' '}
+            {plural(files?.length ?? 0, 'file')}
           </span>
           {open ? <span>read at {clock(open.readAt)}</span> : null}
           {open?.text != null ? (
             <span>
-              <b>{open.bytes.toLocaleString()}</b> bytes
+              <b>{open.bytes.toLocaleString()}</b> {plural(open.bytes, 'byte')}
             </span>
           ) : null}
           {/* What the person may do, said out loud. This read `read-only` for
@@ -256,10 +268,20 @@ export function FilesPanel({ client, turnsDone, storage = null }) {
               against. "saved against what you read" was the previous attempt
               and a reviewer's verdict on it was that it "is not English anyone
               will parse" — true, and it was hiding a real rule: a save is
-              refused if the file moved while you were looking at it. */}
-          <span className="measured">
-            {draft ? 'editing' : 'a save is refused if this file has changed'}
-          </span>
+              refused if the file moved while you were looking at it.
+
+              It says it only where it is true. The sentence was rendered
+              unconditionally for a wave, so an empty workspace with nothing
+              open warned about "this file" when there was no file and no save
+              to refuse — a rule stated to somebody who cannot break it reads
+              as a rule about something they cannot see. The condition is the
+              same one the edit button is under, because the two are the same
+              claim: a file whose text this view holds is a file a save can be
+              attempted on. */}
+          {draft ? <span className="measured">editing</span> : null}
+          {!draft && open?.text != null ? (
+            <span className="measured">a save is refused if this file has changed</span>
+          ) : null}
         </p>
         {/* What this origin has used of what it may use — the conversations,
             these files, and any model weights that were downloaded into the
@@ -492,14 +514,17 @@ export function FilesPanel({ client, turnsDone, storage = null }) {
             ) : null}
           </div>
         ) : (
-          {/* Said in the words the rest of this app says them in. It named a
-              tool, it called the machine a "sandbox", and it printed both
-              inside backticks that nothing here renders — three ways of
-              answering a person with the inside of the program.
-              `backend/sandbox/C2wSandbox.js` writes the rule down: everything a
-              reader can see calls it "the Linux machine in this tab", and
-              "sandbox", "guest" and "image" stay in the comments, where the
-              reader is somebody editing the file. */}
+          /* Said in the words the rest of this app says them in. It named a
+             tool, it called the machine a "sandbox", and it printed both inside
+             backticks that nothing here renders — three ways of answering a
+             person with the inside of the program.
+             `backend/sandbox/C2wSandbox.js` writes the rule down: everything a
+             reader can see calls it "the Linux machine in this tab", and
+             "sandbox", "guest" and "image" stay in the comments, where the
+             reader is somebody editing the file. It wears no braces on purpose:
+             this is a ternary's branch and not a child of an element, and the
+             braces every other comment in this file has would be read here as
+             an expression rather than as a comment. */
           <p className="hint" data-testid="files-hint">
             The agent's own files live in this browser. Open one to read or edit it, or add one of
             your own — the agent reads and writes these same files, and a command run on the Linux

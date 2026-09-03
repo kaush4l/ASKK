@@ -26,6 +26,8 @@ export function Transcript({
   speaking,
   copied,
   observations,
+  failed,
+  onRetry,
 }) {
   const live = visibleStream(run.raw)
   /**
@@ -54,7 +56,11 @@ export function Transcript({
       // heading at all: a screen reader had no way to reach the conversation.
       // `log` with a polite live region is what an arriving reply is.
       aria-label="Conversation"
-      aria-live="polite"
+      // `role="log"` already announces additions politely, so an explicit
+      // `aria-live` on top of it was a second declaration of the same thing
+      // over unbounded growing content. What is narrowed here is WHAT counts as
+      // a change: text and new turns, not every attribute a re-render touches.
+      aria-relevant="additions text"
       role="log"
     >
       {messages.map((message) => (
@@ -68,6 +74,13 @@ export function Transcript({
           copied={copied}
           steps={message.id === lastReply?.id ? finished : null}
           observations={observations}
+          // The turn that did not complete, marked where it happened. Without
+          // this a failed question sits in the transcript looking exactly like
+          // an answered one the moment the error card is dismissed — and a
+          // reviewer watched their question become indistinguishable from a
+          // successful turn, permanently, with no way left to retry it.
+          failed={failed && message.role === 'user' && message.text === failed.text}
+          onRetry={onRetry}
         />
       ))}
 
@@ -111,7 +124,18 @@ export function Transcript({
   )
 }
 
-function Turn({ message, onSay, onCopy, onShare, speaking, copied, steps, observations }) {
+function Turn({
+  message,
+  onSay,
+  onCopy,
+  onShare,
+  speaking,
+  copied,
+  steps,
+  observations,
+  failed,
+  onRetry,
+}) {
   const attachments = message.attachments ?? []
   const isAssistant = message.role === 'assistant'
 
@@ -152,6 +176,15 @@ function Turn({ message, onSay, onCopy, onShare, speaking, copied, steps, observ
         ) : null}
 
         <div className="text">{message.text}</div>
+
+        {failed ? (
+          <p className="unfinished" data-testid="unfinished">
+            This one did not get an answer.
+            <button type="button" onClick={onRetry} data-testid="retry-turn">
+              try it again
+            </button>
+          </p>
+        ) : null}
 
         {message.text ? (
           <div className="msg-actions">

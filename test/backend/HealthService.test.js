@@ -181,3 +181,167 @@ describe('a model that runs in this tab', () => {
     expect(said.value.detail).not.toContain('Start the server')
   })
 })
+
+/**
+ * The third answer, which the probe had in its hand and threw away.
+ *
+ * A reviewer set the model to `this-model-does-not-exist-xyz`, pointed it at a
+ * server that was up, and got `✓ answered` — because the check only ever asked
+ * whether SOMETHING was there. The listing that came back in the same request
+ * said what that server actually serves, and the person was left typing a name
+ * into a field nobody can fill from memory.
+ *
+ * So these are two facts, asserted apart: the ids, which a form can offer, and
+ * whether the configured name is one of them. The second has three states and
+ * not two. A server that lists nothing has not said the name is wrong — many
+ * OpenAI-compatible servers ignore the endpoint and answer with whatever is
+ * loaded — and reporting that silence as "your model is wrong" would be the ✓'s
+ * own mistake told backwards, with more confidence.
+ */
+describe('what a server says it serves', () => {
+  /** The shape both wires answer with, kept in one place so the tests read as the sentence under test. */
+  const listing = (...ids) => JSON.stringify({ object: 'list', data: ids.map((id) => ({ id })) })
+
+  /** A complete configuration pointed at a server that is up. */
+  const named = (model) => settingsOf({ model, baseUrl: 'http://127.0.0.1:8873/v1' })
+
+  test('is handed back as ids, because the person is being asked to type one of them', async () => {
+    const said = await new HealthService({
+      settings: named('testbed'),
+      http: port({ status: 200, text: listing('testbed', 'other') }),
+    }).model()
+
+    expect(said.value.listed).toEqual(['testbed', 'other'])
+    expect(said.value.modelListed).toBe(true)
+    expect(said.value.detail).toBe('')
+  })
+
+  test('says in plain words when the configured name is not one of them, and names ones that are', async () => {
+    const said = await new HealthService({
+      settings: named('this-model-does-not-exist-xyz'),
+      http: port({ status: 200, text: listing('testbed', 'other') }),
+    }).model()
+
+    expect(said.value.modelListed).toBe(false)
+    expect(said.value.detail).toContain('this-model-does-not-exist-xyz')
+    expect(said.value.detail).toContain('testbed')
+    // The server is up and its answer was read. Only the name is wrong, so
+    // this may not become "unreachable" — that would send someone to restart a
+    // server that is running perfectly and answer the wrong question again.
+    expect(said.value.reachable).toBe(true)
+    expect(said.value.configured).toBe(true)
+  })
+
+  test('is undecided rather than an accusation when the server lists nothing', async () => {
+    const said = await new HealthService({
+      settings: named('whatever-is-loaded'),
+      http: port({ status: 200, text: JSON.stringify({ object: 'list', data: [] }) }),
+    }).model()
+
+    expect(said.value.listed).toEqual([])
+    expect(said.value.modelListed).toBe(null)
+    expect(said.value.detail).toBe('')
+  })
+
+  test('is an empty list and a note when the body cannot be read, never a throw', async () => {
+    const said = await new HealthService({
+      settings: named('m'),
+      http: port({ status: 200, text: '<html>not a listing</html>' }),
+    }).model()
+
+    expect(said.ok).toBe(true)
+    expect(said.value.listed).toEqual([])
+    expect(said.value.modelListed).toBe(null)
+    expect(said.value.detail).toBe('')
+    // Said somewhere, because "lists nothing" and "answered something this app
+    // could not read" are different faults and only one of them is the server's.
+    expect(said.notes.join(' ')).toContain('listing')
+  })
+
+  test('blames the probe, not the server, when the listing was longer than it reads', async () => {
+    const said = await new HealthService({
+      settings: named('m'),
+      http: port({ status: 200, text: '{"object":"list","data":[{"id":"a"', truncated: true }),
+    }).model()
+
+    expect(said.value.listed).toEqual([])
+    expect(said.value.modelListed).toBe(null)
+    expect(said.notes.join(' ')).toContain('longer')
+  })
+
+  test('is read the same way from Anthropic, which answers the same shape', async () => {
+    const said = await new HealthService({
+      settings: settingsOf({
+        kind: 'anthropic',
+        model: 'claude-sonnet-4-5',
+        baseUrl: 'https://api.anthropic.com/v1',
+        apiKey: 'k',
+      }),
+      http: port({
+        status: 200,
+        text: JSON.stringify({
+          data: [
+            { type: 'model', id: 'claude-sonnet-4-5' },
+            { type: 'model', id: 'claude-opus-4-1' },
+          ],
+        }),
+      }),
+    }).model()
+
+    expect(said.value.listed).toEqual(['claude-sonnet-4-5', 'claude-opus-4-1'])
+    expect(said.value.modelListed).toBe(true)
+  })
+
+  test('is undecided when the key was refused, and the key is still what the sentence names', async () => {
+    // A refusal is not a listing. The server never got as far as saying what it
+    // serves, so the name is unchecked — and the one thing to go and fix is
+    // still the key.
+    const said = await new HealthService({
+      settings: named('m'),
+      http: port({ status: 401, text: JSON.stringify({ error: { message: 'no key' } }) }),
+    }).model()
+
+    expect(said.value.listed).toEqual([])
+    expect(said.value.modelListed).toBe(null)
+    expect(said.value.detail).toContain('refused the key')
+  })
+
+  test('is empty and undecided when nothing answered, because silence lists nothing', async () => {
+    const said = await new HealthService({
+      settings: named('m'),
+      http: port({ status: 0, blocked: Blocked.UNREACHABLE }),
+    }).model()
+
+    expect(said.value.listed).toEqual([])
+    expect(said.value.modelListed).toBe(null)
+    expect(said.value.detail).toContain('http://127.0.0.1:8873/v1')
+  })
+
+  test('is empty and undecided for a model that runs in this tab, which has no listing to answer', async () => {
+    const http = port({ status: 200, text: listing('something-else') })
+    const said = await new HealthService({
+      settings: settingsOf({ kind: 'transformers', model: 'onnx-community/whisper-base' }),
+      http,
+    }).model()
+
+    expect(said.value.listed).toEqual([])
+    expect(said.value.modelListed).toBe(null)
+    expect(said.value.detail).toBe('')
+    expect(http.asked).toEqual([])
+  })
+
+  test('is empty and undecided before anything is configured, because nothing has been asked', async () => {
+    const said = await new HealthService({ settings: settingsOf({}), http: port() }).model()
+
+    expect(said.value.listed).toEqual([])
+    expect(said.value.modelListed).toBe(null)
+  })
+
+  test('is empty and undecided in a build that cannot make a request', async () => {
+    const said = await new HealthService({ settings: named('m'), http: null }).model()
+
+    expect(said.value.listed).toEqual([])
+    expect(said.value.modelListed).toBe(null)
+    expect(said.value.detail).toContain('cannot make an HTTP request')
+  })
+})

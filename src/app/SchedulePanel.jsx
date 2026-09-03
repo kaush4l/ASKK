@@ -147,12 +147,15 @@ function nextRun(at) {
 }
 
 /**
- * The clause every promise this panel makes has to end with.
+ * The clause the panel's one promise ends with, and the only place it is said.
  *
- * Written once because it is the same caveat every time and because it is the
- * one part of these sentences that must not be edited out of one of them by
- * accident: a time this page names is a time this page can only keep while it
- * is the page in front of you.
+ * Written once because a time this page names is a time this page can only keep
+ * while it is the page in front of you. Said once because it used to end this
+ * sentence AND the sentence directly beneath it, and the same caveat in two
+ * consecutive paragraphs reads as a page hedging rather than as a page being
+ * straight with you. Beside the button is where it belongs: that is the last
+ * thing read before a schedule is committed to, and a warning that arrives
+ * after the press is a correction.
  */
 const ONLY_WHILE_OPEN = 'and then only while this tab is open on this conversation'
 
@@ -209,10 +212,21 @@ export function SchedulePanel({
 
   return (
     <div className="plans" data-testid="plans-panel-body">
+      {/* The class on every control below is load-bearing and not decoration.
+          `globals.css` reaches into this panel through `.plan-what` and
+          `.plan-when` and through nothing else, so a control wearing neither is
+          drawn by the browser rather than by this app — measured on the shipped
+          page, these came back as Arial at 13.33px inside an inset border,
+          beside a screen where every other field is a rounded hairline box. One
+          screen of browser defaults reads as a screen nobody finished, and it
+          makes a reader doubt the finished ones too. It is also why the choices
+          and the button share a row: `.plan-when` IS that row, and the select
+          and the button are only styled as its children. */}
       <form className="plan-new" onSubmit={add}>
         <label>
           ask this
           <input
+            className="plan-what"
             value={text}
             onChange={(event) => setText(event.target.value)}
             placeholder="what to ask, in full — nobody is here to clarify it"
@@ -220,36 +234,39 @@ export function SchedulePanel({
             data-testid="plan-text"
           />
         </label>
-        <label>
-          how often
-          <select
-            value={seconds}
-            onChange={(event) => setSeconds(Number(event.target.value))}
-            disabled={!ready}
-            data-testid="plan-period"
-          >
-            {PERIODS.map((one) => (
-              <option key={one.seconds} value={one.seconds}>
-                {one.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        {daily ? (
+        <div className="plan-when">
           <label>
-            at
-            <input
-              type="time"
-              value={timeOfDay}
-              onChange={(event) => setTimeOfDay(event.target.value)}
+            how often
+            <select
+              value={seconds}
+              onChange={(event) => setSeconds(Number(event.target.value))}
               disabled={!ready}
-              data-testid="plan-time"
-            />
+              data-testid="plan-period"
+            >
+              {PERIODS.map((one) => (
+                <option key={one.seconds} value={one.seconds}>
+                  {one.label}
+                </option>
+              ))}
+            </select>
           </label>
-        ) : null}
-        <button type="submit" disabled={!ready || !text.trim()} data-testid="plan-add">
-          schedule it
-        </button>
+          {daily ? (
+            <label>
+              at
+              <input
+                className="plan-what"
+                type="time"
+                value={timeOfDay}
+                onChange={(event) => setTimeOfDay(event.target.value)}
+                disabled={!ready}
+                data-testid="plan-time"
+              />
+            </label>
+          ) : null}
+          <button type="submit" disabled={!ready || !text.trim()} data-testid="plan-add">
+            schedule it
+          </button>
+        </div>
         {/* Said where the choice is made rather than only in the empty state,
             because a time of day is the field most likely to be read as a
             promise that something will happen at that minute whatever else is
@@ -261,11 +278,14 @@ export function SchedulePanel({
       </form>
 
       {schedules.length === 0 ? (
+        // The caveat that used to end the first sentence here is said once now,
+        // beside the button, where it is read while the decision is still being
+        // made. What is left is the catch-up rule, which is a different fact and
+        // the one nobody can guess.
         <p className="hint" data-testid="plans-empty">
           Nothing is scheduled yet. A scheduled question is asked in this conversation, the same way
-          you would ask it yourself, and only while this tab is open. Close the tab and nothing
-          runs; open it again and a question that came due while you were away is asked once,
-          however long you were gone.
+          you would ask it yourself, and one that came due while you were away is asked once when
+          you open the tab again, however long you were gone.
         </p>
       ) : (
         <>
@@ -308,13 +328,14 @@ export function SchedulePanel({
               )
             })}
           </ul>
-          {/* The honesty that used to live only in the empty state, which is the
-              one place a person with schedules never looks. These times are a
-              forecast made by a page that stops existing when the tab does. */}
+          {/* What these particular numbers are, for the reader who has schedules
+              and therefore never sees the empty state. Not the tab caveat a
+              second time — that is said beside the button and only there — but
+              the two things a row's time hides: whose clock it is, and what
+              becomes of the one that comes round while nobody is looking. */}
           <p className="hint" data-testid="plans-clock">
-            Times are this device's clock and only count while this tab is open on the conversation
-            a question belongs to. One whose time came round while you were away is asked once when
-            you come back, not at the minute it says.
+            Times are this device's clock. One whose time came round while you were away is asked
+            once when you come back, not at the minute it says.
           </p>
         </>
       )}

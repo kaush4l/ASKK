@@ -758,6 +758,40 @@ button {
  * absent: a control a person has to discover by sweeping the pointer across the
  * page is a control most people never find.
  */
+/*
+ * A turn that never got an answer, marked where it happened.
+ *
+ * The error card at the bottom of the screen is dismissed — by a settings save,
+ * by the next question — and the question it belonged to then sits in the
+ * transcript looking exactly like an answered one. Measured: a reviewer's first
+ * question became permanently indistinguishable from a successful turn, with no
+ * way left to retry it.
+ */
+.unfinished {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0.4rem 0 0;
+  padding: 0.4rem 0.6rem;
+  border-left: 2px solid var(--bad);
+  color: var(--dim);
+  font-size: var(--t-small);
+}
+
+.unfinished button {
+  padding: 0.25rem 0.6rem;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--raise);
+  color: var(--text);
+  font-size: var(--t-micro);
+}
+
+.unfinished button:hover {
+  border-color: var(--signal-line);
+  color: var(--signal);
+}
+
 .msg-actions {
   display: flex;
   gap: 0.15rem;
@@ -1708,6 +1742,19 @@ button {
   cursor: not-allowed;
 }
 
+/* A finger is 44px and these compute to 31 and 38 from their padding. The
+   composer has kept that floor since it was written; this panel is the one
+   screen that never did, and it is also the screen a reviewer found shipping
+   raw browser defaults. `input.plan-what` is tag-qualified because the same
+   class names the list row's text, which must not gain a 44px floor. */
+@media (pointer: coarse) {
+  input.plan-what,
+  .plan-when select,
+  .plan-when button {
+    min-height: 44px;
+  }
+}
+
 .plan-when .dim {
   color: var(--faint);
 }
@@ -2050,6 +2097,28 @@ button {
 
 /* ── narrow ─────────────────────────────────────────────────────────────── */
 
+/* On a mouse the floor is the 24px WCAG 2.2 asks for, applied where the app was
+   under it. A pointer is precise; a finger is not, and inflating every control
+   to 44px on a desktop would be spending the density this interface is for.
+   FIRST, and that is not tidiness: these selectors and the touch block's are
+   the same specificity, so whichever is written last wins, and written last
+   this one held the notes' dismiss at 24px on a phone. */
+.msg-actions button,
+.chip button,
+.notes li button,
+.menu-row .rowact button,
+.thinking summary,
+.step > summary {
+  min-height: 24px;
+}
+
+.msg-actions button,
+.chip button,
+.notes li button,
+.menu-row .rowact button {
+  min-width: 24px;
+}
+
 /*
  * The smallest a control may be where a finger is the pointer.
  *
@@ -2064,12 +2133,37 @@ button {
  * can name.
  */
 @media (hover: none) {
+  /* The class names as well as the elements: `.iconbutton` and `.composer .act`
+     set a min-height of their own, and a bare `button` selector loses to both
+     on specificity. Measured — the header's controls stayed at 34px while
+     everything without a class went to 44. */
   button,
   [role='tab'],
   summary,
   input,
   select,
-  textarea {
+  textarea,
+  .iconbutton,
+  .composer .act,
+  .place,
+  .segmented button,
+  .settings h2 button,
+  .filelist-head button,
+  .fileview .steps button,
+  .empty .primary,
+  .examples button,
+  .menu-new,
+  .menu-row > button:first-child,
+  /* These three carry a min-height of their own from the desktop rules below,
+     at a higher specificity than a bare element selector, so they have to be
+     named here too. Measured: they were the last two under the floor. */
+  .composer textarea,
+  .msg-actions button,
+  .chip button,
+  .notes li button,
+  .menu-row .rowact button,
+  .thinking summary,
+  .step > summary {
     min-height: 44px;
   }
 
@@ -2089,26 +2183,6 @@ button {
   .segmented button {
     padding-block: 0.6rem;
   }
-}
-
-/* On a mouse the floor is the 24px WCAG 2.2 asks for, applied where the app
-   was under it. A pointer is precise; a finger is not, and inflating every
-   control to 44px on a desktop would be spending the density this interface
-   is for. */
-.msg-actions button,
-.chip button,
-.notes li button,
-.menu-row .rowact button,
-.thinking summary,
-.step > summary {
-  min-height: 24px;
-}
-
-.msg-actions button,
-.chip button,
-.notes li button,
-.menu-row .rowact button {
-  min-width: 24px;
 }
 
 @media (max-width: 62rem) {

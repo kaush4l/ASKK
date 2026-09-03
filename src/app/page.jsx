@@ -1040,6 +1040,11 @@ export default function Page() {
 
   return (
     <div className="shell">
+      {/* Straight to the conversation, past a header of five controls. There
+          were no landmarks worth skipping to and no way past them. */}
+      <a className="skip" href="#composer">
+        Skip to the message box
+      </a>
       <Header
         ready={ready}
         title={conversations.find((one) => one.id === conversationId)?.title}
@@ -1076,7 +1081,7 @@ export default function Page() {
               <section className="empty">
                 {modelHealth && !modelHealth.reachable ? (
                   <>
-                    <h2>No model yet</h2>
+                    <h1>No model yet</h1>
                     <p data-testid="no-model">{modelHealth.detail}</p>
                     <button
                       type="button"
@@ -1089,7 +1094,7 @@ export default function Page() {
                   </>
                 ) : (
                   <>
-                    <h2>Ask it something</h2>
+                    <h1>Ask it something</h1>
                     <p>
                       It can search the web, run commands on a Linux machine inside this tab, keep
                       files of its own, and hand a question to a second agent when the answer is
@@ -1116,18 +1121,29 @@ export default function Page() {
               </section>
             </div>
           ) : (
-            <Transcript
-              scrollRef={scrollRef}
-              messages={messages}
-              busy={busy}
-              run={run}
-              observations={observations}
-              onSay={say}
-              onCopy={remember}
-              onShare={hand}
-              speaking={speaking}
-              copied={copied}
-            />
+            <>
+              {/* The title of what is on screen, for an outline that has one.
+                  Not drawn: the conversation's name is already in the header,
+                  and a second copy of it above the transcript would be the
+                  page saying the same thing twice. */}
+              <h1 className="offscreen">
+                {conversations.find((one) => one.id === conversationId)?.title || 'Conversation'}
+              </h1>
+              <Transcript
+                scrollRef={scrollRef}
+                messages={messages}
+                busy={busy}
+                run={run}
+                observations={observations}
+                failed={failed}
+                onRetry={() => failed && ask(failed.text, conversationId, failed.files)}
+                onSay={say}
+                onCopy={remember}
+                onShare={hand}
+                speaking={speaking}
+                copied={copied}
+              />
+            </>
           )}
 
           <div className="tray">

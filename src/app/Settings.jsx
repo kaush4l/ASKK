@@ -132,13 +132,37 @@ export function Settings({ settings, agents, onChange, onSave, onClose, testing,
           </label>
         ) : (
           <>
+            {/* A LIST when the server gave one, and a free field when it did
+                not. "exactly what that server calls the model" was recall of a
+                string the app already had in hand: the connection check reads
+                `/v1/models`, and a reviewer typed a name that did not exist,
+                got a green tick, saved, sent, and failed. */}
+            {/* biome-ignore lint/a11y/noLabelWithoutControl: the control is one of
+                the two branches below, and the rule cannot see through a
+                conditional. Both are wrapped by this label. */}
             <label>
               Model name
-              <input
-                {...field('model')}
-                placeholder="exactly what that server calls the model"
-                data-testid="model"
-              />
+              {health?.listed?.length ? (
+                <select {...field('model')} data-testid="model">
+                  {health.listed.includes(settings.model) ? null : (
+                    <option value={settings.model}>
+                      {settings.model || 'Choose one…'}
+                      {settings.model ? ' — not on this server' : ''}
+                    </option>
+                  )}
+                  {health.listed.map((id) => (
+                    <option key={id} value={id}>
+                      {id}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  {...field('model')}
+                  placeholder="exactly what that server calls the model"
+                  data-testid="model"
+                />
+              )}
             </label>
             <label>
               Address
@@ -175,9 +199,18 @@ export function Settings({ settings, agents, onChange, onSave, onClose, testing,
               >
                 <span className="word">{testing ? 'Checking…' : 'Check the connection'}</span>
               </button>
+              {/* Three answers, not two. A green tick that could not fail on the
+                  field most likely to be wrong is worse than no check: it makes
+                  a person trust the whole app rather than suspect one typo. */}
               {health ? (
-                <p className="aside" data-testid="test-result">
-                  {health.reachable ? '✓ answered' : health.detail}
+                <p className="aside" data-testid="test-result" role="status">
+                  {!health.reachable
+                    ? health.detail
+                    : health.modelListed === false
+                      ? health.detail
+                      : health.modelListed === true
+                        ? `answered, and it has ${settings.model}`
+                        : 'answered — it does not say which models it has, so the name is yours to get right'}
                 </p>
               ) : null}
             </div>

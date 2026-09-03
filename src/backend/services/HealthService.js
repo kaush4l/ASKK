@@ -25,6 +25,22 @@ import { Blocked } from '../../core/tools/HttpPort.js'
  * on every page load is a probe that costs money to open a tab — and not a
  * HEAD, because several OpenAI-compatible servers answer 405 to one.
  *
+ * That GET is also the only moment this app is ever told what a server calls
+ * the things it serves, and the listing it answers with used to be dropped on
+ * the floor. Two words came back — answered — while the settings sheet asked
+ * for "exactly what that server calls the model", which is the one field on
+ * that form nobody can fill from memory: it is whatever a stranger's server
+ * decided to name some weights. So the ids are read out and handed back, and
+ * the configured name is checked against them, because a probe that holds the
+ * answer and reports a tick is a probe that made the person guess.
+ *
+ * What the listing may NOT do is convict a name on its own. Plenty of
+ * OpenAI-compatible servers ignore `/models` entirely and answer any completion
+ * with whatever is loaded, so "that name is not in the listing" and "there is
+ * no listing to check it against" are two different facts and only the first
+ * of them is worth a sentence. Collapsing them would be this same defect told
+ * backwards: a confident verdict about a setup that works.
+ *
  * A failure here is a RESULT, not an `Outcome.failed`: an unreachable endpoint
  * is a state of the world, and reporting it as a failure would put a red error
  * on screen for someone who has simply not started their server yet.
@@ -33,8 +49,14 @@ import { Blocked } from '../../core/tools/HttpPort.js'
 /** Long enough for a laptop's own server to wake, short enough not to delay a boot. */
 const TIMEOUT = 4000
 
-/** Nothing is read; only the status matters, and a listing can be long. */
-const LIMIT = 8 * 1024
+/**
+ * Enough to hold a whole listing. This was 8 KB while nothing was read from the
+ * body and only the status mattered; now that the ids are what the probe came
+ * for, a cap that stops half way turns a listing this app could have read into
+ * one it cannot parse at all — and an endpoint that serves a few hundred models
+ * is an ordinary hosted one, not an exotic case.
+ */
+const LIMIT = 256 * 1024
 
 export class HealthService {
   constructor({ settings, http = null } = {}) {
@@ -44,8 +66,20 @@ export class HealthService {
 
   /**
    * @returns {Promise<Outcome>} value is
-   *   `{configured, reachable, kind, endpoint, model, detail}` — `detail` is a
-   *   sentence for a person, empty when there is nothing to say.
+   *   `{configured, reachable, kind, endpoint, model, listed, modelListed,
+   *   detail}` — `detail` is a sentence for a person, empty when there is
+   *   nothing to say.
+   *
+   *   `listed` is every model id that endpoint named, in the order it named
+   *   them, and it is ALWAYS an array — empty when there was no listing to
+   *   read, never absent — so a form can offer it as the choices for the field
+   *   a person otherwise has to type from memory. `modelListed` says whether
+   *   `model` is one of them: `true`, `false`, or `null` for cannot-tell, which
+   *   is what a server that lists nothing leaves behind. The last two must not
+   *   be rendered alike. `false` is a name that will fail on the first real
+   *   question and is worth interrupting someone over; `null` is a server
+   *   keeping its own counsel, which is most of them, and saying anything about
+   *   it would be inventing a fault out of a silence.
    *
    *   `configured` and `reachable` are two facts and not one. `reachable`
    *   answers "did something answer", which nothing can while there is nothing
@@ -77,6 +111,10 @@ export class HealthService {
         kind,
         endpoint: needsAddress ? baseUrl : '',
         model,
+        // Nobody has been asked anything yet, so nothing is known about what
+        // any server serves. Empty, and undecided — not "not listed".
+        listed: [],
+        modelListed: null,
         detail: unfinished,
       })
     }
@@ -91,6 +129,11 @@ export class HealthService {
         kind,
         endpoint: '',
         model,
+        // There is no endpoint to list anything, and the id is a name on a
+        // model hub rather than one a local server chose, so there is nothing
+        // here to check it against and nothing to offer as a choice.
+        listed: [],
+        modelListed: null,
         detail: '',
       })
     }
@@ -102,6 +145,8 @@ export class HealthService {
         kind,
         endpoint: baseUrl,
         model,
+        listed: [],
+        modelListed: null,
         detail: 'This build cannot make an HTTP request, so the model cannot be checked.',
       })
     }
@@ -137,17 +182,38 @@ export class HealthService {
     // problem and a server that does not list models are both a running server,
     // and the first real question will say which.
     if (status > 0) {
+      // Only a success carries a listing. A 401 body is a refusal and a 404
+      // body is somebody's error page; reading either one as "that server lists
+      // no models" would attach a note about a fault the status has already
+      // named, and would call a name unchecked when it was never asked about.
+      const listing = ok(status) ? listingOf(asked.value) : { ids: [], note: '' }
+      // Three states, and the empty listing is the reason for the third. A
+      // server that named nothing has said nothing about this name either way.
+      const modelListed = listing.ids.length ? listing.ids.includes(model) : null
+
+      // The key comes first when it was refused. A server that would not read
+      // the request has not told us what it serves, so there is no listing to
+      // argue with, and the key is the thing to go and fix in either case.
+      const detail =
+        status === 401 || status === 403
+          ? 'The server answered and refused the key. Check the key in settings.'
+          : modelListed === false
+            ? `${baseUrl} answered, but does not list ${model}. It lists ${aFewOf(listing.ids)}. Open settings and name one of them.`
+            : ''
+
       return Outcome.ok({
         configured: true,
+        // The server is up and its answer was read, so it is reachable even
+        // when the name is wrong. Demoting this on a bad name would send
+        // someone to restart a server that is running perfectly.
         reachable: true,
         kind,
         endpoint: baseUrl,
         model,
-        detail:
-          status === 401 || status === 403
-            ? 'The server answered and refused the key. Check the key in settings.'
-            : '',
-      })
+        listed: listing.ids,
+        modelListed,
+        detail,
+      }).withNote(listing.note)
     }
 
     const detail =
@@ -166,9 +232,76 @@ export class HealthService {
       kind,
       endpoint: baseUrl,
       model,
+      // Silence lists nothing, and a name cannot be checked against silence.
+      listed: [],
+      modelListed: null,
       detail,
     })
   }
+}
+
+/** Did that answer carry a body worth reading, or only a status worth reporting? */
+function ok(status) {
+  return status >= 200 && status < 300
+}
+
+/**
+ * The model ids in a `/models` answer, and — when there are none — which way it
+ * failed to say any.
+ *
+ * One reader for both wires, because there is only one shape: OpenAI answers
+ * `{object, data: [{id}]}` and Anthropic answers `{data: [{type, id}]}`, and
+ * they differ only in fields nothing here reads. A branch on `kind` would be a
+ * fork with two identical arms, and the headers above already carry the whole
+ * of the difference between the two.
+ *
+ * Nothing here throws, and none of these is an `Outcome.failed`. A body that
+ * will not parse is a fact about that server, not a fault in this app: reported
+ * as a failure it would put a red error on the screen of someone whose model
+ * answers questions perfectly well. The honest report is an empty list, which
+ * reads as cannot-tell, plus a note saying WHICH way it could not tell — a
+ * reader who sees "not JSON" knows to go and look at what that address really
+ * is, and a reader told only "no models" would blame the server.
+ */
+function listingOf({ text = '', truncated = false }) {
+  let parsed
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    return {
+      ids: [],
+      note: truncated
+        ? `the model listing was longer than the ${LIMIT} bytes this probe reads, so only part of it arrived`
+        : 'the model listing was not JSON, so nothing could be read from it',
+    }
+  }
+  const rows = parsed?.data
+  if (!Array.isArray(rows))
+    return {
+      ids: [],
+      note: 'the model listing had no `data` array, so nothing could be read from it',
+    }
+  // A row with no id, or an id that is not a string, is not a name anyone can
+  // be asked to type, and offering one as a choice would be offering a dead end.
+  return {
+    ids: rows.map((row) => row?.id).filter((id) => typeof id === 'string' && id !== ''),
+    note: '',
+  }
+}
+
+/**
+ * A few of the ids, named the way a person would name them.
+ *
+ * Every id would put a hosted catalogue of several hundred into one sentence,
+ * and none at all would leave the reader holding a correction with no way to
+ * make it — which is the dead end the tick left them in, one step further
+ * along. A couple of real names is enough to show what KIND of name that server
+ * wants, and the count says how much more there is to choose from.
+ */
+function aFewOf(ids) {
+  const few = ids.slice(0, 3)
+  const said = few.length > 1 ? `${few.slice(0, -1).join(', ')} and ${few.at(-1)}` : few[0]
+  return ids.length > few.length ? `${said} (${ids.length} in all)` : said
 }
 
 /**

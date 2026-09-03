@@ -681,6 +681,18 @@ await send(
   { width: 390, height: 844, deviceScaleFactor: 2, mobile: true },
   session,
 )
+// The POINTER as well as the width, and they are two different overrides.
+// `setDeviceMetricsOverride` resizes and nothing more: every touch-target rule
+// in the stylesheet sits behind `@media (hover: none)`, and a check that only
+// resized would measure the DESKTOP's controls at the phone's width and report
+// them as passing. Measured: with the width alone,
+// `matchMedia('(hover: none)').matches` is false.
+//
+// And it is touch emulation that flips it, not `setEmulatedMedia` — that
+// command takes `prefers-color-scheme` and friends, and answers `false` for
+// hover and pointer. Measured the same way, which is the only reason this line
+// is the one it is.
+await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 }, session)
 const phone = await evaluate(
   `(async () => {
      const pick = (id) => document.querySelector('[data-testid="' + id + '"]')
@@ -714,12 +726,48 @@ const phone = await evaluate(
      globalThis.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
      await new Promise((r) => setTimeout(r, 250))
      out.escaped = !pick('settings')
+
+     // What a finger has to hit. Measured across everything on screen at once
+     // rather than named control by control, because the finding was that the
+     // LARGEST interactive element in the whole app was 44x40 and three were
+     // under even 24x24 — a remove-attachment cross at 14x12, a dismiss at
+     // 16x18. A list of names would have measured the ones somebody remembered.
+     out.small = [...document.querySelectorAll('button, [role="tab"], input, select, textarea, summary, a')]
+       .map((node) => ({ node, box: node.getBoundingClientRect() }))
+       .filter(({ node, box }) => {
+         if (!box.width || !box.height) return false
+         // A hidden control is not a target: the skip link sits off-screen until
+         // it takes focus, and a file picker is deliberately invisible. No
+         // backticks in comments inside these bodies — the body is a template
+         // literal and one ends the string. It has cost this file three runs.
+         const style = getComputedStyle(node)
+         if (style.visibility === 'hidden' || Number(style.opacity) === 0 || node.hidden)
+           return false
+         // Off-screen is not a target either: the skip link is parked above the
+         // viewport until it takes focus, which is what a skip link is.
+         return box.bottom > 0 && box.right > 0 && box.top < innerHeight
+       })
+       .filter(({ box }) => box.height < 44 || box.width < 24)
+       // Concatenation, not a template literal: this whole body is one, and a
+       // nested backtick ends the string. Third time in this file.
+       .map(
+         ({ node, box }) =>
+           node.tagName +
+           '.' +
+           (node.className || node.type) +
+           ' ' +
+           Math.round(box.width) +
+           'x' +
+           Math.round(box.height),
+       )
+       .slice(0, 8)
      return out
    })()`,
   session,
   true,
 )
 await send('Emulation.clearDeviceMetricsOverride', {}, session)
+await send('Emulation.setTouchEmulationEnabled', { enabled: false }, session)
 
 if (phone?.where) await fail(`the settings sheet ${phone.where} on a phone`, problems)
 if (phone.overflow > 0 || phone.page > 0)
@@ -728,6 +776,12 @@ if (phone.closeRight > phone.width || phone.widest > phone.width)
   await fail(`part of the settings sheet is off the right edge: ${JSON.stringify(phone)}`, problems)
 if (!phone.escaped)
   await fail('escape does not close the settings sheet, and on a phone nothing else did', problems)
+if (phone.small?.length)
+  await fail(`controls under a finger's size on a phone: ${phone.small.join(', ')}`, [
+    'The floor is 44px tall on a coarse pointer; the rules are in globals.css',
+    'under @media (hover: none).',
+    ...problems,
+  ])
 
 console.log(
   `smoke: the settings sheet fits a 390px phone (widest ${phone.widest}px) and escape closes it`,

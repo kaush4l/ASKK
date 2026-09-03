@@ -55,10 +55,14 @@ export function Header({
     <>
       <header className="topbar">
         <div className="brand">
-          <h1 className="wordmark" data-live={String(ready)}>
+          {/* A `p`, not the document's heading. The `h1` used to be this 13px
+              wordmark while the visible title of the page — "No model yet", or
+              the conversation you are in — was an `h2` under it, so a screen
+              reader's outline named the product and never the screen. */}
+          <p className="wordmark" data-live={String(ready)}>
             <span className="pulse" />
             ASKK
-          </h1>
+          </p>
           <button
             type="button"
             className="place"
