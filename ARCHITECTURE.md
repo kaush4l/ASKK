@@ -1273,12 +1273,33 @@ files from the page, and the model has never been told the guest has Python.
 
 **Open, in the order that unblocks the most:**
 
-1. **Push it.** The environment works in a browser, the deploy directory that
-   carries it builds from a clean checkout and has been driven in a browser, and
-   `https://kaush4l.github.io/ASKK/sandbox/sandbox.wasm.gz` is still a 404. This
-   is no longer a host hunt or a tracking problem: it is `bun scripts/deploy.js`
-   and one push, then a `curl` that answers 200. See *Getting it to the visitor*
-   above.
+1. **Push it — and this is the owner's, which is why it is still here.**
+   Everything up to the push is done and was re-run on 2026-09-02 at `0d8d98f`:
+   `bun scripts/deploy.js` extracts 530 tracked files into a clean checkout,
+   installs with `--frozen-lockfile`, builds, and produces `dist/` at 59 files
+   and 77,829,295 bytes of which the guest is 52,602,121, fetched on demand and
+   not on load. `bun scripts/deploy-check.js` then drove that directory in a
+   real browser and cleared its own bar: **not isolated, needing no
+   `SharedArrayBuffer`, costing nothing extra to open, and running a real
+   command in a real Linux guest** — the image served both ways a host may
+   answer a `.gz`, 52,602,121 transferred without `Content-Encoding` and
+   143,205,983 with it, booting either way.
+
+   `scripts/deploy.js` does not push, and says so in its own docblock:
+   *"Publishing is the owner's, and a script that both builds and publishes
+   turns one review into none."* So `https://kaush4l.github.io/ASKK/sandbox/sandbox.wasm.gz`
+   is still a 404 and the last step is a person's:
+
+   ```
+   bun scripts/deploy.js && bun scripts/deploy-check.js   # both green today
+   # then publish dist/ to gh-pages, and curl the guest URL for a 200
+   ```
+
+   One thing that run refuted rather than confirmed, and it is now corrected in
+   the source it was refuting: `composition.js` said *"the first `shell` call is
+   what pays for it"*. It is the first thing that needs a guest COMMAND, and an
+   agent declaring an mcp server runs one before the first prompt — so this
+   app's first message pays for the image even when it asks for nothing.
 
 2. **Done — a way IN to the agent's files.** `files.write` is on the kernel and
    `FilesPanel` has a picker and an editor. The route arrived with the

@@ -67,9 +67,18 @@ export async function buildKernel() {
   // is derived here, once, for the same reason the image URL beside it is.
   const pool = new AgentWorkerPool({ basePath: base })
 
-  // The sandbox is constructed, not booted. Its image is ~100 MB and an agent
-  // that never runs a command must never download it — the first `shell` call
-  // is what pays for it.
+  // The sandbox is constructed, not booted. Its image is ~50 MB compressed and
+  // an agent that never needs the guest must never download it.
+  //
+  // WHAT PAYS FOR IT, corrected by `scripts/deploy-check.js` against the built
+  // deploy: the first thing that needs a guest COMMAND, which is not the same
+  // as the first `shell` call — the sentence this comment carried for three
+  // waves. An agent whose file declares an mcp server runs one guest command to
+  // list that server's tools, once a session, before the first prompt is
+  // rendered; `agents/main/agent.md` declares one, so this app's very first
+  // message pays for the image even when it asks for nothing. The check prints
+  // CLAIM CONFIRMED or CLAIM REFUTED on every run rather than asserting, and it
+  // printed REFUTED against the sentence that used to be here.
   //
   // The image URL is DERIVED, exactly like the worker URL beside it, because the
   // two files ship side by side: `public/sandbox/` is copied into the export
