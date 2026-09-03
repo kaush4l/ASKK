@@ -33,12 +33,34 @@ silently needs a thing blames the wrong thing when the thing is missing.
 | `git`, `tar`, `bun` | yes | — |
 | a network for `bun install` | first run only (bun hardlinks from its cache after) | — |
 | a Chromium | — | yes; `CHROME` overrides the search |
-| a model at `http://127.0.0.1:8873/v1` | — | **yes**, and `deploy-check.js` plants it: `SettingsService.js` ships no default address any more, because a fictional one was advertised in the header as real |
+| a model on the OpenAI wire, **already running**, at `http://127.0.0.1:8873/v1` | — | **yes**; `MODEL_URL` and `MODEL_NAME` name another one, and the address is asked before a browser is launched |
 | a `dist/` from `deploy.js` | — | yes, including its `deploy.json` |
 
-The model is the one that bites. With none, `deploy-check.js` drives two turns
-that never answer, spends up to 2×300 s, and reports *the loop never surfaced
-the guest's output: ""* — blaming the loop for an absent model.
+The model is the one that bites, and until this pass nothing in the check ever
+said its name. `SettingsService.DEFAULT_SETTINGS` shipped
+`http://127.0.0.1:8873/v1` and `Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp` — one
+machine's, the one `docs/TESTBED.md` records — so a page that had been
+configured by nobody was already pointed at a real server, and `deploy-check.js`
+inherited that without a line about it. Those defaults are gone, because the
+header advertised that model as live while the page under it said there was
+none. **So the check plants the model itself**: the settings record goes into
+the same IndexedDB store the app boots from, exactly as `scripts/smoke.js`
+plants its own, and the page is reloaded onto it — *after* the isolation and
+first-load cells, so what a stranger pays is still measured on the page a
+stranger gets, with nothing configured.
+
+**It needs a real model by design.** This is the one thing in the tree that
+drives the whole loop through the artifact a visitor downloads, and there is no
+scripted endpoint in it standing in for one as there is in the smoke; a scripted
+model would prove the page can talk to `deploy-check.js`. The address defaults to
+`http://127.0.0.1:8873/v1` and the model id to
+`Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp` — the testbed, so an operator who already
+had this working changes nothing — and **`MODEL_URL` and `MODEL_NAME` override
+both**. With nothing there, a `GET $MODEL_URL/models` is refused in
+milliseconds and the run stops naming the address, both variables and the reason
+it insists on a model. Before, it drove two turns that never answered, spent up
+to 2×300 s, and reported *the loop never surfaced the guest's output: ""* —
+blaming the loop, the sandbox and the emulator for a server nobody had started.
 
 ---
 
@@ -367,8 +389,9 @@ whose limits are not written down is quoted past them.
 - **No mobile ceiling.** 38.2 MiB down and 102 MiB resident on a phone, over
   cellular, with tab discard, is the one cost with a plausible hard failure in
   it and it is unmeasured.
-- **The model is local.** The agent loop was driven against
-  `http://127.0.0.1:8873/v1`, which answers `access-control-allow-origin: *`. A
+- **The model is local.** The agent loop was driven against `MODEL_URL`, which
+  defaults to `http://127.0.0.1:8873/v1` and answers
+  `access-control-allow-origin: *`. A
   visitor with a hosted key is a different CORS story, measured for the request
   shapes in `scripts/probe/results/` but not through this page.
 - **The `Content-Encoding` arm is this server's.** Which of the two arms GitHub
@@ -389,6 +412,14 @@ whose limits are not written down is quoted past them.
 
 A check nobody has watched fail is not a check. Each was broken on purpose and
 the failure recorded.
+
+**Two rows are missing, and they are the two added above.** The model probe and
+the settings plant were written on a machine with no server on `8873`, so the
+probe has only ever been watched do the thing it does when there is no model —
+*nothing answered at `http://127.0.0.1:8873/v1`*, in under a second, which is
+the whole point of it — and the plant has never been run at all. They are the
+only claims on this page resting on reading rather than running, and the first
+person with a model owes them a row.
 
 | break | what happened |
 |---|---|

@@ -1809,6 +1809,17 @@ button {
   min-width: 0;
 }
 
+/*
+ * And the label is a grid of its own, so `min-width: 0` on it is not enough:
+ * its single column is `auto`, which is the max-content width of the `<select>`
+ * inside it, and the select then overflows the label that was correctly
+ * narrowed. Measured after the first fix — 393px of content in a 390px phone,
+ * from the longest option of the speech-precision picker.
+ */
+.settings label {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .settings label input,
 .settings label select {
   max-width: 100%;

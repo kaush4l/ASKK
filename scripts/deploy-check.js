@@ -35,9 +35,12 @@
  *   worker, emulator, and back into the transcript. The smoke imports
  *   `C2wSandbox` from `src/` and constructs it by hand; this one never touches
  *   it, so it is the only thing that proves `composition.js` yields a working
- *   sandbox INSIDE the artifact.
+ *   sandbox INSIDE the artifact. The model in that sentence is a real one, on
+ *   the operator's own machine — see `MODEL_URL` below, which is where the
+ *   address comes from and where it is checked before anything is spent.
  *
  * Usage:  bun scripts/deploy-check.js [--dir dist]
+ *         MODEL_URL=http://host:port/v1 MODEL_NAME=<id> bun scripts/deploy-check.js
  */
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
@@ -54,9 +57,42 @@ try {
 } catch (cause) {
   console.error(`\ndeploy-check: ${cause.message}`)
   console.error('  Usage: bun scripts/deploy-check.js [--dir <dir>]')
+  console.error('  MODEL_URL and MODEL_NAME name the model the two turns are driven against.')
   process.exit(1)
 }
 const DIST = values.dir ?? join(REPO, 'dist')
+
+/**
+ * The model this check drives the page against, and where it is.
+ *
+ * `MODEL_URL` is an OpenAI-compatible base address and `MODEL_NAME` the id sent
+ * as `model`; the defaults are the testbed `docs/TESTBED.md` records, so an
+ * operator who already ran this needs to change nothing and one with a server
+ * elsewhere needs to change no file.
+ *
+ * They are read HERE, and named at all, because they used to be read nowhere.
+ * `SettingsService.DEFAULT_SETTINGS` shipped exactly this address and exactly
+ * this model, so a page opened with no configuration was already pointed at a
+ * real server and this check inherited that silently — it configured nothing
+ * and proved the loop anyway. Those defaults are gone: they were one machine's,
+ * and the app advertised that model in its header as live while the page under
+ * it said there was none. What was an unstated default of the application is
+ * now a stated default of the check that needs it.
+ *
+ * `||` rather than `??` so that an exported-but-empty variable means the
+ * default, instead of an empty address the probe below then has to name.
+ */
+const MODEL_URL = process.env.MODEL_URL || 'http://127.0.0.1:8873/v1'
+const MODEL_NAME = process.env.MODEL_NAME || 'Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp'
+
+/**
+ * Long enough for a laptop's own server to wake, short enough to be a check.
+ *
+ * The same ceiling `HealthService` gives its own probe, because this asks the
+ * same server the same question and a check that gave up sooner than the app
+ * does would refuse a setup the app is happy with.
+ */
+const MODEL_PROBE_MS = 4000
 
 /**
  * The two turns, and neither is decoration.
@@ -129,6 +165,76 @@ if (!manifest.sandboxImage.startsWith('/'))
 
 const chrome = findChrome()
 if (chrome.problem) await fail(chrome.problem, chrome.details)
+
+// --- the model, asked before a browser is launched --------------------------
+
+/**
+ * Is there anything at that address at all?
+ *
+ * This is the one precondition that used to be discovered at the END. With no
+ * model the two turns below never answer, each waits out its own 300 s ceiling,
+ * and the run closes by reporting that the loop never surfaced the guest's
+ * output — which blames the loop, the sandbox and the emulator for a server
+ * nobody started. Ten minutes to say "there is no model" is not a check, so it
+ * is asked here, for four seconds, before a Chromium is spawned or a byte is
+ * served.
+ *
+ * A GET on `/models` and nothing else: the same request `HealthService` makes,
+ * so a server this refuses is a server the page would refuse too. Not a
+ * completion, which would spend tokens to find out; not a HEAD, which several
+ * OpenAI-compatible servers answer 405 to.
+ */
+const endpoint = await (async () => {
+  try {
+    const said = await fetch(`${MODEL_URL}/models`, {
+      headers: { accept: 'application/json' },
+      signal: AbortSignal.timeout(MODEL_PROBE_MS),
+    })
+    return { status: said.status, body: await said.text() }
+  } catch (cause) {
+    // Refused, unresolvable, or four seconds of silence — all the same fact to
+    // a reader, and the message is kept because "ECONNREFUSED" and "timed out"
+    // are different things to do next.
+    return { problem: cause?.message ?? String(cause) }
+  }
+})()
+
+if (endpoint.problem)
+  await fail(`nothing answered at ${MODEL_URL}`, [
+    `GET ${MODEL_URL}/models said: ${endpoint.problem}`,
+    'This check needs a real model BY DESIGN. It is the only thing in this tree',
+    'that drives the whole loop through the artifact a stranger downloads, and',
+    'there is no scripted endpoint in it standing in for one, as there is in',
+    'scripts/smoke.js — a scripted model would prove the page can talk to this',
+    'file rather than to a model.',
+    'Start a server at that address, or name the one you have:',
+    `  MODEL_URL   the OpenAI-compatible base address, now ${MODEL_URL}`,
+    `  MODEL_NAME  the model id to ask for, now ${MODEL_NAME}`,
+  ])
+
+/**
+ * What that server says it serves, when it says so in the usual shape.
+ *
+ * Printed and NOT asserted. Plenty of OpenAI-compatible servers ignore the
+ * `model` field entirely and answer with whatever is loaded, so refusing a name
+ * that is not in the listing would refuse setups that work — but a mismatch is
+ * also the second way this run can spend ten minutes on nothing, and a reader
+ * who can see both lines finds it in one.
+ */
+const serves = (() => {
+  try {
+    const listed = JSON.parse(endpoint.body)?.data
+    return Array.isArray(listed) ? listed.map((one) => one?.id).filter(Boolean) : []
+  } catch {
+    return []
+  }
+})()
+
+console.log(`deploy-check: ${MODEL_URL} answered ${endpoint.status}, driving ${MODEL_NAME}`)
+if (serves.length && !serves.includes(MODEL_NAME))
+  console.log(
+    `  note: that endpoint lists ${serves.length} model(s) and this is not one of them — ${serves.slice(0, 5).join(', ')}`,
+  )
 
 // --- a host that sends nothing ----------------------------------------------
 
@@ -358,6 +464,128 @@ console.log(
 console.log(
   `  the guest (${guestBytes} bytes) was requested ${guestOnLoad.length} time(s) before the first turn`,
 )
+
+// --- the settings the two turns are driven on -------------------------------
+
+/**
+ * The model, written into the store the app boots from, and a reload onto it.
+ *
+ * HERE and not sooner, which is the whole reason the cells above are worth
+ * reading: everything before this line was measured on the page exactly as a
+ * stranger gets it, with nothing configured, because that is what "what a first
+ * visit pays" means. Only the two turns need a model, so only they get one.
+ *
+ * Written to the database rather than typed into the settings form because what
+ * is under test is the turn and not the form — `scripts/smoke.js` plants the
+ * same record for the same reason, and this is that block with its imports
+ * taken out. It cannot import `SettingsService` or `composition.js`: this file
+ * serves `dist/` over a host that offers nothing else, and reading the working
+ * tree to describe an artifact built from some other ref is the exact leak
+ * `deploy.json` exists to close. So the database, its version, its stores and
+ * the record's id are spelled out below — and every way the database can
+ * disagree with one of them comes back as a sentence rather than as silence.
+ */
+const planted = await evaluate(
+  `(() => new Promise((resolve) => {
+     // The database and version buildKernel opens. A version that has moved on
+     // arrives here as a VersionError from the open, which is said rather than
+     // silently worked around: this file cannot know what a newer schema wants.
+     const request = indexedDB.open('askk', 4)
+     request.onupgradeneeded = () => {
+       const db = request.result
+       // Every store this version has, not only the one being written. Naming
+       // one of four would leave the app opening a database with no
+       // conversations, no files and no schedules — an upgrade runs once, so it
+       // would never create them either.
+       for (const store of ['conversations', 'settings', 'files', 'schedules'])
+         if (!db.objectStoreNames.contains(store)) db.createObjectStore(store, { keyPath: 'id' })
+     }
+     request.onerror = () =>
+       resolve({ where: 'the database would not open: ' + (request.error?.message ?? 'refused') })
+     // The page is holding this database open, so a version bump would block
+     // rather than fail. Answered as a sentence instead of waiting out the
+     // caller's ceiling with no reason attached.
+     request.onblocked = () => resolve({ where: 'the page is holding the database open' })
+     request.onsuccess = () => {
+       const db = request.result
+       // An id and two fields. SettingsService.get merges what it reads over
+       // DEFAULT_SETTINGS, so a record carrying only the two the defaults no
+       // longer hold IS a complete configuration — and writing the other twenty
+       // from here would be this file keeping its own copy of somebody else's
+       // defaults, wrong from the first one that changes.
+       const record = {
+         id: 'inference',
+         model: ${JSON.stringify(MODEL_NAME)},
+         baseUrl: ${JSON.stringify(MODEL_URL)},
+       }
+       const change = db.transaction('settings', 'readwrite')
+       change.objectStore('settings').put(record)
+       // On complete, not on the request's own success: a put that succeeds in
+       // a transaction that then aborts has written nothing.
+       change.oncomplete = () => {
+         db.close()
+         resolve({ saved: record })
+       }
+       change.onabort = () =>
+         resolve({ where: 'the write was abandoned: ' + (change.error?.message ?? 'aborted') })
+       change.onerror = () =>
+         resolve({ where: 'the settings store refused it: ' + (change.error?.message ?? '') })
+     }
+   }))()`,
+  session,
+  true,
+)
+if (!planted?.saved)
+  await fail(`could not plant the model settings: ${planted?.where ?? JSON.stringify(planted)}`, [
+    'The store is STORE_SETTINGS in src/backend/composition.js and the record is',
+    'the one SETTINGS_ID names in src/backend/services/SettingsService.js.',
+    ...problems(),
+  ])
+
+const relaunched = Date.now()
+await send('Page.navigate', { url }, session)
+let configured = 'none'
+while (Date.now() - relaunched < 20000) {
+  configured = await evaluate(
+    `document.querySelector('.wordmark')?.dataset.live ?? 'none'`,
+    session,
+  )
+  if (configured === 'true') break
+  if (problems().length) break
+  await Bun.sleep(50)
+}
+if (configured !== 'true')
+  await fail(
+    `the page did not come back on the planted settings (data-live=${configured}) after ${Date.now() - relaunched}ms`,
+    problems(),
+  )
+
+// And the page agrees there is a model, which is the half a write cannot prove.
+// `page.jsx` sets `ready` strictly after `health.model` answers — there is an
+// await between the two — so a page reporting live has already rendered its own
+// verdict, and one read is enough. It renders it in the empty frame, which is on
+// screen because `scripts/browser.js` launches into a throwaway profile: the
+// conversation this page has just made itself has nothing in it yet. Without
+// this line a record planted under a name the app does not read, or an endpoint
+// the browser cannot reach for a reason this process cannot see, is again a
+// discovery made ten minutes later and attributed to the loop.
+const saidNoModel = await evaluate(
+  `document.querySelector('[data-testid="no-model"]')?.textContent ?? ''`,
+  session,
+)
+if (saidNoModel)
+  await fail('the page cannot reach the model that was planted for it', [
+    `The page says: ${saidNoModel}`,
+    `${MODEL_URL} answered THIS process, so what is between them is the browser:`,
+    'a server that will not answer a page from another origin (the testbed sends',
+    'access-control-allow-origin: *), or a record that landed somewhere the app',
+    'does not read.',
+    ...problems(),
+  ])
+
+console.log('')
+console.log('## the model the turns are driven on')
+console.log(`  ${MODEL_NAME} at ${MODEL_URL}, planted in settings and the page reloaded onto it`)
 
 // --- turn one: the control, which needs no tool -----------------------------
 

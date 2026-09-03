@@ -662,6 +662,77 @@ console.log(
   `smoke: with no model reachable the page says so — ${JSON.stringify(String(unconfigured).slice(0, 60))}…`,
 )
 
+// --- the settings sheet, on a phone -----------------------------------------
+//
+// The four blockers a usability reviewer found in one sitting were all in this
+// screen, and none of them could be seen from a test that does not lay a page
+// out. The worst: one `<option>` carried an agent's whole 258-character
+// description, an option's text sizes its select, a select sizes its grid
+// column, and the column dragged the heading, every field and the close button
+// past the right edge — 1,813px of content on a 390px phone, where the sheet
+// began at x=651 and the screen was black. There was no scrollbar to say so and
+// no way out: escape did nothing, the backdrop did nothing, and the button that
+// opened it was underneath the form. Since the only route to naming a model
+// goes through here, a phone could never be made to work at all.
+//
+// So this is measured, at the width where it broke, on every run.
+await send(
+  'Emulation.setDeviceMetricsOverride',
+  { width: 390, height: 844, deviceScaleFactor: 2, mobile: true },
+  session,
+)
+const phone = await evaluate(
+  `(async () => {
+     const pick = (id) => document.querySelector('[data-testid="' + id + '"]')
+     const until = async (get, ms = 6000) => {
+       for (let i = 0; i < ms / 50; i++) {
+         const value = get()
+         if (value) return value
+         await new Promise((r) => setTimeout(r, 50))
+       }
+       return null
+     }
+     pick('settings-toggle')?.click()
+     const sheet = await until(() => document.querySelector('form.sheet'))
+     if (!sheet) return { where: 'settings never opened' }
+
+     const wrap = pick('settings')
+     const close = pick('settings-close').getBoundingClientRect()
+     const widest = Math.max(
+       ...[...sheet.querySelectorAll('*')].map((node) => node.getBoundingClientRect().right),
+     )
+     const out = {
+       overflow: wrap.scrollWidth - wrap.clientWidth,
+       page: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+       closeRight: Math.round(close.right),
+       widest: Math.round(widest),
+       width: window.innerWidth,
+     }
+
+     // Escape, which is the exit every modal owes a person and the one this
+     // sheet had none of.
+     globalThis.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+     await new Promise((r) => setTimeout(r, 250))
+     out.escaped = !pick('settings')
+     return out
+   })()`,
+  session,
+  true,
+)
+await send('Emulation.clearDeviceMetricsOverride', {}, session)
+
+if (phone?.where) await fail(`the settings sheet ${phone.where} on a phone`, problems)
+if (phone.overflow > 0 || phone.page > 0)
+  await fail(`the settings sheet overflows a 390px phone: ${JSON.stringify(phone)}`, problems)
+if (phone.closeRight > phone.width || phone.widest > phone.width)
+  await fail(`part of the settings sheet is off the right edge: ${JSON.stringify(phone)}`, problems)
+if (!phone.escaped)
+  await fail('escape does not close the settings sheet, and on a phone nothing else did', problems)
+
+console.log(
+  `smoke: the settings sheet fits a 390px phone (widest ${phone.widest}px) and escape closes it`,
+)
+
 // --- the delegating turn, through the page a visitor gets --------------------
 //
 // Realm four above proves the thread; this proves the WHOLE path a person
@@ -736,11 +807,9 @@ const turn = await evaluate(
      // Typed the way React hears it: the value setter on the ELEMENT's own
      // prototype, then an input event. Assigning .value alone updates the DOM
      // and not the state, so the form would submit an empty draft and the turn
-     // would never start — and calling the setter of the wrong prototype throws
-     // "Illegal invocation", which cost this check its first run.
-     // The setter of the element's OWN prototype. The composer is a
-     // textarea now — it has to be, for a page whose agent writes files —
-     // and HTMLInputElement's setter throws "Illegal invocation" on one.
+     // would never start. The composer is a textarea now — it has to be, for a
+     // page whose agent writes files — and HTMLInputElement's setter throws
+     // "Illegal invocation" on one, which cost this check a run.
      const protoFor = (node) =>
        node.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype
      Object.getOwnPropertyDescriptor(protoFor(input), 'value').set.call(
@@ -755,6 +824,37 @@ const turn = await evaluate(
      // poll on a timer read the rail either side of the line it was there to
      // find. An observer sees every state the rail was ever in.
      const seen = new Set()
+     /**
+      * Whether the reply's CONTRACT was ever on screen while it arrived.
+      *
+      * Measured by a reviewer: somebody who asked what 17 times 4 is watched the
+      * three scaffolding lines of the reply contract stream into the transcript
+      * for the whole time they were paying most attention, and then watched all
+      * three vanish. It cannot be sampled — the window is the length of one
+      * streamed reply against a scripted endpoint — so the transcript is
+      * watched for as long as the turn takes.
+      *
+      * No backticks in this comment: it lives inside a template literal, and
+      * one would end the string.
+      */
+     const leaked = new Set()
+     const readTranscript = () => {
+       const text = pick('transcript')?.textContent ?? ''
+       for (const field of ['think:', 'plan:', 'act:', 'result:']) {
+         if (text.includes(field)) leaked.add(field)
+       }
+     }
+     const leakWatcher = new MutationObserver(readTranscript)
+     // The BODY, not the transcript. On a cold page there are no messages, so
+     // the empty screen is what is mounted and the transcript element does not
+     // exist yet — observing it would attach to null and this check would pass
+     // by never having run. Measured: it did, on its first attempt.
+     leakWatcher.observe(document.body, {
+       childList: true,
+       subtree: true,
+       characterData: true,
+     })
+
      const rail = pick('status')
      const watcher = new MutationObserver(() => {
        const text = rail?.textContent ?? ''
@@ -772,8 +872,11 @@ const turn = await evaluate(
      )
      clearInterval(sampling)
      watcher.disconnect()
+     readTranscript()
+     leakWatcher.disconnect()
      return {
        answered: Boolean(answered),
+       leaked: [...leaked],
        rail: [...seen],
        transcript: (pick('transcript')?.textContent ?? '').slice(-400),
        error: pick('error')?.textContent ?? '',
@@ -795,6 +898,17 @@ if (!turn?.answered)
 // this the whole channel — agentWorker's onStep, the pool's progress branch,
 // the DELEGATE event, the line in page.jsx — can be deleted with every test
 // still green, because no test outside a browser can render a component.
+// And the reply's CONTRACT was never on screen while it arrived. `phrasing.js`
+// answers one question — where does the answer begin — and shows nothing before
+// it; without this check the whole of that can be deleted and every other test
+// stays green, because no test outside a browser watches text stream.
+if (turn.leaked?.length)
+  await fail(`the reply's contract was drawn in the transcript: ${turn.leaked.join(' ')}`, [
+    'visibleStream in src/app/phrasing.js decides what is shown while a reply',
+    'is still arriving, and Transcript.jsx draws it.',
+    ...problems,
+  ])
+
 const railSaid = (turn.rail ?? []).join(' | ')
 // In words. The line used to read `researcher: fetch (3)` — a name, a function
 // and a number — and now reads "researcher is reading a page", which is the
