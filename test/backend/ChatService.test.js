@@ -203,6 +203,44 @@ describe('ChatService and a run that was stopped', () => {
 })
 
 /**
+ * The catalogue's soul, in the prompt the model is actually handed.
+ *
+ * Every fake catalogue in this file answers `soul()` with `''`, which is
+ * correct for what those tests are about but means none of them can tell a
+ * wired seam from a deleted one — `soul: soul.value` could vanish from
+ * `ChatService.send` and every one of them would still pass. This is the test
+ * that would go red: a distinctive string out of `catalogue.soul()`, read back
+ * out of the prompt the transport was actually given.
+ */
+describe('the shared soul, in the prompt the model is given', () => {
+  test('what the catalogue answers for soul() is what the model reads', async () => {
+    const { service } = chatWith([answerTurn('ok')], {
+      catalogue: {
+        async spec() {
+          return Outcome.ok(
+            AgentSpec.of({ metadata: { name: 'main' }, body: 'be brief', source: 'test' }).value,
+          )
+        },
+        async all() {
+          return Outcome.ok([])
+        },
+        async soul() {
+          return Outcome.ok('a distinctive soul only this test writes, sha-marked-9f2c1')
+        },
+      },
+    })
+    const seen = []
+
+    await service.send({ id: 'c1', text: 'hello' }, (name, data) => {
+      if (name === EventName.PROMPT) seen.push(data)
+    })
+
+    const prompts = seen.map((event) => JSON.stringify(event)).join('\n')
+    expect(prompts).toContain('a distinctive soul only this test writes, sha-marked-9f2c1')
+  })
+})
+
+/**
  * What `_inferenceFor` actually hands the loop.
  *
  * Every other test in this file replaces that method, which is why a setting

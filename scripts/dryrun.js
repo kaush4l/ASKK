@@ -160,9 +160,11 @@ if (!spec.ok) {
 }
 
 const inference = new ScriptedInference({ replies })
+const soul = await catalogue.soul()
 const agent = buildAgent({
   spec: spec.value,
   inference,
+  soul: soul.value,
   // No peers: the roster is a single agent, so `peers` is empty in the app too.
   peers: [],
   context: describeEnvironment({ at: NOW }),
