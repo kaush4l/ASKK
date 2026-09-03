@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 /**
  * Questions that ask themselves.
@@ -46,6 +46,30 @@ const PERIODS = [
 const DAILY_SECONDS = 86_400
 
 /**
+ * How often this panel reads the clock while it is on screen.
+ *
+ * A relative time is a claim that it is being kept current, and this panel was
+ * not keeping it: a row was drawn when a schedule was created, removed or run,
+ * and at no other moment. Measured by a reviewer — eight samples over eighty
+ * seconds, "next in 1m" at every one of them, and the schedule fired somewhere
+ * in the middle without the words changing. A countdown that does not count is
+ * worse than the absolute time it replaced, because nothing on the row tells a
+ * reader which of the two they are looking at.
+ *
+ * Ten seconds and not one, because the finest thing any of these sentences says
+ * is a whole minute, and redrawing them every second would rewrite the same
+ * words fifty-nine times out of sixty. Ten and not sixty, because a row that
+ * says "due at the next check" is quoting the scheduler in `page.jsx`, whose
+ * own tick is `TICK_MS` — twenty seconds — and a sentence may not go staler
+ * than the thing it is describing.
+ *
+ * The timer lives with the panel, and the drawer mounts this panel only while
+ * this section is the open one, so the clock runs exactly while somebody is in
+ * a position to read it.
+ */
+const CLOCK_MS = 10_000
+
+/**
  * The two halves of the time field, which speaks `HH:MM` while the record and
  * the wire carry minutes past midnight.
  *
@@ -76,10 +100,16 @@ const said = (seconds, atMinutes) => {
     : `${period} at ${timeOf(atMinutes)}`
 }
 
-/** When it last ran, in the terms a person asks the question in. */
-function lastRan(at) {
+/**
+ * When it last ran, in the terms a person asks the question in.
+ *
+ * The clock arrives as an argument rather than being read in here, so that this
+ * sentence and the one about the next run are two facts about a single instant
+ * — and so that moving this panel through time is moving one number.
+ */
+function lastRan(at, now) {
   if (!at) return 'never run'
-  const minutes = Math.round(Math.max(0, Date.now() - at) / 60_000)
+  const minutes = Math.round(Math.max(0, now - at) / 60_000)
   if (minutes < 1) return 'just now'
   if (minutes < 60) return `${minutes}m ago`
   const hours = Math.round(minutes / 60)
@@ -117,10 +147,12 @@ function clockOf(at) {
  * schedule whose period it cannot read, and it will never run one of those —
  * "next in NaNm" under a row that is going to sit there forever is worse than
  * the silence, and a guess would be worse than either.
+ *
+ * `now` is the panel's own reading of the clock, passed in for the reason
+ * `lastRan` gives.
  */
-function nextRun(at) {
+function nextRun(at, now) {
   if (!at) return ''
-  const now = Date.now()
   // Not "now" and not "overdue": the page looks for due questions on a tick, so
   // what is true about something already past its time is that it goes at the
   // next look, and only while this tab is the one open on its conversation.
@@ -196,6 +228,25 @@ export function SchedulePanel({
 
   const daily = seconds === DAILY_SECONDS
 
+  // The clock every row is drawn from, read on a timer because nothing else was
+  // ever going to move it. One reading per render rather than a `Date.now()`
+  // inside each helper: a row's "next in 3m" and its "last ran 57m ago" are
+  // then two sentences about the same instant.
+  const [now, setNow] = useState(() => Date.now())
+
+  // Nothing to count while nothing is scheduled — the empty state says nothing
+  // a clock could change — so the timer starts with the first schedule and
+  // stops with the last. It reads on the way in as well as on the interval,
+  // because a schedule made nine seconds into a tick would otherwise be
+  // measured against a clock that had not moved since the panel opened.
+  useEffect(() => {
+    if (!schedules.length) return undefined
+    const read = () => setNow(Date.now())
+    read()
+    const timer = setInterval(read, CLOCK_MS)
+    return () => clearInterval(timer)
+  }, [schedules.length])
+
   async function add(event) {
     event.preventDefault()
     const asked = text.trim()
@@ -208,6 +259,41 @@ export function SchedulePanel({
       atMinutes: daily ? minutesOf(timeOfDay) : null,
     })
     setText('')
+  }
+
+  /**
+   * Remove, having said what stops.
+   *
+   * The same application asks before it deletes a conversation, and it asks
+   * carefully — `page.jsx` names the transcript, counts what is in it and says
+   * plainly that it cannot be undone, because a reviewer lost six messages to a
+   * button that did none of that. This control dropped a question on the press.
+   * Two destructive buttons in one app that disagree about whether a person
+   * meant it do not average out into half a safeguard; they teach that neither
+   * of them can be relied on, including the careful one.
+   *
+   * `globalThis.confirm` because that is the word the other control uses. An
+   * in-panel two-step would be a second grammar for the same decision, invented
+   * in the panel a person meets least often. Optional-called for the reason it
+   * is optional-called there: a host that defines no `confirm` has to read as
+   * "not confirmed" rather than throw.
+   *
+   * What it says is scaled to what is actually lost, which is less than a
+   * conversation and must not be dressed up as more. The questions this has
+   * already asked, and the answers to them, are messages and they stay where
+   * they are; what ends is the repetition.
+   */
+  function remove(one) {
+    const asked = String(one.text ?? '')
+    const period = said(one.everySeconds, one.atMinutes)
+    const next = nextRun(one.nextRunAt, now)
+    const warning = [
+      `Stop asking “${asked.length > 80 ? `${asked.slice(0, 80)}…` : asked}”?`,
+      next ? `It asks ${period} — ${next}.` : `It asks ${period}.`,
+      'Nothing it has already asked goes with it: those questions, and the answers to them, stay in the conversation. Only the repeat stops, and making it again means typing it again.',
+    ].join('\n\n')
+    if (!globalThis.confirm?.(warning)) return
+    onRemove?.(one.id)
   }
 
   return (
@@ -225,11 +311,18 @@ export function SchedulePanel({
       <form className="plan-new" onSubmit={add}>
         <label>
           ask this
+          {/* Short enough to be read to the end, which the sentence before it
+              was not: at this field's width it came out as "what to ask, in
+              full — nobody is here to clarify i", and a hint that stops
+              mid-word is the app failing to measure its own screen in front of
+              the person using it. Both halves of what it said survive — write
+              the whole question, because there is nobody here to ask you what
+              you meant by it. */}
           <input
             className="plan-what"
             value={text}
             onChange={(event) => setText(event.target.value)}
-            placeholder="what to ask, in full — nobody is here to clarify it"
+            placeholder="ask in full — nobody is here to clarify"
             disabled={!ready}
             data-testid="plan-text"
           />
@@ -293,9 +386,10 @@ export function SchedulePanel({
             {schedules.map((one) => {
               // Worked out once for the row rather than in each place it is
               // read: the empty string is how a schedule with nothing truthful
-              // to say about its next run stays quiet, and asking twice would
-              // be asking a clock two questions and hoping for one answer.
-              const next = nextRun(one.nextRunAt)
+              // to say about its next run stays quiet. The clock it is measured
+              // against is this render's single reading, so the row's two
+              // sentences about time cannot disagree.
+              const next = nextRun(one.nextRunAt, now)
               return (
                 <li key={one.id} data-testid={`plan-${one.id}`}>
                   <div className="plan-what">{one.text}</div>
@@ -309,7 +403,7 @@ export function SchedulePanel({
                     {/* "last not yet" read as a typo. The two cases are different
                         sentences, not one sentence with a hole in it. */}
                     <span className="dim">
-                      {one.lastRanAt ? `last ran ${lastRan(one.lastRanAt)}` : 'never run yet'}
+                      {one.lastRanAt ? `last ran ${lastRan(one.lastRanAt, now)}` : 'never run yet'}
                     </span>
                     {/* Which conversation it belongs to, said only when that is not
                         this one. A schedule asks in the chat it was made in, and a
@@ -320,7 +414,11 @@ export function SchedulePanel({
                         in another chat
                       </span>
                     ) : null}
-                    <button type="button" onClick={() => onRemove?.(one.id)}>
+                    <button
+                      type="button"
+                      onClick={() => remove(one)}
+                      data-testid={`plan-remove-${one.id}`}
+                    >
                       remove
                     </button>
                   </div>
