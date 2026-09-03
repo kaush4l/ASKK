@@ -6,7 +6,7 @@ import { Reason } from '../../../src/core/Outcome.js'
  * `C2wSandbox` had no test file at all, and the browser step that proves it
  * cannot see most of what it does: the boot-failure hint, the byte cap, the
  * timeout, the worker's `error` event and the id routing all sit on paths a
- * healthy 107 MB guest never takes. Deleting the hint entirely left the whole
+ * healthy 136.6 MiB guest never takes. Deleting the hint entirely left the whole
  * gate green.
  *
  * A fake worker rather than a real one. What is under test is this module's
@@ -58,7 +58,7 @@ class FakeWorker {
 }
 
 /** A worker that boots, then answers each run from a queue of results. */
-const boots = (results, bytes = 107054914) => {
+const boots = (results, bytes = 143205983) => {
   answer = (message) => {
     if (message.type === 'boot') return { type: 'booted', bytes }
     const next = results.shift()
@@ -97,6 +97,59 @@ describe('C2wSandbox', () => {
     expect(ran.failure.hint).toBe(
       'Build it with scripts/wasm/build.sh into public/sandbox/, or point the build at a hosted copy with SANDBOX_IMAGE=<url>.',
     )
+  })
+
+  test('a download the host declared in the same units is reported as a fraction', async () => {
+    // The worker's messages arrive while the body is still arriving, so they
+    // are driven here rather than answered from `boots`: the boot only settles
+    // on `booted`, which is the last of the three.
+    answer = (message) =>
+      message.type === 'run'
+        ? { type: 'result', id: message.id, ok: true, stdout: '__askk_rc0\r\n', code: 0 }
+        : undefined
+    const sandbox = box()
+    const seen = []
+    sandbox.onProgress = (event) => seen.push(event)
+
+    const ran = sandbox.run('true')
+    await Bun.sleep(0)
+    const worker = FakeWorker.last
+    worker.say({ type: 'boot-progress', loaded: 0, total: 52602121 })
+    worker.say({ type: 'boot-progress', loaded: 1048576, total: 52602121 })
+    worker.say({ type: 'booted', bytes: 143205983, transferred: 52602121 })
+
+    expect((await ran).ok).toBe(true)
+    expect(seen).toEqual([
+      { status: 'progress', file: 'Linux machine', loaded: 0, total: 52602121, percent: 0 },
+      { status: 'progress', file: 'Linux machine', loaded: 1048576, total: 52602121, percent: 2 },
+    ])
+  })
+
+  test('a download with no comparable total says so, rather than reporting nothing arrived', async () => {
+    // GitHub Pages sends no `content-length` for this file, so the worker has
+    // no total to give. It used to arrive as 0 and be divided by, which drew a
+    // bar frozen at 0% over a download that was half done. `null` is the whole
+    // fix: the fields are still there, they still say how much has arrived, and
+    // a reader can tell that a percentage is not available rather than
+    // computing a wrong one.
+    answer = (message) =>
+      message.type === 'run'
+        ? { type: 'result', id: message.id, ok: true, stdout: '__askk_rc0\r\n', code: 0 }
+        : undefined
+    const sandbox = box()
+    const seen = []
+    sandbox.onProgress = (event) => seen.push(event)
+
+    const ran = sandbox.run('true')
+    await Bun.sleep(0)
+    const worker = FakeWorker.last
+    worker.say({ type: 'boot-progress', loaded: 4194304, total: null })
+    worker.say({ type: 'booted', bytes: 143205983, transferred: 143205983 })
+
+    expect((await ran).ok).toBe(true)
+    expect(seen).toEqual([
+      { status: 'progress', file: 'Linux machine', loaded: 4194304, total: null, percent: null },
+    ])
   })
 
   test('the command that crosses the channel is wrapped so the shell reports its own status', async () => {
@@ -252,7 +305,7 @@ describe('C2wSandbox', () => {
     const second = await sandbox.run('true')
 
     expect(first.notes).toEqual([
-      'the Linux machine in this tab was downloaded once: 107054914 bytes',
+      'the Linux machine in this tab was downloaded once: 143205983 bytes',
       'these calls are missing from the Linux machine in this tab and answer ENOTSUP, "not supported": sock_accept',
     ])
     expect(second.notes).toEqual([])

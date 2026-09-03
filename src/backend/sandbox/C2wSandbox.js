@@ -139,20 +139,34 @@ const STATUS_LINE = new RegExp(`${STATUS}(\\d+)\\n?$`)
  * and one malformed command wedges the shell for every later caller.
  *
  * The module is fetched and compiled once and instantiated per command. The
- * download is 40,029,960 gzipped bytes that inflate to a 107,054,914-byte
+ * download is 52,602,121 gzipped bytes that inflate to a 143,205,983-byte
  * module, and compiling is milliseconds, so the module is what is worth
  * keeping; a fresh instance per command is also what makes each command's
- * filesystem clean.
+ * filesystem clean. Both figures move with every rebuild of the image, and
+ * `docs/GATE.md` is where the measured pair is kept.
  *
- * WHAT IT IS CALLED WHEN SOMEONE ELSE IS READING. Every string that can reach
- * the notes under the transcript calls this "the Linux machine in this tab",
- * and none of them says "sandbox", "guest" or "image". Those three are this
- * file's own words for its own parts and they stay in these comments, where the
- * reader is somebody editing it; they were never words for a person who asked a
- * question and got a paragraph about a component underneath the answer. The
- * long phrase is deliberate — "the Linux machine" alone would be a machine
- * somebody might think is theirs, and the whole point is that it is not: it is
- * in this tab, it is thrown away, and nothing on their computer is touched.
+ * WHAT IT IS CALLED WHEN SOMEONE ELSE IS READING. Every note and every failure
+ * message this class produces calls it "the Linux machine in this tab", and none
+ * of those says "sandbox", "guest" or "image". Those three are this file's own
+ * words for its own parts and they stay in these comments, where the reader is
+ * somebody editing it; they were never words for a person who asked a question
+ * and got a paragraph about a component underneath the answer. The long phrase
+ * is deliberate — "the Linux machine" alone would be a machine somebody might
+ * think is theirs, and the whole point is that it is not: it is in this tab, it
+ * is thrown away, and nothing on their computer is touched.
+ *
+ * THE HINTS ARE THE EXCEPTION, and a deliberate one rather than two strings
+ * nobody noticed. Two of them use exactly those words, because a hint is an
+ * instruction somebody has to be able to act on: the boot failure names
+ * `scripts/wasm/build.sh`, `public/sandbox/` and `SANDBOX_IMAGE=<url>`, which
+ * are a path and an environment variable and cannot be renamed by a comment,
+ * and a command too long for the line is told that a program which will not fit
+ * belongs in the image, which is the thing it would have to be built into.
+ * Spelled in the polite phrase, either one would be a sentence that reads well
+ * and cannot be followed. A third hint prints `workerUrl`, which contains
+ * `/sandbox/`; that is an address the caller passed in and not a word this file
+ * chose, and a reader who has been sent to check a URL is already being shown
+ * one.
  */
 export class C2wSandbox extends Sandbox {
   static LABEL = 'linux sandbox'
@@ -161,7 +175,8 @@ export class C2wSandbox extends Sandbox {
    * @param {{imageUrl: string, workerUrl: string}} options where the guest
    *   image and its host worker are served from. Both are runtime URLs, not
    *   imports, because both live in `public/`: a bundler must never walk into a
-   *   107 MB module or a vendored UMD shim, so the pair is fetched by address.
+   *   136.6 MiB module or a vendored UMD shim, so the pair is fetched by
+   *   address.
    *   `composition.js` derives both from the base path — they ship side by side
    *   in the export — and nothing here needs to know what that address is.
    */
@@ -185,8 +200,9 @@ export class C2wSandbox extends Sandbox {
    * It matters more here than for either of those. The guest is the single
    * largest thing this app fetches, it is fetched on the FIRST command an agent
    * runs rather than at boot, and until this existed that download reported
-   * nothing at all — `CAPABILITIES.md` records a real one at 40,030,146 bytes,
-   * and `docs/LEDGER.md` row S24 is that none of it reached a user surface.
+   * nothing at all — `CAPABILITIES.md` records real deploy runs fetching it
+   * once, 52,602,121 bytes over the network, and `docs/LEDGER.md` row S24 is
+   * that none of it reached a user surface.
    */
   onProgress(_event) {}
 
@@ -248,8 +264,8 @@ export class C2wSandbox extends Sandbox {
   /**
    * Boot once, on the first command.
    *
-   * Not at construction: the image is 38 MiB on the wire and 102 MiB in memory,
-   * and an agent that never runs a command must not have downloaded it.
+   * Not at construction: the image is 50.2 MiB on the wire and 136.6 MiB in
+   * memory, and an agent that never runs a command must not have downloaded it.
    * Concurrent first calls share the one boot rather than starting two.
    */
   async _boot() {
@@ -293,11 +309,20 @@ export class C2wSandbox extends Sandbox {
 
   _receive(data, resolveBoot) {
     if (data?.type === 'boot-progress') {
-      // The same four fields `core/progress.js` gives a weights download, so a
-      // page draws one bar and not two. `percent` is 0 when the host sent no
-      // `content-length`, which a reader must show as a byte count rather than
-      // a bar stuck at nothing.
-      const total = Number(data.total) || 0
+      // The same five fields `core/progress.js` gives a weights download —
+      // status, file, loaded, total, percent — so a page draws one bar and not
+      // two.
+      //
+      // `total` and `percent` are NULL, not zero, when the worker had no
+      // total it could compare to the bytes arriving: on GitHub Pages, which
+      // sends this file with no `content-length`, and on any host whose
+      // `content-length` counts the compressed body while the decoded one is
+      // what turns up. Zero was a number, so a reader divided by it and drew a
+      // bar frozen at nothing while fifty megabytes came down. Null is not a
+      // number and cannot be divided by, which leaves a reader with the one
+      // honest thing there is to say: how much has arrived.
+      const loaded = Number(data.loaded) || 0
+      const total = Number.isFinite(data.total) && data.total > 0 ? data.total : null
       this.onProgress({
         status: 'progress',
         // DRAWN, not logged: `page.jsx` puts this beside the progress bar, so it
@@ -305,9 +330,9 @@ export class C2wSandbox extends Sandbox {
         // short form of what the notes call it, because the bar has room for a
         // name and the rest of the sentence is already in the note that follows.
         file: 'Linux machine',
-        loaded: Number(data.loaded) || 0,
+        loaded,
         total,
-        percent: total ? Math.round(((Number(data.loaded) || 0) / total) * 100) : 0,
+        percent: total === null ? null : Math.round((loaded / total) * 100),
       })
       return
     }
@@ -324,7 +349,7 @@ export class C2wSandbox extends Sandbox {
             // The one failure a real deploy can hit, so the hint names the two
             // controls that exist and no others. What ships is the gzipped image;
             // a clone that has never run the build has neither it nor the raw
-            // module, and a host that will not serve 38 MiB has to be pointed
+            // module, and a host that will not serve 50 MiB has to be pointed
             // elsewhere at build time. There is no setting for this and there
             // should not be: see `composition.js`.
             hint: 'Build it with scripts/wasm/build.sh into public/sandbox/, or point the build at a hosted copy with SANDBOX_IMAGE=<url>.',
@@ -380,7 +405,7 @@ export class C2wSandbox extends Sandbox {
     // returns blocks that worker for ever and no later command can run. The
     // worker is terminated rather than waited on: there is nothing to interrupt.
     // The compiled module dies with it, so the next command pays for the whole
-    // image again — under a second over loopback, and a 38 MiB download plus an
+    // image again — under a second over loopback, and a 50 MiB download plus an
     // inflate on a deploy. That is the price of the only interruption there is.
     const expired = new Promise((resolve) => setTimeout(() => resolve({ timedOut: true }), timeout))
     const finished = await Promise.race([settled, expired])
@@ -416,8 +441,8 @@ export class C2wSandbox extends Sandbox {
     if (!this._announced) {
       this._announced = true
       // Both numbers, because they differ on the deploy and only one of them is
-      // what the visitor paid. The image ships gzipped — 40,029,960 bytes on the
-      // wire for a 107,054,914-byte module — since a file over 100 MiB cannot be
+      // what the visitor paid. The image ships gzipped — 52,602,121 bytes on the
+      // wire for a 143,205,983-byte module — since a file over 100 MiB cannot be
       // in the repository this project is served from at all.
       const { bytes, transferred } = booted.value ?? {}
       if (bytes) {

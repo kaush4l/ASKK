@@ -421,9 +421,16 @@ export class Voice {
       })
       this._native = built.value
     }
-    // Re-applied on every reply, not only when the speaker is first built: the
-    // object is kept for the tab and a person who moves the rate slider between
-    // two replies would otherwise be heard on the third.
+    // EVERY setting the sheet can change, re-applied on every reply rather than
+    // only when the speaker was first built. The speaker is kept for the life of
+    // the tab and the settings are not — `page.jsx` hands this object a fresh
+    // record before each reply — so a field read once at construction is a field
+    // frozen at whatever it was the first time this tab ever spoke. That is not
+    // a rate slider that lags by one reply; it is a voice list that chose the
+    // voice for reply one and could never be changed again, which is the whole
+    // of what the list was added to do. A field left out of these three lines is
+    // a setting with a control and no effect, so they are here as a set.
+    this._native.voice = this.settings.ttsVoice ?? this._native.voice
     this._native.rate = this.settings.ttsRate ?? this._native.rate
     this._native.pitch = this.settings.ttsPitch ?? this._native.pitch
     const spoken = await this._native.speak(text)

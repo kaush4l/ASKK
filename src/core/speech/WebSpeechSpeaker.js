@@ -85,14 +85,6 @@ export class WebSpeechSpeaker extends Speaker {
   }
 
   /**
-   * The voice list is populated asynchronously and is empty on the first call in
-   * a fresh tab — reading it once would silently mean "no voices" for the first
-   * thing the app ever says. One `voiceschanged` event is waited for, with a
-   * deadline, because on a browser that has no voices at all the event never
-   * arrives and waiting for it forever would be worse than speaking in the
-   * default one.
-   */
-  /**
    * Every voice this device has, as `{name, lang, local}` records.
    *
    * Static and plain because the caller is a settings form, not a speaker: the
@@ -117,7 +109,15 @@ export class WebSpeechSpeaker extends Speaker {
     }))
   }
 
-  /** The voice list, once the browser has one. */
+  /**
+   * The voice list, once the browser has one.
+   *
+   * It is populated asynchronously and is empty on the first call in a fresh
+   * tab — reading it once would silently mean "no voices" for the first thing
+   * the app ever says. One `voiceschanged` event is waited for, with a deadline,
+   * because on a browser that has no voices at all the event never arrives and
+   * waiting for it forever would be worse than speaking in the default one.
+   */
   static async _settled(synthesis) {
     const voices = synthesis.getVoices()
     if (voices.length) return voices
