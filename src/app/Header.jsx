@@ -67,20 +67,27 @@ export function Header({
             <span className="pulse" />
             ASKK
           </p>
-          <button
-            type="button"
-            className="place"
-            onClick={() => setListing((open) => !open)}
-            aria-expanded={listing}
-            aria-haspopup="menu"
-            disabled={!ready}
-            data-testid="place"
-          >
-            {title || 'Chat'}
-            <span className="caret" aria-hidden="true">
-              ▾
-            </span>
-          </button>
+          {/* The heading of the working view, and it is a control. A reviewer
+              found the chat screen with no visible heading at all — the `h1`
+              was off-screen and the largest visible text was the assistant's
+              paragraph — while the one piece of text that names what you are
+              looking at sat here as a plain button. */}
+          <h1 className="place-heading">
+            <button
+              type="button"
+              className="place"
+              onClick={() => setListing((open) => !open)}
+              aria-expanded={listing}
+              aria-haspopup="menu"
+              disabled={!ready}
+              data-testid="place"
+            >
+              {title || 'Chat'}
+              <span className="caret" aria-hidden="true">
+                ▾
+              </span>
+            </button>
+          </h1>
         </div>
 
         {/* ONE line, present tense, in words. Everything not chosen is in the
@@ -91,11 +98,17 @@ export function Header({
         </p>
 
         <div className="topactions">
+          {/* The name is on the ELEMENT and not only in the span, because the
+              span is what a narrow layout hides — measured: below 62rem these
+              two buttons expose no accessible name at all, and they are the
+              only two routes out of the conversation. */}
           <button
             type="button"
             className="iconbutton"
             onClick={onDrawer}
             aria-pressed={drawerOpen}
+            aria-label="Activity"
+            title="Activity"
             disabled={!ready}
             data-testid="drawer-toggle"
           >
@@ -109,6 +122,8 @@ export function Header({
             className="iconbutton"
             onClick={onSettings}
             aria-pressed={settingsOpen}
+            aria-label="Settings"
+            title="Settings"
             disabled={!ready}
             data-testid="settings-toggle"
           >

@@ -35,6 +35,17 @@
   --raise-hi: #1f252d;
   --rule: #242b34;
   --rule-soft: #171c22;
+  /*
+   * The boundary of a CONTROL, which is a different job from a divider.
+   *
+   * WCAG 1.4.11 asks 3:1 of anything a person needs in order to identify a
+   * control, and `--rule` is a hairline chosen to divide quietly: measured at
+   * 1.35:1 here and 1.42:1 in the light scheme, so the edge of the message box
+   * was not perceivable at all. This is 3.32:1 on the page and 3.15:1 on a
+   * surface. It is NOT applied to dividers, which identify nothing and would
+   * read as a cage at this weight.
+   */
+  --edge: #59667a;
 
   /* Ink, from what is said to what is merely present. */
   --text: #e7eaee;
@@ -122,6 +133,8 @@
     --raise-hi: #f0eee8;
     --rule: #ddd8cf;
     --rule-soft: #e9e5dd;
+    /* 3.26:1 on paper, 3.49:1 on a panel, 3.64:1 on white. */
+    --edge: #8f8571;
 
     --text: #16191d;
     --dim: #5b636d;
@@ -299,6 +312,15 @@ button {
  * and only that, for every wave of its life, so a person could accumulate work
  * they had no way back to.
  */
+/* The heading is a wrapper around the control, not a second box: it exists for
+   the document outline and must add nothing to the layout. */
+.place-heading {
+  margin: 0;
+  min-width: 0;
+  font-size: inherit;
+  font-weight: inherit;
+}
+
 .place {
   display: flex;
   align-items: center;
@@ -396,7 +418,7 @@ button {
   gap: 0.4rem;
   min-height: 34px;
   padding: 0.3rem 0.6rem;
-  border: 1px solid var(--rule);
+  border: 1px solid var(--edge);
   border-radius: var(--radius-sm);
   background: var(--raise);
   color: var(--dim);
@@ -416,8 +438,9 @@ button {
 }
 
 .iconbutton:disabled {
-  opacity: 0.45;
   cursor: not-allowed;
+  border-color: var(--rule);
+  color: var(--faint);
 }
 
 .iconbutton .glyph {
@@ -826,13 +849,19 @@ button {
   display: flex;
   gap: 0.15rem;
   margin-top: 0.45rem;
-  opacity: 0.75;
-  transition: opacity 140ms ease;
 }
 
-.turn:hover .msg-actions,
-.turn:focus-within .msg-actions {
-  opacity: 1;
+/* Quiet by COLOUR and not by opacity. `opacity: 0.75` composites the token
+   against the page and takes it below the contrast it was chosen for —
+   measured at 2.99:1 for `copy` and `read aloud` at rest, against a token that
+   is 4.79:1 on its own. A control is either readable or it is not there. */
+.msg-actions button {
+  color: var(--faint);
+}
+
+.turn:hover .msg-actions button,
+.turn:focus-within .msg-actions button {
+  color: var(--text);
 }
 
 .msg-actions button {
@@ -1143,7 +1172,7 @@ button {
 }
 
 .composerbox {
-  border: 1px solid var(--rule);
+  border: 1px solid var(--edge);
   border-radius: var(--radius);
   background: var(--surface);
   transition: border-color 140ms ease;
@@ -1225,9 +1254,14 @@ button {
   outline: none;
 }
 
+/* The SAME treatment every other control gets — a 2px outline in the signal
+   colour at 5.02:1 — rather than a 1px border tint plus a halo that measured
+   1.12:1 against the page. The most-used control had the weakest indicator in
+   the app and the only one that differed in kind. */
 .composerbox:has(textarea:focus-visible) {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
   border-color: var(--signal);
-  box-shadow: 0 0 0 2px var(--signal-soft);
 }
 
 .composer textarea::placeholder {
@@ -1256,9 +1290,23 @@ button {
   color: var(--text);
 }
 
+/*
+ * Disabled by COLOUR, not by opacity.
+ *
+ * `opacity: 0.35` on the filled send button composited its glyph to 1.63:1
+ * against its own background — measured, and it is the very first control a new
+ * visitor sees, since nothing can be sent until they have typed. A disabled
+ * control still has to be readable: it is telling you what it would do.
+ */
 .composer .act:disabled {
-  opacity: 0.35;
   cursor: not-allowed;
+  color: var(--faint);
+}
+
+.composer .send:disabled {
+  background: var(--raise-hi);
+  color: var(--faint);
+  filter: none;
 }
 
 .composer .send {
@@ -1532,6 +1580,16 @@ button {
   gap: 0.4rem;
 }
 
+.runlog,
+.runlog li {
+  /* A grid item is as wide as its content unless told otherwise, so a long
+     command line made the whole list wider than the drawer — and the drawer
+     hides its horizontal overflow, which put 1,265px of shell output out of
+     reach with no scrollbar to say so. Measured at scrollWidth 1,696 in a
+     431px panel. */
+  min-width: 0;
+}
+
 .runlog li {
   border: 1px solid var(--rule);
   border-radius: var(--radius-sm);
@@ -1743,7 +1801,7 @@ button {
 .plan-when select {
   width: 100%;
   padding: 0.45rem 0.55rem;
-  border: 1px solid var(--rule);
+  border: 1px solid var(--edge);
   border-radius: 6px;
   background: var(--surface);
   color: var(--text);
@@ -1768,8 +1826,10 @@ button {
 }
 
 .plan-when button:disabled {
-  opacity: 0.4;
   cursor: not-allowed;
+  border-color: var(--rule);
+  background: var(--raise-hi);
+  color: var(--faint);
 }
 
 /* A finger is 44px and these compute to 31 and 38 from their padding. The
@@ -1979,7 +2039,7 @@ button {
 .settings label select {
   max-width: 100%;
   padding: 0.5rem 0.6rem;
-  border: 1px solid var(--rule);
+  border: 1px solid var(--edge);
   border-radius: var(--radius-sm);
   background: var(--panel);
   color: var(--text);
@@ -2082,6 +2142,19 @@ button {
  * off-screen, on a form a person has just been sent to by the only button on
  * the empty screen.
  */
+/*
+ * Room made for the footer, not just a shadow under it.
+ *
+ * Measured at 390x844: `elementFromPoint` at the vertical centre of the last
+ * folded section returned the Save button — so tapping "How the model answers"
+ * SAVED AND CLOSED the sheet, which is a destructive-in-effect action sitting
+ * under a harmless control's hit area. The scroll container ends above the
+ * button now instead of under it.
+ */
+.settings .sheet > details:last-of-type {
+  margin-bottom: 46px;
+}
+
 .settings button[type='submit'] {
   position: sticky;
   bottom: 0;
