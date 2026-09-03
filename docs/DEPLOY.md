@@ -10,7 +10,7 @@ but us.
 
 **It has now.** `3ddc99d` (*Deploy 084268b*) was the first commit on that branch
 written by `scripts/deploy.js` rather than by hand, and the first that carried
-the guest; `589f541` (*Deploy f9ad603*) is what is live. Measured after the
+the guest; `357a083` (*Deploy e02919e*) is what is live. Measured after the
 first push: measured live, `/ASKK/` answers 200 and
 `/ASKK/sandbox/sandbox.wasm.gz` answers 200 with `content-type:
 application/gzip` and `access-control-allow-origin: *`. The published page boots
