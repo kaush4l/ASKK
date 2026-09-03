@@ -2080,6 +2080,12 @@ button {
   position: sticky;
   bottom: 0;
   z-index: 2;
+  /* A footer, not a button lying on top of the row behind it. Sticky means the
+     content scrolls UNDER it, and without the fade the last section read as cut
+     in half — which is what it looked like on a phone, where the sheet is taller
+     than the screen and something is always behind this. */
+  margin-top: var(--s2);
+  box-shadow: 0 -14px 16px -8px var(--surface), 0 -1px 0 var(--rule);
   min-height: 42px;
   border: 1px solid var(--signal);
   border-radius: var(--radius-sm);
