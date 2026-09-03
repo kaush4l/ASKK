@@ -409,8 +409,12 @@ export class ReActEngine extends Engine {
         // no answer at all, which is worse than an unchecked one.
         if (!budget.closing) {
           const checked = await Promise.race([this.verify(signal), until(signal)])
-          if (signal?.aborted) return this.stopped(last, budget, notes)
+          // Inside the `checked` branch, not beside the await: only a check
+          // that actually ran can have awaited long enough for a stop to
+          // land, and an answering turn with no check — or whose check
+          // already ran — has nothing to be stopped in the middle of.
           if (checked) {
+            if (signal?.aborted) return this.stopped(last, budget, notes)
             notes.push(checked.note)
             scratchpad.push(checked.entry)
             continue
