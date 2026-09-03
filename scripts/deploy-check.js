@@ -673,16 +673,17 @@ console.log(`  the guest was requested ${guestAfterControl.length} time(s) by th
 // and closes the finding, while the wrong one stays — which is how a tree learns
 // to ignore its own alarms, printed here once per run.
 //
-// What is false: `src/core/mcp/discover.js` runs `printf … | <server>` through
-// the same sandbox once per turn, before the prompt is rendered, so ANY first
-// message pays for the image — including one that asks for nothing.
+// It WAS false for three waves: `src/core/mcp/discover.js` ran one guest command
+// per turn, before the prompt was rendered, so any first message paid for the
+// image — including one that asked for nothing. Discovery now skips a server
+// whose guest is not running, and this line printed CONFIRMED on 2026-09-02.
 //
-// Reported and not failed while it is false: the fix is a change in `src/`,
-// which this check does not own, and a red here would only mean nobody could
-// run it. The verdict below is what stops it going quiet.
+// Still printed rather than asserted, and now a FAILURE when it goes the other
+// way: it is the one measurement that says whether a visitor who asks a
+// question pays 50 MB for it.
 console.log(
   guestAfterControl.length
-    ? `  CLAIM REFUTED — "the first \`shell\` call is what pays for it" (src/backend/composition.js): a turn that called no tool fetched the image, because an agent declaring an mcp server runs one guest command per turn to list its tools`
+    ? `  CLAIM REFUTED — a turn that called no tool fetched the image (src/backend/composition.js)`
     : `  CLAIM CONFIRMED — a turn that called no tool did not fetch the image`,
 )
 
@@ -790,16 +791,18 @@ if (encodedArm.type === 'booted' && encodedArm.bytes !== encodedArm.transferred)
   failures.push(
     `a pre-inflated body was inflated twice: ${encodedArm.transferred} -> ${encodedArm.bytes}`,
   )
-// A RECORDED EXPECTATION, and it fails on the day it comes true. The CLAIM
-// REFUTED line above could only ever go quiet: make `discover.js` lazy and it
-// flips to CONFIRMED with nothing holding it there, so the sentence in
-// `composition.js` — wrong for every artifact shipped in between — is never
-// rewritten. Measured 2026-09-01 against 25c8750: one request, on a turn that
-// called no tool. When this fires, delete it and the line it guards.
-if (!guestOnLoad.length && !guestAfterControl.length)
+// The recorded expectation that used to live here has FIRED and is gone. It said
+// the claim in `composition.js` was false and asked to be deleted on the day it
+// came true; it came true on 2026-09-02 and `composition.js` is rewritten.
+//
+// What replaces it is the assertion in the other direction, which is the one
+// that matters to a visitor: a question that needs no command must not cost
+// them fifty megabytes. Without it the CLAIM line above could only ever go
+// quiet again.
+if (guestAfterControl.length)
   failures.push(
-    'the claim in src/backend/composition.js is now TRUE — a turn that called no tool did not ' +
-      'fetch the guest. Delete this expectation and the CLAIM REFUTED line above with it.',
+    'a turn that called no tool fetched the 50 MB guest, which src/backend/composition.js says ' +
+      'must not happen',
   )
 // A throw inside an evaluation used to stop this run on the spot. It is now
 // collected by `scripts/browser.js`, with every other thing the browser

@@ -78,15 +78,20 @@ export async function buildKernel() {
   // The sandbox is constructed, not booted. Its image is ~50 MB compressed and
   // an agent that never needs the guest must never download it.
   //
-  // WHAT PAYS FOR IT, corrected by `scripts/deploy-check.js` against the built
-  // deploy: the first thing that needs a guest COMMAND, which is not the same
-  // as the first `shell` call — the sentence this comment carried for three
-  // waves. An agent whose file declares an mcp server runs one guest command to
-  // list that server's tools, once a session, before the first prompt is
-  // rendered; `agents/main/agent.md` declares one, so this app's very first
-  // message pays for the image even when it asks for nothing. The check prints
-  // CLAIM CONFIRMED or CLAIM REFUTED on every run rather than asserting, and it
-  // printed REFUTED against the sentence that used to be here.
+  // WHAT PAYS FOR IT, measured by `scripts/deploy-check.js` against the built
+  // deploy: the first thing that needs a guest COMMAND. For three waves that was
+  // NOT the same as the first `shell` call — an agent whose file declares a tool
+  // server runs one guest command to list that server's tools, before the first
+  // prompt is rendered, and `agents/main/agent.md` declares one — so this app's
+  // very first message paid for the image even when it asked for nothing, and
+  // the check printed CLAIM REFUTED against the sentence that used to be here.
+  //
+  // It prints CONFIRMED now, measured 2026-09-02 against the built deploy: a
+  // turn that called no tool made 0 requests for the image. Discovery skips a
+  // server that lives in a guest which is not running, so the tools of such a
+  // server appear from the turn after the first command instead — the cost is
+  // deferred rather than removed, and it is the right way round, because
+  // nothing asked for a 50 MB download on a message that said hello.
   //
   // The image URL is DERIVED, exactly like the worker URL beside it, because the
   // two files ship side by side: `public/sandbox/` is copied into the export
