@@ -444,6 +444,52 @@ describe('the record a turn leaves behind', () => {
     expect(events).toEqual([])
   })
 
+  test('an attachment is stored on the turn and handed to the model', async () => {
+    // The chain under `send` — `Engine.step`, `OpenAICompatible._content`,
+    // `AnthropicCompatible._content`, `Multimodality` — has taken attachments
+    // since it was written, and `CAPABILITIES.md` names it as the standing
+    // example of a capability declared and never wired: neither run site passed
+    // any, so an image could reach a model only by editing the source.
+    const png = 'data:image/png;base64,iVBORw0KGgo='
+    const { service, conversations, inference } = chatWith([answerTurn('a small red square')])
+
+    const sent = await service.send({ id: 'c1', text: 'what is this?', attachments: [png] })
+    expect(sent.ok).toBe(true)
+
+    // On the record, so a reload still shows what the question was about.
+    const question = saved(conversations)[0]
+    expect(question.role).toBe('user')
+    expect(question.attachments).toEqual([png])
+
+    // And on the wire, as the modality the data URL declares rather than as a
+    // guess made here.
+    expect(inference.multimodal).toHaveLength(1)
+    expect(inference.multimodal[0].type).toBe('image')
+    expect(inference.multimodal[0].urls).toEqual([png])
+  })
+
+  test('something that is not a data URL is refused as an attachment, not sent', async () => {
+    // A remote URL is a request this app would make on the user's behalf to a
+    // host they did not name, from a page whose whole claim is that nothing
+    // leaves the browser except the model call they configured.
+    const { service, conversations, inference } = chatWith([answerTurn('nothing attached')])
+
+    const sent = await service.send({
+      id: 'c1',
+      text: 'read this',
+      attachments: ['https://example.com/cat.png'],
+    })
+
+    expect(sent.ok).toBe(true)
+    expect(inference.multimodal).toEqual([])
+    // The RECORD omits an empty list, like `thinking` and `repairs` beside it —
+    // a field carrying nothing on every message ever stored is bytes saying
+    // nothing. `Message` puts it back as `[]` on the way out, so a reader that
+    // rehydrates never sees `undefined` and one reading raw JSON must default.
+    expect(saved(conversations)[0].attachments).toBeUndefined()
+    expect(sent.notes.join(' ')).toContain('attachment')
+  })
+
   test('a reply with no text in it is written down as having said nothing', async () => {
     // Found by mutation: replacing the stand-in with `''` left every test in
     // this file green. A model that answers with an empty string still made a

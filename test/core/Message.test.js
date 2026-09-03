@@ -153,3 +153,36 @@ describe('what a message is made of', () => {
     ).toBe(5)
   })
 })
+
+describe('what was attached to a message', () => {
+  test('data URLs are kept in order and anything else is dropped with a repair', () => {
+    // The one field on a message that is not text. It exists because the whole
+    // inference chain below it — `Engine.step`, both providers, `Multimodality`
+    // — has taken attachments since it was written and no caller ever passed
+    // any; `CAPABILITIES.md` names it as the standing example of a capability
+    // declared and never wired. A transcript that shows only the words would
+    // make a person's own screenshot vanish from their history on reload.
+    const png = 'data:image/png;base64,iVBORw0KGgo='
+    const message = new Message({ role: 'user', text: 'what is this?', attachments: [png, 7, ''] })
+
+    expect(message.attachments).toEqual([png])
+    expect(message.repairs.join(' ')).toContain('attachment')
+  })
+
+  test('a message with nothing attached carries an empty list, never undefined', () => {
+    // Read on every render of every turn. `undefined` would make each reader
+    // write its own `?? []`, which is the way `thinking` became a field only
+    // one of two writers had heard of.
+    expect(new Message({ role: 'user', text: 'hello' }).attachments).toEqual([])
+    expect(Message.fromJSON({ role: 'user', text: 'hello' }).attachments).toEqual([])
+  })
+
+  test('the list survives a JSON round trip and cannot be edited in place', () => {
+    const png = 'data:image/png;base64,iVBORw0KGgo='
+    const there = Message.fromJSON(
+      new Message({ role: 'user', text: 'x', attachments: [png] }).toJSON(),
+    )
+    expect(there.attachments).toEqual([png])
+    expect(Object.isFrozen(there.attachments)).toBe(true)
+  })
+})

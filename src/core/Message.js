@@ -28,7 +28,15 @@ function asText(value, field, noted) {
 }
 
 export class Message {
-  constructor({ id = newId(), role, text, thinking, createdAt = Date.now(), repairs = [] } = {}) {
+  constructor({
+    id = newId(),
+    role,
+    text,
+    thinking,
+    attachments = [],
+    createdAt = Date.now(),
+    repairs = [],
+  } = {}) {
     this.id = id
 
     // Repaired rather than refused. A malformed message is still evidence of
@@ -58,6 +66,31 @@ export class Message {
     // than in a parallel store: it is part of the turn, it is written by the
     // same call, and a second home for it is what let one writer drop it.
     this.thinking = asText(thinking, 'thinking', noted)
+    /**
+     * What was sent ALONGSIDE the words: data URLs, in the order they were
+     * attached.
+     *
+     * Every layer under this one has taken attachments since it was written and
+     * no caller ever passed any — `CAPABILITIES.md` names it as the standing
+     * example of a capability declared and never wired. It is stored on the
+     * message rather than held for the length of a turn because a transcript
+     * that shows only the words makes a person's own screenshot vanish from
+     * their history the moment they reload.
+     *
+     * Filtered rather than refused, like every other field here: a bad entry is
+     * dropped with a line saying so, because an attachment nobody can read must
+     * not cost the question it came with. `Array.isArray` and not truthiness
+     * for the reason `repairs` gives — a string spreads into its characters.
+     */
+    const files = Array.isArray(attachments) ? attachments : []
+    if (attachments != null && !Array.isArray(attachments)) {
+      noted.push('attachments was not a list; it was dropped')
+    }
+    const kept = files.filter((one) => typeof one === 'string' && one.length > 0)
+    if (kept.length !== files.length) {
+      noted.push(`${files.length - kept.length} attachment(s) were not readable and were dropped`)
+    }
+    this.attachments = Object.freeze(kept)
     this.createdAt = createdAt
     // The array too, and not only the object around it. `repairs` is the one
     // field on a message reachable by reference, and it is the field that is
@@ -93,6 +126,11 @@ export class Message {
       text: this.text,
       createdAt: this.createdAt,
       ...(this.thinking ? { thinking: this.thinking } : {}),
+      // Omitted when there are none, like `thinking` above: a record carrying
+      // an empty list for every message it has ever held is bytes in the store
+      // saying nothing, and the constructor's default puts it back on the way
+      // out.
+      ...(this.attachments.length ? { attachments: this.attachments } : {}),
       ...(this.repairs.length ? { repairs: this.repairs } : {}),
     }
   }

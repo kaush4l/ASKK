@@ -44,8 +44,8 @@ export class Conversation {
    * is accepted in silence and arrives as a transcript with the model's private
    * reasoning where the reply should be.
    */
-  append({ role, text, thinking } = {}) {
-    const message = new Message({ role, text, thinking })
+  append({ role, text, thinking, attachments } = {}) {
+    const message = new Message({ role, text, thinking, attachments })
     this._messages.push(message)
     return message
   }

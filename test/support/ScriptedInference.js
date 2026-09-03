@@ -54,6 +54,17 @@ export class ScriptedInference extends Inference {
     return this.calls.map((call) => call.prompt)
   }
 
+  /**
+   * Everything non-text that reached this transport, flattened across calls.
+   *
+   * Flattened because the question a caller asks is "did the picture get sent",
+   * and a ReAct run is several calls: per-call it would be an array of arrays
+   * whose shape depends on how many steps the model happened to take.
+   */
+  get multimodal() {
+    return this.calls.flatMap((call) => call.multimodal ?? [])
+  }
+
   async invoke(prompt, multimodal = [], options = {}) {
     this.calls.push({ prompt, multimodal, options })
     if (!this.replies.length) {

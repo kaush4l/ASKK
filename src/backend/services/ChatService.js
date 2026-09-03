@@ -1,6 +1,7 @@
 import { describeEnvironment } from '../../core/agent/Environment.js'
 import { buildAgent } from '../../core/agent/loadAgent.js'
 import { createInference } from '../../core/inference/index.js'
+import { Multimodality } from '../../core/inference/Multimodality.js'
 import { Role } from '../../core/Message.js'
 import { discoverMcpTools } from '../../core/mcp/index.js'
 import { Outcome } from '../../core/Outcome.js'
@@ -288,7 +289,7 @@ export class ChatService {
    * goes straight through to the loop, which decides how far it reaches; see
    * `ReActEngine` for what a stop does and does not interrupt.
    */
-  async send({ id, text }, emit = null, signal = null) {
+  async send({ id, text, attachments = [] }, emit = null, signal = null) {
     const typed = typeof text === 'string' ? text.trim() : ''
     if (!typed) {
       // Nothing to send is not a fault to report; it is a no-op with a reason.
@@ -301,7 +302,39 @@ export class ChatService {
     if (!loaded.ok) return loaded
 
     const notes = []
-    const appended = await this.conversations.appendMessage({ id, role: Role.USER, text: typed })
+
+    /**
+     * What was attached, in the modality the data URL itself declares.
+     *
+     * `Multimodality.of` returns null for anything that is not a data URL, and
+     * that refusal is kept rather than worked around. A remote URL would be a
+     * request this app makes on the user's behalf to a host they never named,
+     * from a page whose whole claim is that nothing leaves the browser except
+     * the model call they configured — and the modality would have to be
+     * guessed from a path rather than read from a mime type.
+     */
+    const carried = []
+    const refused = []
+    for (const one of Array.isArray(attachments) ? attachments : []) {
+      const read = Multimodality.of(one)
+      if (read) carried.push(read)
+      else refused.push(one)
+    }
+    if (refused.length) {
+      notes.push(
+        `${refused.length} attachment(s) were not sent: an attachment has to be a data URL, which is what this app makes when you choose a file`,
+      )
+    }
+
+    const appended = await this.conversations.appendMessage({
+      id,
+      role: Role.USER,
+      text: typed,
+      // The ones that were SENT, not the ones that were offered. A transcript
+      // showing an attachment the model never saw would be the record
+      // disagreeing with the turn.
+      attachments: carried.flatMap((one) => one.urls),
+    })
     if (!appended.ok) return appended
     notes.push(...appended.notes)
     const userMessage = appended.value
@@ -409,6 +442,9 @@ export class ChatService {
     // happening anyway — none of it changes the result, and a caller that
     // passed no emitter gets exactly the same reply.
     const answered = await agent.value.run(history, {
+      // The pictures, on the same call as the words. Every layer under this one
+      // has taken them since it was written; this is the line that was missing.
+      multimodal: carried,
       // The terms this agent declared, or none — in which case `Budget` applies
       // its own, which is where they are argued for. Handed as a declaration
       // and not as a counter, so one turn's spending cannot leak into the next.
