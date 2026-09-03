@@ -992,7 +992,7 @@ export default function Page() {
       <div className={`panes${drawer ? ' docked' : ''}`}>
         <main className="stage">
           {messages.length === 0 && ready ? (
-            <div className="transcript">
+            <div className="transcript emptyframe">
               <section className="empty">
                 {modelHealth && !modelHealth.reachable ? (
                   <>
@@ -1019,7 +1019,7 @@ export default function Page() {
                 )}
 
                 <ul className="examples">
-                  <li className="label mono">or try</li>
+                  <li className="label">Or try one of these:</li>
                   {EXAMPLES.map((one) => (
                     <li key={one.text}>
                       <button

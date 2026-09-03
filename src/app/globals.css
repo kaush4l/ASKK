@@ -508,10 +508,23 @@ button {
 
 /* ── the empty screen, which is the most-read screen in this app ─────────── */
 
+/*
+ * Placed in the optical centre of the space there is, not against the top of
+ * it. The page's own screenshot showed a headline high on the screen with four
+ * hundred pixels of nothing between the last example and the composer — a void
+ * that reads as a page that has not finished loading.
+ */
 .empty {
   max-width: var(--measure);
-  margin: clamp(1rem, 6vh, 3.5rem) auto 0;
+  margin: 0 auto;
   padding: 0;
+}
+
+.emptyframe {
+  display: grid;
+  align-content: center;
+  min-height: 100%;
+  padding-bottom: clamp(1rem, 8vh, 5rem);
 }
 
 .empty h2 {
@@ -558,44 +571,64 @@ button {
  * page offered a paragraph and expected recall. A capability nobody can find is
  * a capability nobody has.
  */
+/*
+ * Three questions, as lines rather than as cards.
+ *
+ * Identical rounded boxes with one border-radius and one soft border are the
+ * default shape any of this could have been given, and they made three
+ * sentences look like three products. A pressable line under a hairline rule
+ * says the same thing with nothing added, and the hover state is the only
+ * decoration: the rule goes cyan on the row under the pointer, which is the
+ * one place on this screen where cyan is not about a measurement — so it is
+ * the accent's edge case and it earns its keep by being the affordance.
+ */
 .examples {
-  margin: 1.5rem 0 0;
+  margin: 1.75rem 0 0;
   padding: 0;
   list-style: none;
   display: grid;
-  gap: 0.4rem;
 }
 
 .examples .label {
-  font-size: var(--t-micro);
-  letter-spacing: 0.1em;
+  margin-bottom: 0.4rem;
   color: var(--faint);
-  margin-bottom: 0.2rem;
+  font-family: var(--sans);
+  font-size: var(--t-small);
 }
 
 .examples button {
-  display: block;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 1rem;
   width: 100%;
-  padding: 0.7rem 0.85rem;
-  border: 1px solid var(--rule);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
+  padding: 0.75rem 0.1rem;
+  border: 0;
+  border-top: 1px solid var(--rule);
+  background: none;
   color: var(--text);
-  font-size: var(--t-small);
+  font-size: var(--t-body);
   text-align: left;
-  transition: border-color 140ms ease, background 140ms ease;
+  transition: border-color 140ms ease, color 140ms ease;
+}
+
+.examples li:last-child button {
+  border-bottom: 1px solid var(--rule);
 }
 
 .examples button:hover {
-  border-color: var(--signal-line);
-  background: var(--raise);
+  border-top-color: var(--signal);
+  color: var(--signal);
+}
+
+.examples li:last-child button:hover {
+  border-bottom-color: var(--signal);
 }
 
 .examples button .why {
-  display: block;
-  margin-top: 0.15rem;
   color: var(--faint);
   font-size: var(--t-micro);
+  white-space: nowrap;
 }
 
 /* ── the conversation register ──────────────────────────────────────────── */
@@ -1990,6 +2023,15 @@ button {
 
   .turn.assistant .text {
     font-size: var(--t-body);
+  }
+
+  .examples button {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.2rem;
+  }
+
+  .examples button .why {
+    white-space: normal;
   }
 
   .menu {
