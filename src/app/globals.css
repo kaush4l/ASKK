@@ -39,7 +39,17 @@
   /* Ink, from what is said to what is merely present. */
   --text: #e7eaee;
   --dim: #8b95a1;
-  --faint: #59626d;
+  /*
+   * The quietest ink that is still TEXT, and it is measured rather than
+   * chosen. A reviewer put a contrast meter on the previous value and the
+   * `user` / `assistant` labels came back at 3.04:1 — and those labels carry
+   * the whole speaker distinction here, because there is no bubble, no avatar
+   * and no background difference behind a turn.
+   *
+   * 5.03:1 on the page, 4.70:1 on a raised surface, 4.53:1 on the raised-high
+   * one, which is every background it is set against.
+   */
+  --faint: #828c99;
 
   --signal: #2fb6d2;
   --signal-soft: rgba(47, 182, 210, 0.13);
@@ -88,9 +98,15 @@
 
     --text: #16191d;
     --dim: #5b636d;
-    --faint: #8b9099;
+    /* 4.79:1 on paper, 5.36:1 on white, 4.62:1 on the raised-high surface a
+       badge sits on — every background it is set against. Same rule as the
+       dark scheme's. */
+    --faint: #666b73;
 
-    --signal: #0b7e96;
+    /* Darker than the dark scheme's cyan by the same argument: 4.23:1 against
+       warm paper is under the bar, and this colour marks measured numbers,
+       which are the ones a person reads exactly. 5.02:1 on paper. */
+    --signal: #0a7189;
     --signal-soft: rgba(11, 126, 150, 0.09);
     --signal-line: rgba(11, 126, 150, 0.3);
     --warn: #8a5a10;

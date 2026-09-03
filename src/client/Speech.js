@@ -109,6 +109,31 @@ export class Microphone {
    */
   async open() {
     const notes = []
+    /**
+     * The four ways this fails, told apart.
+     *
+     * They used to be two, and the pair did not match: the headline said the
+     * API was "Not supported" while the remedy underneath said to grant
+     * permission — which no amount of granting can fix. A reviewer met exactly
+     * that on the first press of the microphone and reported it as guidance
+     * sending them into a loop of a fix that cannot succeed.
+     *
+     * The absent-API case is checked BEFORE the call rather than caught after
+     * it, because a page served over plain http has no `navigator.mediaDevices`
+     * at all and the failure is then a TypeError about reading a property of
+     * undefined — a sentence about this app's internals, in front of somebody
+     * whose real problem is the address bar.
+     */
+    if (!globalThis.navigator?.mediaDevices?.getUserMedia) {
+      return {
+        ok: false,
+        error: {
+          message: 'this page cannot open a microphone',
+          hint: 'A microphone needs a secure page. Open this over https, or on localhost.',
+        },
+        notes,
+      }
+    }
     try {
       this._stream = await navigator.mediaDevices.getUserMedia({
         // The browser's own cleanup, asked for explicitly. Every model here was
@@ -117,17 +142,30 @@ export class Microphone {
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       })
     } catch (err) {
-      return {
-        ok: false,
-        error: {
-          message:
-            err?.name === 'NotAllowedError'
-              ? 'the microphone was refused'
-              : `the microphone could not be opened: ${err?.message ?? err}`,
-          hint: 'Allow microphone access for this page, then start dictation again.',
-        },
-        notes,
-      }
+      const named = err?.name ?? ''
+      const said =
+        named === 'NotAllowedError' || named === 'SecurityError'
+          ? {
+              message: 'the microphone was refused',
+              hint: 'Allow microphone access for this page in your browser, then press speak again.',
+            }
+          : named === 'NotFoundError' || named === 'OverconstrainedError'
+            ? {
+                message: 'no microphone was found on this device',
+                hint: 'Plug one in, or choose it as the input in your system settings.',
+              }
+            : named === 'NotReadableError'
+              ? {
+                  message: 'the microphone is in use by something else',
+                  hint: 'Close whatever else is recording, then press speak again.',
+                }
+              : {
+                  message: `the microphone could not be opened: ${err?.message ?? err}`,
+                  // No remedy invented for a fault nobody here recognises. A
+                  // hint that names the wrong fix is worse than none.
+                  hint: '',
+                }
+      return { ok: false, error: said, notes }
     }
 
     // Asked for at the models' own rate so the common 48 kHz downsample happens
