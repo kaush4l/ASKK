@@ -28,9 +28,18 @@ import { installedVoices, preloadSpeech } from '../client/Speech.js'
  * itself is NOT folded, because which assistant is answering is a thing a
  * person changes on purpose and looks for by name.
  */
-export function Settings({ settings, agents, onChange, onSave, onClose, testing, onTest, health }) {
+export function Settings({ settings, agents, onChange, onSave, onClose, testing, onTest }) {
   const [voices, setVoices] = useState([])
   const [everyVoice, setEveryVoice] = useState(false)
+  /**
+   * The answer to the check THIS sheet asked, or null before it has asked one.
+   *
+   * Not the app-wide health, which is a fact about the STORED configuration
+   * probed once at boot: showing that here put "Nothing is configured yet"
+   * beside a form somebody had just filled in — a stale answer to a question
+   * they had not asked, in the one place they are looking for feedback.
+   */
+  const [checked, setChecked] = useState(null)
   /**
    * Fetching the speech weights on purpose, rather than discovering the wait.
    *
@@ -159,15 +168,15 @@ export function Settings({ settings, agents, onChange, onSave, onClose, testing,
                 conditional. Both are wrapped by this label. */}
             <label>
               Model name
-              {health?.listed?.length ? (
+              {checked?.listed?.length ? (
                 <select {...field('model')} data-testid="model">
-                  {health.listed.includes(settings.model) ? null : (
+                  {checked.listed.includes(settings.model) ? null : (
                     <option value={settings.model}>
                       {settings.model || 'Choose one…'}
                       {settings.model ? ' — not on this server' : ''}
                     </option>
                   )}
-                  {health.listed.map((id) => (
+                  {checked.listed.map((id) => (
                     <option key={id} value={id}>
                       {id}
                     </option>
@@ -214,7 +223,7 @@ export function Settings({ settings, agents, onChange, onSave, onClose, testing,
               <button
                 type="button"
                 className="iconbutton"
-                onClick={onTest}
+                onClick={async () => setChecked((await onTest()) ?? null)}
                 disabled={testing}
                 data-testid="test-connection"
               >
@@ -228,11 +237,11 @@ export function Settings({ settings, agents, onChange, onSave, onClose, testing,
                   a person trust the whole app rather than suspect one typo. And
                   the case with no model named yet is the one this control
                   really exists for — it is where the list comes from. */}
-              {health ? (
+              {checked ? (
                 <p className="aside" data-testid="test-result" role="status">
-                  {!health.reachable || health.modelListed === false || !settings.model
-                    ? health.detail
-                    : health.modelListed === true
+                  {!checked.reachable || checked.modelListed === false || !settings.model
+                    ? checked.detail
+                    : checked.modelListed === true
                       ? `answered, and it has ${settings.model}`
                       : 'answered — it does not say which models it has, so the name is yours to get right'}
                 </p>

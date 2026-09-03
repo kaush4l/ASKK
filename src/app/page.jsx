@@ -1079,6 +1079,11 @@ export default function Page() {
     })
     if (found.ok) setModelHealth(found.value)
     setTesting(false)
+    // Handed BACK, so the form can show the answer to the question it just
+    // asked rather than whatever was last known. The two differ the moment
+    // somebody types: the boot probe's "Nothing is configured yet" sat beside a
+    // filled-in form, reporting a state that was true when the page loaded.
+    return found.ok ? found.value : null
   }
 
   async function addSchedule({ text, everySeconds, atMinutes }) {
@@ -1310,7 +1315,6 @@ export default function Page() {
           onClose={() => setShowSettings(false)}
           onTest={testConnection}
           testing={testing}
-          health={modelHealth}
         />
       ) : null}
       <div className={`panes${drawer ? ' docked' : ''}`}>

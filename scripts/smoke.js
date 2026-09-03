@@ -216,6 +216,11 @@ open.server = Bun.serve({
     if (path === GUEST_URL) return new Response(tinyGuest())
     if (path === PAGE_PATH)
       return new Response(PAGE_TEXT, { headers: { 'content-type': 'text/plain' } })
+    // What this endpoint serves, which is the one thing a newcomer cannot know
+    // and the reason the settings form has a check at all.
+    if (path === `${MODEL_URL}/models`) {
+      return Response.json({ object: 'list', data: [{ id: 'scripted' }, { id: 'other' }] })
+    }
     if (path === `${MODEL_URL}/chat/completions`) {
       const body = await request.json()
       // The whole prompt as it arrived, which is the only thing the script
@@ -660,6 +665,76 @@ if (!String(unconfigured).includes('127.0.0.1:9'))
 
 console.log(
   `smoke: with no model reachable the page says so — ${JSON.stringify(String(unconfigured).slice(0, 60))}…`,
+)
+
+// --- the one thing a newcomer cannot know -----------------------------------
+//
+// What a stranger's server calls its model. The address they can be told; the
+// name exists only inside that server, and this app's settings form is the only
+// place it can come from. It used to REFUSE to ask: with the address filled and
+// the name blank the check answered "Open settings and name the model that
+// server should run", to somebody standing in settings, and the only route to
+// the list was to type a name that did not exist and read the alternatives out
+// of the complaint. A reviewer's verdict on whether a stranger could get from a
+// cold page to an answer was "no, not reliably", and this was the reason.
+//
+// Driven through the form, because what is in question is the whole path: the
+// button, the probe, the sentence and the field turning into a list.
+const discovery = await evaluate(
+  `(async () => {
+     const pick = (id) => document.querySelector('[data-testid="' + id + '"]')
+     const until = async (get, ms = 6000) => {
+       for (let i = 0; i < ms / 50; i++) {
+         const value = get()
+         if (value) return value
+         await new Promise((r) => setTimeout(r, 50))
+       }
+       return null
+     }
+     const protoFor = (node) =>
+       node.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype
+     const set = (node, value) => {
+       Object.getOwnPropertyDescriptor(protoFor(node), 'value').set.call(node, value)
+       node.dispatchEvent(new Event('input', { bubbles: true }))
+     }
+
+     pick('settings-toggle')?.click()
+     const address = await until(() => pick('base-url'))
+     if (!address) return { where: 'settings never opened' }
+     // The address ALONE, which is all a person can be told.
+     set(address, ${JSON.stringify(MODEL_URL)})
+     set(pick('model'), '')
+     await new Promise((r) => setTimeout(r, 60))
+
+     pick('test-connection')?.click()
+     const said = await until(() => pick('test-result')?.textContent)
+     const field = pick('model')
+     const answer = {
+       said: said ?? '',
+       tag: field?.tagName ?? '',
+       offered: field?.tagName === 'SELECT' ? [...field.options].map((o) => o.value) : [],
+     }
+     // Closed again, and this is not tidiness: the next check opens this sheet
+     // itself, and a toggle pressed on an already-open sheet closes it — which
+     // made the phone check report that escape had failed.
+     pick('settings-close')?.click()
+     await until(() => !pick('settings'))
+     return answer
+   })()`,
+  session,
+  true,
+)
+
+if (discovery?.where) await fail(`the discovery path: ${discovery.where}`, problems)
+if (!discovery.offered?.includes('scripted'))
+  await fail(`the check did not offer what the server serves: ${JSON.stringify(discovery)}`, [
+    'HealthService.model asks the endpoint when no model is named, and',
+    'Settings.jsx turns the field into a list of what came back.',
+    ...problems,
+  ])
+
+console.log(
+  `smoke: an address alone was enough — the check answered ${JSON.stringify(String(discovery.said).slice(0, 80))} and offered ${discovery.offered.length} model(s)`,
 )
 
 // --- the settings sheet, on a phone -----------------------------------------
