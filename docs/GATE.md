@@ -344,6 +344,37 @@ Rejected, with reasons:
   caught rows 15 and 16, which is worth weighing honestly — and still not enough
   to buy a check whose failures are all invisible.
 
+## What it can see now that it could not
+
+Three checks were added after three blind reviewers drove the built page and
+found faults that ~880 unit tests could not, because every one of them is a fact
+about how the page LAYS OUT or about what is on screen WHILE something happens.
+
+**The settings sheet, on a phone.** Opened at 390x844, then measured: the wrap's
+overflow, the right edge of every descendant against the viewport, and whether
+Escape closes it. It earned its keep on the run that added it, finding a 3px
+overflow nothing could see — a `<label>` is itself a grid, so `min-width: 0` on
+it narrows the label and leaves its single `auto` column sized to the longest
+option of the `<select>` inside, which then overflows the box that was correctly
+narrowed.
+
+**Every control a finger has to hit.** Measured across everything on screen at
+once rather than control by control, because a named list would only ever have
+measured the ones somebody remembered. Two facts cost a run each:
+`Emulation.setDeviceMetricsOverride` **resizes and nothing more** — with the
+width alone `matchMedia('(hover: none)').matches` is false, so every touch rule
+in the stylesheet is inert and the desktop's controls are measured at the
+phone's width and pass. `Emulation.setTouchEmulationEnabled` is what flips it;
+`setEmulatedMedia` takes `prefers-color-scheme` and answers false for hover and
+pointer.
+
+**The reply's contract, while it streams.** A `MutationObserver` watches for
+`think:`, `plan:`, `act:` or `result:` appearing in the transcript for the
+length of a turn. It watches `document.body` and not the transcript, because on
+a cold page there are no messages, the empty screen is what is mounted, and the
+transcript element does not exist yet — the first version attached to null and
+passed by never having run.
+
 ## What this still cannot see
 
 **Rows 15 and 16: two of the four worker realms are never executed.** `data-live`
