@@ -10,12 +10,17 @@ it simply runs in a Web Worker instead of on a host.
 ## Realms
 
     ┌─ page realm ────────────────┐        ┌─ worker realm ──────────────┐
-    │  app/      React components │        │  backend/  Kernel           │
-    │            PromptPanel      │ ─────► │            services/        │
-    │            RunPanel         │ postMsg│            repositories/    │
-    │            FilesPanel ──────┼── files.list / files.read ──┐        │
-    │  client/   BackendClient    │        │            files/Workspace  │
-    │            highlight.js     │ ◄───── └──────┬──────────────────────┘
+    │  app/      page.jsx         │        │  backend/  Kernel           │
+    │            Header Composer  │ ─────► │            services/        │
+    │            Transcript       │ postMsg│            repositories/    │
+    │            Drawer ──────────┼── files.list / files.read ──┐        │
+    │              Run Prompt     │        │            files/Workspace  │
+    │              Files Schedule │ ◄───── └──────┬──────────────────────┘
+    │              Agent          │               │
+    │            Settings         │               │
+    │  client/   BackendClient    │               │
+    │            Speech Device    │               │
+    │            highlight.js     │               │
     └─────────────┬───────────────┘               │
                   │                                │
                   └──────► protocol/ ◄─────────────┘   IndexedDB `askk` v3

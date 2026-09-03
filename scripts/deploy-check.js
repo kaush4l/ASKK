@@ -560,6 +560,12 @@ if (configured !== 'true')
     problems(),
   )
 
+// The reload's own requests join the same wire log, so anything IT fetched is
+// counted from turn one onwards and the CLAIM REFUTED line below would be
+// reading a load as a turn. Taken here rather than asserted by a sentence,
+// because the verdict is where this file answers things.
+const guestOnReload = fetched('sandbox.wasm')
+
 // And the page agrees there is a model, which is the half a write cannot prove.
 // `page.jsx` sets `ready` strictly after `health.model` answers — there is an
 // await between the two — so a page reporting live has already rendered its own
@@ -742,6 +748,14 @@ if (isolation.page.sab !== 'undefined')
 if (guestOnLoad.length)
   failures.push(
     `the guest was fetched on page load — a visitor pays ${guestBytes} bytes to open the page`,
+  )
+// The same claim about the SECOND load, the one this file makes happen when it
+// plants the model. It is not a visitor's cost — a visitor loads once — but a
+// guest fetched there would be counted against turn one, and turn one is the
+// control for the whole fetched-on-demand finding.
+if (guestOnReload.length > guestOnLoad.length)
+  failures.push(
+    "the reload onto the planted settings fetched the guest, so the count turn one is judged on is not turn one's",
   )
 if (!guestRequests.length)
   failures.push('no request for the guest image was ever made, so nothing here ran a real command')
