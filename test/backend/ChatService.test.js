@@ -416,7 +416,7 @@ describe('the record a turn leaves behind', () => {
     // when it ends, so a bar cannot be drawn for a turn that is over.
     report({
       status: 'progress',
-      file: 'linux guest',
+      file: 'Linux machine',
       loaded: 1_048_576,
       total: 52_602_121,
       percent: 2,
@@ -427,7 +427,7 @@ describe('the record a turn leaves behind', () => {
       .filter(([name]) => name === EventName.PROGRESS)
       .map(([, event]) => event)
     expect(progress).toHaveLength(1)
-    expect(progress[0].file).toBe('linux guest')
+    expect(progress[0].file).toBe('Linux machine')
     expect(progress[0].loaded).toBe(1_048_576)
     expect(progress[0].percent).toBe(2)
 
@@ -436,7 +436,7 @@ describe('the record a turn leaves behind', () => {
     events.length = 0
     sandbox.onProgress({
       status: 'progress',
-      file: 'linux guest',
+      file: 'Linux machine',
       loaded: 2,
       total: 3,
       percent: 66,
@@ -741,16 +741,27 @@ describe('what an mcp server in the guest costs a turn', () => {
     return service
   }
 
-  test('a cold guest is not started, and the note says the server is waiting', async () => {
+  test('a cold guest is not started, and the turn says nothing about it', async () => {
     const sandbox = guest({ warm: false })
     const service = chatFor(sandbox)
 
     const sent = await service.send({ id: 'c1', text: 'hello' })
 
+    // BOTH HALVES, and the second is the newer contract. Not booting the guest
+    // is the saving; saying nothing about not booting it is the rest of it.
+    // There used to be a note here — "mcp server host is in the guest, which is
+    // not running yet" — and it was under every reply of a session that had
+    // asked for none of it, naming three internal things, in a state nobody can
+    // act on. A server that has not started because nothing needed it yet is
+    // not news, so `discoverMcpTools` drops the server in silence.
+    //
+    // Asserted as the ABSENCE OF ANY MENTION rather than of one sentence: the
+    // failure this guards against is the note coming back under new words.
     expect(sandbox.ran).toEqual([])
-    expect(
-      sent.notes.some((note) => note.includes('is in the guest, which is not running yet')),
-    ).toBe(true)
+    for (const note of sent.notes) {
+      expect(note).not.toMatch(/host/i)
+      expect(note).not.toMatch(/not running|waiting|will start/i)
+    }
   })
 
   test('a guest that is already running is asked, once, and not again', async () => {
@@ -806,7 +817,7 @@ describe('an mcp server that was down when it was first asked', () => {
       },
     }
 
-    const { service } = chatWith([answerTurn('one'), answerTurn('two')], {
+    const { service, inference } = chatWith([answerTurn('one'), answerTurn('two')], {
       catalogue: {
         async spec() {
           return Outcome.ok(spec)
@@ -819,13 +830,33 @@ describe('an mcp server that was down when it was first asked', () => {
     })
 
     const first = await service.send({ id: 'c1', text: 'hello' })
-    expect(first.notes.some((note) => note.includes('was not available'))).toBe(true)
+    // A server that is down is one of the two things worth a note — something
+    // went wrong, and the person who configured it is the one who can fix it —
+    // so this asserts the whole sentence and not a fragment of it. It names the
+    // server, what it cost, and the reason underneath.
+    //
+    // It is also the guard on a coupling that is not visible from either side.
+    // `ChatService._mcpToolsFor` reads the words "was not available" out of
+    // this note to decide that a discovery must NOT be cached, so those three
+    // words are control flow wearing prose. Reworded past them, this test is
+    // the only thing between a rewrite and a dead server staying invisible for
+    // the whole session — which is the case the test below it exists for.
+    expect(first.notes).toContain(
+      'the tool server "host" was not available, so none of its tools could be used this turn: the server wrote no reply to request 1 (exit 1)',
+    )
+    expect(inference.prompts[0]).not.toContain('host_disk')
 
     up = true
     const second = await service.send({ id: 'c1', text: 'hello again' })
 
     expect(second.notes.some((note) => note.includes('was not available'))).toBe(false)
-    expect(second.notes.some((note) => note.includes('offered 1 tool(s)'))).toBe(true)
+    // THE TOOLS THEMSELVES, in the prompt the model was handed, which is what
+    // this test's name has always claimed. It used to read "offered 1 tool(s)"
+    // out of the notes instead, and that note is gone: a server that worked is
+    // not news, and a count of tools is not a thing anyone can act on. The
+    // prompt is the stronger oracle anyway — the note only ever said discovery
+    // believed it had a tool, while this says the agent was given one.
+    expect(inference.prompts[1]).toContain('host_disk')
   })
 })
 

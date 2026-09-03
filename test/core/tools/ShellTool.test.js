@@ -78,26 +78,30 @@ describe('ShellTool', () => {
     // shell call. `Toolbox` appends a hint only to a FAILED outcome and this
     // path returns ok on purpose, so without this the hint reaches nobody.
     const sandbox = new FakeSandbox(
-      Outcome.failed(Reason.UNAVAILABLE, 'the sandbox image did not load: HTTP 404 for /x.wasm', {
-        hint: 'Build the guest with scripts/wasm/build.sh into public/sandbox/.',
-      }),
+      Outcome.failed(
+        Reason.UNAVAILABLE,
+        'the Linux machine in this tab could not be loaded: HTTP 404 for /x.wasm',
+        { hint: 'Build it with scripts/wasm/build.sh into public/sandbox/.' },
+      ),
     )
 
     const said = await new ShellTool({ sandbox }).call({ command: 'uname -a' })
 
     expect(said.ok).toBe(true)
     expect(said.value).toBe(
-      'the sandbox could not run that: the sandbox image did not load: HTTP 404 for /x.wasm (Build the guest with scripts/wasm/build.sh into public/sandbox/.). Say so in your answer — nothing else tells the user.',
+      'that command could not run: the Linux machine in this tab could not be loaded: HTTP 404 for /x.wasm (Build it with scripts/wasm/build.sh into public/sandbox/.). Say so in your answer — nothing else tells the user.',
     )
   })
 
   test('a failure with nothing useful to say does not grow an empty bracket', async () => {
-    const sandbox = new FakeSandbox(Outcome.failed(Reason.INTERNAL, 'the sandbox failed: boom'))
+    const sandbox = new FakeSandbox(
+      Outcome.failed(Reason.INTERNAL, 'the Linux machine in this tab failed: boom'),
+    )
 
     const said = await new ShellTool({ sandbox }).call({ command: 'ls' })
 
     expect(said.value).toBe(
-      'the sandbox could not run that: the sandbox failed: boom. Say so in your answer — nothing else tells the user.',
+      'that command could not run: the Linux machine in this tab failed: boom. Say so in your answer — nothing else tells the user.',
     )
   })
 
@@ -130,7 +134,7 @@ describe('ShellTool', () => {
     const said = await new ShellTool({ sandbox: null }).call({ command: 'uname -a' })
 
     expect(said.ok).toBe(true)
-    expect(said.value).toContain('the sandbox is not available')
+    expect(said.value).toContain('there is no Linux machine in this tab')
   })
 })
 

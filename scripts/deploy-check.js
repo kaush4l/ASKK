@@ -367,7 +367,10 @@ const compose = (text) => `(() => {
   // the element and reads the change off its own event; assigning through the
   // instance updates the DOM and leaves React's state holding the empty string,
   // so the send button stays disabled and the form submits nothing.
-  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, ${JSON.stringify('')} + ${JSON.stringify(text)})
+  // The setter of the element's OWN prototype. The composer is a textarea now
+  // and HTMLInputElement's setter throws "Illegal invocation" on one.
+  const proto = input.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype
+  Object.getOwnPropertyDescriptor(proto, 'value').set.call(input, ${JSON.stringify('')} + ${JSON.stringify(text)})
   input.dispatchEvent(new Event('input', { bubbles: true }))
   input.form.requestSubmit()
   return true

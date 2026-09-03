@@ -14,20 +14,23 @@
  * second parser, in another realm, that agrees with it until the day it does
  * not — and the day it does not, the page shows a call that never ran.
  *
- * What is NOT here: the OBSERVATION. `ReActEngine.run` pushes
- * `{action, observation}` onto its scratchpad and hands the observation to no
- * callback, so nothing outside the engine can see what a tool answered.
- * Surfacing it is a change in `src/core/`, which this slice does not own; it is
- * reported and not fixed.
+ * The OBSERVATION is here now. `ReActEngine.run` pushed `{action, observation}`
+ * onto its own scratchpad and handed the observation to no callback for the
+ * whole life of this file, so a reader could see what the agent TRIED and never
+ * what came back — which is the half of a tool call a person actually reads.
+ * `onObservation` and `EventName.OBSERVATION` closed that; this renders it,
+ * verbatim, for the same reason the call is verbatim.
  *
- * @param {{run: {steps: object[], ms: number}, usage: object|null}} props
+ * @param {{run: {steps: object[], ms: number}, usage: object|null,
+ *   observations: Record<number, {observation: string}>}} props
  */
-export function RunPanel({ run, usage }) {
+export function RunPanel({ run, usage, observations = {} }) {
   if (!run.steps.length) {
     return (
       <p className="hint">
         Every pass of a run lands here as it resolves — the calls the agent wrote, word for word,
-        and the reply it finished on. It stays until the next turn replaces it.
+        what each one answered, and the reply it finished on. It stays until the next turn replaces
+        it.
       </p>
     )
   }
@@ -57,6 +60,11 @@ export function RunPanel({ run, usage }) {
             <span className="id">{taken.isAnswer ? 'answered' : `step ${taken.step}`}</span>
             {taken.thinking ? <p className="thought">{taken.thinking}</p> : null}
             <pre className="call">{taken.answer}</pre>
+            {observations[taken.step] ? (
+              <pre className="result" data-testid={`run-result-${taken.step}`}>
+                {observations[taken.step].observation}
+              </pre>
+            ) : null}
           </li>
         ))}
       </ol>

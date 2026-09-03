@@ -54,7 +54,15 @@ export async function buildKernel() {
     STORE_SCHEDULES,
   ])
   const opened = await db.open()
-  const notes = opened.ok ? [] : [`storage unavailable: ${opened.failure.message}`]
+  // The CONSEQUENCE, not the diagnosis. "storage unavailable" is a true thing
+  // to say and it is not the thing a person needs: what they lose is every
+  // conversation they are about to have, and the note that says so is the one
+  // they can act on while there is still time to open an ordinary window.
+  const notes = opened.ok
+    ? []
+    : [
+        `this browser gave the app no storage, so conversations, files and settings will be gone when you close this tab: ${opened.failure.message}`,
+      ]
 
   const make = (name, store) =>
     opened.ok ? new IndexedDbRepository(name, db, store) : new MemoryRepository(name)
@@ -160,7 +168,16 @@ export async function buildKernel() {
   // app leaves the machine except the model call the user configured — but a
   // search cannot be served from inside a static page, so every query goes
   // unauthenticated to one third party, and the user is entitled to know which.
-  notes.push(`web search sends the query to ${new URL(SEARCH_ENDPOINT).host}; nothing else does`)
+  //
+  // It names WHAT IS SENT rather than "the query", and the host rather than a
+  // reassurance, because this is the one line here that has to survive being
+  // read by somebody who does not know how any of this works. It is a fact
+  // about a feature and it is not an apology: shortening it back to jargon, or
+  // softening it into "search may contact a service", takes the disclosure out
+  // of the only place it is made.
+  notes.push(
+    `web search sends the words you search for to ${new URL(SEARCH_ENDPOINT).host}; nothing else in this app sends them anywhere`,
+  )
 
   // The chat service comes back beside the kernel because the ports it was
   // handed are the one thing this file does that nothing else can witness. A

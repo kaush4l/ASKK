@@ -368,8 +368,13 @@ export class ShellTool extends Tool {
       return Outcome.ok('no command was given, so nothing ran')
     }
     if (!this.sandbox?.available) {
+      // This sentence and the one below the run are the two the model is asked
+      // to REPEAT, so they are the two a person actually reads, and they use
+      // the name the notes use rather than this file's own. `C2wSandbox` argues
+      // the naming; the short version is that "sandbox" is a word for whoever
+      // is editing this and never was one for whoever is reading the answer.
       return Outcome.ok(
-        'the sandbox is not available, so no command can run. Answer without it, and say that you could not run anything.',
+        'there is no Linux machine in this tab, so no command can run. Answer without it, and say that you could not run anything.',
       )
     }
 
@@ -439,7 +444,7 @@ export class ShellTool extends Tool {
       // sentence and whoever reads it.
       const { message, hint } = ran.failure
       return Outcome.ok(
-        `the sandbox could not run that: ${message}${hint ? ` (${hint})` : ''}. Say so in your answer — nothing else tells the user.`,
+        `that command could not run: ${message}${hint ? ` (${hint})` : ''}. Say so in your answer — nothing else tells the user.`,
         [...notes, ...ran.notes],
       )
     }

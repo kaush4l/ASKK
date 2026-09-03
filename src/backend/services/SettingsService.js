@@ -19,8 +19,17 @@ export const DEFAULT_SETTINGS = Object.freeze({
   id: SETTINGS_ID,
   kind: 'openai',
   agent: 'main',
-  model: 'Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp',
-  baseUrl: 'http://127.0.0.1:8873/v1',
+  // Empty, and every other field here has a default because these two cannot.
+  // They used to name the model and the port on the machine this was written on
+  // — `docs/TESTBED.md` is that machine — and a default nobody else can satisfy
+  // is not a convenience, it is the app asserting something untrue about
+  // itself. The header printed that model name beside a lit dot while the page
+  // under it said there was no model; the first question failed against a port
+  // no runtime uses; and the address field's own placeholder disagreed with the
+  // address in it. This app brings no model of its own, and the only honest
+  // description of a first visit is that nothing has been named yet.
+  model: '',
+  baseUrl: '',
   apiKey: '',
   temperature: 0.7,
   maxTokens: 2048,
@@ -75,8 +84,11 @@ export class SettingsService {
 
   async get() {
     const found = await this.repository.get(SETTINGS_ID)
-    // Unreadable settings are not a reason to be unusable: the defaults are a
-    // working configuration, so they stand in and the failure becomes a note.
+    // Unreadable settings are not a reason to be unusable. The defaults are not
+    // a working configuration — nothing here can be — but they are a complete
+    // and describable one, so the app boots, `HealthService` reports it as a
+    // setup nobody has finished, and the read failure travels as a note rather
+    // than as a blank screen.
     if (!found.ok) {
       return Outcome.ok({ ...DEFAULT_SETTINGS }, [
         `settings could not be read: ${found.failure.message}`,
@@ -91,23 +103,30 @@ export class SettingsService {
    * Save, correcting anything unusable rather than refusing the whole save.
    *
    * A rejected save loses every other edit the user made in the same form. What
-   * they meant is nearly always recoverable — an empty field means "leave it
-   * alone" — so the field is repaired, the save proceeds, and the correction is
-   * reported so the change is visible rather than surprising.
+   * they meant is nearly always recoverable — a number out of range means the
+   * nearest number in it — so the field is repaired, the save proceeds, and the
+   * correction is reported so the change is visible rather than surprising.
+   *
+   * The model and the address are the exception, and they are the exception
+   * because they have no default worth restoring. An empty one is not a mistake
+   * to repair, it is the state "not configured yet", and it is the state every
+   * person is in for the moment between clearing a field and typing the next
+   * one. Substituting there made clearing impossible: the form redraws from
+   * what this returns, so the field refilled itself as fast as it was emptied.
    */
   async save(patch = {}) {
     const current = await this.get()
     const next = { ...current.value, ...patch, id: SETTINGS_ID }
     const notes = []
 
-    if (!String(next.model ?? '').trim()) {
-      notes.push(`model was empty; kept ${DEFAULT_SETTINGS.model}`)
-      next.model = DEFAULT_SETTINGS.model
-    }
-    if (next.kind !== 'transformers' && !String(next.baseUrl ?? '').trim()) {
-      notes.push(`base URL was empty; kept ${DEFAULT_SETTINGS.baseUrl}`)
-      next.baseUrl = DEFAULT_SETTINGS.baseUrl
-    }
+    // Trimmed, and nothing else. A field cleared with the spacebar and a field
+    // cleared with backspace are the same intention, and only trimming makes
+    // them the same value — the difference decides whether `HealthService`
+    // builds a probe URL out of a blank and reports the emptiness as a server
+    // that is down. There is no note, because a person cannot act on the news
+    // that their spaces were removed.
+    next.model = String(next.model ?? '').trim()
+    next.baseUrl = String(next.baseUrl ?? '').trim()
     const temperature = Number(next.temperature)
     if (!Number.isFinite(temperature) || temperature < 0 || temperature > 2) {
       notes.push(

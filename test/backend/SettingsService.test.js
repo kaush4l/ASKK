@@ -17,6 +17,16 @@ import { DEFAULT_SETTINGS, SettingsService } from '../../src/backend/services/Se
 const service = () => new SettingsService(new MemoryRepository('settings'))
 
 describe('reading settings', () => {
+  test('a fresh install names no model and no address, because it has neither', async () => {
+    // The defaults used to name a model and a port that existed on one laptop.
+    // A default that is a guess is a claim: the header rendered that name
+    // beside a lit dot while the page beneath it said there was no model, and
+    // the first question failed against a server nobody was running. This app
+    // brings no model of its own, and empty is the only honest way to say so.
+    expect(DEFAULT_SETTINGS.model).toBe('')
+    expect(DEFAULT_SETTINGS.baseUrl).toBe('')
+  })
+
   test('a store with nothing in it answers with every default', async () => {
     const read = await service().get()
     expect(read.ok).toBe(true)
@@ -39,13 +49,37 @@ describe('reading settings', () => {
 
 describe('saving settings', () => {
   test('what comes back is what was kept, and the corrections say so', async () => {
+    // The contract changed here, and this assertion changed with it. It used to
+    // expect `model was empty; kept <default>` — sound only while the default
+    // was a model that existed, when an empty field could mean "leave it
+    // alone" because there was something to leave. Now that this app ships
+    // naming no model, putting the default back is putting nothing back while
+    // reporting a correction, and it makes clearing the field impossible: the
+    // one edit a person makes on the way to typing a different model. An empty
+    // model is a state — "not configured yet" — not a mistake, so it survives
+    // the save and only the value that really is unusable is corrected.
     const saved = await service().save({ ...DEFAULT_SETTINGS, model: '   ', temperature: 9 })
 
     expect(saved.ok).toBe(true)
-    expect(saved.value.model).toBe(DEFAULT_SETTINGS.model)
+    expect(saved.value.model).toBe('')
     expect(saved.value.temperature).toBe(DEFAULT_SETTINGS.temperature)
-    expect(saved.notes.join(' ')).toContain('model was empty')
+    expect(saved.notes.join(' ')).not.toContain('model was empty')
     expect(saved.notes.join(' ')).toContain('temperature')
+  })
+
+  test('an address cleared by hand stays cleared, and comes back cleared', async () => {
+    // The form redraws from what `save` returns, so a substituted address is a
+    // field that refills itself the moment it is emptied. Whatever the person
+    // is doing between clearing a field and typing the next one, arguing with
+    // them about it is not it.
+    const store = new MemoryRepository('settings')
+    const saved = await new SettingsService(store).save({ ...DEFAULT_SETTINGS, baseUrl: '  ' })
+
+    expect(saved.value.baseUrl).toBe('')
+    expect(saved.notes.join(' ')).not.toContain('base URL')
+    // And it is the stored record, not just the returned one: the next boot
+    // must find the same nothing, or clearing survives only until a reload.
+    expect((await new SettingsService(store).get()).value.baseUrl).toBe('')
   })
 
   test('a speed and a pitch outside what the browser accepts are clamped, not passed on', async () => {

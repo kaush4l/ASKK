@@ -92,10 +92,10 @@ describe('C2wSandbox', () => {
     expect(ran.ok).toBe(false)
     expect(ran.failure.code).toBe(Reason.UNAVAILABLE)
     expect(ran.failure.message).toBe(
-      'the sandbox image did not load: HTTP 404 for /ASKK/sandbox/sandbox.wasm',
+      'the Linux machine in this tab could not be loaded: HTTP 404 for /ASKK/sandbox/sandbox.wasm',
     )
     expect(ran.failure.hint).toBe(
-      'Build the guest with scripts/wasm/build.sh into public/sandbox/, or point the build at a hosted copy with SANDBOX_IMAGE=<url>.',
+      'Build it with scripts/wasm/build.sh into public/sandbox/, or point the build at a hosted copy with SANDBOX_IMAGE=<url>.',
     )
   })
 
@@ -162,7 +162,7 @@ describe('C2wSandbox', () => {
     const ran = await box().run('echo "unbalanced')
 
     expect(ran.value).toEqual({ stdout: 'sh: syntax error\n', code: 0 })
-    expect(ran.notes).toContain('the guest stopped abnormally: unreachable')
+    expect(ran.notes).toContain('the Linux machine in this tab stopped abnormally: unreachable')
   })
 
   test('the cap is measured against the wrapper, not the bare command', async () => {
@@ -184,7 +184,7 @@ describe('C2wSandbox', () => {
     expect(over.ok).toBe(false)
     expect(over.failure.code).toBe(Reason.BAD_REQUEST)
     expect(over.failure.message).toBe(
-      'the command costs 963 and the sandbox accepts 962 — the guest charges one for every byte and one more for every space or newline',
+      'the command costs 963 and the Linux machine in this tab accepts 962 — it charges one for every byte and one more for every space or newline',
     )
   })
 
@@ -207,7 +207,7 @@ describe('C2wSandbox', () => {
 
     expect(spaced.ok).toBe(false)
     expect(spaced.failure.message).toBe(
-      'the command costs 1200 and the sandbox accepts 962 — the guest charges one for every byte and one more for every space or newline',
+      'the command costs 1200 and the Linux machine in this tab accepts 962 — it charges one for every byte and one more for every space or newline',
     )
   })
 
@@ -233,6 +233,15 @@ describe('C2wSandbox', () => {
     // `vm-worker.js` computes both and, until they were read here, nothing read
     // either. Said once because both describe the IMAGE: a constant line on
     // every observation is paid again on every turn of every run.
+    //
+    // These two land in the notes under the transcript, so the words are part
+    // of the contract and are asserted whole. Both say what happened to a
+    // person — a download they paid for once, and calls that will answer an
+    // error — in the name the rest of the app uses for this thing. Neither says
+    // "sandbox", "guest" or "image": those are this file's words for its own
+    // parts, and a reader of the answer never agreed to learn them. ENOTSUP
+    // survives with its meaning beside it, because a command that trips one
+    // reads that exact string back in its own output.
     boots([
       { stdout: '__askk_rc0\r\n', code: 0, stubbed: ['sock_accept'] },
       { stdout: '__askk_rc0\r\n', code: 0, stubbed: ['sock_accept'] },
@@ -243,8 +252,8 @@ describe('C2wSandbox', () => {
     const second = await sandbox.run('true')
 
     expect(first.notes).toEqual([
-      'the sandbox image is 107054914 bytes, fetched once for this tab',
-      'not implemented in this sandbox, answering ENOTSUP: sock_accept',
+      'the Linux machine in this tab was downloaded once: 107054914 bytes',
+      'these calls are missing from the Linux machine in this tab and answer ENOTSUP, "not supported": sock_accept',
     ])
     expect(second.notes).toEqual([])
   })
@@ -269,7 +278,7 @@ describe('C2wSandbox', () => {
     const both = Promise.all([sandbox.run('one'), sandbox.run('two')])
     await Bun.sleep(0)
 
-    FakeWorker.last.break('the sandbox worker stopped')
+    FakeWorker.last.break('the Linux machine in this tab stopped')
 
     for (const ran of await both) {
       expect(ran.ok).toBe(false)

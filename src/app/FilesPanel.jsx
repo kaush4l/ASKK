@@ -245,9 +245,14 @@ export function FilesPanel({ client, turnsDone }) {
           ) : null}
           {/* What the person may do, said out loud. This read `read-only` for
               two waves and was the honest thing to say then; a save button now
-              exists and the sentence that would still be true is the one about
-              what a save is checked against. */}
-          <span className="measured">{draft ? 'editing' : 'saved against what you read'}</span>
+              exists, and what has to be said is what a save is checked
+              against. "saved against what you read" was the previous attempt
+              and a reviewer's verdict on it was that it "is not English anyone
+              will parse" — true, and it was hiding a real rule: a save is
+              refused if the file moved while you were looking at it. */}
+          <span className="measured">
+            {draft ? 'editing' : 'a save is refused if this file has changed'}
+          </span>
         </p>
       </div>
 

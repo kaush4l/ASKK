@@ -1,35 +1,27 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { BackendClient } from '../client/BackendClient.js'
+import { announce, askToAnnounce, copy, keepAwake, keyboardInset } from '../client/Device.js'
 import { Dictation, Voice } from '../client/Speech.js'
 import { EventName } from '../protocol/Envelope.js'
-import { FilesPanel } from './FilesPanel.jsx'
-import { PromptPanel } from './PromptPanel.jsx'
-import { RunPanel } from './RunPanel.jsx'
-import { SchedulePanel } from './SchedulePanel.jsx'
+import { Composer } from './Composer.jsx'
+import { Drawer } from './Drawer.jsx'
+import { Header } from './Header.jsx'
+import { statusLine } from './phrasing.js'
+import { Settings } from './Settings.jsx'
+import { Transcript } from './Transcript.jsx'
 
 /**
- * The three instruments, in the order they answer a different question.
+ * The page: state, effects, and who gets told what.
  *
- * `prompt` is what was SENT, `run` is what the agent DID with the reply, and
- * `files` is what is left behind afterwards. The order is the order of the
- * turn, and this list is the whole of the rail: one button per entry, each
- * pressed exactly while its pane is open, so the rail cannot disagree with
- * itself about how many instruments there are.
+ * It held all of that AND every element of the interface, at 1,298 lines, and
+ * `docs/INTERFACE.md` is the argument for the shape it has now. What is left
+ * here is the work no component can do — the boot, the writer election, the
+ * scheduler, the turn — and the components below are handed values.
  *
- * It is not a registry. A fourth instrument is an entry here AND a component
- * beside the three below, because the pane needs the props only the page can
- * hand it — which is a sibling line in one place rather than the guard per
- * block this used to be, where an arm could be forgotten and render a meter
- * inside the run log.
+ * @see docs/INTERFACE.md
  */
-// The rail's buttons, and each one is the name the whole app uses for that
-// thing. `schedule` was `plans` for one wave and the feature had four names —
-// the button said plans, the panel said scheduled question, the submit said
-// schedule it, the rail said "2 scheduled" — which is four things to a reader
-// and one to whoever wrote it.
-const INSTRUMENTS = ['prompt', 'run', 'files', 'schedule']
 
 /**
  * How often the page looks for a schedule that has come due.
@@ -42,13 +34,32 @@ const INSTRUMENTS = ['prompt', 'run', 'files', 'schedule']
  */
 const TICK_MS = 20_000
 
+/**
+ * Three questions that fill the composer.
+ *
+ * They are the only place a newcomer learns that this thing can run a command,
+ * read a page or hand work to a second agent. The previous empty screen said so
+ * in a paragraph and expected the reader to remember it; a reviewer's list of
+ * things a first-time user could not discover ran to thirteen entries.
+ */
+const EXAMPLES = [
+  {
+    text: 'Run uname -a and tell me what kernel this is',
+    why: 'a real Linux machine, in this tab',
+  },
+  { text: 'Search the web for what changed in Safari 26', why: 'it goes and looks' },
+  { text: "Write today's plan to plan.md", why: 'its files last between conversations' },
+]
+
 export default function Page() {
   const clientRef = useRef(null)
   const scrollRef = useRef(null)
   const [ready, setReady] = useState(false)
   const [conversationId, setConversationId] = useState(null)
+  const [conversations, setConversations] = useState([])
   const [messages, setMessages] = useState([])
   const [draft, setDraft] = useState('')
+  const [attachments, setAttachments] = useState([])
   const [busy, setBusy] = useState(false)
   // The id of the turn in flight, which is also the only handle there is on it
   // — see `CANCEL` in the envelope. Null between turns, and the stop button
@@ -58,22 +69,27 @@ export default function Page() {
   const [notes, setNotes] = useState([])
   const [settings, setSettings] = useState(null)
   const [agents, setAgents] = useState([])
+  const [agentSpec, setAgentSpec] = useState(null)
   const [threads, setThreads] = useState([])
   const [showSettings, setShowSettings] = useState(false)
+  const [testing, setTesting] = useState(false)
   // The turn, as it happens and afterwards. `raw` is the text arriving from the
   // model before it has been parsed, `reasoning` is the scratchpad a thinking
   // model emits alongside it, and `steps` are the passes that have resolved.
   //
-  // It was called `live` and the two streaming halves still are — they are
-  // cleared the moment the turn ends, because from then on the transcript is
-  // the record of what was SAID. The steps are not, and clearing them was the
-  // defect this slice repairs: a ReAct run's tool calls existed only while the
-  // spinner was up, so a person who looked away missed every one of them and
-  // `scripts/deploy-check.js` had to poll the page 4 times a second to see any
-  // — its own comment says "a reader that only looks afterwards finds an empty
-  // list and reports that a multi-pass run took one pass". They are kept until
-  // the next turn replaces them, and the run panel is where they are read.
+  // The steps are KEPT after the turn. A ReAct run's tool calls existed only
+  // while the spinner was up, so a person who looked away missed every one of
+  // them — and the reply, which says "the step above shows where it came from",
+  // was left pointing at something the page had just deleted.
   const [run, setRun] = useState({ raw: '', reasoning: '', steps: [], at: 0, ms: 0 })
+  /**
+   * What each tool ANSWERED, keyed by the step that called it.
+   *
+   * The other half of a pass, and until `EventName.OBSERVATION` existed there
+   * was no way to see it: the page could say what the agent tried and never
+   * what came back, which is the half a person actually reads.
+   */
+  const [observations, setObservations] = useState({})
   // Bumped when a turn finishes. The workspace is the one thing on this page a
   // turn can change behind the reader's back, so this is what tells the file
   // view to look again — a trigger, not a value anything reads.
@@ -81,9 +97,6 @@ export default function Page() {
   // Every prompt this turn sent, in order. A ReAct run is several calls, so one
   // slot would show the last one and quietly hide the rest.
   const [prompts, setPrompts] = useState([])
-  // What the provider said the last call actually cost. The only token number
-  // here that is measured rather than estimated, so it is kept beside the
-  // estimates rather than replacing them.
   const [usage, setUsage] = useState(null)
   /**
    * The sub-agents working right now, keyed by name.
@@ -93,63 +106,54 @@ export default function Page() {
    * whichever reported last while claiming to be the state of the run.
    */
   const [delegates, setDelegates] = useState({})
-  /**
-   * Seconds since this turn started, while it is running.
-   *
-   * A clock, and it earns its re-render: the rail said the single word
-   * "working" for however long a turn took, and a turn here can be minutes —
-   * a 50 MB guest downloading, a sub-agent reading pages. A word that does not
-   * move is how a working app and a wedged one look the same, and the first
-   * thing a person does about that is close the tab.
-   */
   const [elapsed, setElapsed] = useState(0)
   /**
    * The user pressed stop, and the turn has not finished reacting to it yet.
    *
    * Kept because a stopped run comes back SUCCESSFUL with no assistant message
-   * — which is correct, and left nothing whatsoever on screen. The turn simply
-   * ended, indistinguishable from one that answered with nothing.
+   * — which is correct, and left nothing whatsoever on screen.
    */
   const [stopping, setStopping] = useState(false)
-  // Which instrument is open, or null. One slot and not three booleans: the
-  // aside is one pane, so two open at once is a state the layout cannot show
-  // and a reader would have to be protected from.
-  //
-  // Closed at first render, on purpose. The panel is a second pane on a desktop
-  // and a full-screen sheet on a phone, so opening it by default would greet a
-  // phone with an empty readout and the conversation hidden behind it. The
-  // desktop opens it below, after mount, where the viewport is knowable.
-  const [panel, setPanel] = useState(null)
+  // Which section of the drawer is showing, and whether the drawer is open at
+  // all. Two slots and not one, so closing it and reopening it returns a person
+  // to what they were reading.
+  const [drawer, setDrawer] = useState(false)
+  const [section, setSection] = useState('run')
   const [promptAt, setPromptAt] = useState(0)
-  // Dictation, as three separate facts because they are separately interesting:
-  // whether the microphone is open, what has been heard so far, and how much of
-  // a model is still to arrive. The first run of a local engine spends minutes
-  // on the third with nothing to show for the other two, and a spinner that
-  // cannot tell those apart is a spinner nobody believes.
   /**
    * Whether the model this app was told to call actually answers.
    *
    * `ready` has always meant "the app started", and a first visit reads it as
-   * "ask me something" — then meets a transport failure, because the default
-   * address is a server on this machine that most people are not running.
+   * "ask me something" — then meets a transport failure, because there is no
+   * model until somebody names one.
    */
   const [modelHealth, setModelHealth] = useState(null)
   /** Work handed to another agent that no turn is waiting for. */
   const [tasks, setTasks] = useState([])
-  /** What is scheduled, so the rail can say so and the panel can list it. */
+  /** What is scheduled, so the drawer can list it. */
   const [schedules, setSchedules] = useState([])
   /**
    * Whether THIS tab is the one that may write to the open conversation.
    *
    * `null` until the question has been asked, so "still deciding" and "another
-   * tab has it" are different things on screen — they were the same thing for
-   * one draft and every first paint said the conversation was taken.
+   * tab has it" are different things on screen.
    */
   const [writer, setWriter] = useState(null)
   const [listening, setListening] = useState(false)
-  const [heard, setHeard] = useState('')
+  const [level, setLevel] = useState(0)
   const [download, setDownload] = useState(null)
   const [speaking, setSpeaking] = useState('')
+  const [copied, setCopied] = useState('')
+  /**
+   * The question whose turn failed, kept so it can be sent again.
+   *
+   * Measured: a first visit types a question, the turn fails because no model
+   * is configured, the person fixes the settings — and the error silently
+   * vanishes while the question sits in the transcript with no reply, no error
+   * and no way to retry. The transcript then reads as though the assistant
+   * ignored them.
+   */
+  const [failed, setFailed] = useState(null)
   const dictationRef = useRef(null)
   const voiceRef = useRef(null)
 
@@ -173,9 +177,9 @@ export default function Page() {
         client.call('settings.get'),
         client.call('agents.list'),
         // Whether a question can be answered at all, asked once at boot. Every
-        // other boot note is about THIS app — storage, the worker, the guest —
-        // and the app can be perfectly ready while the model it was told to
-        // call is not running, which is what a first visit actually hits.
+        // other boot note is about THIS app — storage, the worker, the machine
+        // in the tab — and the app can be perfectly ready while the model it
+        // was told to call is not there, which is what a first visit hits.
         client.call('health.model'),
       ])
       collected.push(...existing.notes, ...loaded.notes, ...roster.notes)
@@ -185,11 +189,14 @@ export default function Page() {
       const planned = await client.call('schedules.list')
       if (planned.ok) setSchedules(planned.value)
 
-      let conversation = existing.ok ? existing.value[0] : null
+      const listed = existing.ok ? existing.value : []
+      setConversations(listed)
+      let conversation = listed[0] ?? null
       if (!conversation) {
         const made = await client.call('conversations.create', { title: 'Chat' })
         collected.push(...made.notes)
         conversation = made.ok ? made.value : null
+        if (conversation) setConversations([conversation])
       }
       if (conversation) {
         setConversationId(conversation.id)
@@ -202,21 +209,26 @@ export default function Page() {
     return () => client.terminate()
   }, [])
 
-  // Open beside the conversation where there is room for it. Decided after
-  // mount rather than during render: the page is prerendered to static HTML by
-  // a build that has no viewport, and a component that guessed one would
-  // hydrate into a layout the markup does not match.
-  useEffect(() => {
-    if (window.matchMedia?.('(min-width: 60rem)').matches) setPanel('prompt')
-  }, [])
-
   // Follow the conversation as it grows, including while a reply is pending.
-  // They are the trigger, not values the body reads: dropping them would scroll
-  // once, on mount, and never again.
   // biome-ignore lint/correctness/useExhaustiveDependencies: scroll-on-change
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
   }, [messages, busy])
+
+  /**
+   * How much of the window the on-screen keyboard is covering.
+   *
+   * The composer sits against the bottom edge and the layout viewport does not
+   * move when a phone's keyboard opens, so without this the field being typed
+   * into is underneath the keyboard. It is handed to the stylesheet as a
+   * variable rather than to a component, because the padding it changes belongs
+   * to the dock and nothing renders differently.
+   */
+  useEffect(() => {
+    return keyboardInset((px) => {
+      document.documentElement.style.setProperty('--keyboard', `${px}px`)
+    })
+  }, [])
 
   /**
    * Whether a turn is running, readable from inside a timer.
@@ -225,7 +237,6 @@ export default function Page() {
    * created; reading `busy` there would read whatever it was when the effect
    * last ran, and a schedule would start a second turn on top of a live one.
    */
-  /** The election's answer, readable from a timer that closed over an old render. */
   const writerRef = useRef(null)
   writerRef.current = writer
 
@@ -452,13 +463,8 @@ export default function Page() {
    *
    * The assistant answers "I have started the researcher on that" and then,
    * without this, nothing else ever happens: the answer waits for the next
-   * message the person sends, the rail keeps saying one thing is in the
-   * background, and a helper you have to remember to ask about is a helper you
-   * assume dropped your question.
-   *
-   * Three seconds while something is running, and nothing at all when nothing
-   * is: the poll is one call into the backend worker in the same tab, and it
-   * exists only for the window between a task finishing and a person noticing.
+   * message the person sends, and a helper you have to remember to ask about is
+   * a helper you assume dropped your question.
    */
   useEffect(() => {
     if (!ready) return undefined
@@ -476,14 +482,17 @@ export default function Page() {
           before.get(task.id) === 'running',
       )
       setTasks(handed.value)
-      // Named, and in the words of what happens next. "Done" would leave a
-      // person waiting for an answer that only arrives when they ask for it.
       for (const task of finished) {
         const said =
           task.state === 'failed'
             ? `${task.agent} could not finish what you handed over.`
             : `${task.agent} has finished. Send anything and it will read the answer back to you.`
         setNotes((current) => (current.includes(said) ? current : [...current, said]))
+        // And in the operating system, when the tab is not the one being
+        // looked at. `announce` says nothing when the page is visible and
+        // never asks for permission on its own — a permission dialog that
+        // appears because a background task finished is one nobody asked for.
+        announce({ title: `${task.agent} has finished`, body: said })
       }
     }
 
@@ -505,12 +514,49 @@ export default function Page() {
     return () => clearInterval(tick)
   }, [busy])
 
-  async function send(event) {
-    event.preventDefault()
+  /**
+   * Keep the screen on while a turn is running.
+   *
+   * A turn here can be minutes — a 50 MB Linux machine arriving, a model
+   * downloading into the tab, a second agent reading pages — and a phone that
+   * sleeps mid-run suspends the timers the run is made of. Taken for the length
+   * of the turn and released with it, never held while nothing is happening.
+   */
+  useEffect(() => {
+    if (!busy) return undefined
+    let release = null
+    let dropped = false
+    keepAwake().then((held) => {
+      if (dropped) held.release()
+      else release = held.release
+    })
+    return () => {
+      dropped = true
+      release?.()
+    }
+  }, [busy])
+
+  /**
+   * Which agent is answering, and everything it declares.
+   *
+   * `agents.get` has existed since `AgentService` was written and had no
+   * callers: an agent's tools, its budget and the programs it connects to were
+   * invisible in the running app.
+   */
+  useEffect(() => {
+    if (!ready || !settings?.agent) return
+    clientRef.current?.call('agents.get', { name: settings.agent }).then((found) => {
+      if (found.ok) setAgentSpec(found.value)
+    })
+  }, [ready, settings?.agent])
+
+  async function send() {
     const text = draft.trim()
-    if (!text || busy || !conversationId) return
+    if ((!text && !attachments.length) || busy || !conversationId) return
+    const sending = attachments.map((one) => one.url)
     setDraft('')
-    await ask(text)
+    setAttachments([])
+    await ask(text, conversationId, sending)
   }
 
   /**
@@ -518,93 +564,101 @@ export default function Page() {
    *
    * Split out of `send` so a schedule can use it. That is the whole of what
    * makes a scheduled question the same thing as a typed one: same route, same
-   * conversation, same streaming, same transcript. A second path to the model
-   * would be a path that drifts from the one people actually use.
+   * conversation, same streaming, same transcript.
    */
-  async function ask(text, into = conversationId) {
+  async function ask(text, into = conversationId, files = []) {
     // The guard belongs here as well as at the two call sites, because this is
     // the function that starts a turn and a second turn started on top of a
-    // live one interleaves two transcripts. `send` reads React state, the
-    // scheduler reads a ref, and only this sees every caller.
+    // live one interleaves two transcripts.
     if (busyRef.current || !into) return
     // And the same argument one realm out: a turn appends to a record another
-    // tab may be appending to. `writerRef` and not `writer`, because a schedule
-    // fires out of an interval that closed over an older render.
+    // tab may be appending to.
     if (writerRef.current === false) return
     setProblem(null)
+    setFailed(null)
     setBusy(true)
     setStopping(false)
     const startedAt = Date.now()
     setRun({ raw: '', reasoning: '', steps: [], at: startedAt, ms: 0 })
+    setObservations({})
     setPrompts([])
     setPromptAt(0)
     setUsage(null)
     // Shown immediately rather than after the round trip. The backend has
     // already been told to persist it first, so this is not an optimistic lie.
-    setMessages((current) => [...current, { id: `local-${Date.now()}`, role: 'user', text }])
+    setMessages((current) => [
+      ...current,
+      { id: `local-${Date.now()}`, role: 'user', text, attachments: files },
+    ])
 
-    const turn = clientRef.current.begin('chat.send', { id: into, text }, (name, data) => {
-      if (name === EventName.PROMPT) {
-        setPrompts((current) => [...current, data])
-        // Follow the run: a panel pinned to step 1 while step 4 is being sent
-        // is showing history, not what is happening. Steps are numbered from
-        // one and arrive in order, so the index is the step minus one.
-        setPromptAt(data.step - 1)
-        return
-      }
-      if (name === EventName.DELTA) {
-        // The first token is proof the model is up, so it is also what
-        // retires the download bar — a cached model reports a start and then
-        // nothing at all, and waiting for a finish that never comes would
-        // leave the last byte count on screen for the whole turn.
-        setDownload(null)
-        // Two channels, kept apart. A thinking model can emit pages of
-        // scratchpad before its first word of answer; merging them would put
-        // the reply at the bottom of its own working-out.
-        const field = data.kind === 'reasoning' ? 'reasoning' : 'raw'
-        setRun((current) => ({ ...current, [field]: current[field] + data.chunk }))
-        return
-      }
-      if (name === EventName.USAGE) {
-        setUsage(data)
-        return
-      }
-      if (name === EventName.PROGRESS) {
-        // Weights arriving for a model that runs in this tab. The same bar
-        // the speech panels use, because it is the same fact: a first load is
-        // minutes of a file, and an app that says nothing for minutes is
-        // indistinguishable from one that has hung.
-        setDownload(data)
-        return
-      }
-      if (name === EventName.DELEGATE) {
-        // A second agent, part-way through the question this turn handed it.
-        // It is kept as ONE value rather than appended to a list: the rail
-        // has room for a line, and what a reader needs is what the delegate
-        // is doing NOW — the history of a delegated run belongs to the
-        // delegate, and the parent already records the answer it returned.
-        setDelegates((current) => ({ ...current, [data.agent]: data }))
-        return
-      }
-      if (name === EventName.STEP) {
-        // The raw text is dropped here on purpose. It has just been parsed,
-        // and showing both the contract and the answer it contains is how a
-        // reader ends up reading the scaffolding.
-        setRun((current) => ({
-          ...current,
-          raw: '',
-          reasoning: '',
-          steps: [...current.steps, data],
-        }))
-      }
-    })
+    let startedAtStep = startedAt
+    const turn = clientRef.current.begin(
+      'chat.send',
+      { id: into, text, attachments: files },
+      (name, data) => {
+        if (name === EventName.PROMPT) {
+          setPrompts((current) => [...current, data])
+          // Follow the run: a panel pinned to step 1 while step 4 is being sent
+          // is showing history, not what is happening.
+          setPromptAt(data.step - 1)
+          return
+        }
+        if (name === EventName.DELTA) {
+          // The first token is proof the model is up, so it is also what
+          // retires the download bar — a cached model reports a start and then
+          // nothing at all.
+          setDownload(null)
+          // Two channels, kept apart. A thinking model can emit pages of
+          // scratchpad before its first word of answer.
+          const field = data.kind === 'reasoning' ? 'reasoning' : 'raw'
+          setRun((current) => ({ ...current, [field]: current[field] + data.chunk }))
+          return
+        }
+        if (name === EventName.USAGE) {
+          setUsage(data)
+          return
+        }
+        if (name === EventName.PROGRESS) {
+          // Weights arriving for a model that runs in this tab, or the Linux
+          // machine arriving for the first command. The same bar for both,
+          // because it is the same fact: a first load is minutes of a file, and
+          // an app that says nothing for minutes is indistinguishable from one
+          // that has hung.
+          setDownload(data)
+          return
+        }
+        if (name === EventName.DELEGATE) {
+          setDelegates((current) => ({ ...current, [data.agent]: data }))
+          return
+        }
+        if (name === EventName.OBSERVATION) {
+          // What the tool answered, against the step that called it. The clock
+          // is this realm's: the engine reports what happened, not how long the
+          // page had been waiting to hear it.
+          const took = Date.now() - startedAtStep
+          startedAtStep = Date.now()
+          setObservations((current) => ({ ...current, [data.step]: { ...data, ms: took } }))
+          return
+        }
+        if (name === EventName.STEP) {
+          startedAtStep = Date.now()
+          // The raw text is dropped here on purpose. It has just been parsed,
+          // and showing both the contract and the answer it contains is how a
+          // reader ends up reading the scaffolding.
+          setRun((current) => ({
+            ...current,
+            raw: '',
+            reasoning: '',
+            steps: [...current.steps, data],
+          }))
+        }
+      },
+    )
     setRunning(turn.id)
     const result = await turn.done
     // A stopped run answers ok with no assistant message, and said nothing at
-    // all about it: the turn ended, the composer came back, and whether it had
-    // been stopped or had simply answered with nothing was left to the reader
-    // to guess. The sentence is written here rather than in the backend because
-    // only this realm knows the stop came from a person pressing a button.
+    // all about it. The sentence is written here rather than in the backend
+    // because only this realm knows the stop came from a person.
     const ended =
       stopping && !result.value?.assistant
         ? [
@@ -613,50 +667,30 @@ export default function Page() {
           ]
         : result.notes
     setNotes(ended)
-    // Which sub-agent threads exist is a fact the backend holds and nothing
-    // else can see. Read it after every turn so delegation is visible.
     const spawned = await clientRef.current.call('agents.threads')
     if (spawned.ok) setThreads(spawned.value)
-    // And what is still running with nobody waiting for it. Read on the same
-    // beat as the threads, because both are facts the backend holds that
-    // nothing in this realm can see.
     const handed = await clientRef.current.call('agents.tasks')
     if (handed.ok) setTasks(handed.value)
     if (result.ok) {
       // `.filter(Boolean)` is not tidiness here. A stopped run answers ok with
-      // no assistant message at all — there was nothing it was willing to write
-      // down as a reply — and this is what keeps the transcript exactly as it
-      // was rather than growing an empty turn.
+      // no assistant message at all, and this is what keeps the transcript
+      // exactly as it was rather than growing an empty turn.
       setMessages((current) => [...current, result.value.assistant].filter(Boolean))
-      // Not awaited. Reading a reply aloud takes as long as the reply is long,
-      // and the turn is over — blocking on it would leave the composer disabled
-      // for the length of a paragraph being spoken.
+      // Not awaited. Reading a reply aloud takes as long as the reply is long.
       if (settings?.speakReplies && result.value.assistant?.text) say(result.value.assistant.text)
     } else {
-      // The turn failed, but the user's message was saved before the model was
-      // called — so the transcript is left alone and only the reply is missing.
+      // The turn failed, and the question is HELD so it can be sent again. The
+      // user's message was saved before the model was called, so without this
+      // the transcript reads as though the assistant simply ignored them.
       setProblem({ message: result.error.message, hint: result.error.hint })
+      setFailed({ text, files })
     }
-    // The turn is over. The two streaming halves go, because whatever they were
-    // producing is now in the transcript and a leftover copy would be a second,
-    // stale one. The STEPS stay: they are the only account anywhere of what the
-    // agent did on the way to that answer, the transcript holds none of it, and
-    // throwing them away at the end of every turn is what made tool calls
-    // invisible to everyone who was not watching the exact second they resolved.
     setRun((current) => ({ ...current, raw: '', reasoning: '', ms: Date.now() - current.at }))
-    // The delegate goes with the streaming halves and for the same reason:
-    // whatever it was doing is finished and folded into the answer, and a
-    // leftover "researcher: fetch (3)" on the rail would be a claim that
-    // something is still running.
     setDelegates({})
     setDownload(null)
     // After the steps, so a file view that reloads on this reads a workspace the
     // turn has finished writing to.
     setTurnsDone((count) => count + 1)
-    // Cleared WITH `busy` and not before it. Cleared early — as it was — the
-    // button went on reading "stop" for the length of the `agents.threads`
-    // round trip above while calling `stop(null)`, which does nothing. Nothing
-    // was lost, the turn was already over; the control simply lied.
     setRunning(null)
     setBusy(false)
   }
@@ -665,11 +699,9 @@ export default function Page() {
    * Start or end a dictation.
    *
    * The partial goes straight into the composer rather than into a preview of
-   * its own: the point of dictating is to send the words, and text that has to
-   * be moved somewhere before it can be sent is a transcript, not an input. It
-   * is still shown separately while listening, because the partial is *revised*
-   * — words already typed change as more audio arrives — and that is worth
-   * seeing happen rather than discovering in the box you were about to send.
+   * its own: the point of dictating is to send the words. It is still shown
+   * separately while listening, because the partial is REVISED — words already
+   * typed change as more audio arrives.
    */
   async function dictate() {
     if (listening) {
@@ -677,7 +709,7 @@ export default function Page() {
       const done = await dictationRef.current?.stop()
       dictationRef.current = null
       setDownload(null)
-      setHeard('')
+      setLevel(0)
       if (done?.text) setDraft(done.text)
       if (done && !done.ok) setProblem({ message: done.error.message, hint: done.error.hint })
       if (done?.notes?.length) setNotes(done.notes)
@@ -686,30 +718,24 @@ export default function Page() {
 
     const dictation = new Dictation(settings ?? {})
     dictation.onPartial = (text) => {
-      // A partial is proof the model is up, so it is also what retires the
-      // download bar. Waiting for the loader to say it has finished would leave
-      // the last byte-count on screen if the final progress event never came,
-      // which is exactly what a cached model does — it reports a start and then
-      // nothing at all.
       setDownload(null)
-      setHeard(text)
       setDraft(text)
+      // A partial arriving is the only proof this page has that the microphone
+      // is live, so it is what moves the meter. A level driven by the audio
+      // thread would be truer and would cost a message per block.
+      setLevel(0.35 + Math.random() * 0.4)
     }
     dictation.onProgress = (progress) => setDownload(progress)
-    // A model that fails to build does so minutes into its own download, and
-    // an interface still saying "listening" at that point is lying about where
-    // the words are going.
     dictation.onEnded = (result) => {
       setListening(false)
       setDownload(null)
-      setHeard('')
+      setLevel(0)
       dictationRef.current = null
       if (!result.ok) setProblem({ message: result.error.message, hint: result.error.hint })
     }
     dictationRef.current = dictation
 
     setProblem(null)
-    setHeard('')
     setListening(true)
     const started = await dictation.start()
     if (started.notes?.length) setNotes(started.notes)
@@ -719,21 +745,26 @@ export default function Page() {
       setProblem({ message: started.error.message, hint: started.error.hint })
       return
     }
-    // Only cleared once the model is up: a download bar left on screen after the
-    // weights arrived would say the wait is still happening.
     setDownload(null)
   }
 
   /**
-   * Read a reply aloud.
+   * Read a reply aloud, or stop reading it.
    *
-   * One voice object for the tab, not one per message. Rebuilding it per reply
-   * would reload the weights per reply, which is the same mistake this tree
-   * already names for inference.
+   * One voice object for the tab, not one per message. `Voice.stop` has existed
+   * since the class was written and had no caller anywhere: a long reply, once
+   * started, could not be interrupted, and the control said "speaking…" while
+   * doing nothing at all.
    */
   async function say(text) {
     if (!voiceRef.current) voiceRef.current = new Voice(settings ?? {})
     voiceRef.current.settings = settings ?? {}
+    if (speaking === text) {
+      await voiceRef.current.stop()
+      setSpeaking('')
+      return
+    }
+    if (speaking) await voiceRef.current.stop()
     voiceRef.current.onProgress = (progress) => setDownload(progress)
     setSpeaking(text)
     const spoken = await voiceRef.current.say(text)
@@ -743,37 +774,57 @@ export default function Page() {
     if (!spoken.ok) setProblem({ message: spoken.error.message, hint: spoken.error.hint })
   }
 
+  const remember = useCallback(async (text) => {
+    const done = await copy(text)
+    if (done.ok) {
+      setCopied(text)
+      setTimeout(() => setCopied(''), 1400)
+    } else if (done.note) {
+      setNotes((current) => (current.includes(done.note) ? current : [...current, done.note]))
+    }
+  }, [])
+
   async function saveSettings(event) {
     event.preventDefault()
     setProblem(null)
     const result = await clientRef.current.call('settings.save', settings)
     setNotes(result.notes)
-    if (result.ok) {
-      // Whatever came back is authoritative — the backend may have corrected a
-      // field, and the form must show what was actually kept, not what was typed.
-      setSettings(result.value)
-      setShowSettings(false)
-      // Asked again, because the reason to open settings was usually this. A
-      // message telling someone to fix something that stays up after they have
-      // fixed it is worse than no message at all.
-      const rechecked = await clientRef.current.call('health.model')
-      if (rechecked.ok) setModelHealth(rechecked.value)
-    } else {
+    if (!result.ok) {
       setProblem({ message: result.error.message, hint: result.error.hint })
+      return
     }
+    // Whatever came back is authoritative — the backend may have corrected a
+    // field, and the form must show what was actually kept.
+    setSettings(result.value)
+    setShowSettings(false)
+    // Asked again, because the reason to open settings was usually this.
+    const rechecked = await clientRef.current.call('health.model')
+    if (rechecked.ok) setModelHealth(rechecked.value)
+    // Notifications are asked for HERE, after a deliberate save, and never from
+    // a background task finishing. This is the one moment a person is looking
+    // at the app and has just told it what to do.
+    if (globalThis.Notification?.permission === 'default') askToAnnounce()
   }
 
-  /**
-   * Add a schedule to THIS conversation.
-   *
-   * The conversation is not a field on the form: a scheduled question lands in
-   * a transcript, and the one a person is looking at is the one they mean. It
-   * is stored on the record so the tick can tell whose it is.
-   */
-  async function addSchedule({ text, everySeconds }) {
+  /** Check the address before leaving the form, not four actions later. */
+  async function testConnection() {
+    setTesting(true)
+    // Cleared first, so what is on screen while the check runs is the check
+    // running and not the previous answer. A stale "✓ answered" beside a
+    // freshly typed address is the form agreeing with something nobody asked.
+    setModelHealth(null)
+    const saved = await clientRef.current.call('settings.save', settings)
+    if (saved.ok) setSettings(saved.value)
+    const found = await clientRef.current.call('health.model')
+    if (found.ok) setModelHealth(found.value)
+    setTesting(false)
+  }
+
+  async function addSchedule({ text, everySeconds, atMinutes }) {
     const made = await clientRef.current.call('schedules.create', {
       text,
       everySeconds,
+      atMinutes,
       conversationId,
     })
     setNotes(made.notes)
@@ -792,6 +843,20 @@ export default function Page() {
     if (listed.ok) setSchedules(listed.value)
   }
 
+  async function openConversation(id) {
+    const found = await clientRef.current.call('conversations.get', { id })
+    if (!found.ok) {
+      setProblem({ message: found.error.message, hint: found.error.hint })
+      return
+    }
+    setConversationId(id)
+    setMessages(found.value.messages ?? [])
+    setRun({ raw: '', reasoning: '', steps: [], at: 0, ms: 0 })
+    setObservations({})
+    setProblem(null)
+    setFailed(null)
+  }
+
   async function newChat() {
     const result = await clientRef.current.call('conversations.create', { title: 'Chat' })
     setNotes(result.notes)
@@ -799,358 +864,193 @@ export default function Page() {
       setProblem({ message: result.error.message, hint: result.error.hint })
       return
     }
+    setConversations((current) => [result.value, ...current])
     setConversationId(result.value.id)
     setMessages([])
     setProblem(null)
+    setFailed(null)
   }
 
-  const field = (key) => ({
-    value: settings?.[key] ?? '',
-    onChange: (e) => setSettings((s) => ({ ...s, [key]: e.target.value })),
-  })
+  async function renameConversation(one) {
+    const title = globalThis.prompt?.('What should this conversation be called?', one.title ?? '')
+    if (title === null || title === undefined) return
+    const done = await clientRef.current.call('conversations.rename', { id: one.id, title })
+    setNotes(done.notes)
+    if (done.ok)
+      setConversations((current) =>
+        current.map((row) => (row.id === one.id ? { ...row, title: done.value.title } : row)),
+      )
+  }
+
+  /**
+   * Delete a conversation, having said what is being deleted.
+   *
+   * The control this replaces was called `new`, sat at the most-hit position in
+   * the toolbar, destroyed the open conversation with no confirmation and left
+   * no way back to it — a reviewer lost six messages to it, and a schedule made
+   * in that conversation outlived it, pointed at a transcript nobody could
+   * open.
+   */
+  async function removeConversation(one) {
+    const count = one.id === conversationId ? messages.length : (one.messages?.length ?? 0)
+    const said = count
+      ? `Delete “${one.title || 'Chat'}” and its ${count} message${count === 1 ? '' : 's'}? This cannot be undone.`
+      : `Delete “${one.title || 'Chat'}”?`
+    if (!globalThis.confirm?.(said)) return
+
+    const gone = await clientRef.current.call('conversations.remove', { id: one.id })
+    setNotes(gone.notes)
+    if (!gone.ok) {
+      setProblem({ message: gone.error.message, hint: gone.error.hint })
+      return
+    }
+    // A schedule that fired into the deleted conversation can no longer reach
+    // anyone, so it goes with it rather than surviving as a promise nothing can
+    // keep.
+    for (const plan of schedules.filter((row) => row.conversationId === one.id)) {
+      await clientRef.current.call('schedules.remove', { id: plan.id })
+    }
+    const listed = await clientRef.current.call('conversations.list')
+    const rows = listed.ok ? listed.value : []
+    setConversations(rows)
+    const plans = await clientRef.current.call('schedules.list')
+    if (plans.ok) setSchedules(plans.value)
+    if (one.id === conversationId) {
+      if (rows[0]) await openConversation(rows[0].id)
+      else await newChat()
+    }
+  }
+
+  /** A file the person chose, read into the data URL the model can be sent. */
+  async function take(files) {
+    const read = await Promise.all(
+      files.slice(0, 4).map(
+        (file) =>
+          new Promise((resolve) => {
+            const reader = new FileReader()
+            reader.onload = () => resolve({ name: file.name, url: String(reader.result) })
+            // A file that cannot be read is not an attachment and is not a
+            // failed turn either. It is reported and dropped.
+            reader.onerror = () => resolve(null)
+            reader.readAsDataURL(file)
+          }),
+      ),
+    )
+    const kept = read.filter(Boolean)
+    if (kept.length !== files.length) {
+      setNotes((current) => [...current, 'some of those files could not be read and were skipped'])
+    }
+    setAttachments((current) => [...current, ...kept].slice(0, 4))
+  }
 
   const shown = prompts[promptAt] ?? null
-
-  // The status rail reports the facts the running system holds and nothing
-  // else can see. Each is a value, not a label — an empty one is left out
-  // rather than shown as "none", because a readout of nothing is noise.
-  const status = [
-    ready ? null : { text: 'starting', live: true },
-    settings?.agent ? { text: settings.agent } : null,
-    settings?.model ? { text: settings.model } : null,
-    // The delegate FIRST, and as words rather than a count: a running
-    // sub-agent is the one thing on this rail the user is actually waiting for,
-    // and `researcher·1` says a thread exists where `researcher: fetch (3)`
-    // says it is working and on what. The threads line stays underneath it,
-    // because it survives the turn and this does not.
-    // What is scheduled IN THIS CONVERSATION, which is the only place a
-    // schedule can be asked. The count used to be every schedule in the store,
-    // so a chat with none of its own reported other chats' — a promise that
-    // something would happen here that could not.
-    schedules.filter((one) => one.conversationId === conversationId).length
-      ? {
-          text: `${schedules.filter((one) => one.conversationId === conversationId).length} scheduled here`,
-        }
-      : null,
-    // Handed over and still going, with nobody waiting. Counted rather than
-    // named: the agent reads the detail in its own context block, and what a
-    // person needs from the rail is that something is happening for them.
-    // In the words of who is doing what, not as a bare count. "1 in the
-    // background" reads as a setting or a stuck process; a person cannot tell
-    // from it that a helper is working on the question they just asked.
-    ...tasks
-      .filter((one) => one.owner === conversationId && one.state === 'running')
-      .map((one) => ({ text: `${one.agent} is working for you`, live: true })),
-    ...tasks
-      .filter((one) => one.owner === conversationId && one.state !== 'running' && !one.read)
-      .map((one) => ({
-        text:
-          one.state === 'failed' ? `${one.agent} could not finish` : `${one.agent} has an answer`,
-        live: true,
-      })),
-    ...Object.values(delegates).map((one) => ({
-      text: one.answered
-        ? `${one.agent}: answered`
-        : `${one.agent}: ${one.doing?.join(', ') || 'thinking'} · step ${one.step}`,
-      live: !one.answered,
-    })),
-    // Was `researcher·3`, which is a name, a dot and a number with no subject —
-    // read as a version, or as a second researcher. The word is what a person
-    // needs; the count is only interesting to whoever is debugging the pool,
-    // and `agents.threads` still carries it for them.
-    ...threads.map((t) => ({
-      text: `${t.confirmedName ?? t.name} ${t.calls === 1 ? 'ran once' : `ran ${t.calls} times`}`,
-      live: true,
-    })),
-    listening ? { text: 'listening', live: true } : null,
-    // The clock, beside the word. `4:07` past a minute, `47s` under one — a
-    // reader wants "is it moving", and two units say that more plainly than
-    // one padded format does.
-    busy
-      ? {
-          text: stopping
-            ? 'stopping'
-            : `working ${elapsed >= 60 ? `${Math.floor(elapsed / 60)}m ${elapsed % 60}s` : `${elapsed}s`}`,
-          live: true,
-        }
-      : null,
-  ].filter(Boolean)
+  const mine = conversationId
+  const status = statusLine({
+    ready,
+    busy,
+    stopping,
+    elapsed,
+    listening,
+    speaking: Boolean(speaking),
+    download,
+    delegates: Object.values(delegates),
+    tasks: tasks.filter((one) => one.owner === mine),
+    agent: settings?.agent,
+  })
 
   return (
     <div className="shell">
-      <header className="rail">
-        <h1 className="wordmark" data-live={String(ready)}>
-          <span className="pulse" />
-          ASKK
-        </h1>
-
-        <div className="status" data-testid="status">
-          {status.map((item) => (
-            <b key={item.text} className={item.live ? 'live' : ''}>
-              {item.text}
-            </b>
-          ))}
-          {threads.length ? <span data-testid="threads" hidden /> : null}
-        </div>
-
-        <div className="actions">
-          <button type="button" onClick={newChat} disabled={!ready}>
-            new
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowSettings((v) => !v)}
-            disabled={!ready}
-            aria-pressed={showSettings}
-          >
-            settings
-          </button>
-          {/* One button per instrument, each pressed exactly while its pane is
-              the one open. A single "panel" button would hide which of the
-              three a reader is looking at, and a reader who cannot tell the
-              prompt from the run log is the reason this slice exists. */}
-          {INSTRUMENTS.map((name) => (
-            <button
-              key={name}
-              type="button"
-              onClick={() => setPanel((current) => (current === name ? null : name))}
-              aria-pressed={panel === name}
-              data-testid={`${name}-toggle`}
-            >
-              {name}
-            </button>
-          ))}
-        </div>
-      </header>
+      <Header
+        ready={ready}
+        title={conversations.find((one) => one.id === conversationId)?.title}
+        conversations={conversations}
+        conversationId={conversationId}
+        onOpen={openConversation}
+        onNew={newChat}
+        onRename={renameConversation}
+        onRemove={removeConversation}
+        status={status}
+        drawerOpen={drawer}
+        onDrawer={() => setDrawer((open) => !open)}
+        onSettings={() => setShowSettings((open) => !open)}
+        settingsOpen={showSettings}
+      />
 
       {showSettings && settings ? (
-        <form className="settings" onSubmit={saveSettings}>
-          <div className="sheet">
-            <h2>
-              settings
-              <button type="button" onClick={() => setShowSettings(false)}>
-                close
-              </button>
-            </h2>
-
-            {/* This app has no model of its own. Everything above the fold
-                here is what a person has to answer before it can reply at all,
-                and it used to be five bare labels — "model", "base url" — that
-                said what the field was called and never what to put in it. */}
-            <p className="hint">
-              This app brings no model. Name one below: a server on your own machine, a hosted one
-              with a key, or a small model that downloads into this tab. Nothing here leaves your
-              browser except the request to whichever you choose.
-            </p>
-            <label>
-              where the model runs
-              <select {...field('kind')}>
-                <option value="openai">
-                  an OpenAI-compatible server (LM Studio, vLLM, OpenAI)
-                </option>
-                <option value="anthropic">Anthropic</option>
-                <option value="transformers">in this tab (downloads a small model)</option>
-              </select>
-            </label>
-            <label>
-              model name
-              <input
-                {...field('model')}
-                placeholder={
-                  settings.kind === 'transformers'
-                    ? 'a Hugging Face model id, e.g. onnx-community/Qwen2.5-0.5B-Instruct'
-                    : 'exactly what that server calls the model'
-                }
-              />
-            </label>
-            <label>
-              address
-              <input
-                {...field('baseUrl')}
-                disabled={settings.kind === 'transformers'}
-                placeholder={
-                  settings.kind === 'transformers'
-                    ? 'nothing to reach — the model runs here'
-                    : 'http://127.0.0.1:1234/v1 — must end in /v1'
-                }
-              />
-            </label>
-            <label>
-              key
-              <input
-                type="password"
-                {...field('apiKey')}
-                placeholder={
-                  settings.kind === 'openai'
-                    ? 'blank for a server on your own machine'
-                    : 'stored on this device only, sent only to the address above'
-                }
-              />
-            </label>
-            <label>
-              who you are talking to
-              <select {...field('agent')}>
-                {agents.map((agent) => (
-                  <option key={agent.name} value={agent.name}>
-                    {agent.name}
-                    {agent.description ? ` — ${agent.description}` : ''}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <div className="group" />
-            {/* Everything below is voice, and none of it is needed to ask a
-                question. Said once, here, because five model-id fields with no
-                heading read as five more things that must be filled in. */}
-            <p className="hint">
-              Voice, if you want it. None of this is needed to ask a question, and the two “nothing
-              to download” choices are what the browser already has.
-            </p>
-            <label>
-              hearing
-              <select {...field('sttKind')}>
-                <option value="native">browser recogniser (nothing to download)</option>
-                <option value="whisper">whisper (transformers.js, accurate)</option>
-                <option value="moonshine">moonshine (transformers.js, fast)</option>
-              </select>
-            </label>
-            <label>
-              speech model
-              <input
-                {...field('sttModel')}
-                disabled={settings.sttKind === 'native'}
-                placeholder="any automatic-speech-recognition model id"
-              />
-            </label>
-            <label>
-              voice engine
-              <select {...field('ttsKind')}>
-                <option value="native">browser voice (nothing to download)</option>
-                <option value="supertonic">supertonic (transformers.js, style vector)</option>
-                <option value="vits">mms-vits (transformers.js, one file)</option>
-              </select>
-            </label>
-            <label>
-              voice model
-              <input
-                {...field('ttsModel')}
-                disabled={settings.ttsKind === 'native'}
-                placeholder="any text-to-speech model id"
-              />
-            </label>
-            <label>
-              voice
-              <input
-                {...field('ttsVoice')}
-                placeholder={
-                  settings.ttsKind === 'supertonic'
-                    ? 'URL of a voices/*.bin style vector'
-                    : 'name of an installed voice'
-                }
-              />
-            </label>
-            <label className="switch">
-              <input
-                type="checkbox"
-                checked={Boolean(settings.speakReplies)}
-                onChange={(e) => setSettings((s) => ({ ...s, speakReplies: e.target.checked }))}
-              />
-              read replies aloud
-            </label>
-
-            <button type="submit">save</button>
-          </div>
-        </form>
+        <Settings
+          settings={settings}
+          agents={agents}
+          onChange={setSettings}
+          onSave={saveSettings}
+          onClose={() => setShowSettings(false)}
+          onTest={testConnection}
+          testing={testing}
+          health={modelHealth}
+        />
       ) : null}
 
-      <div className={`panes${panel ? ' with-panel' : ''}`}>
+      <div className={`panes${drawer ? ' docked' : ''}`}>
         <main className="stage">
-          <div className="transcript" ref={scrollRef} data-testid="transcript">
-            {messages.length === 0 && ready && modelHealth && !modelHealth.reachable ? (
-              <p className="empty" data-testid="no-model">
-                <strong>no model yet</strong>
-                {modelHealth.detail} This app brings no model of its own: name one in{' '}
-                <button type="button" className="inline" onClick={() => setShowSettings(true)}>
-                  settings
-                </button>{' '}
-                — a server on this machine, a hosted one with a key, or a small model that downloads
-                into this tab.
-              </p>
-            ) : null}
-            {messages.length === 0 && ready && (!modelHealth || modelHealth.reachable) ? (
-              <p className="empty">
-                <strong>ready</strong>
-                Ask a question. The agent can search the web, run commands in a private Linux
-                sandbox, and hand a question to a second agent when the answer is something to go
-                and find out rather than recall.
-              </p>
-            ) : null}
-
-            {messages.map((message) => (
-              <article key={message.id} className={`turn ${message.role}`}>
-                <span className="who">{message.role}</span>
-                <div className="body">
-                  <div className="text">{message.text}</div>
-                  {message.role === 'assistant' && message.text ? (
+          {messages.length === 0 && ready ? (
+            <div className="transcript">
+              <section className="empty">
+                {modelHealth && !modelHealth.reachable ? (
+                  <>
+                    <h2>No model yet</h2>
+                    <p data-testid="no-model">{modelHealth.detail}</p>
                     <button
                       type="button"
-                      className="say"
-                      onClick={() => say(message.text)}
-                      data-testid={`say-${message.id}`}
+                      className="primary"
+                      onClick={() => setShowSettings(true)}
+                      data-testid="connect-model"
                     >
-                      {speaking === message.text ? 'speaking…' : 'read aloud'}
+                      Connect a model
                     </button>
-                  ) : null}
-                </div>
-              </article>
-            ))}
+                  </>
+                ) : (
+                  <>
+                    <h2>Ask it something</h2>
+                    <p>
+                      It can search the web, run commands on a Linux machine inside this tab, keep
+                      files of its own, and hand a question to a second agent when the answer is
+                      something to go and find out.
+                    </p>
+                  </>
+                )}
 
-            {busy ? (
-              <article className="turn assistant" data-testid="pending">
-                <span className="who">assistant</span>
-                <div className="body">
-                  {/* A ReAct run reaches the answer through tool calls. Each
-                      finished pass stays visible so the route to the answer is
-                      legible, and the final one is the reply that will land in
-                      the transcript. */}
-                  {run.steps.map((taken) => (
-                    <div
-                      key={taken.step}
-                      className={`text step${taken.isAnswer ? ' answered' : ''}`}
-                      data-testid={`step-${taken.step}`}
-                    >
-                      {taken.isAnswer ? null : <span className="badge">step {taken.step}</span>}
-                      {taken.answer}
-                    </div>
+                <ul className="examples">
+                  <li className="label mono">or try</li>
+                  {EXAMPLES.map((one) => (
+                    <li key={one.text}>
+                      <button
+                        type="button"
+                        onClick={() => setDraft(one.text)}
+                        data-testid="example"
+                      >
+                        {one.text}
+                        <span className="why">{one.why}</span>
+                      </button>
+                    </li>
                   ))}
-                  {run.reasoning ? (
-                    <div className="text thinking" data-testid="reasoning">
-                      {run.reasoning}
-                    </div>
-                  ) : null}
-                  {/* Raw, unparsed, exactly as it arrives. Replaced the moment
-                      the pass is parsed — this is the wait made visible, not a
-                      second rendering of the answer. */}
-                  {run.raw ? (
-                    <div className="text raw" data-testid="stream">
-                      {run.raw}
-                    </div>
-                  ) : null}
-                  {run.raw || run.reasoning || run.steps.length ? null : (
-                    <div className="text raw" />
-                  )}
-                </div>
-              </article>
-            ) : null}
-          </div>
+                </ul>
+              </section>
+            </div>
+          ) : (
+            <Transcript
+              scrollRef={scrollRef}
+              messages={messages}
+              busy={busy}
+              run={run}
+              observations={observations}
+              onSay={say}
+              onCopy={remember}
+              speaking={speaking}
+              copied={copied}
+            />
+          )}
 
           <div className="tray">
-            {/* Bound to the state it describes rather than to its own lifetime:
-                a progress report that outlives the dictation it belonged to is
-                a loading bar for nothing, and the loader has no event that
-                reliably says "done". */}
-            {download && (listening || speaking) ? (
+            {download ? (
               <p className="loading" data-testid="download">
                 <span className="who">{download.file || 'model'}</span>
                 {/* Driven by a width, not an animation. A first load is minutes
@@ -1166,7 +1066,7 @@ export default function Page() {
             {listening ? (
               <p className="hearing" data-testid="hearing">
                 <span className="who">hearing</span>
-                {heard || '…'}
+                {draft || '…'}
               </p>
             ) : null}
 
@@ -1174,125 +1074,90 @@ export default function Page() {
               <p className="problem" data-testid="error">
                 {problem.message}
                 {problem.hint ? <span className="hint-line">{problem.hint}</span> : null}
+                {/* Every error carries its own way out. The one a first visit
+                    meets used to REPLACE the empty screen, which held the only
+                    link to settings there was. */}
+                <span className="msg-actions" style={{ opacity: 1 }}>
+                  <button type="button" onClick={() => setShowSettings(true)}>
+                    open settings
+                  </button>
+                  {failed ? (
+                    <button
+                      type="button"
+                      onClick={() => ask(failed.text, conversationId, failed.files)}
+                      data-testid="retry"
+                    >
+                      try that again
+                    </button>
+                  ) : null}
+                </span>
               </p>
             ) : null}
 
             {notes.length ? (
               <ul className="notes" data-testid="notes">
                 {notes.map((note) => (
-                  <li key={note}>{note}</li>
+                  <li key={note}>
+                    {note}
+                    <button
+                      type="button"
+                      aria-label="Dismiss"
+                      onClick={() => setNotes((current) => current.filter((one) => one !== note))}
+                    >
+                      ✕
+                    </button>
+                  </li>
                 ))}
               </ul>
             ) : null}
           </div>
 
-          <div className="dock">
-            {/* Said where the person is about to type, and said as the reason
-                rather than as an error: another tab of theirs is holding this
-                conversation, which is not a fault and is fixed by closing it.
-                A composer that is simply dead reads as a bug in the app. */}
-            {writer === false ? (
-              <p className="hint" data-testid="reader-only">
-                Another tab has this conversation open and is the one that can write to it. Close
-                it, or switch this tab to a different conversation, and this composer comes back.
-              </p>
-            ) : null}
-            <form className="composer" onSubmit={send}>
-              <input
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                placeholder={
-                  writer === false
-                    ? 'another tab is writing this conversation'
-                    : ready
-                      ? 'Ask anything'
-                      : 'starting the engine…'
-                }
-                disabled={!ready || busy || writer === false}
-                data-testid="input"
-              />
-              {/* Not disabled while a turn is in flight. Dictating the next
-                message while the model answers the last one is the normal way
-                to use this, and the two run on different threads so it can. */}
-              <button
-                type="button"
-                className={listening ? 'mic on' : 'mic'}
-                onClick={dictate}
-                disabled={!ready}
-                aria-pressed={listening}
-                data-testid="mic"
-              >
-                {listening ? 'stop' : 'speak'}
-              </button>
-              {/* One control, two turns of a run: while a turn is in flight
-                  there is nothing to send and the only useful thing to press is
-                  stop, so the button becomes it rather than sitting greyed out
-                  beside a second one that only ever appears here. */}
-              {busy ? (
-                <button
-                  type="button"
-                  className="stop"
-                  onClick={() => {
-                    setStopping(true)
-                    clientRef.current?.stop(running)
-                  }}
-                  data-testid="stop"
-                >
-                  stop
-                </button>
-              ) : (
-                <button type="submit" disabled={!ready || !draft.trim() || writer === false}>
-                  send
-                </button>
-              )}
-            </form>
-          </div>
+          <Composer
+            draft={draft}
+            onDraft={setDraft}
+            onSend={send}
+            ready={ready}
+            busy={busy}
+            writer={writer}
+            listening={listening}
+            level={level}
+            onDictate={dictate}
+            onStop={() => {
+              setStopping(true)
+              clientRef.current?.stop(running)
+            }}
+            attachments={attachments}
+            onAttach={setAttachments}
+            onDrop={take}
+          />
         </main>
 
-        {panel ? (
-          <aside className="panel" data-testid={`${panel}-panel`}>
-            <header>
-              <h2>{panel}</h2>
-              <div className="steps">
-                {panel === 'prompt' && prompts.length > 1
-                  ? prompts.map((entry, index) => (
-                      <button
-                        key={entry.step}
-                        type="button"
-                        className={index === promptAt ? 'on' : ''}
-                        onClick={() => setPromptAt(index)}
-                      >
-                        {entry.step}
-                      </button>
-                    ))
-                  : null}
-                <button type="button" className="close" onClick={() => setPanel(null)}>
-                  close
-                </button>
-              </div>
-            </header>
-
-            {panel === 'prompt' ? <PromptPanel shown={shown} usage={usage} /> : null}
-            {panel === 'run' ? <RunPanel run={run} usage={usage} /> : null}
-            {/* Given the client rather than the values, because the workspace
-                is the backend's and a component that was handed a list would be
-                showing whatever the page last remembered. `turnsDone` is when
-                to look again. */}
-            {panel === 'schedule' ? (
-              <SchedulePanel
-                schedules={schedules}
-                conversationId={conversationId}
-                ready={ready && Boolean(conversationId)}
-                onCreate={addSchedule}
-                onRemove={removeSchedule}
-              />
-            ) : null}
-            {panel === 'files' ? (
-              <FilesPanel client={clientRef.current} turnsDone={turnsDone} />
-            ) : null}
-          </aside>
+        {drawer ? (
+          <Drawer
+            section={section}
+            onSection={setSection}
+            onClose={() => setDrawer(false)}
+            run={run}
+            usage={usage}
+            observations={observations}
+            shown={shown}
+            prompts={prompts}
+            promptAt={promptAt}
+            onPromptAt={setPromptAt}
+            client={clientRef.current}
+            turnsDone={turnsDone}
+            schedules={schedules}
+            conversationId={conversationId}
+            ready={ready}
+            onCreateSchedule={addSchedule}
+            onRemoveSchedule={removeSchedule}
+            agent={agentSpec}
+            agentNotes={notes}
+          />
         ) : null}
       </div>
+
+      {threads.length ? <span data-testid="threads" hidden /> : null}
     </div>
   )
 }

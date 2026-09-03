@@ -383,7 +383,16 @@ const view = await evaluate(
        }
        return null
      }
-     const toggle = pick('files-toggle')
+     // The four panels are sections of ONE drawer now rather than four
+     // buttons across the top of the screen, so a section toggle does not
+     // exist until the drawer is open. docs/INTERFACE.md has the argument;
+     // what it costs a check is this line. No backticks in this comment: it
+     // lives inside a template literal, and one would end the string.
+     const openDrawer = async (id) => {
+       if (!pick(id)) pick('drawer-toggle')?.click()
+       return await until(() => pick(id))
+     }
+     const toggle = await openDrawer('files-toggle')
      if (!toggle) return { where: 'the rail has no files button' }
      toggle.click()
      const list = await until(() => pick('file-list'))
@@ -426,7 +435,12 @@ const view = await evaluate(
        // going to zero while everything above still passes.
        coloured: body.querySelectorAll('span.tok').length,
        plain: Boolean(pick('file-plain')),
-       terms: (pick('files-readout')?.textContent ?? '').includes('saved against what you read'),
+       // The rule a save is subject to, said where a person is about to press
+       // save. The wording changed because the old one could not be read;
+       // what is asserted is that the readout still states the RULE.
+       terms: (pick('files-readout')?.textContent ?? '').includes(
+         'a save is refused if this file has changed',
+       ),
        unknown: await (async () => {
          pick('file-owner-view.rst')?.click()
          const said = await until(() => pick('file-unknown-language'))
@@ -609,6 +623,12 @@ const dead = await evaluate(
      const saved = await new IndexedDbRepository('Settings', db, STORE_SETTINGS).put({
        ...DEFAULT_SETTINGS,
        id: SETTINGS_ID,
+       // A model AND an address. The defaults name neither since a fictional
+       // one shipped for eight waves and the header advertised it as real, so
+       // spreading them alone now plants an UNCONFIGURED app — which reports
+       // itself in different words and would leave this check green over a
+       // probe that never ran.
+       model: 'a-model-that-is-not-there',
        baseUrl: 'http://127.0.0.1:9/v1',
      })
      return saved.toJSON()
@@ -718,8 +738,15 @@ const turn = await evaluate(
      // and not the state, so the form would submit an empty draft and the turn
      // would never start — and calling the setter of the wrong prototype throws
      // "Illegal invocation", which cost this check its first run.
-     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set
-     setter.call(input, 'Ask the researcher what the page says.')
+     // The setter of the element's OWN prototype. The composer is a
+     // textarea now — it has to be, for a page whose agent writes files —
+     // and HTMLInputElement's setter throws "Illegal invocation" on one.
+     const protoFor = (node) =>
+       node.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype
+     Object.getOwnPropertyDescriptor(protoFor(input), 'value').set.call(
+       input,
+       'Ask the researcher what the page says.',
+     )
      input.dispatchEvent(new Event('input', { bubbles: true }))
      input.form.requestSubmit()
 
@@ -769,21 +796,30 @@ if (!turn?.answered)
 // the DELEGATE event, the line in page.jsx — can be deleted with every test
 // still green, because no test outside a browser can render a component.
 const railSaid = (turn.rail ?? []).join(' | ')
-if (!railSaid.includes('researcher:'))
+// In words. The line used to read `researcher: fetch (3)` — a name, a function
+// and a number — and now reads "researcher is reading a page", which is the
+// same three facts as one sentence. What is asserted is unchanged: the DELEGATE
+// event reached a surface a person can read while the sub-agent was working.
+if (!railSaid.includes('researcher is '))
   await fail(`the rail never named the sub-agent while it worked: ${railSaid}`, [
-    'Expected a line like "researcher: fetch (1)" from the DELEGATE event.',
+    'Expected a line like "researcher is reading a page" from the DELEGATE event.',
     ...problems,
   ])
 // And a clock that moved, which is the difference between an app that is
 // working and an app that is wedged, for a reader who cannot see either.
+// The separator is a middle dot now — "working · 12s" — because the line is a
+// sentence rather than a chip. The number is what this asserts and it is
+// unchanged.
 const clocks = new Set(
-  (turn.rail ?? []).flatMap((text) => [...text.matchAll(/working (\d+)s/g)].map((m) => m[1])),
+  (turn.rail ?? []).flatMap((text) =>
+    [...text.matchAll(/working\s*·?\s*(\d+)s/g)].map((m) => m[1]),
+  ),
 )
 if (!clocks.size) await fail(`the rail never showed an elapsed time: ${railSaid}`, problems)
 
 console.log(
   `smoke: a typed question was delegated and answered through the built page; ` +
-    `the rail said ${JSON.stringify([...new Set((turn.rail ?? []).filter((t) => t.includes('researcher:')))][0] ?? '')} while it worked`,
+    `the rail said ${JSON.stringify([...new Set((turn.rail ?? []).filter((t) => t.includes('researcher is ')))][0] ?? '')} while it worked`,
 )
 
 // --- work that outlives the turn that asked for it ---------------------------
@@ -809,14 +845,18 @@ const handover = await evaluate(
        }
        return null
      }
-     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set
+     // The setter of the element's OWN prototype. The composer is a
+     // textarea now — it has to be, for a page whose agent writes files —
+     // and HTMLInputElement's setter throws "Illegal invocation" on one.
+     const protoFor = (node) =>
+       node.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype
      const say = async (text, expected) => {
        const input = await until(() => {
          const field = pick('input')
          return field && !field.disabled ? field : null
        })
        if (!input) return null
-       setter.call(input, text)
+       Object.getOwnPropertyDescriptor(protoFor(input), 'value').set.call(input, text)
        input.dispatchEvent(new Event('input', { bubbles: true }))
        input.form.requestSubmit()
        return until(() =>
@@ -862,10 +902,13 @@ console.log(
 // and no clock anyone is watching.
 //
 // A one-minute period is the floor, and waiting one is not something a gate may
-// do — so the schedule is written with `lastRanAt: 0`, which is what `create`
-// does anyway, and the assertion is that the very next tick asks it. The tick
-// is driven rather than waited for: the page ticks on mount, so a reload IS the
-// tick.
+// do. It USED to be free: `create` wrote `lastRanAt: 0`, which made every new
+// schedule 56 years overdue and fired a turn into the open conversation on the
+// button press — a reviewer set "every hour" and watched it run at once. That
+// is fixed, so what this half proves is the panel and the route: the schedule
+// is made through the form and comes back listed, with a time it will next run.
+// The firing is proved by the OVERDUE case below, which is the one that
+// actually happens anyway.
 const scheduled = await evaluate(
   `(async () => {
      const pick = (id) => document.querySelector('[data-testid="' + id + '"]')
@@ -880,51 +923,64 @@ const scheduled = await evaluate(
      // Through the panel, not through the route: what is in question is the
      // wiring — a rail button, a mounted pane, a form that reaches the backend
      // — and only a click crosses all of it.
-     const toggle = pick('schedule-toggle')
+     // The four panels are sections of ONE drawer now rather than four
+     // buttons across the top of the screen, so a section toggle does not
+     // exist until the drawer is open. docs/INTERFACE.md has the argument;
+     // what it costs a check is this line. No backticks in this comment: it
+     // lives inside a template literal, and one would end the string.
+     const openDrawer = async (id) => {
+       if (!pick(id)) pick('drawer-toggle')?.click()
+       return await until(() => pick(id))
+     }
+     const toggle = await openDrawer('schedule-toggle')
      if (!toggle) return { where: 'the rail has no plans button' }
      toggle.click()
      const field = await until(() => pick('plan-text'))
      if (!field) return { where: 'the plans pane never rendered' }
-     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set
-     setter.call(field, ${JSON.stringify(`say ${SCHEDULED_MARK}`)})
+     // The setter of the element's OWN prototype. The composer is a
+     // textarea now — it has to be, for a page whose agent writes files —
+     // and HTMLInputElement's setter throws "Illegal invocation" on one.
+     const protoFor = (node) =>
+       node.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype
+     Object.getOwnPropertyDescriptor(protoFor(field), 'value').set.call(
+       field,
+       ${JSON.stringify(`say ${SCHEDULED_MARK}`)},
+     )
      field.dispatchEvent(new Event('input', { bubbles: true }))
      pick('plan-add').click()
      const listed = await until(() => pick('plan-list'))
      if (!listed) return { where: 'the schedule was not listed after adding it' }
-     return { listed: listed.textContent }
+     // Two facts about the row, and the second is what a person needs from a
+     // recurring job: the panel said "never run yet" and then "last ran just
+     // now" and never once said when it would happen again.
+     return {
+       listed: listed.textContent,
+       asked: [...document.querySelectorAll('.turn.user .text')].some((node) =>
+         node.textContent.includes(${JSON.stringify(SCHEDULED_MARK)}),
+       ),
+     }
    })()`,
   session,
   true,
 )
 if (!scheduled?.listed)
   await fail(`the schedule was not made through the panel: ${JSON.stringify(scheduled)}`, problems)
-
-// The reload is the tick: the page looks for a due schedule on mount, and one
-// written a moment ago with `lastRanAt: 0` is due.
-await send('Page.navigate', { url }, session)
-const fired = await evaluate(
-  `(async () => {
-     for (let i = 0; i < 400; i++) {
-       const asked = [...document.querySelectorAll('.turn.user .text')].find((node) =>
-         node.textContent.includes(${JSON.stringify(SCHEDULED_MARK)}),
-       )
-       if (asked) return { asked: asked.textContent }
-       await new Promise((r) => setTimeout(r, 50))
-     }
-     return { asked: '', transcript: (document.querySelector('[data-testid="transcript"]')?.textContent ?? '').slice(-200) }
-   })()`,
-  session,
-  true,
-)
-if (!fired?.asked)
-  await fail(`the scheduled question was never asked: ${JSON.stringify(fired)}`, [
-    'The tick is in src/app/page.jsx, under navigator.locks, and what is due',
-    'comes from src/backend/services/ScheduleService.js.',
+if (!String(scheduled.listed).includes('next '))
+  await fail(`the schedule row never says when it next runs: ${JSON.stringify(scheduled)}`, [
+    'ScheduleService.whenNext is the answer and SchedulePanel renders it.',
+    ...problems,
+  ])
+// And it did NOT run on the press. "every hour" plainly means the first one is
+// an hour away, and a question appearing in the open transcript at that moment
+// is content the person did not ask for, in the conversation they are reading.
+if (scheduled.asked)
+  await fail('making a schedule asked its question immediately', [
+    'A new schedule counts from when it was written; see ScheduleService.whenNext.',
     ...problems,
   ])
 
 console.log(
-  `smoke: a scheduled question asked itself on the next open — ${JSON.stringify(fired.asked)}`,
+  `smoke: a schedule was made through the panel, says when it next runs, and did not fire on the press — ${JSON.stringify(String(scheduled.listed).slice(0, 90))}`,
 )
 
 // --- and the overdue one, which is the case a closed tab makes ---------------
@@ -1023,7 +1079,8 @@ const edit = await evaluate(
      }
 
      if (!pick('file-list')) {
-       const toggle = pick('files-toggle')
+       if (!pick('files-toggle')) pick('drawer-toggle')?.click()
+       const toggle = await until(() => pick('files-toggle'))
        if (!toggle) return { where: 'the rail has no files button' }
        toggle.click()
        if (!(await until(() => pick('file-list')))) return { where: 'the files pane never opened' }
@@ -1275,9 +1332,16 @@ const sandbox = await evaluate(
      const worker = new Worker(${JSON.stringify(`${BASE}/sandbox/vm-worker.js`)}, { name: 'smoke' })
      const settle = (answer) => { worker.terminate(); resolve(answer) }
      worker.onerror = (event) => settle('did not load: ' + (event.message || 'no message'))
+     let announced = 0
      worker.onmessage = (event) => {
        const data = event.data ?? {}
+       // The download, reported as it arrives. It is counted rather than
+       // ignored: the whole point of the message is that the largest fetch
+       // this app makes said nothing at all for as long as it took, and a
+       // check that skipped it would go green over a silent one again.
+       if (data.type === 'boot-progress') { announced += 1; return }
        if (data.type === 'booted') {
+         if (!announced) { settle('booted without saying a byte had arrived'); return }
          worker.postMessage({ type: 'run', id: 'smoke', argv: ['smoke'] })
          return
        }
@@ -1534,8 +1598,12 @@ if (!existsSync(IMAGE_FILE)) {
   // answer there. Do not "fix" the sniff to satisfy this line — the assertion is
   // narrower than the loader on purpose, and it is narrow because this file owns
   // the server it is measuring.
-  const sizes = real.first.notes.find((note) => note.startsWith('the sandbox image is'))
-  const transfer = sizes?.match(/is (\d+) bytes, fetched once for this tab as (\d+) compressed/)
+  const sizes = real.first.notes.find((note) =>
+    note.startsWith('the Linux machine in this tab was downloaded'),
+  )
+  const transfer = sizes?.match(
+    /downloaded once: (\d+) bytes over the network, (\d+) bytes unpacked/,
+  )
   if (!transfer)
     await fail(`the guest did not report a compressed transfer: ${said(real.first.notes)}`, [
       'The image the page loads is gzipped, because the raw module is over',
@@ -1547,7 +1615,7 @@ if (!existsSync(IMAGE_FILE)) {
   console.log(
     `smoke: the real guest answered ${said(real.first.value.stdout.trim())} in ${real.cold}ms cold, ` +
       `then a failing command in ${real.hot}ms warm (exit ${real.failing.value.code}); ` +
-      `${transfer[2]} bytes fetched, inflated to ${transfer[1]}`,
+      `${transfer[1]} bytes fetched, inflated to ${transfer[2]}`,
   )
 
   // --- the agent's own files -------------------------------------------------

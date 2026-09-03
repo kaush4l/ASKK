@@ -143,6 +143,16 @@ const STATUS_LINE = new RegExp(`${STATUS}(\\d+)\\n?$`)
  * module, and compiling is milliseconds, so the module is what is worth
  * keeping; a fresh instance per command is also what makes each command's
  * filesystem clean.
+ *
+ * WHAT IT IS CALLED WHEN SOMEONE ELSE IS READING. Every string that can reach
+ * the notes under the transcript calls this "the Linux machine in this tab",
+ * and none of them says "sandbox", "guest" or "image". Those three are this
+ * file's own words for its own parts and they stay in these comments, where the
+ * reader is somebody editing it; they were never words for a person who asked a
+ * question and got a paragraph about a component underneath the answer. The
+ * long phrase is deliberate — "the Linux machine" alone would be a machine
+ * somebody might think is theirs, and the whole point is that it is not: it is
+ * in this tab, it is thrown away, and nothing on their computer is touched.
  */
 export class C2wSandbox extends Sandbox {
   static LABEL = 'linux sandbox'
@@ -254,16 +264,20 @@ export class C2wSandbox extends Sandbox {
         worker = new Worker(this.workerUrl, { name: 'sandbox' })
       } catch (err) {
         resolve(
-          Outcome.failed(Reason.UNAVAILABLE, `the sandbox worker did not start: ${err?.message}`, {
-            hint: `Check that ${this.workerUrl} is being served.`,
-          }),
+          Outcome.failed(
+            Reason.UNAVAILABLE,
+            `the Linux machine in this tab could not be started: ${err?.message}`,
+            {
+              hint: `Check that ${this.workerUrl} is being served.`,
+            },
+          ),
         )
         return
       }
 
       worker.addEventListener('message', (event) => this._receive(event.data, resolve))
       worker.addEventListener('error', (event) => {
-        const message = event.message || 'the sandbox worker stopped'
+        const message = event.message || 'the Linux machine in this tab stopped'
         for (const [, settle] of this._pending) {
           settle(Outcome.failed(Reason.UNAVAILABLE, message))
         }
@@ -286,7 +300,11 @@ export class C2wSandbox extends Sandbox {
       const total = Number(data.total) || 0
       this.onProgress({
         status: 'progress',
-        file: 'linux guest',
+        // DRAWN, not logged: `page.jsx` puts this beside the progress bar, so it
+        // is a label a person reads while they wait and not a channel name. The
+        // short form of what the notes call it, because the bar has room for a
+        // name and the rest of the sentence is already in the note that follows.
+        file: 'Linux machine',
         loaded: Number(data.loaded) || 0,
         total,
         percent: total ? Math.round(((Number(data.loaded) || 0) / total) * 100) : 0,
@@ -299,15 +317,19 @@ export class C2wSandbox extends Sandbox {
     }
     if (data?.type === 'boot-failed') {
       resolveBoot(
-        Outcome.failed(Reason.UNAVAILABLE, `the sandbox image did not load: ${data.message}`, {
-          // The one failure a real deploy can hit, so the hint names the two
-          // controls that exist and no others. What ships is the gzipped image;
-          // a clone that has never run the build has neither it nor the raw
-          // module, and a host that will not serve 38 MiB has to be pointed
-          // elsewhere at build time. There is no setting for this and there
-          // should not be: see `composition.js`.
-          hint: 'Build the guest with scripts/wasm/build.sh into public/sandbox/, or point the build at a hosted copy with SANDBOX_IMAGE=<url>.',
-        }),
+        Outcome.failed(
+          Reason.UNAVAILABLE,
+          `the Linux machine in this tab could not be loaded: ${data.message}`,
+          {
+            // The one failure a real deploy can hit, so the hint names the two
+            // controls that exist and no others. What ships is the gzipped image;
+            // a clone that has never run the build has neither it nor the raw
+            // module, and a host that will not serve 38 MiB has to be pointed
+            // elsewhere at build time. There is no setting for this and there
+            // should not be: see `composition.js`.
+            hint: 'Build it with scripts/wasm/build.sh into public/sandbox/, or point the build at a hosted copy with SANDBOX_IMAGE=<url>.',
+          },
+        ),
       )
       return
     }
@@ -343,7 +365,7 @@ export class C2wSandbox extends Sandbox {
       // different edits.
       return Outcome.failed(
         Reason.BAD_REQUEST,
-        `the command costs ${this.cost(command)} and the sandbox accepts ${this.commandBudget} — the guest charges one for every byte and one more for every space or newline`,
+        `the command costs ${this.cost(command)} and the Linux machine in this tab accepts ${this.commandBudget} — it charges one for every byte and one more for every space or newline`,
         {
           hint: 'Write a shorter command, or one with fewer spaces in it. A program that will not fit belongs in the image, not on the command line.',
         },
@@ -367,19 +389,23 @@ export class C2wSandbox extends Sandbox {
       this._pending.delete(id)
       await this.close()
       return Outcome.failed(Reason.UNAVAILABLE, `the command did not finish within ${timeout}ms`, {
-        hint: 'The sandbox was restarted. Try a smaller piece of work — this is an emulator, and it is about a hundred times slower than the machine it runs on.',
+        hint: 'It was restarted. Try a smaller piece of work — this is an emulated computer, and it is about a hundred times slower than the one it runs on.',
       })
     }
 
     if (finished instanceof Outcome) return finished
     if (!finished.ok) {
-      return Outcome.failed(Reason.INTERNAL, `the sandbox failed: ${finished.message}`)
+      return Outcome.failed(
+        Reason.INTERNAL,
+        `the Linux machine in this tab failed: ${finished.message}`,
+      )
     }
 
     const notes = []
     // A trap is not an exit status. Reported as a note so a strange result has
     // an explanation attached rather than looking like the command's own output.
-    if (finished.trap) notes.push(`the guest stopped abnormally: ${finished.trap}`)
+    if (finished.trap)
+      notes.push(`the Linux machine in this tab stopped abnormally: ${finished.trap}`)
 
     // Said ONCE for this boot rather than on every result: both are properties
     // of the IMAGE, not of the command, and a constant line on every
@@ -397,13 +423,17 @@ export class C2wSandbox extends Sandbox {
       if (bytes) {
         notes.push(
           transferred < bytes
-            ? `the sandbox image is ${bytes} bytes, fetched once for this tab as ${transferred} compressed`
-            : `the sandbox image is ${bytes} bytes, fetched once for this tab`,
+            ? `the Linux machine in this tab was downloaded once: ${transferred} bytes over the network, ${bytes} bytes unpacked`
+            : `the Linux machine in this tab was downloaded once: ${bytes} bytes`,
         )
       }
+      // ENOTSUP stays, with its plain reading beside it. The names in this list
+      // are the guest's own and a command that trips one gets `ENOTSUP` back in
+      // its output, so a note that translated the word away would leave the
+      // reader holding an error code this app had decided not to mention.
       if (finished.stubbed?.length) {
         notes.push(
-          `not implemented in this sandbox, answering ENOTSUP: ${finished.stubbed.join(', ')}`,
+          `these calls are missing from the Linux machine in this tab and answer ENOTSUP, "not supported": ${finished.stubbed.join(', ')}`,
         )
       }
     }
@@ -430,7 +460,7 @@ export class C2wSandbox extends Sandbox {
     this._booted = null
     this._announced = false
     for (const [, settle] of this._pending) {
-      settle(Outcome.failed(Reason.UNAVAILABLE, 'the sandbox was shut down'))
+      settle(Outcome.failed(Reason.UNAVAILABLE, 'the Linux machine in this tab was shut down'))
     }
     this._pending.clear()
   }

@@ -1,44 +1,104 @@
 /*
  * ASKK — an agent you can see inside.
  *
- * The direction is INSTRUMENTATION. This is not a chat product; it is a console
- * with a live readout beside it, and the page is built as two registers meeting
- * at a hard edge: the conversation, which is quiet and generously set, and the
- * instrument panel, which is dense, monospaced and gridded. That split is not a
- * decoration — it is the architecture showing through. One side is what was
- * said, the other is what the machine did with it.
+ * `docs/INTERFACE.md` is the argument; this file is the execution of it. Three
+ * registers, and every rule below belongs to exactly one:
  *
- * The palette is disciplined by one rule: CYAN MEANS MEASURED. It marks the
- * reusable prefix, a counted token, a live thread, a running dictation. Nothing
- * is cyan for emphasis, because then nothing cyan would mean anything.
+ *   CONVERSATION  what was said. Generous, quiet, one column at a reading
+ *                 measure, proportional type.
+ *   WORK          what the agent did on the way to an answer. A sentence per
+ *                 step, in the transcript, with the machine's own words folded
+ *                 underneath it.
+ *   EVIDENCE      the prompt, the run, the files, the schedule, the agent.
+ *                 Dense, monospaced, gridded, behind one control.
+ *
+ * The palette is disciplined by one rule, which is the one thing carried over
+ * from the previous direction because it earned its place: CYAN MEANS MEASURED.
+ * It marks a counted token, a duration, a byte count, a live thread. Nothing is
+ * cyan for emphasis, because then nothing cyan would mean anything — and there
+ * is no second accent, because "happening right now" is said with a pulse and a
+ * weight, and a second signal colour would halve the meaning of the first.
+ *
+ * Both schemes ship. Someone who has told their operating system whether they
+ * want light or dark has already answered this question, so there is no toggle:
+ * a preference stored in two places disagrees in one of them.
  */
 
 :root {
-  --ink: #070a0e;
-  --surface: #0a0f15;
-  --panel: #080c11;
-  --raise: #111a24;
-  --raise-hi: #172230;
-  --rule: #182430;
-  --rule-soft: #101821;
-  --text: #e4eaf0;
-  --dim: #82909f;
-  --faint: #55616e;
-  --signal: #23b3d1;
-  --signal-soft: rgba(35, 179, 209, 0.14);
-  --warn: #e2a244;
-  --bad: #e2685f;
+  color-scheme: dark light;
+
+  /* Surfaces, from the page backwards. */
+  --ink: #0c0e11;
+  --surface: #11151a;
+  --panel: #0e1116;
+  --raise: #171c22;
+  --raise-hi: #1f252d;
+  --rule: #242b34;
+  --rule-soft: #171c22;
+
+  /* Ink, from what is said to what is merely present. */
+  --text: #e7eaee;
+  --dim: #8b95a1;
+  --faint: #59626d;
+
+  --signal: #2fb6d2;
+  --signal-soft: rgba(47, 182, 210, 0.13);
+  --signal-line: rgba(47, 182, 210, 0.35);
+  --warn: #dfa24a;
+  --bad: #e36a60;
   /* The one colour that is not a state. Syntax needs a fourth hue and none of
      the three above may take the job: a green literal that borrowed --signal
      would be a file claiming to be measured. */
   --string: #9ad4a0;
 
-  --gutter: 4.5rem;
-  --measure: 42rem;
-  --radius: 10px;
+  --shadow: 0 24px 60px -24px rgba(0, 0, 0, 0.75), 0 2px 8px -2px rgba(0, 0, 0, 0.5);
+
+  /* The conversation's measure. Nothing widens it; the evidence register
+     ignores it entirely, because a wrapped command cannot be copied. */
+  --measure: 66ch;
+  --radius: 12px;
+  --radius-sm: 8px;
+
+  /* px, and a scale rather than a set of one-off decisions. */
+  --t-micro: 0.75rem;
+  --t-small: 0.8125rem;
+  --t-body: 0.9375rem;
+  --t-lead: 1.0625rem;
+  --t-head: 1.3125rem;
+  --t-display: 1.6875rem;
 
   --mono: var(--font-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
   --sans: var(--font-sans), ui-sans-serif, system-ui, -apple-system, sans-serif;
+}
+
+/*
+ * The light scheme is warm and the dark one is cool, on purpose. A light mode
+ * built by inverting a cool dark palette reads as a screenshot with the colours
+ * flipped; paper is warm and this one is.
+ */
+@media (prefers-color-scheme: light) {
+  :root {
+    --ink: #f4f2ed;
+    --surface: #ffffff;
+    --panel: #fbfaf7;
+    --raise: #ffffff;
+    --raise-hi: #f0eee8;
+    --rule: #ddd8cf;
+    --rule-soft: #e9e5dd;
+
+    --text: #16191d;
+    --dim: #5b636d;
+    --faint: #8b9099;
+
+    --signal: #0b7e96;
+    --signal-soft: rgba(11, 126, 150, 0.09);
+    --signal-line: rgba(11, 126, 150, 0.3);
+    --warn: #8a5a10;
+    --bad: #b33a30;
+    --string: #2f6b3a;
+
+    --shadow: 0 24px 60px -28px rgba(30, 26, 18, 0.28), 0 2px 8px -3px rgba(30, 26, 18, 0.16);
+  }
 }
 
 * {
@@ -56,9 +116,10 @@ body {
   background: var(--ink);
   color: var(--text);
   font-family: var(--sans);
-  font-size: 15px;
-  line-height: 1.6;
+  font-size: var(--t-body);
+  line-height: 1.65;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 /* Every number in this interface is a readout, and a readout that jitters as
@@ -69,7 +130,9 @@ pre,
 .readout,
 .meta,
 .who,
-.label {
+.label,
+.step-time,
+.status {
   font-family: var(--mono);
   font-variant-numeric: tabular-nums;
 }
@@ -80,6 +143,12 @@ pre,
   border-radius: 4px;
 }
 
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
 /* ── frame ──────────────────────────────────────────────────────────────── */
 
 .shell {
@@ -88,14 +157,26 @@ pre,
   height: 100dvh;
 }
 
-.rail {
+/*
+ * Three zones and no more: who and where, what is happening, what you can open.
+ * The rail this replaces had six controls of equal weight, which is six things
+ * to choose between where there are three kinds of thing.
+ */
+.topbar {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 1rem;
-  padding: 0.7rem clamp(0.75rem, 2vw, 1.25rem);
+  gap: 0.75rem;
+  padding: 0.55rem clamp(0.7rem, 2vw, 1.1rem);
   border-bottom: 1px solid var(--rule);
   background: var(--panel);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
 }
 
 /* The wordmark takes its character from spacing and a mark, not from a display
@@ -107,16 +188,17 @@ pre,
   gap: 0.5rem;
   margin: 0;
   font-family: var(--mono);
-  font-size: 0.95rem;
+  font-size: var(--t-small);
   font-weight: 700;
-  letter-spacing: 0.22em;
+  letter-spacing: 0.2em;
 }
 
-.wordmark .pulse {
+.pulse {
   width: 7px;
   height: 7px;
   border-radius: 50%;
   background: var(--faint);
+  flex: none;
   transition: background 200ms ease, box-shadow 200ms ease;
 }
 
@@ -125,89 +207,250 @@ pre,
   box-shadow: 0 0 0 3px var(--signal-soft);
 }
 
-/* Facts about the running system, not navigation. Monospace because they are
-   values, and horizontally scrollable rather than wrapped because the rail must
-   stay one line tall at every width. */
-.status {
+/*
+ * Which conversation you are in, and a way to be in another one.
+ *
+ * `conversations.list`, `rename` and `remove` have existed in the backend since
+ * it was written and nothing ever called one: this app opened `conversations[0]`
+ * and only that, for every wave of its life, so a person could accumulate work
+ * they had no way back to.
+ */
+.place {
   display: flex;
-  gap: 0.4rem;
-  overflow-x: auto;
-  scrollbar-width: none;
-  font-family: var(--mono);
-  font-size: 0.72rem;
-  letter-spacing: 0.02em;
-  color: var(--dim);
-}
-
-.status::-webkit-scrollbar {
-  display: none;
-}
-
-.status b {
-  flex: none;
-  max-width: 14rem;
-  padding: 0.15rem 0.5rem;
-  border: 1px solid var(--rule);
-  border-radius: 999px;
-  font-weight: 400;
-  /* A model id can be sixty characters of version string. It is shown because
-     knowing which model answered matters; it is clipped because the rail is one
-     line and the first half is the half that identifies it. */
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+  max-width: 15rem;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text);
+  font-size: var(--t-small);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.status b.live {
-  color: var(--signal);
-  border-color: rgba(35, 179, 209, 0.35);
-}
-
-.actions {
-  display: flex;
-  gap: 0.35rem;
-}
-
-button,
-input,
-select,
-textarea {
-  font: inherit;
-  color: var(--text);
+.place:hover,
+.place[aria-expanded='true'] {
+  border-color: var(--rule);
   background: var(--raise);
+}
+
+.place .caret {
+  color: var(--faint);
+  flex: none;
+}
+
+/*
+ * ONE line, present tense, in words.
+ *
+ * The rail this replaces rendered up to nine chips at once — an agent name, a
+ * model name, a schedule count, a delegate, a thread count, a clock — and a
+ * reader could not tell which of them was the thing they were waiting for. What
+ * is shown here is whichever fact is most urgent, and the rest are in the
+ * drawer, which is where facts live.
+ */
+.status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  min-width: 0;
+  font-size: var(--t-small);
+  color: var(--dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.status[data-live='true'] {
+  color: var(--text);
+}
+
+.status .status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--signal);
+  flex: none;
+  animation: breathe 1.6s ease-in-out infinite;
+}
+
+.status .measured {
+  color: var(--signal);
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+.topactions {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+/*
+ * A control that is an icon and a word, never an icon alone.
+ *
+ * An icon-only control is recall: it asks a person to remember what a glyph
+ * meant. The word is hidden only where there is genuinely no room for it, and
+ * the label stays on the element either way so a screen reader and a pointer
+ * user are told the same thing.
+ */
+.iconbutton {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 34px;
+  padding: 0.3rem 0.6rem;
   border: 1px solid var(--rule);
-  border-radius: 8px;
-  padding: 0.45rem 0.75rem;
+  border-radius: var(--radius-sm);
+  background: var(--raise);
+  color: var(--dim);
+  font-size: var(--t-small);
+  transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
 }
 
-button {
-  cursor: pointer;
-  transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
-}
-
-button:hover:not(:disabled) {
+.iconbutton:hover:not(:disabled) {
   background: var(--raise-hi);
-  border-color: var(--faint);
+  color: var(--text);
 }
 
-button:disabled,
-input:disabled,
-select:disabled {
-  opacity: 0.4;
+.iconbutton[aria-pressed='true'] {
+  border-color: var(--signal-line);
+  background: var(--signal-soft);
+  color: var(--signal);
+}
+
+.iconbutton:disabled {
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
-.actions button {
-  font-family: var(--mono);
-  font-size: 0.75rem;
-  letter-spacing: 0.06em;
-  padding: 0.4rem 0.7rem;
+.iconbutton .glyph {
+  font-size: 0.95em;
+  line-height: 1;
 }
 
-.actions button[aria-pressed='true'] {
+/* ── the conversation menu ──────────────────────────────────────────────── */
+
+.menu {
+  position: absolute;
+  top: 3.1rem;
+  left: clamp(0.7rem, 2vw, 1.1rem);
+  z-index: 30;
+  width: min(22rem, calc(100vw - 1.4rem));
+  max-height: min(28rem, 70dvh);
+  overflow: auto;
+  padding: 0.4rem;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  animation: rise 140ms ease-out;
+}
+
+.menu h3 {
+  margin: 0.35rem 0.5rem 0.5rem;
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  color: var(--faint);
+}
+
+.menu-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.25rem;
+  border-radius: var(--radius-sm);
+}
+
+.menu-row:hover {
+  background: var(--raise);
+}
+
+.menu-row > button:first-child {
+  display: block;
+  min-width: 0;
+  padding: 0.5rem 0.6rem;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font-size: var(--t-small);
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.menu-row[data-current='true'] > button:first-child {
   color: var(--signal);
-  border-color: rgba(35, 179, 209, 0.4);
-  background: var(--signal-soft);
+}
+
+.menu-row .rowact {
+  display: flex;
+  gap: 0.1rem;
+  padding-right: 0.3rem;
+  opacity: 0;
+}
+
+.menu-row:hover .rowact,
+.menu-row:focus-within .rowact {
+  opacity: 1;
+}
+
+.menu-row .rowact button {
+  padding: 0.3rem 0.4rem;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--faint);
+  font-size: var(--t-micro);
+}
+
+.menu-row .rowact button:hover {
+  background: var(--raise-hi);
+  color: var(--text);
+}
+
+.menu-new {
+  display: block;
+  width: 100%;
+  margin-top: 0.3rem;
+  padding: 0.55rem 0.6rem;
+  border: 1px dashed var(--rule);
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--dim);
+  font-size: var(--t-small);
+  text-align: left;
+}
+
+.menu-new:hover {
+  border-color: var(--signal-line);
+  color: var(--signal);
+}
+
+/* A transparent sheet that closes whatever is open when it is pressed. It is
+   what makes a menu dismissible without every open menu having to own a
+   document-level listener. */
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  border: 0;
+  background: transparent;
 }
 
 /* ── panes ──────────────────────────────────────────────────────────────── */
@@ -218,69 +461,139 @@ select:disabled {
   min-height: 0;
 }
 
-.panes.with-panel {
-  grid-template-columns: minmax(0, 1fr) minmax(23rem, 33%);
+/* Docked only where there is genuinely room for both. Between this and the
+   phone the drawer is an overlay, because a 30rem conversation beside a 26rem
+   readout is two things neither of which can be read. */
+@media (min-width: 78rem) {
+  .panes.docked {
+    grid-template-columns: minmax(0, 1fr) 27rem;
+  }
 }
 
 .stage {
   display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr) auto auto;
   min-width: 0;
-  background: var(--surface);
+  min-height: 0;
+  background: var(--ink);
 }
 
-/* ── transcript ─────────────────────────────────────────────────────────── */
-
-/* Turns hang from the BOTTOM. A console fills upward — the newest line sits
-   where the eye already is, next to the thing you type into — where a
-   top-aligned transcript leaves a growing gap between the last reply and the
-   composer, and the reader has to travel back up to find it. */
 .transcript {
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
   overflow-y: auto;
-  padding: 1.5rem clamp(0.9rem, 3vw, 2rem) 1rem;
+  overscroll-behavior: contain;
+  padding: 1.75rem clamp(1rem, 4vw, 2rem) 0.5rem;
   scroll-behavior: smooth;
 }
 
 .transcript > * {
-  flex: none;
+  max-width: var(--measure);
+  margin-inline: auto;
 }
+
+/* ── the empty screen, which is the most-read screen in this app ─────────── */
+
+.empty {
+  max-width: var(--measure);
+  margin: clamp(1rem, 6vh, 3.5rem) auto 0;
+  padding: 0;
+}
+
+.empty h2 {
+  margin: 0 0 0.35rem;
+  font-size: var(--t-display);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  line-height: 1.2;
+}
+
+.empty p {
+  margin: 0 0 1.25rem;
+  max-width: 46ch;
+  color: var(--dim);
+  font-size: var(--t-lead);
+  line-height: 1.55;
+}
+
+.empty .primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 42px;
+  padding: 0.55rem 1.1rem;
+  border: 1px solid var(--signal-line);
+  border-radius: var(--radius-sm);
+  background: var(--signal-soft);
+  color: var(--signal);
+  font-size: var(--t-body);
+  font-weight: 550;
+}
+
+.empty .primary:hover {
+  background: var(--signal);
+  border-color: var(--signal);
+  color: var(--ink);
+}
+
+/*
+ * Three questions that fill the composer when pressed.
+ *
+ * They are the only place a newcomer learns that this thing can run a command,
+ * read a page or hand work to a second agent — recognition where the previous
+ * page offered a paragraph and expected recall. A capability nobody can find is
+ * a capability nobody has.
+ */
+.examples {
+  margin: 1.5rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.examples .label {
+  font-size: var(--t-micro);
+  letter-spacing: 0.1em;
+  color: var(--faint);
+  margin-bottom: 0.2rem;
+}
+
+.examples button {
+  display: block;
+  width: 100%;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--t-small);
+  text-align: left;
+  transition: border-color 140ms ease, background 140ms ease;
+}
+
+.examples button:hover {
+  border-color: var(--signal-line);
+  background: var(--raise);
+}
+
+.examples button .why {
+  display: block;
+  margin-top: 0.15rem;
+  color: var(--faint);
+  font-size: var(--t-micro);
+}
+
+/* ── the conversation register ──────────────────────────────────────────── */
 
 .turn {
-  display: grid;
-  grid-template-columns: var(--gutter) minmax(0, 1fr);
-  gap: 0 1rem;
-  /* `width` is load-bearing next to the auto margins. The transcript is a flex
-     column, and a flex item with auto cross-axis margins is centred at its
-     CONTENT width rather than stretched — so without this a short turn sits
-     narrower and further right than a long one, and the column staircases. */
-  width: 100%;
-  max-width: calc(var(--measure) + var(--gutter) + 1rem);
-  margin: 0 auto 1.4rem;
+  margin-bottom: 1.5rem;
 }
 
-/* The speaker sits in a gutter rather than above the words. A log is read down
-   its left edge, and putting the label there means the eye can find who said
-   what without the text losing its own top line. */
-.who {
-  grid-column: 1;
-  padding-top: 0.2rem;
-  font-size: 0.68rem;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+.turn .who {
+  display: block;
+  margin-bottom: 0.3rem;
+  font-size: var(--t-micro);
+  letter-spacing: 0.11em;
   color: var(--faint);
-  text-align: right;
-}
-
-.turn.user .who {
-  color: var(--dim);
-}
-
-.turn .body {
-  grid-column: 2;
-  min-width: 0;
 }
 
 .turn .text {
@@ -288,211 +601,290 @@ select:disabled {
   overflow-wrap: anywhere;
 }
 
+/*
+ * The person's own words, set apart by a rule rather than by a bubble.
+ *
+ * A bubble is a chat product's device for saying "two people are talking". Here
+ * one of the two is a machine with a Linux guest in it, and the asymmetry is
+ * the truth: the question is short and quoted, the answer is a document.
+ */
+.turn.user .body {
+  border-left: 2px solid var(--rule);
+  padding-left: 0.9rem;
+}
+
 .turn.user .text {
   color: var(--dim);
 }
 
-/* Present on every reply, shouting on none. It appears when the turn is under
-   the pointer or holds focus — a per-message control the reader only wants
-   occasionally should not be part of how the page looks at rest. */
-.turn .say {
-  display: block;
-  margin-top: 0.35rem;
-  padding: 0;
-  border: 0;
-  background: none;
-  font-family: var(--mono);
-  font-size: 0.66rem;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+.turn.assistant .text {
+  font-size: var(--t-lead);
+  line-height: 1.6;
+}
+
+/* What the model reasoned on the way, which was stored and round-tripped and
+   rendered NOWHERE — `docs/LEDGER.md` row S21. Folded, because it is working
+   and not an answer. */
+.thinking {
+  margin: 0 0 0.5rem;
+}
+
+.thinking summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  cursor: pointer;
+  font-size: var(--t-micro);
+  letter-spacing: 0.08em;
   color: var(--faint);
+  list-style: none;
+}
+
+.thinking summary::-webkit-details-marker {
+  display: none;
+}
+
+.thinking summary:hover {
+  color: var(--dim);
+}
+
+.thinking .text {
+  margin-top: 0.4rem;
+  padding-left: 0.9rem;
+  border-left: 2px solid var(--rule-soft);
+  color: var(--faint);
+  font-size: var(--t-small);
+  font-style: italic;
+}
+
+.turn .raw {
+  color: var(--dim);
+}
+
+.msg-actions {
+  display: flex;
+  gap: 0.15rem;
+  margin-top: 0.45rem;
   opacity: 0;
   transition: opacity 140ms ease;
 }
 
-.turn:hover .say,
-.turn:focus-within .say {
+.turn:hover .msg-actions,
+.turn:focus-within .msg-actions {
   opacity: 1;
 }
 
-/* A touch screen has no hover to reveal it with, so there it simply stays. */
+.msg-actions button {
+  padding: 0.25rem 0.5rem;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--faint);
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+}
+
+.msg-actions button:hover {
+  background: var(--raise);
+  color: var(--text);
+}
+
+.msg-actions button[aria-pressed='true'] {
+  color: var(--signal);
+}
+
+/* A pointer that cannot hover has no way to reveal a control that appears on
+   hover, so on a touch screen they are simply always there. */
 @media (hover: none) {
-  .turn .say {
+  .msg-actions {
+    opacity: 1;
+  }
+
+  .menu-row .rowact {
     opacity: 1;
   }
 }
 
-.turn .say:hover {
-  background: none;
-  color: var(--signal);
+.attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.5rem;
 }
 
-/* A finished pass of the loop. The rule down its left edge is the trace of the
-   route the agent took; the last one, the answer, is the one lit. */
-.turn .step {
-  margin-bottom: 0.6rem;
-  padding-left: 0.75rem;
-  border-left: 2px solid var(--rule);
-  font-family: var(--mono);
-  font-size: 0.82rem;
+.attachments img {
+  max-width: 12rem;
+  max-height: 9rem;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+}
+
+.attachments .other {
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
   color: var(--dim);
-}
-
-.turn .step.answered {
-  border-left-color: var(--signal);
-  font-family: var(--sans);
-  font-size: 1rem;
-  color: var(--text);
-}
-
-.turn .badge {
-  display: block;
-  font-size: 0.64rem;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--faint);
-}
-
-/* Text that has not been parsed yet, and the model's own scratchpad. Both are
-   machinery in flight and are set as such — dimmer, monospaced, and never
-   mistakable for the reply. */
-.turn .raw {
   font-family: var(--mono);
-  font-size: 0.85rem;
-  color: var(--dim);
+  font-size: var(--t-micro);
 }
 
-.turn .thinking {
-  max-height: 8.5rem;
-  overflow: auto;
-  padding-left: 0.75rem;
-  border-left: 2px solid var(--rule-soft);
-  font-family: var(--mono);
-  font-size: 0.75rem;
-  line-height: 1.5;
-  color: var(--faint);
+/* ── the work register ──────────────────────────────────────────────────── */
+
+.steps {
+  display: grid;
+  gap: 0.3rem;
+  margin: 0 0 0.75rem;
 }
 
-.turn .raw::after {
-  content: '';
-  display: inline-block;
-  width: 0.5em;
-  height: 1em;
-  margin-left: 2px;
+/*
+ * One step, as a sentence.
+ *
+ * The verb comes from the tool's NAME and nothing else — never from re-reading
+ * its arguments. `Toolbox.parse` is the one thing in this application that
+ * decides what a call is, and a second parser here would agree with it until
+ * the day it did not; on that day the page would draw a call that never ran.
+ * The argument text is shown verbatim below, and never interpreted.
+ */
+.step {
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.step > summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.5rem 0.7rem;
+  cursor: pointer;
+  list-style: none;
+  font-size: var(--t-small);
+}
+
+.step > summary::-webkit-details-marker {
+  display: none;
+}
+
+.step > summary:hover {
+  background: var(--raise);
+}
+
+.step .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--faint);
+  flex: none;
+}
+
+.step[data-state='running'] .dot {
   background: var(--signal);
-  vertical-align: text-bottom;
-  animation: blink 1.1s steps(2, start) infinite;
+  animation: breathe 1.6s ease-in-out infinite;
 }
 
-@keyframes blink {
-  50% {
-    opacity: 0;
-  }
+.step[data-state='done'] .dot {
+  background: var(--signal);
 }
 
-.empty {
-  width: 100%;
-  max-width: var(--measure);
-  margin: auto;
-  padding: 3rem 0;
-  text-align: center;
+.step[data-state='failed'] .dot {
+  background: var(--bad);
+}
+
+.step .verb {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.step .step-time {
+  color: var(--signal);
+  font-size: var(--t-micro);
+}
+
+.step .chev {
   color: var(--faint);
+  font-size: var(--t-micro);
+  transition: transform 140ms ease;
 }
 
-/* A word inside a sentence that happens to be a control. The empty state tells
-   someone to open settings, and a link-shaped word they can press is one step
-   where "find the settings button in the corner" is two. */
-.empty button.inline {
-  padding: 0;
-  border: 0;
-  background: none;
-  font: inherit;
-  /* --text, not --signal: cyan means measured in this palette and a control is
-     not a measurement. The underline is what makes it read as pressable. */
+.step[open] .chev {
+  transform: rotate(90deg);
+}
+
+.step-body {
+  border-top: 1px solid var(--rule-soft);
+  padding: 0.6rem 0.7rem;
+  background: var(--panel);
+}
+
+.step-body pre {
+  margin: 0;
+  overflow-x: auto;
+  font-size: var(--t-micro);
+  line-height: 1.55;
+  white-space: pre;
+}
+
+.step-body .call {
   color: var(--text);
-  text-decoration: underline;
-  text-underline-offset: 0.2em;
 }
 
-.empty button.inline:hover {
-  background: none;
-  text-decoration-thickness: 2px;
-}
-
-.empty strong {
-  display: block;
-  margin-bottom: 0.4rem;
-  font-family: var(--mono);
-  font-size: 0.8rem;
-  font-weight: 400;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+.step-body .result {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed var(--rule);
   color: var(--dim);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
-/* ── things the run has to say ──────────────────────────────────────────── */
+.step-body .waiting {
+  margin: 0.5rem 0 0;
+  color: var(--faint);
+  font-size: var(--t-micro);
+}
+
+/* ── the tray: what the app has to say about itself ─────────────────────── */
 
 .tray {
-  max-width: calc(var(--measure) + var(--gutter) + 1rem);
-  margin: 0 auto;
-  padding: 0 clamp(0.9rem, 3vw, 2rem);
+  display: grid;
+  gap: 0.4rem;
+  padding: 0 clamp(1rem, 4vw, 2rem);
 }
 
-.problem,
-.notes,
-.loading,
-.hearing {
-  font-family: var(--mono);
-  font-size: 0.78rem;
-  line-height: 1.5;
+.tray > * {
+  max-width: var(--measure);
+  width: 100%;
+  margin-inline: auto;
 }
 
-.problem {
-  margin: 0 0 0.6rem;
-  padding: 0.6rem 0.75rem;
-  border-left: 2px solid var(--bad);
-  background: rgba(226, 104, 95, 0.07);
-  color: var(--text);
-}
-
-.problem .hint-line {
-  display: block;
-  margin-top: 0.25rem;
-  color: var(--dim);
-}
-
-.notes {
-  margin: 0 0 0.6rem;
-  padding: 0;
-  list-style: none;
-  color: var(--faint);
-}
-
-.notes li::before {
-  content: '· ';
-}
-
-.loading,
-.hearing {
-  display: flex;
+.loading {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 0.6rem;
-  margin: 0 0 0.6rem;
+  margin: 0;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  font-family: var(--mono);
+  font-size: var(--t-micro);
   color: var(--dim);
 }
 
-.loading .who,
-.hearing .who {
-  padding: 0;
-  text-align: left;
-  color: var(--signal);
+.loading .who {
+  color: var(--text);
 }
 
 .loading .bar {
-  flex: 1;
-  height: 3px;
-  background: var(--raise);
+  height: 4px;
   border-radius: 2px;
+  background: var(--raise-hi);
   overflow: hidden;
 }
 
@@ -500,303 +892,414 @@ select:disabled {
   display: block;
   height: 100%;
   background: var(--signal);
-  transition: width 200ms ease;
+  transition: width 200ms linear;
 }
 
 .hearing {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid var(--signal-line);
+  border-radius: var(--radius-sm);
+  background: var(--signal-soft);
+  font-size: var(--t-small);
   color: var(--text);
 }
 
-/* ── composer ───────────────────────────────────────────────────────────── */
+.hearing .who {
+  font-size: var(--t-micro);
+  letter-spacing: 0.1em;
+  color: var(--signal);
+}
 
-/* Held to the same measure as the transcript, and centred on it. A composer
-   that runs the full width of the pane while the words above it sit in a
-   column reads as two different documents stacked. */
+.problem {
+  margin: 0;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--bad);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--bad) 10%, transparent);
+  font-size: var(--t-small);
+}
+
+.problem .hint-line {
+  display: block;
+  margin-top: 0.2rem;
+  color: var(--dim);
+}
+
+.notes {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.notes li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  align-items: start;
+  padding: 0.35rem 0.5rem;
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--dim);
+  font-size: var(--t-micro);
+  line-height: 1.5;
+}
+
+.notes li button {
+  border: 0;
+  background: none;
+  color: var(--faint);
+  font-size: var(--t-micro);
+  padding: 0 0.2rem;
+}
+
+.notes li button:hover {
+  color: var(--text);
+}
+
+/* ── the composer ───────────────────────────────────────────────────────── */
+
+.dock {
+  padding: 0.5rem clamp(1rem, 4vw, 2rem);
+  /* The keyboard's own height on a phone, measured through `visualViewport` and
+     handed here as a variable. Without it the thing being typed into sits
+     underneath the keyboard, which is the commonest way a chat interface is
+     broken on a phone. */
+  padding-bottom: calc(max(0.6rem, env(safe-area-inset-bottom)) + var(--keyboard, 0px));
+  transition: padding-bottom 120ms ease-out;
+}
+
+.dock > * {
+  max-width: var(--measure);
+  margin-inline: auto;
+}
+
+.composerbox {
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--surface);
+  transition: border-color 140ms ease;
+}
+
+.composerbox:focus-within {
+  border-color: var(--signal-line);
+}
+
+.attachrow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  padding: 0.55rem 0.6rem 0;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.35rem 0.25rem 0.5rem;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  background: var(--raise);
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  color: var(--dim);
+}
+
+.chip img {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  object-fit: cover;
+}
+
+.chip button {
+  border: 0;
+  background: none;
+  color: var(--faint);
+  padding: 0 0.2rem;
+  line-height: 1;
+}
+
+.chip button:hover {
+  color: var(--bad);
+}
+
 .composer {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  gap: 0.5rem;
-  width: 100%;
-  max-width: calc(var(--measure) + var(--gutter) + 1rem + clamp(1.8rem, 6vw, 4rem));
-  margin: 0 auto;
-  padding: 0.75rem clamp(0.9rem, 3vw, 2rem);
-  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
-  background: var(--panel);
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: end;
+  gap: 0.3rem;
+  padding: 0.35rem;
 }
 
-/* The rule spans the pane even though the controls do not: it is the edge of
-   the stage, not of the composer. */
-.dock {
-  border-top: 1px solid var(--rule);
-  background: var(--panel);
+.composer textarea {
+  min-height: 40px;
+  max-height: 12rem;
+  padding: 0.55rem 0.3rem;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: var(--t-body);
+  line-height: 1.5;
+  resize: none;
+  overflow-y: auto;
 }
 
-.composer > * {
-  min-height: 44px;
-}
-
-.composer input {
-  width: 100%;
-  border-radius: var(--radius);
-  padding: 0.6rem 0.9rem;
-}
-
-.composer input:focus {
-  border-color: var(--faint);
+.composer textarea:focus {
   outline: none;
 }
 
-.composer button {
-  font-family: var(--mono);
-  font-size: 0.75rem;
-  letter-spacing: 0.06em;
-  padding-inline: 0.9rem;
-  border-radius: var(--radius);
+.composer textarea::placeholder {
+  color: var(--faint);
 }
 
-.composer button[type='submit']:not(:disabled) {
-  color: var(--ink);
+/* Every control on this row is at least a finger wide. 44px is the smallest
+   target a person hits reliably, and the previous composer's buttons were
+   under it on a phone. */
+.composer .act {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  min-width: 44px;
+  min-height: 40px;
+  padding: 0 0.6rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--dim);
+}
+
+.composer .act:hover:not(:disabled) {
+  background: var(--raise);
+  color: var(--text);
+}
+
+.composer .act:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.composer .send {
   background: var(--signal);
-  border-color: var(--signal);
-  font-weight: 700;
+  color: var(--ink);
+  font-weight: 600;
 }
 
-.composer .mic.on {
-  color: var(--signal);
-  border-color: rgba(35, 179, 209, 0.45);
+.composer .send:hover:not(:disabled) {
+  background: var(--signal);
+  color: var(--ink);
+  filter: brightness(1.1);
+}
+
+.composer .stop {
+  border-color: var(--bad);
+  color: var(--bad);
+}
+
+.composer .mic[aria-pressed='true'] {
+  border-color: var(--signal-line);
   background: var(--signal-soft);
+  color: var(--signal);
 }
 
-/* ── instrument panel ───────────────────────────────────────────────────── */
+/*
+ * A level meter, and it exists because "listening" is a claim.
+ *
+ * An interface that says it is listening while the microphone is muted, or
+ * while the browser has handed back a dead track, is the commonest way
+ * dictation is broken — and it is indistinguishable from a slow model. This
+ * moves with the room.
+ */
+.level {
+  position: absolute;
+  left: 50%;
+  bottom: 3px;
+  width: 22px;
+  height: 3px;
+  border-radius: 2px;
+  transform: translateX(-50%);
+  background: var(--rule);
+  overflow: hidden;
+}
 
-/* A column, not three fixed rows. The pane holds three different instruments
-   now and they have different numbers of parts — the prompt has a readout, a
-   layout and a body; the file view has a listing beside a body; the run log has
-   a readout and a list. Everything is its natural height and exactly one child
-   takes what is left and scrolls, which is named below rather than counted. */
-.panel {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
+.level span {
+  display: block;
+  height: 100%;
+  background: var(--signal);
+  transition: width 90ms linear;
+}
+
+.composer .mic {
+  position: relative;
+}
+
+.readeronly {
+  margin: 0 0 0.4rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--dim);
+  font-size: var(--t-micro);
+}
+
+/* ── the evidence drawer ────────────────────────────────────────────────── */
+
+.drawer {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
   min-height: 0;
   border-left: 1px solid var(--rule);
   background: var(--panel);
 }
 
-.panel > * {
-  flex: 0 0 auto;
-}
-
-.panel > pre,
-.panel > .runlog {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: auto;
-}
-
-/* The file pane scrolls in its two halves, not as a whole: the listing must
-   stay put while the file under it is read. */
-.panel > .files-body {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: hidden;
-}
-
-/* The plans pane scrolls as a whole: the form is short and the list under it is
-   the part that grows. */
-.panel > .plans {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: auto;
-  padding: 0.9rem;
-}
-
-.plan-new {
-  display: flex;
-  flex-direction: column;
-  gap: 0.55rem;
-  padding-bottom: 0.9rem;
+.drawer > header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0.75rem;
   border-bottom: 1px solid var(--rule-soft);
 }
 
-.plan-new label {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  font-size: 0.75rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+.drawer > header h2 {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  font-weight: 600;
+  letter-spacing: 0.14em;
   color: var(--faint);
 }
 
-.plan-list {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.plan-list li {
-  padding: 0.7rem 0;
-  border-bottom: 1px solid var(--rule-soft);
-}
-
-.plan-what {
-  color: var(--text);
-  overflow-wrap: anywhere;
-}
-
-.plan-when {
+/*
+ * Five sections, one press each, and the pressed one is obvious.
+ *
+ * A segmented control rather than five more buttons on the top bar: these are
+ * five views of ONE thing, and a control that says so costs a reader nothing to
+ * learn. Nesting them here is what takes the top-level choice from six to three.
+ */
+.segmented {
   display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  margin-top: 0.35rem;
-  font-size: 0.78rem;
-  color: var(--dim);
+  gap: 0.15rem;
+  padding: 0.35rem 0.5rem 0.5rem;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 
-.plan-when .dim {
-  color: var(--faint);
-}
-
-.plan-when button {
-  margin-left: auto;
-}
-
-.panel h2::first-letter {
-  text-transform: uppercase;
-}
-
-.panel > header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.7rem 1rem;
-  border-bottom: 1px solid var(--rule);
-}
-
-.panel h2 {
-  margin: 0;
-  font-family: var(--mono);
-  font-size: 0.72rem;
-  font-weight: 400;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--dim);
-}
-
-.panel .steps {
-  display: flex;
-  gap: 0.25rem;
-}
-
-.panel .steps button {
-  padding: 0.1rem 0.45rem;
-  font-family: var(--mono);
-  font-size: 0.72rem;
-  color: var(--dim);
-}
-
-.panel .steps button.on {
-  color: var(--signal);
-  border-color: rgba(35, 179, 209, 0.4);
-}
-
-.panel .close {
+.segmented::-webkit-scrollbar {
   display: none;
 }
 
-.panel .readout {
-  padding: 0.85rem 1rem 0;
+.segmented button {
+  flex: 1 0 auto;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: var(--faint);
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  letter-spacing: 0.06em;
+  white-space: nowrap;
 }
 
-/* THE SIGNATURE.
- *
- * The prompt as a proportional band: every block is a segment as wide as its
- * share of the tokens, the reusable prefix filled, everything after it hollow.
- * A list of numbers tells you what each block costs; this tells you the thing
- * the numbers are for — how much of what you are about to send has to be read
- * again, and which block is the reason. It is the one bold element on the page
- * and everything around it is deliberately quiet. */
-.meter {
-  display: flex;
-  height: 12px;
-  margin-bottom: 0.55rem;
-  border: 1px solid var(--rule);
-  border-radius: 3px;
-  overflow: hidden;
-  background: var(--ink);
+.segmented button:hover {
+  color: var(--text);
 }
 
-.meter i {
-  display: block;
-  min-width: 2px;
-  border-right: 1px solid var(--ink);
-  transition: flex-grow 260ms ease;
+.segmented button[aria-selected='true'] {
+  border-color: var(--rule);
+  background: var(--raise);
+  color: var(--signal);
 }
 
-.meter i:last-child {
-  border-right: 0;
+.drawer-body {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 0.75rem 1rem;
 }
 
-.meter i.cached {
-  background: var(--signal);
+/* ── panel internals, carried over ──────────────────────────────────────── */
+
+.hint {
+  margin: 0.6rem 0;
+  color: var(--dim);
+  font-size: var(--t-small);
+  line-height: 1.55;
 }
 
-.meter i.rest {
-  background: repeating-linear-gradient(
-    -45deg,
-    var(--raise-hi) 0 3px,
-    transparent 3px 6px
-  );
-}
-
-.meter i.volatile {
-  background: repeating-linear-gradient(
-    -45deg,
-    rgba(226, 162, 68, 0.55) 0 3px,
-    transparent 3px 6px
-  );
+.readout {
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--rule-soft);
 }
 
 .figures {
   display: flex;
   flex-wrap: wrap;
-  gap: 0 1rem;
-  margin: 0 0 0.8rem;
+  gap: 0.9rem;
+  margin: 0;
   font-family: var(--mono);
-  font-size: 0.72rem;
-  color: var(--faint);
+  font-size: var(--t-micro);
+  color: var(--dim);
 }
 
 .figures b {
-  font-weight: 400;
-  color: var(--dim);
+  color: var(--text);
+  font-weight: 600;
 }
 
 .figures .measured {
   color: var(--signal);
 }
 
+.meter {
+  display: flex;
+  height: 8px;
+  gap: 1px;
+  margin-bottom: 0.6rem;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.meter i {
+  background: var(--raise-hi);
+}
+
+.meter i.cached {
+  background: var(--signal);
+}
+
+.meter i.volatile {
+  background: var(--warn);
+}
+
+.meter i.rest {
+  background: var(--raise-hi);
+}
+
 .layout {
-  margin: 0 1rem 0.8rem;
+  margin: 0.5rem 0 0;
   padding: 0;
   list-style: none;
-  border: 1px solid var(--rule);
-  border-radius: 6px;
-  overflow: hidden;
+  font-family: var(--mono);
+  font-size: var(--t-micro);
 }
 
 .layout li {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto 3.5rem;
-  gap: 0.5rem;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
-  padding: 0.28rem 0.6rem;
-  border-left: 2px solid transparent;
-  font-family: var(--mono);
-  font-size: 0.72rem;
-  color: var(--faint);
+  gap: 0.5rem;
+  padding: 0.3rem 0;
+  color: var(--dim);
 }
 
 .layout li + li {
@@ -804,74 +1307,46 @@ select:disabled {
 }
 
 .layout li.cached {
-  border-left-color: var(--signal);
-  color: var(--dim);
+  color: var(--text);
+}
+
+.layout .tok {
+  color: var(--signal);
 }
 
 .layout .vol {
-  font-size: 0.62rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  opacity: 0.75;
+  color: var(--faint);
 }
 
 .layout .vol.volatile {
   color: var(--warn);
-  opacity: 1;
 }
 
-.layout .tok {
-  text-align: right;
-  color: var(--dim);
-}
-
-.panel pre {
-  margin: 0;
-  padding: 0 1rem 1.5rem;
-  overflow: auto;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  font-size: 0.72rem;
-  line-height: 1.65;
-  color: #9fb0c0;
-}
-
-.panel .hint {
-  padding: 0 1rem;
-  color: var(--faint);
-  font-size: 0.85rem;
-}
-
-/* ── the run log ────────────────────────────────────────────────────────── */
-
-/* What the agent DID, kept after the turn ends. The transcript holds what was
-   said; this holds the passes underneath it, and until this slice they existed
-   only while the spinner was up. */
 .runlog {
-  margin: 0;
-  padding: 0 0 1.5rem;
+  margin: 0.6rem 0 0;
+  padding: 0;
   list-style: none;
+  display: grid;
+  gap: 0.4rem;
 }
 
 .runlog li {
-  padding: 0.55rem 1rem;
-  border-left: 2px solid var(--rule);
-  border-bottom: 1px solid var(--rule-soft);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  padding: 0.5rem 0.6rem;
 }
 
-/* The one that became the reply, marked the way the transcript marks it. A run
-   log where every entry looks the same makes the reader count to find the end. */
 .runlog li.answered {
-  border-left-color: var(--signal);
+  border-color: var(--signal-line);
 }
 
 .runlog .id {
   display: block;
   margin-bottom: 0.3rem;
   font-family: var(--mono);
-  font-size: 0.62rem;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  font-size: var(--t-micro);
+  letter-spacing: 0.08em;
   color: var(--faint);
 }
 
@@ -880,70 +1355,83 @@ select:disabled {
 }
 
 .runlog .thought {
-  margin: 0 0 0.4rem;
-  font-family: var(--mono);
-  font-size: 0.68rem;
-  line-height: 1.6;
+  margin: 0 0 0.35rem;
   color: var(--faint);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+  font-size: var(--t-micro);
+  font-style: italic;
 }
 
 .runlog .call {
   margin: 0;
-  font-family: var(--mono);
-  font-size: 0.72rem;
-  line-height: 1.6;
-  color: #9fb0c0;
+  overflow-x: auto;
+  font-size: var(--t-micro);
+  line-height: 1.5;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
-/* ── the agent's files ──────────────────────────────────────────────────── */
+.runlog .result {
+  margin: 0.4rem 0 0;
+  padding-top: 0.4rem;
+  border-top: 1px dashed var(--rule);
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 
-/* The listing above the file, not beside it: this pane is 23rem at its
-   narrowest and two columns inside it would leave a path and a line of code
-   with about eleven characters each. */
 .files-body {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  min-height: 0;
+  gap: 0.6rem;
+}
+
+.filelist-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  color: var(--faint);
+}
+
+.filelist-head button {
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--raise);
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+}
+
+.filelist-head button:hover {
+  color: var(--text);
 }
 
 .filelist {
   margin: 0;
   padding: 0;
   list-style: none;
-  /* A length and not a percentage. `40%` inside a grid row sized by its own
-     content is a percentage of something indefinite, and Chrome resolved it to
-     a ten-pixel sliver with the first file half visible in it — measured on the
-     capture, not reasoned about.
-
-     11rem is 176px and a row is 28.03px — 0.72rem of monospace on the body's
-     unitless 1.6, plus 0.3rem of padding either side — so this is SIX rows and
-     a sliver of the seventh, which is the sliver that says the list scrolls.
-     The number is derived here rather than stated, because this comment said
-     "twelve" for a whole slice while the rule under it said six, and a comment
-     that names a count nobody can recompute is how that happens. */
-  max-height: 11rem;
-  overflow: auto;
-  border-bottom: 1px solid var(--rule);
+  display: grid;
+  gap: 1px;
 }
 
 .filelist li button {
-  display: flex;
-  gap: 0.5rem;
-  align-items: baseline;
+  display: block;
   width: 100%;
-  padding: 0.3rem 1rem;
+  padding: 0.4rem 0.5rem;
   border: 0;
-  border-left: 2px solid transparent;
-  border-radius: 0;
+  border-radius: 6px;
   background: none;
-  font-family: var(--mono);
-  font-size: 0.72rem;
-  text-align: left;
   color: var(--dim);
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .filelist li button:hover {
@@ -952,117 +1440,428 @@ select:disabled {
 }
 
 .filelist li button.on {
-  border-left-color: var(--signal);
+  background: var(--signal-soft);
   color: var(--signal);
 }
 
 .filelist .none {
-  padding: 0.5rem 1rem;
-  font-family: var(--mono);
-  font-size: 0.72rem;
+  padding: 0.4rem 0.5rem;
   color: var(--faint);
+  font-size: var(--t-micro);
 }
 
 .fileview {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  min-height: 0;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
 }
 
 .fileview > header {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.5rem 1rem;
+  gap: 0.5rem;
+  padding: 0.4rem 0.55rem;
   border-bottom: 1px solid var(--rule-soft);
+  background: var(--raise);
 }
 
 .fileview .id {
   font-family: var(--mono);
-  font-size: 0.72rem;
-  color: var(--text);
-  overflow-wrap: anywhere;
+  font-size: var(--t-micro);
+  color: var(--dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fileview .steps {
+  display: flex;
+  gap: 0.15rem;
 }
 
 .fileview .steps button {
-  padding: 0.1rem 0.45rem;
-  font-family: var(--mono);
-  font-size: 0.72rem;
+  padding: 0.25rem 0.45rem;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--surface);
   color: var(--dim);
+  font-family: var(--mono);
+  font-size: var(--t-micro);
 }
 
-.fileview pre.code {
-  margin: 0;
-  padding: 0.6rem 1rem 1.5rem;
-  min-height: 0;
-  overflow: auto;
-  white-space: pre;
-  font-family: var(--mono);
-  font-size: 0.72rem;
-  line-height: 1.6;
-  color: #9fb0c0;
-  tab-size: 2;
-}
-
-/* The editor is the viewer with a caret in it: the same face, the same size and
-   the same leading, so that turning `edit` on does not reflow the file under
-   the person about to change it. Only the ground and the border move, because
-   an editable surface has to look editable. */
-.fileview textarea.code.editing {
-  margin: 0;
-  padding: 0.6rem 1rem 1.5rem;
-  min-height: 12rem;
-  flex: 1;
-  resize: none;
-  border: 0;
-  border-top: 1px solid var(--rule-soft);
-  outline: none;
-  background: var(--panel);
-  overflow: auto;
-  white-space: pre;
-  font-family: var(--mono);
-  font-size: 0.72rem;
-  line-height: 1.6;
+.fileview .steps button:hover {
   color: var(--text);
-  tab-size: 2;
 }
 
-.fileview textarea.code.editing:focus {
-  box-shadow: inset 0 0 0 1px var(--signal-soft);
-}
-
-/* The one way IN to the workspace, and it sits above the listing rather than
-   inside the open file: adding a file is a thing you do to the workspace, not
-   to whatever happens to be open. */
-.filelist-head {
-  padding: 0.5rem 0.75rem;
-  border-bottom: 1px solid var(--rule-soft);
-}
-
-.filelist-head button {
+.fileview pre.code,
+.fileview textarea.code {
+  display: block;
   width: 100%;
-  padding: 0.35rem 0.5rem;
-  font: inherit;
-  font-size: 0.72rem;
-  color: var(--dim);
-  background: transparent;
-  border: 1px dashed var(--rule);
-  border-radius: 3px;
-  cursor: pointer;
-}
-
-.filelist-head button:hover {
+  margin: 0;
+  padding: 0.6rem;
+  max-height: 22rem;
+  overflow: auto;
+  border: 0;
+  background: var(--panel);
   color: var(--text);
-  border-color: var(--signal);
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  line-height: 1.55;
 }
 
-/* Four colours and no more. A palette that names every construct turns reading
-   into decoding a legend; these are the four a person actually scans for —
-   what is not code, what is literal, what is a value, and what is structure. */
-.code .tok.comment {
+.fileview textarea.code.editing {
+  min-height: 12rem;
+  resize: vertical;
+}
+
+.fileview textarea.code:focus {
+  outline: none;
+}
+
+.plans {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.plan-new {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.plan-new label {
+  display: grid;
+  gap: 0.2rem;
+  font-family: var(--mono);
+  font-size: var(--t-micro);
   color: var(--faint);
-  font-style: italic;
+}
+
+.plan-what,
+.plan-when select {
+  width: 100%;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font-family: inherit;
+  font-size: var(--t-small);
+}
+
+.plan-when {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 0.4rem;
+}
+
+.plan-when button {
+  padding: 0.45rem 0.7rem;
+  border: 1px solid var(--signal-line);
+  border-radius: 6px;
+  background: var(--signal-soft);
+  color: var(--signal);
+  font-size: var(--t-small);
+}
+
+.plan-when button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.plan-when .dim {
+  color: var(--faint);
+}
+
+.plan-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.plan-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  font-size: var(--t-small);
+}
+
+.plan-list .dim {
+  display: block;
+  color: var(--faint);
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+}
+
+.badge {
+  display: inline-block;
+  margin-right: 0.4rem;
+  padding: 0.05rem 0.35rem;
+  border-radius: 4px;
+  background: var(--raise-hi);
+  color: var(--faint);
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+}
+
+.measured {
+  color: var(--signal);
+}
+
+.dim {
+  color: var(--faint);
+}
+
+/* ── the agent's own page ───────────────────────────────────────────────── */
+
+.agentview {
+  display: grid;
+  gap: 0.8rem;
+  padding-top: 0.6rem;
+}
+
+.agentview h3 {
+  margin: 0 0 0.3rem;
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  color: var(--faint);
+}
+
+.taglist {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.taglist li {
+  padding: 0.2rem 0.5rem;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  background: var(--surface);
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  color: var(--dim);
+}
+
+.taglist li[data-state='off'] {
+  color: var(--faint);
+  border-style: dashed;
+}
+
+.instructions {
+  max-height: 18rem;
+  overflow: auto;
+  margin: 0;
+  padding: 0.6rem;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+/* ── settings ───────────────────────────────────────────────────────────── */
+
+.settings {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: start center;
+  padding: clamp(0.5rem, 4vh, 3rem) 0.75rem;
+  overflow-y: auto;
+  background: color-mix(in srgb, var(--ink) 78%, transparent);
+  backdrop-filter: blur(6px);
+}
+
+.settings .scrim {
+  z-index: 0;
+}
+
+.settings .sheet {
+  position: relative;
+  z-index: 1;
+  width: min(34rem, 100%);
+  display: grid;
+  gap: 0.7rem;
+  padding: 1rem;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  animation: rise 160ms ease-out;
+}
+
+.settings h2 {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  margin: 0;
+  font-size: var(--t-head);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.settings h2 button {
+  padding: 0.3rem 0.55rem;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--raise);
+  color: var(--dim);
+  font-size: var(--t-micro);
+}
+
+.settings label {
+  display: grid;
+  gap: 0.25rem;
+  font-size: var(--t-micro);
+  letter-spacing: 0.02em;
+  color: var(--dim);
+}
+
+/*
+ * The fix for the measured blocker, and it is `minmax(0, …)` in spirit: a grid
+ * child's default `min-width: auto` is its CONTENT's width, so one `<option>`
+ * of 258 characters set the width of the whole sheet — 1,813px of it, on a
+ * 390px phone. Every field is told it may be narrower than its content.
+ */
+.settings label,
+.settings .pair,
+.settings .folded,
+.settings details,
+.settings h2 {
+  min-width: 0;
+}
+
+.settings label input,
+.settings label select {
+  max-width: 100%;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  color: var(--text);
+  font-family: inherit;
+  font-size: var(--t-small);
+}
+
+.settings label input:disabled,
+.settings label select:disabled {
+  opacity: 0.45;
+}
+
+.settings label input[type='range'] {
+  padding: 0;
+  border: 0;
+  background: none;
+  accent-color: var(--signal);
+}
+
+.settings .switch {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text);
+  font-size: var(--t-small);
+}
+
+.settings .switch input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--signal);
+}
+
+.settings .pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+/*
+ * Everything below the model is optional, and it is folded.
+ *
+ * A first visit has exactly one problem — there is no model — and the previous
+ * form put five voice fields, a temperature and a token ceiling in front of a
+ * person before they could answer it. Twelve fields read as twelve things that
+ * must be filled in.
+ */
+.settings details {
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+}
+
+.settings details > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.55rem 0.7rem;
+  cursor: pointer;
+  list-style: none;
+  font-size: var(--t-small);
+  color: var(--dim);
+}
+
+.settings details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.settings details > summary:hover {
+  color: var(--text);
+}
+
+.settings details[open] > summary {
+  border-bottom: 1px solid var(--rule-soft);
+  color: var(--text);
+}
+
+.settings .folded {
+  display: grid;
+  gap: 0.6rem;
+  padding: 0.7rem;
+}
+
+.settings button[type='submit'] {
+  min-height: 42px;
+  border: 1px solid var(--signal);
+  border-radius: var(--radius-sm);
+  background: var(--signal);
+  color: var(--ink);
+  font-size: var(--t-body);
+  font-weight: 600;
+}
+
+.settings button[type='submit']:hover {
+  filter: brightness(1.1);
+}
+
+.settings .aside {
+  margin: 0;
+  color: var(--faint);
+  font-size: var(--t-micro);
+  line-height: 1.5;
+}
+
+/* ── syntax, the only place a fourth hue is allowed ─────────────────────── */
+
+.code .tok.keyword {
+  color: var(--signal);
 }
 
 .code .tok.string {
@@ -1073,183 +1872,102 @@ select:disabled {
   color: var(--warn);
 }
 
-.code .tok.keyword {
-  color: var(--signal);
-}
-
-/* ── settings ───────────────────────────────────────────────────────────── */
-
-.settings {
-  position: fixed;
-  inset: 0;
-  z-index: 20;
-  display: grid;
-  align-content: start;
-  gap: 0.9rem;
-  overflow-y: auto;
-  padding: 1.25rem clamp(1rem, 4vw, 2rem) 3rem;
-  background: rgba(7, 10, 14, 0.97);
-  backdrop-filter: blur(6px);
-}
-
-.settings .sheet {
-  display: grid;
-  gap: 0.9rem;
-  width: min(34rem, 100%);
-  margin: 0 auto;
-}
-
-.settings h2 {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin: 0;
-  font-family: var(--mono);
-  font-size: 0.72rem;
-  font-weight: 400;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--dim);
-}
-
-.settings label {
-  display: grid;
-  gap: 0.3rem;
-  font-family: var(--mono);
-  font-size: 0.7rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+.code .tok.comment {
   color: var(--faint);
+  font-style: italic;
 }
 
-.settings label input,
-.settings label select {
-  font-family: var(--sans);
-  font-size: 0.95rem;
-  letter-spacing: 0;
-  text-transform: none;
-  color: var(--text);
-  min-height: 44px;
-}
+/* ── narrow ─────────────────────────────────────────────────────────────── */
 
-.settings .switch {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  text-transform: none;
-  font-size: 0.85rem;
-  letter-spacing: 0;
-  color: var(--dim);
-}
-
-.settings .switch input {
-  width: 18px;
-  height: 18px;
-  min-height: 0;
-  accent-color: var(--signal);
-}
-
-.settings button[type='submit'] {
-  justify-self: start;
-  color: var(--ink);
-  background: var(--signal);
-  border-color: var(--signal);
-  font-weight: 700;
-  min-height: 44px;
-  padding-inline: 1.4rem;
-}
-
-.settings .group {
-  margin-top: 0.4rem;
-  padding-top: 0.9rem;
-  border-top: 1px solid var(--rule);
-}
-
-/* ── mobile ─────────────────────────────────────────────────────────────── */
-
-/* Below this the two registers cannot sit side by side and stay legible. The
-   panel does not disappear — it becomes a sheet over the conversation, because
-   on a phone the machinery is still the reason someone opened this app. */
-@media (max-width: 60rem) {
+@media (max-width: 62rem) {
   :root {
-    --gutter: 0;
+    --measure: 100%;
   }
 
-  .panes.with-panel {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .turn {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 0.15rem;
-    margin-bottom: 1.2rem;
-  }
-
-  .who {
-    grid-column: 1;
-    padding-top: 0;
-    text-align: left;
-  }
-
-  .turn .body {
-    grid-column: 1;
-  }
-
-  .panel {
-    position: fixed;
-    inset: 0;
-    z-index: 15;
-    border-left: 0;
-    animation: rise 180ms ease-out;
-  }
-
-  .panel .close {
-    display: inline-block;
-    font-family: var(--mono);
-    font-size: 0.72rem;
-    letter-spacing: 0.06em;
-    padding: 0.3rem 0.65rem;
-  }
-
-  .rail {
-    grid-template-columns: auto minmax(0, 1fr);
-    grid-template-areas: 'mark actions' 'status status';
-    gap: 0.5rem 0.75rem;
-  }
-
-  .wordmark {
-    grid-area: mark;
-  }
-
-  .actions {
-    grid-area: actions;
-    justify-content: flex-end;
+  .topbar {
+    gap: 0.4rem;
+    padding: 0.45rem 0.6rem;
   }
 
   .status {
-    grid-area: status;
+    justify-content: flex-start;
+    font-size: var(--t-micro);
   }
 
-  .composer {
-    grid-template-columns: minmax(0, 1fr) auto auto;
-    gap: 0.4rem;
+  /* The word beside the glyph is the first thing to go, and only here. The
+     accessible name stays on the element, so nothing is lost to a screen
+     reader — only to the pixels there are none of. */
+  .iconbutton .word {
+    display: none;
   }
 
-  .composer button {
-    padding-inline: 0.75rem;
+  .place {
+    max-width: 9rem;
+  }
+
+  /*
+   * The drawer is a sheet from the bottom, with a handle, over the
+   * conversation rather than beside it. On a phone the machinery is still the
+   * reason someone opened this app, so it does not disappear — it moves.
+   */
+  .drawer {
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: 25;
+    height: 88dvh;
+    border-left: 0;
+    border-top: 1px solid var(--rule);
+    border-radius: var(--radius) var(--radius) 0 0;
+    box-shadow: var(--shadow);
+    animation: rise 180ms ease-out;
+  }
+
+  .drawer::before {
+    content: '';
+    position: absolute;
+    top: 7px;
+    left: 50%;
+    width: 34px;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--rule);
+    transform: translateX(-50%);
+  }
+
+  .drawer > header {
+    padding-top: 1rem;
+  }
+
+  .transcript {
+    padding: 1rem 0.85rem 0.5rem;
+  }
+
+  .dock {
+    padding-inline: 0.65rem;
+  }
+
+  .turn.assistant .text {
+    font-size: var(--t-body);
+  }
+
+  .menu {
+    left: 0.6rem;
+    right: 0.6rem;
+    width: auto;
   }
 }
 
 @keyframes rise {
   from {
-    transform: translateY(1.5rem);
+    transform: translateY(1.25rem);
     opacity: 0;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   *,
-  *::after {
+  *::after,
+  *::before {
     animation: none !important;
     transition: none !important;
     scroll-behavior: auto !important;
