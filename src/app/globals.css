@@ -661,11 +661,21 @@ button {
   color: var(--dim);
 }
 
+/*
+ * Present, quietly, and never hidden behind a hover.
+ *
+ * The previous per-message control was `opacity: 0` until hover, which on a
+ * touch screen is never — so the only message-level action in the product was
+ * invisible on the device where reading a reply aloud matters most, and a
+ * keyboard user tabbed into something they could not see. It is dim rather than
+ * absent: a control a person has to discover by sweeping the pointer across the
+ * page is a control most people never find.
+ */
 .msg-actions {
   display: flex;
   gap: 0.15rem;
   margin-top: 0.45rem;
-  opacity: 0;
+  opacity: 0.75;
   transition: opacity 140ms ease;
 }
 
@@ -696,10 +706,7 @@ button {
 /* A pointer that cannot hover has no way to reveal a control that appears on
    hover, so on a touch screen they are simply always there. */
 @media (hover: none) {
-  .msg-actions {
-    opacity: 1;
-  }
-
+  .msg-actions,
   .menu-row .rowact {
     opacity: 1;
   }
@@ -852,6 +859,11 @@ button {
 
 .tray {
   display: grid;
+  /* Centred by the GRID and not by auto margins on the children. A grid item is
+     stretched by default, which resolves `margin-inline: auto` to zero — so the
+     download bar and the notes sat against the left edge of the window while
+     the composer they belong to was centred in the column. */
+  justify-items: center;
   gap: 0.4rem;
   padding: 0 clamp(1rem, 4vw, 2rem);
 }
@@ -859,7 +871,6 @@ button {
 .tray > * {
   max-width: var(--measure);
   width: 100%;
-  margin-inline: auto;
 }
 
 .loading {
@@ -1810,12 +1821,25 @@ button {
 .settings details > summary {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 0.5rem;
   padding: 0.55rem 0.7rem;
   cursor: pointer;
   list-style: none;
   font-size: var(--t-small);
   color: var(--dim);
+}
+
+/* A caret, because without one these read as two more text fields — same
+   border, same background, same height as the inputs above them — and a person
+   has no reason to think there is anything inside. */
+.settings details > summary::before {
+  content: '›';
+  color: var(--faint);
+  transition: transform 140ms ease;
+}
+
+.settings details[open] > summary::before {
+  transform: rotate(90deg);
 }
 
 .settings details > summary::-webkit-details-marker {
@@ -1894,10 +1918,12 @@ button {
     font-size: var(--t-micro);
   }
 
-  /* The word beside the glyph is the first thing to go, and only here. The
-     accessible name stays on the element, so nothing is lost to a screen
-     reader — only to the pixels there are none of. */
-  .iconbutton .word {
+  /* The word beside the glyph is the first thing to go, and only in the top
+     bar, where the glyph is beside it and the accessible name is on the
+     element. A button whose whole label is `.word` — the connection check in
+     settings — keeps it, because hiding that one rendered an empty box with a
+     result beside it and nothing saying what had been checked. */
+  .topbar .iconbutton .word {
     display: none;
   }
 
