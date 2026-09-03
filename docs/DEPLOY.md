@@ -33,7 +33,7 @@ silently needs a thing blames the wrong thing when the thing is missing.
 | `git`, `tar`, `bun` | yes | — |
 | a network for `bun install` | first run only (bun hardlinks from its cache after) | — |
 | a Chromium | — | yes; `CHROME` overrides the search |
-| a model at `http://127.0.0.1:8873/v1` | — | **yes**, `SettingsService.js`'s default |
+| a model at `http://127.0.0.1:8873/v1` | — | **yes**, and `deploy-check.js` plants it: `SettingsService.js` ships no default address any more, because a fictional one was advertised in the header as real |
 | a `dist/` from `deploy.js` | — | yes, including its `deploy.json` |
 
 The model is the one that bites. With none, `deploy-check.js` drives two turns
