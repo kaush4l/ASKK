@@ -172,3 +172,33 @@ describe('what the contract no longer says', () => {
     expect(instructions).toContain('in this order, one per line as `name: value`')
   })
 })
+
+describe('the format a contract is written in', () => {
+  class ToonKind extends BaseResponse {
+    static FIELDS = { thinking: { description: 'a' }, response: { description: 'b' } }
+  }
+  class JsonKind extends BaseResponse {
+    static FORMAT = 'json'
+    static FIELDS = { thinking: { description: 'a' }, response: { description: 'b' } }
+  }
+
+  test('TOON is the default and asks for one field per line', () => {
+    expect(ToonKind.instructions()).toContain('one per line as `name: value`')
+    expect(ToonKind.instructions()).toContain('thinking: <your thinking here>')
+  })
+
+  test('a JSON contract asks for one object and shows one', () => {
+    const said = JsonKind.instructions()
+    expect(said).toContain('a single JSON object')
+    expect(said).toContain('"thinking"')
+    expect(said).not.toContain('one per line as `name: value`')
+  })
+
+  test('a JSON contract still reads a TOON reply, as a repair', () => {
+    expect(JsonKind.parse('thinking: quickly\n\nresponse: done').response).toBe('done')
+  })
+
+  test('a TOON contract still reads a JSON reply, as a repair', () => {
+    expect(ToonKind.parse('{"thinking": "quickly", "response": "done"}').response).toBe('done')
+  })
+})

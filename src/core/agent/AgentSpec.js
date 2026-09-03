@@ -1,6 +1,7 @@
 import { DEFAULT_LOOP, ENGINES } from '../engine/index.js'
 import { parseMcpServers } from '../mcp/McpConfig.js'
 import { Outcome } from '../Outcome.js'
+import { DEFAULT_FORMAT, FORMATS } from '../response/formats/index.js'
 import { RESPONSE_MODELS } from '../response/index.js'
 
 /**
@@ -46,6 +47,10 @@ export const AGENT_DEFAULTS = Object.freeze({
   // agent wants a different prompt shape — see `PromptTemplate` for what the
   // default is and why.
   prompt: [],
+  // TOON, the same default `BaseResponse.FORMAT` carries on its own. Written
+  // out here too rather than read off the class, so this file stays the one
+  // place every default an agent may leave unstated is listed together.
+  format: DEFAULT_FORMAT,
 })
 
 /** Frontmatter is written in snake_case; the code is camelCase. */
@@ -70,11 +75,15 @@ const ALIASES = {
  * not the number: an author who wrote `max_steps: 8` was stating a term, and
  * the honest answer is to honour it and tell the agent, rather than to discard
  * it because the mechanism underneath it changed.
+ *
+ * `format` used to be listed here too, for the same reason `repeat_limit` still
+ * is: the `Format` enum it named was gone, so the line had nowhere to land. It
+ * came back once `src/core/response/formats/` gave it somewhere to land again —
+ * see the correction below, right after the alias loop, where an unknown name
+ * is fixed rather than refused like every other line in this file.
  */
 const RETIRED = {
   repeat_limit: 'a repeated call is reported to the agent, not counted against it',
-  format:
-    'the contract is written in TOON only; a JSON reply is still read as a repair, not as a form a file may ask for',
 }
 
 /**
@@ -131,6 +140,15 @@ export class AgentSpec {
         continue
       }
       raw[ALIASES[key] ?? key] = value
+    }
+
+    // Corrected rather than refused, like every other unknown name in this
+    // file: a typo in one line costs that line, not the agent.
+    if (raw.format !== undefined && !Object.hasOwn(FORMATS, raw.format)) {
+      notes.push(
+        `${source}: format ${JSON.stringify(raw.format)} is not one this app writes; used ${DEFAULT_FORMAT} instead`,
+      )
+      raw.format = DEFAULT_FORMAT
     }
 
     const name = String(raw.name ?? '').trim() || AGENT_DEFAULTS.name
@@ -277,6 +295,7 @@ export class AgentSpec {
         mcp,
         prompt,
         budget,
+        format: raw.format ?? AGENT_DEFAULTS.format,
         model: String(raw.model ?? '').trim(),
         system,
         source,

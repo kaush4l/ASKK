@@ -84,6 +84,17 @@ export function buildAgent({
   // the default — which is the point of a default.
   const arranged = PromptTemplate.of(spec.prompt, { source: spec.source ?? spec.name })
 
+  // A file that names a form gets a subclass carrying it. Assigning
+  // `Model.FORMAT = spec.format` instead would change the contract for every
+  // agent in the app that shares this class, including ones already built.
+  const Declared = getResponseModel(spec.response)
+  const Model =
+    spec.format && spec.format !== Declared.FORMAT
+      ? class extends Declared {
+          static FORMAT = spec.format
+        }
+      : Declared
+
   // A check that names a tool this agent does not have is a check that cannot
   // run. Left in, it reached the toolbox at the end of a run, came back "there
   // is no tool called shell", and the agent was told to fix a problem it could
@@ -111,7 +122,7 @@ export function buildAgent({
     name: spec.name,
     soul,
     system: spec.system,
-    responseModel: getResponseModel(spec.response),
+    responseModel: Model,
     // Tools discovered at runtime — an MCP server's, which cannot be known
     // until the server has been asked — join the ones the file named.
     toolbox,

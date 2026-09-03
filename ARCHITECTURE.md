@@ -118,9 +118,12 @@ loop declares the response contract it is written against as
 
 **Parsing never throws away a reply.** It reads TOON, then a brace run as JSON
 if the TOON pass found no fields, then keeps the whole text as the answer field.
-TOON is the only form the contract asks for, because small local models follow
-line-oriented fields far more reliably than they emit valid JSON; JSON is still
-read, as a repair, not as a form an agent file may request.
+TOON is the default form the contract asks for, because small local models
+follow line-oriented fields far more reliably than they emit valid JSON, but it
+is not the only one: `src/core/response/formats/` also holds a JSON form, and an
+agent file may ask for it with `format: json`. Parsing does not change either
+way — a reply in the other form is still read as a repair, whichever form was
+asked for.
 
 **It refuses one now, on both routes inside the contract and on the one
 outside it, and the third route inside is the residual.** A reply cut off

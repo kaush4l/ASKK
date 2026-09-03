@@ -141,23 +141,30 @@ describe('AgentSpec thinking', () => {
 })
 
 /**
- * A setting that is deleted has to be RETIRED and not merely gone.
- *
- * `format` chose between a TOON contract and a JSON one; no run ever chose the
- * JSON arm, so the enum went. Left out of `RETIRED`, the deletion would have
- * manufactured the very defect it removes: `format: json` would land in `raw`,
- * reach no reader, and leave its author believing they had asked for JSON —
- * silent, which is what this file's opening rule exists to forbid.
+ * `format` was retired once, for the same reason `max_steps` was: the
+ * machinery it named — a `Format` enum with a JSON arm — was gone, so the word
+ * had nowhere to land. It is honoured again now that `src/core/response/formats/`
+ * gives it somewhere to land: `BaseResponse.parse` still repairs a reply in the
+ * other shape regardless, so naming a form here is a PERMISSION, not a promise
+ * about what will be read.
  */
-describe('AgentSpec format, retired', () => {
-  test('a file still asking for a format is told the setting is gone', () => {
-    const built = spec({ name: 'x', format: 'json' })
-
-    expect(built.notes.some((note) => note.startsWith('agents/x/agent.md: format'))).toBe(true)
-    expect(built.value.format).toBeUndefined()
+describe('AgentSpec format', () => {
+  test('an agent file may name the form its contract is written in', () => {
+    const built = AgentSpec.of({ metadata: { name: 'a', format: 'json' }, body: 'x' })
+    expect(built.value.format).toBe('json')
+    expect(built.notes.join(' ')).not.toContain('no longer does anything')
   })
 
-  test('a file that never mentioned it is told nothing', () => {
-    expect(spec({ name: 'x' }).notes.some((note) => note.includes('format'))).toBe(false)
+  test('an unknown form is corrected rather than refused', () => {
+    const built = AgentSpec.of({ metadata: { name: 'a', format: 'yaml' }, body: 'x' })
+    expect(built.value.format).toBe('toon')
+    expect(built.notes.join(' ')).toContain('yaml')
+  })
+
+  test('a file that never mentioned it takes the default and is told nothing', () => {
+    const built = spec({ name: 'x' })
+
+    expect(built.value.format).toBe('toon')
+    expect(built.notes.some((note) => note.includes('format'))).toBe(false)
   })
 })

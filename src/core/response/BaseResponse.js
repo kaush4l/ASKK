@@ -1,3 +1,5 @@
+import { getFormat } from './formats/index.js'
+
 /**
  * Structured responses — a class doubles as its own prompt contract.
  *
@@ -11,16 +13,23 @@
  *       static FIELDS = { thinking: { description: '...' }, response: { description: '...' } }
  *     }
  *
- * TOON is the one form the contract is written in, because it is line-oriented
- * and small local models follow it far more reliably than they produce valid
- * JSON. There was a `Format` enum here with a second, JSON arm; no run ever
- * chose it, so it went — see `parse`, which still reads a JSON reply, as a
- * repair rather than as a permitted form.
+ * TOON is the default form the contract is written in, because it is
+ * line-oriented and small local models follow it far more reliably than they
+ * produce valid JSON. There was a `Format` enum here with a second, JSON arm;
+ * no run ever chose it, so it went — along with the distinction, not just the
+ * arm: `parse` still read a JSON reply, but there was no way for an agent file
+ * to say its contract is WRITTEN in JSON. `formats/` restores that: `FORMAT`
+ * picks which one `instructions()` writes, and `parse` is unchanged — it still
+ * reads TOON, then JSON, then keeps the whole reply, because each is the other
+ * one's repair regardless of which form was asked for.
  */
 
 export class BaseResponse {
   /** `{ name: { description, list?, default? } }` — declaration order is prompt order. */
   static FIELDS = {}
+
+  /** Which form this contract is written in. `formats/` holds the pair. */
+  static FORMAT = 'toon'
 
   constructor(values = {}) {
     for (const [name, spec] of Object.entries(this.constructor.FIELDS)) {
@@ -168,18 +177,12 @@ export class BaseResponse {
    * facts that change answers — not with rules the model already follows.
    */
   static instructions() {
+    const format = getFormat(this.FORMAT)
     const names = this.fieldNames()
-    const example = names.map((n) => `${n}: ${this._exampleValue(n)}`).join('\n\n')
-
-    return [
-      '# RESPONSE FORMAT',
-      '',
-      'Reply with exactly these fields, in this order, one per line as `name: value`, blank line between:',
-      '',
+    return format.instructions(
       this._fieldDocs(),
-      '',
-      `Example:\n${example}`,
-    ].join('\n')
+      format.example(names, (name) => this._exampleValue(name)),
+    )
   }
 
   /**
