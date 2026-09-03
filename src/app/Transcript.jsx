@@ -31,7 +31,7 @@ export function Transcript({
 }) {
   const live = visibleStream(run.raw)
   /**
-   * The last turn's work, attached to the reply it produced.
+   * The last turn's work, attached to the reply that turn produced.
    *
    * It used to live only inside the `busy` branch, so every step vanished the
    * moment the answer arrived — and the answer, written by a model that had
@@ -40,12 +40,15 @@ export function Transcript({
    * twice, in two separate reviews. The steps were kept in state and shown in
    * the drawer, which is a place nobody had been told to look.
    *
-   * Attached to the LAST assistant message and only while these steps belong to
-   * it: `run` holds one turn at a time, so an older reply must not be given the
-   * work of a newer one.
+   * `run.message` NAMES the reply, and the sentence that used to be here said
+   * an older reply could not be given the work of a newer one while the code
+   * did exactly that: the steps went to the last assistant message in the list,
+   * which is the right one only while every turn produces one. A turn that
+   * failed and a turn that was stopped both append nothing at all, so their
+   * steps landed on the answer above them — turn two's `shell(...)` drawn over
+   * turn one's answer, in a transcript that said turn one had run it.
    */
-  const finished = busy ? null : run.steps.filter((step) => !step.isAnswer)
-  const lastReply = [...messages].reverse().find((one) => one.role === 'assistant')
+  const finished = run.steps.filter((step) => !step.isAnswer)
 
   return (
     <div
@@ -72,14 +75,19 @@ export function Transcript({
           onShare={onShare}
           speaking={speaking}
           copied={copied}
-          steps={message.id === lastReply?.id ? finished : null}
+          steps={run.message && message.id === run.message ? finished : null}
           observations={observations}
           // The turn that did not complete, marked where it happened. Without
           // this a failed question sits in the transcript looking exactly like
           // an answered one the moment the error card is dismissed — and a
           // reviewer watched their question become indistinguishable from a
           // successful turn, permanently, with no way left to retry it.
-          failed={failed && message.role === 'user' && message.text === failed.text}
+          //
+          // On the message's IDENTITY, not on its words. Matching the text
+          // marked every message that said the same thing: ask the same
+          // question twice and let the second one fail, and the answered turn
+          // above it wore "This one did not get an answer" as well.
+          failed={message.id === failed?.id}
           onRetry={onRetry}
         />
       ))}
@@ -188,12 +196,13 @@ function Turn({
 
         {message.text ? (
           <div className="msg-actions">
-            {/* The reviewer measured the old one at 74×17px and `opacity: 0`
-                until hover — which on a touch screen is never, so the only
-                per-message control in the product was invisible on the device
-                where reading aloud matters most. It is a real control now, and
-                the stylesheet keeps it visible wherever a pointer cannot
-                hover. */}
+            {/* Present and quiet rather than hidden behind a hover. The
+                control this replaces was `opacity: 0` until the message was
+                hovered — a reviewer reported never finding it — though the
+                stylesheet did already reveal it under `@media (hover: none)`,
+                so it was visible on a touch screen. What was true everywhere is
+                that a control you have to discover by sweeping a pointer across
+                the page is a control most people never find. */}
             <button
               type="button"
               onClick={() => onCopy(message.text)}

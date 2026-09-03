@@ -17,7 +17,7 @@ import { EventName } from '../protocol/Envelope.js'
 import { Composer } from './Composer.jsx'
 import { Drawer } from './Drawer.jsx'
 import { Header } from './Header.jsx'
-import { statusLine } from './phrasing.js'
+import { bytes, statusLine } from './phrasing.js'
 import { Settings } from './Settings.jsx'
 import { Transcript } from './Transcript.jsx'
 
@@ -46,10 +46,12 @@ const TICK_MS = 20_000
 /**
  * Three questions that fill the composer.
  *
- * They are the only place a newcomer learns that this thing can run a command,
- * read a page or hand work to a second agent. The previous empty screen said so
- * in a paragraph and expected the reader to remember it; a reviewer's list of
- * things a first-time user could not discover ran to thirteen entries.
+ * They are where a newcomer meets three of this app's capabilities as things
+ * they can press rather than as a paragraph to remember — the previous empty
+ * screen described all four in prose and offered no way to try any of them.
+ * Delegation is the one not represented here, and it is named in the sentence
+ * above them, because a question that hands work over is hard to write as a
+ * one-liner that means anything.
  */
 const EXAMPLES = [
   {
@@ -59,6 +61,57 @@ const EXAMPLES = [
   { text: 'Search the web for what changed in Safari 26', why: 'it goes and looks' },
   { text: "Write today's plan to plan.md", why: 'its files last between conversations' },
 ]
+
+/**
+ * How many notes the tray will hold at once.
+ *
+ * There has to be a ceiling, because notes are now ADDED rather than assigned:
+ * the boot alone can produce three — the storage warning `composition.js`
+ * writes, the one this page adds beside it, and the web-search disclosure — and
+ * the tray sits between the transcript and the composer, so a list that only
+ * ever grew would push the message box off a small screen. Six leaves the boot
+ * set intact with room for what a turn has to say, and every note carries its
+ * own dismiss.
+ */
+const NOTE_LIMIT = 6
+
+/**
+ * A download, in the only terms its numbers actually support.
+ *
+ * `percent` reaches this page from two producers and both derive it from a
+ * `content-length` the host is under no obligation to send:
+ * `public/sandbox/vm-worker.js` reads that header, and `C2wSandbox` says in its
+ * own comment that it reports 0 when the header is absent. The tray drew that
+ * as a bar at `width: 0%` labelled "0%" for the whole of a ~40 MB image, which
+ * is what a hung app looks like. And where a host DOES send the header under
+ * `Content-Encoding: gzip`, the bytes the worker's reader counts are the
+ * inflated ones, so `loaded` runs past `total` and the same expression drew a
+ * bar wider than its own track.
+ *
+ * So a percentage is drawn only where the two numbers can carry one — a total
+ * that exists, and bytes that have not passed it — and everything else is
+ * reported as the thing that is certain: how much has arrived. The producers
+ * are being made honest separately; this is what the page does with whatever it
+ * is handed in the meantime.
+ */
+function downloadView(download) {
+  if (!download) return null
+  const loaded = Math.max(0, Number(download.loaded) || 0)
+  const total = Math.max(0, Number(download.total) || 0)
+  const known = total > 0 && loaded <= total
+  // Zero where there is no percentage to be had, which is what `statusLine`
+  // reads as "there is nothing to say about a download" — a header that has no
+  // room for a byte count must not show a made-up share instead.
+  const percent = known ? Math.min(100, Math.round((loaded / total) * 100)) : 0
+  return {
+    file: download.file || 'model',
+    known,
+    percent,
+    // `bytes` is empty at zero, and zero is exactly the first message the
+    // worker sends, so the ellipsis covers the moment before anything arrives.
+    label: known ? `${percent}%` : bytes(loaded) || '…',
+  }
+}
 
 export default function Page() {
   const clientRef = useRef(null)
@@ -90,7 +143,14 @@ export default function Page() {
   // while the spinner was up, so a person who looked away missed every one of
   // them — and the reply, which says "the step above shows where it came from",
   // was left pointing at something the page had just deleted.
-  const [run, setRun] = useState({ raw: '', reasoning: '', steps: [], at: 0, ms: 0 })
+  //
+  // `message` is the run's IDENTITY: the id of the reply this run produced, and
+  // null until it has produced one. `Transcript` used to hang the steps on
+  // whichever assistant message was last, which is only the same message while
+  // every turn succeeds — a failed turn and a stopped one both append nothing
+  // at all, and their steps went to the reply ABOVE them, so turn two's
+  // `shell(...)` was drawn over turn one's answer.
+  const [run, setRun] = useState({ raw: '', reasoning: '', steps: [], at: 0, ms: 0, message: null })
   /**
    * What each tool ANSWERED, keyed by the step that called it.
    *
@@ -144,8 +204,24 @@ export default function Page() {
   /**
    * Whether THIS tab is the one that may write to the open conversation.
    *
-   * `null` until the question has been asked, so "still deciding" and "another
-   * tab has it" are different things on screen.
+   * Three values, and each one means exactly one thing, because three readers
+   * act on it and they used to disagree:
+   *
+   *   `true`   this tab holds the lock. It may write, and it is the only tab
+   *            that may.
+   *   `false`  it does not hold the lock and may not write. Another tab has it,
+   *            or this tab has just given it up. The composer says so, `ask`
+   *            refuses, and the scheduler stops.
+   *   `null`   the election has not answered yet, and nothing more than that.
+   *            The composer stays open and `ask` proceeds, because "we have not
+   *            been told yet" is not "another tab has this open" and a cold
+   *            start must not accuse one; the scheduler waits, because an
+   *            unattended turn can afford twenty seconds and a person cannot.
+   *
+   * The state that used to break the rule was `pagehide`: it released the lock
+   * and set `null`, which left a tab with a live composer, a working `ask` and
+   * dead schedules — writable with nothing behind it, which is the interleaving
+   * this whole election exists to prevent. It sets `false` now.
    */
   const [writer, setWriter] = useState(null)
   const [listening, setListening] = useState(false)
@@ -175,6 +251,37 @@ export default function Page() {
   const [failed, setFailed] = useState(null)
   const dictationRef = useRef(null)
   const voiceRef = useRef(null)
+
+  /**
+   * Add what just happened to what is already on screen.
+   *
+   * ADDED, and that is the whole of it: every call below used to be
+   * `setNotes(theseNotes)`, so the first turn that finished — carrying no notes
+   * of its own, which is the ordinary case — silently replaced the boot's
+   * storage warning, the line saying a sub-agent had finished, and the sentence
+   * that tells a person web search leaves this machine. `composition.js` says
+   * of that last one that shortening or softening it "takes the disclosure out
+   * of the only place it is made", and a turn was deleting it outright.
+   *
+   * The same note twice is one note, in both directions — against what is
+   * already up and within one batch — because the list is keyed by its own text
+   * and because a schedule firing every minute would otherwise stack the same
+   * sentence for ever. `NOTE_LIMIT` is the other half of that.
+   */
+  const note = useCallback((incoming) => {
+    const added = (Array.isArray(incoming) ? incoming : [incoming]).filter(Boolean)
+    if (!added.length) return
+    setNotes((current) => {
+      const merged = [...current]
+      for (const one of added) if (!merged.includes(one)) merged.push(one)
+      if (merged.length === current.length) return current
+      // Oldest first when it has to give, which is the right way round for a
+      // tray a person reads top to bottom: what just happened is what they are
+      // looking for, and what has been sitting there unread has been readable
+      // for a while.
+      return merged.length > NOTE_LIMIT ? merged.slice(merged.length - NOTE_LIMIT) : merged
+    })
+  }, [])
 
   useEffect(() => {
     // Spawned in an effect, not at module scope: this component is executed in
@@ -281,6 +388,30 @@ export default function Page() {
   }, [busy])
 
   /**
+   * The stop, where the turn that has to notice it can read it.
+   *
+   * The same closure problem one register further in, and it made the stop path
+   * dead in both directions: `ask` is redefined on every render and holds the
+   * `stopping` of the render that created it, so the button's `setStopping(true)`
+   * made a new binding the running turn could never see. The sentence saying a
+   * stop happened — the only thing on screen that says so, since a stopped run
+   * comes back successful with nothing to append — could not render at all, and
+   * the flag was cleared only at the top of the NEXT turn, so the header sat at
+   * "stopping" until somebody asked something else.
+   */
+  const stoppingRef = useRef(false)
+
+  /**
+   * The conversation on screen, readable at the END of a turn.
+   *
+   * `ask` is given the conversation it was started in and holds it for minutes;
+   * this is what it compares against before drawing anything, because the
+   * transcript under the reader can be a different one by then.
+   */
+  const conversationRef = useRef(null)
+  conversationRef.current = conversationId
+
+  /**
    * The turn function, reachable from the timer.
    *
    * `ask` is a new function on every render, so naming it as a dependency would
@@ -373,12 +504,22 @@ export default function Page() {
         })
     }
 
-    const letGo = () => {
+    /**
+     * Drop the lock, and say what this tab may do without it.
+     *
+     * The argument is the whole reason it takes one. `null` means one thing
+     * here — the election has not answered — and the cleanup leaves that
+     * behind because the next election is about to ask again. A tab going into
+     * the back/forward cache is not asking again, so it leaves `false`: it has
+     * released the lock, and every reader of this value has to agree that it
+     * may not write until `pageshow` re-elects it.
+     */
+    const letGo = (leaves) => {
       controller.abort()
       release?.()
       release = null
       won = false
-      setWriter(null)
+      setWriter(leaves)
     }
 
     /**
@@ -397,7 +538,14 @@ export default function Page() {
      * every long-held web lock has to do; nothing else in this tree holds one
      * long enough for it to matter.
      */
-    const onHide = () => letGo()
+    const onHide = () => {
+      letGo(false)
+      // And onto the ref by hand, because a document being frozen is not
+      // obliged to render again before it stops running: `ask` reads the ref,
+      // and until `pageshow` puts the election back in charge the ref is the
+      // only place that knows this tab let the lock go.
+      writerRef.current = false
+    }
     const onShow = (event) => {
       if (!event.persisted) return
       controller = new AbortController()
@@ -411,7 +559,7 @@ export default function Page() {
     return () => {
       globalThis.removeEventListener('pagehide', onHide)
       globalThis.removeEventListener('pageshow', onShow)
-      letGo()
+      letGo(null)
     }
   }, [ready, conversationId])
 
@@ -522,7 +670,7 @@ export default function Page() {
           task.state === 'failed'
             ? `${task.agent} could not finish what you handed over.`
             : `${task.agent} has finished. Send anything and it will read the answer back to you.`
-        setNotes((current) => (current.includes(said) ? current : [...current, said]))
+        note(said)
         // And in the operating system, when the tab is not the one being
         // looked at. `announce` says nothing when the page is visible and
         // never asks for permission on its own — a permission dialog that
@@ -536,7 +684,7 @@ export default function Page() {
       stopped = true
       clearInterval(timer)
     }
-  }, [ready, tasks, conversationId])
+  }, [ready, tasks, conversationId, note])
 
   // One interval for the whole turn, torn down when it ends. `busy` is the only
   // dependency: a timer that outlives the run it is timing is a clock counting
@@ -612,19 +760,25 @@ export default function Page() {
     setProblem(null)
     setFailed(null)
     setBusy(true)
+    // Both, and the ref first: it is the one the end of this function reads,
+    // and the state is what the header renders from.
+    stoppingRef.current = false
     setStopping(false)
     const startedAt = Date.now()
-    setRun({ raw: '', reasoning: '', steps: [], at: startedAt, ms: 0 })
+    setRun({ raw: '', reasoning: '', steps: [], at: startedAt, ms: 0, message: null })
     setObservations({})
     setPrompts([])
     setPromptAt(0)
     setUsage(null)
+    // The id this question is on screen under, kept so that a turn which fails
+    // can be marked on the message it was actually asked in. Matching on the
+    // words instead marked every message that said the same thing: ask the same
+    // question twice, let the second one fail, and the answered turn above wore
+    // "did not get an answer" as well.
+    const asked = `local-${startedAt}`
     // Shown immediately rather than after the round trip. The backend has
     // already been told to persist it first, so this is not an optimistic lie.
-    setMessages((current) => [
-      ...current,
-      { id: `local-${Date.now()}`, role: 'user', text, attachments: files },
-    ])
+    setMessages((current) => [...current, { id: asked, role: 'user', text, attachments: files }])
 
     let startedAtStep = startedAt
     const turn = clientRef.current.begin(
@@ -695,32 +849,57 @@ export default function Page() {
     // all about it. The sentence is written here rather than in the backend
     // because only this realm knows the stop came from a person.
     const ended =
-      stopping && !result.value?.assistant
+      stoppingRef.current && !result.value?.assistant
         ? [
             'stopped — the turn ended where it was, and nothing was added to the conversation',
             ...result.notes,
           ]
         : result.notes
-    setNotes(ended)
+    note(ended)
     const spawned = await clientRef.current.call('agents.threads')
     if (spawned.ok) setThreads(spawned.value)
     const handed = await clientRef.current.call('agents.tasks')
     if (handed.ok) setTasks(handed.value)
+    // Whether the transcript on screen is still the one this question was asked
+    // in. Switching is refused while a turn runs — see `holdsTheScreen` — and
+    // this is the backstop for the ways the conversation changes without being
+    // asked to: deleting the open one moves the page to another by itself. The
+    // record was written where it belongs either way; what must not happen is a
+    // reply being DRAWN into a transcript it is not part of.
+    const stillHere = conversationRef.current === into
     if (result.ok) {
       // `.filter(Boolean)` is not tidiness here. A stopped run answers ok with
       // no assistant message at all, and this is what keeps the transcript
       // exactly as it was rather than growing an empty turn.
-      setMessages((current) => [...current, result.value.assistant].filter(Boolean))
+      if (stillHere) setMessages((current) => [...current, result.value.assistant].filter(Boolean))
       // Not awaited. Reading a reply aloud takes as long as the reply is long.
-      if (settings?.speakReplies && result.value.assistant?.text) say(result.value.assistant.text)
-    } else {
+      if (stillHere && settings?.speakReplies && result.value.assistant?.text)
+        say(result.value.assistant.text)
+    } else if (stillHere) {
       // The turn failed, and the question is HELD so it can be sent again. The
       // user's message was saved before the model was called, so without this
       // the transcript reads as though the assistant simply ignored them.
       setProblem({ message: result.error.message, hint: result.error.hint })
-      setFailed({ text, files })
+      setFailed({ id: asked, text, files })
+    } else {
+      // The error card and the retry both belong to a transcript that is no
+      // longer on screen, and showing them here would offer to re-send this
+      // question into the wrong conversation. Saying it happened is the least
+      // that can be done: a failure nobody is told about is the defect the
+      // retry was built for in the first place.
+      note('a turn you started in another conversation did not finish')
     }
-    setRun((current) => ({ ...current, raw: '', reasoning: '', ms: Date.now() - current.at }))
+    setRun((current) => ({
+      ...current,
+      raw: '',
+      reasoning: '',
+      ms: Date.now() - current.at,
+      // The run's identity, and the only thing that entitles a message to this
+      // run's steps. A turn that failed or was stopped produced no reply, so it
+      // names none, and its steps are attached to nothing rather than to
+      // whatever answer happens to be last in the transcript.
+      message: stillHere && result.ok ? (result.value?.assistant?.id ?? null) : null,
+    }))
     setDelegates({})
     setDownload(null)
     // After the steps, so a file view that reloads on this reads a workspace the
@@ -728,6 +907,11 @@ export default function Page() {
     setTurnsDone((count) => count + 1)
     setRunning(null)
     setBusy(false)
+    // The turn is over, so the stop it may have been asked to make is over with
+    // it. This used to be cleared only at the top of the next turn, which left
+    // the header saying "stopping" for as long as nobody asked anything else.
+    stoppingRef.current = false
+    setStopping(false)
   }
 
   /**
@@ -747,7 +931,7 @@ export default function Page() {
       setLevel(0)
       if (done?.text) setDraft(done.text)
       if (done && !done.ok) setProblem({ message: done.error.message, hint: done.error.hint })
-      if (done?.notes?.length) setNotes(done.notes)
+      note(done.notes)
       return
     }
 
@@ -773,7 +957,7 @@ export default function Page() {
     setProblem(null)
     setListening(true)
     const started = await dictation.start()
-    if (started.notes?.length) setNotes(started.notes)
+    note(started.notes)
     if (!started.ok) {
       setListening(false)
       dictationRef.current = null
@@ -805,7 +989,7 @@ export default function Page() {
     const spoken = await voiceRef.current.say(text)
     setSpeaking('')
     setDownload(null)
-    if (spoken.notes?.length) setNotes(spoken.notes)
+    note(spoken.notes)
     if (!spoken.ok) setProblem({ message: spoken.error.message, hint: spoken.error.hint })
   }
 
@@ -817,28 +1001,32 @@ export default function Page() {
    * absent rather than dead. A share the person cancelled says nothing: closing
    * the sheet is a decision, not a fault.
    */
-  const hand = useCallback(async (text) => {
-    const sent = await share({ title: 'ASKK', text })
-    if (!sent.ok && sent.note) {
-      setNotes((current) => (current.includes(sent.note) ? current : [...current, sent.note]))
-    }
-  }, [])
+  const hand = useCallback(
+    async (text) => {
+      const sent = await share({ title: 'ASKK', text })
+      if (!sent.ok && sent.note) note(sent.note)
+    },
+    [note],
+  )
 
-  const remember = useCallback(async (text) => {
-    const done = await copy(text)
-    if (done.ok) {
-      setCopied(text)
-      setTimeout(() => setCopied(''), 1400)
-    } else if (done.note) {
-      setNotes((current) => (current.includes(done.note) ? current : [...current, done.note]))
-    }
-  }, [])
+  const remember = useCallback(
+    async (text) => {
+      const done = await copy(text)
+      if (done.ok) {
+        setCopied(text)
+        setTimeout(() => setCopied(''), 1400)
+      } else if (done.note) {
+        note(done.note)
+      }
+    },
+    [note],
+  )
 
   async function saveSettings(event) {
     event.preventDefault()
     setProblem(null)
     const result = await clientRef.current.call('settings.save', settings)
-    setNotes(result.notes)
+    note(result.notes)
     if (!result.ok) {
       setProblem({ message: result.error.message, hint: result.error.hint })
       return
@@ -877,7 +1065,7 @@ export default function Page() {
       atMinutes,
       conversationId,
     })
-    setNotes(made.notes)
+    note(made.notes)
     if (!made.ok) {
       setProblem({ message: made.error.message, hint: made.error.hint })
       return
@@ -888,7 +1076,7 @@ export default function Page() {
 
   async function removeSchedule(id) {
     const gone = await clientRef.current.call('schedules.remove', { id })
-    setNotes(gone.notes)
+    note(gone.notes)
     const listed = await clientRef.current.call('schedules.list')
     if (listed.ok) setSchedules(listed.value)
   }
@@ -901,10 +1089,26 @@ export default function Page() {
     }
     setConversationId(id)
     setMessages(found.value.messages ?? [])
-    setRun({ raw: '', reasoning: '', steps: [], at: 0, ms: 0 })
+    setRun({ raw: '', reasoning: '', steps: [], at: 0, ms: 0, message: null })
     setObservations({})
     setProblem(null)
     setFailed(null)
+  }
+
+  /**
+   * Whether a running turn is holding the screen, said out loud if it is.
+   *
+   * The conversation menu is disabled until the app is READY and never after
+   * that, so a person could open another transcript in the middle of a turn —
+   * and `ask` carries the conversation it was started in, so the reply came
+   * back and was drawn into whatever list was on screen by then. This refuses
+   * the switch, which is the half a person can see; `stillHere` at the bottom
+   * of `ask` is the other half, for the paths that move the page on their own.
+   */
+  function holdsTheScreen() {
+    if (!busy) return false
+    note('this conversation is still answering — its reply belongs here, so the switch has to wait')
+    return true
   }
 
   /**
@@ -924,7 +1128,7 @@ export default function Page() {
       minute: '2-digit',
     })
     const result = await clientRef.current.call('conversations.create', { title: `Chat ${when}` })
-    setNotes(result.notes)
+    note(result.notes)
     if (!result.ok) {
       setProblem({ message: result.error.message, hint: result.error.hint })
       return
@@ -940,7 +1144,7 @@ export default function Page() {
     const title = globalThis.prompt?.('What should this conversation be called?', one.title ?? '')
     if (title === null || title === undefined) return
     const done = await clientRef.current.call('conversations.rename', { id: one.id, title })
-    setNotes(done.notes)
+    note(done.notes)
     if (done.ok)
       setConversations((current) =>
         current.map((row) => (row.id === one.id ? { ...row, title: done.value.title } : row)),
@@ -975,7 +1179,7 @@ export default function Page() {
     if (!globalThis.confirm?.(said)) return
 
     const gone = await clientRef.current.call('conversations.remove', { id: one.id })
-    setNotes(gone.notes)
+    note(gone.notes)
     if (!gone.ok) {
       setProblem({ message: gone.error.message, hint: gone.error.hint })
       return
@@ -1014,13 +1218,19 @@ export default function Page() {
     )
     const kept = read.filter(Boolean)
     if (kept.length !== files.length) {
-      setNotes((current) => [...current, 'some of those files could not be read and were skipped'])
+      note('some of those files could not be read and were skipped')
     }
     setAttachments((current) => [...current, ...kept].slice(0, 4))
   }
 
   const shown = prompts[promptAt] ?? null
   const mine = conversationId
+  // The download as it can honestly be drawn, computed once and handed to both
+  // readers of it. The header and the tray cannot then disagree about how far
+  // along a file is, and a percentage that is not one goes to neither: where
+  // there is no share to report the header says what the app is doing instead,
+  // and the tray — which has room for it — says how much has arrived.
+  const loading = downloadView(download)
   const status = statusLine({
     ready,
     busy,
@@ -1028,7 +1238,7 @@ export default function Page() {
     elapsed,
     listening,
     speaking: Boolean(speaking),
-    download,
+    download: loading,
     delegates: Object.values(delegates),
     tasks: tasks.filter((one) => one.owner === mine),
     agent: settings?.agent,
@@ -1040,18 +1250,26 @@ export default function Page() {
 
   return (
     <div className="shell">
-      {/* Straight to the conversation, past a header of five controls. There
-          were no landmarks worth skipping to and no way past them. */}
+      {/* Straight to the message box, past the header. There were no landmarks
+          worth skipping to and no way past them. */}
       <a className="skip" href="#composer">
         Skip to the message box
       </a>
+      {/* The two controls that change which transcript is on screen go through
+          `holdsTheScreen`, and only these two: deleting the open conversation
+          moves the page as well, and it is allowed to, because a conversation
+          being removed is not one a reply can be written into. */}
       <Header
         ready={ready}
         title={conversations.find((one) => one.id === conversationId)?.title}
         conversations={conversations}
         conversationId={conversationId}
-        onOpen={openConversation}
-        onNew={newChat}
+        onOpen={(id) => {
+          if (!holdsTheScreen()) openConversation(id)
+        }}
+        onNew={() => {
+          if (!holdsTheScreen()) newChat()
+        }}
         onRename={renameConversation}
         onRemove={removeConversation}
         status={status}
@@ -1147,16 +1365,25 @@ export default function Page() {
           )}
 
           <div className="tray">
-            {download ? (
+            {loading ? (
               <p className="loading" data-testid="download">
-                <span className="who">{download.file || 'model'}</span>
+                <span className="who">{loading.file}</span>
                 {/* Driven by a width, not an animation. A first load is minutes
                     of a file arriving, and an indeterminate spinner cannot tell
-                    "downloading" from "hung". */}
-                <span className="bar">
-                  <span style={{ width: `${download.percent}%` }} />
-                </span>
-                {download.percent}%
+                    "downloading" from "hung".
+                    Drawn only where there IS a share to draw — see
+                    `downloadView`. A bar pinned at `width: 0%` because the host
+                    sent no `content-length` says "hung" more convincingly than
+                    no bar at all, and one running past its own track because
+                    the host declared compressed bytes while the worker counted
+                    inflated ones says nothing anybody can read. The count that
+                    stands in for it is true in both cases. */}
+                {loading.known ? (
+                  <span className="bar">
+                    <span style={{ width: `${loading.percent}%` }} />
+                  </span>
+                ) : null}
+                {loading.label}
               </p>
             ) : null}
 
@@ -1193,13 +1420,13 @@ export default function Page() {
 
             {notes.length ? (
               <ul className="notes" data-testid="notes">
-                {notes.map((note) => (
-                  <li key={note}>
-                    {note}
+                {notes.map((said) => (
+                  <li key={said}>
+                    {said}
                     <button
                       type="button"
                       aria-label="Dismiss"
-                      onClick={() => setNotes((current) => current.filter((one) => one !== note))}
+                      onClick={() => setNotes((current) => current.filter((one) => one !== said))}
                     >
                       ✕
                     </button>
@@ -1220,6 +1447,10 @@ export default function Page() {
             level={level}
             onDictate={dictate}
             onStop={() => {
+              // The ref is the one the running turn can see. `ask` closed over
+              // the `stopping` of the render that made it, so this state change
+              // reached the header and never reached the turn.
+              stoppingRef.current = true
               setStopping(true)
               clientRef.current?.stop(running)
             }}

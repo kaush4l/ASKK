@@ -20,9 +20,9 @@ import { useEffect, useRef } from 'react'
  * What the empty field says, and why it does not say it on a phone.
  *
  * "Enter to send, Shift+Enter for a new line" is keyboard instruction given to
- * a device with no keyboard, and at 390px it is a second line the field is not
- * tall enough to show — measured clipped, with "Shift+Enter for a new line"
- * sheared off. So a coarse pointer gets the short one.
+ * a device that shows a keyboard only while you are typing into it, and at
+ * 390px it needs a second line the field is not tall enough to show. So a
+ * coarse pointer gets the short one.
  *
  * `matchMedia` is read at call time rather than stored, because this component
  * is prerendered to static HTML by a build with no viewport, and a value
@@ -152,12 +152,34 @@ export function Composer({
           <input
             ref={picker}
             type="file"
-            // The workspace this app is about deals in .md, .py, .sh and .txt,
-            // and a starter suggestion on the empty screen is "Write today's
-            // plan to plan.md" — so a picker that greyed out every text file
-            // was refusing the documents the product is for. Images stay first
-            // because a screenshot is the commonest attachment.
-            accept="image/*,audio/*,video/*,text/*,.md,.txt,.csv,.json,.py,.sh,.js,.ts,.rs,.go,.c,.h,.log"
+            // What a model on this wire can actually be shown, and nothing
+            // else. This list used to carry `text/*,.md,.py,…` under an
+            // argument for it — the workspace this app is about deals in those
+            // files — and the argument was for a capability that does not
+            // exist: `Multimodality.of` answers only to `image|audio|video`, so
+            // a `.md` picked here was drawn as a chip, sent nowhere, stored
+            // nowhere, and earned a note blaming a data URL it already was.
+            //
+            // Making it real was the other way out, and it is the worse one.
+            // A document already has a route: the files panel takes one off
+            // your machine, `ChatService._context` lists the names to the agent
+            // every turn, and `read_file` fetches the contents when the agent
+            // decides it needs them. Decoding the same file into the prompt
+            // instead would put its whole body in the VOLATILE context block,
+            // which `Engine.blocks` re-renders on every step of a run rather
+            // than once a turn; it would need a size cap nobody here can
+            // justify; and it would last exactly one turn, after which the
+            // transcript would still show the chip and the model would no
+            // longer have the text — the record disagreeing with the turn,
+            // which is the defect this whole change is about. A picker that
+            // greys out what cannot be carried is the honest control. Images
+            // stay first because a screenshot is the commonest attachment.
+            //
+            // This is one of three doors, though: drop and paste below hand
+            // over whatever the person was holding, and no `accept` narrows
+            // them. So the sentence that has to be true is `ChatService`'s
+            // note about a refused attachment, not this list.
+            accept="image/*,audio/*,video/*"
             multiple
             hidden
             data-testid="attach-picker"

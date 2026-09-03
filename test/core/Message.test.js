@@ -162,11 +162,65 @@ describe('what was attached to a message', () => {
     // any; `CAPABILITIES.md` names it as the standing example of a capability
     // declared and never wired. A transcript that shows only the words would
     // make a person's own screenshot vanish from their history on reload.
+    //
+    // TWO survivors, with the refused entries BETWEEN them, because "in order"
+    // is the claim in the name and one survivor cannot be out of order. The
+    // fixture used to be `[png, 7, '']`, which the weaker rule this test is
+    // about — any non-empty string — dropped exactly as the documented one
+    // does, so the assertion could not tell the two rules apart.
     const png = 'data:image/png;base64,iVBORw0KGgo='
-    const message = new Message({ role: 'user', text: 'what is this?', attachments: [png, 7, ''] })
+    const wav = 'data:audio/wav;base64,UklGRhwAAABXQVZF'
+    const message = new Message({
+      role: 'user',
+      text: 'what is this?',
+      attachments: [png, 'https://example.com/cat.png', wav, 'not a url at all', 7, ''],
+    })
 
-    expect(message.attachments).toEqual([png])
-    expect(message.repairs.join(' ')).toContain('attachment')
+    expect(message.attachments).toEqual([png, wav])
+    // The trail NAMES what went. A count on its own tells the person holding a
+    // half-sent question that something was dropped and gives them no way to
+    // find out which of the six things they attached it was.
+    expect(message.repairs).toEqual([
+      '4 attachment(s) were not data URLs and were dropped: ' +
+        '"https://example.com/cat.png", "not a url at all", number, ""',
+    ])
+  })
+
+  test('a remote URL is dropped here, not one layer up where only one caller looks', () => {
+    // The probe from the review, and the reason the rule moved. The field's own
+    // doc says data URLs; the filter said "non-empty string", so both of these
+    // were KEPT with zero repairs. The real check lived in `ChatService`, which
+    // is one caller of one route — `conversations.appendMessage` is exposed on
+    // the Kernel and reaches this constructor with no guard between.
+    //
+    // A remote URL is the entry that matters: kept, it is a request the app
+    // would make on the user's behalf to a host nobody named, from a page whose
+    // whole claim is that nothing leaves the browser except the model call they
+    // configured.
+    const message = new Message({
+      role: 'user',
+      text: 'read these',
+      attachments: ['https://example.com/cat.png', 'not a url at all'],
+    })
+
+    expect(message.attachments).toEqual([])
+    expect(message.repairs).toHaveLength(1)
+  })
+
+  test('a refused entry is named by its type or a cut quotation, never by String()', () => {
+    // The trail is frozen onto the message, written to storage and read back to
+    // the user as a note, so what goes in it is bounded on purpose: a dropped
+    // entry can be any size — being long and not a data URL is the whole of
+    // what makes it refusable — and `String(Symbol())` throws in a file whose
+    // one rule is that nothing here does.
+    const long = `https://example.com/${'a'.repeat(80)}.png`
+    const message = new Message({ role: 'user', text: 'x', attachments: [long, Symbol('s')] })
+
+    expect(message.attachments).toEqual([])
+    const [trail] = message.repairs
+    expect(trail).toContain('"https://example.com/aaaaaaaaaaaaaaaaaaaa"…')
+    expect(trail).toContain('symbol')
+    expect(trail.length).toBeLessThan(120)
   })
 
   test('a message with nothing attached carries an empty list, never undefined', () => {

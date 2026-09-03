@@ -297,16 +297,6 @@ export class ChatService {
    */
   async send({ id, text, attachments = [] }, emit = null, signal = null) {
     const typed = typeof text === 'string' ? text.trim() : ''
-    if (!typed) {
-      // Nothing to send is not a fault to report; it is a no-op with a reason.
-      return Outcome.ok({ user: null, assistant: null }, [
-        'nothing was sent: the message was empty',
-      ])
-    }
-
-    const loaded = await this.conversations.get({ id })
-    if (!loaded.ok) return loaded
-
     const notes = []
 
     /**
@@ -318,27 +308,88 @@ export class ChatService {
      * from a page whose whole claim is that nothing leaves the browser except
      * the model call they configured — and the modality would have to be
      * guessed from a path rather than read from a mime type.
+     *
+     * It returns null for a SECOND reason as well, and the two used to share
+     * one sentence. `data:text/markdown;base64,…` is a data URL and is still
+     * refused, because `image|audio|video` is the whole of what a model on this
+     * wire can be shown — so the note read "an attachment has to be a data URL"
+     * at a person whose attachment WAS one, which is a sentence they cannot act
+     * on: the thing it tells them to do is the thing they did. The two
+     * refusals are two mistakes with two different remedies, so they are two
+     * notes, and the one about a type names the type it actually saw.
      */
     const carried = []
-    const refused = []
+    const wrongShape = []
+    const wrongType = []
     for (const one of Array.isArray(attachments) ? attachments : []) {
       const read = Multimodality.of(one)
-      if (read) carried.push(read)
-      else refused.push(one)
+      if (read) {
+        carried.push(read)
+      } else if (typeof one === 'string' && one.startsWith('data:')) {
+        // Read off the URL's own header rather than guessed, which is the same
+        // rule `Multimodality.of` applies one line up. A `data:,hello` carries
+        // no type at all, and saying so is better than an empty gap in the
+        // middle of a sentence.
+        wrongType.push(Multimodality.split(one)[0] || 'a file with no type on it')
+      } else {
+        wrongShape.push(one)
+      }
     }
-    if (refused.length) {
+    if (wrongType.length) {
+      // The route that DOES work is named, because a refusal with no
+      // alternative in it leaves the question unanswerable. A document put in
+      // the files panel is listed to the agent by `_context` above and fetched
+      // by `read_file` on the turn the agent decides it needs it — which is
+      // also why it is the better route than pasting the same bytes into a
+      // prompt that is re-rendered on every step.
       notes.push(
-        `${refused.length} attachment(s) were not sent: an attachment has to be a data URL, which is what this app makes when you choose a file`,
+        `${wrongType.length} attachment(s) were not sent: a model here can be shown pictures, sound and video, and these were ${[...new Set(wrongType)].join(', ')} — put a document in your files instead, where the agent can read it`,
       )
     }
+    if (wrongShape.length) {
+      notes.push(
+        `${wrongShape.length} attachment(s) were not sent: an attachment has to be a data URL, which is what this app makes when you choose a file`,
+      )
+    }
+
+    // A picture with no words is a question — "what is this?" is implied by
+    // attaching it — and the composer has always agreed: its send button is
+    // live on `draft.trim() || attachments.length`. This method disagreed, and
+    // returned here on empty text alone, so pressing that button gave a person
+    // the whole shape of a turn and none of it: the optimistic bubble drawn,
+    // the chips cleared, nothing persisted, nothing asked, and the bubble gone
+    // on the next reload. Nothing to send is still not a fault to report — it
+    // is a no-op with a reason — but the only turn with nothing in it is one
+    // with no words AND nothing the model can be shown.
+    //
+    // Refused on `carried` and not on what was OFFERED, because an attachment
+    // that was refused above is not something the model will see: a lone `.md`
+    // and an empty field is a turn with nothing in it, and the person is owed
+    // both halves of why.
+    if (!typed && !carried.length) {
+      return Outcome.ok({ user: null, assistant: null }, [
+        ...notes,
+        'nothing was sent: there were no words and nothing attached',
+      ])
+    }
+
+    const loaded = await this.conversations.get({ id })
+    if (!loaded.ok) return loaded
 
     const appended = await this.conversations.appendMessage({
       id,
       role: Role.USER,
+      // Empty when the question was a picture and nothing else, and left empty
+      // on purpose. The record is evidence of what a person did, and they did
+      // not type "what is this?"; the picture reaches the model on the call
+      // itself, as `multimodal` below, rather than through this line.
       text: typed,
       // The ones that were SENT, not the ones that were offered. A transcript
       // showing an attachment the model never saw would be the record
-      // disagreeing with the turn.
+      // disagreeing with the turn — which is not hypothetical: while the
+      // picker offered `.md` and `.py`, a text file was drawn as a chip,
+      // refused above, and would have been written down here as part of a
+      // question the model was never shown.
       attachments: carried.flatMap((one) => one.urls),
     })
     if (!appended.ok) return appended

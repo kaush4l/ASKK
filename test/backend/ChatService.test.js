@@ -587,6 +587,135 @@ describe('the record a turn leaves behind', () => {
 })
 
 /**
+ * What is worth sending at all, decided in one place.
+ *
+ * The composer and this method disagreed about it. `Composer.jsx` enables the
+ * send button on `draft.trim() || attachments.length`, so a picture with no
+ * words could be sent; `send` returned early on empty text, so it was not. What
+ * a person got for pressing that button was the whole shape of a turn and none
+ * of the substance: the optimistic bubble drawn, the chips cleared, nothing
+ * persisted, nothing asked, a note reading "the message was empty", and the
+ * bubble gone on the next reload.
+ *
+ * The composer was the side that was right. A picture with no words is a
+ * question — "what is this?" is implied by attaching it — and the only thing
+ * left to refuse is a turn with nothing in it at all.
+ */
+describe('a question with no words in it', () => {
+  const png = 'data:image/png;base64,iVBORw0KGgo='
+
+  test('a picture with no words is sent, stored and answered', async () => {
+    const { service, conversations, inference } = chatWith([answerTurn('a small red square')])
+
+    const sent = await service.send({ id: 'c1', text: '', attachments: [png] })
+
+    expect(sent.ok).toBe(true)
+    // Persisted, so the picture is still in the transcript after a reload —
+    // which is the half of this the optimistic bubble was pretending to have
+    // done.
+    const [question] = saved(conversations)
+    expect(question.role).toBe('user')
+    expect(question.attachments).toEqual([png])
+    // The record keeps what the person actually did, which was to say nothing.
+    // Writing "what is this?" into it would put words in the transcript that
+    // they never typed, on a record whose whole job is to be evidence.
+    expect(question.text).toBe('')
+    // Asked, and asked WITH the picture.
+    expect(inference.multimodal).toHaveLength(1)
+    expect(inference.multimodal[0].urls).toEqual([png])
+    expect(sent.value.assistant.text).toBe('a small red square')
+    expect(sent.notes.join(' ')).not.toContain('empty')
+  })
+
+  test('nothing typed and nothing attached is the one thing still refused', async () => {
+    const { service, conversations, inference } = chatWith([answerTurn('unreachable')])
+
+    const sent = await service.send({ id: 'c1', text: '   ' })
+
+    expect(sent.ok).toBe(true)
+    expect(sent.value).toEqual({ user: null, assistant: null })
+    // Both halves of the reason, because "the message was empty" on its own is
+    // what a person reads after attaching a file and getting nothing.
+    expect(sent.notes).toEqual(['nothing was sent: there were no words and nothing attached'])
+    expect(saved(conversations)).toEqual([])
+    expect(inference.calls).toEqual([])
+  })
+
+  test('an attachment nothing can carry leaves no words either, so nothing is sent', async () => {
+    // The two rules meeting. The only thing offered was a file the model cannot
+    // be shown, so after the refusal there is no question left — and the person
+    // is told BOTH things: why their file did not go, and that the turn did not
+    // happen.
+    const { service, inference } = chatWith([answerTurn('unreachable')])
+
+    const sent = await service.send({
+      id: 'c1',
+      text: '',
+      attachments: ['data:text/markdown;base64,IyBoaQ=='],
+    })
+
+    expect(sent.value).toEqual({ user: null, assistant: null })
+    expect(sent.notes).toHaveLength(2)
+    expect(sent.notes[0]).toContain('text/markdown')
+    expect(sent.notes[1]).toContain('nothing attached')
+    expect(inference.calls).toEqual([])
+  })
+})
+
+/**
+ * The reason a refused attachment is given, which has to be the true one.
+ *
+ * There are two ways to be refused here and they had one sentence between them.
+ * A `.md` chosen from the picker arrives as `data:text/markdown;base64,…` — it
+ * IS a data URL — and the note told the person it was not one, which is both
+ * wrong and unactionable: the thing they are told to do is the thing they did.
+ */
+describe('why an attachment was not sent', () => {
+  test('a text file is refused for what it is, not for a data URL it already was', async () => {
+    const { service, conversations, inference } = chatWith([answerTurn('nothing attached')])
+
+    const sent = await service.send({
+      id: 'c1',
+      text: 'summarise this',
+      attachments: ['data:text/markdown;base64,IyBoaQ=='],
+    })
+
+    expect(sent.ok).toBe(true)
+    expect(inference.multimodal).toEqual([])
+    expect(saved(conversations)[0].attachments).toBeUndefined()
+    const [note] = sent.notes
+    // The type it actually was, so the sentence is checkable against the file
+    // the person chose.
+    expect(note).toContain('text/markdown')
+    expect(note).not.toContain('has to be a data URL')
+    // And the route that does work for a document, because a refusal that
+    // names no alternative leaves the question unanswerable.
+    expect(note).toContain('files')
+  })
+
+  test('the two refusals are two notes, not one sentence covering both', async () => {
+    const { service, inference } = chatWith([answerTurn('ok')])
+
+    const sent = await service.send({
+      id: 'c1',
+      text: 'these two',
+      attachments: ['https://example.com/cat.png', 'data:application/pdf;base64,JVBERi0='],
+    })
+
+    expect(inference.multimodal).toEqual([])
+    expect(sent.notes).toHaveLength(2)
+    const byType = sent.notes.find((note) => note.includes('application/pdf'))
+    const byShape = sent.notes.find((note) => note.includes('has to be a data URL'))
+    expect(byType).toBeDefined()
+    expect(byShape).toBeDefined()
+    // Two sentences, because they are two different mistakes with two
+    // different remedies, and one sentence covering both is what made the
+    // wrong one get printed at a `.md` file.
+    expect(byShape).not.toContain('application/pdf')
+  })
+})
+
+/**
  * What the page hears while a SECOND agent is working.
  *
  * A delegated run is a whole other agent on a whole other thread, and until

@@ -27,6 +27,24 @@ function asText(value, field, noted) {
   return String(value)
 }
 
+/**
+ * Enough of a refused attachment to recognise it, and no more.
+ *
+ * The trail this lands in is frozen onto the message, written to storage and
+ * read back to the user as a note, so what goes into it is bounded on purpose:
+ * an entry gets refused for not being the short `data:` prefix this field
+ * expects, which means it can be any length at all. A string is quoted and cut;
+ * anything else is named by its TYPE, because both of the obvious ways to print
+ * an unknown value throw on something — `String()` on a symbol, `JSON.stringify`
+ * on a bigint — and this is a file whose whole argument is that a malformed
+ * message is repaired rather than lost. `JSON.stringify` is safe on the branch
+ * it is used, which is the one where the value is already known to be a string.
+ */
+function nameRefused(value) {
+  if (typeof value !== 'string') return value === null ? 'null' : typeof value
+  return value.length > 40 ? `${JSON.stringify(value.slice(0, 40))}…` : JSON.stringify(value)
+}
+
 export class Message {
   constructor({
     id = newId(),
@@ -81,14 +99,38 @@ export class Message {
      * dropped with a line saying so, because an attachment nobody can read must
      * not cost the question it came with. `Array.isArray` and not truthiness
      * for the reason `repairs` gives — a string spreads into its characters.
+     *
+     * The rule is `data:` and not "a non-empty string", which is what it used
+     * to be. The doc above this said data URLs and the filter said something
+     * far weaker, so `attachments: ['https://example.com/cat.png']` was kept
+     * whole with no repair recorded — and a remote URL is precisely the entry
+     * that must not survive: something downstream fetching it is this app
+     * making a request on the user's behalf to a host nobody named, from a page
+     * whose whole claim is that nothing leaves the browser except the model
+     * call they configured. The real check did exist, in `ChatService.send`,
+     * which is one caller of one route; `conversations.appendMessage` is on the
+     * Kernel and reaches this constructor with nothing in between. A rule the
+     * field documents belongs where the field is.
+     *
+     * The line NAMES what went, because a count alone tells someone holding a
+     * half-sent question that something was dropped and gives them no way to
+     * work out which of the things they attached it was.
      */
     const files = Array.isArray(attachments) ? attachments : []
     if (attachments != null && !Array.isArray(attachments)) {
       noted.push('attachments was not a list; it was dropped')
     }
-    const kept = files.filter((one) => typeof one === 'string' && one.length > 0)
-    if (kept.length !== files.length) {
-      noted.push(`${files.length - kept.length} attachment(s) were not readable and were dropped`)
+    const kept = []
+    const refused = []
+    for (const one of files) {
+      if (typeof one === 'string' && one.startsWith('data:')) kept.push(one)
+      else refused.push(one)
+    }
+    if (refused.length) {
+      noted.push(
+        `${refused.length} attachment(s) were not data URLs and were dropped: ` +
+          refused.map(nameRefused).join(', '),
+      )
     }
     this.attachments = Object.freeze(kept)
     this.createdAt = createdAt
