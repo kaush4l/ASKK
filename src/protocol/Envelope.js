@@ -141,6 +141,10 @@ export const EventName = Object.freeze({
   DELTA: 'delta',
   // A finished pass of the loop, with its parsed response.
   STEP: 'step',
+  // What a tool ANSWERED, against the step that called it. `STEP` carries what
+  // the model wrote; this carries what the machine wrote back, and without it
+  // a reader sees a run make calls and never sees one return.
+  OBSERVATION: 'observation',
   // What the call actually cost, counted by the provider. The only number in
   // this app that is measured rather than estimated.
   USAGE: 'usage',

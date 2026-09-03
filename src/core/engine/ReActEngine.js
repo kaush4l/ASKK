@@ -190,7 +190,16 @@ export class ReActEngine extends Engine {
    */
   async run(
     history,
-    { multimodal = [], budget: declared, signal, onPrompt, onDelta, onStep, onUsage } = {},
+    {
+      multimodal = [],
+      budget: declared,
+      signal,
+      onPrompt,
+      onDelta,
+      onStep,
+      onObservation,
+      onUsage,
+    } = {},
   ) {
     // The agent's own working, kept apart from the conversation.
     //
@@ -433,6 +442,14 @@ export class ReActEngine extends Engine {
       if (signal?.aborted) return this.stopped(last, budget, notes)
 
       scratchpad.push({ action, observation: observed })
+      // The other half of a tool call, and until this line it went nowhere but
+      // into the next prompt. `onStep` reports what the model WROTE; this
+      // reports what the machine ANSWERED, against the same step number, so a
+      // reader outside the engine can see both halves of the pass. Emitted
+      // after the abort check above: a run the user stopped has an observation
+      // nobody is waiting for, and announcing it would draw a result under a
+      // step on a turn that is already over.
+      onObservation?.({ step: budget.steps, action, observation: observed })
     }
   }
 

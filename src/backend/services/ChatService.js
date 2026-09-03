@@ -424,6 +424,10 @@ export class ChatService {
               thinking: reasoningOf(parsed),
             })
         : undefined,
+      // The other half of a pass. Passed through with no reshaping: the engine
+      // already names the step and the call, and a second vocabulary here is
+      // the way the step schema drifted from the record it is drawn beside.
+      onObservation: emit ? (event) => emit(EventName.OBSERVATION, event) : undefined,
     })
     // The emitter goes with the call it belonged to. Left in place, the next
     // turn's download would report itself to a request that has already been

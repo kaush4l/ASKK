@@ -370,6 +370,18 @@ describe('the record a turn leaves behind', () => {
     const written = saved(conversations).at(-1)
     expect(written.text).toBe(steps.at(-1).answer)
     expect(written.thinking).toBe(steps.at(-1).thinking)
+
+    // The result of that call, against the step that made it. A page shown only
+    // the calls can say what the agent tried and never what came back, which is
+    // the half of a tool run a person actually reads.
+    const observed = events
+      .filter(([name]) => name === EventName.OBSERVATION)
+      .map(([, event]) => event)
+    expect(observed).toHaveLength(1)
+    expect(observed[0].step).toBe(1)
+    expect(observed[0].action).toBe('shell({"command": "uname -a"})')
+    expect(typeof observed[0].observation).toBe('string')
+    expect(observed[0].observation.length).toBeGreaterThan(0)
   })
 
   test('a reply with no text in it is written down as having said nothing', async () => {

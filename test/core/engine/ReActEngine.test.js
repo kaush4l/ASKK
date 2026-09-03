@@ -111,11 +111,22 @@ describe('ReActEngine.run', () => {
     )
     const steps = []
 
-    const outcome = await engine.run(history, { onStep: (event) => steps.push(event) })
+    const observations = []
+
+    const outcome = await engine.run(history, {
+      onStep: (event) => steps.push(event),
+      onObservation: (event) => observations.push(event),
+    })
 
     expect(outcome.ok).toBe(true)
     expect(outcome.value.answer).toBe('I said hello.')
     expect(tool.received).toEqual(['hello'])
+    // What the tool ANSWERED, reported against the step that called it. The
+    // engine has always pushed this onto its own scratchpad and handed it to
+    // nobody, so the page could show a call and never its result.
+    expect(observations).toEqual([
+      { step: 1, action: 'echo({"text": "hello"})', observation: 'echo -> you said hello' },
+    ])
     expect(inference.calls).toHaveLength(2)
     expect(steps.map((event) => event.step)).toEqual([1, 2])
 
