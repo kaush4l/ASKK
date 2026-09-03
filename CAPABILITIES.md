@@ -21,6 +21,14 @@ Five statuses, and only five:
 | `barred` | cannot be built here. Must name a root constraint |
 | `unverified` | claimed, with nothing in the evidence cell |
 
+One marker is not a status:
+
+| | meaning |
+|---|---|
+| — | the question does not apply to that platform |
+
+It appears only in the Safari and iOS columns of the benchmark table, which measures a harness run under `bun` on a host. The Chrome column never carries it: every measurement in this file was taken in Chrome, so a row with no Chrome answer is `unverified` rather than exempt. `test/docs/capabilities.test.js` executes all of this.
+
 Two rules keep this from rotting into a wish list:
 
 1. **An empty evidence cell makes the status `unverified`**, whatever we believe.
@@ -624,13 +632,13 @@ tree that isolation would cost.
 
 | Capability | Reference | Ours | Chr | Saf | iOS | Root | Evidence |
 |---|---|---|---|---|---|---|---|
-| A thread per agent | deepseek `child-agent.ts:199` (`applyChildComposition`, whose parent is a required parameter) | a named module worker, entered | yes | unverified | unverified | — | measured 2026-09-02, `bun run smoke` realm four: the thread answered and reported `self.name` back as `researcher`. It was unreached for four waves for one reason — a roster of one agent made `peers` at `ChatService.js:220` always `[]` — and `agents/researcher/agent.md` is the second agent that ends it |
-| A fresh context per sub-agent call | pi `subagent/index.ts:300` (`--no-session`) | stateless by construction, on a reused worker | yes | unverified | unverified | — | `agentWorker.js` builds a fresh agent per message and keeps no transcript; `AgentWorkerPool` reuses the thread and reports its `calls` count. Measured 2026-09-02 through the smoke thread |
-| A sub-agent that reports progress before it finishes | claw-code `task.ts` (a child's events are forwarded to the parent's stream) | one message per finished pass | yes | unverified | unverified | — | `agentWorker` posts on each pass, the pool keeps the latest on the thread and forwards it, `ChatService` relabels it onto the parent's request as `EventName.DELEGATE`, and the rail renders it. Measured 2026-09-02 through the built page, watched with a `MutationObserver` |
-| Work that outlives the turn that started it | claw-code `task.ts`; pi `subagent` (both process-backed) | `wait: false`, a task id, and a line in the next turn's context | yes | unverified | unverified | — | `AgentWorkerPool.start` + `core/tools/TasksPort.js` + `check_task`; measured 2026-09-02 through the built page over two typed turns. In memory only: the run is a thread in this worker, so a record that survived a reload would describe work that does not |
-| An agent that checks its own work before finishing | — | one declared tool call, run once, judged by the agent | **built, unproven** | unverified | unverified | — | `check:` in an agent file; `ReActEngine` runs it at the answer branch and hands the output back rather than reading pass or fail out of it. Unit-tested against a recorder toolbox, and **no agent in this tree declares one** (`grep -rn '^check:' agents/` is empty), so nothing has measured whether it beats the same instruction written as a sentence in the agent's body. `ARCHITECTURE.md` names the two-arm measurement that would settle it |
-| Sub-agents that receive tools | deepseek `child-agent.ts:217` (`tools.restrict`); pi `subagent/index.ts:307` (`--tools`) | its own file's, minus what a second realm may not hold | yes | unverified | unverified | — | `core/agent/delegable.js` keeps `search` and `fetch` and refuses `shell`, `read_file` and `write_file` with a note each; measured 2026-09-02, the smoke thread's own `fetch` read a page off the smoke host and the answer depended on it |
-| A depth limit for nesting | elizaOS `acp.ts:18` | one level, enforced by giving no peers | yes | unverified | unverified | — | `agentWorker.js` passes no `peers` and no `dispatch`, so a sub-agent naming another agent gets a note and no tool. It is now separable from the tool starvation it used to be indistinguishable from: the thread HAS tools and still cannot reach another thread |
+| A thread per agent | deepseek `child-agent.ts:199` (`applyChildComposition`, whose parent is a required parameter) | a named module worker, entered | have | unverified | unverified | — | measured 2026-09-02, `bun run smoke` realm four: the thread answered and reported `self.name` back as `researcher`. It was unreached for four waves for one reason — a roster of one agent made `peers` at `ChatService.js:220` always `[]` — and `agents/researcher/agent.md` is the second agent that ends it |
+| A fresh context per sub-agent call | pi `subagent/index.ts:300` (`--no-session`) | stateless by construction, on a reused worker | have | unverified | unverified | — | `agentWorker.js` builds a fresh agent per message and keeps no transcript; `AgentWorkerPool` reuses the thread and reports its `calls` count. Measured 2026-09-02 through the smoke thread |
+| A sub-agent that reports progress before it finishes | claw-code `task.ts` (a child's events are forwarded to the parent's stream) | one message per finished pass | have | unverified | unverified | — | `agentWorker` posts on each pass, the pool keeps the latest on the thread and forwards it, `ChatService` relabels it onto the parent's request as `EventName.DELEGATE`, and the rail renders it. Measured 2026-09-02 through the built page, watched with a `MutationObserver` |
+| Work that outlives the turn that started it | claw-code `task.ts`; pi `subagent` (both process-backed) | `wait: false`, a task id, and a line in the next turn's context | have | unverified | unverified | — | `AgentWorkerPool.start` + `core/tools/TasksPort.js` + `check_task`; measured 2026-09-02 through the built page over two typed turns. In memory only: the run is a thread in this worker, so a record that survived a reload would describe work that does not |
+| An agent that checks its own work before finishing | — | one declared tool call, run once, judged by the agent | unverified | unverified | unverified | — | `check:` in an agent file; `ReActEngine` runs it at the answer branch and hands the output back rather than reading pass or fail out of it. Unit-tested against a recorder toolbox, and **no agent in this tree declares one** (`grep -rn '^check:' agents/` is empty), so nothing has measured whether it beats the same instruction written as a sentence in the agent's body. `ARCHITECTURE.md` names the two-arm measurement that would settle it |
+| Sub-agents that receive tools | deepseek `child-agent.ts:217` (`tools.restrict`); pi `subagent/index.ts:307` (`--tools`) | its own file's, minus what a second realm may not hold | have | unverified | unverified | — | `core/agent/delegable.js` keeps `search` and `fetch` and refuses `shell`, `read_file` and `write_file` with a note each; measured 2026-09-02, the smoke thread's own `fetch` read a page off the smoke host and the answer depended on it |
+| A depth limit for nesting | elizaOS `acp.ts:18` | one level, enforced by giving no peers | have | unverified | unverified | — | `agentWorker.js` passes no `peers` and no `dispatch`, so a sub-agent naming another agent gets a note and no tool. It is now separable from the tool starvation it used to be indistinguishable from: the thread HAS tools and still cannot reach another thread |
 | An MCP client | deepseek `transport.ts:31` | one, discovered once a session and only into a guest that is already running | degraded | degraded | unverified | C5 | `discover.js:21` from `ChatService.js:226`; the only declared server is `mcp-disk` in the image (`agents/main/agent.md`). **It ran, for the first time, in the artifact run recorded in the environment table**: the reply carried the note `mcp server host offered 1 tool(s); 1 allowed`, which is a second guest boot inside the same turn. The clause that used to end this cell — *"and `next.config.js` ships no image by default"* — was true of every build ever made and is false now |
 | An MCP server running in this tab | `@mcp-b/transports` `TabServerTransport.ts` | none | absent | absent | absent | — | `grep -rn "MessagePort\|InMemoryTransport" src` → no matches; `core/mcp/` offers exactly two transports at `discover.js:29-37` |
 | An MCP client that talks over a port, not a process | MCP spec `transports/index.mdx` (Custom Transports) | none | absent | absent | absent | — | as above |
@@ -652,22 +660,25 @@ not-yet-built rather than not-possible.
 | Capability | Reference | Ours | Chr | Saf | iOS | Root | Evidence |
 |---|---|---|---|---|---|---|---|
 | Run when the tab is closed | elizaOS `task.ts:76` (daemon) | nothing | barred | barred | barred | C3 | none |
-| Scheduled work that catches up when the tab next opens | deepseek `packages/schedule/schedule/README.md:12` | nothing | absent | absent | absent | — | `grep -rn "cron\|setInterval\|schedule" src` → no matches. Split out of the row below: deepseek had a host process available and chose these semantics anyway (`docs/MINING.md:198-201`) |
-| Cron the human can write | agent-zero `job_loop.py:10,34` (`SLEEP_TIME = 60`, the tick) | nothing | absent | absent | absent | — | as above — a schedule is a record and a tick, and C3 bars neither |
+| Scheduled work that catches up when the tab next opens | deepseek `packages/schedule/schedule/README.md:12` | one question at the next open, never one per period missed | have | unverified | unverified | — | Built 2026-09-02, and the full row is *A question that repeats on a schedule* under Operations. `ScheduleService.due` returns anything whose `lastRanAt + everySeconds` has passed, however long ago; the tick asks **one** and records it. Measured through the built page against a schedule left an hour overdue. This row used to read `grep -rn "cron\|setInterval\|schedule" src` → no matches, which stopped being true at `4a4d839` |
+| Cron the human can write | agent-zero `job_loop.py:10,34` (`SLEEP_TIME = 60`, the tick) | a period, a question, and a panel to write them in | have | unverified | unverified | — | `SchedulePanel.jsx` is the writer — a text field, a period select, and a list showing when each last ran. `MIN_PERIOD_SECONDS = 60` refuses anything tighter. Same measurement as the row above; the capability itself is scored under Operations |
 | Long-running work that survives a reload | pi `session/types.ts:359` | nothing | absent | absent | absent | — | a run lives inside one `await` at `ChatService.js:249`, and a reload loses it. The second half of this cell used to read *"nothing durable is written until `:215`"* and was never true: the user's turn is appended at `ChatService.js:196`, **before** the model is called, on purpose. What is not durable is the assistant's half, written at `:312` after the loop returns |
 | Be reachable from outside | — | nothing | barred | barred | barred | C4 | none |
 | Messaging connectors | — | none | barred | barred | barred | C4 | none |
-| Two tabs at once | — | both drive the same DB | absent | absent | absent | — | `grep -rn "navigator.locks" src` → no matches |
+| Two tabs at once | — | one lock, over the schedule tick and nothing else | degraded | unverified | unverified | — | **Half of it, and the half that is missing is named.** `page.jsx:301` reads `globalThis.navigator?.locks` and takes `askk-schedule` with `ifAvailable: true`, so two tabs cannot both fire one due schedule; a browser without Web Locks runs the tick unguarded, which is correct for one tab and doubles for two. The transcript is **not** covered: two tabs on one conversation still both append and the last write wins. No single-writer election exists — `ARCHITECTURE.md` carries it as open |
 | Sync across devices | — | none | absent | absent | absent | C4 | none |
 | Identity / multi-user | — | none | absent | absent | absent | C4 | none |
 
-Presence is where the previous draft over-barred. C3 bars a daemon, and a daemon
-is one implementation of "scheduled work" — the one every reference happens to
-use. **Catch-up-on-open is `absent`, not `barred`, and it is not hard**: the
-reference with a whole host process at its disposal chose the same semantics we
-are forced into. What remains genuinely barred is the promise "it will have
-happened by the time you look", and that is worth saying out loud rather than
-implying with a cron row.
+Presence is where the previous draft over-barred, and the correction has now
+been cashed. C3 bars a daemon, and a daemon is one implementation of "scheduled
+work" — the one every reference happens to use. This section said
+**catch-up-on-open is `absent`, not `barred`, and it is not hard**, on the
+grounds that the reference with a whole host process at its disposal chose the
+same semantics we are forced into. It was built one wave later and both rows are
+`have`. What remains genuinely barred is the promise "it will have happened by
+the time you look" — a schedule that comes due while every tab is shut asks at
+the next open and not before, and no amount of code in this repository changes
+that.
 
 ### Operations
 
@@ -677,7 +688,7 @@ implying with a cron row.
 | Prompt inspection | — | the panel | have | have | unverified | — | `ChatService.js:263` `emit(EventName.PROMPT, event)` → `page.jsx:134` |
 | Cost | elizaOS `trajectories/pricing.ts` | none | absent | absent | absent | — | none |
 | Traces / a run log | deepseek `client/ui-trajectory` | nothing durable | absent | absent | absent | — | `composition.js:18-27` — three store names now, and none of them is a run. The agent could write its own log into the third with `write_file`, which is not the same thing: a trace nothing but the model chooses to keep is not a record |
-| A question that repeats on a schedule | claw-code (a host cron drives it); pi (`--cron`) | `everySeconds`, ticked by the page under a Web Lock | yes | unverified | unverified | C3 | `backend/services/ScheduleService.js` + the tick in `page.jsx`; measured 2026-09-02 through the built page, both a new schedule and one overdue by an hour. **Only while a tab is open** — C3 is the root constraint, and a schedule that came due while it was shut asks once at the next open rather than once per period missed |
+| A question that repeats on a schedule | claw-code (a host cron drives it); pi (`--cron`) | `everySeconds`, ticked by the page under a Web Lock | have | unverified | unverified | C3 | `backend/services/ScheduleService.js` + the tick in `page.jsx`; measured 2026-09-02 through the built page, both a new schedule and one overdue by an hour. **Only while a tab is open** — C3 is the root constraint, and a schedule that came due while it was shut asks once at the next open rather than once per period missed |
 | Work that survives the tab | claw-code, pi (both host processes) | **none, and not reachable** | absent | absent | absent | C3 | A run is a thread in this worker. A record could be persisted; the RUN cannot, and a stored task that can never finish would be a lie rather than a feature |
 | Install | — | open a URL | have | have | unverified | — | `next.config.js` `output: 'export'` |
 | Update | — | reload | have | have | unverified | — | — |
