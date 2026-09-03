@@ -164,6 +164,45 @@ function section(text, field) {
 }
 
 /**
+ * A reply, split into the pieces a transcript can draw — text, and addresses.
+ *
+ * Nothing in the transcript was clickable: measured,
+ * `document.querySelectorAll('main a').length === 0`, including on search
+ * results, which arrive as raw markdown. So a citation was a string to retype.
+ *
+ * `http` and `https` and nothing else, and that restriction is the reason this
+ * is a function rather than a regular expression at the call site. The text
+ * being scanned was written by a MODEL, and `javascript:` and `data:` are the
+ * two schemes that turn a reply into something that runs. Anything this does
+ * not recognise stays text, which is the safe direction to fail in.
+ *
+ * @returns {{text: string, href?: string}[]}
+ */
+export function linked(said) {
+  const text = String(said ?? '')
+  if (!text) return []
+  const pieces = []
+  let at = 0
+  // Trailing punctuation is the sentence's, not the address's: a URL at the end
+  // of a sentence ends with a full stop that is not part of it, and one written
+  // inside brackets or a markdown link ends at the bracket.
+  const found = /https?:\/\/[^\s<>"'`]+/g
+  for (const match of text.matchAll(found)) {
+    let href = match[0]
+    let trimmed = 0
+    while (href.length > 'https://'.length && /[.,;:!?)\]}>'"]$/.test(href)) {
+      href = href.slice(0, -1)
+      trimmed += 1
+    }
+    if (match.index > at) pieces.push({ text: text.slice(at, match.index) })
+    pieces.push({ text: href, href })
+    at = match.index + match[0].length - trimmed
+  }
+  if (at < text.length) pieces.push({ text: text.slice(at) })
+  return pieces.length ? pieces : [{ text }]
+}
+
+/**
  * A duration, in the two units a person actually asks in.
  *
  * "Is it moving" is the question, and `4m 07s` past a minute with `47s` under

@@ -741,6 +741,19 @@ button {
   overflow-wrap: anywhere;
 }
 
+/* Underlined, because colour alone is not how a link is identified — and the
+   cyan here would say "measured", which a link is not. */
+.turn .text a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: var(--edge);
+}
+
+.turn .text a:hover {
+  text-decoration-color: var(--signal);
+}
+
 /*
  * The person's own words, set apart by a rule rather than by a bubble.
  *

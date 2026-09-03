@@ -3,6 +3,7 @@ import {
   bytes,
   doingWord,
   duration,
+  linked,
   statusLine,
   toolOf,
   verbFor,
@@ -208,5 +209,53 @@ describe('the one line at the top of the screen', () => {
 
   test('before the backend is up nothing else can be true', () => {
     expect(statusLine({ ready: false, busy: true }).text).toBe('starting')
+  })
+})
+
+describe('addresses in a reply', () => {
+  test('an address becomes a piece a caller can render as a link', () => {
+    // A reviewer's finding: `document.querySelectorAll('main a').length === 0`,
+    // including on cited search results, which arrive as raw markdown. Nothing
+    // in the transcript was clickable — so a citation was a string to retype.
+    expect(linked('see https://example.com/a for more')).toEqual([
+      { text: 'see ' },
+      { text: 'https://example.com/a', href: 'https://example.com/a' },
+      { text: ' for more' },
+    ])
+  })
+
+  test('trailing punctuation belongs to the sentence, not to the address', () => {
+    const [, link, tail] = linked('read https://example.com/page.')
+    expect(link.href).toBe('https://example.com/page')
+    expect(tail.text).toBe('.')
+    // A bracket closes a markdown link and is not part of the URL either.
+    expect(linked('(https://example.com/x)')[1].href).toBe('https://example.com/x')
+  })
+
+  test('only http and https, because those are the ones a browser should open', () => {
+    // `javascript:` and `data:` are the two that turn a model's output into a
+    // thing that runs. A reply is text, and text this function does not
+    // recognise stays text.
+    for (const said of [
+      'javascript:alert(1)',
+      'data:text/html,<script>x</script>',
+      'file:///etc/passwd',
+      'ftp://example.com',
+    ]) {
+      expect(linked(said).every((piece) => !piece.href)).toBe(true)
+    }
+  })
+
+  test('text with no address is one piece, and empty text is none', () => {
+    expect(linked('nothing here')).toEqual([{ text: 'nothing here' }])
+    expect(linked('')).toEqual([])
+  })
+
+  test('several addresses in one reply are all found, in order', () => {
+    const pieces = linked('a https://one.example b https://two.example c')
+    expect(pieces.filter((one) => one.href).map((one) => one.href)).toEqual([
+      'https://one.example',
+      'https://two.example',
+    ])
   })
 })

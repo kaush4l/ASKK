@@ -1,6 +1,6 @@
 'use client'
 
-import { duration, verbFor, visibleStream } from './phrasing.js'
+import { duration, linked, verbFor, visibleStream } from './phrasing.js'
 
 /**
  * What was said, and what the agent did between two things being said.
@@ -132,6 +132,31 @@ export function Transcript({
   )
 }
 
+/**
+ * Text, with the addresses in it as links.
+ *
+ * `rel="noreferrer"` and a new tab, because the text was written by a MODEL and
+ * may quote a page it read: this app should not hand that page a referrer
+ * naming where the person was, and should not take them away from a
+ * conversation they are in the middle of. `phrasing.linked` decides what counts
+ * as an address, and it only ever says yes to http and https.
+ */
+function Words({ said }) {
+  const pieces = linked(said)
+  if (pieces.length === 1 && !pieces[0].href) return pieces[0].text
+  return pieces.map((piece, at) =>
+    piece.href ? (
+      // biome-ignore lint/suspicious/noArrayIndexKey: the pieces of one string, in order, and the string is the identity
+      <a key={at} href={piece.href} target="_blank" rel="noreferrer">
+        {piece.text}
+      </a>
+    ) : (
+      // biome-ignore lint/suspicious/noArrayIndexKey: same
+      <span key={at}>{piece.text}</span>
+    ),
+  )
+}
+
 function Turn({
   message,
   onSay,
@@ -183,7 +208,9 @@ function Turn({
           </details>
         ) : null}
 
-        <div className="text">{message.text}</div>
+        <div className="text">
+          <Words said={message.text} />
+        </div>
 
         {failed ? (
           <p className="unfinished" data-testid="unfinished">
