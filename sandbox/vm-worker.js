@@ -8,8 +8,8 @@
 // mean maintaining a fork of somebody else's bundle to gain nothing.
 //
 // Served from `public/` rather than bundled, for the same reason the agent files
-// are: this file is paired with a 100 MB artifact that cannot live in a repo, so
-// the pair is fetched at runtime and the app is told where to find it.
+// are: this file is paired with a 100 MB artifact no bundler should ever walk
+// into, so the pair is fetched at runtime and the app is told where to find it.
 //
 // NO SharedArrayBuffer, and none is needed. Measured: the guest boots to its
 // first output in 814 ms with `crossOriginIsolated = false`. Upstream's browser
@@ -35,6 +35,86 @@ const ERRNO_NOTSUP = 58
 // for every command, which is also what makes each command's filesystem clean.
 let compiled = null
 
+/**
+ * The image may arrive gzipped, and it does on the deploy.
+ *
+ * MEASURED, and it is the whole reason this project's own host answered 404 for
+ * the guest: `wc -c public/sandbox/sandbox.wasm` is 107,054,914 bytes, which is
+ * 2,197,314 over GitHub's 100 MiB per-file block, so the file could be in
+ * neither the repository nor the Pages deploy. `gzip -9` takes it to 40,029,960
+ * — 38.2 MiB — and a file that size is one GitHub accepts. The limit is on the
+ * file AT REST, so edge compression cannot reach it and only a compressed
+ * artifact can.
+ *
+ * SNIFFED, not switched on the extension, and that is not defensive coding: a
+ * static host is free to answer a `.gz` with `Content-Encoding: gzip`, in which
+ * case `fetch` has already inflated it and there is nothing left to do. Both
+ * arrivals are correct and the magic number is the only thing that says which
+ * one happened. It also means one loader serves the compressed deploy artifact
+ * and a developer's raw `sandbox.wasm` with no flag between them.
+ *
+ * `DecompressionStream` is the platform's, so no inflater ships here.
+ */
+async function inflated(buffer) {
+  const head = new Uint8Array(buffer, 0, Math.min(2, buffer.byteLength))
+  if (head[0] !== 0x1f || head[1] !== 0x8b) return buffer
+  const gunzip = new Blob([buffer]).stream().pipeThrough(new DecompressionStream('gzip'))
+  return await new Response(gunzip).arrayBuffer()
+}
+
+/**
+ * The body, read a chunk at a time, saying how much has arrived.
+ *
+ * `response.arrayBuffer()` is one await that returns tens of megabytes later
+ * with nothing said in between, and this is the largest single download the
+ * app makes: the guest is 52,602,121 bytes on the wire, so the first `shell`
+ * call a person ever makes sat silent for as long as their connection took.
+ * There is no other way to report it — a `fetch` has no progress event, only a
+ * readable body.
+ *
+ * `content-length` is what a static host sends and what GitHub Pages sends;
+ * when it is absent — a chunked response, or one the host is compressing on
+ * the fly — the total is reported as 0 and the reader must draw a count rather
+ * than a bar. Reporting a made-up total would be worse than reporting none.
+ *
+ * The pieces are joined once, at the end, into one buffer, because that is
+ * what `WebAssembly.compile` and the gzip sniff both want.
+ */
+async function counted(response) {
+  const total = Number(response.headers.get('content-length') ?? 0)
+  if (!response.body) return await response.arrayBuffer()
+
+  const reader = response.body.getReader()
+  const pieces = []
+  let loaded = 0
+  // Throttled by BYTES, not by time: a chunk here is tens of kilobytes and a
+  // message per chunk is thousands of postMessages for one download, each one
+  // waking the page to recompute a width that moved a fraction of a pixel.
+  let announced = 0
+  const step = 1024 * 1024
+
+  post({ type: 'boot-progress', loaded: 0, total })
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    pieces.push(value)
+    loaded += value.byteLength
+    if (loaded - announced >= step) {
+      announced = loaded
+      post({ type: 'boot-progress', loaded, total })
+    }
+  }
+  post({ type: 'boot-progress', loaded, total })
+
+  const joined = new Uint8Array(loaded)
+  let at = 0
+  for (const piece of pieces) {
+    joined.set(piece, at)
+    at += piece.byteLength
+  }
+  return joined.buffer
+}
+
 self.onmessage = async (event) => {
   const { type, id } = event.data ?? {}
 
@@ -46,9 +126,10 @@ self.onmessage = async (event) => {
         post({ type: 'boot-failed', message: `HTTP ${response.status} for ${wasmUrl}` })
         return
       }
-      const bytes = await response.arrayBuffer()
+      const transferred = await counted(response)
+      const bytes = await inflated(transferred)
       compiled = await WebAssembly.compile(bytes)
-      post({ type: 'booted', bytes: bytes.byteLength })
+      post({ type: 'booted', bytes: bytes.byteLength, transferred: transferred.byteLength })
     } catch (err) {
       post({ type: 'boot-failed', message: String(err?.message ?? err) })
     }
