@@ -21,6 +21,8 @@ import { SandboxTransport } from './SandboxTransport.js'
 export async function discoverMcpTools(servers = [], services = {}) {
   const notes = []
   const tools = []
+  /** The servers that could not be reached, by name. See the push below. */
+  const failures = []
 
   for (const server of servers) {
     // A server that lives in the guest is not started until the guest is
@@ -75,15 +77,16 @@ export async function discoverMcpTools(servers = [], services = {}) {
       // that anyone can act on. The consequence is in the sentence because the
       // consequence is the part that is theirs: the run carried on without it.
       //
-      // "WAS NOT AVAILABLE" IS LOAD-BEARING PROSE and this is the warning that
-      // it is. `ChatService._mcpToolsFor` decides whether to cache a discovery
-      // by searching these notes for that phrase — a failure must never be
-      // cached, because a server that was down on turn one has to be asked
-      // again on turn two — so rewording this sentence past those three words
-      // silently freezes a dead server for the rest of the session, and every
-      // test stays green while it happens. Measured: it did, in this slice.
-      // The phrase is kept here and the coupling is reported; the repair is a
-      // structural signal on the Outcome, in a file this change does not own.
+      // Recorded as a FACT and not as a sentence. `ChatService` has to know
+      // whether to remember this discovery — the tools a server offers cannot
+      // change while the page is open, which is what makes caching sound,
+      // while a server being DOWN can change at any moment — and it used to
+      // decide by searching these notes for the words "was not available".
+      // That made this sentence load-bearing prose: rewording it past those
+      // three words froze a dead server for the whole session with every test
+      // still green, which is exactly what happened when somebody rewrote it
+      // to stop saying "mcp" at a person.
+      failures.push(server.name)
       notes.push(
         `the tool server "${server.name}" was not available, so none of its tools could be used this turn: ${listed.failure.message}`,
       )
@@ -106,5 +109,8 @@ export async function discoverMcpTools(servers = [], services = {}) {
     // file and needs a person.
   }
 
-  return Outcome.ok(tools, notes)
+  // The tools, and — on the value rather than in the prose — which servers were
+  // not there. A caller that has to tell "nothing to report" from "this failed"
+  // reads `unavailable`, and `notes` goes on being only for the person.
+  return Outcome.ok(Object.assign(tools, { unavailable: failures }), notes)
 }

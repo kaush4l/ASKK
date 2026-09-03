@@ -196,10 +196,16 @@ export class ChatService {
     const found = await discoverMcpTools(spec.mcp, this.services)
     // A FAILURE is never cached. The list of tools a server offers cannot
     // change while the page is open, which is what makes caching sound; a
-    // server being DOWN can change at any moment, and freezing "mcp server X
-    // was not available" for the session means a server that comes up a minute
-    // later stays invisible until someone reloads the page.
-    const failed = found.notes.some((note) => note.includes('was not available'))
+    // server being DOWN can change at any moment, and remembering that for the
+    // session means a server that comes up a minute later stays invisible
+    // until someone reloads the page.
+    //
+    // Read off the VALUE. This used to search the notes for the words "was not
+    // available", which made a sentence written for a person into the condition
+    // of a cache — and rewording that sentence, which somebody did to stop it
+    // saying "mcp" at a user, silently froze a dead server for the whole
+    // session with every test still green.
+    const failed = found.value?.unavailable?.length > 0
     if (!failed) this._mcp.set(key, found)
     return found
   }

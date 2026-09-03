@@ -791,6 +791,31 @@ describe('what an mcp server in the guest costs a turn', () => {
  * server that comes up a minute later stays invisible until someone reloads.
  */
 describe('an mcp server that was down when it was first asked', () => {
+  test('says so on the value, not in a sentence written for a person', async () => {
+    // The condition of the cache used to be a substring search over the notes
+    // for the words "was not available". That made prose load-bearing: somebody
+    // rewrote the sentence so it would stop saying "mcp" at a user, and a dead
+    // server was silently frozen for the whole session with every test in this
+    // file still green. What is asserted is the STRUCTURAL signal, so the
+    // sentence can be rewritten again by anyone who can write a better one.
+    const { discoverMcpTools } = await import('../../src/core/mcp/index.js')
+    const found = await discoverMcpTools([{ name: 'host', command: 'mcp-disk' }], {
+      sandbox: {
+        warm: true,
+        async run() {
+          return Outcome.failed(Reason.UNAVAILABLE, 'the Linux machine in this tab failed')
+        },
+      },
+    })
+
+    expect(found.ok).toBe(true)
+    expect(found.value.unavailable).toEqual(['host'])
+    // And a server that answered leaves the list empty rather than absent, so a
+    // caller reads a length and never a null.
+    const none = await discoverMcpTools([], {})
+    expect(none.value.unavailable).toEqual([])
+  })
+
   test('is asked again on the next turn, and its tools arrive', async () => {
     const spec = AgentSpec.of({
       metadata: { name: 'main', mcp: [{ name: 'host', command: 'mcp-disk' }] },
