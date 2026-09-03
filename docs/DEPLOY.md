@@ -1,12 +1,22 @@
 # The deploy
 
 Until this slice there was no deploy step in this repository at all. What is on
-`gh-pages` — 56 files, 25,155,729 bytes — was made on somebody's machine by
-hand, and it shows: there is no guest image in it, so
-`https://kaush4l.github.io/ASKK/sandbox/sandbox.wasm` answers 404 while the page
-beside it answers 200, and every `shell` call on the live page reaches
-`boot-failed`. The environment this project is *for* has never reached anyone
+`gh-pages` was made on somebody's machine by hand for the whole life of this
+project — 56 files, 25,155,729 bytes, no guest image — so
+`https://kaush4l.github.io/ASKK/sandbox/sandbox.wasm.gz` answered 404 while the
+page beside it answered 200, and every `shell` call a visitor made reached
+`boot-failed`. The environment this project is *for* had never reached anyone
 but us.
+
+**It has now.** `3ddc99d` (*Deploy 084268b*) is the first commit on that branch
+written by `scripts/deploy.js` rather than by hand, and the first that carries
+the guest: measured live, `/ASKK/` answers 200 and
+`/ASKK/sandbox/sandbox.wasm.gz` answers 200 with `content-type:
+application/gzip` and `access-control-allow-origin: *`. The published page boots
+with no console errors, its empty state names what is missing, its settings
+sheet opens and closes, and its drawer holds all five sections. What is still
+unmeasured on the live host is a whole turn, because a page on `https` may not
+call a model on `http`, and there is no https model to point it at.
 
 Two commands now, and neither publishes:
 
