@@ -1,6 +1,6 @@
 {
-  "ref": "f9ad603",
-  "subject": "An app with no live region, and a probe that rendered as source text",
+  "ref": "e02919e",
+  "subject": "A countdown that never counted, and chips that were function names",
   "basePath": "/ASKK",
   "sandboxImage": "/sandbox/sandbox.wasm.gz"
 }
