@@ -65,11 +65,14 @@ describe('a configuration that names nothing', () => {
     expect(http.asked).toEqual([])
   })
 
-  test('with an address but no model, names the model as the thing missing and the address as set', async () => {
-    // Half-configured is still not configured — a server that is up cannot
-    // answer a question that names no model — but the address is the one fact
-    // the person already gave, so the sentence repeats it rather than making
-    // them go and check what they typed.
+  test('with an address but no model, the server IS asked, because it holds the answer', async () => {
+    // The contract changed here deliberately. Half-configured is still not
+    // configured — a server that is up cannot answer a question that names no
+    // model — but this used to REFUSE TO ASK, and what it refused to ask for is
+    // the one thing a newcomer cannot know: what a stranger's server calls its
+    // model. A reviewer filled the address, left the name blank, pressed the
+    // check, and was told to "Open settings and name the model that server
+    // should run" while standing in settings.
     const http = port({ status: 200 })
     const said = await new HealthService({
       settings: settingsOf({ baseUrl: 'http://127.0.0.1:9/v1' }),
@@ -77,10 +80,11 @@ describe('a configuration that names nothing', () => {
     }).model()
 
     expect(said.value.configured).toBe(false)
-    expect(said.value.reachable).toBe(false)
+    // Reached, which is what makes the answer worth having.
+    expect(said.value.reachable).toBe(true)
     expect(said.value.detail).toContain('http://127.0.0.1:9/v1')
     expect(said.value.detail).not.toContain('Start the server')
-    expect(http.asked).toEqual([])
+    expect(http.asked).toHaveLength(1)
   })
 
   test('with a model but no address, names the address as the thing missing', async () => {
@@ -396,5 +400,67 @@ describe('checking a configuration before committing it', () => {
     const found = await new HealthService({ settings, http }).model()
     expect(found.value.model).toBe('m')
     expect(asked[0]).toContain('http://h/v1')
+  })
+})
+
+describe('an address with no model yet', () => {
+  test('asks that server what it serves, instead of refusing until you guess', async () => {
+    // The thing a newcomer cannot possibly know is what a stranger's server
+    // calls its model, and this probe is the one place the answer exists. A
+    // reviewer filled the address, left the name blank, pressed the check, and
+    // was told "Open settings and name the model that server should run" —
+    // while standing in settings, by an app that could have asked.
+    const http = async ({ url }) =>
+      url.includes('/models')
+        ? Outcome.ok({
+            status: 200,
+            text: JSON.stringify({ data: [{ id: 'one' }, { id: 'two' }] }),
+          })
+        : Outcome.ok({ status: 404, text: '' })
+    const settings = {
+      async get() {
+        return Outcome.ok({ kind: 'openai', model: '', baseUrl: 'http://h/v1', apiKey: '' })
+      },
+    }
+
+    const found = await new HealthService({ settings, http }).model()
+
+    // Not configured — a model still has to be chosen — but REACHED, and the
+    // list is the whole point of having asked.
+    expect(found.value.configured).toBe(false)
+    expect(found.value.listed).toEqual(['one', 'two'])
+    expect(found.value.detail).toContain('one')
+    expect(found.value.detail).toContain('two')
+  })
+
+  test('a server that answers nothing still says so, and offers no list', async () => {
+    const settings = {
+      async get() {
+        return Outcome.ok({ kind: 'openai', model: '', baseUrl: 'http://h/v1', apiKey: '' })
+      },
+    }
+    const found = await new HealthService({
+      settings,
+      http: port({ status: 0, blocked: Blocked.UNREACHABLE }),
+    }).model()
+    expect(found.value.configured).toBe(false)
+    expect(found.value.listed).toEqual([])
+    expect(found.value.detail).toContain('http://h/v1')
+  })
+
+  test('no address at all is still refused without a request', async () => {
+    let asked = 0
+    const http = async () => {
+      asked += 1
+      return Outcome.ok({ status: 200, text: '{"data":[]}' })
+    }
+    const settings = {
+      async get() {
+        return Outcome.ok({ kind: 'openai', model: '', baseUrl: '', apiKey: '' })
+      },
+    }
+    const found = await new HealthService({ settings, http }).model()
+    expect(asked).toBe(0)
+    expect(found.value.detail).toContain('Nothing is configured yet')
   })
 })

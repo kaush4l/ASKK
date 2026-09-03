@@ -176,7 +176,11 @@ export function Settings({ settings, agents, onChange, onSave, onClose, testing,
               ) : (
                 <input
                   {...field('model')}
-                  placeholder="exactly what that server calls the model"
+                  placeholder={
+                    settings.baseUrl
+                      ? 'press “Check the connection” to see what that server has'
+                      : 'exactly what that server calls the model'
+                  }
                   data-testid="model"
                 />
               )}
@@ -219,15 +223,18 @@ export function Settings({ settings, agents, onChange, onSave, onClose, testing,
               {/* Three answers, not two. A green tick that could not fail on the
                   field most likely to be wrong is worse than no check: it makes
                   a person trust the whole app rather than suspect one typo. */}
+              {/* Four answers, not two. A green tick that could not fail on the
+                  field most likely to be wrong is worse than no check: it makes
+                  a person trust the whole app rather than suspect one typo. And
+                  the case with no model named yet is the one this control
+                  really exists for — it is where the list comes from. */}
               {health ? (
                 <p className="aside" data-testid="test-result" role="status">
-                  {!health.reachable
+                  {!health.reachable || health.modelListed === false || !settings.model
                     ? health.detail
-                    : health.modelListed === false
-                      ? health.detail
-                      : health.modelListed === true
-                        ? `answered, and it has ${settings.model}`
-                        : 'answered — it does not say which models it has, so the name is yours to get right'}
+                    : health.modelListed === true
+                      ? `answered, and it has ${settings.model}`
+                      : 'answered — it does not say which models it has, so the name is yours to get right'}
                 </p>
               ) : null}
             </div>

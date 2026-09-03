@@ -119,7 +119,22 @@ export class HealthService {
     // its configuration and an address would be a setting with no meaning.
     const needsAddress = kind !== 'transformers'
 
-    const unfinished = missing({ model, baseUrl, needsAddress })
+    /**
+     * An address with no model yet is a QUESTION for that server, not a refusal.
+     *
+     * The one thing a newcomer cannot possibly know is what a stranger's server
+     * calls its model, and this probe is the only place that answer exists. It
+     * used to refuse: a reviewer filled the address, left the name blank,
+     * pressed the check, and was told "Open settings and name the model that
+     * server should run" — while standing in settings, by an app that could
+     * have asked and did not. The only way to reach the list was to type a name
+     * that did not exist and read it out of the complaint.
+     *
+     * Still `configured: false`, because a model does have to be chosen. What
+     * changes is that the choice is now offered rather than demanded.
+     */
+    const canAsk = needsAddress && baseUrl && !model
+    const unfinished = canAsk ? '' : missing({ model, baseUrl, needsAddress })
     if (unfinished) {
       return Outcome.ok({
         configured: false,
@@ -131,7 +146,7 @@ export class HealthService {
         // any server serves. Empty, and undecided — not "not listed".
         listed: [],
         modelListed: null,
-        detail: unfinished,
+        detail: missing({ model, baseUrl, needsAddress }),
       })
     }
 
@@ -213,12 +228,21 @@ export class HealthService {
       const detail =
         status === 401 || status === 403
           ? 'The server answered and refused the key. Check the key in settings.'
-          : modelListed === false
-            ? `${baseUrl} answered, but does not list ${model}. It lists ${aFewOf(listing.ids)}. Open settings and name one of them.`
-            : ''
+          : !model
+            ? // Asked before a model was chosen, which is the case this probe
+              // exists for: the answer is the choice, not a complaint.
+              listing.ids.length
+              ? `${baseUrl} answered. It serves ${aFewOf(listing.ids)} — choose one above.`
+              : `${baseUrl} answered, but does not say which models it has. Type the name that server uses.`
+            : modelListed === false
+              ? `${baseUrl} answered, but does not list ${model}. It lists ${aFewOf(listing.ids)}. Open settings and name one of them.`
+              : ''
 
       return Outcome.ok({
-        configured: true,
+        // A model still has to be chosen, so this is not a finished setup —
+        // but the server was reached and its list is in hand, which is the
+        // whole reason for asking it before a name exists.
+        configured: Boolean(model),
         // The server is up and its answer was read, so it is reachable even
         // when the name is wrong. Demoting this on a bad name would send
         // someone to restart a server that is running perfectly.
@@ -243,7 +267,11 @@ export class HealthService {
     // which is exactly the advice that was useless above, where there was no
     // server anyone had chosen yet.
     return Outcome.ok({
-      configured: true,
+      // A model still has to be named when there is none, even though the fault
+      // in front of the person is the server. Two facts, and they are separate
+      // on purpose: this one says whether the setup is finished, `reachable`
+      // says whether anything answered.
+      configured: Boolean(model),
       reachable: false,
       kind,
       endpoint: baseUrl,
