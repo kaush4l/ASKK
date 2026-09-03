@@ -66,7 +66,7 @@ export function Transcript({
       aria-relevant="additions text"
       role="log"
     >
-      {messages.map((message) => (
+      {messages.map((message, at) => (
         <Turn
           key={message.id}
           message={message}
@@ -77,17 +77,29 @@ export function Transcript({
           copied={copied}
           steps={run.message && message.id === run.message ? finished : null}
           observations={observations}
-          // The turn that did not complete, marked where it happened. Without
-          // this a failed question sits in the transcript looking exactly like
-          // an answered one the moment the error card is dismissed — and a
-          // reviewer watched their question become indistinguishable from a
-          // successful turn, permanently, with no way left to retry it.
+          // The turn that did not complete, marked where it happened — and now
+          // from the RECORD, which is `message.marker` and is read inside
+          // `Turn`. This prop is what is left of the old way: the page held the
+          // last failure in state, and state is cleared by the next question,
+          // so a reviewer sent a second question and watched the first one stop
+          // explaining itself — a transcript indistinguishable from one where
+          // nothing had been sent.
+          //
+          // It stays as the FALLBACK, for the window between a turn failing and
+          // the page appending the record `ChatService` hands back. Suppressed
+          // the moment that record is there, because the two are one fact and
+          // drawing it twice would put two retries under one question.
           //
           // On the message's IDENTITY, not on its words. Matching the text
           // marked every message that said the same thing: ask the same
           // question twice and let the second one fail, and the answered turn
           // above it wore "This one did not get an answer" as well.
-          failed={message.id === failed?.id}
+          failed={message.id === failed?.id && messages[at + 1]?.marker !== 'failed'}
+          // The question a marker belongs to, so the retry beside it knows what
+          // to send. It cannot come from page state any more: the whole point
+          // of the marker is that it is still there after a reload, and after a
+          // reload the only thing that remembers the question is the transcript.
+          question={askedBefore(messages, at)}
           onRetry={onRetry}
         />
       ))}
@@ -133,6 +145,29 @@ export function Transcript({
 }
 
 /**
+ * The question a record at `at` belongs to.
+ *
+ * A turn that produced no reply leaves a wordless marker where the reply would
+ * have been, and the retry drawn on it has to re-send something. Walking back
+ * to the nearest `user` turn is what a reader does by eye, and it is the only
+ * source that survives what the marker exists to survive: after a reload there
+ * is no page state left holding the question, only the transcript.
+ *
+ * The marker itself may be the user's own message — a scheduled question is
+ * marked on the question — so the walk starts AT `at` rather than before it.
+ *
+ * The literals are spelled out rather than imported from `core/Message.js`:
+ * `app/` may not import `core/`, which `test/architecture/layers.test.js`
+ * enforces, and `Turn` already reads `message.role === 'assistant'` this way.
+ */
+function askedBefore(messages, at) {
+  for (let back = at; back >= 0; back -= 1) {
+    if (messages[back].role === 'user') return messages[back]
+  }
+  return null
+}
+
+/**
  * Text, with the addresses in it as links.
  *
  * `rel="noreferrer"` and a new tab, because the text was written by a MODEL and
@@ -167,6 +202,7 @@ function Turn({
   steps,
   observations,
   failed,
+  question,
   onRetry,
 }) {
   const attachments = message.attachments ?? []
@@ -176,6 +212,17 @@ function Turn({
     <article className={`turn ${message.role}`}>
       <span className="who">{message.role}</span>
       <div className="body">
+        {/* Who asked, above the words, because it changes how they are read.
+            A schedule appends an ordinary `user` turn, so coming back to a tab
+            after a few hours showed a history of questions attributed to
+            somebody who never asked them — and the same question asked once by
+            hand and once on a timer was two identical rows. */}
+        {message.marker === 'scheduled' ? (
+          <p className="hint" data-testid="scheduled">
+            You did not ask this — a schedule you set did, at the time it was due.
+          </p>
+        ) : null}
+
         {attachments.length ? (
           <div className="attachments" data-testid={`attachments-${message.id}`}>
             {attachments.map((url) =>
@@ -212,12 +259,26 @@ function Turn({
           <Words said={message.text} />
         </div>
 
-        {failed ? (
+        {/* What became of the turn, read off the record it was written on.
+            Both of these used to be a toast: the failed one was cleared by the
+            next question, and the stopped one did not survive a reload at all —
+            two ways of showing a person something and then taking it away
+            before they could act on it. The words are chosen here rather than
+            stored, so rewording them is not a migration. */}
+        {failed || message.marker === 'failed' ? (
           <p className="unfinished" data-testid="unfinished">
             This one did not get an answer.
-            <button type="button" onClick={onRetry} data-testid="retry-turn">
+            {/* The question comes from the transcript, so this still works on a
+                page that has just been reloaded and has no memory of the turn. */}
+            <button type="button" onClick={() => onRetry?.(question)} data-testid="retry-turn">
               try it again
             </button>
+          </p>
+        ) : null}
+
+        {message.marker === 'stopped' ? (
+          <p className="unfinished" data-testid="stopped">
+            You stopped this one, so it ended where it was with no answer.
           </p>
         ) : null}
 
@@ -299,7 +360,7 @@ function Steps({ steps, observations = {}, thinking = '' }) {
           >
             <summary>
               <span className="dot" aria-hidden="true" />
-              <span className="verb">{verbFor(taken.answer)}</span>
+              <span className="verb">{verbFor(taken.answer, Boolean(result))}</span>
               <span className="step-time">{result?.ms ? duration(result.ms) : ''}</span>
               <span className="chev" aria-hidden="true">
                 ›

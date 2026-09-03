@@ -670,7 +670,11 @@ export default function Page() {
       // closure: `askRef` holds the LATEST `ask`, whose default is whatever
       // conversation is open now, so a schedule that survived a switch would
       // otherwise ask its question in the wrong transcript.
-      await askRef.current?.(next.text, next.conversationId)
+      // Marked as the schedule's, so the transcript can say so. A question
+      // that asked itself arrives as an ordinary `user` turn otherwise, and a
+      // tab left open overnight fills with questions nobody typed, attributed
+      // to the person who did not type them.
+      await askRef.current?.(next.text, next.conversationId, [], true)
     }
 
     const tick = async () => {
@@ -794,7 +798,7 @@ export default function Page() {
    * makes a scheduled question the same thing as a typed one: same route, same
    * conversation, same streaming, same transcript.
    */
-  async function ask(text, into = conversationId, files = []) {
+  async function ask(text, into = conversationId, files = [], scheduled = false) {
     // The guard belongs here as well as at the two call sites, because this is
     // the function that starts a turn and a second turn started on top of a
     // live one interleaves two transcripts.
@@ -828,7 +832,7 @@ export default function Page() {
     let startedAtStep = startedAt
     const turn = clientRef.current.begin(
       'chat.send',
-      { id: into, text, attachments: files },
+      { id: into, text, attachments: files, scheduled },
       (name, data) => {
         if (name === EventName.PROMPT) {
           setPrompts((current) => [...current, data])
@@ -896,7 +900,7 @@ export default function Page() {
     const ended =
       stoppingRef.current && !result.value?.assistant
         ? [
-            'stopped — the turn ended where it was, and nothing was added to the conversation',
+            'stopped — the turn ended where it was, and no answer was added to the conversation',
             ...result.notes,
           ]
         : result.notes
@@ -913,10 +917,14 @@ export default function Page() {
     // reply being DRAWN into a transcript it is not part of.
     const stillHere = conversationRef.current === into
     if (result.ok) {
-      // `.filter(Boolean)` is not tidiness here. A stopped run answers ok with
-      // no assistant message at all, and this is what keeps the transcript
-      // exactly as it was rather than growing an empty turn.
-      if (stillHere) setMessages((current) => [...current, result.value.assistant].filter(Boolean))
+      // The reply, OR the wordless record a turn leaves where its reply would
+      // have been. A stopped run answers ok with no assistant message and a
+      // failed one has none either; the marker on that record is what survives
+      // a reload, and drawing only `assistant` left it invisible until then.
+      if (stillHere)
+        setMessages((current) =>
+          [...current, result.value?.assistant ?? result.value?.ending].filter(Boolean),
+        )
       // Not awaited. Reading a reply aloud takes as long as the reply is long.
       if (stillHere && settings?.speakReplies && result.value.assistant?.text)
         say(result.value.assistant.text)
@@ -924,6 +932,13 @@ export default function Page() {
       // The turn failed, and the question is HELD so it can be sent again. The
       // user's message was saved before the model was called, so without this
       // the transcript reads as though the assistant simply ignored them.
+      //
+      // The RECORD of the failure is drawn on this branch too. It is the same
+      // wordless message the success branch draws, and it is what survives the
+      // error card being dismissed and the page being reloaded — without it the
+      // marker was on the record and invisible until the next load, which is
+      // exactly the defect it exists to close.
+      setMessages((current) => [...current, result.value?.ending].filter(Boolean))
       setProblem({ message: result.error.message, hint: result.error.hint })
       setFailed({ id: asked, text, files })
     } else {
@@ -1412,7 +1427,13 @@ export default function Page() {
                 run={run}
                 observations={observations}
                 failed={failed}
-                onRetry={() => failed && ask(failed.text, conversationId, failed.files)}
+                // Handed the turn the marker belongs to, found by walking the
+                // transcript — which is the only source that survives a reload.
+                onRetry={(question) =>
+                  question
+                    ? ask(question.text, conversationId, question.attachments ?? [])
+                    : failed && ask(failed.text, conversationId, failed.files)
+                }
                 onSay={say}
                 onCopy={remember}
                 onShare={hand}

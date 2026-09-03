@@ -134,10 +134,10 @@ export class ConversationService {
     return loaded.ok ? Outcome.ok(loaded.value.toJSON()) : loaded
   }
 
-  async appendMessage({ id, role, text, thinking, attachments }) {
+  async appendMessage({ id, role, text, thinking, attachments, marker }) {
     const done = await this._write(
       id,
-      (conversation) => conversation.append({ role, text, thinking, attachments }).repairs,
+      (conversation) => conversation.append({ role, text, thinking, attachments, marker }).repairs,
     )
     if (!done.ok) return done
 

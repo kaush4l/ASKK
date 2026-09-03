@@ -10,6 +10,39 @@ export const Role = Object.freeze({
 const ROLES = new Set(Object.values(Role))
 
 /**
+ * What happened to a turn, over and above the words in it.
+ *
+ * ONE field and not three, and the choice is the whole of the design. These
+ * three facts are three answers to one question — what became of this turn —
+ * and no message is ever two of them at once: `SCHEDULED` is written on a
+ * question at the moment it is appended, `FAILED` and `STOPPED` are written on
+ * the reply-shaped record a turn leaves when it produced no reply, and a turn
+ * cannot both have failed and have been stopped. Three booleans would make
+ * `{ failed: true, stopped: true }` a state the constructor had to have an
+ * opinion about, and would put three repair rules and three elisions in
+ * `toJSON` where one belongs — three spellings of one rule, which is exactly
+ * how `thinking` became a field only one of two writers had heard of. The
+ * argument is `asText` at the top of this file, one field over.
+ *
+ * They are values rather than the sentences a person reads, because the
+ * sentence is the transcript's business: `repairs` puts prose in the record
+ * because a repair is a one-off with no other home, and a marker is drawn on
+ * every turn that has one and is drawn beside a retry button. A record holding
+ * "This one did not get an answer." would be a record that has to be rewritten
+ * to reword a screen.
+ */
+export const Marker = Object.freeze({
+  /** A question this app asked on the user's behalf, because a schedule was due. */
+  SCHEDULED: 'scheduled',
+  /** The user pressed stop, and the turn ended where it was. */
+  STOPPED: 'stopped',
+  /** The turn ran and produced no answer. */
+  FAILED: 'failed',
+})
+
+const MARKERS = new Set(Object.values(Marker))
+
+/**
  * One rule for every text field on the record, written once.
  *
  * It was written twice — once inline for `text`, and not at all for `thinking`,
@@ -52,6 +85,7 @@ export class Message {
     text,
     thinking,
     attachments = [],
+    marker,
     createdAt = Date.now(),
     repairs = [],
   } = {}) {
@@ -133,6 +167,34 @@ export class Message {
       )
     }
     this.attachments = Object.freeze(kept)
+    /**
+     * What became of the turn this message belongs to, from `Marker`, or
+     * nothing — which is what almost every message in a transcript carries.
+     *
+     * It is on the message for the reason `attachments` is: a page reload
+     * rebuilds the transcript out of these records and nothing else, so a fact
+     * held anywhere else is a fact that survives exactly as long as nobody
+     * looks away. Held in page state, a failed turn's marker was cleared by the
+     * next question and the question it belonged to became indistinguishable
+     * from one that was never sent; held in a toast, a stopped turn left
+     * nothing behind a reload at all.
+     *
+     * DROPPED when it is not recognised, where `role` above repairs to a
+     * default. A role that is wrong still has a right answer — somebody said
+     * this, and the safe guess is the user — and a marker has none: guessing
+     * one would draw a sentence about something that did not happen to a turn,
+     * which is the defect this field exists to fix rather than a milder version
+     * of it. Nothing is the honest reading, and the trail says a reading was
+     * refused. `nameRefused` does the printing, because this line goes into the
+     * same frozen, stored, user-visible trail the attachment refusals go into
+     * and is under the same bound: `String()` throws on a symbol.
+     */
+    let mark = ''
+    if (marker != null && marker !== '') {
+      if (MARKERS.has(marker)) mark = marker
+      else noted.push(`marker ${nameRefused(marker)} was not recognised; it was dropped`)
+    }
+    this.marker = mark
     this.createdAt = createdAt
     // The array too, and not only the object around it. `repairs` is the one
     // field on a message reachable by reference, and it is the field that is
@@ -157,9 +219,10 @@ export class Message {
    * wire. Nothing outside this module ever holds an instance, so this literal
    * is the schema — changing it changes the record on disk.
    *
-   * `thinking` and `repairs` are elided when empty rather than written as `''`
-   * and `[]`. Most messages have neither, and a user turn carrying two empty
-   * fields is two fields of storage and wire traffic per turn for nothing.
+   * Everything optional is elided when empty rather than written as `''` or
+   * `[]` — `thinking`, `attachments`, `marker`, `repairs`. Most messages have
+   * none of them, and an ordinary user turn carrying four empty fields is four
+   * fields of storage and wire traffic per turn for nothing.
    */
   toJSON() {
     return {
@@ -173,6 +236,11 @@ export class Message {
       // saying nothing, and the constructor's default puts it back on the way
       // out.
       ...(this.attachments.length ? { attachments: this.attachments } : {}),
+      // Omitted when there is nothing to say, on the same argument again. Every
+      // ordinary turn — the overwhelming majority of a transcript — has no
+      // marker, and a field written as `''` on all of them is bytes per message
+      // per conversation saying that nothing went wrong.
+      ...(this.marker ? { marker: this.marker } : {}),
       ...(this.repairs.length ? { repairs: this.repairs } : {}),
     }
   }

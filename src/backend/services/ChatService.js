@@ -2,7 +2,7 @@ import { describeEnvironment } from '../../core/agent/Environment.js'
 import { buildAgent } from '../../core/agent/loadAgent.js'
 import { createInference } from '../../core/inference/index.js'
 import { Multimodality } from '../../core/inference/Multimodality.js'
-import { Role } from '../../core/Message.js'
+import { Marker, Role } from '../../core/Message.js'
 import { discoverMcpTools } from '../../core/mcp/index.js'
 import { Outcome } from '../../core/Outcome.js'
 import { describeProgress } from '../../core/progress.js'
@@ -284,18 +284,54 @@ export class ChatService {
   }
 
   /**
+   * How a turn ended, appended to the conversation it ended in.
+   *
+   * A turn that produced no reply used to leave the question and nothing else,
+   * and everything a person could have read about why lived in a note the next
+   * question dismissed — so a failed turn stopped explaining itself the moment
+   * a later one succeeded, and a stopped turn explained itself until the page
+   * was reloaded. The fact belongs beside the words, and the only way to put
+   * something beside words already written is to write something after them:
+   * `Message` is frozen on construction because a record that can be edited in
+   * place is not evidence, so this is an APPEND and not an amendment.
+   *
+   * Assistant-shaped and wordless. It stands in the slot the missing reply
+   * would have stood in, which is where a reader is already looking for it, and
+   * the sentence a person actually reads is `Transcript`'s to choose.
+   *
+   * A store that is refusing writes is exactly the state a failed turn is most
+   * likely to be in, so the failure to record has its own note — the channel
+   * this whole method is moving OFF, kept as the fallback for when there is
+   * nowhere else to put the fact.
+   */
+  async _mark(id, marker, notes) {
+    const wrote = await this.conversations.appendMessage({ id, role: Role.ASSISTANT, marker })
+    notes.push(...wrote.notes)
+    if (wrote.ok) return wrote.value
+    notes.push(`what happened to this turn could not be written down: ${wrote.failure.message}`)
+    return null
+  }
+
+  /**
    * Send a message and get the reply.
    *
    * The user's message is persisted BEFORE the model is called. A failed or
    * slow call must not lose what the user typed — on failure the turn is still
    * in the transcript, and they can retry rather than retype.
    *
+   * `scheduled` says the question was asked by this app on the user's behalf
+   * because a schedule came due, and it is a BOOLEAN rather than a marker the
+   * caller names. Where the question came from is the page's fact and how the
+   * turn ended is this method's, and a caller free to write any marker it liked
+   * would be a second author of one field — which is how `thinking` came to be
+   * spelled two ways and dropped by whichever writer went last.
+   *
    * `signal` is the third argument every handler may declare — the Kernel makes
    * one per call — and this is the only handler that has any use for one. It
    * goes straight through to the loop, which decides how far it reaches; see
    * `ReActEngine` for what a stop does and does not interrupt.
    */
-  async send({ id, text, attachments = [] }, emit = null, signal = null) {
+  async send({ id, text, attachments = [], scheduled = false }, emit = null, signal = null) {
     const typed = typeof text === 'string' ? text.trim() : ''
     const notes = []
 
@@ -367,7 +403,7 @@ export class ChatService {
     // and an empty field is a turn with nothing in it, and the person is owed
     // both halves of why.
     if (!typed && !carried.length) {
-      return Outcome.ok({ user: null, assistant: null }, [
+      return Outcome.ok({ user: null, assistant: null, ending: null }, [
         ...notes,
         'nothing was sent: there were no words and nothing attached',
       ])
@@ -391,6 +427,13 @@ export class ChatService {
       // refused above, and would have been written down here as part of a
       // question the model was never shown.
       attachments: carried.flatMap((one) => one.urls),
+      // Who asked, written down with the question rather than worked out later.
+      // A schedule appends a plain `user` turn and there is nothing about the
+      // words to distinguish it from a typed one, so a tab opened after a few
+      // hours showed a history of questions attributed to somebody who never
+      // asked them — and asking the same thing twice, once by hand and once on
+      // a timer, is a transcript in which the two are the same message.
+      marker: scheduled ? Marker.SCHEDULED : undefined,
     })
     if (!appended.ok) return appended
     notes.push(...appended.notes)
@@ -399,13 +442,33 @@ export class ChatService {
     // Re-loading would be a round trip to learn something this call just did.
     const history = [...loaded.value.messages, userMessage]
 
+    /**
+     * Every way this turn can end without a reply, answered in one shape.
+     *
+     * There are four of them below — the agent file could not be read, the
+     * agent could not be built, the run failed, the run was stopped — and until
+     * now the first two returned a bare failure carrying no `user` at all, so a
+     * caller could not tell whether the question it had just sent had survived.
+     * They are all the same event to the person looking at the transcript: a
+     * question with nothing after it. One helper, so the record cannot say one
+     * of them happened and stay silent about the next.
+     *
+     * A stop is not a failure — the run did what it was told — so it keeps its
+     * `ok`, and the marker is what distinguishes the two on the record.
+     */
+    const unanswered = async (failure = null, extra = []) => {
+      notes.push(...extra)
+      const ending = await this._mark(id, failure ? Marker.FAILED : Marker.STOPPED, notes)
+      return new Outcome(!failure, { user: userMessage, assistant: null, ending }, failure, notes)
+    }
+
     const settings = await this.settings.get()
     notes.push(...settings.notes)
 
     // The agent file is read before the transport, because it may name the
     // model the transport must talk to.
     const spec = await this.catalogue.spec(settings.value.agent)
-    if (!spec.ok) return spec
+    if (!spec.ok) return unanswered(spec.failure, spec.notes)
     notes.push(...spec.notes)
 
     const inference = await this._inferenceFor(settings.value, spec.value)
@@ -492,7 +555,7 @@ export class ChatService {
       services: { ...this.services, tasks },
       extraTools: mcp.value,
     })
-    if (!agent.ok) return agent
+    if (!agent.ok) return unanswered(agent.failure, agent.notes)
     notes.push(...agent.notes)
 
     // The live view of the run. Everything here is a report on work that is
@@ -545,11 +608,11 @@ export class ChatService {
 
     if (!answered.ok) {
       // The user's turn is already saved, so the failure is reported against a
-      // transcript that still holds what they typed.
-      return new Outcome(false, { user: userMessage, assistant: null }, answered.failure, [
-        ...notes,
-        ...answered.notes,
-      ])
+      // transcript that still holds what they typed — and now against one that
+      // says what became of it. The failure itself still travels on the
+      // outcome, because a caller that has just been told a turn failed should
+      // not have to read the transcript back to find out.
+      return unanswered(answered.failure, answered.notes)
     }
     notes.push(...answered.notes)
 
@@ -562,11 +625,11 @@ export class ChatService {
     // transcript keeps what they typed and the notes say what happened.
     if (!isAnswered(parsed)) {
       // `notes` already holds the run's own notes — they were pushed one branch
-      // above. Spreading them a second time here put every note on screen
-      // twice and, because `page.jsx` keys each note by its text, collided two
-      // React keys. `toContain` is true of a duplicate, which is why 208 green
-      // tests never saw it.
-      return Outcome.ok({ user: userMessage, assistant: null }, notes)
+      // above — so nothing is spread in a second time here. Doing that put
+      // every note on screen twice and, because `page.jsx` keys each note by
+      // its text, collided two React keys. `toContain` is true of a duplicate,
+      // which is why 208 green tests never saw it.
+      return unanswered()
     }
 
     const reply = answerOf(parsed)
@@ -594,14 +657,23 @@ export class ChatService {
     // The same shape as the stopped-run branch above. The question is already
     // in the transcript either way, so a caller that failed here still learns
     // what was written down before the failure.
+    //
+    // NOT marked, and that is the one deliberate hole in the marking. This turn
+    // got an answer and the store refused to keep it; writing "this one did not
+    // get an answer" into the same store that just refused a write would be the
+    // record telling a person something untrue about their own turn, and it
+    // would be doing it through the write that had just failed. `unanswered` is
+    // therefore the wrong helper here even though the shape matches.
     if (!wrote.ok) {
-      return new Outcome(false, { user: userMessage, assistant: null }, wrote.failure, [
-        ...notes,
-        ...wrote.notes,
-      ])
+      return new Outcome(
+        false,
+        { user: userMessage, assistant: null, ending: null },
+        wrote.failure,
+        [...notes, ...wrote.notes],
+      )
     }
     notes.push(...wrote.notes)
 
-    return Outcome.ok({ user: userMessage, assistant: wrote.value }, notes)
+    return Outcome.ok({ user: userMessage, assistant: wrote.value, ending: null }, notes)
   }
 }

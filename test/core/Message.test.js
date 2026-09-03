@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { Message, Role } from '../../src/core/Message.js'
+import { Marker, Message, Role } from '../../src/core/Message.js'
 
 /**
  * `Message` used to get its id from an `Entity` base class whose `super(id)`
@@ -238,5 +238,94 @@ describe('what was attached to a message', () => {
     )
     expect(there.attachments).toEqual([png])
     expect(Object.isFrozen(there.attachments)).toBe(true)
+  })
+})
+
+/**
+ * What happened to a turn, asked of the record rather than of the page.
+ *
+ * The three facts here — a turn that failed, a turn the user stopped, a
+ * question a schedule asked — all used to live in a toast, and a toast is
+ * dismissed by the next thing that happens. A reviewer sent a second question
+ * after a failed one and watched the first turn become indistinguishable from a
+ * message that was never sent; another pressed stop and, after a reload, found
+ * their question sitting there with no answer and no reason beside it. A record
+ * that quietly rewrites itself is worse than no record at all, so the fact goes
+ * where the words go.
+ */
+describe('what happened to a turn, kept on the turn', () => {
+  test('the marker is a field of the record, emitted only when there is one', () => {
+    const stopped = new Message({ role: Role.ASSISTANT, text: '', marker: Marker.STOPPED })
+    const ordinary = new Message({ role: Role.ASSISTANT, text: 'linux' })
+
+    expect(stopped.toJSON().marker).toBe('stopped')
+    // Elided like `thinking` and `attachments`, and for the same reason: almost
+    // every message in a transcript has nothing to say here, and a field
+    // written as `''` on all of them is storage and wire traffic per turn for
+    // nothing.
+    expect('marker' in ordinary.toJSON()).toBe(false)
+  })
+
+  test('all three of the markers are recognised, because one field carries all three', () => {
+    for (const one of [Marker.FAILED, Marker.STOPPED, Marker.SCHEDULED]) {
+      expect(new Message({ role: Role.USER, text: 'hi', marker: one }).marker).toBe(one)
+    }
+  })
+
+  test('an unrecognised marker is dropped, and the drop is recorded', () => {
+    // Dropped rather than repaired to a default, which is what `role` does. A
+    // role has a right answer when it is wrong — somebody said this, and it was
+    // more likely the user than the model — and a marker has none: inventing
+    // one would draw a sentence about a turn that never happened. Nothing is
+    // the honest reading, and the trail says a reading was refused.
+    const message = new Message({ role: Role.USER, text: 'hi', marker: 'cancelled' })
+
+    expect(message.marker).toBe('')
+    expect(message.repairs).toEqual(['marker "cancelled" was not recognised; it was dropped'])
+  })
+
+  test('a marker that is not a string at all is named by its type, never by String()', () => {
+    // The same bound the attachment trail is under, and for the same reason:
+    // this line is frozen onto the message, written to storage and read back to
+    // a person, and `String(Symbol())` throws in a file whose whole argument is
+    // that a malformed message is repaired rather than lost.
+    const message = new Message({ role: Role.USER, text: 'hi', marker: Symbol('nope') })
+
+    expect(message.marker).toBe('')
+    expect(message.repairs).toEqual(['marker symbol was not recognised; it was dropped'])
+  })
+
+  test('an absent marker is empty and is not a repair', () => {
+    // `null` and not only `undefined`: absent is what a JSON or IndexedDB round
+    // trip hands back for a field that was elided, which is every message that
+    // ever ran normally. Reporting a repair on all of them would put a note on
+    // screen for the ordinary case.
+    for (const nothing of [undefined, null, '']) {
+      const message = new Message({ role: Role.USER, text: 'hi', marker: nothing })
+      expect(message.marker).toBe('')
+      expect(message.repairs).toEqual([])
+    }
+  })
+
+  test('the marker survives a round trip, which is the whole of what makes it a record', () => {
+    // The claim the toast could not make. A page reload rebuilds the transcript
+    // out of these records and nothing else, so a marker that did not come back
+    // through `fromJSON` would be a marker that vanishes exactly when the user
+    // returns to look for it.
+    const original = new Message({ role: Role.ASSISTANT, text: '', marker: Marker.FAILED })
+
+    const back = Message.fromJSON(JSON.parse(JSON.stringify(original)))
+
+    expect(back.marker).toBe('failed')
+    expect(back.toJSON()).toEqual(original.toJSON())
+  })
+
+  test('a marked message cannot have its marker edited in place', () => {
+    const message = new Message({ role: Role.USER, text: 'hi', marker: Marker.SCHEDULED })
+
+    expect(() => {
+      message.marker = Marker.FAILED
+    }).toThrow()
+    expect(message.marker).toBe('scheduled')
   })
 })

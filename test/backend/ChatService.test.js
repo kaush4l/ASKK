@@ -106,8 +106,13 @@ describe('ChatService and a run that was stopped', () => {
     // CALL — writing it down would put `shell(...)` in the transcript as
     // something the assistant said to the user.
     expect(sent.value.assistant).toBe(null)
-    expect(saved(conversations).map((m) => m.role)).toEqual(['user'])
-    expect(saved(conversations)[0].text).toBe('what kernel is this?')
+    // A wordless marker where the reply would have been, and nothing else. The
+    // record grew a fact about the turn, not an answer: the second row's text
+    // is empty, so `shell(...)` is still nowhere in the transcript.
+    expect(saved(conversations).map((m) => [m.role, m.text, m.marker])).toEqual([
+      ['user', 'what kernel is this?', undefined],
+      ['assistant', '', 'stopped'],
+    ])
     // COUNTED, not `toContain`. Every note was in this array twice — pushed
     // once and spread again — and `toContain` is true of a duplicate, which is
     // why a green suite shipped a notes panel that repeated itself and, because
@@ -126,7 +131,11 @@ describe('ChatService and a run that was stopped', () => {
 
     expect(sent.ok).toBe(true)
     expect(sent.value.assistant).toBe(null)
-    expect(saved(conversations).map((m) => m.text)).toEqual(['are you there?'])
+    // The question, and then the wordless record of what became of it. Before
+    // that second row the transcript was a question with nothing after it, and
+    // everything explaining why lived in a toast that a reload cleared.
+    expect(saved(conversations).map((m) => m.text)).toEqual(['are you there?', ''])
+    expect(saved(conversations)[1].marker).toBe('stopped')
   })
 
   test('an ordinary answer is still written down, so the guard is not eating replies', async () => {
@@ -633,7 +642,7 @@ describe('a question with no words in it', () => {
     const sent = await service.send({ id: 'c1', text: '   ' })
 
     expect(sent.ok).toBe(true)
-    expect(sent.value).toEqual({ user: null, assistant: null })
+    expect(sent.value).toEqual({ user: null, assistant: null, ending: null })
     // Both halves of the reason, because "the message was empty" on its own is
     // what a person reads after attaching a file and getting nothing.
     expect(sent.notes).toEqual(['nothing was sent: there were no words and nothing attached'])
@@ -654,7 +663,7 @@ describe('a question with no words in it', () => {
       attachments: ['data:text/markdown;base64,IyBoaQ=='],
     })
 
-    expect(sent.value).toEqual({ user: null, assistant: null })
+    expect(sent.value).toEqual({ user: null, assistant: null, ending: null })
     expect(sent.notes).toHaveLength(2)
     expect(sent.notes[0]).toContain('text/markdown')
     expect(sent.notes[1]).toContain('nothing attached')
@@ -1127,5 +1136,137 @@ describe('handed-over work in the prompt', () => {
 
     const second = await promptsOf(service, 'c1', 'and now?')
     expect(second).not.toContain('handed over')
+  })
+})
+
+/**
+ * What happened to a turn, written down where the turn is.
+ *
+ * Three reports, one shape. A failed turn's marker was page state and was
+ * cleared by the next question, so sending a second question erased the first
+ * one's explanation and left a transcript that could not be told apart from one
+ * where nothing had been sent. A stopped turn was two toasts and nothing on the
+ * record at all, so a reload left the question sitting there unanswered with no
+ * reason. And a scheduled question was appended as a plain `user` turn, so a
+ * tab opened after a few hours showed a history of questions attributed to
+ * somebody who never asked them.
+ *
+ * `send` is the one place all three are known — it writes the question before
+ * the model is called and the reply after — so it is the place that says what
+ * became of the turn. These pin that the saying happens in the RECORD.
+ */
+describe('what happened to a turn, written down on the turn', () => {
+  test('a stop is recorded on the transcript, not only in a note that is dismissed', async () => {
+    const controller = new AbortController()
+    controller.abort()
+    const { service, conversations } = chatWith([answerTurn('never sent')])
+
+    const sent = await service.send({ id: 'c1', text: 'are you there?' }, null, controller.signal)
+
+    expect(sent.ok).toBe(true)
+    // Still no REPLY. The record gained a marker, not an answer, and the whole
+    // argument of the stopped-run branch — that writing `shell(...)` down as
+    // the assistant's words is the user's own stop corrupting the conversation
+    // — is untouched by it.
+    expect(sent.value.assistant).toBe(null)
+    expect(saved(conversations).map((m) => [m.role, m.text, m.marker])).toEqual([
+      ['user', 'are you there?', undefined],
+      ['assistant', '', 'stopped'],
+    ])
+    // Handed back as well as stored, so the page can draw it on the turn that
+    // just ended rather than waiting for a reload to reveal it.
+    expect(sent.value.ending.marker).toBe('stopped')
+  })
+
+  test('a failed turn keeps its marker after a later turn succeeds', async () => {
+    // The reviewer's sequence exactly: turn one fails, turn two works, and the
+    // question is whether turn one still says anything. Held in page state it
+    // did not — `ask` clears the held failure at the top of every turn — and
+    // the first question was left looking like one that was never sent.
+    const { service, conversations, inference } = chatWith([])
+
+    const failed = await service.send({ id: 'c1', text: 'what kernel is this?' })
+    expect(failed.ok).toBe(false)
+    expect(failed.value.ending.marker).toBe('failed')
+
+    inference.replies.push(answerTurn('a linux kernel'))
+    await service.send({ id: 'c1', text: 'and now?' })
+
+    expect(saved(conversations).map((m) => [m.role, m.marker])).toEqual([
+      ['user', undefined],
+      ['assistant', 'failed'],
+      ['user', undefined],
+      ['assistant', undefined],
+    ])
+    // The failed turn's own marker, still on the record that a second whole
+    // turn was written over the top of.
+    expect(saved(conversations)[1].marker).toBe('failed')
+  })
+
+  test('a question a schedule asked is marked, and one that was typed is not', async () => {
+    const { service, conversations } = chatWith([answerTurn('quiet'), answerTurn('still quiet')])
+
+    await service.send({ id: 'c1', text: 'how is the build?' })
+    await service.send({ id: 'c1', text: 'how is the build?', scheduled: true })
+
+    // Same words, twice, and only the second one is attributed to the
+    // schedule: the marker is on the turn rather than derived from what the
+    // question happens to say.
+    expect(saved(conversations).map((m) => m.marker)).toEqual([
+      undefined,
+      undefined,
+      'scheduled',
+      undefined,
+    ])
+  })
+
+  test('the schedule cannot be told the turn failed, because it does not name the marker', async () => {
+    // The caller says WHERE the question came from and the service says how it
+    // ended. A page that could hand in any marker it liked would be a second
+    // writer of this field, and the two would drift the way `thinking` drifted.
+    const { service, conversations } = chatWith([answerTurn('fine')])
+
+    await service.send({ id: 'c1', text: 'hello', marker: 'failed' })
+
+    expect(saved(conversations).map((m) => m.marker)).toEqual([undefined, undefined])
+  })
+
+  test('a reply that could not be saved is not marked unanswered, because it was answered', async () => {
+    // The deliberate hole in the marking, and it is deliberate for the reason
+    // the marker exists: this turn DID get an answer and the store refused to
+    // keep it. Writing "this one did not get an answer" into the same store
+    // that just refused a write would be the record telling a person something
+    // untrue about their own turn.
+    const { service, conversations } = chatWith([answerTurn('a linux kernel')])
+    const original = service.conversations.appendMessage.bind(service.conversations)
+    let calls = 0
+    service.conversations.appendMessage = async (...args) =>
+      ++calls === 2 ? Outcome.failed('UNAVAILABLE', 'the database is closed') : original(...args)
+
+    const sent = await service.send({ id: 'c1', text: 'what kernel is this?' })
+
+    expect(sent.ok).toBe(false)
+    expect(sent.value.ending).toBe(null)
+    expect(saved(conversations).map((m) => m.role)).toEqual(['user'])
+  })
+
+  test('a marker that cannot be written down says so rather than being lost in silence', async () => {
+    // The marker is itself a write, and a store that is refusing writes is
+    // exactly the state a failed turn is most likely to be in. There is nowhere
+    // left to put the fact, so it is said as a note — which is where it used to
+    // live for every turn, and is now the fallback rather than the plan.
+    const { service } = chatWith([])
+    const original = service.conversations.appendMessage.bind(service.conversations)
+    let calls = 0
+    service.conversations.appendMessage = async (...args) =>
+      ++calls === 2 ? Outcome.failed('UNAVAILABLE', 'the database is closed') : original(...args)
+
+    const sent = await service.send({ id: 'c1', text: 'what kernel is this?' })
+
+    expect(sent.ok).toBe(false)
+    expect(sent.value.ending).toBe(null)
+    expect(sent.notes).toContain(
+      'what happened to this turn could not be written down: the database is closed',
+    )
   })
 })
