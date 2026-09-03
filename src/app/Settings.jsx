@@ -27,6 +27,7 @@ import { installedVoices } from '../client/Speech.js'
  */
 export function Settings({ settings, agents, onChange, onSave, onClose, testing, onTest, health }) {
   const [voices, setVoices] = useState([])
+  const [everyVoice, setEveryVoice] = useState(false)
 
   /**
    * The voices this device actually has.
@@ -228,7 +229,7 @@ export function Settings({ settings, agents, onChange, onSave, onClose, testing,
                 Voice
                 <select {...field('ttsVoice')} data-testid="tts-voice">
                   <option value="">Whatever this device prefers</option>
-                  {voices.map((voice) => (
+                  {offered(voices, everyVoice).map((voice) => (
                     <option key={voice.name} value={voice.name}>
                       {voice.name} ({voice.lang})
                     </option>
@@ -248,6 +249,18 @@ export function Settings({ settings, agents, onChange, onSave, onClose, testing,
                 />
               </label>
             )}
+            {settings.ttsKind === 'native' && voices.length > offered(voices, false).length ? (
+              <label className="switch">
+                <input
+                  type="checkbox"
+                  checked={everyVoice}
+                  onChange={(event) => setEveryVoice(event.target.checked)}
+                  data-testid="every-voice"
+                />
+                Show every voice this device has ({voices.length})
+              </label>
+            ) : null}
+
             <div className="pair">
               <label>
                 Speed {Number(settings.ttsRate ?? 1).toFixed(1)}×
@@ -355,6 +368,34 @@ export function Settings({ settings, agents, onChange, onSave, onClose, testing,
       </form>
     </div>
   )
+}
+
+/**
+ * Which of this device's voices to offer, and why not all of them.
+ *
+ * macOS ships around 180, and a reviewer's list opened with "Bad News",
+ * "Boing", "Bubbles", "Jester", "Trinoids", "Wobble" and "Zarvox" — an
+ * unfiltered platform array presented as a product choice. What is offered is
+ * the voices that speak the language the browser is set to, which is the only
+ * property of a voice a person can act on without hearing it; everything else
+ * is behind a switch that says how many there are.
+ *
+ * A device whose voices do not name a language, or name none this browser
+ * matches, gets the whole list rather than an empty picker — a filter that can
+ * return nothing must not be the only path.
+ */
+function offered(voices, everyone) {
+  if (everyone) return voices
+  const want = String(globalThis.navigator?.language ?? 'en')
+    .slice(0, 2)
+    .toLowerCase()
+  const mine = voices.filter(
+    (voice) =>
+      String(voice.lang ?? '')
+        .slice(0, 2)
+        .toLowerCase() === want,
+  )
+  return mine.length ? mine : voices
 }
 
 /**
