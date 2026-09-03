@@ -360,6 +360,18 @@ export default function Page() {
   useEffect(() => watchOnline(setOnline), [])
 
   /**
+   * The tab's title is which conversation this is.
+   *
+   * It read "ASKK" for ever, so two tabs of this app were two identical tabs —
+   * and this app deliberately supports two, with a lock deciding which may
+   * write. A person switching between them had nothing to switch BY.
+   */
+  useEffect(() => {
+    const here = conversations.find((one) => one.id === conversationId)?.title
+    document.title = here ? `${here} · ASKK` : 'ASKK'
+  }, [conversations, conversationId])
+
+  /**
    * How much room this origin has, re-measured after every turn.
    *
    * After a turn, because a turn is what fills it: a written file, a downloaded
@@ -1048,12 +1060,23 @@ export default function Page() {
   async function testConnection() {
     setTesting(true)
     // Cleared first, so what is on screen while the check runs is the check
-    // running and not the previous answer. A stale "✓ answered" beside a
-    // freshly typed address is the form agreeing with something nobody asked.
+    // running and not the previous answer. A stale "answered" beside a freshly
+    // typed address is the form agreeing with something nobody asked.
     setModelHealth(null)
-    const saved = await clientRef.current.call('settings.save', settings)
-    if (saved.ok) setSettings(saved.value)
-    const found = await clientRef.current.call('health.model')
+    // The form's CURRENT values, probed without being saved. This used to save
+    // first, because the probe read the stored record — so editing the address,
+    // pressing the check and then pressing Escape left the edited address
+    // stored, while the temperature field in the same sheet did not. A dialog
+    // with two commit points, one of them undisclosed, is a dialog whose Close
+    // does not close.
+    const found = await clientRef.current.call('health.model', {
+      try: {
+        kind: settings.kind,
+        model: settings.model,
+        baseUrl: settings.baseUrl,
+        apiKey: settings.apiKey,
+      },
+    })
     if (found.ok) setModelHealth(found.value)
     setTesting(false)
   }
@@ -1278,7 +1301,6 @@ export default function Page() {
         onSettings={() => setShowSettings((open) => !open)}
         settingsOpen={showSettings}
       />
-
       {showSettings && settings ? (
         <Settings
           settings={settings}
@@ -1291,7 +1313,6 @@ export default function Page() {
           health={modelHealth}
         />
       ) : null}
-
       <div className={`panes${drawer ? ' docked' : ''}`}>
         <main className="stage">
           {messages.length === 0 && ready ? (
@@ -1394,8 +1415,14 @@ export default function Page() {
               </p>
             ) : null}
 
+            {/* `role="alert"` below, because this is the one thing on the page
+                that has to interrupt: a screen reader had no way to learn that
+                a turn had failed at all — the app had no live region anywhere,
+                so every error, every note and the working line were facts you
+                could see and could not hear. The comment sits OUT here: inside
+                a ternary's branch it is an expression, and a parse error. */}
             {problem ? (
-              <p className="problem" data-testid="error">
+              <p className="problem" data-testid="error" role="alert">
                 {problem.message}
                 {problem.hint ? <span className="hint-line">{problem.hint}</span> : null}
                 {/* Every error carries its own way out. The one a first visit
@@ -1419,7 +1446,9 @@ export default function Page() {
             ) : null}
 
             {notes.length ? (
-              <ul className="notes" data-testid="notes">
+              // Polite, not assertive: a note is something the app corrected or
+              // could not do, and it must not cut across a reply being read out.
+              <ul className="notes" data-testid="notes" aria-live="polite">
                 {notes.map((said) => (
                   <li key={said}>
                     {said}
@@ -1486,6 +1515,10 @@ export default function Page() {
         ) : null}
       </div>
 
+      {/* A probe and nothing else: `agents.threads` is a fact only the backend
+          holds, and `scripts/smoke.js` reads this to prove a sub-agent thread
+          was really constructed. It lost its braces in an edit once and
+          rendered as literal source text on the page. */}
       {threads.length ? <span data-testid="threads" hidden /> : null}
     </div>
   )

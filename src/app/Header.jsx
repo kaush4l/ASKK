@@ -92,7 +92,16 @@ export function Header({
 
         {/* ONE line, present tense, in words. Everything not chosen is in the
             drawer, which is where facts live. */}
-        <p className="status" data-testid="status" data-live={String(Boolean(status.live))}>
+        {/* `status`, so a screen reader is told what is happening without being
+            interrupted. The app had no live region at all: "working · 12s",
+            "researcher is reading a page" and "listening" were visible facts
+            and silent ones. */}
+        <p
+          className="status"
+          data-testid="status"
+          role="status"
+          data-live={String(Boolean(status.live))}
+        >
           {status.live ? <span className="status-dot" aria-hidden="true" /> : null}
           {status.text}
         </p>
