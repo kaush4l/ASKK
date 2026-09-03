@@ -40,6 +40,7 @@ export function Drawer({
   onPromptAt,
   client,
   turnsDone,
+  storage,
   schedules,
   conversationId,
   ready,
@@ -105,7 +106,9 @@ export function Drawer({
         {/* Given the client rather than the values, because the workspace is the
             backend's and a component handed a list would be showing whatever
             the page last remembered. `turnsDone` is when to look again. */}
-        {section === 'files' ? <FilesPanel client={client} turnsDone={turnsDone} /> : null}
+        {section === 'files' ? (
+          <FilesPanel client={client} turnsDone={turnsDone} storage={storage} />
+        ) : null}
         {section === 'schedule' ? (
           <SchedulePanel
             schedules={schedules}

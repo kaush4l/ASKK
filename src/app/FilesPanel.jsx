@@ -53,7 +53,14 @@ const clock = (millis) => new Date(millis).toLocaleTimeString()
  *   `turnsDone` is a trigger, not a value this reads — it changes when a turn
  *   finishes, which is the only moment the workspace can have changed.
  */
-export function FilesPanel({ client, turnsDone }) {
+/** A byte count at the scale a person reads it. */
+function megabytes(n) {
+  const value = Number(n) || 0
+  if (value >= 1024 * 1024 * 1024) return `${(value / 1024 ** 3).toFixed(1)} GB`
+  return `${Math.round(value / 1024 / 1024)} MB`
+}
+
+export function FilesPanel({ client, turnsDone, storage = null }) {
   // `null` until the first listing answers, so an empty workspace and an
   // unanswered one are different things on screen. They were the same thing for
   // one draft of this and it read as "you have no files" while the call was
@@ -254,6 +261,20 @@ export function FilesPanel({ client, turnsDone }) {
             {draft ? 'editing' : 'a save is refused if this file has changed'}
           </span>
         </p>
+        {/* What this origin has used of what it may use — the conversations,
+            these files, and any model weights that were downloaded into the
+            tab. It is the one number that says how close the browser is to
+            evicting all of it, and nothing anywhere reported it. Absent when
+            the browser will not answer: a zero would read as "nothing stored",
+            which is a different claim from "not measurable". */}
+        {storage?.quota ? (
+          <p className="figures" data-testid="storage">
+            <span>
+              <b>{megabytes(storage.usage)}</b> used of {megabytes(storage.quota)} this browser
+              allows
+            </span>
+          </p>
+        ) : null}
       </div>
 
       {problem ? (

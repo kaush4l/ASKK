@@ -2,7 +2,16 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { BackendClient } from '../client/BackendClient.js'
-import { announce, askToAnnounce, copy, keepAwake, keyboardInset } from '../client/Device.js'
+import {
+  announce,
+  askToAnnounce,
+  copy,
+  keepAwake,
+  keyboardInset,
+  room,
+  share,
+  watchOnline,
+} from '../client/Device.js'
 import { Dictation, Voice } from '../client/Speech.js'
 import { EventName } from '../protocol/Envelope.js'
 import { Composer } from './Composer.jsx'
@@ -145,6 +154,16 @@ export default function Page() {
   const [speaking, setSpeaking] = useState('')
   const [copied, setCopied] = useState('')
   /**
+   * Whether this machine has a network, and how much room this origin has.
+   *
+   * Both are facts nothing else on this page can see, and both change what a
+   * person should do: a remote model cannot answer offline, and a browser that
+   * is nearly full starts evicting the conversations and the downloaded weights
+   * this app keeps.
+   */
+  const [online, setOnline] = useState(true)
+  const [storage, setStorage] = useState(null)
+  /**
    * The question whose turn failed, kept so it can be sent again.
    *
    * Measured: a first visit types a question, the turn fails because no model
@@ -229,6 +248,22 @@ export default function Page() {
       document.documentElement.style.setProperty('--keyboard', `${px}px`)
     })
   }, [])
+
+  /** The network, reported at once and on every change. */
+  useEffect(() => watchOnline(setOnline), [])
+
+  /**
+   * How much room this origin has, re-measured after every turn.
+   *
+   * After a turn, because a turn is what fills it: a written file, a downloaded
+   * model, another conversation. Measured rather than guessed — a browser that
+   * will not answer says so, and the drawer shows nothing rather than a zero.
+   */
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `turnsDone` is the trigger, not a value the body reads
+  useEffect(() => {
+    if (!ready) return
+    room().then((measured) => setStorage(measured.ok ? measured : null))
+  }, [ready, turnsDone])
 
   /**
    * Whether a turn is running, readable from inside a timer.
@@ -774,6 +809,21 @@ export default function Page() {
     if (!spoken.ok) setProblem({ message: spoken.error.message, hint: spoken.error.hint })
   }
 
+  /**
+   * Hand a reply to whatever this device shares with.
+   *
+   * Only offered where there IS something to share with — `navigator.share` is
+   * on Safari and on Android and not on desktop Firefox — so the control is
+   * absent rather than dead. A share the person cancelled says nothing: closing
+   * the sheet is a decision, not a fault.
+   */
+  const hand = useCallback(async (text) => {
+    const sent = await share({ title: 'ASKK', text })
+    if (!sent.ok && sent.note) {
+      setNotes((current) => (current.includes(sent.note) ? current : [...current, sent.note]))
+    }
+  }, [])
+
   const remember = useCallback(async (text) => {
     const done = await copy(text)
     if (done.ok) {
@@ -956,6 +1006,10 @@ export default function Page() {
     delegates: Object.values(delegates),
     tasks: tasks.filter((one) => one.owner === mine),
     agent: settings?.agent,
+    online,
+    // A model running in this tab needs no network, so being offline is not a
+    // fault to report at somebody whose setup works.
+    local: settings?.kind === 'transformers',
   })
 
   return (
@@ -1044,6 +1098,7 @@ export default function Page() {
               observations={observations}
               onSay={say}
               onCopy={remember}
+              onShare={hand}
               speaking={speaking}
               copied={copied}
             />
@@ -1146,6 +1201,7 @@ export default function Page() {
             onPromptAt={setPromptAt}
             client={clientRef.current}
             turnsDone={turnsDone}
+            storage={storage}
             schedules={schedules}
             conversationId={conversationId}
             ready={ready}

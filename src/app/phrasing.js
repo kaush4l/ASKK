@@ -194,8 +194,16 @@ export function statusLine({
   delegates = [],
   tasks = [],
   agent = '',
+  online = true,
+  local = false,
 } = {}) {
   if (!ready) return { text: 'starting', live: true }
+  // Offline, and it only matters when the answer has to come from somewhere
+  // else. A model running in this tab needs no network at all, and telling
+  // somebody their connection is down while the thing works perfectly would be
+  // the app inventing a fault. Above everything but the boot, because it
+  // explains every failure underneath it.
+  if (!online && !local) return { text: 'offline — the model is somewhere else', live: true }
   if (download?.percent > 0 && download.percent < 100)
     return { text: `${download.file || 'a model'} ${download.percent}%`, live: true }
   if (stopping) return { text: 'stopping', live: true }

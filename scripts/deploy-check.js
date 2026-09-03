@@ -720,7 +720,16 @@ const bootFrom = (path) =>
   evaluate(
     `new Promise((resolve) => {
        const worker = new Worker(${JSON.stringify(`${BASE}/sandbox/vm-worker.js`)})
-       worker.onmessage = (e) => { worker.terminate(); resolve(e.data) }
+       // The image now reports its own arrival, so the FIRST message is a byte
+       // count and the answer is the one after it. Read as "the first message",
+       // this probe reported a progress frame as the boot result and said the
+       // shipping arm had not inflated — measured, on the run that added it.
+       let bytes = 0
+       worker.onmessage = (e) => {
+         if (e.data?.type === 'boot-progress') { bytes = e.data.loaded; return }
+         worker.terminate()
+         resolve({ ...e.data, announced: bytes })
+       }
        worker.onerror = (e) => { worker.terminate(); resolve({ type: 'worker-error', message: e.message }) }
        worker.postMessage({ type: 'boot', wasmUrl: ${JSON.stringify(path)} })
        setTimeout(() => resolve({ type: 'no answer in 120s' }), 120000)

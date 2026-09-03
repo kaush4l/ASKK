@@ -22,6 +22,7 @@ export function Transcript({
   run,
   onSay,
   onCopy,
+  onShare,
   speaking,
   copied,
   observations,
@@ -46,6 +47,7 @@ export function Transcript({
           message={message}
           onSay={onSay}
           onCopy={onCopy}
+          onShare={onShare}
           speaking={speaking}
           copied={copied}
         />
@@ -91,7 +93,7 @@ export function Transcript({
   )
 }
 
-function Turn({ message, onSay, onCopy, speaking, copied }) {
+function Turn({ message, onSay, onCopy, onShare, speaking, copied }) {
   const attachments = message.attachments ?? []
   const isAssistant = message.role === 'assistant'
 
@@ -152,6 +154,18 @@ function Turn({ message, onSay, onCopy, speaking, copied }) {
                 data-testid={`say-${message.id}`}
               >
                 {speaking === message.text ? 'stop reading' : 'read aloud'}
+              </button>
+            ) : null}
+            {/* Offered only where there IS something to share with. `share` is
+                on Safari and on Android and not on desktop Firefox, and a
+                control that does nothing is worse than one that is not there. */}
+            {isAssistant && typeof globalThis.navigator?.share === 'function' ? (
+              <button
+                type="button"
+                onClick={() => onShare(message.text)}
+                data-testid={`share-${message.id}`}
+              >
+                share
               </button>
             ) : null}
           </div>

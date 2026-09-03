@@ -169,6 +169,18 @@ describe('the one line at the top of the screen', () => {
     })
   })
 
+  test('offline outranks everything but the boot, and only when the model is elsewhere', () => {
+    expect(statusLine({ ready: true, busy: true, online: false }).text).toBe(
+      'offline — the model is somewhere else',
+    )
+    // A model running in this tab needs no network. Saying the connection is
+    // down while the thing works would be the app inventing a fault.
+    expect(statusLine({ ready: true, online: false, local: true, agent: 'main' }).text).toBe(
+      'talking to main',
+    )
+    expect(statusLine({ ready: false, online: false }).text).toBe('starting')
+  })
+
   test('before the backend is up nothing else can be true', () => {
     expect(statusLine({ ready: false, busy: true }).text).toBe('starting')
   })
