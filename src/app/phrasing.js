@@ -28,12 +28,15 @@
  * "did something": a reader who sees the real name can go and look it up.
  */
 const VERBS = {
-  shell: 'Ran a command on the Linux machine in this tab',
-  search: 'Searched the web',
-  fetch: 'Read a page',
-  read_file: 'Read a file',
-  write_file: 'Wrote a file',
-  check_task: 'Read back work it had handed over',
+  shell: [
+    'Running a command on the Linux machine in this tab',
+    'Ran a command on the Linux machine in this tab',
+  ],
+  search: ['Searching the web', 'Searched the web'],
+  fetch: ['Reading a page', 'Read a page'],
+  read_file: ['Reading a file', 'Read a file'],
+  write_file: ['Writing a file', 'Wrote a file'],
+  check_task: ['Reading back work it had handed over', 'Read back work it had handed over'],
 }
 
 /**
@@ -49,18 +52,25 @@ export function toolOf(call) {
 }
 
 /**
- * One line saying what this step did.
+ * One line saying what this step is doing, or did.
+ *
+ * Two tenses, because the line is drawn in both states and a reviewer read
+ * "Ran a command on the Linux machine in this tab" while the clock beside it
+ * said the turn was one second old and the command had not come back. A
+ * finished label over unfinished work is the app telling you something it does
+ * not know yet.
  *
  * A name this file does not know is handed back inside "Asked …". That is an
  * agent's peer most of the time — an agent file's `tools:` list names peers by
  * their own names — and it is also every tool a connected program offers,
  * which reads the same way and is honest about both.
  */
-export function verbFor(call) {
+export function verbFor(call, done = true) {
   const tool = toolOf(call)
-  if (!tool) return 'Worked on it'
-  if (VERBS[tool]) return VERBS[tool]
-  return `Asked ${tool}`
+  if (!tool) return done ? 'Worked on it' : 'Working on it'
+  const known = VERBS[tool]
+  if (known) return done ? known[1] : known[0]
+  return done ? `Asked ${tool}` : `Asking ${tool}`
 }
 
 /**
@@ -270,7 +280,10 @@ export function statusLine({
   // `researcher: fetch (3)` — a name, a function and a number, which is three
   // pieces of machine vocabulary for one fact a person can read in five words.
   if (working) return { text: `${working.agent} is ${doingWord(working.doing)}`, live: true }
-  if (busy) return { text: `working · ${duration(elapsed * 1000)}`, live: true }
+  // The clock is a SEPARATE field so the caller can keep it off the
+  // announcement: a live region that re-reads a changing number every second
+  // interrupts thirty times on a thirty-second turn and says nothing new.
+  if (busy) return { text: 'working', clock: duration(elapsed * 1000), live: true }
   const handed = tasks.find((one) => one?.state === 'running')
   if (handed) return { text: `${handed.agent} is working in the background`, live: true }
   const answered = tasks.find((one) => one?.state !== 'running' && !one?.read)

@@ -103,7 +103,19 @@ export function Header({
           data-live={String(Boolean(status.live))}
         >
           {status.live ? <span className="status-dot" aria-hidden="true" /> : null}
+          {/* The clock is hidden from the announcement, not from the screen.
+              A reviewer sampled this region once a second through a turn and
+              heard "working · 0s", "working · 1s", "working · 2s" — thirty
+              interruptions on a thirty-second turn, each one saying nothing
+              new. What a listener needs is the transition, and the transition
+              is the word beside the number. */}
           {status.text}
+          {status.clock ? (
+            <span aria-hidden="true">
+              {' · '}
+              {status.clock}
+            </span>
+          ) : null}
         </p>
 
         <div className="topactions">

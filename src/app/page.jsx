@@ -73,7 +73,17 @@ const EXAMPLES = [
  * set intact with room for what a turn has to say, and every note carries its
  * own dismiss.
  */
-const NOTE_LIMIT = 6
+const NOTE_LIMIT = 3
+
+/**
+ * How long a note stays before it goes on its own.
+ *
+ * Long enough to read a sentence twice, short enough that a stack cannot build
+ * up while somebody is reading an answer. Notes are advisory by construction —
+ * the backend's `notes` channel is explicitly not an error channel — so nothing
+ * is lost when one expires.
+ */
+const NOTE_LIFE_MS = 9000
 
 /**
  * A download, in the only terms its numbers actually support.
@@ -282,6 +292,29 @@ export default function Page() {
       return merged.length > NOTE_LIMIT ? merged.slice(merged.length - NOTE_LIMIT) : merged
     })
   }, [])
+
+  /**
+   * Notes go away on their own.
+   *
+   * A reviewer accumulated four at once, measured them covering the assistant's
+   * reply mid-sentence, and found one still on screen minutes and several turns
+   * after the failure it described — dismissible only by hand, through a 24px
+   * cross. A notice that never expires stops being a signal and starts being
+   * furniture, and this furniture sits on top of the app's own answers.
+   *
+   * The DURABLE facts do not live here any more: a turn that failed, was
+   * stopped or was scheduled is marked on the turn, where it survives a reload.
+   * What is left in this tray is genuinely transient, so it can go.
+   *
+   * One timer for the oldest note rather than one per note: they are added in
+   * order and expire in order, so a single timeout that reschedules itself does
+   * the whole job and leaves nothing to clean up per entry.
+   */
+  useEffect(() => {
+    if (!notes.length) return undefined
+    const timer = setTimeout(() => setNotes((current) => current.slice(1)), NOTE_LIFE_MS)
+    return () => clearTimeout(timer)
+  }, [notes])
 
   useEffect(() => {
     // Spawned in an effect, not at module scope: this component is executed in

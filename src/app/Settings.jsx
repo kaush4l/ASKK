@@ -105,6 +105,19 @@ export function Settings({ settings, agents, onChange, onSave, onClose, testing,
   })
   const local = settings.kind === 'transformers'
 
+  /**
+   * What is still missing, or empty when nothing is.
+   *
+   * Said here rather than refused at submit, so the button is visibly not ready
+   * and the reason is beside it — a disabled control with no sentence is its own
+   * small mystery.
+   */
+  const incomplete = !String(settings.model ?? '').trim()
+    ? 'Name a model before saving. If you have an address, press “Check the connection” and it will list what that server has.'
+    : !local && !String(settings.baseUrl ?? '').trim()
+      ? 'Name the address where that model runs before saving.'
+      : ''
+
   return (
     <div className="settings" data-testid="settings">
       {/* A real button rather than a click handler on the backdrop. Both
@@ -460,7 +473,19 @@ export function Settings({ settings, agents, onChange, onSave, onClose, testing,
           </div>
         </details>
 
-        <button type="submit" data-testid="settings-save">
+        {/* Refused rather than accepted-and-closed. A reviewer filled the
+            address, left the model blank, pressed this, watched the sheet close
+            as if it had worked, and learned it had not by sending a message and
+            getting a failure — after the app's own empty screen had told them
+            to "name both". Closing a dialog is the strongest "you succeeded"
+            signal a UI has, and using it on an invalid state teaches a person
+            to distrust every confirmation after it. */}
+        {incomplete ? (
+          <p className="aside" role="status" data-testid="settings-incomplete">
+            {incomplete}
+          </p>
+        ) : null}
+        <button type="submit" disabled={Boolean(incomplete)} data-testid="settings-save">
           Save
         </button>
       </form>

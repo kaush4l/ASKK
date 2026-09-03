@@ -199,8 +199,14 @@ describe('ReActEngine.run', () => {
     const outcome = await new ReActEngine({}).run(history)
 
     expect(outcome.ok).toBe(false)
-    expect(outcome.failure.message).toBe('react: no inference is configured')
-    expect(outcome.failure.hint).toBe('Choose a model in settings.')
+    // The message a PERSON reads, with the loop's own name nowhere in it. It
+    // used to read "react: no inference is configured", and a reviewer read
+    // that as the JavaScript library while their actual problem was that they
+    // had not named a model yet.
+    expect(outcome.failure.message).toBe('No model is configured, so nothing can answer')
+    expect(outcome.failure.message).not.toContain('react')
+    expect(outcome.failure.hint).toContain('settings')
+    expect(outcome.failure.hint).toBe('Open settings and name a model.')
   })
 
   test('a model that never answers is stopped by the budget and not by the script running out', async () => {

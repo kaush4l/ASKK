@@ -215,15 +215,26 @@ export class Inference {
             hint: 'You ended this run.',
           })
         }
-        return Outcome.failed(Reason.UNAVAILABLE, `${label}: no answer within ${this.timeout}ms`, {
-          hint: 'The endpoint accepted the connection but sent nothing. Check the server, or raise the timeout.',
-        })
+        return Outcome.failed(
+          Reason.UNAVAILABLE,
+          `The model server said nothing for ${Math.round(this.timeout / 1000)}s`,
+          {
+            hint: `It accepted the connection and sent nothing back. Check the server, or raise the timeout. The transport is ${label}.`,
+          },
+        )
       }
       // A cross-origin refusal reaches script as an opaque TypeError with no
       // detail, so the likely causes are named rather than surfacing the bare
       // "Failed to fetch" the browser gives us.
-      return Outcome.failed(Reason.UNAVAILABLE, `${label}: ${err?.message ?? String(err)}`, {
-        hint: `Could not reach ${url}. Check the base URL, that the server is running, and that it sends CORS headers.`,
+      //
+      // And the HEADLINE is the plain sentence, with the transport's name and
+      // the browser's own words in the hint underneath. It used to read
+      // "openai-compatible: Failed to fetch" — the one line a person reads
+      // first, made of a module id and an exception. `label` still identifies
+      // the layer for whoever is debugging; it is simply not the first thing a
+      // person is shown.
+      return Outcome.failed(Reason.UNAVAILABLE, `Could not reach the model at ${url}`, {
+        hint: `Check the address, that the server is running, and that it sends CORS headers. The ${label} transport reported: ${err?.message ?? String(err)}`,
       })
     } finally {
       clearTimeout(deadline)
@@ -234,12 +245,16 @@ export class Inference {
         .text()
         .then((t) => t.slice(0, 500))
         .catch(() => '')
-      return Outcome.failed(Reason.UNAVAILABLE, `${label}: HTTP ${response.status} ${detail}`, {
-        hint:
-          response.status === 401 || response.status === 403
-            ? 'The endpoint rejected the API key.'
-            : 'The endpoint answered, but not with a result.',
-      })
+      return Outcome.failed(
+        Reason.UNAVAILABLE,
+        `The model server answered ${response.status}, not an answer`,
+        {
+          hint:
+            response.status === 401 || response.status === 403
+              ? `The server rejected the key. The ${label} transport was told: ${detail || 'nothing further'}`
+              : `Check the address and the model name. The ${label} transport was told: ${detail || 'nothing further'}`,
+        },
+      )
     }
 
     // A 200 carrying malformed JSON is rarer than a bad URL and far more

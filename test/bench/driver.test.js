@@ -207,7 +207,7 @@ describe('what the driver records', () => {
     globalThis.fetch = async () => new Response('upstream is down', { status: 503 })
     const run = await drive({ scaffold: stubScaffold('ours'), task, tools })
     expect(run.stop).toBe('endpoint-error')
-    expect(run.events.at(-1).error).toContain('HTTP 503')
+    expect(run.events.at(-1).error).toContain('503')
   })
 
   test('a scaffold may end its own run, and the reason is recorded verbatim', async () => {
@@ -425,7 +425,7 @@ describe('our arm, the loop’s own endings and the rig’s', () => {
     const run = await drive({ scaffold: await ours(), task, tools: rigTools() })
     expect(run.stop).toBe('endpoint-error')
     expect(run.turns).toBe(1)
-    expect(run.events.at(-1).error).toContain('HTTP 503')
+    expect(run.events.at(-1).error).toContain('503')
     expect(run.events.some((e) => e.type === 'scaffold-stop')).toBe(false)
   })
 

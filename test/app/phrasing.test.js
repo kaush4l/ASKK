@@ -26,6 +26,14 @@ describe('naming what a step did', () => {
     expect(verbFor('shell({"command": "rm -rf /"})')).toBe(
       'Ran a command on the Linux machine in this tab',
     )
+    // And the present tense while it is still running. A reviewer read
+    // "Ran a command" beside a clock saying the turn was one second old and
+    // the command had not come back — a finished label over unfinished work.
+    expect(verbFor('shell({"command": "uname -a"})', false)).toBe(
+      'Running a command on the Linux machine in this tab',
+    )
+    expect(verbFor('researcher({"task": "x"})', false)).toBe('Asking researcher')
+    expect(verbFor('', false)).toBe('Working on it')
     // Same verb for a call whose arguments are nonsense, malformed, or absent.
     // A page that said something different about these would be a page that had
     // opinions about whether a call is valid — which is `Toolbox`'s decision.
@@ -166,6 +174,13 @@ describe('the one line at the top of the screen', () => {
       busy: true,
       elapsed: 9,
       delegates: [{ agent: 'researcher', answered: false, doing: ['fetch'] }],
+    })
+    // The plain working line keeps its seconds in a field of their own, so a
+    // caller can show them and keep them out of what is announced.
+    expect(statusLine({ ready: true, busy: true, elapsed: 9 })).toEqual({
+      text: 'working',
+      clock: '9s',
+      live: true,
     })
     // `researcher: fetch (3)` was the previous rendering — a name, a function
     // and a number, which is three pieces of machine vocabulary for one fact.

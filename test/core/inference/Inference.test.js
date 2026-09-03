@@ -97,7 +97,11 @@ describe('a stop that reaches the request', () => {
     const answered = await model.invoke('hello', [], { signal: null })
 
     expect(answered.ok).toBe(false)
-    expect(answered.failure.message).toBe('openai-compatible: no answer within 30ms')
+    // The headline is the plain sentence; the transport's own name is in the
+    // hint, where somebody debugging will find it and somebody stuck will not
+    // trip over it.
+    expect(answered.failure.message).toBe('The model server said nothing for 0s')
+    expect(answered.failure.hint).toContain('openai-compatible')
   })
 
   test('a stop already fired before the call is made never reaches the network', async () => {

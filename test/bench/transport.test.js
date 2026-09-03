@@ -215,7 +215,7 @@ describe('a broken endpoint is not a refused reply', () => {
     const reply = await new RigTransport(settings()).call([{ role: 'user', content: 'x' }])
     expect(reply.answered).toBe(false)
     expect(reply.ok).toBe(false)
-    expect(reply.failure.message).toContain('HTTP 503')
+    expect(reply.failure.message).toContain('503')
   })
 
   test('a 200 the transport refused is still `answered: true`', async () => {

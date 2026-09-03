@@ -206,13 +206,13 @@ export class Engine {
     { scratchpad = [], budget = null, signal = null, onPrompt, onDelta, onUsage } = {},
   ) {
     if (!this.inference) {
-      return Outcome.failed(
-        Reason.INTERNAL,
-        `${this.constructor.LABEL}: no inference is configured`,
-        {
-          hint: 'Choose a model in settings.',
-        },
-      )
+      // Plain, because this is the sentence a first visit meets. It read
+      // "react: no inference is configured" — a loop's internal name, which a
+      // person reads as the JavaScript library, in front of somebody whose
+      // actual problem is that they have not named a model yet.
+      return Outcome.failed(Reason.INTERNAL, 'No model is configured, so nothing can answer', {
+        hint: 'Open settings and name a model.',
+      })
     }
 
     const assembled = this.plan(history, scratchpad, budget)
