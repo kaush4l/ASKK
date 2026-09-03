@@ -89,16 +89,32 @@ export class HealthService {
    *   infer the second from a model name it found in settings — and a name that
    *   shipped as a default made that inference wrong on every first visit.
    */
-  async model() {
+  /**
+   * Whether a question can be answered, and by what.
+   *
+   * `try` is a configuration to probe INSTEAD of the stored one, and it is
+   * there so a settings form can check an address before committing it.
+   * Without it the only way to test was to save first — measured: editing the
+   * address, pressing the check and then pressing Escape left the edited
+   * address stored, because the check had already written it. A dialog with two
+   * commit points, one of them undisclosed, is a dialog whose Cancel does not
+   * cancel.
+   *
+   * Merged over the stored record rather than replacing it, so a form that
+   * sends only the two fields it is asking about still probes with the key and
+   * the kind a person set earlier.
+   */
+  async model({ try: attempt = null } = {}) {
     const stored = await this.settings.get()
     if (!stored.ok) return stored
-    const { kind, apiKey } = stored.value
+    const settings = attempt ? { ...stored.value, ...attempt } : stored.value
+    const { kind, apiKey } = settings
     // Trimmed here as well as in `SettingsService.save`, because a record
     // written by an older build is not covered by today's save, and ` ` is
     // truthy: untrimmed, a blank address becomes a probe of `%20/models` and an
     // empty field is reported as a server that will not answer.
-    const model = String(stored.value.model ?? '').trim()
-    const baseUrl = String(stored.value.baseUrl ?? '').trim()
+    const model = String(settings.model ?? '').trim()
+    const baseUrl = String(settings.baseUrl ?? '').trim()
     // The in-tab model has no endpoint to answer, so a model id is the whole of
     // its configuration and an address would be a setting with no meaning.
     const needsAddress = kind !== 'transformers'

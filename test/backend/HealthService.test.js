@@ -345,3 +345,56 @@ describe('what a server says it serves', () => {
     expect(said.value.detail).toContain('cannot make an HTTP request')
   })
 })
+
+describe('checking a configuration before committing it', () => {
+  test('probes what it was handed, and leaves the stored record alone', async () => {
+    // A settings form has to be able to ask "does this address answer" before
+    // Save. Measured otherwise: the check wrote the address it was testing, so
+    // editing it, pressing the check and then pressing Escape left the edited
+    // value stored — a dialog with two commit points, one of them undisclosed,
+    // whose Cancel does not cancel.
+    const asked = []
+    const settings = {
+      async get() {
+        return Outcome.ok({
+          kind: 'openai',
+          model: 'stored-model',
+          baseUrl: 'http://stored/v1',
+          apiKey: 'the key set earlier',
+        })
+      },
+    }
+    const http = async ({ url, headers }) => {
+      asked.push({ url, headers: headers ?? {} })
+      return Outcome.ok({ status: 200, text: JSON.stringify({ data: [{ id: 'typed-model' }] }) })
+    }
+
+    const found = await new HealthService({ settings, http }).model({
+      try: { model: 'typed-model', baseUrl: 'http://typed/v1' },
+    })
+
+    expect(found.ok).toBe(true)
+    expect(asked[0].url).toContain('http://typed/v1')
+    expect(found.value.model).toBe('typed-model')
+    expect(found.value.modelListed).toBe(true)
+    // Merged over the stored record, not replacing it: a form that sends only
+    // the two fields it is asking about must still probe with the key.
+    expect(JSON.stringify(asked[0].headers)).toContain('the key set earlier')
+  })
+
+  test('with nothing handed to it, it is the stored configuration exactly as before', async () => {
+    const settings = {
+      async get() {
+        return Outcome.ok({ kind: 'openai', model: 'm', baseUrl: 'http://h/v1' })
+      },
+    }
+    const asked = []
+    const http = async ({ url }) => {
+      asked.push(url)
+      return Outcome.ok({ status: 200, text: '{"data":[]}' })
+    }
+    const found = await new HealthService({ settings, http }).model()
+    expect(found.value.model).toBe('m')
+    expect(asked[0]).toContain('http://h/v1')
+  })
+})
