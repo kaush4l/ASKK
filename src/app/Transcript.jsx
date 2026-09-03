@@ -28,6 +28,22 @@ export function Transcript({
   observations,
 }) {
   const live = visibleStream(run.raw)
+  /**
+   * The last turn's work, attached to the reply it produced.
+   *
+   * It used to live only inside the `busy` branch, so every step vanished the
+   * moment the answer arrived — and the answer, written by a model that had
+   * just been shown its own scratchpad, says things like "the step above shows
+   * where it came from". A reviewer read that sentence with nothing above it,
+   * twice, in two separate reviews. The steps were kept in state and shown in
+   * the drawer, which is a place nobody had been told to look.
+   *
+   * Attached to the LAST assistant message and only while these steps belong to
+   * it: `run` holds one turn at a time, so an older reply must not be given the
+   * work of a newer one.
+   */
+  const finished = busy ? null : run.steps.filter((step) => !step.isAnswer)
+  const lastReply = [...messages].reverse().find((one) => one.role === 'assistant')
 
   return (
     <div
@@ -50,6 +66,8 @@ export function Transcript({
           onShare={onShare}
           speaking={speaking}
           copied={copied}
+          steps={message.id === lastReply?.id ? finished : null}
+          observations={observations}
         />
       ))}
 
@@ -93,7 +111,7 @@ export function Transcript({
   )
 }
 
-function Turn({ message, onSay, onCopy, onShare, speaking, copied }) {
+function Turn({ message, onSay, onCopy, onShare, speaking, copied, steps, observations }) {
   const attachments = message.attachments ?? []
   const isAssistant = message.role === 'assistant'
 
@@ -122,9 +140,13 @@ function Turn({ message, onSay, onCopy, onShare, speaking, copied }) {
             tripped through storage, and rendered NOWHERE — `docs/LEDGER.md`
             row S21. It is the model's working and not its answer, so it opens
             rather than sitting above the reply. */}
+        {/* What the agent DID on the way here, above the answer it produced,
+            because that is the order it happened in. */}
+        {steps?.length ? <Steps steps={steps} observations={observations} /> : null}
+
         {message.thinking ? (
           <details className="thinking">
-            <summary data-testid={`thinking-${message.id}`}>how it got there</summary>
+            <summary data-testid={`thinking-${message.id}`}>what it was thinking</summary>
             <div className="text">{message.thinking}</div>
           </details>
         ) : null}

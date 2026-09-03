@@ -1112,8 +1112,20 @@ button {
   overflow-y: auto;
 }
 
+/*
+ * The one control in the app with no focus indicator, measured: `outline: none`
+ * with no border change and nothing on any ancestor, on the most-used element
+ * on the page. The ring goes on the BOX rather than the textarea, because the
+ * box is what a person sees as the field — the textarea has no border of its
+ * own and a ring drawn on it would float inside the frame.
+ */
 .composer textarea:focus {
   outline: none;
+}
+
+.composerbox:has(textarea:focus-visible) {
+  border-color: var(--signal);
+  box-shadow: 0 0 0 2px var(--signal-soft);
 }
 
 .composer textarea::placeholder {
@@ -1281,10 +1293,38 @@ button {
   color: var(--signal);
 }
 
+/*
+ * `overflow-x: hidden` is the load-bearing half.
+ *
+ * The system prompt is 4,149px wide as one `pre` line in a 366px column, and
+ * the only scroller was this element — so dragging right to read it took the
+ * tab bar, the token meter and every readout with it, and at 1,200px the drawer
+ * was ENTIRELY BLANK. Measured. Anything that genuinely needs to be wider than
+ * the panel scrolls inside its own box; nothing scrolls the panel.
+ */
 .drawer-body {
   min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 0 0.75rem 1rem;
+}
+
+/* And the prompt itself wraps, like the same text does in the agent section
+   one tab over — which is where the reviewer noticed it was readable there and
+   not here. A prompt is prose; it is not a command anybody copies verbatim. */
+.panel pre,
+.drawer-body pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* The exceptions: a call and its result are the machine's own words, and a
+   wrapped command line is a command line nobody can read back. They scroll
+   inside themselves instead. */
+.drawer-body .runlog .call,
+.step-body .call {
+  white-space: pre;
+  overflow-x: auto;
 }
 
 /* ── panel internals, carried over ──────────────────────────────────────── */
@@ -1921,7 +1961,16 @@ button {
   padding: 0.7rem;
 }
 
+/*
+ * Pinned, because it was 35px below the bottom of a 390x844 phone on first
+ * paint — the primary commit action of the app's one mandatory setup step, 83%
+ * off-screen, on a form a person has just been sent to by the only button on
+ * the empty screen.
+ */
 .settings button[type='submit'] {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
   min-height: 42px;
   border: 1px solid var(--signal);
   border-radius: var(--radius-sm);
@@ -1962,6 +2011,67 @@ button {
 }
 
 /* ── narrow ─────────────────────────────────────────────────────────────── */
+
+/*
+ * The smallest a control may be where a finger is the pointer.
+ *
+ * Measured across the whole app by a reviewer: the LARGEST interactive element
+ * was 44x40, three were under even 24x24 — a remove-attachment cross at 14x12,
+ * a dismiss at 16x18 — and every text input was 32px tall. WCAG 2.2 asks 24;
+ * a thumb asks 44.
+ *
+ * And 16px on every field, which is not a typographic choice: iOS Safari zooms
+ * the whole page when a field under 16px takes focus, and a page that jumps
+ * when you tap the thing you meant to type into feels broken in a way nobody
+ * can name.
+ */
+@media (hover: none) {
+  button,
+  [role='tab'],
+  summary,
+  input,
+  select,
+  textarea {
+    min-height: 44px;
+  }
+
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+
+  .msg-actions button,
+  .chip button,
+  .notes li button,
+  .menu-row .rowact button {
+    min-width: 44px;
+  }
+
+  .segmented button {
+    padding-block: 0.6rem;
+  }
+}
+
+/* On a mouse the floor is the 24px WCAG 2.2 asks for, applied where the app
+   was under it. A pointer is precise; a finger is not, and inflating every
+   control to 44px on a desktop would be spending the density this interface
+   is for. */
+.msg-actions button,
+.chip button,
+.notes li button,
+.menu-row .rowact button,
+.thinking summary,
+.step > summary {
+  min-height: 24px;
+}
+
+.msg-actions button,
+.chip button,
+.notes li button,
+.menu-row .rowact button {
+  min-width: 24px;
+}
 
 @media (max-width: 62rem) {
   :root {

@@ -212,7 +212,7 @@ export default function Page() {
       setConversations(listed)
       let conversation = listed[0] ?? null
       if (!conversation) {
-        const made = await client.call('conversations.create', { title: 'Chat' })
+        const made = await client.call('conversations.create', { title: 'First chat' })
         collected.push(...made.notes)
         conversation = made.ok ? made.value : null
         if (conversation) setConversations([conversation])
@@ -907,8 +907,23 @@ export default function Page() {
     setFailed(null)
   }
 
+  /**
+   * A new conversation, named so it can be told apart from the last one.
+   *
+   * Every conversation used to be called "Chat", so the list was rows of one
+   * word with no date, no snippet and no count — and the delete confirmation
+   * that named one of them was a coin toss with a modal in front of it. A
+   * reviewer lost a transcript to exactly that. The date is what a person
+   * actually remembers about a conversation they have not named.
+   */
   async function newChat() {
-    const result = await clientRef.current.call('conversations.create', { title: 'Chat' })
+    const when = new Date().toLocaleString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+    const result = await clientRef.current.call('conversations.create', { title: `Chat ${when}` })
     setNotes(result.notes)
     if (!result.ok) {
       setProblem({ message: result.error.message, hint: result.error.hint })
@@ -943,9 +958,20 @@ export default function Page() {
    */
   async function removeConversation(one) {
     const count = one.id === conversationId ? messages.length : (one.messages?.length ?? 0)
-    const said = count
-      ? `Delete “${one.title || 'Chat'}” and its ${count} message${count === 1 ? '' : 's'}? This cannot be undone.`
-      : `Delete “${one.title || 'Chat'}”?`
+    // What is being deleted, in the terms that tell two conversations apart: its
+    // name, how much is in it, and the first thing that was said in it. A
+    // confirmation that cannot distinguish the candidates is not a safeguard.
+    const first = (one.id === conversationId ? messages : (one.messages ?? [])).find(
+      (message) => message.role === 'user' && message.text,
+    )
+    const said = [
+      `Delete “${one.title || 'this conversation'}”?`,
+      count ? `${count} message${count === 1 ? '' : 's'} will be lost.` : 'It is empty.',
+      first ? `It starts: “${first.text.slice(0, 70)}”` : '',
+      'This cannot be undone.',
+    ]
+      .filter(Boolean)
+      .join('\n\n')
     if (!globalThis.confirm?.(said)) return
 
     const gone = await clientRef.current.call('conversations.remove', { id: one.id })

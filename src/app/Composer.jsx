@@ -16,6 +16,25 @@ import { useEffect, useRef } from 'react'
  * to a question, in an app whose inference layer has taken attachments since it
  * was written.
  */
+/**
+ * What the empty field says, and why it does not say it on a phone.
+ *
+ * "Enter to send, Shift+Enter for a new line" is keyboard instruction given to
+ * a device with no keyboard, and at 390px it is a second line the field is not
+ * tall enough to show — measured clipped, with "Shift+Enter for a new line"
+ * sheared off. So a coarse pointer gets the short one.
+ *
+ * `matchMedia` is read at call time rather than stored, because this component
+ * is prerendered to static HTML by a build with no viewport, and a value
+ * captured there would hydrate into markup the browser disagrees with.
+ */
+function placeholder(blocked, ready) {
+  if (blocked) return 'another tab is writing this conversation'
+  if (!ready) return 'starting…'
+  const touch = globalThis.matchMedia?.('(hover: none)').matches
+  return touch ? 'Ask anything' : 'Ask anything — Enter to send, Shift+Enter for a new line'
+}
+
 export function Composer({
   draft,
   onDraft,
@@ -133,7 +152,12 @@ export function Composer({
           <input
             ref={picker}
             type="file"
-            accept="image/*,audio/*,video/*"
+            // The workspace this app is about deals in .md, .py, .sh and .txt,
+            // and a starter suggestion on the empty screen is "Write today's
+            // plan to plan.md" — so a picker that greyed out every text file
+            // was refusing the documents the product is for. Images stay first
+            // because a screenshot is the commonest attachment.
+            accept="image/*,audio/*,video/*,text/*,.md,.txt,.csv,.json,.py,.sh,.js,.ts,.rs,.go,.c,.h,.log"
             multiple
             hidden
             data-testid="attach-picker"
@@ -163,13 +187,7 @@ export function Composer({
               event.preventDefault()
               onDrop?.(files)
             }}
-            placeholder={
-              blocked
-                ? 'another tab is writing this conversation'
-                : ready
-                  ? 'Ask anything — Enter to send, Shift+Enter for a new line'
-                  : 'starting…'
-            }
+            placeholder={placeholder(blocked, ready)}
             disabled={!ready || blocked}
             aria-label="Your message"
             data-testid="input"

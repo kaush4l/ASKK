@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 /**
  * Three zones: who and where, what is happening, what you can open.
@@ -33,6 +33,23 @@ export function Header({
   settingsOpen,
 }) {
   const [listing, setListing] = useState(false)
+
+  /**
+   * Escape closes it, like the settings sheet beside it.
+   *
+   * Measured otherwise: the sheet closed on Escape and this did not, so the app
+   * taught a rule with one control and broke it with the next — and on a phone
+   * the open menu covers the transcript, which makes "press the trigger again"
+   * the only exit from a thing sitting on top of everything.
+   */
+  useEffect(() => {
+    if (!listing) return undefined
+    const onKey = (event) => {
+      if (event.key === 'Escape') setListing(false)
+    }
+    globalThis.addEventListener('keydown', onKey)
+    return () => globalThis.removeEventListener('keydown', onKey)
+  }, [listing])
 
   return (
     <>

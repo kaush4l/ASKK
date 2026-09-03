@@ -136,7 +136,19 @@ export async function copy(text, scope = globalThis) {
     await clipboard.writeText(text)
     return { ok: true, note: '' }
   } catch (err) {
-    return { ok: false, note: `the clipboard refused: ${err?.message ?? err}` }
+    // The browser's own message is a DOM exception —
+    // "Failed to execute 'writeText' on 'Clipboard': Write permission denied."
+    // — and a reviewer met that string verbatim in a toast. It names a method
+    // signature at somebody who pressed a button called copy. The two causes a
+    // person can act on are told apart; anything else says what happened
+    // without quoting the platform at them.
+    const denied = err?.name === 'NotAllowedError' || /permission/i.test(err?.message ?? '')
+    return {
+      ok: false,
+      note: denied
+        ? 'the browser would not let this page write to the clipboard — copy it by hand, or allow clipboard access for this page'
+        : 'the text could not be copied',
+    }
   }
 }
 

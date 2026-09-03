@@ -145,19 +145,36 @@ describe('copy', () => {
     expect(written).toEqual(['hello'])
   })
 
-  test('a clipboard that refuses reports why', async () => {
-    const scope = {
+  test('a refused clipboard says what to do, and never quotes the platform', async () => {
+    // The browser's own message here is a DOM exception naming a method
+    // signature — "Failed to execute 'writeText' on 'Clipboard': Write
+    // permission denied." — and a reviewer met that string verbatim in a
+    // toast, in front of somebody who had pressed a button called copy.
+    const refused = async () => {
+      const err = new Error(
+        "Failed to execute 'writeText' on 'Clipboard': Write permission denied.",
+      )
+      err.name = 'NotAllowedError'
+      throw err
+    }
+    const denied = await copy('hello', { navigator: { clipboard: { writeText: refused } } })
+    expect(denied.ok).toBe(false)
+    expect(denied.note).toContain('clipboard')
+    expect(denied.note).not.toContain('Failed to execute')
+    expect(denied.note).not.toContain('writeText')
+
+    // A cause nobody here recognises says what happened and invents no remedy.
+    const other = await copy('hello', {
       navigator: {
         clipboard: {
           writeText: async () => {
-            throw new Error('not allowed')
+            throw new Error('the disk is on fire')
           },
         },
       },
-    }
-    const result = await copy('hello', scope)
-    expect(result.ok).toBe(false)
-    expect(result.note).toContain('not allowed')
+    })
+    expect(other.ok).toBe(false)
+    expect(other.note).toBe('the text could not be copied')
   })
 
   test('no clipboard at all is a note', async () => {
