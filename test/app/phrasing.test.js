@@ -86,6 +86,31 @@ describe('what a reader sees of a reply that is still arriving', () => {
     expect(seen.waiting).toBe(false)
   })
 
+  test('an answer is everything after result:, including words that look like fields', () => {
+    // Measured against the shipped function: an answer containing the word
+    // "Plan:" at the start of a line came back truncated at it, and so did one
+    // containing a fenced code block with `act: run()` inside. The answer then
+    // POPPED BACK when the turn ended and the parsed reply replaced the stream,
+    // so what a person saw while waiting was a sentence that had lost its tail.
+    //
+    // `result` is the LAST field of the contract. Nothing follows it, so
+    // everything after it is the answer and there is no boundary to look for.
+    expect(
+      visibleStream('result: Here is the outline.\nPlan: buy tea\nThen drink it.').answer,
+    ).toBe('Here is the outline.\nPlan: buy tea\nThen drink it.')
+    expect(visibleStream('result: here is code\n```\nact: run()\n```\nmore').answer).toBe(
+      'here is code\n```\nact: run()\n```\nmore',
+    )
+  })
+
+  test('the scratchpad still ends where the next field begins', () => {
+    // `think` is not last, so it does have a boundary — and the fields after it
+    // must not be shown as part of it.
+    const seen = visibleStream('think: [weigh it up]\n\nplan: [do the thing]\n\nact: tool')
+    expect(seen.thinking).toBe('weigh it up')
+    expect(seen.answer).toBe('')
+  })
+
   test('nothing at all is not a waiting state', () => {
     expect(visibleStream('')).toEqual({ thinking: '', answer: '', waiting: false })
   })

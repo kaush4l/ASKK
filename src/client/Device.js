@@ -5,10 +5,15 @@
  * Lock is absent on iOS below 16.4; `navigator.share` exists on Safari and
  * Android and not on desktop Firefox; `navigator.clipboard` does not exist at
  * all outside a secure context, which includes a colleague opening this build
- * over plain http on a LAN address. So every function here answers the same
- * shape — `{ok, note}` — and a browser that cannot do the thing produces a
- * sentence rather than an exception. A reply that failed to copy must not take
- * the transcript down with it.
+ * over plain http on a LAN address.
+ *
+ * So the six functions that DO something answer the same shape — `{ok, note}`
+ * — and a browser that cannot do the thing produces a sentence rather than an
+ * exception. A reply that failed to copy must not take the transcript down with
+ * it. The two that SUBSCRIBE — `watchOnline` and `keyboardInset` — answer an
+ * unsubscribe function instead, and where the API is missing they report the
+ * harmless state once (online, no keyboard) and hand back a no-op: there is
+ * nothing a person could do about either, so there is nothing to say.
  *
  * `scope` is the realm, injected. It defaults to `globalThis` and is a
  * parameter so these can be tested under `bun`, where half of them genuinely do

@@ -46,8 +46,11 @@
    * the whole speaker distinction here, because there is no bubble, no avatar
    * and no background difference behind a turn.
    *
-   * 5.03:1 on the page, 4.70:1 on a raised surface, 4.53:1 on the raised-high
-   * one, which is every background it is set against.
+   * Against every background it is set on: 5.67 on the page, 5.38 on a surface,
+   * 5.55 on a panel, 5.03 on a raised control, 4.53 on the raised-high one a
+   * badge sits on. Recomputed after a reviewer found the first version of this
+   * comment reporting the raised value as the page's and a fourth number that
+   * matched no background in the file.
    */
   --faint: #828c99;
 
@@ -127,9 +130,12 @@
        dark scheme's. */
     --faint: #666b73;
 
-    /* Darker than the dark scheme's cyan by the same argument: 4.23:1 against
-       warm paper is under the bar, and this colour marks measured numbers,
-       which are the ones a person reads exactly. 5.02:1 on paper. */
+    /* Darker than the dark scheme's cyan by the same argument, and darker again
+       than the first light value this replaced: `#0b7e96` measured 4.23 against
+       warm paper, which is under the bar, and this colour marks the numbers a
+       person reads exactly. `#0a7189` is 5.02 on paper, 5.62 on white, 4.84 on
+       the raised-high surface. (The dark scheme's `#2fb6d2` is 2.15 here, which
+       is why the light scheme redefines it at all.) */
     --signal: #0a7189;
     --signal-soft: rgba(11, 126, 150, 0.09);
     --signal-line: rgba(11, 126, 150, 0.3);
@@ -2184,9 +2190,10 @@ button {
   .examples button,
   .menu-new,
   .menu-row > button:first-child,
-  /* These three carry a min-height of their own from the desktop rules below,
-     at a higher specificity than a bare element selector, so they have to be
-     named here too. Measured: they were the last two under the floor. */
+  /* Each of these carries a min-height of its own from the desktop floor above,
+     at a higher specificity than a bare element selector, so every one has to
+     be named here too. The composer's own field and the notes' dismiss were the
+     last two the gate still reported under the floor. */
   .composer textarea,
   .msg-actions button,
   .chip button,

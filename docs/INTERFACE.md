@@ -53,9 +53,10 @@ between where there are three kinds of thing.
                   conversation    RIGHT NOW
 
 - **Left** is identity and place: the wordmark, and the conversation you are in.
-  The conversation name is a control, because `conversations.list`, `rename` and
-  `remove` all exist in the backend and nothing has ever called them — this app
-  has opened `conversations[0]` and only that, for every wave of its life.
+  The conversation name is a control, because `rename` and `remove` exist in the
+  backend and nothing has ever called either. `list` IS called — it is how the
+  app finds `conversations[0]`, which is the only conversation it has ever
+  opened, for every wave of its life.
 - **Middle** is one line, present tense, in words. Not a row of chips. The
   status rail used to render up to nine of them at once and a reader could not
   tell which one they were waiting for.
@@ -112,7 +113,7 @@ One control opens it. Inside, five sections on a segmented control:
 
 `Run`, `Prompt`, `Files` and `Schedule` are the existing panels. `Agent` is new
 and needs no backend: `agents.get` has existed since `AgentService` was written
-and has never been called. It shows the agent's instructions, its tools, its
+and had no caller. It shows the agent's instructions, its tools, its
 budget and its MCP servers — which is the only place any of that has ever been
 visible, and MCP has had no user surface at all.
 
@@ -128,7 +129,7 @@ app, but not the first thing they need.
     └──────────────────────────────────────────────────────────────┘
       attach                                        speak     send
 
-- **Attach** is new and wires the capability `CAPABILITIES.md` names as the
+- **Attach** is new and wires the capability `CAPABILITIES.md` named as the
   standing example of built-and-never-connected. What is attached is read into a
   data URL in the page and shown as a chip above the field.
 - **Speak** is the existing toggle. While it is on, the words appear in the
@@ -146,7 +147,10 @@ Two families and no third.
 | interface, conversation | **Archivo** | an industrial grotesque with tight apertures and a real weight axis. It reads as an instrument rather than as a website, and it holds up at 12px, which is where most of the second register lives |
 | every number, every label, every piece of the prompt | **JetBrains Mono** | tabular figures. A token count that shifts sideways as it changes is a readout nobody can read at a glance |
 
-Scale, in px: `12 · 13 · 15 · 17 · 21 · 27`. Body is 15/1.65. The conversation
+Scale, in px: `12 · 13 · 15 · 18 · 21 · 27`. Body is 15/1.65, and the answer is
+18 — the working screen sat entirely between 12 and 17 until a reviewer measured
+it and called that range, 1.42 from the smallest label to the largest body, not
+a hierarchy. The conversation
 is set to a 66-character measure and nothing widens it; the evidence register
 ignores the measure entirely, because a wrapped command is a command a person
 cannot copy.

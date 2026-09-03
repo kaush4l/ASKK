@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { highlight, LANGUAGES, languageOf } from '../client/highlight.js'
+import { bytes } from './phrasing.js'
 
 /**
  * How many coloured spans this view will put in the document.
@@ -64,13 +65,6 @@ const plural = (n, noun) => (n === 1 ? noun : `${noun}s`)
  *   `turnsDone` is a trigger, not a value this reads — it changes when a turn
  *   finishes, which is the only moment the workspace can have changed.
  */
-/** A byte count at the scale a person reads it. */
-function megabytes(n) {
-  const value = Number(n) || 0
-  if (value >= 1024 * 1024 * 1024) return `${(value / 1024 ** 3).toFixed(1)} GB`
-  return `${Math.round(value / 1024 / 1024)} MB`
-}
-
 export function FilesPanel({ client, turnsDone, storage = null }) {
   // `null` until the first listing answers, so an empty workspace and an
   // unanswered one are different things on screen. They were the same thing for
@@ -292,8 +286,7 @@ export function FilesPanel({ client, turnsDone, storage = null }) {
         {storage?.quota ? (
           <p className="figures" data-testid="storage">
             <span>
-              <b>{megabytes(storage.usage)}</b> used of {megabytes(storage.quota)} this browser
-              allows
+              <b>{bytes(storage.usage)}</b> used of {bytes(storage.quota)} this browser allows
             </span>
           </p>
         ) : null}

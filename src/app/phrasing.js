@@ -51,9 +51,10 @@ export function toolOf(call) {
 /**
  * One line saying what this step did.
  *
- * A sub-agent is any tool that is not one of the built-ins: an agent file's
- * `tools:` list names peers by their own names, so `researcher(...)` is a call
- * to another agent and reads as one.
+ * A name this file does not know is handed back inside "Asked …". That is an
+ * agent's peer most of the time — an agent file's `tools:` list names peers by
+ * their own names — and it is also every tool a connected program offers,
+ * which reads the same way and is honest about both.
  */
 export function verbFor(call) {
   const tool = toolOf(call)
@@ -133,7 +134,7 @@ export function visibleStream(raw) {
 }
 
 /**
- * The text of one field, from its colon to the next field or the end.
+ * The text of one field, from its colon to the field that FOLLOWS it.
  *
  * The lookahead is what makes this safe on a partial stream: a `result:` that
  * has arrived with nothing after it yet returns the empty string, and the
@@ -144,7 +145,21 @@ function section(text, field) {
   if (!start) return ''
   const from = start.index + start[0].length
   const rest = text.slice(from)
-  const next = new RegExp(`(?:^|\\n)\\s*(?:${FIELDS.join('|')})\\s*:`, 'i').exec(rest)
+  // Only the fields that come AFTER this one, and that is the whole of a defect
+  // this shipped with. Looking for any of the four truncated an answer at its
+  // own words: `result: Here is the outline.\nPlan: buy tea` came back as
+  // "Here is the outline.", and a fenced code block containing `act: run()` was
+  // cut at the fence. The text then popped back when the turn ended and the
+  // parsed reply replaced the stream, so what a person saw while waiting was a
+  // sentence that had lost its tail and then grew one.
+  //
+  // `result` is last, so nothing follows it and everything after it is the
+  // answer — which is why this cannot be fixed by escaping harder. A model is
+  // free to write the word "plan:" in a reply about planning, and a reader in
+  // the page may not decide that this makes the reply malformed.
+  const after = FIELDS.slice(FIELDS.indexOf(String(field).toLowerCase()) + 1)
+  if (!after.length) return rest.trim()
+  const next = new RegExp(`(?:^|\\n)\\s*(?:${after.join('|')})\\s*:`, 'i').exec(rest)
   return (next ? rest.slice(0, next.index) : rest).trim()
 }
 
@@ -155,7 +170,10 @@ function section(text, field) {
  * one says that more plainly than one padded format does for both.
  */
 export function duration(ms) {
-  const seconds = Math.max(0, Math.round(Number(ms) / 1000))
+  // A number that is not one is zero, not `NaNm NaNs`. Both call sites guard
+  // today and neither is obliged to keep doing so.
+  const value = Number(ms)
+  const seconds = Number.isFinite(value) ? Math.max(0, Math.round(value / 1000)) : 0
   if (seconds < 60) return `${seconds}s`
   return `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, '0')}s`
 }

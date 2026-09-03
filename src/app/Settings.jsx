@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { installedVoices } from '../client/Speech.js'
+import { installedVoices, preloadSpeech } from '../client/Speech.js'
 
 /**
  * The one screen a person has to get right before this app can answer anything.
@@ -20,23 +20,38 @@ import { installedVoices } from '../client/Speech.js'
  * constrained, and three separate things dismiss this.
  *
  * The second change is order. A first visit has exactly one problem — there is
- * no model — and the old form put five voice fields, a temperature and a token
- * ceiling in front of a person before they could solve it. Twelve fields read
- * as twelve things that must be filled in. Everything that is not the model is
- * folded.
+ * no model — and the form this replaces put five voice fields in front of a
+ * person before they could solve it, with the save button below all of them.
+ * Everything below the agent is folded now, including the temperature and the
+ * token ceiling, which are new here: `SettingsService` has stored and validated
+ * both since it was written and no form had ever offered them. The agent picker
+ * itself is NOT folded, because which assistant is answering is a thing a
+ * person changes on purpose and looks for by name.
  */
 export function Settings({ settings, agents, onChange, onSave, onClose, testing, onTest, health }) {
   const [voices, setVoices] = useState([])
   const [everyVoice, setEveryVoice] = useState(false)
+  /**
+   * Fetching the speech weights on purpose, rather than discovering the wait.
+   *
+   * `speech.load` has existed since `SpeechService` was written and had no
+   * caller anywhere, so the only way to spend the first load of whisper — which
+   * is minutes — was to press the microphone and talk into a page that was not
+   * listening yet. This is the control that spends them, and it says how far
+   * along it is while it does.
+   */
+  const [fetching, setFetching] = useState(null)
 
   /**
    * The voices this device actually has.
    *
-   * The old form asked a person to TYPE the name of an installed voice, with
-   * 183 valid answers on the reviewer's machine and no list anywhere — recall
+   * The form this replaces asked a person to TYPE the name of an installed
+   * voice, with no list anywhere and around 180 valid answers on a Mac — recall
    * where recognition was free, and a name one character out falls back to the
-   * default in silence. Asked once, when the sheet opens, because Chrome
-   * answers with an empty list until it has loaded them.
+   * default in silence. Asked once, when the sheet opens, and `voices()` is
+   * what waits: Chrome answers `getVoices()` with an EMPTY list until it has
+   * loaded them and fires `voiceschanged` when it has, so a form that asked
+   * once and took the answer would offer nothing on a cold page.
    */
   useEffect(() => {
     let stopped = false
@@ -66,11 +81,13 @@ export function Settings({ settings, agents, onChange, onSave, onClose, testing,
    * One field, changed against the LATEST settings rather than the ones this
    * render closed over.
    *
-   * Measured: a driver that set two fields in the same tick lost the first,
-   * because each handler spread the `settings` of the render that created it
-   * and React had not re-rendered in between. A person typing does not hit
-   * this and a script always does — and "a script" includes the gate, so the
-   * form would have been checked in a state it never reaches by hand.
+   * Watched happening while this file was being written: a script that set the
+   * model and the address in the same tick saved only the address, because each
+   * handler spread the `settings` of the render that created it and React had
+   * not re-rendered in between. A person typing never hits it and a script
+   * always does — and "a script" includes anything that drives this form in a
+   * browser, so it would have been checked in a state it never reaches by
+   * hand.
    */
   const change = (key, value) => onChange((current) => ({ ...current, [key]: value }))
   const field = (key) => ({
@@ -282,6 +299,37 @@ export function Settings({ settings, agents, onChange, onSave, onClose, testing,
                 />
               </label>
             )}
+            {settings.sttKind !== 'native' ? (
+              <div className="pair">
+                <button
+                  type="button"
+                  className="iconbutton"
+                  disabled={Boolean(fetching)}
+                  data-testid="preload-speech"
+                  onClick={async () => {
+                    setFetching({ percent: 0, file: '' })
+                    const done = await preloadSpeech(settings, (progress) => setFetching(progress))
+                    setFetching(done.ok ? { done: true } : { failed: done.error?.message ?? '' })
+                  }}
+                >
+                  <span className="word">Download the speech model now</span>
+                </button>
+                {fetching ? (
+                  <p className="aside" role="status" data-testid="preload-result">
+                    {fetching.done
+                      ? 'ready — dictation will not wait for a download'
+                      : fetching.failed
+                        ? fetching.failed
+                        : `${fetching.file || 'weights'} ${fetching.percent ?? 0}%`}
+                  </p>
+                ) : (
+                  <p className="aside">
+                    Otherwise the first dictation waits for it, which is minutes.
+                  </p>
+                )}
+              </div>
+            ) : null}
+
             {settings.ttsKind === 'native' && voices.length > offered(voices, false).length ? (
               <label className="switch">
                 <input
@@ -350,10 +398,11 @@ export function Settings({ settings, agents, onChange, onSave, onClose, testing,
               <label>
                 Longest reply
                 {/* `step` is 1 and not 256. With a step of 256 from a min of 1
-                    the only valid values are 1, 257, 513… — so the default of
-                    2,048 was INVALID, constraint validation refused the submit,
-                    and the whole form silently would not save. Nothing on
-                    screen said why: no error, no close, no note. */}
+                    the only valid values are 1, 257, 513… — so a default of
+                    2,048 is INVALID, constraint validation refuses the submit,
+                    and the whole form silently will not save. Watched happening
+                    in a browser while this file was being written: no error, no
+                    close, no note, and a submit event that never fired. */}
                 <input
                   type="number"
                   min="1"

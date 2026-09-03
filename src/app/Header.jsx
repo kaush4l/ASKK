@@ -14,8 +14,12 @@ import { useEffect, useState } from 'react'
  *
  * `new` is inside the conversation menu now, beside the list of conversations
  * it is the top of. That is a Fitts argument as much as a semantic one: the old
- * button sat at the leftmost, largest, most-hit position in the toolbar and its
- * effect was irreversible deletion.
+ * button sat at the leftmost, largest, most-hit position in the toolbar, and
+ * what it did was ABANDON the conversation on screen — `conversations.create`
+ * and nothing else. The record survived in the store and was re-listed at the
+ * next boot; there was simply no way back to it, because the app opened
+ * `conversations[0]` and only that. A reviewer pressed it, lost the transcript
+ * they were reading, and had no way to tell it from deletion.
  */
 export function Header({
   ready,
@@ -152,10 +156,11 @@ export function Header({
                   >
                     rename
                   </button>
-                  {/* Named for what it destroys. `new` used to do this
-                      silently, from the toolbar, with no list to come back to
-                      and no undo — a reviewer lost six messages to it and the
-                      schedule they had made in that conversation outlived it. */}
+                  {/* Named for what it destroys, which the control it
+                      replaces did not do: `new` abandoned a conversation rather
+                      than removing it. This one really does remove it, so it
+                      says what is lost and takes the schedules that pointed at
+                      it with it. */}
                   <button
                     type="button"
                     aria-label={`Delete ${one.title || 'this conversation'}`}

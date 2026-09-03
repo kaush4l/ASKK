@@ -19,7 +19,7 @@ import { SchedulePanel } from './SchedulePanel.jsx'
  * The names are what is inside them, in the words of the thing rather than the
  * mechanism.
  */
-export const SECTIONS = [
+const SECTIONS = [
   { id: 'run', label: 'work' },
   { id: 'prompt', label: 'prompt' },
   { id: 'files', label: 'files' },
