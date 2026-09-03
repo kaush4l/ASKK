@@ -896,7 +896,7 @@ as every other correction.
 
 **Per agent.** An agent file may declare its own order, and `researcher` does:
 
-    prompt: [instructions, tools, contract, context, conversation, scratchpad, budget, reminder, cue]
+    prompt: [soul, instructions, tools, contract, context, conversation, scratchpad, budget, reminder, cue]
 
 Because it is stateless. Every call brings a different single question, so its
 conversation block is not append-only and nothing after it could have been
