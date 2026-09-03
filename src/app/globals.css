@@ -69,13 +69,37 @@
   --radius: 12px;
   --radius-sm: 8px;
 
-  /* px, and a scale rather than a set of one-off decisions. */
+  /*
+   * A scale rather than a set of one-off decisions: 12 / 13 / 15 / 18 / 21 / 27.
+   *
+   * A reviewer measured the working screen and found everything on it inside
+   * 12-17px — a range of 1.42 from the smallest label to the largest body,
+   * which is not a hierarchy. The answer is 18 now and the step's verb 15, so
+   * what the agent SAID and what it DID both read at conversation scale while
+   * the labels around them recede.
+   */
   --t-micro: 0.75rem;
   --t-small: 0.8125rem;
   --t-body: 0.9375rem;
-  --t-lead: 1.0625rem;
+  --t-lead: 1.125rem;
   --t-head: 1.3125rem;
   --t-display: 1.6875rem;
+
+  /*
+   * Spacing, on a scale, for the frame.
+   *
+   * Measured across the app: eleven distinct gaps, with 4.8, 5.6, 6.4 and 7.2
+   * all coexisting 0.8px apart — em-derived incident rather than a scale,
+   * because every value was written in `rem` against a font size that varies
+   * from block to block. These are px on purpose: a gap is a distance on a
+   * screen, not a multiple of whatever text happens to sit beside it.
+   */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 24px;
+  --s6: 32px;
 
   --mono: var(--font-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
   --sans: var(--font-sans), ui-sans-serif, system-ui, -apple-system, sans-serif;
@@ -229,7 +253,7 @@ button {
 .brand {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--s2);
   min-width: 0;
 }
 
@@ -349,7 +373,7 @@ button {
 .topactions {
   display: flex;
   align-items: center;
-  gap: 0.3rem;
+  gap: var(--s1);
 }
 
 /*
@@ -535,7 +559,7 @@ button {
 .transcript {
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 1.75rem clamp(1rem, 4vw, 2rem) 0.5rem;
+  padding: var(--s6) clamp(var(--s4), 4vw, var(--s6)) var(--s2);
   scroll-behavior: smooth;
 }
 
@@ -672,7 +696,7 @@ button {
 /* ── the conversation register ──────────────────────────────────────────── */
 
 .turn {
-  margin-bottom: 1.5rem;
+  margin-bottom: var(--s6);
 }
 
 .turn .who {
@@ -861,8 +885,8 @@ button {
 
 .steps {
   display: grid;
-  gap: 0.3rem;
-  margin: 0 0 0.75rem;
+  gap: var(--s1);
+  margin: 0 0 var(--s3);
 }
 
 /*
@@ -885,11 +909,11 @@ button {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto auto;
   align-items: center;
-  gap: 0.55rem;
-  padding: 0.5rem 0.7rem;
+  gap: var(--s2);
+  padding: var(--s2) var(--s3);
   cursor: pointer;
   list-style: none;
-  font-size: var(--t-small);
+  font-size: var(--t-body);
 }
 
 .step > summary::-webkit-details-marker {
