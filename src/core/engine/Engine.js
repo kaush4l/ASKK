@@ -63,6 +63,7 @@ export class Engine {
     this.responseCue = responseCue
     this.toolbox = toolbox
     this.check = check
+    this._checked = false
     this.context = context
     this.template = template
   }
@@ -263,6 +264,67 @@ export class Engine {
     const text = replied.value
     if (!this.responseModel) return Outcome.ok(text, replied.notes)
     return Outcome.ok(this.responseModel.parse(text), replied.notes)
+  }
+
+  /**
+   * On the base and not on a loop: every loop that can call a tool needs this,
+   * and the repeat guard is a property of calling tools rather than of any one
+   * control flow.
+   *
+   * What came back from acting.
+   *
+   * A repeat is answered without running anything: the outcome will not change,
+   * and saying so is more useful to the agent than the same result again. This
+   * is the loop's whole defence against going nowhere, and it works by
+   * informing rather than by stopping — the agent still chooses what to do with
+   * the information, including choosing to answer.
+   */
+  async observe(parsed, times = 1, signal = null) {
+    // A tool may declare that asking it twice is the point. `check_task` does:
+    // it reports whether another agent has finished YET, so the second poll is
+    // a different question wearing the same words, and the sentence below —
+    // "the result would be identical" — is false about it rather than merely
+    // unhelpful. Everything else is guarded exactly as before.
+    if (times > 1 && this.toolbox?.isRepeatable?.(String(parsed.answer))) {
+      return (await this.toolbox.run(String(parsed.answer), signal)).observation
+    }
+    if (times > 1) {
+      return `this exact call was already made ${times - 1} time(s), so it was not run again — the result would be identical. Do something different: another tool, different arguments, or answer with what you have.`
+    }
+    if (!this.toolbox || this.toolbox.isEmpty) {
+      return 'no tools are available. Answer with what you already know — set act to answer.'
+    }
+    const { observation } = await this.toolbox.run(String(parsed.answer), signal)
+    return observation
+  }
+
+  /**
+   * The agent's own check, run once, before an answer is allowed to end a run.
+   *
+   * Who judges the result is the design question and the answer is: not the
+   * engine. A check's output is a test runner's summary or an exit status, and
+   * reading pass or fail out of that text would be guessing at a vocabulary
+   * this file does not own — guessing wrong means an answer thrown away or a
+   * broken one waved through. So the result goes back to the agent, and the
+   * next reply is an answer that has seen its own test.
+   *
+   * Once per engine, held on `_checked`, because a check the agent keeps
+   * failing would otherwise spend the whole budget on it.
+   *
+   * @returns {Promise<{note: string, entry: {action: string, observation: string}}|null>}
+   *   null when there is nothing to run or it has already run.
+   */
+  async verify(signal = null) {
+    if (!this.check || this._checked || !this.toolbox || this.toolbox.isEmpty) return null
+    this._checked = true
+    const ran = await this.toolbox.run(this.check, signal)
+    return {
+      note: `ran this agent's check: ${this.check}`,
+      entry: {
+        action: this.check,
+        observation: `${ran?.observation ?? ''}\n\nThat is this agent's own check, run because you were about to finish. Read it: if it shows your work is done and correct, answer now. If it shows a problem, fix that first.`,
+      },
+    }
   }
 
   /**

@@ -67,3 +67,45 @@ describe('the prompt blocks the kernel builds', () => {
     expect(blocks.find((block) => block.id === 'soul').isEmpty).toBe(true)
   })
 })
+
+describe('what the kernel does with a tool call', () => {
+  const toolbox = {
+    isEmpty: false,
+    isRepeatable: () => false,
+    run: async (text) => ({ observation: `ran ${text}`, count: 1 }),
+  }
+
+  test('a first call is dispatched to the toolbox', async () => {
+    const engine = new Engine({ toolbox, responseModel: ReActResponse })
+    const said = await engine.observe({ answer: 'search({"q":"x"})' }, 1, null)
+    expect(said).toBe('ran search({"q":"x"})')
+  })
+
+  test('a repeat is answered without running anything', async () => {
+    const engine = new Engine({ toolbox, responseModel: ReActResponse })
+    const said = await engine.observe({ answer: 'search({"q":"x"})' }, 2, null)
+    expect(said).toContain('was already made')
+    expect(said).not.toContain('ran search')
+  })
+
+  test('an agent with no tools is told to answer instead', async () => {
+    const engine = new Engine({ responseModel: ReActResponse })
+    const said = await engine.observe({ answer: 'search({})' }, 1, null)
+    expect(said).toContain('no tools are available')
+  })
+
+  test("verify runs the agent's own check once and hands back what it said", async () => {
+    const engine = new Engine({
+      toolbox,
+      check: 'shell({"cmd":"test"})',
+      responseModel: ReActResponse,
+    })
+    const first = await engine.verify(null)
+
+    expect(first.entry.action).toBe('shell({"cmd":"test"})')
+    expect(first.entry.observation).toContain('ran shell')
+    expect(first.note).toContain("ran this agent's check")
+    // Once per engine, so a check the agent keeps failing cannot spend a run.
+    expect(await engine.verify(null)).toBe(null)
+  })
+})

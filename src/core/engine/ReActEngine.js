@@ -218,9 +218,6 @@ export class ReActEngine extends Engine {
     // Reset by any reply that decides, and named for the streak rather than for
     // the count so it cannot be read as a total three lines from `last.isUnsaid`.
     let unsaidStreak = 0
-    // Whether this agent's declared check has been run for this run. One per
-    // run, not one per answer: see the answer branch below.
-    let checked = false
 
     // Five exits: the agent answered, the user stopped it, a call to the model
     // failed, the budget ran out and the last word was not taken, or the model
@@ -397,29 +394,27 @@ export class ReActEngine extends Engine {
         // Once, and only once, because a check the agent keeps failing would
         // otherwise spend the whole budget on it — and because the second
         // answer is already an answer written in the knowledge of the result.
-        // Skipped when the budget is closing: the last turn was told it is the
-        // last, and spending its final step on a check would end the run with
-        // no answer at all, which is worse than an unchecked one.
         // Said out loud when the terms of the run swallowed it. An author who
         // declared a check and a one-step budget has claimed a test that never
         // runs, and silence there is the same defect as a `max_steps` that
         // stopped a run without telling anyone.
-        if (this.check && !checked && budget.closing) {
-          checked = true
+        if (this.check && !this._checked && budget.closing) {
+          this._checked = true
           notes.push(
             `this agent's check did not run: the ${budget.closing} budget was spent, and the last turn is for answering`,
           )
         }
-        if (this.check && !checked && this.toolbox && !this.toolbox.isEmpty && !budget.closing) {
-          checked = true
-          const ran = await Promise.race([this.toolbox.run(this.check, signal), until(signal)])
+        // Skipped when the budget is closing: the last turn was told it is the
+        // last, and spending its final step on a check would end the run with
+        // no answer at all, which is worse than an unchecked one.
+        if (!budget.closing) {
+          const checked = await Promise.race([this.verify(signal), until(signal)])
           if (signal?.aborted) return this.stopped(last, budget, notes)
-          notes.push(`ran this agent's check: ${this.check}`)
-          scratchpad.push({
-            action: this.check,
-            observation: `${ran?.observation ?? ''}\n\nThat is this agent's own check, run because you were about to finish. Read it: if it shows your work is done and correct, answer now. If it shows a problem, fix that first.`,
-          })
-          continue
+          if (checked) {
+            notes.push(checked.note)
+            scratchpad.push(checked.entry)
+            continue
+          }
         }
         return Outcome.ok(
           last,
@@ -520,33 +515,5 @@ export class ReActEngine extends Engine {
         ],
       },
     )
-  }
-
-  /**
-   * What came back from acting.
-   *
-   * A repeat is answered without running anything: the outcome will not change,
-   * and saying so is more useful to the agent than the same result again. This
-   * is the loop's whole defence against going nowhere, and it works by
-   * informing rather than by stopping — the agent still chooses what to do with
-   * the information, including choosing to answer.
-   */
-  async observe(parsed, times = 1, signal = null) {
-    // A tool may declare that asking it twice is the point. `check_task` does:
-    // it reports whether another agent has finished YET, so the second poll is
-    // a different question wearing the same words, and the sentence below —
-    // "the result would be identical" — is false about it rather than merely
-    // unhelpful. Everything else is guarded exactly as before.
-    if (times > 1 && this.toolbox?.isRepeatable?.(String(parsed.answer))) {
-      return (await this.toolbox.run(String(parsed.answer), signal)).observation
-    }
-    if (times > 1) {
-      return `this exact call was already made ${times - 1} time(s), so it was not run again — the result would be identical. Do something different: another tool, different arguments, or answer with what you have.`
-    }
-    if (!this.toolbox || this.toolbox.isEmpty) {
-      return 'no tools are available. Answer with what you already know — set act to answer.'
-    }
-    const { observation } = await this.toolbox.run(String(parsed.answer), signal)
-    return observation
   }
 }
