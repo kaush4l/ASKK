@@ -63,6 +63,9 @@ function chat(files, tools = ['read_file', 'write_file', 'shell']) {
         async all() {
           return Outcome.ok([spec])
         },
+        async soul() {
+          return Outcome.ok('')
+        },
       },
       pool: { ask: async () => Outcome.ok('') },
       files,

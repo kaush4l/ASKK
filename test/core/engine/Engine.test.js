@@ -48,4 +48,22 @@ describe('the prompt blocks the kernel builds', () => {
     expect(bodyOf(blocks, 'contract')).toBe('')
     expect(bodyOf(blocks, 'reminder')).toBe('')
   })
+
+  test('the soul block is first and carries the shared character', () => {
+    const engine = new Engine({
+      soul: 'You are careful and you say what you did.',
+      system: 'You research things.',
+      responseModel: ReActResponse,
+    })
+    const blocks = engine.blocks([])
+
+    expect(blocks[0].id).toBe('soul')
+    expect(blocks[0].body).toBe('You are careful and you say what you did.')
+    expect(blocks[0].volatility).toBe('static')
+  })
+
+  test('an agent with no soul renders no soul block body', () => {
+    const blocks = new Engine({ system: 'x', responseModel: ReActResponse }).blocks([])
+    expect(blocks.find((block) => block.id === 'soul').isEmpty).toBe(true)
+  })
 })

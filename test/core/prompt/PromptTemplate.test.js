@@ -213,7 +213,7 @@ describe('PromptTemplate.of', () => {
     const { template, notes } = PromptTemplate.of(['instructions', 'cue'])
 
     expect(template.order).toEqual(['instructions', 'cue'])
-    expect(notes.some((note) => note.includes('prompt omits tools, contract'))).toBe(true)
+    expect(notes.some((note) => note.includes('prompt omits soul, tools, contract'))).toBe(true)
   })
 
   test('no list at all is the default arrangement, silently', () => {

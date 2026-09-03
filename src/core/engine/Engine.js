@@ -29,6 +29,7 @@ export class Engine {
 
   constructor({
     name = 'agent',
+    soul = '',
     system = '',
     inference,
     responseModel,
@@ -53,6 +54,7 @@ export class Engine {
     // flow can reach, and `run` reports them as ordinary failures — visible in
     // the UI, on the same path as every other failure, instead of as a crash.
     this.name = name
+    this.soul = soul
     this.system = system
     this.inference = inference
     // A loop's own contract is the default, but an explicitly passed model wins
@@ -81,6 +83,16 @@ export class Engine {
       .join('\n\n')
 
     return [
+      // No heading, for the reason `instructions` has none: this is a document,
+      // and labelling a document as a document adds a level without adding a
+      // distinction. First because it is the most stable text in the app —
+      // identical for every agent on every call — so it is the cheapest
+      // possible start to a cacheable prefix.
+      new PromptBlock({
+        id: 'soul',
+        body: this.soul,
+        volatility: Volatility.STATIC,
+      }),
       // No heading. This block is the agent file's own body — the document
       // itself, headings and all — and labelling a document with a heading that
       // says it is a document adds a level without adding a distinction.

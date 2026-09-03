@@ -67,6 +67,7 @@ export function resolveTools({ names = [], peers = [], dispatch, start, services
 export function buildAgent({
   spec,
   inference,
+  soul = '',
   peers = [],
   dispatch,
   start,
@@ -108,6 +109,7 @@ export function buildAgent({
   const built = createEngine({
     loop: spec.engine,
     name: spec.name,
+    soul,
     system: spec.system,
     responseModel: getResponseModel(spec.response),
     // Tools discovered at runtime — an MCP server's, which cannot be known

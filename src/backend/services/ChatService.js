@@ -520,9 +520,14 @@ export class ChatService {
     // This conversation's handed-over work, and nothing else's.
     const tasks = this._tasksFor(id)
 
+    // Read once per session by the catalogue and cached there, so this is a
+    // map lookup on every turn after the first.
+    const soul = await this.catalogue.soul()
+
     const agent = buildAgent({
       spec: spec.value,
       inference: inference.value,
+      soul: soul.value,
       peers,
       // The signal goes with the task. A delegated run is a second agent on a
       // second thread; without this, stopping the parent left the child running

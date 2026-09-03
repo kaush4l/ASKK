@@ -45,10 +45,21 @@ for await (const relative of new Bun.Glob('*/**').scan({ cwd: SOURCE, onlyFiles:
 }
 
 names.sort()
-await Bun.write(join(TARGET, 'index.json'), `${JSON.stringify({ agents: names }, null, 2)}\n`)
+
+// The soul sits at the top of `agents/`, not inside an agent's folder, so the
+// `*/**` glob above cannot see it. Copied by name, and its absence is normal.
+const soulFile = Bun.file(join(SOURCE, 'soul.md'))
+const hasSoul = await soulFile.exists()
+if (hasSoul) await Bun.write(join(TARGET, 'soul.md'), await soulFile.text())
+
+await Bun.write(
+  join(TARGET, 'index.json'),
+  `${JSON.stringify({ agents: names, soul: hasSoul }, null, 2)}\n`,
+)
 
 console.log(`agents -> public/agents/ : ${names.length ? names.join(', ') : '(none)'}`)
 for (const line of summaries) console.log(line)
+console.log(`  soul: ${hasSoul ? 'agents/soul.md' : '(none)'}`)
 if (names.length === 0) {
   console.log('  note: no agents were found under agents/; the app will have nothing to talk to')
 }

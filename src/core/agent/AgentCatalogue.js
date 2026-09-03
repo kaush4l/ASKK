@@ -22,6 +22,7 @@ export class AgentCatalogue {
     this.baseUrl = String(baseUrl).replace(/\/+$/, '')
     this._roster = null
     this._specs = new Map()
+    this._soul = null
   }
 
   _url(...parts) {
@@ -57,6 +58,23 @@ export class AgentCatalogue {
     const names = Array.isArray(parsed.value?.agents) ? parsed.value.agents : []
     this._roster = names
     return Outcome.ok(names)
+  }
+
+  /**
+   * The character every agent in this build shares.
+   *
+   * Absent is ok and is an empty string, not a failure: a tree with no
+   * `agents/soul.md` must load its agents exactly as it did before this block
+   * existed. `_soul` is a string once read, so `null` is the only "not yet"
+   * and an empty file cannot be re-fetched on every turn.
+   *
+   * @returns {Promise<Outcome>} value is the soul text, possibly empty
+   */
+  async soul() {
+    if (this._soul !== null) return Outcome.ok(this._soul)
+    const read = await this._fetchText(this._url('soul.md'), 'the shared soul')
+    this._soul = read.ok ? read.value.trim() : ''
+    return Outcome.ok(this._soul)
   }
 
   /** @returns {Promise<Outcome>} value is an AgentSpec */

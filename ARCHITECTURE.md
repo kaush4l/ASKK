@@ -868,7 +868,8 @@ call. **The resolution is that (2) needs a reminder at the end, not the whole
 rule.** The full contract goes in the cached prefix where it is free; one line
 restating the field names goes last, where it is read.
 
-    instructions  static    the agent file's body, unlabelled             ─┐
+    soul          static    the baseline character, shared by every agent ─┐
+    instructions  static    the agent file's body, unlabelled              │
     tools         static    what it can do — part of what it is           │ reusable
     contract      static    the full response spec, stated once          ─┘ prefix
     ── breakpoint: everything above is identical on the next call ──

@@ -60,6 +60,9 @@ function chatWith(replies, services = {}) {
     async all() {
       return Outcome.ok([spec])
     },
+    async soul() {
+      return Outcome.ok('')
+    },
   }
   const settings = {
     async get() {
@@ -772,6 +775,9 @@ describe('a sub-agent that is still working', () => {
         async all() {
           return Outcome.ok([main, helper])
         },
+        async soul() {
+          return Outcome.ok('')
+        },
       },
       ...services,
     }
@@ -872,6 +878,9 @@ describe('what an mcp server in the guest costs a turn', () => {
         },
         async all() {
           return Outcome.ok([withServer])
+        },
+        async soul() {
+          return Outcome.ok('')
         },
       },
       sandbox,
@@ -988,6 +997,9 @@ describe('an mcp server that was down when it was first asked', () => {
         async all() {
           return Outcome.ok([spec])
         },
+        async soul() {
+          return Outcome.ok('')
+        },
       },
       sandbox,
     })
@@ -1077,6 +1089,9 @@ describe('handed-over work in the prompt', () => {
         },
         async all() {
           return Outcome.ok([withPeer, helper])
+        },
+        async soul() {
+          return Outcome.ok('')
         },
       },
     })

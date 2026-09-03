@@ -78,6 +78,7 @@ export class PromptBlock {
  * free, and a single line restating it sits after the conversation where it is
  * read. The expensive part is cached; the salient part is last.
  *
+ *   soul          static    the baseline character, shared by every agent
  *   instructions  static    what it does
  *   tools         static    what it can do — part of what it is, so it is here
  *   contract      static    the full response spec, in full, once
@@ -106,6 +107,7 @@ export class PromptBlock {
  * rendered correctly, and reached the model as zero bytes.
  */
 export const DEFAULT_ORDER = Object.freeze([
+  'soul',
   'instructions',
   'tools',
   'contract',
