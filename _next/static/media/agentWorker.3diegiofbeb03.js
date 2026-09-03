@@ -121,9 +121,14 @@ async function answer(event) {
   const allowed = delegableTools(spec.value.tools)
   const tools = resolveTools({ names: allowed.names, services: { http: browserHttp } })
 
+  // Read once per session by the catalogue and cached there, so this is a
+  // map lookup on every turn after the first.
+  const soul = await catalogueFor(basePath ?? '').soul()
+
   const agent = buildAgent({
     spec: spec.value,
     inference: inference.value,
+    soul: soul.value,
     tools: tools.value,
     // The clock and the machine, and deliberately NOT the caller's file
     // listing: the file store is one realm up and no delegable tool opens it,

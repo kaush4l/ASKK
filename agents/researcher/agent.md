@@ -8,7 +8,7 @@ tools: [search, fetch]
 # reusable prefix to break — and what it is being told about the world reads
 # more reliably before the question than after it. Every other block keeps its
 # place; dropping one drops it from the prompt entirely.
-prompt: [instructions, tools, contract, context, conversation, scratchpad, budget, reminder, cue]
+prompt: [soul, instructions, tools, contract, context, conversation, scratchpad, budget, reminder, cue]
 budget:
   steps: 8
 ---
