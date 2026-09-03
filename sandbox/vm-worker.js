@@ -8,8 +8,9 @@
 // mean maintaining a fork of somebody else's bundle to gain nothing.
 //
 // Served from `public/` rather than bundled, for the same reason the agent files
-// are: this file is paired with a 100 MB artifact no bundler should ever walk
-// into, so the pair is fetched at runtime and the app is told where to find it.
+// are: this file is paired with an artifact of tens of megabytes no bundler
+// should ever walk into, so the pair is fetched at runtime and the app is told
+// where to find it.
 //
 // NO SharedArrayBuffer, and none is needed. Measured: the guest boots to its
 // first output in 814 ms with `crossOriginIsolated = false`. Upstream's browser
@@ -30,21 +31,24 @@ importScripts('./wasi-util.js')
 const ERRNO_INVAL = 28
 const ERRNO_NOTSUP = 58
 
-// Fetched and compiled once. Compiling is 15 ms and the download is 100 MB, so
-// the module is the thing worth keeping; an instance is 9 ms and is built fresh
-// for every command, which is also what makes each command's filesystem clean.
+// Fetched and compiled once. Compiling is 15 ms and the download is the largest
+// fetch this app makes, so the module is the thing worth keeping; an instance is
+// 9 ms and is built fresh for every command, which is also what makes each
+// command's filesystem clean.
 let compiled = null
 
 /**
  * The image may arrive gzipped, and it does on the deploy.
  *
  * MEASURED, and it is the whole reason this project's own host answered 404 for
- * the guest: `wc -c public/sandbox/sandbox.wasm` is 107,054,914 bytes, which is
- * 2,197,314 over GitHub's 100 MiB per-file block, so the file could be in
- * neither the repository nor the Pages deploy. `gzip -9` takes it to 40,029,960
- * — 38.2 MiB — and a file that size is one GitHub accepts. The limit is on the
+ * the guest: `wc -c public/sandbox/sandbox.wasm` is 143,205,983 bytes, which is
+ * 38,348,383 over GitHub's 100 MiB per-file block, so the file could be in
+ * neither the repository nor the Pages deploy. `gzip -9` takes it to 52,602,121
+ * — 50.2 MiB — and a file that size is one GitHub accepts. The limit is on the
  * file AT REST, so edge compression cannot reach it and only a compressed
- * artifact can.
+ * artifact can. The pair moves with every rebuild and `docs/GATE.md` is where it
+ * is kept; what does not move, and is the reason this function exists, is that
+ * the raw module is over the block and the compressed one is under it.
  *
  * SNIFFED, not switched on the extension, and that is not defensive coding: a
  * static host is free to answer a `.gz` with `Content-Encoding: gzip`, in which
@@ -63,7 +67,7 @@ async function inflated(buffer) {
 }
 
 /**
- * The body, read a chunk at a time, saying how much has arrived.
+ * The body, read as it arrives, saying how much of it has.
  *
  * `response.arrayBuffer()` is one await that returns tens of megabytes later
  * with nothing said in between, and this is the largest single download the
@@ -72,20 +76,32 @@ async function inflated(buffer) {
  * There is no other way to report it — a `fetch` has no progress event, only a
  * readable body.
  *
- * `content-length` is what a static host sends and what GitHub Pages sends;
- * when it is absent — a chunked response, or one the host is compressing on
- * the fly — the total is reported as 0 and the reader must draw a count rather
- * than a bar. Reporting a made-up total would be worse than reporting none.
+ * WHAT ARRIVES AND WHAT IS DECLARED ARE NOT ALWAYS THE SAME BYTES, and that is
+ * why a total is sometimes absent. What is counted here is what the stream
+ * hands over, which is what is left after the browser has undone any
+ * `Content-Encoding`, while `content-length` counts what was put on the wire. Both host profiles
+ * this project ships to break the comparison, and `scripts/deploy-check.js`
+ * drives both of them on every run: GitHub Pages sends no `content-length` for
+ * this file at all, which used to be reported as `total: 0` and left every
+ * reader dividing by nothing; a host that declares `Content-Encoding: gzip`
+ * sends 52,602,121 against a body that arrives as 143,205,983 decoded bytes,
+ * which was a bar reading 272%. So the total is sent only where the header
+ * counts the same bytes this counter does, and `null` where it does not — a reader
+ * holding `null` knows to say how much has arrived and not what fraction, which
+ * is the honest thing to say. No total is derived: there is nothing to derive
+ * one from.
  *
- * The pieces are joined once, at the end, into one buffer, because that is
- * what `WebAssembly.compile` and the gzip sniff both want.
+ * The counter sits in front of the same `arrayBuffer()` it used to replace,
+ * rather than collecting the chunks and joining them here. A chunk list and the
+ * buffer joined out of it are alive at the same moment, and on the arm that
+ * arrives decoded that is 143,205,983 bytes twice.
  */
 async function counted(response) {
-  const total = Number(response.headers.get('content-length') ?? 0)
   if (!response.body) return await response.arrayBuffer()
 
-  const reader = response.body.getReader()
-  const pieces = []
+  const declared = Number(response.headers.get('content-length'))
+  let total = declared > 0 && !response.headers.get('content-encoding') ? declared : null
+
   let loaded = 0
   // Throttled by BYTES, not by time: a chunk here is tens of kilobytes and a
   // message per chunk is thousands of postMessages for one download, each one
@@ -94,25 +110,25 @@ async function counted(response) {
   const step = 1024 * 1024
 
   post({ type: 'boot-progress', loaded: 0, total })
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    pieces.push(value)
-    loaded += value.byteLength
-    if (loaded - announced >= step) {
-      announced = loaded
-      post({ type: 'boot-progress', loaded, total })
-    }
-  }
+  const counting = new TransformStream({
+    transform(chunk, controller) {
+      loaded += chunk.byteLength
+      // A body that runs past its own declared length was declared in some
+      // other unit than the one arriving, whatever the headers said, so the
+      // rest of this download is reported without a total rather than past
+      // 100%. It is the same defect as the encoded arm, caught from the bytes
+      // instead of from a header a browser is free not to show.
+      if (total !== null && loaded > total) total = null
+      if (loaded - announced >= step) {
+        announced = loaded
+        post({ type: 'boot-progress', loaded, total })
+      }
+      controller.enqueue(chunk)
+    },
+  })
+  const body = await new Response(response.body.pipeThrough(counting)).arrayBuffer()
   post({ type: 'boot-progress', loaded, total })
-
-  const joined = new Uint8Array(loaded)
-  let at = 0
-  for (const piece of pieces) {
-    joined.set(piece, at)
-    at += piece.byteLength
-  }
-  return joined.buffer
+  return body
 }
 
 self.onmessage = async (event) => {

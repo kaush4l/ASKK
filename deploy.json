@@ -1,6 +1,6 @@
 {
-  "ref": "084268b",
-  "subject": "An expectation fired, so it is gone and the sentence is rewritten",
+  "ref": "f9ad603",
+  "subject": "An app with no live region, and a probe that rendered as source text",
   "basePath": "/ASKK",
   "sandboxImage": "/sandbox/sandbox.wasm.gz"
 }
