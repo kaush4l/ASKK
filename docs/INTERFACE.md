@@ -195,6 +195,29 @@ The layer rule holds: nothing in `src/app/` imports `backend/` or `core/`.
 `test/architecture/layers.test.js` executes it. Every capability reaches the
 page through `BackendClient` or through `src/client/`.
 
+## What two strangers found, and what it cost
+
+Two fresh-context reviewers drove the built page in a real browser, one before
+this was written and one after it was built. They are the reason most of the
+decisions above are decisions rather than taste, and three findings are worth
+keeping here because they are the shape of the mistakes this interface makes:
+
+**A capability wired to a surface nobody was told to look at is not wired.**
+The steps were kept after the turn — in the drawer. The reply went on saying
+"the step above shows where it came from" with nothing above it, and the second
+reviewer reported the same defect as the first.
+
+**A check that cannot fail is worse than no check.** The connection test called
+`/v1/models`, had the model list in hand, rendered two words, and passed with a
+model name that did not exist.
+
+**A page that cannot lay itself out has faults no test in this tree could see.**
+One `<option>` of 258 characters made the settings sheet 1,813px wide on a 390px
+phone; a label that is itself a grid left a `<select>` overflowing the box that
+had been correctly narrowed; the prompt is 4,149px of one line in a 366px column
+and scrolling it dragged the whole panel away. All three are measured in
+`scripts/smoke.js` now, at the width where they broke.
+
 ## The order this is built in
 
 1. Tokens, type and the shell — `globals.css`, `layout.jsx`.
