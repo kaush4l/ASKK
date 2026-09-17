@@ -128,6 +128,20 @@ const HANDOVER_QUESTION = 'hand it over: 8c1f2'
 const HANDOVER_STARTED = 'main-4a9d0: started it and carried on'
 /** What the parent says once it has read the handed-over answer back. */
 const HANDOVER_READ = 'main-51e7c: the handed-over answer came back'
+/**
+ * The typed question that hands over work which will not come back on its own.
+ *
+ * A stop is only observable against a run that is still going, so the scripted
+ * endpoint holds the researcher's model call open for a minute when it sees this
+ * task. Nothing waits that minute: the point of the case is that a person does
+ * not have to.
+ */
+const STOP_QUESTION = 'stop it: 3b7c1'
+/** What the parent says on the turn it hands the slow work over. */
+const STOP_STARTED = 'main-9f3a2: started the slow one'
+/** In the researcher's task text, so the endpoint knows which call to hold open. */
+const SLOW_TASK = 'read the page that never finishes'
+
 /** What a scheduled question says, so it can be found in the transcript. */
 const SCHEDULED_MARK = 'scheduled-6d24b'
 /** What an OVERDUE schedule says — one whose period elapsed while nobody was here. */
@@ -194,6 +208,12 @@ function scriptedReply(prompt) {
   if (prompt.includes('action: check_task(') && prompt.includes(DELEGATED_ANSWER)) {
     return `think: [it came back]\n\nplan: []\n\nact: answer\n\nresult: ${HANDOVER_READ}`
   }
+  if (prompt.includes(STOP_QUESTION) && !prompt.includes('handed to researcher')) {
+    return `think: [hand over the slow one]\n\nplan: []\n\nact: tool\n\nresult: researcher({"task": "${SLOW_TASK}", "wait": false})`
+  }
+  if (prompt.includes(SLOW_TASK) && prompt.includes(STOP_STARTED)) {
+    return `think: [started]\n\nplan: []\n\nact: answer\n\nresult: ${STOP_STARTED}`
+  }
   const handed = /\bt\d+\b/.exec(prompt.slice(prompt.indexOf('handed over')))
   if (prompt.includes('handed over') && prompt.includes('finished') && handed) {
     return `think: [read it]\n\nplan: []\n\nact: tool\n\nresult: check_task({"id": "${handed[0]}"})`
@@ -202,7 +222,9 @@ function scriptedReply(prompt) {
     return `think: [start it and carry on]\n\nplan: []\n\nact: tool\n\nresult: researcher({"task": "Read the page and say what it said.", "wait": false})`
   }
   if (prompt.includes('handed to researcher')) {
-    return `think: [started]\n\nplan: []\n\nact: answer\n\nresult: ${HANDOVER_STARTED}`
+    return prompt.includes(STOP_QUESTION)
+      ? `think: [started]\n\nplan: []\n\nact: answer\n\nresult: ${STOP_STARTED}`
+      : `think: [started]\n\nplan: []\n\nact: answer\n\nresult: ${HANDOVER_STARTED}`
   }
   return prompt.includes(DELEGATED_ANSWER)
     ? `think: [it answered]\n\nplan: []\n\nact: answer\n\nresult: ${PARENT_ANSWER}`
@@ -228,6 +250,20 @@ open.server = Bun.serve({
       // rather than a field of our own means a change to how the prompt is
       // assembled reaches this check instead of going around it.
       const prompt = JSON.stringify(body?.messages ?? '')
+      // The one call this endpoint does not answer. A thread worth stopping is
+      // a thread that is busy, and a busy thread is exactly the one that cannot
+      // read a polite request to stop — so the case is only honest against a
+      // call that is genuinely open. A minute is far longer than the press and
+      // the assertion take, and nothing waits for it.
+      // The RESEARCHER's call, not the parent's. The parent's prompt quotes the
+      // task it handed over, so matching the task text alone held the page's own
+      // turn open and the case timed out against itself. `check_task` is main's
+      // tool and appears in main's tools block; the sub-agent has no such tool
+      // and no such line, which is the cheapest honest way to tell the two
+      // prompts apart.
+      if (prompt.includes(SLOW_TASK) && !prompt.includes('check_task')) {
+        await new Promise((resolve) => setTimeout(resolve, 60_000))
+      }
       const said = scriptedReply(prompt)
       // The page STREAMS — `ChatService` passes an `onDelta` whenever anyone is
       // watching the call — so the endpoint a real turn reaches is the SSE one.
@@ -1135,6 +1171,87 @@ if (!handover?.read)
 console.log(
   'smoke: a question was handed to another agent, answered while the parent carried on, ' +
     'and read back on a later turn through the context block',
+)
+
+// --- ending work that will not end itself ------------------------------------
+//
+// The other half of hand-over. Work that outlives its turn also outlives the
+// only thing that could stop it: `Kernel.cancel` aborts the request the page is
+// holding, and by the time a background task is running there is no such
+// request. Until this wave the only exit was closing the tab.
+//
+// What is driven here is the press, because that is what the capability row
+// said was missing. The machinery underneath has unit tests; a button nobody
+// has clicked in a browser is a button, not a capability.
+const stopping = await evaluate(
+  `(async () => {
+     const pick = (id) => document.querySelector('[data-testid="' + id + '"]')
+     const until = async (get, ms = 20000) => {
+       for (let i = 0; i < ms / 50; i++) {
+         const value = get()
+         if (value) return value
+         await new Promise((r) => setTimeout(r, 50))
+       }
+       return null
+     }
+     const protoFor = (node) =>
+       node.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype
+     const input = await until(() => {
+       const field = pick('input')
+       return field && !field.disabled ? field : null
+     })
+     if (!input) return { where: 'the composer never came back' }
+     Object.getOwnPropertyDescriptor(protoFor(input), 'value').set.call(
+       input,
+       ${JSON.stringify(STOP_QUESTION)},
+     )
+     input.dispatchEvent(new Event('input', { bubbles: true }))
+     input.form.requestSubmit()
+
+     const answered = await until(() =>
+       [...document.querySelectorAll('.turn.assistant .text')].find((node) =>
+         node.textContent.includes(${JSON.stringify(STOP_STARTED)}),
+       ),
+     )
+     if (!answered) return { where: 'the parent never answered the hand-over turn' }
+
+     // The control only exists while something is running, which is the whole
+     // claim: it is drawn from the same record that says the work is going.
+     const button = await until(() => pick('stop-task'))
+     if (!button) {
+       return { where: 'no stop control appeared', status: pick('status')?.textContent ?? '' }
+     }
+     const offered = button.textContent
+     const announced = pick('status')?.textContent ?? ''
+     button.click()
+
+     const ended = await until(() => {
+       const said = pick('status')?.textContent ?? ''
+       return said.includes('was stopped') ? said : null
+     })
+     return {
+       offered,
+       announced,
+       ended,
+       gone: !pick('stop-task'),
+     }
+   })()`,
+  session,
+  true,
+)
+
+if (!stopping?.ended)
+  await fail(`the background task could not be stopped: ${JSON.stringify(stopping)}`, [
+    'The control comes from statusLine().stoppable, Header draws it, and the press',
+    'reaches AgentWorkerPool.stop through the agents.stop route. A missing button',
+    'means the status line never reported a running task.',
+    ...problems,
+  ])
+
+console.log(
+  `smoke: background work was ended from the line that announced it — ` +
+    `"${stopping.offered}" pressed while it said "${stopping.announced.trim()}", ` +
+    `after which it said "${stopping.ended.trim()}"${stopping.gone ? ' and the control went away' : ''}`,
 )
 
 // --- a question that asks itself --------------------------------------------
