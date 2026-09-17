@@ -174,6 +174,19 @@ function section(text, field) {
 }
 
 /**
+ * A token count, with its unit.
+ *
+ * The number was drawn as `1,525 counted`, which says what the app did and not
+ * what it measured — a reviewer read it and could not work out what was being
+ * counted. It was also written out twice, in `RunPanel` and `PromptPanel`, which
+ * is how two copies of one fact drift apart; `duration` and `bytes` beside this
+ * exist for the same reason.
+ */
+export function tokens(count) {
+  return `${Number(count ?? 0).toLocaleString()} tokens`
+}
+
+/**
  * A reply, split into prose and fenced code.
  *
  * The transcript drew a reply as one string with `white-space: pre-wrap`, so a

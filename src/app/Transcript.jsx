@@ -133,7 +133,15 @@ export function Transcript({
             ) : null}
 
             {live.answer ? null : (
-              <p className="hint" data-testid="waiting">
+              // The dot, and not only the word. The only thing on the page that
+              // moved while a run was working was the one in the topbar, and the
+              // reader is not looking at the topbar — they are looking at the
+              // bottom of the transcript, where the answer will appear. Against
+              // a model that takes a minute to say anything, that left a static
+              // sentence and nothing moving anywhere near the eye for most of a
+              // minute. `prefers-reduced-motion` already stops it, globally.
+              <p className="hint waiting" data-testid="waiting">
+                <span className="status-dot" aria-hidden="true" />
                 {run.steps.length ? 'reading what came back…' : 'thinking…'}
               </p>
             )}

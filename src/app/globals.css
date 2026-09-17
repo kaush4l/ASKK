@@ -375,7 +375,17 @@ button {
   color: var(--text);
 }
 
-.status .status-dot {
+/* The same mark, in the other place a person waits. Written as one selector
+   list rather than a second rule, so the two can never drift into two different
+   ideas of what "something is happening" looks like. */
+.hint.waiting {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.status .status-dot,
+.hint.waiting .status-dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
@@ -2284,14 +2294,21 @@ button {
 .notes li button,
 .menu-row .rowact button,
 .thinking summary,
-.step > summary {
+.step > summary,
+/* Added after a reviewer did this file's own arithmetic against it: 0.85em of
+   13px at `line-height: 1.65` with no vertical padding is about 18px, plus the
+   border about 20px, and it was in neither of these lists. It is also the one
+   control that ends a running thread, so of everything here it is the worst one
+   to make hard to hit. */
+.status-stop {
   min-height: 24px;
 }
 
 .msg-actions button,
 .chip button,
 .notes li button,
-.menu-row .rowact button {
+.menu-row .rowact button,
+.status-stop {
   min-width: 24px;
 }
 

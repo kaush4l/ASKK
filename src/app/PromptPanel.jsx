@@ -1,5 +1,7 @@
 'use client'
 
+import { tokens } from './phrasing.js'
+
 /**
  * What was SENT: the assembled prompt, block by block, and what it cost.
  *
@@ -58,7 +60,7 @@ export function PromptPanel({ shown, usage }) {
           {shown.brokenBy ? <span>prefix ends at {shown.brokenBy}</span> : null}
           {usage ? (
             <span className="measured" data-testid="usage">
-              {usage.prompt.toLocaleString()} counted
+              {tokens(usage.prompt)}
               {usage.cached ? `, ${usage.cached.toLocaleString()} cached` : ''}
               {/* The endpoint's own timing, and the only measured duration on
                   this page. It arrives in the usage frame — which is why

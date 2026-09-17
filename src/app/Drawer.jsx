@@ -19,12 +19,24 @@ import { SchedulePanel } from './SchedulePanel.jsx'
  * The names are what is inside them, in the words of the thing rather than the
  * mechanism.
  */
+/*
+ * The order is two groups, and the first item of each is what a person reaches
+ * for. `work` and `prompt` are artefacts of the turn that just happened —
+ * diagnostic, replaced by the next one. `agent`, `files` and `schedule` are
+ * standing facts about the workspace, true between turns.
+ *
+ * `agent` moved from last to second because two reviewers, independently,
+ * found the sentence that explains what this whole app is talking to — "the
+ * assistant this app opens with… goes and finds out when a question needs a
+ * real answer rather than a recalled one" — and both found it in the fifth tab,
+ * after they had already given up on working it out from the first screen.
+ */
 const SECTIONS = [
   { id: 'run', label: 'work' },
-  { id: 'prompt', label: 'prompt' },
+  { id: 'agent', label: 'agent' },
   { id: 'files', label: 'files' },
   { id: 'schedule', label: 'schedule' },
-  { id: 'agent', label: 'agent' },
+  { id: 'prompt', label: 'prompt' },
 ]
 
 export function Drawer({

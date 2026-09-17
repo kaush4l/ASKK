@@ -7,6 +7,7 @@ import {
   linked,
   spans,
   statusLine,
+  tokens,
   toolOf,
   verbFor,
   visibleStream,
@@ -361,5 +362,19 @@ describe('a reply that was written in markdown', () => {
 
   test('a lone backtick stays text', () => {
     expect(spans("it's a ` on its own")).toEqual([{ text: "it's a ` on its own" }])
+  })
+})
+
+describe('a number that says what it measured', () => {
+  test('a token count carries its unit and its separators', () => {
+    expect(tokens(1525)).toBe('1,525 tokens')
+    expect(tokens(0)).toBe('0 tokens')
+  })
+
+  test('a missing count is zero rather than NaN', () => {
+    // The panels draw this from `usage`, which is null until a reply has been
+    // costed, and `undefined.toLocaleString()` is how that used to be a crash.
+    expect(tokens(undefined)).toBe('0 tokens')
+    expect(tokens(null)).toBe('0 tokens')
   })
 })
