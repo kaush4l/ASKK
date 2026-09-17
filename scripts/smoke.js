@@ -141,6 +141,16 @@ const STOP_QUESTION = 'stop it: 3b7c1'
 const STOP_STARTED = 'main-9f3a2: started the slow one'
 /** In the researcher's task text, so the endpoint knows which call to hold open. */
 const SLOW_TASK = 'read the page that never finishes'
+/**
+ * The hand-over that is deliberately still running when the page is reloaded.
+ *
+ * A second slow marker rather than a reuse of `SLOW_TASK`, because that one is
+ * stopped on purpose by the scene above it and a task that has been stopped
+ * cannot also be the task a reload finds still going.
+ */
+const RESUME_QUESTION = 'hand over the long one: 5f30d'
+const RESUME_TASK = 'read the very long thing that outlives this tab'
+const RESUME_STARTED = 'main-9b41c: the long one is running'
 
 /** What a scheduled question says, so it can be found in the transcript. */
 const SCHEDULED_MARK = 'scheduled-6d24b'
@@ -225,6 +235,14 @@ function scriptedReply(prompt) {
   // `action: plan(` is the SCRATCHPAD's rendering of a call this run made.
   // Matching a bare `plan(` would match the tools block, which every prompt
   // carries, so the first turn would tick off a step that did not exist yet.
+  // Hand the long one over and say so. Matched on the CURRENT question for the
+  // same reason the plan branch is: it stays in the conversation block
+  // afterwards, including in the prompts of the turns the reload produces.
+  if (lastAsked(prompt).includes(RESUME_QUESTION)) {
+    return prompt.includes('handed to researcher')
+      ? `think: [started]\n\nplan: []\n\nact: answer\n\nresult: ${RESUME_STARTED}`
+      : `think: [hand over the long one]\n\nplan: []\n\nact: tool\n\nresult: researcher({"task": "${RESUME_TASK}", "wait": false})`
+  }
   if (lastAsked(prompt).includes(PLAN_QUESTION)) {
     if (prompt.includes(`1. [x] ${PLAN_STEPS[0]}`)) {
       return `think: [the first part is done]\n\nplan: []\n\nact: answer\n\nresult: ${PLAN_ANSWER}`
@@ -311,6 +329,18 @@ open.server = Bun.serve({
       // tool and appears in main's tools block; the sub-agent has no such tool
       // and no such line, which is the cheapest honest way to tell the two
       // prompts apart.
+      if (prompt.includes(RESUME_TASK) && !prompt.includes('check_task')) {
+        // Unanswered on either side of the reload, for as long as the check
+        // takes. The claim under test is that a question still in flight when
+        // the tab closes is taken up again by the tab that opens, and a task
+        // that could finish by itself would prove nothing about that.
+        //
+        // A minute, not ten. The hold bounds how long the gate takes to shut
+        // down — `Bun.serve` is still carrying this request — and ten minutes
+        // of that is ten minutes added to every `bun run check`, measured. The
+        // assertions after the reload complete within fifteen seconds of it.
+        await new Promise((resolve) => setTimeout(resolve, 60_000))
+      }
       if (prompt.includes(SLOW_TASK) && !prompt.includes('check_task')) {
         await new Promise((resolve) => setTimeout(resolve, 60_000))
       }
@@ -1460,6 +1490,127 @@ if (!asked?.asked)
 
 console.log(
   `smoke: a schedule overdue by an hour asked itself on reopening — ${JSON.stringify(asked.asked)}`,
+)
+
+// --- work that outlives the tab it was handed over in ------------------------
+//
+// The roadmap's own measurement for this, executed: hand over work, reload, and
+// be told it is still going. Nothing but a browser can ask it. The pool is a
+// thread in the page's backend worker, so the reload is the whole experiment —
+// the thread genuinely stops existing, the record genuinely has to come back
+// out of IndexedDB, and `composition.js` genuinely has to put the question on a
+// new thread before the page is handed the kernel.
+//
+// The endpoint never answers this task, on either side of the reload. A task
+// that could finish by itself would prove nothing about being taken up again.
+const handedOver = await evaluate(
+  `(async () => {
+     const pick = (id) => document.querySelector('[data-testid="' + id + '"]')
+     const until = async (get, ms = 15000) => {
+       for (let i = 0; i < ms / 50; i++) {
+         const value = get()
+         if (value) return value
+         await new Promise((r) => setTimeout(r, 50))
+       }
+       return null
+     }
+     const input = pick('input')
+     if (!input) return { where: 'there is no composer' }
+     const proto = input.tagName === 'TEXTAREA' ? HTMLTextAreaElement : HTMLInputElement
+     Object.getOwnPropertyDescriptor(proto.prototype, 'value').set.call(
+       input,
+       ${JSON.stringify(RESUME_QUESTION)},
+     )
+     input.dispatchEvent(new Event('input', { bubbles: true }))
+     input.form.requestSubmit()
+
+     const answered = await until(() =>
+       [...document.querySelectorAll('.turn.assistant .text')].find((node) =>
+         node.textContent.includes(${JSON.stringify(RESUME_STARTED)}),
+       ),
+     )
+     if (!answered) return { where: 'the parent never answered the hand-over turn' }
+     // Running, before the reload. The point of comparison for everything after
+     // it: a task that had already ended would make the check below pass for
+     // the wrong reason.
+     const running = await until(() => (pick('stop-task') ? 'yes' : null))
+     return { started: true, running, status: pick('status')?.textContent ?? '' }
+   })()`,
+  session,
+  true,
+)
+if (!handedOver?.started)
+  await fail(`the long hand-over never started: ${JSON.stringify(handedOver)}`, problems)
+if (handedOver.running !== 'yes')
+  await fail(
+    `the handed-over task was not running before the reload: ${JSON.stringify(handedOver)}`,
+    problems,
+  )
+
+// THE RELOAD. Everything the previous tab held in memory is gone from here on:
+// the pool, its map of tasks, its threads, the whole backend worker.
+const reloadedAt = Date.now()
+await send('Page.navigate', { url }, session)
+let back = 'none'
+while (Date.now() - reloadedAt < 20000) {
+  back = await evaluate(`document.querySelector('.wordmark')?.dataset.live ?? 'none'`, session)
+  if (back === 'true') break
+  if (problems.length) break
+  await Bun.sleep(50)
+}
+if (back !== 'true') await fail(`the page did not come back after the reload (${back})`, problems)
+
+const takenUp = await evaluate(
+  `(async () => {
+     const pick = (id) => document.querySelector('[data-testid="' + id + '"]')
+     const until = async (get, ms = 15000) => {
+       for (let i = 0; i < ms / 50; i++) {
+         const value = get()
+         if (value) return value
+         await new Promise((r) => setTimeout(r, 50))
+       }
+       return null
+     }
+     // The RAIL, without anyone sending anything. A task the page only learns
+     // about when the user happens to type is a task that was invisible for as
+     // long as they did not — which is what this looked like before the boot
+     // asked for the list.
+     const said = await until(() => {
+       const text = pick('status')?.textContent ?? ''
+       return text.includes('background') ? text : null
+     })
+     return {
+       said: said ?? (pick('status')?.textContent ?? ''),
+       // The control is drawn from the same record that says the work is going,
+       // so its presence is the page agreeing that something is running.
+       stoppable: Boolean(pick('stop-task')),
+     }
+   })()`,
+  session,
+  true,
+)
+
+if (!String(takenUp?.said).includes('background'))
+  await fail(
+    `after the reload the rail said ${JSON.stringify(takenUp?.said)} instead of naming the work it took up`,
+    [
+      'composition.js awaits pool.resume before returning the kernel, and page.jsx',
+      'asks agents.tasks at boot. One of those two did not happen.',
+      ...problems,
+    ],
+  )
+// And that it SAYS it was restarted. The same sentence without this word would
+// have somebody reading the elapsed time of a run that died minutes ago.
+if (!String(takenUp.said).includes('restarted after the tab closed'))
+  await fail(`the rail did not say the work had been restarted: ${JSON.stringify(takenUp.said)}`, [
+    'statusLine in src/app/phrasing.js adds the clause when a task carries resumes.',
+    ...problems,
+  ])
+if (!takenUp.stoppable)
+  await fail('the work taken up after the reload could not be stopped', problems)
+
+console.log(
+  `smoke: work handed over survived a reload — the new tab said ${JSON.stringify(String(takenUp.said).trim().slice(0, 80))} with nothing typed into it`,
 )
 
 // --- a goal, broken into parts, ticked off where a person can watch ---------

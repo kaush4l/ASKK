@@ -307,6 +307,27 @@ describe('background work a person can end', () => {
       'researcher could not finish',
     )
   })
+
+  test('a task the tab closed on is none of the other three', () => {
+    // Not an answer, not a failure, not a stop. The agent did not fail, the
+    // person did not end it, and there is nothing to read — the question is
+    // still a question.
+    const said = line([{ id: 't4', agent: 'researcher', state: 'interrupted', read: false }])
+    expect(said.text).toBe('researcher did not finish before the tab closed')
+    expect(said.stoppable).toBeUndefined()
+  })
+
+  test('a restarted task says it was restarted', () => {
+    // Somebody who reopens the app and reads "working in the background" about
+    // a question they asked before they closed it is owed the fact that the
+    // first attempt did not survive: otherwise the time it has been running,
+    // and what it has spent, are both a surprise.
+    const said = line([{ id: 't5', agent: 'researcher', state: 'running', resumes: 1 }])
+    expect(said.text).toBe(
+      'researcher is working in the background, restarted after the tab closed',
+    )
+    expect(said.stoppable).toEqual({ id: 't5', agent: 'researcher' })
+  })
 })
 
 describe('a reply that was written in markdown', () => {

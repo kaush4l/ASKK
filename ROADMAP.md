@@ -12,9 +12,9 @@ the argued future, and where the two disagree `CAPABILITIES.md` wins.
 
 ## What is already here, which is more than the target assumes
 
-Eight things the goal asks for are built, and knowing that shortens the list.
-The last two landed in this wave and are why the sequence below starts where it
-does.
+Nine things the goal asks for are built, and knowing that shortens the list.
+The last three landed in the waves just gone and are why the sequence below
+starts where it does.
 
 | Asked for | Where it already is |
 |---|---|
@@ -26,31 +26,19 @@ does.
 | a real machine to work in | the wasm guest — `uname -a` answers in about 1.1 s cold |
 | a goal that outlives the turn | `Conversation.goal`, set in the drawer, rendered as the `goal` block of every prompt — item 1, landed |
 | that goal composed into tasks | `Plan` and the `plan` tool — the agent writes the list, ticks it off, and reads it back in the `plan` block next turn; item 2, landed |
+| work that outlives the tab, not merely the turn | the task record is stored and `AgentWorkerPool.resume` puts the question back on a thread when the page reopens; item 3, landed |
 
-So the gap to Hermes is not tools, not threads, not prompt structure, and no
-longer the goal: a conversation now holds one, and holds the decomposition of
-it. What is left is everything that makes work on that decomposition **outlive
-the turn it was started in** — a thread that survives a reload, a run that can
-ask before it acts, and a guest that keeps its filesystem between commands.
+So the gap to Hermes is not tools, not threads, not prompt structure, not the
+goal, not its decomposition, and no longer the tab either: a question handed
+over survives a reload and is put back on a thread. What is left divides in two.
+One half is **a run that can be trusted unattended** — it must be able to ask
+before it acts. The other is **a machine worth working in** — a guest with a
+session and a filesystem that lives between commands, which is what makes a
+build-and-test loop affordable.
 
 ## The sequence
 
-### 1. A long-running agent that outlives the tab
-
-Today the pool lives in the tab's own backend worker, so a reload is a new pool
-with nothing in it — stated plainly in `AgentWorkerPool._worker`. A "long-running
-agent" that dies on refresh is a long-running *turn*.
-
-This is where the owner's "installation will be required" lands: surviving a
-closed tab means either a service worker, or persisting the task and resuming it
-on next open. The honest cheap version is the second — a task record in
-IndexedDB with enough to restart it — and the honest expensive version is the
-first.
-
-Measured by: hand over work, reload, and be told it is still going; and the same
-across a close and re-open.
-
-### 2. Approve an action mid-loop
+### 1. Approve an action mid-loop
 
 `CAPABILITIES.md` carries this as `absent` with the evidence "nothing". It is
 listed here rather than lower because it is the precondition for an agent
@@ -60,7 +48,7 @@ needs a way to ask before it does something the user would not have chosen.
 Measured by: a `shell` call matching a declared pattern pauses, surfaces, and
 runs or does not on the answer.
 
-### 3. An interactive session in the guest
+### 2. An interactive session in the guest
 
 `absent`, and the measurement for it is already in the tree:
 `scripts/probe/results/2026-09-01-pty.md` — one guest booted with blocking stdin
@@ -72,21 +60,21 @@ construction.
 This is what makes a real development loop affordable: `npm test` after every
 edit is currently a fresh boot every time.
 
-### 4. Files that persist inside the guest between commands
+### 3. Files that persist inside the guest between commands
 
 `absent`. The agent's own files already survive (`ShellTool` carries named files
 in and out), but the guest's filesystem dies with each command, so anything a
-build wrote — `node_modules`, a compiled binary — is gone. Item 3 makes this
+build wrote — `node_modules`, a compiled binary — is gone. Item 2 makes this
 nearly free: one session is one filesystem.
 
-### 5. The cluster — planner, programmer, reviewer
+### 4. The cluster — planner, programmer, reviewer
 
 Only now, and deliberately last of the agent work. Open SWE's shape is Manager →
 Planner → Programmer with a Reviewer inside it, and every mechanism it needs
 exists here already: agents are folders with `tools:` lists, delegation is a
 call, and threads are real. A goal and a plan are no longer what is missing:
-what is, is item 1 — a cluster whose threads die on reload is three agents
-interrupting each other.
+what is, is a reason to prefer three agents to one — see the dissent below,
+which is now testable rather than hypothetical.
 
 The bolt.diy reading is the dissent worth keeping in view: one agent, no
 sub-agents, the reply itself carrying the actions. A single agent with a plan is
@@ -94,7 +82,7 @@ now a thing this tree can actually run, so the cheap answer is testable rather
 than hypothetical — and if it does the work, this item should be dropped rather
 than built.
 
-### 6. A research agent that writes an architecture sheet
+### 5. A research agent that writes an architecture sheet
 
 The owner's own description: look for papers on a task, theorise what has
 happened, and produce an architecture sheet of everything so far. The current
@@ -105,13 +93,13 @@ rather than a change to that one.
 Cheap now that a goal and a plan exist, because "everything that has happened so
 far" is exactly the goal and its task list.
 
-### 7. A formatter and a linter in the guest
+### 6. A formatter and a linter in the guest
 
 Both `absent`, and both one run of `scripts/wasm/build.sh` away. Listed low
 because they improve work the agent is already doing rather than enabling work
 it cannot do.
 
-### 8. Network from inside the guest
+### 7. Network from inside the guest
 
 `barred` under C2: every WASI socket is stubbed `ENOTSUP` (`vm-worker.js:121-132`)
 and a page has no raw socket, so any guest network must be a `fetch` bridge and
@@ -130,9 +118,9 @@ against with vendored prompt bytes (`bench/README.md`).
 |---|---|---|
 | **Hermes** | `delegate_task(goal, context, toolsets, role)`, a global `SOUL.md` and a project `AGENTS.md` | the soul/agent split is the same shape and arrived at independently. The first argument is here now: a conversation holds a **goal**, and the `plan` tool is what decomposes it into the tasks the threads take |
 | **agent-zero** | the benchmark's other arm, seventeen prompt files vendored at `6a6cecf` | measured head to head already. The asymmetries are recorded in `bench/README.md` rather than smoothed over, including one that runs against our own arm |
-| **Open SWE** | Manager / Planner / Programmer, Reviewer nested, human review of the plan | item 5, and it needs item 1 first. Human review of a plan is item 2 wearing a different hat |
+| **Open SWE** | Manager / Planner / Programmer, Reviewer nested, human review of the plan | item 4. Human review of a plan is item 1 wearing a different hat |
 | **bolt.diy** | one agent, no sub-agents, actions parsed out of the reply; ships as a static page | the deployment model is already the same, and stricter — bolt.diy fetches WebContainer from its vendor, this repo carries a 52 MB guest in the tree |
-| **Devin** | stateless brain plus a devbox; Fusion pairs a lead with a cheap executor on separate persistent contexts | the devbox is here and the pairing is possible today — what is missing is the persistent part, item 1 |
+| **Devin** | stateless brain plus a devbox; Fusion pairs a lead with a cheap executor on separate persistent contexts | the devbox is here, the pairing is possible today, and a handed-over question now survives the tab it was asked in. What is still missing is a persistent CONTEXT: a resumed task is re-run from its instruction, not continued from where it got to |
 
 ## What would tell us this is done
 

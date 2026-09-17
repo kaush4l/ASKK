@@ -351,6 +351,15 @@ export default function Page() {
       if (model.ok) setModelHealth(model.value)
       const planned = await client.call('schedules.list')
       if (planned.ok) setSchedules(planned.value)
+      // Work a previous tab handed over. Asked for at BOOT and not only after a
+      // turn, which is what it used to be: a task that a closed tab left behind
+      // and this one picked up again was running with nothing on screen saying
+      // so, and the rail only learned about it if the user happened to send a
+      // message. The backend has already taken it up by the time this answers
+      // — `composition.js` awaits `pool.resume` before handing the kernel over
+      // — so this is a read, not a request to start anything.
+      const handed = await client.call('agents.tasks')
+      if (handed.ok) setTasks(handed.value)
 
       const listed = existing.ok ? existing.value : []
       setConversations(listed)

@@ -390,7 +390,13 @@ export function statusLine({
   // it was handed over in is gone, so there was no request left to abort.
   if (handed)
     return {
-      text: `${handed.agent} is working in the background`,
+      // A restarted task says it was restarted. It is the same sentence plus
+      // one word, and the word is load-bearing: somebody who reopens the app
+      // and reads "researcher is working in the background" about a question
+      // they asked before they closed it is owed the fact that the first
+      // attempt did not survive — otherwise the time it has been running, and
+      // the money it has spent, are both a surprise.
+      text: `${handed.agent} is working in the background${handed.resumes ? ', restarted after the tab closed' : ''}`,
       live: true,
       stoppable: { id: handed.id, agent: handed.agent },
     }
@@ -399,12 +405,18 @@ export function statusLine({
     // A stopped task is not an answer and not a failure. Saying "has an answer
     // for you" about a thread the person killed themselves would send them to
     // read something that does not exist.
+    // Four endings and four sentences. `interrupted` is the one this list
+    // gained last and it is not a flavour of any of the others: the agent did
+    // not fail, the person did not stop it, and there is no answer to read —
+    // the tab closed, and the question is still a question.
     const ended =
       answered.state === 'failed'
         ? `${answered.agent} could not finish`
         : answered.state === 'stopped'
           ? `${answered.agent} was stopped`
-          : `${answered.agent} has an answer for you`
+          : answered.state === 'interrupted'
+            ? `${answered.agent} did not finish before the tab closed`
+            : `${answered.agent} has an answer for you`
     return { text: ended, live: true }
   }
   if (speaking) return { text: 'reading it aloud', live: true }

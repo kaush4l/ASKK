@@ -13,8 +13,8 @@
  *     port.get(id)  -> Task | null
  *
  * where a Task is `{id, agent, task, state, startedAt, endedAt, progress,
- * result}`, `state` is one of the three below, and `result` is the sub-agent's
- * whole outcome as JSON — null until the run ends.
+ * result, resumes, resumedAt}`, `state` is one of the five below, and `result`
+ * is the sub-agent's whole outcome as JSON — null until the run ends.
  *
  * **Nothing here starts a task.** Starting one is `SubAgentTool` asking its
  * dispatcher not to wait, which means an agent can only start the agents its
@@ -38,6 +38,23 @@ export const TaskState = Object.freeze({
    * purpose is lying to the only party who knows better.
    */
   STOPPED: 'stopped',
+  /**
+   * The tab closed while it was working.
+   *
+   * A fifth state, and it earns its place the way `STOPPED` did: it answers a
+   * question neither of the others answers. `FAILED` is news about the agent —
+   * it tried and could not. `STOPPED` is news about the person — they ended it.
+   * This is news about the MACHINE: nobody decided anything, the thread simply
+   * stopped existing when the page did, and the work is neither done nor
+   * refused.
+   *
+   * It is also the one state that can be acted on by restarting, which is why
+   * it must not be flattened into `FAILED`. A sub-agent keeps no transcript and
+   * is built fresh per call, so running the same instruction again IS resuming
+   * it — there is no partial state to lose. That equivalence is what makes
+   * `AgentWorkerPool.resume` honest rather than a second-guess.
+   */
+  INTERRUPTED: 'interrupted',
 })
 
 /**
@@ -68,7 +85,21 @@ export function describeTask(task, { withAnswer = false } = {}) {
   const doing = task.progress?.doing?.length ? task.progress.doing.join(', ') : ''
 
   if (task.state === TaskState.RUNNING) {
-    return `${task.id}: ${task.agent} is still working${doing ? ` — ${doing}` : ''} (${seconds}s so far)`
+    // A restarted task SAYS it was restarted. Without this the elapsed time is
+    // a lie of exactly the kind this file exists to avoid: the record has been
+    // alive since the question was asked, the WORK has been running since the
+    // page was reopened, and an agent told "still working (2h so far)" about a
+    // thread that started ninety seconds ago will draw the wrong conclusion
+    // about whether it is stuck.
+    const again = task.resumes
+      ? ` — restarted ${task.resumes === 1 ? 'once' : `${task.resumes} times`} after the tab closed, working again for ${Math.round((Date.now() - (task.resumedAt || task.startedAt)) / 1000)}s`
+      : ''
+    return `${task.id}: ${task.agent} is still working${doing ? ` — ${doing}` : ''} (${seconds}s so far)${again}`
+  }
+  if (task.state === TaskState.INTERRUPTED) {
+    // What it was doing is the useful half: an instruction the caller can hand
+    // over again, which is the only way to continue work whose thread is gone.
+    return `${task.id}: ${task.agent} was still working when the tab closed, after ${seconds}s, and did not answer. Ask it again if you still want it: ${JSON.stringify(String(task.task ?? '').slice(0, 120))}`
   }
   if (task.state === TaskState.STOPPED) {
     // No hint to read it back and no invitation to retry: the agent did not

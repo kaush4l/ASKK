@@ -1387,9 +1387,25 @@ files from the page, and the model has never been told the guest has Python.
 5. **Done, and done again.** Sub-agents are constructed, they report what they
    are doing, and a question can now be handed over and read back on a later
    turn — the three sections above have the whole account. What is left is a
-   thing the browser cannot give: a task dies with the tab, because the run is a
-   thread in this worker. Making one survive a reload means moving the RUN, not
-   the record, and there is nowhere to move it to that is still "no server".
+   thing this paragraph called impossible and was wrong about: *"a task dies
+   with the tab… making one survive a reload means moving the RUN, not the
+   record, and there is nowhere to move it to that is still no server."*
+
+   The second sentence does not follow from the first. The run does die with the
+   tab — that part is true and unchanged — but a sub-agent keeps no transcript
+   and `agentWorker.js` builds a fresh agent for every message, so **the
+   instruction is the whole of a run's state**. Running it again is not an
+   approximation of resuming it; it is the same run. What was actually missing
+   was an honest state for "the tab closed" — `TaskState.INTERRUPTED`, which is
+   neither a failure of the agent nor a decision of the person's — and a boot
+   step that either puts the question back on a thread or says plainly that it
+   did not. That is `AgentWorkerPool.resume`, called by `composition.js` before
+   the kernel is handed over, against a fifth IndexedDB store.
+
+   The bounds are the interesting part, because an unbounded version of this is
+   a page that spends money on questions its user has forgotten: one hour of
+   staleness and three restarts, past either of which the record is kept and
+   shown with its instruction in it, and handing it over again is one sentence.
 
    **Old note, kept.**
    *Sub-agents that are actually constructed* — the roster is two agents, `main`

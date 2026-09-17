@@ -22,17 +22,28 @@ import { SettingsService } from './services/SettingsService.js'
 export { browserHttp }
 
 export const DB_NAME = 'askk'
-// 4 because schedules are a fourth store. `IndexedDb.open` creates only the
+// 5 because handed-over tasks are a fifth store. `IndexedDb.open` creates only the
 // stores that are missing, so an existing database keeps its conversations, its
 // settings and the agent's files and gains one — a version that did not move
 // would leave every browser that has already opened this app without a
 // schedules store at all, and every write to it failing on a name the database
 // has never heard of. That is the same argument version 3 was made for.
-export const DB_VERSION = 4
+export const DB_VERSION = 5
 export const STORE_CONVERSATIONS = 'conversations'
 export const STORE_SETTINGS = 'settings'
 export const STORE_FILES = 'files'
 export const STORE_SCHEDULES = 'schedules'
+/**
+ * Work handed to another agent, kept so that a closed tab does not lose it.
+ *
+ * The pool used to be the only owner of these and said so in a comment arguing
+ * that a stored record would describe work that no longer existed. What it was
+ * missing is that a sub-agent keeps no transcript, so the instruction is the
+ * whole of its state and running it again IS resuming it — see
+ * `AgentWorkerPool.resume` for the bounds that keep that from becoming a tab
+ * that spends money on yesterday's questions.
+ */
+export const STORE_TASKS = 'tasks'
 
 /**
  * The single place where concrete implementations are chosen.
@@ -52,6 +63,7 @@ export async function buildKernel() {
     STORE_SETTINGS,
     STORE_FILES,
     STORE_SCHEDULES,
+    STORE_TASKS,
   ])
   const opened = await db.open()
   // The CONSEQUENCE, not the diagnosis. "storage unavailable" is a true thing
@@ -73,7 +85,11 @@ export async function buildKernel() {
   const catalogue = new AgentCatalogue(base)
   // The prefix goes to the pool, which passes it to every sub-agent thread. It
   // is derived here, once, for the same reason the image URL beside it is.
-  const pool = new AgentWorkerPool({ basePath: base })
+  // The store goes to the pool for the same reason the prefix does: this is the
+  // one file that knows a database exists, and the pool is the one thing that
+  // knows what a task is. `resume` is called below, once settings are built,
+  // because a restarted task needs a model and the model is a setting.
+  const pool = new AgentWorkerPool({ basePath: base, store: make('Task', STORE_TASKS) })
 
   // The sandbox is constructed, not booted. Its image is ~50 MB compressed and
   // an agent that never needs the guest must never download it.
@@ -168,6 +184,25 @@ export async function buildKernel() {
     // ticks, under a lock, and this only says what is due; `ScheduleService`
     // argues why the clock lives in the realm that can see a user.
     .register('schedules', new ScheduleService(make('Schedule', STORE_SCHEDULES)))
+
+  // Work a previous tab handed over and never got an answer to. Loaded before
+  // the kernel is returned, so the first `agents.tasks` a page asks for already
+  // has them: a task announced a second after the panel first drew is a task
+  // the user sees appear from nowhere.
+  //
+  // Awaited, unlike every other write in this file, because the question it
+  // answers — what is this tab already carrying — must be settled before the
+  // page can be told anything about it. It reads one store and starts threads;
+  // it does not block on them.
+  const taken = await pool.resume((await settings.get()).value)
+  notes.push(...taken.notes)
+  if (taken.resumed) {
+    notes.push(
+      taken.resumed === 1
+        ? 'work you handed over before this page was reopened is running again'
+        : `${taken.resumed} pieces of work you handed over before this page was reopened are running again`,
+    )
+  }
 
   // Said out loud, in the one place the user reads notes. Nothing else in this
   // app leaves the machine except the model call the user configured — but a

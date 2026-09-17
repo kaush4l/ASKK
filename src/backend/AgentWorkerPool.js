@@ -39,9 +39,32 @@ export class AgentWorkerPool {
    * which is the opposite of what `agentWorker` says it does. Eleven minutes is
    * the 600-second budget plus a minute for the thread to notice.
    */
-  constructor({ timeout = 660_000, basePath = '', spawn = null } = {}) {
+  /**
+   * `store` is where task records are kept so that they outlive the tab, and
+   * `now` is the clock, injected so that staleness can be tested without
+   * waiting an hour.
+   */
+  constructor({
+    timeout = 660_000,
+    basePath = '',
+    spawn = null,
+    store = null,
+    now = Date.now,
+  } = {}) {
     this.timeout = timeout
     this.basePath = basePath
+    /**
+     * The records, written down.
+     *
+     * A `Repository`, or nothing — a pool with no store is exactly what this
+     * class was before, and it still works that way, because every write goes
+     * through `_remember` and a missing store makes that a no-op. That is not a
+     * convenience: `ask`-only callers and every unit test construct a pool with
+     * no persistence at all, and a constructor that demanded a database would
+     * make the cheap path pay for the expensive one.
+     */
+    this._store = store
+    this._now = now
     /**
      * How a thread is made, so that the rest of this class can be measured.
      *
@@ -78,11 +101,15 @@ export class AgentWorkerPool {
      * until somebody comes back for it. This is that somewhere: task id ->
      * `{id, agent, task, state, startedAt, endedAt, progress, result}`.
      *
-     * In memory, and deliberately not in IndexedDB: the run itself is a thread
-     * in this worker, so a record that survived a reload would describe work
-     * that does not. What a reload loses is the answer to a question nobody
-     * waited for, and saying so is honest where a stored record that can never
-     * be finished is not.
+     * Written down as well as held, which is a reversal of what this comment
+     * used to argue. It said a stored record would "describe work that does
+     * not exist", and that was right about a record left saying RUNNING and
+     * wrong about the conclusion. A sub-agent keeps no transcript and is built
+     * fresh for every call, so the instruction IS the whole of its state:
+     * running it again is not an approximation of resuming it, it is the same
+     * thing. What the record needed was an honest state for "the tab closed" —
+     * `TaskState.INTERRUPTED` — and a `resume` that either restarts the work or
+     * says plainly that it did not.
      */
     this._tasks = new Map()
     this._seq = 0
@@ -125,6 +152,49 @@ export class AgentWorkerPool {
     // told. Only a finished task can be over.
     if (found.state === TaskState.RUNNING) return false
     found.read = true
+    // Written down, so a task read in one tab is not announced again as news in
+    // the next one. Acknowledgement is the thing that turns a notification into
+    // something that can be over, and a notification that came back from the
+    // dead on every reload would be worse than never having been dismissible.
+    this._remember(found)
+    return true
+  }
+
+  /**
+   * Write one record down, if there is anywhere to write it.
+   *
+   * Not awaited by its callers and deliberately so: a task's LIFE is the
+   * in-memory record, and the store is a copy kept so the next tab can see it.
+   * Awaiting a disk write inside the settle path would put storage latency on
+   * the answer a caller is holding, and a store that is refusing writes would
+   * turn a finished sub-agent into a failed turn. A write that fails costs the
+   * record its persistence and nothing else, and `resume` is where that shows
+   * up — as a task the next tab never hears about, rather than as a lie.
+   */
+  _remember(record) {
+    if (!this._store) return
+    // A plain object, not the live record: the repository structured-clones
+    // whatever it is given, and a later mutation of the same object must not be
+    // able to change what was written.
+    this._store.put({ ...record }).catch(() => {})
+  }
+
+  /**
+   * Move a task to its final state, write it down, and say what it was.
+   *
+   * One method because there were five places that did this by hand — `start`'s
+   * two branches, `stop` twice and the collateral loop — and the store made a
+   * sixth thing each of them had to remember to do. A settle that forgot to
+   * persist is a task that reappears as `interrupted` on the next load and is
+   * restarted although it had already answered, which is the worst failure this
+   * whole feature can have.
+   */
+  _settle(record, state, result) {
+    if (record.state !== TaskState.RUNNING) return false
+    record.state = state
+    record.endedAt = this._now()
+    record.result = result
+    this._remember(record)
     return true
   }
 
@@ -143,7 +213,175 @@ export class AgentWorkerPool {
     for (const task of droppable) {
       if (this._tasks.size <= TASK_CEILING) return
       this._tasks.delete(task.id)
+      // Out of the store as well. A ceiling that bounded memory and left the
+      // database growing without limit would move the leak rather than close
+      // it, and the next load would rebuild the very records this dropped.
+      this._store?.remove(task.id).catch(() => {})
     }
+  }
+
+  /**
+   * How long after a tab closes a handed-over question is still wanted.
+   *
+   * An hour. The judgement it encodes: somebody who reopens the app within the
+   * hour is continuing the session they left, and somebody who reopens it the
+   * next morning is starting a new one — and silently spending their tokens on
+   * a question they asked yesterday and have forgotten is the thing this bound
+   * exists to refuse. Past it the record is kept and shown, in the state that
+   * says what actually happened, with the instruction in it so it can be handed
+   * over again in one sentence. Nothing is deleted and nothing is decided for
+   * them.
+   */
+  static STALE_AFTER = 3_600_000
+
+  /**
+   * How many times a closed tab may restart the same question.
+   *
+   * A task that is restarted, runs long enough to be interrupted again, and
+   * restarts once more is a task that will do that for ever — every reload
+   * paying for a full run of something that has never once finished. Three
+   * attempts is enough for an ordinary crash-and-reopen and few enough that a
+   * question nothing can answer stops costing.
+   */
+  static MAX_RESUMES = 3
+
+  /**
+   * Take up the work a closed tab left behind.
+   *
+   * Called once, at boot, by whoever built this pool. It does three things and
+   * the order matters:
+   *
+   *   1. Every stored record is loaded back, so the tasks a previous tab knew
+   *      about are the tasks this one knows about — including the finished ones,
+   *      which are the answers nobody had come back for yet.
+   *   2. Anything still marked RUNNING is marked `INTERRUPTED`, because it is:
+   *      the thread it was on stopped existing when the page did. That is true
+   *      whether or not the work is then restarted, and it is written down
+   *      before anything else happens, so a boot that crashes here leaves an
+   *      honest record rather than a record still claiming to be running.
+   *   3. The ones that are recent enough and have not been restarted too often
+   *      are handed to a thread again.
+   *
+   * Restarting is not an approximation of resuming. A sub-agent keeps no
+   * transcript and `agentWorker` builds a fresh agent for every message, so the
+   * instruction is the whole of the run's state — the same question to the same
+   * agent is the same run. What is genuinely lost is the tokens the first
+   * attempt spent, and that is why the bounds above exist.
+   *
+   * `settings` is read at resume time rather than stored on the record, which
+   * is deliberate: settings carry the API key, and a second copy of a secret in
+   * a second store is a second place for it to leak from. It also means a task
+   * resumes against whatever model is configured NOW, which is the one the user
+   * would expect a question asked today to use.
+   *
+   * @returns {{loaded: number, interrupted: number, resumed: number, notes: string[]}}
+   */
+  async resume(settings) {
+    if (!this._store) return { loaded: 0, interrupted: 0, resumed: 0, notes: [] }
+
+    const stored = await this._store.list()
+    if (!stored.ok) {
+      // A note and not a failure. The app opens either way; what is lost is the
+      // memory of work handed over before the reload, and saying so is the only
+      // thing that can be done about it here.
+      return {
+        loaded: 0,
+        interrupted: 0,
+        resumed: 0,
+        notes: [
+          `work handed over before this page was opened could not be read back: ${stored.failure.message}`,
+        ],
+      }
+    }
+
+    const notes = []
+    const restartable = []
+    for (const raw of stored.value ?? []) {
+      // A record this pool did not write is still evidence — the doctrine
+      // `Message` and `Conversation` follow. What must not happen is one
+      // damaged row taking every other task down with it, which is exactly what
+      // a throw in this loop would do.
+      const record = { ...raw }
+      if (!record.id || typeof record.agent !== 'string') continue
+      // The sequence has to continue past everything already written, or the
+      // next `start` mints an id a stored record already holds and one silently
+      // replaces the other.
+      const seq = Number(record.seq) || 0
+      if (seq > this._seq) this._seq = seq
+      record.seq = seq
+
+      if (record.state === TaskState.RUNNING) {
+        record.state = TaskState.INTERRUPTED
+        record.endedAt = record.endedAt || this._now()
+        record.result = Outcome.failed(
+          Reason.UNAVAILABLE,
+          `${record.agent} was still working when the tab closed`,
+        ).toJSON()
+        restartable.push(record)
+      }
+      this._tasks.set(record.id, record)
+    }
+
+    let resumed = 0
+    for (const record of restartable) {
+      // Written in its interrupted state FIRST, so that the honest answer is on
+      // disk before the optimistic one is attempted.
+      this._remember(record)
+
+      const age = this._now() - (record.startedAt || 0)
+      if (age > AgentWorkerPool.STALE_AFTER) {
+        notes.push(
+          `${record.agent} was still working on a question from before this session when the tab closed; it was not restarted, and ${record.id} says what it was`,
+        )
+        continue
+      }
+      if ((record.resumes || 0) >= AgentWorkerPool.MAX_RESUMES) {
+        notes.push(
+          `${record.agent} has been restarted ${record.resumes} times without finishing, so ${record.id} was left alone`,
+        )
+        continue
+      }
+
+      record.state = TaskState.RUNNING
+      record.resumes = (record.resumes || 0) + 1
+      record.resumedAt = this._now()
+      record.endedAt = 0
+      record.result = null
+      record.progress = null
+      this._remember(record)
+      this._run(record, settings)
+      resumed++
+    }
+
+    return { loaded: this._tasks.size, interrupted: restartable.length, resumed, notes }
+  }
+
+  /**
+   * Put one record's question on a thread and let it settle back into the
+   * record.
+   *
+   * Shared by `start` and `resume` because they differ in exactly one thing —
+   * whether the record is new — and a second copy of this is how the two would
+   * drift into settling differently. Not awaited: its whole contract is that it
+   * returns before the work does.
+   */
+  _run(record, settings) {
+    this.ask(record.agent, record.task, settings, null, (progress) => {
+      record.progress = progress
+    })
+      .then((answered) => {
+        this._settle(record, answered.ok ? TaskState.DONE : TaskState.FAILED, answered.toJSON())
+      })
+      .catch((err) => {
+        this._settle(
+          record,
+          TaskState.FAILED,
+          Outcome.failed(
+            Reason.INTERNAL,
+            `${record.agent} could not be started: ${err?.message ?? err}`,
+          ).toJSON(),
+        )
+      })
   }
 
   /**
@@ -181,12 +419,22 @@ export class AgentWorkerPool {
       endedAt: 0,
       progress: null,
       result: null,
+      // How many times a closed tab has sent this back to a thread, and when
+      // the current attempt began. Both are for the sentence `describeTask`
+      // writes: "still working (2h so far)" about a thread that started ninety
+      // seconds ago would have an agent concluding it was stuck.
+      resumes: 0,
+      resumedAt: 0,
       // Whether anyone has read it back. A finished task that nobody has read
       // is news; one that has been read is history, and history does not belong
       // in every prompt.
       read: false,
     }
     this._tasks.set(id, record)
+    // Before the work starts, not after. A tab closed one second into a
+    // ten-minute question is exactly the case this feature is for, and a record
+    // written on completion would have nothing to say about it.
+    this._remember(record)
 
     // Not awaited on purpose: this method's whole contract is that it returns
     // before the work does. The promise cannot reject — `ask` answers with an
@@ -198,29 +446,12 @@ export class AgentWorkerPool {
     // rejection. Left uncaught that was an unhandled rejection in the backend
     // worker and a record that read "still working" in every prompt until the
     // page was reloaded.
-    this.ask(name, task, settings, null, (progress) => {
-      record.progress = progress
-    })
-      .then((answered) => {
-        // A stopped task has already been settled, by `stop`, with the one
-        // description that is true. This promise resolves anyway — stopping
-        // works by settling it — and without this guard the stop is
-        // immediately overwritten by the failure it caused, so the record says
-        // "failed" for a thread the user ended on purpose.
-        if (record.state !== TaskState.RUNNING) return
-        record.state = answered.ok ? TaskState.DONE : TaskState.FAILED
-        record.endedAt = Date.now()
-        record.result = answered.toJSON()
-      })
-      .catch((err) => {
-        if (record.state !== TaskState.RUNNING) return
-        record.state = TaskState.FAILED
-        record.endedAt = Date.now()
-        record.result = Outcome.failed(
-          Reason.INTERNAL,
-          `${name} could not be started: ${err?.message ?? err}`,
-        ).toJSON()
-      })
+    // A stopped task has already been settled, by `stop`, with the one
+    // description that is true. The run's promise resolves anyway — stopping
+    // works by settling it — and the guard inside `_settle` is what keeps the
+    // stop from being overwritten by the failure it caused, which would make
+    // the record say "failed" for a thread the user ended on purpose.
+    this._run(record, settings)
     this._forget()
 
     return { id, agent: name }
@@ -251,12 +482,11 @@ export class AgentWorkerPool {
     if (!record || record.state !== TaskState.RUNNING) return false
 
     const name = record.agent
-    record.state = TaskState.STOPPED
-    record.endedAt = Date.now()
-    record.result = Outcome.failed(
-      Reason.UNAVAILABLE,
-      `${name} was stopped before it answered`,
-    ).toJSON()
+    this._settle(
+      record,
+      TaskState.STOPPED,
+      Outcome.failed(Reason.UNAVAILABLE, `${name} was stopped before it answered`).toJSON(),
+    )
 
     const worker = this._workers.get(name)
     if (worker) {
@@ -285,13 +515,15 @@ export class AgentWorkerPool {
 
     // Every OTHER task this thread was carrying ended with it, and says so.
     for (const other of this._tasks.values()) {
-      if (other.agent !== name || other.state !== TaskState.RUNNING) continue
-      other.state = TaskState.STOPPED
-      other.endedAt = Date.now()
-      other.result = Outcome.failed(
-        Reason.UNAVAILABLE,
-        `${name} was stopped for task ${record.id}, and this call was on the same thread`,
-      ).toJSON()
+      if (other.agent !== name) continue
+      this._settle(
+        other,
+        TaskState.STOPPED,
+        Outcome.failed(
+          Reason.UNAVAILABLE,
+          `${name} was stopped for task ${record.id}, and this call was on the same thread`,
+        ).toJSON(),
+      )
     }
     return true
   }
@@ -337,9 +569,10 @@ export class AgentWorkerPool {
         // different questions: the forward is for whoever is watching this
         // call, and the record is what `agents.threads` can tell a page that
         // asked later in the same session — the panel polls it after each turn.
-        // NOT across a reload or a second tab, which this comment claimed for
-        // one wave: the pool lives in the tab's own backend worker, so a reload
-        // is a new pool with nothing in it.
+        // NOT across a reload or a second tab: the pool lives in the tab's own
+        // backend worker, so a reload is a new pool. What the new pool DOES get
+        // back is the task records — see `resume` — but not this, because a
+        // half-finished pass of a run that no longer exists describes nothing.
         if (thread) thread.status = { ...progress, at: Date.now() }
         this._watching.get(at)?.(progress)
         return
