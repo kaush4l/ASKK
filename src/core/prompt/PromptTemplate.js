@@ -86,6 +86,7 @@ export class PromptBlock {
  *   conversation  append    grows only at its end, so it extends the prefix
  *   scratchpad    append    this turn's actions and what they returned
  *   context       volatile  carries a clock; nothing after it can be reused
+ *   goal          volatile  what this whole conversation is for, restated
  *   budget        volatile  what the run has spent and what it may still spend
  *   reminder      static    one line restating the contract, for recency
  *   cue           static    hands the turn over
@@ -94,6 +95,15 @@ export class PromptBlock {
  * block that differs every call: ahead of the transcript it would push the whole
  * transcript out of the shared prefix, and that loss grows as the conversation
  * grows. Behind it, it costs its own length and nothing else.
+ *
+ * `goal` is in the volatile group and not the static prefix, though its bytes
+ * change rarely. Two reasons, and the second is the stronger. A goal that moved
+ * would invalidate the whole cacheable prefix on the one turn it changed, which
+ * is the most expensive place to put something that can change at all. And a
+ * goal is read for steering rather than for definition: it is here to be in
+ * front of the model on turn forty, which is a recency argument, and recency
+ * puts it near the tail. `context` has already ended the reusable prefix, so
+ * sitting behind it costs its own length and nothing more.
  *
  * `budget` is last of the volatile blocks, next to the tail, because the one
  * sentence in it that changes a run's course — the last-turn hand-over — is
@@ -114,6 +124,7 @@ export const DEFAULT_ORDER = Object.freeze([
   'conversation',
   'scratchpad',
   'context',
+  'goal',
   'budget',
   'reminder',
   'cue',

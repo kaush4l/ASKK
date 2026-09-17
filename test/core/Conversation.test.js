@@ -141,3 +141,27 @@ describe('the scratchpad a reply was written with', () => {
     expect(reloaded.createdAt).toBe(0)
   })
 })
+
+describe('what a conversation is for', () => {
+  test('a new one has no goal, and the field survives a round trip', () => {
+    const made = new Conversation({ title: 'work' })
+    expect(made.goal).toBe('')
+    made.aim('  get the suite green  ')
+    expect(made.goal).toBe('get the suite green')
+    expect(Conversation.fromJSON(made.toJSON()).goal).toBe('get the suite green')
+  })
+
+  test('a goal CAN be cleared, unlike a title', () => {
+    // The asymmetry is deliberate. A conversation must always have a name, so a
+    // blank rename is a slip and is refused. A goal that has been achieved or
+    // abandoned must be removable, or the model keeps steering by something
+    // nobody still wants.
+    const made = new Conversation({ title: 'work', goal: 'something old' })
+    expect(made.aim('')).toBe('')
+    expect(made.rename('')).toBe('work')
+  })
+
+  test('a record written before goals existed reads as having none', () => {
+    expect(Conversation.fromJSON({ id: 'c1', title: 'old', messages: [] }).goal).toBe('')
+  })
+})

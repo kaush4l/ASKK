@@ -128,3 +128,27 @@ describe('the check an agent file declares', () => {
     expect(built.notes.some((note) => note.includes('not a call this loop can run'))).toBe(true)
   })
 })
+
+describe('the goal reaches the prompt', () => {
+  test('a goal handed to buildAgent is a block the model reads', () => {
+    // The whole chain in one assertion: ChatService reads the goal off the
+    // conversation, hands it here, and it has to come out the other end in the
+    // assembled prompt. A block that is declared and never wired is the defect
+    // this tree deleted TokenScale for.
+    const built = buildAgent({
+      spec: specFor({ tools: [] }),
+      inference: {},
+      goal: 'get the suite green and keep it green',
+    })
+    expect(built.ok).toBe(true)
+
+    const planned = built.value.plan([])
+    expect(planned.text).toContain('GOAL')
+    expect(planned.text).toContain('get the suite green and keep it green')
+  })
+
+  test('no goal means no block, not an empty heading', () => {
+    const built = buildAgent({ spec: specFor({ tools: [] }), inference: {} })
+    expect(built.value.plan([]).text).not.toContain('GOAL')
+  })
+})

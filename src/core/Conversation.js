@@ -14,9 +14,21 @@ import { Message } from './Message.js'
  * other — were dropped by whichever wrote last.
  */
 export class Conversation {
-  constructor({ id = newId(), title = 'Untitled', messages = [], createdAt = Date.now() } = {}) {
+  constructor({
+    id = newId(),
+    title = 'Untitled',
+    // What this conversation is FOR, in the user's words. A title names a
+    // conversation so it can be found again; a goal says what finishing it
+    // would mean, and only the second is worth putting in front of the model
+    // every turn. Empty is the ordinary state and costs nothing: the block is
+    // dropped from the prompt when there is no goal.
+    goal = '',
+    messages = [],
+    createdAt = Date.now(),
+  } = {}) {
     this.id = id
     this.title = title
+    this.goal = typeof goal === 'string' ? goal : ''
     this.createdAt = createdAt
     // A record this module did not write is still evidence — that is the whole
     // doctrine of `Message`, which repairs an unknown role and a non-string
@@ -61,6 +73,19 @@ export class Conversation {
     return this.title
   }
 
+  /**
+   * Set or clear what this conversation is for.
+   *
+   * Unlike `rename`, an empty string is honoured rather than ignored. A
+   * conversation must always have a name, so a blank rename is a slip; a goal
+   * that has been achieved or abandoned should be removable, and refusing to
+   * clear it would leave the model steering by something nobody still wants.
+   */
+  aim(goal) {
+    this.goal = typeof goal === 'string' ? goal.trim() : ''
+    return this.goal
+  }
+
   static fromJSON(raw) {
     const record = raw ?? {}
     // Rehydrating is not creating, so a record written before `createdAt`
@@ -79,6 +104,7 @@ export class Conversation {
     return {
       id: this.id,
       title: this.title,
+      goal: this.goal,
       createdAt: this.createdAt,
       messages: this._messages.map((m) => m.toJSON()),
     }

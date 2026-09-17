@@ -2505,3 +2505,48 @@ button {
 .status-stop:focus-visible {
   color: var(--danger, #e06c75);
 }
+
+/* The goal field, first thing in the first drawer section. Set apart from the
+   run below it by a rule rather than a box: it is a different KIND of fact —
+   standing, set by a person — and the run is a record of what just happened. */
+.goalform {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding-bottom: var(--s2);
+  margin-bottom: var(--s2);
+  border-bottom: 1px solid var(--rule);
+}
+
+.goalform label {
+  color: var(--text);
+  font-size: var(--t-small);
+}
+
+.goalform .hint {
+  margin: 0;
+}
+
+.goalform textarea {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-sm);
+  background: var(--sunk, transparent);
+  color: var(--text);
+  font: inherit;
+  /* 16px on a phone, so focusing it does not zoom the page — the same floor the
+     composer already keeps. */
+  font-size: max(16px, var(--t-small));
+  resize: vertical;
+}
+
+.goalactions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.goalactions button {
+  min-height: 24px;
+}

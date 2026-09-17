@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { AgentPanel } from './AgentPanel.jsx'
 import { FilesPanel } from './FilesPanel.jsx'
 import { PromptPanel } from './PromptPanel.jsx'
@@ -39,6 +40,69 @@ const SECTIONS = [
   { id: 'prompt', label: 'prompt' },
 ]
 
+/**
+ * What this conversation is for, in the user's own words.
+ *
+ * Above the run and not below it, because it is the question the run is an
+ * answer to. It is also the first thing in the first section of the drawer,
+ * which is the only position that makes it findable by somebody who has not
+ * been told it exists.
+ *
+ * Saved on submit rather than on every keystroke: a goal is a sentence somebody
+ * composes, and a store written once per character would put half-written
+ * intentions in front of the model on any turn that landed mid-typing.
+ */
+function GoalField({ goal, onGoal }) {
+  const [draft, setDraft] = useState(goal ?? '')
+  const [saved, setSaved] = useState(false)
+
+  // The prop wins when the conversation changes underneath this field. Without
+  // it, switching conversations kept the previous one's goal in the box, which
+  // is the one state where a person would press save and overwrite it.
+  useEffect(() => {
+    setDraft(goal ?? '')
+    setSaved(false)
+  }, [goal])
+
+  return (
+    <form
+      className="goalform"
+      onSubmit={(submit) => {
+        submit.preventDefault()
+        onGoal?.(draft)
+        setSaved(true)
+      }}
+    >
+      <label htmlFor="goal-text">What this conversation is for</label>
+      <p className="hint">
+        Restated to the agent every turn, so a long run keeps answering the thing it was started
+        for. Leave it empty and nothing is added to the prompt.
+      </p>
+      <textarea
+        id="goal-text"
+        data-testid="goal-text"
+        value={draft}
+        rows={2}
+        placeholder="e.g. get the test suite passing and keep it passing"
+        onChange={(change) => {
+          setDraft(change.target.value)
+          setSaved(false)
+        }}
+      />
+      <div className="goalactions">
+        <button type="submit" data-testid="goal-save">
+          {draft.trim() ? 'save the goal' : 'clear the goal'}
+        </button>
+        {saved ? (
+          <span className="measured" data-testid="goal-saved">
+            saved
+          </span>
+        ) : null}
+      </div>
+    </form>
+  )
+}
+
 export function Drawer({
   section,
   onSection,
@@ -60,6 +124,8 @@ export function Drawer({
   onRemoveSchedule,
   agent,
   agentNotes,
+  goal,
+  onGoal,
 }) {
   return (
     <aside className="drawer" data-testid={`${section}-panel`} aria-label="Activity">
@@ -90,7 +156,10 @@ export function Drawer({
 
       <div className="drawer-body">
         {section === 'run' ? (
-          <RunPanel run={run} usage={usage} observations={observations} />
+          <>
+            <GoalField goal={goal} onGoal={onGoal} />
+            <RunPanel run={run} usage={usage} observations={observations} />
+          </>
         ) : null}
         {section === 'prompt' ? (
           <>

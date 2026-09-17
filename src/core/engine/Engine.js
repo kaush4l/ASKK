@@ -44,6 +44,12 @@ export class Engine {
     // block, last before the response contract — see `PromptTemplate` for why
     // the volatile blocks go at the end.
     context = [],
+    // What this whole conversation is FOR, if anyone has said. Empty on most
+    // runs and dropped from the prompt when it is empty, like `budget` beside
+    // it. A conversation holds turns and a pool holds tasks; until this, no
+    // layer held the thing those turns and tasks were in service of, so a long
+    // run had nothing to be judged against but its last instruction.
+    goal = '',
     // How the prompt is arranged. A template, not a hardcoded order, because
     // the best arrangement depends on what an agent actually carries — see
     // `PromptTemplate` for the two findings that decide the default.
@@ -65,6 +71,7 @@ export class Engine {
     this.check = check
     this._checked = false
     this.context = context
+    this.goal = goal
     this.template = template
   }
 
@@ -139,6 +146,16 @@ export class Engine {
         heading: 'CONTEXT',
         body: this.renderContext(),
         // Carries a clock. Nothing after this can ever be reused.
+        volatility: Volatility.VOLATILE,
+      }),
+      // Restated every turn on purpose. A goal stated once, forty turns ago,
+      // is a goal the model is recalling rather than reading — and the cheapest
+      // known defence against a long run drifting is for the thing it is for to
+      // be in the prompt it is answering now.
+      new PromptBlock({
+        id: 'goal',
+        heading: 'GOAL',
+        body: this.goal ?? '',
         volatility: Volatility.VOLATILE,
       }),
       // Empty on almost every turn, and dropped from the prompt when it is.

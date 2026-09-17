@@ -1327,6 +1327,33 @@ export default function Page() {
     if (ended.ok && ended.value === false) return
   }, [])
 
+  /**
+   * What the open conversation is for, and the way to change it.
+   *
+   * Read off the conversation row rather than held in a second piece of state:
+   * the record is already listed here, already carries the goal since it became
+   * part of `Conversation.toJSON`, and a copy would be a second thing to keep
+   * right.
+   */
+  const goal = conversations.find((one) => one.id === conversationId)?.goal ?? ''
+
+  const setGoal = useCallback(
+    async (said) => {
+      const done = await clientRef.current.call('conversations.aim', {
+        id: conversationRef.current,
+        goal: said,
+      })
+      if (!done.ok) {
+        note(done.notes)
+        return
+      }
+      setConversations((current) =>
+        current.map((row) => (row.id === done.value.id ? { ...row, goal: done.value.goal } : row)),
+      )
+    },
+    [note],
+  )
+
   const status = statusLine({
     ready,
     busy,
@@ -1590,6 +1617,8 @@ export default function Page() {
             onRemoveSchedule={removeSchedule}
             agent={agentSpec}
             agentNotes={notes}
+            goal={goal}
+            onGoal={setGoal}
           />
         ) : null}
       </div>

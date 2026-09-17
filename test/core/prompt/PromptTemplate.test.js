@@ -179,7 +179,7 @@ describe('PromptTemplate.audit', () => {
         // Mirrors `Engine.blocks`, which is the only place these are declared.
         // A block whose volatility is wrong here passes an audit the real
         // prompt would fail, so the two lists have to be read together.
-        id === 'context' || id === 'budget'
+        id === 'context' || id === 'goal' || id === 'budget'
           ? Volatility.VOLATILE
           : id === 'conversation' || id === 'scratchpad'
             ? Volatility.APPEND
@@ -228,5 +228,27 @@ describe('PromptTemplate.of', () => {
     const { template } = PromptTemplate.of(['nope', 'also-nope'])
 
     expect(template.order).toEqual([...DEFAULT_ORDER])
+  })
+})
+
+describe('the goal block', () => {
+  test('is in the vocabulary, so an agent file may name it', () => {
+    expect(DEFAULT_ORDER).toContain('goal')
+    const { template, notes } = PromptTemplate.of(['instructions', 'goal', 'cue'])
+    expect(template.order).toEqual(['instructions', 'goal', 'cue'])
+    expect(notes.join(' ')).not.toContain('is not a block')
+  })
+
+  test('sits behind the conversation, where a changed goal costs nothing cached', () => {
+    // The whole argument for its position: a goal in the static prefix would
+    // invalidate every cached byte on the one turn it changed.
+    const order = new PromptTemplate().order
+    expect(order.indexOf('goal')).toBeGreaterThan(order.indexOf('conversation'))
+    expect(order.indexOf('goal')).toBeGreaterThan(order.indexOf('context'))
+  })
+
+  test('and ahead of the budget, whose last-turn sentence stays nearest the tail', () => {
+    const order = new PromptTemplate().order
+    expect(order.indexOf('goal')).toBeLessThan(order.indexOf('budget'))
   })
 })

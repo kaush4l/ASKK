@@ -170,6 +170,25 @@ export class ConversationService {
     return Outcome.ok(conversation.toJSON(), notes)
   }
 
+  /**
+   * Say what this conversation is for, or stop saying it.
+   *
+   * Through the same write queue as every other change to the record, for the
+   * same reason `remove` is: a goal set while a message is being appended must
+   * not be undone by the append's copy landing after it.
+   */
+  async aim({ id, goal }) {
+    const done = await this._write(id, (conversation) => {
+      conversation.aim(goal)
+      return []
+    })
+    if (!done.ok) return done
+
+    const { conversation, saved } = done.value
+    const notes = saved.ok ? done.notes : [...done.notes, `not saved: ${saved.failure.message}`]
+    return Outcome.ok(conversation.toJSON(), notes)
+  }
+
   async remove({ id }) {
     // Through the queue, like every other write of this record. It used to go
     // straight to the repository, so an append already in flight put its copy

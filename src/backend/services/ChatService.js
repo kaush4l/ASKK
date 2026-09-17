@@ -557,6 +557,11 @@ export class ChatService {
           emit ? (progress) => emit(EventName.DELEGATE, progress) : null,
         ),
       context: this._backgroundContext(await this._context(notes), tasks),
+      // The goal belongs to the conversation, not to the agent: the same agent
+      // is asked for different things in different conversations, and a goal
+      // stored on the agent would leak one conversation's purpose into another
+      // — which is the mistake `owner` already exists to prevent for tasks.
+      goal: loaded.value?.goal ?? '',
       services: { ...this.services, tasks },
       extraTools: mcp.value,
     })

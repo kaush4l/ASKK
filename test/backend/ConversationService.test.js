@@ -483,3 +483,30 @@ describe('what the caller is told when storage refuses', () => {
     expect(appended.failure.message).toBe('the database is closed')
   })
 })
+
+describe('aiming a conversation', () => {
+  test('stores the goal and gives the record back', async () => {
+    const service = new ConversationService(new MemoryRepository())
+    const made = await service.create({ title: 'work' })
+    const aimed = await service.aim({ id: made.value.id, goal: 'ship the parser' })
+
+    expect(aimed.ok).toBe(true)
+    expect(aimed.value.goal).toBe('ship the parser')
+    const read = await service.get({ id: made.value.id })
+    expect(read.value.goal).toBe('ship the parser')
+  })
+
+  test('an empty goal clears it rather than being ignored', async () => {
+    const service = new ConversationService(new MemoryRepository())
+    const made = await service.create({ title: 'work' })
+    await service.aim({ id: made.value.id, goal: 'ship the parser' })
+    const cleared = await service.aim({ id: made.value.id, goal: '' })
+    expect(cleared.value.goal).toBe('')
+  })
+
+  test('aiming a conversation that is not there fails rather than inventing one', async () => {
+    const service = new ConversationService(new MemoryRepository())
+    const missed = await service.aim({ id: 'nope', goal: 'anything' })
+    expect(missed.ok).toBe(false)
+  })
+})

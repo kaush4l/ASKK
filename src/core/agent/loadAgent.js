@@ -74,6 +74,10 @@ export function buildAgent({
   tools,
   extraTools = [],
   context = [],
+  // What the conversation is for, if anyone has said. A fact about the
+  // caller's realm like `context` beside it, and handed in for the same
+  // reason: an agent file cannot know it.
+  goal = '',
   services = {},
 } = {}) {
   const resolved = tools
@@ -134,6 +138,7 @@ export function buildAgent({
     // realm — what is stored, which model was chosen — and an agent file cannot
     // know them.
     context,
+    goal,
     template: arranged.template,
     inference,
   })
