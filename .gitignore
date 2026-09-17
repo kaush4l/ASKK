@@ -64,3 +64,7 @@ bench/work/
 # INSIDE the directory a judge is handed, which is a label rather than a key —
 # and now sits one level up. Regenerate it with `bun run bench:blind`.
 bench/blind-key.json
+
+# Compiled caches under backup/python — the sources are kept, the artefacts are not.
+__pycache__/
+*.pyc
