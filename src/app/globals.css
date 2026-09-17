@@ -2356,6 +2356,10 @@ button {
   .chip button,
   .notes li button,
   .menu-row .rowact button,
+  /* Declares 24px above at a specificity a bare `button` cannot reach, so the
+     phone floor has to name it or the goal's own control stays under a
+     finger. */
+  .goalactions button,
   .thinking summary,
   .step > summary {
     min-height: 44px;
@@ -2547,6 +2551,39 @@ button {
   gap: 0.6rem;
 }
 
+/*
+ * The one control in this app that wore the browser's own chrome.
+ *
+ * It declared a height and nothing else, so `button`'s three lines of font,
+ * colour and cursor were the whole of its appearance and the user agent drew
+ * the rest — a light filled box on a dark panel, which the published page's
+ * screenshot shows sitting beside controls that share none of its shape. It
+ * takes the same treatment every other secondary button takes, so the panel
+ * has one button and not two kinds.
+ *
+ * And a DISABLED state, because there is now something to disable: the button
+ * is unavailable while the draft matches what is saved, and a disabled control
+ * that looks pressable is a worse lie than the label it replaced.
+ */
 .goalactions button {
   min-height: 24px;
+  padding: 0.3rem 0.6rem;
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-sm);
+  background: var(--raise);
+  color: var(--dim);
+  font-size: var(--t-small);
+  transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
+}
+
+.goalactions button:hover:not(:disabled) {
+  border-color: var(--signal-line);
+  background: var(--signal-soft);
+  color: var(--signal);
+}
+
+.goalactions button:disabled {
+  cursor: not-allowed;
+  border-color: var(--rule);
+  color: var(--faint);
 }
