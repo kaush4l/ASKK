@@ -1,5 +1,5 @@
 import { Outcome } from '../core/Outcome.js'
-import { Blocked } from '../core/tools/HttpPort.js'
+import { Blocked, crossesIntoLoopback } from '../core/tools/HttpPort.js'
 
 /**
  * The real HTTP port, in its own file because it now has two callers.
@@ -136,6 +136,13 @@ export const browserHttp = async ({
     )
     if (!sent.ok) {
       if (control.signal.aborted) return nothing(url, Blocked.TIMEOUT)
+      // Asked before the probe, because the probe cannot answer it: a page
+      // without Local Network Access permission is refused before the request
+      // leaves, so a `no-cors` reachability check is refused for the same
+      // reason and reports "nothing there" about a server that is running.
+      if (crossesIntoLoopback(url, self.location?.origin ?? '')) {
+        return nothing(url, Blocked.LOOPBACK)
+      }
       const answered = await reachable({ url, method, headers, body })
       return nothing(url, answered ? Blocked.REFUSED : Blocked.UNREACHABLE)
     }

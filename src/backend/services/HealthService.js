@@ -261,7 +261,9 @@ export class HealthService {
         ? `${baseUrl} answered, but will not let a browser read it. That is a CORS setting on that server, not something this page can change.`
         : blocked === Blocked.TIMEOUT
           ? `${baseUrl} did not answer within ${TIMEOUT / 1000}s. It may still be starting.`
-          : `Nothing answered at ${baseUrl}. Start the server, or open settings and name a different one.`
+          : blocked === Blocked.LOOPBACK
+            ? `This page is served from ${self.location?.origin ?? 'another site'}, and the browser will not let it reach ${baseUrl} — it denies a public page access to your machine's loopback address. Your server is probably fine. Open this app from your own machine to use it, or choose "In this tab" in settings and run a model here instead.`
+            : `Nothing answered at ${baseUrl}. Start the server, or open settings and name a different one.`
     // "Start the server" belongs here and only here. Everything the app was
     // told to use is named, so the fault really is a server that is not up —
     // which is exactly the advice that was useless above, where there was no

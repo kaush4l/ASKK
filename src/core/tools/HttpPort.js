@@ -51,7 +51,49 @@ export const Blocked = Object.freeze({
   UNREACHABLE: 'unreachable',
   /** Something answered, too slowly. */
   TIMEOUT: 'timeout',
+  /**
+   * The browser refused to let this page reach a loopback address.
+   *
+   * Measured on the published site, 2026-09-17: a page on
+   * `https://kaush4l.github.io` fetching `http://127.0.0.1:8873/v1/models` is
+   * refused with *"Permission was denied for this request to access the
+   * `loopback` address space"*. It is NOT mixed content — `http://127.0.0.1` is
+   * a potentially trustworthy origin and is not blocked as mixed — it is
+   * Chrome's Local Network Access gate, and a page the user did not grant it to
+   * never reaches the machine at all.
+   *
+   * Separate from UNREACHABLE because the advice is the opposite. "Nothing
+   * answered, start the server" sends somebody to debug a server that is
+   * running perfectly.
+   */
+  LOOPBACK: 'loopback',
 })
+
+/**
+ * Whether this page asking for that url crosses into the loopback space.
+ *
+ * A page served FROM loopback may reach loopback freely, which is why running
+ * the app locally has always worked and is the first thing to suggest. The
+ * question is only interesting for a page served from anywhere else.
+ */
+export function crossesIntoLoopback(url, origin = '') {
+  const local = (host) =>
+    host === 'localhost' ||
+    host === '127.0.0.1' ||
+    host === '[::1]' ||
+    host === '::1' ||
+    host.endsWith('.localhost')
+  try {
+    const target = new URL(url)
+    if (!local(target.hostname)) return false
+    // No origin to compare against — a non-browser caller, a test — is not a
+    // page, and nothing is being crossed.
+    if (!origin) return false
+    return !local(new URL(origin).hostname)
+  } catch {
+    return false
+  }
+}
 
 /**
  * The port used when nobody supplied one.
