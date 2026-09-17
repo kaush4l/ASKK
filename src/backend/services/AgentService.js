@@ -36,6 +36,22 @@ export class AgentService {
     return Outcome.ok(this.pool?.tasks?.() ?? [])
   }
 
+  /**
+   * End one handed-over task, and the thread carrying it.
+   *
+   * The page can already stop the turn it is waiting on — `Kernel.cancel`
+   * aborts the request it holds. This is the other half, and it was missing:
+   * work handed to a sub-agent outlives the turn that asked for it, so there
+   * was no request left to abort and nothing anywhere could end it. A run that
+   * cannot be ended is a run whose only exit is closing the tab.
+   *
+   * The boolean is whether anything was stopped. Pressing stop as the answer
+   * arrives is the ordinary way to miss, and that is not an error.
+   */
+  async stop({ id } = {}) {
+    return Outcome.ok(this.pool?.stop?.(id) ?? false)
+  }
+
   async list() {
     const all = await this.catalogue.all()
     if (!all.ok) return all

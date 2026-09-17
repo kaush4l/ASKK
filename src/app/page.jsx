@@ -1307,6 +1307,22 @@ export default function Page() {
   // there is no share to report the header says what the app is doing instead,
   // and the tray — which has room for it — says how much has arrived.
   const loading = downloadView(download)
+  /**
+   * End a question handed to another agent, and the thread carrying it.
+   *
+   * The refresh afterwards is not optional: the record the rail is drawing from
+   * was fetched before the stop, so without it the line still reads "working in
+   * the background" for a thread that is already gone.
+   */
+  const stopTask = useCallback(async (id) => {
+    const ended = await clientRef.current.call('agents.stop', { id })
+    const handed = await clientRef.current.call('agents.tasks')
+    if (handed.ok) setTasks(handed.value)
+    // Nothing to say when the press missed: the usual way to miss is to press
+    // as the answer arrives, and the line will already have changed to say so.
+    if (ended.ok && ended.value === false) return
+  }, [])
+
   const status = statusLine({
     ready,
     busy,
@@ -1349,6 +1365,7 @@ export default function Page() {
         onRename={renameConversation}
         onRemove={removeConversation}
         status={status}
+        onStopTask={stopTask}
         drawerOpen={drawer}
         onDrawer={() => setDrawer((open) => !open)}
         onSettings={() => setShowSettings((open) => !open)}

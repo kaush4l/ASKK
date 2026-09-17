@@ -28,6 +28,16 @@ export const TaskState = Object.freeze({
   RUNNING: 'running',
   DONE: 'done',
   FAILED: 'failed',
+  /**
+   * Ended because someone ended it.
+   *
+   * A fourth state rather than a flavour of FAILED, because the two answer
+   * different questions and only one of them is a bug. A run that failed is
+   * news about the agent; a run that was stopped is news about the person, and
+   * a panel that reports "researcher failed" for a thread the user killed on
+   * purpose is lying to the only party who knows better.
+   */
+  STOPPED: 'stopped',
 })
 
 /**
@@ -59,6 +69,12 @@ export function describeTask(task, { withAnswer = false } = {}) {
 
   if (task.state === TaskState.RUNNING) {
     return `${task.id}: ${task.agent} is still working${doing ? ` — ${doing}` : ''} (${seconds}s so far)`
+  }
+  if (task.state === TaskState.STOPPED) {
+    // No hint to read it back and no invitation to retry: the agent did not
+    // decide this and has nothing to learn from it. It is told so that it stops
+    // waiting, which is the whole of what it needs.
+    return `${task.id}: ${task.agent} was stopped after ${seconds}s`
   }
   if (task.state === TaskState.FAILED) {
     const why = task.result?.failure?.message ?? 'it did not say why'

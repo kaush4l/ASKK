@@ -186,3 +186,97 @@ describe('work handed over', () => {
     expect(pool.tasks().map((task) => task.task)).toEqual(['and another', 'read it'])
   })
 })
+
+/**
+ * Stopping one thread.
+ *
+ * The capability table carried *Terminate a runaway thread* as `absent` with
+ * the evidence "a method with no caller" — `terminate()` kills every thread in
+ * the pool, which is a shutdown, not a stop. These are the cases that separate
+ * the two, and the two that are easy to get wrong: a stopped task must not
+ * report itself as failed, and a thread carrying somebody else's call must not
+ * take that caller down silently.
+ */
+describe('stopping one running task', () => {
+  test('kills that thread, and the record says stopped rather than failed', async () => {
+    const { pool, made } = pooled()
+    const started = pool.start('researcher', 'read a long page', {})
+    await Promise.resolve()
+
+    expect(pool.task(started.id).state).toBe('running')
+    expect(pool.stop(started.id)).toBe(true)
+    await Promise.resolve()
+
+    expect(made.get('researcher').terminated).toBe(true)
+    const record = pool.task(started.id)
+    expect(record.state).toBe('stopped')
+    expect(record.endedAt).toBeGreaterThan(0)
+    expect(record.result.failure.message).toBe('researcher was stopped before it answered')
+  })
+
+  test('the caller waiting on it is answered rather than left hanging', async () => {
+    const { pool, made } = pooled()
+    const answer = pool.ask('researcher', 'a question', {})
+    await Promise.resolve()
+    await Promise.resolve()
+
+    const started = [...pool.tasks()]
+    // `ask` alone makes no task record, so stop the thread through one that does.
+    const handed = pool.start('researcher', 'another question', {})
+    await Promise.resolve()
+    expect(started.length + 1).toBeGreaterThan(0)
+
+    pool.stop(handed.id)
+    const settled = await answer
+    expect(settled.ok).toBe(false)
+    expect(settled.failure.message).toContain('was stopped')
+    expect(made.get('researcher').terminated).toBe(true)
+  })
+
+  test('another agent’s thread is untouched', async () => {
+    const { pool, made } = pooled()
+    const first = pool.start('researcher', 'one', {})
+    const second = pool.start('critic', 'two', {})
+    await Promise.resolve()
+
+    pool.stop(first.id)
+    await Promise.resolve()
+
+    expect(made.get('researcher').terminated).toBe(true)
+    expect(made.get('critic').terminated).toBeUndefined()
+    expect(pool.task(second.id).state).toBe('running')
+  })
+
+  test('a second task on the same thread is told why it ended', async () => {
+    const { pool } = pooled()
+    const first = pool.start('researcher', 'one', {})
+    const second = pool.start('researcher', 'two', {})
+    await Promise.resolve()
+
+    pool.stop(first.id)
+    await Promise.resolve()
+
+    expect(pool.task(second.id).state).toBe('stopped')
+    expect(pool.task(second.id).result.failure.message).toContain('on the same thread')
+  })
+
+  test('stopping something already finished changes nothing and says so', async () => {
+    const { pool, made } = pooled()
+    const started = pool.start('researcher', 'quick', {})
+    await Promise.resolve()
+    await Promise.resolve()
+    made.get('researcher').answer({ id: askedId(made.get('researcher')), ok: true, value: 'done' })
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(pool.task(started.id).state).toBe('done')
+    expect(pool.stop(started.id)).toBe(false)
+    expect(pool.task(started.id).state).toBe('done')
+  })
+
+  test('stopping a task that was never handed over is false, not a throw', () => {
+    const { pool } = pooled()
+    expect(pool.stop('t404')).toBe(false)
+    expect(pool.stop(undefined)).toBe(false)
+  })
+})

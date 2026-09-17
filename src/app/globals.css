@@ -2413,3 +2413,24 @@ button {
     scroll-behavior: auto !important;
   }
 }
+
+/* The control that ends background work, beside the sentence that announces it.
+   Quiet until wanted: it sits in a status line a person reads many times a turn
+   and is pressed once in a session, so it earns attention only on hover and on
+   focus. */
+.status-stop {
+  margin-left: 0.6em;
+  padding: 0 0.5em;
+  font: inherit;
+  font-size: 0.85em;
+  color: var(--muted, #8b95a3);
+  background: none;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.status-stop:hover,
+.status-stop:focus-visible {
+  color: var(--danger, #e06c75);
+}

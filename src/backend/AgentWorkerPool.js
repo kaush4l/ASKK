@@ -202,11 +202,18 @@ export class AgentWorkerPool {
       record.progress = progress
     })
       .then((answered) => {
+        // A stopped task has already been settled, by `stop`, with the one
+        // description that is true. This promise resolves anyway — stopping
+        // works by settling it — and without this guard the stop is
+        // immediately overwritten by the failure it caused, so the record says
+        // "failed" for a thread the user ended on purpose.
+        if (record.state !== TaskState.RUNNING) return
         record.state = answered.ok ? TaskState.DONE : TaskState.FAILED
         record.endedAt = Date.now()
         record.result = answered.toJSON()
       })
       .catch((err) => {
+        if (record.state !== TaskState.RUNNING) return
         record.state = TaskState.FAILED
         record.endedAt = Date.now()
         record.result = Outcome.failed(
@@ -217,6 +224,76 @@ export class AgentWorkerPool {
     this._forget()
 
     return { id, agent: name }
+  }
+
+  /**
+   * End one running task by killing the thread it is on.
+   *
+   * There is no gentler way. A sub-agent runs its whole loop inside its worker,
+   * and a worker busy in a model call or a wasm guest does not read its own
+   * messages — a polite "please stop" sits in a queue the thread will reach
+   * when it is already finished. `terminate` is the only thing that acts on a
+   * thread that is not listening, which is precisely the thread worth stopping.
+   *
+   * The cost is named rather than hidden: one worker serves one agent, and
+   * every call in flight on it dies too. Those callers are told the truth —
+   * that the thread was stopped, and which task it was stopped for — rather
+   * than a generic crash, because a collateral casualty of a deliberate act is
+   * still a deliberate act.
+   *
+   * Returns whether anything was actually stopped. Missing the moment is
+   * ordinary: pressing stop as the answer arrives is the usual way to miss, and
+   * reporting that as an error would put a red mark against a run that finished
+   * correctly.
+   */
+  stop(id) {
+    const record = this._tasks.get(String(id ?? ''))
+    if (!record || record.state !== TaskState.RUNNING) return false
+
+    const name = record.agent
+    record.state = TaskState.STOPPED
+    record.endedAt = Date.now()
+    record.result = Outcome.failed(
+      Reason.UNAVAILABLE,
+      `${name} was stopped before it answered`,
+    ).toJSON()
+
+    const worker = this._workers.get(name)
+    if (worker) {
+      worker.terminate()
+      this._workers.delete(name)
+      const thread = this._threads.get(name)
+      if (thread) thread.status = null
+    }
+
+    // The same settling the death path does, for the same reason: a pending
+    // call whose thread is gone must be answered or its caller waits forever.
+    for (const owed of this._owed.get(name) ?? []) {
+      const settle = this._pending.get(owed)
+      this._pending.delete(owed)
+      this._watching.delete(owed)
+      settle?.({
+        ok: false,
+        failure: {
+          code: Reason.UNAVAILABLE,
+          message: `${name} was stopped (task ${record.id})`,
+          hint: '',
+        },
+      })
+    }
+    this._owed.delete(name)
+
+    // Every OTHER task this thread was carrying ended with it, and says so.
+    for (const other of this._tasks.values()) {
+      if (other.agent !== name || other.state !== TaskState.RUNNING) continue
+      other.state = TaskState.STOPPED
+      other.endedAt = Date.now()
+      other.result = Outcome.failed(
+        Reason.UNAVAILABLE,
+        `${name} was stopped for task ${record.id}, and this call was on the same thread`,
+      ).toJSON()
+    }
+    return true
   }
 
   /**

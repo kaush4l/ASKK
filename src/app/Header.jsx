@@ -31,6 +31,7 @@ export function Header({
   onRename,
   onRemove,
   status,
+  onStopTask,
   drawerOpen,
   onDrawer,
   onSettings,
@@ -115,6 +116,21 @@ export function Header({
               {' · '}
               {status.clock}
             </span>
+          ) : null}
+          {/* Beside the sentence that announces the work, because that sentence
+              is the only place the work is mentioned and a control somewhere
+              else would be a control nobody finds. It carries the agent's name
+              rather than a bare "stop": there may be a turn running as well,
+              and the header's other stop ends that one. */}
+          {status.stoppable && onStopTask ? (
+            <button
+              type="button"
+              className="status-stop"
+              data-testid="stop-task"
+              onClick={() => onStopTask(status.stoppable.id)}
+            >
+              {`stop ${status.stoppable.agent}`}
+            </button>
           ) : null}
         </p>
 

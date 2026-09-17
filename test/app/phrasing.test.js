@@ -274,3 +274,34 @@ describe('addresses in a reply', () => {
     ])
   })
 })
+
+describe('background work a person can end', () => {
+  const line = (tasks) => statusLine({ ready: true, busy: false, tasks })
+
+  test('a running handed-over task names itself and offers to be stopped', () => {
+    const said = line([{ id: 't3', agent: 'researcher', state: 'running' }])
+    expect(said.text).toBe('researcher is working in the background')
+    expect(said.stoppable).toEqual({ id: 't3', agent: 'researcher' })
+  })
+
+  test('nothing is stoppable when nothing is running', () => {
+    expect(line([]).stoppable).toBeUndefined()
+    expect(
+      line([{ id: 't1', agent: 'researcher', state: 'done', read: false }]).stoppable,
+    ).toBeUndefined()
+  })
+
+  test('a stopped task is not reported as an answer waiting to be read', () => {
+    // The defect this exists to prevent: `state !== 'failed'` used to mean
+    // "finished", so a thread the person killed themselves invited them to go
+    // and read an answer that was never written.
+    const said = line([{ id: 't2', agent: 'researcher', state: 'stopped', read: false }])
+    expect(said.text).toBe('researcher was stopped')
+  })
+
+  test('a failed task still says it could not finish', () => {
+    expect(line([{ id: 't2', agent: 'researcher', state: 'failed', read: false }]).text).toBe(
+      'researcher could not finish',
+    )
+  })
+})

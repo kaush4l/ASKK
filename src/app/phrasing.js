@@ -285,16 +285,30 @@ export function statusLine({
   // interrupts thirty times on a thirty-second turn and says nothing new.
   if (busy) return { text: 'working', clock: duration(elapsed * 1000), live: true }
   const handed = tasks.find((one) => one?.state === 'running')
-  if (handed) return { text: `${handed.agent} is working in the background`, live: true }
-  const answered = tasks.find((one) => one?.state !== 'running' && !one?.read)
-  if (answered)
+  // `stoppable` is carried beside the sentence rather than folded into it,
+  // because the two are read by different things: the sentence is announced to
+  // a screen reader, and this is what a control needs to act on. Background
+  // work was announceable and unendable for the life of the project — the turn
+  // it was handed over in is gone, so there was no request left to abort.
+  if (handed)
     return {
-      text:
-        answered.state === 'failed'
-          ? `${answered.agent} could not finish`
-          : `${answered.agent} has an answer for you`,
+      text: `${handed.agent} is working in the background`,
       live: true,
+      stoppable: { id: handed.id, agent: handed.agent },
     }
+  const answered = tasks.find((one) => one?.state !== 'running' && !one?.read)
+  if (answered) {
+    // A stopped task is not an answer and not a failure. Saying "has an answer
+    // for you" about a thread the person killed themselves would send them to
+    // read something that does not exist.
+    const ended =
+      answered.state === 'failed'
+        ? `${answered.agent} could not finish`
+        : answered.state === 'stopped'
+          ? `${answered.agent} was stopped`
+          : `${answered.agent} has an answer for you`
+    return { text: ended, live: true }
+  }
   if (speaking) return { text: 'reading it aloud', live: true }
   return { text: agent ? `talking to ${agent}` : 'ready', live: false }
 }
