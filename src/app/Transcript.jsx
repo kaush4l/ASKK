@@ -1,6 +1,6 @@
 'use client'
 
-import { duration, linked, verbFor, visibleStream } from './phrasing.js'
+import { blocks, duration, spans, verbFor, visibleStream } from './phrasing.js'
 
 /**
  * What was said, and what the agent did between two things being said.
@@ -177,19 +177,50 @@ function askedBefore(messages, at) {
  * as an address, and it only ever says yes to http and https.
  */
 function Words({ said }) {
-  const pieces = linked(said)
-  if (pieces.length === 1 && !pieces[0].href) return pieces[0].text
-  return pieces.map((piece, at) =>
-    piece.href ? (
-      // biome-ignore lint/suspicious/noArrayIndexKey: the pieces of one string, in order, and the string is the identity
+  const parts = blocks(said)
+  // The common case, and the one that must stay cheap: a reply with no code in
+  // it is one run of prose and is drawn exactly as it was before.
+  if (parts.length === 1 && parts[0].kind === 'prose') return <Prose said={parts[0].text} />
+  return parts.map((part, at) =>
+    part.kind === 'code' ? (
+      // The language is an attribute rather than a caption: it belongs to the
+      // block, a reader who wants it can see it, and it costs no line of screen
+      // in a transcript where vertical space is the scarce thing.
+      // biome-ignore lint/suspicious/noArrayIndexKey: the blocks of one string, in order, and the string is the identity
+      <pre className="said-code" key={at} data-language={part.language || undefined}>
+        <code>{part.text}</code>
+      </pre>
+    ) : (
+      // biome-ignore lint/suspicious/noArrayIndexKey: same
+      <p className="said-prose" key={at}>
+        <Prose said={part.text} />
+      </p>
+    ),
+  )
+}
+
+/** One run of prose: inline code, addresses, and the words between them. */
+function Prose({ said }) {
+  const pieces = spans(said)
+  if (pieces.length === 1 && !pieces[0].href && !pieces[0].code) return pieces[0].text
+  return pieces.map((piece, at) => {
+    if (piece.code)
+      return (
+        // biome-ignore lint/suspicious/noArrayIndexKey: the pieces of one string, in order
+        <code className="said-inline" key={at}>
+          {piece.text}
+        </code>
+      )
+    return piece.href ? (
+      // biome-ignore lint/suspicious/noArrayIndexKey: same
       <a key={at} href={piece.href} target="_blank" rel="noreferrer">
         {piece.text}
       </a>
     ) : (
       // biome-ignore lint/suspicious/noArrayIndexKey: same
       <span key={at}>{piece.text}</span>
-    ),
-  )
+    )
+  })
 }
 
 function Turn({

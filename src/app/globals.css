@@ -741,6 +741,60 @@ button {
   overflow-wrap: anywhere;
 }
 
+/* A reply that was written in markdown.
+ *
+ * `.turn .text` keeps `white-space: pre-wrap`, so a block that has been lifted
+ * out must not be wrapped in it twice: a paragraph and a code block both
+ * already carry their own newlines. The rule below leaves the wrapping to the
+ * parent and only draws the edges.
+ *
+ * A code block is set apart by a rule and a tint rather than a border, in the
+ * same language `.step-body .result` already speaks — one vocabulary for "this
+ * is machine output", whether the machine said it or the model quoted it. */
+.turn .text .said-prose {
+  margin: 0 0 0.75rem;
+}
+
+.turn .text .said-prose:last-child {
+  margin-bottom: 0;
+}
+
+.turn .text .said-code {
+  margin: 0 0 0.75rem;
+  padding: 0.6rem 0.75rem;
+  border-left: 2px solid var(--rule);
+  background: var(--sunk, rgb(255 255 255 / 3%));
+  color: var(--dim);
+  overflow-x: auto;
+  /* The block owns its own wrapping: inheriting `pre-wrap` from the parent broke
+     an indented line at the viewport edge and lost the indentation that was the
+     only thing saying it was nested. */
+  white-space: pre;
+}
+
+.turn .text .said-code code {
+  font: inherit;
+}
+
+/* The language, when the author named one. In the corner rather than on a line
+   of its own: a reader glancing down a long reply uses it to tell a shell
+   transcript from a source file, and that is worth a word but not a row. */
+.turn .text .said-code[data-language]::before {
+  content: attr(data-language);
+  display: block;
+  margin-bottom: 0.35rem;
+  color: var(--faint);
+  font-size: var(--t-micro);
+  letter-spacing: 0.04em;
+}
+
+.turn .text .said-inline {
+  padding: 0.05em 0.3em;
+  border-radius: 3px;
+  background: var(--sunk, rgb(255 255 255 / 6%));
+  font: inherit;
+}
+
 /* Underlined, because colour alone is not how a link is identified — and the
    cyan here would say "measured", which a link is not. */
 .turn .text a {

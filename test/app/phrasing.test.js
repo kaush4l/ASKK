@@ -1,9 +1,11 @@
 import { describe, expect, test } from 'bun:test'
 import {
+  blocks,
   bytes,
   doingWord,
   duration,
   linked,
+  spans,
   statusLine,
   toolOf,
   verbFor,
@@ -303,5 +305,61 @@ describe('background work a person can end', () => {
     expect(line([{ id: 't2', agent: 'researcher', state: 'failed', read: false }]).text).toBe(
       'researcher could not finish',
     )
+  })
+})
+
+describe('a reply that was written in markdown', () => {
+  test('a fence becomes a block and its backticks leave the screen', () => {
+    const said = 'Here it is:\n\n```bash\nuname -a\n```\n\nThat is the kernel.'
+    const parts = blocks(said)
+    expect(parts.map((part) => part.kind)).toEqual(['prose', 'code', 'prose'])
+    expect(parts[1].text).toBe('uname -a')
+    expect(parts[1].language).toBe('bash')
+    // The whole point: no part of the output still carries the delimiter.
+    expect(parts.some((part) => part.text.includes('```'))).toBe(false)
+  })
+
+  test('a fence still being written is a block, not litter', () => {
+    // What a reader sees mid-stream. Waiting for the closing fence would show
+    // them the opening one for as long as the code takes to arrive.
+    const parts = blocks('one moment\n\n```js\nconst x = 1')
+    expect(parts.map((part) => part.kind)).toEqual(['prose', 'code'])
+    expect(parts[1].text).toBe('const x = 1')
+  })
+
+  test('a reply with no code is one run of prose, as it always was', () => {
+    expect(blocks('just an answer')).toEqual([
+      { kind: 'prose', text: 'just an answer', language: '' },
+    ])
+    expect(blocks('')).toEqual([])
+  })
+
+  test('a fence with no language still says which block it is', () => {
+    const parts = blocks('```\nplain\n```')
+    expect(parts).toEqual([{ kind: 'code', text: 'plain', language: '' }])
+  })
+
+  test('inline code is a span, and the backticks go', () => {
+    expect(spans('the kernel is `6.1.0` here')).toEqual([
+      { text: 'the kernel is ' },
+      { text: '6.1.0', code: true },
+      { text: ' here' },
+    ])
+  })
+
+  test('an address inside backticks is shown, not offered', () => {
+    // A URL being quoted is a name. Linking it invites a click on something the
+    // author was only naming, which is the wrong reading of their intent.
+    const said = spans('point it at `http://127.0.0.1:1234/v1` to begin')
+    expect(said[1]).toEqual({ text: 'http://127.0.0.1:1234/v1', code: true })
+    expect(said.some((piece) => piece.href)).toBe(false)
+  })
+
+  test('an address outside backticks is still a link', () => {
+    expect(spans('see https://example.com now').some((piece) => piece.href)).toBe(true)
+  })
+
+  test('a lone backtick stays text', () => {
+    expect(spans("it's a ` on its own")).toEqual([{ text: "it's a ` on its own" }])
   })
 })

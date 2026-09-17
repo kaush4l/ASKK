@@ -174,6 +174,91 @@ function section(text, field) {
 }
 
 /**
+ * A reply, split into prose and fenced code.
+ *
+ * The transcript drew a reply as one string with `white-space: pre-wrap`, so a
+ * model that answered in markdown put its own punctuation on the screen: the
+ * three backticks of a fence, verbatim, above and below the code they were
+ * supposed to delimit. A reader saw the machinery instead of the result.
+ *
+ * This is deliberately not a markdown parser. It knows two things — where a
+ * fence opens and where it closes — because those are the two that put visible
+ * litter on screen, and every construct a parser would add is another way for
+ * text a MODEL wrote to become structure this page trusts. Headings, tables and
+ * emphasis stay as written, which is the safe direction to fail in and, for a
+ * monospace transcript, close to what the author meant anyway.
+ *
+ * An unclosed fence is still a block. A reply that is still streaming has one
+ * every time it writes code, and a reader watching it arrive should see the
+ * code, not the fence that has not been paired yet.
+ *
+ * @returns {{kind: 'prose'|'code', text: string, language: string}[]}
+ */
+export function blocks(said) {
+  const text = String(said ?? '')
+  if (!text) return []
+
+  const out = []
+  let prose = []
+  let code = null
+  let language = ''
+
+  const flushProse = () => {
+    if (prose.join('\n').trim()) out.push({ kind: 'prose', text: prose.join('\n'), language: '' })
+    prose = []
+  }
+
+  for (const line of text.split('\n')) {
+    const fence = /^\s*```(.*)$/.exec(line)
+    if (!fence) {
+      ;(code ?? prose).push(line)
+      continue
+    }
+    if (code === null) {
+      flushProse()
+      code = []
+      // What the author wrote after the backticks — `js`, `text`, sometimes
+      // nothing. Kept because a reader glancing at a long reply uses it to tell
+      // a shell transcript from a source file.
+      language = fence[1].trim()
+    } else {
+      out.push({ kind: 'code', text: code.join('\n'), language })
+      code = null
+      language = ''
+    }
+  }
+
+  if (code !== null) out.push({ kind: 'code', text: code.join('\n'), language })
+  flushProse()
+  return out
+}
+
+/**
+ * One run of prose, split into the spans a transcript can draw.
+ *
+ * Inline code first, then addresses within what is left. The order matters: a
+ * URL inside backticks is a name being shown, not a place being offered, and
+ * linking it would invite a click on something the author was quoting.
+ *
+ * @returns {{text: string, code?: boolean, href?: string}[]}
+ */
+export function spans(said) {
+  const out = []
+  // A single backtick pair, on one line. Multi-line is a fence's job, and a
+  // lone backtick — an apostrophe's unlucky neighbour — stays text.
+  for (const [at, part] of String(said ?? '')
+    .split(/`([^`\n]+)`/g)
+    .entries()) {
+    if (at % 2 === 1) {
+      out.push({ text: part, code: true })
+      continue
+    }
+    for (const piece of linked(part)) out.push(piece)
+  }
+  return out
+}
+
+/**
  * A reply, split into the pieces a transcript can draw — text, and addresses.
  *
  * Nothing in the transcript was clickable: measured,

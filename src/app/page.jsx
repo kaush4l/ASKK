@@ -319,6 +319,10 @@ export default function Page() {
   useEffect(() => {
     // Spawned in an effect, not at module scope: this component is executed in
     // Node during the static prerender, where Worker does not exist.
+    // The mark the shell's deadline looks for. Set as early as any of this
+    // realm's code runs, because what it disproves is "none of it ran".
+    document.documentElement.dataset.hydrated = 'yes'
+
     const client = BackendClient.spawn()
     clientRef.current = client
 

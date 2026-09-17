@@ -65,10 +65,51 @@ export const viewport = {
   viewportFit: 'cover',
 }
 
+/**
+ * The one thing the page can say when its own code never arrives.
+ *
+ * The shell is server-rendered, so a visitor always sees the composer and the
+ * word `starting…`. If the scripts 404 — a build served at the wrong prefix is
+ * the way this happens, and it has happened — React never runs, nothing in
+ * `page.jsx` executes, and that word is the last thing the app ever says. A
+ * reviewer opening such a build waited, then assumed the agent was slow. The
+ * failure mode of a static export is not a white screen; it is a promise that
+ * is never kept.
+ *
+ * So the promise is given a deadline, in the only code that is guaranteed to be
+ * there: an inline script in the document itself. `page.jsx` marks the document
+ * on mount, and if that mark has not appeared in eight seconds this replaces the
+ * status line with what is actually wrong and where to look. Eight seconds is
+ * far longer than hydration takes on a cold load and far shorter than a person
+ * will sit in front of a word that is not changing.
+ *
+ * It says the URL it was opened at because that is the fact that identifies the
+ * fault: the prefix the page was built for and the prefix it is served at are
+ * different, and only one of those is on screen.
+ */
+const DEADLINE = `(function () {
+  setTimeout(function () {
+    if (document.documentElement.dataset.hydrated === 'yes') return
+    var said = document.querySelector('[data-testid="status"]')
+    if (said) {
+      said.textContent =
+        'This app did not finish loading — its own files did not arrive from ' +
+        location.origin + '. Open the developer console to see which.'
+      said.setAttribute('data-stalled', 'yes')
+    }
+    var box = document.querySelector('[data-testid="input"]')
+    if (box) box.setAttribute('placeholder', 'the app did not load')
+  }, 8000)
+})()`
+
 export default function RootLayout({ children }) {
   return (
     <html lang="en" className={`${sans.variable} ${mono.variable}`}>
-      <body>{children}</body>
+      <body>
+        {children}
+        {/* biome-ignore lint/security/noDangerouslySetInnerHtml: a constant in this file, with no interpolation and no input */}
+        <script dangerouslySetInnerHTML={{ __html: DEADLINE }} />
+      </body>
     </html>
   )
 }

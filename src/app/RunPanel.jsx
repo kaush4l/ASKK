@@ -47,7 +47,12 @@ export function RunPanel({ run, usage, observations = {} }) {
           ) : (
             <span className="measured">running</span>
           )}
-          {usage ? <span className="measured">{usage.prompt.toLocaleString()} counted</span> : null}
+          {usage ? (
+            // "counted" on its own said what the app had done and not what it
+            // had measured: a reviewer read `1,525 counted` and could not work
+            // out what was being counted. The unit is the whole information.
+            <span className="measured">{usage.prompt.toLocaleString()} tokens</span>
+          ) : null}
         </p>
       </div>
       <ol className="runlog" data-testid="run-log">
