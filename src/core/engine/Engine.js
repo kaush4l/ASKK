@@ -50,6 +50,10 @@ export class Engine {
     // layer held the thing those turns and tasks were in service of, so a long
     // run had nothing to be judged against but its last instruction.
     goal = '',
+    // The decomposition of that goal, if there is one — a `Plan`, whose steps
+    // carry states. Handed in like the goal and for the same reason: it belongs
+    // to the conversation, not to the agent, and an agent file cannot know it.
+    plan = null,
     // How the prompt is arranged. A template, not a hardcoded order, because
     // the best arrangement depends on what an agent actually carries — see
     // `PromptTemplate` for the two findings that decide the default.
@@ -72,6 +76,7 @@ export class Engine {
     this._checked = false
     this.context = context
     this.goal = goal
+    this.plan = plan
     this.template = template
   }
 
@@ -158,6 +163,17 @@ export class Engine {
         body: this.goal ?? '',
         volatility: Volatility.VOLATILE,
       }),
+      // Where the work has got to, restated every turn for the same reason the
+      // goal is. The goal is the defence against drifting off the destination;
+      // this is the defence against arriving at it twice — a run that cannot
+      // read back which parts are finished re-derives the decomposition every
+      // turn and quietly redoes work it has already done.
+      new PromptBlock({
+        id: 'plan',
+        heading: 'PLAN',
+        body: this.plan?.render() ?? '',
+        volatility: Volatility.VOLATILE,
+      }),
       // Empty on almost every turn, and dropped from the prompt when it is.
       // The one thing it carries is the hand-over: the turn on which the budget
       // has no room left is told so, in words, before it is sent — see `Budget`
@@ -187,11 +203,17 @@ export class Engine {
   /**
    * The assembled prompt and the accounting that produced it.
    *
+   * Named `assemble` and not `plan`, which is what it was called until a plan
+   * became a thing in this domain rather than a metaphor for building a
+   * prompt. An engine now CARRIES a plan, and a field and a method of one name
+   * on one object is a collision the language resolves silently and in the
+   * wrong direction.
+   *
    * Returned together on purpose. A prompt you can only read as one string is a
    * prompt whose cost and cache behaviour you have to guess at; this is the
    * same text plus where the reusable prefix ends and what each block costs.
    */
-  plan(history, scratchpad = [], budget = null) {
+  assemble(history, scratchpad = [], budget = null) {
     return this.template.assemble(this.blocks(history, scratchpad, budget))
   }
 
@@ -245,7 +267,7 @@ export class Engine {
       })
     }
 
-    const assembled = this.plan(history, scratchpad, budget)
+    const assembled = this.assemble(history, scratchpad, budget)
     const prompt = assembled.text
     // The pass is opened here and nowhere else, because here is the only place
     // the assembled cost is known. A provider that reports real usage replaces

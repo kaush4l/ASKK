@@ -5,6 +5,7 @@ import { Multimodality } from '../../core/inference/Multimodality.js'
 import { Marker, Role } from '../../core/Message.js'
 import { discoverMcpTools } from '../../core/mcp/index.js'
 import { Outcome } from '../../core/Outcome.js'
+import { Plan } from '../../core/Plan.js'
 import { describeProgress } from '../../core/progress.js'
 import { describeTask } from '../../core/tools/index.js'
 import { EventName } from '../../protocol/Envelope.js'
@@ -284,6 +285,39 @@ export class ChatService {
   }
 
   /**
+   * The plan port for ONE conversation.
+   *
+   * Reads are free — the object is already in hand — and a write goes through
+   * `ConversationService`, which owns the record and serialises writes to it.
+   * Writing the whole conversation to record a ticked-off step is the honest
+   * cost of the plan living on that record, and it is the same cost `aim`
+   * already pays; a separate store would save the bytes and buy a second place
+   * for a conversation's state to be, which is what `owner` exists to prevent
+   * for tasks.
+   *
+   * A write that fails returns false rather than throwing. The tool says so to
+   * the agent — "held for now but not stored" — because an agent whose plan
+   * will not survive a reload can act on that, and a thrown error in the middle
+   * of a tool call would cost the turn instead.
+   */
+  _planFor(conversationId, plan, emit) {
+    return {
+      read: () => plan,
+      write: async (revised) => {
+        // Announced before it is stored, and announced even when storing fails:
+        // what the panel is for is showing what the agent is working from RIGHT
+        // NOW, and that is true of a revision the store then refuses. Whether
+        // it will survive a reload is the tool's sentence to the agent, not
+        // this one's to the screen.
+        emit?.(EventName.PLAN, revised.toJSON())
+        if (typeof this.conversations?.compose !== 'function') return false
+        const saved = await this.conversations.compose({ id: conversationId, plan: revised })
+        return saved.ok
+      },
+    }
+  }
+
+  /**
    * How a turn ended, appended to the conversation it ended in.
    *
    * A turn that produced no reply used to leave the question and nothing else,
@@ -520,6 +554,13 @@ export class ChatService {
     // This conversation's handed-over work, and nothing else's.
     const tasks = this._tasksFor(id)
 
+    // The plan, and the port the `plan` tool revises it through. Built here
+    // rather than in the constructor because both are scoped to ONE
+    // conversation, exactly like `tasks` above: a plan shared across
+    // conversations would be one job's decomposition steering another's.
+    const plan = Plan.fromJSON(loaded.value?.plan)
+    const plans = this._planFor(id, plan, emit)
+
     // Read once per session by the catalogue and cached there, so this is a
     // map lookup on every turn after the first.
     const soul = await this.catalogue.soul()
@@ -562,7 +603,11 @@ export class ChatService {
       // stored on the agent would leak one conversation's purpose into another
       // — which is the mistake `owner` already exists to prevent for tasks.
       goal: loaded.value?.goal ?? '',
-      services: { ...this.services, tasks },
+      // The same object the tool revises and the prompt block renders, so a
+      // step ticked off in the middle of a turn is read as done by the rest of
+      // that turn — see `PlanPort` for why a copy would be wrong.
+      plan,
+      services: { ...this.services, tasks, plan: plans },
       extraTools: mcp.value,
     })
     if (!agent.ok) return unanswered(agent.failure, agent.notes)

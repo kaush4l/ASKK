@@ -148,7 +148,7 @@ describe('ReActEngine.run', () => {
 
     // Built against a SECOND budget with the same pinned clock and no passes,
     // because the run's own has counted a step by the time this reads it.
-    const plan = engine.plan(history, [], new Budget({ now: () => 0 }))
+    const plan = engine.assemble(history, [], new Budget({ now: () => 0 }))
     expect(inference.calls[0].prompt).toBe(plan.text)
     expect(inference.calls[0].options.cacheAt).toBe(plan.boundary)
     expect(plan.boundary).toBeGreaterThan(0)

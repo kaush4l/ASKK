@@ -144,6 +144,18 @@ const SLOW_TASK = 'read the page that never finishes'
 
 /** What a scheduled question says, so it can be found in the transcript. */
 const SCHEDULED_MARK = 'scheduled-6d24b'
+/**
+ * The goal, the question that decomposes it, and the answer that ends the run.
+ *
+ * A marker question rather than a plain sentence, for the reason every other
+ * one here is: the scripted endpoint branches on evidence in the prompt, and a
+ * question that could be confused with another scene's would answer with the
+ * wrong turn and this check would pass on it.
+ */
+const PLAN_GOAL = 'get the page read and written down: 4e91c'
+const PLAN_QUESTION = 'break it into parts: 7d3a8'
+const PLAN_STEPS = ['read the page', 'write it down', 'say what it said']
+const PLAN_ANSWER = 'main-2c5da: the first part is done'
 /** What an OVERDUE schedule says — one whose period elapsed while nobody was here. */
 const OVERDUE_MARK = 'overdue-31c7a'
 /** A line only the researcher's own file carries, which is how a child prompt is known. */
@@ -174,6 +186,19 @@ const CONFLICT_ACCEPTED = 'the same edit, put back on top of what is there: 91c7
  * in the wrong order would answer without ever fetching, so the two are told
  * apart by evidence in the prompt rather than by a counter this file keeps.
  */
+/**
+ * The question this turn is actually answering: everything after the last
+ * `[USER]:` in the prompt.
+ *
+ * The conversation block carries every earlier question too, so "the prompt
+ * mentions X" and "the person just asked X" are different claims, and a branch
+ * that confuses them answers a later scene with an earlier scene's reply.
+ */
+function lastAsked(prompt) {
+  const at = prompt.lastIndexOf('[USER]:')
+  return at === -1 ? prompt : prompt.slice(at)
+}
+
 function scriptedReply(prompt) {
   // WHOSE turn this is, read off the prompt itself: only the researcher's own
   // file carries that sentence, so a child request identifies itself by the
@@ -183,6 +208,31 @@ function scriptedReply(prompt) {
     return prompt.includes(PAGE_TEXT)
       ? `think: [the page said what it says]\n\nplan: []\n\nact: answer\n\nresult: ${DELEGATED_ANSWER}`
       : `think: [read the page]\n\nplan: [fetch it]\n\nact: tool\n\nresult: fetch({"url": "${PAGE_URL}"})`
+  }
+  // The decomposing run, in three turns, each read off evidence in the prompt.
+  //
+  // Matched against the CURRENT question and not against the whole prompt,
+  // which is the one thing every other branch here gets away with and this one
+  // cannot: this scene's question stays in the conversation block for the rest
+  // of the run, so a plain `includes` answered every later scene's turn with
+  // this scene's reply. Measured — the file-conflict scene went first.
+  //
+  //
+  //   the plan block shows step one ticked  -> answer
+  //   this run has already called plan      -> tick step one off
+  //   anything else                         -> write the list
+  //
+  // `action: plan(` is the SCRATCHPAD's rendering of a call this run made.
+  // Matching a bare `plan(` would match the tools block, which every prompt
+  // carries, so the first turn would tick off a step that did not exist yet.
+  if (lastAsked(prompt).includes(PLAN_QUESTION)) {
+    if (prompt.includes(`1. [x] ${PLAN_STEPS[0]}`)) {
+      return `think: [the first part is done]\n\nplan: []\n\nact: answer\n\nresult: ${PLAN_ANSWER}`
+    }
+    if (prompt.includes('action: plan(')) {
+      return `think: [done the first]\n\nplan: []\n\nact: tool\n\nresult: plan({"done": 1})`
+    }
+    return `think: [three parts]\n\nplan: []\n\nact: tool\n\nresult: plan({"steps": ${JSON.stringify(PLAN_STEPS)}})`
   }
   // The one turn that writes a file, and it is first because its question is a
   // literal marker: every branch below reads evidence that a delegating run
@@ -1410,6 +1460,149 @@ if (!asked?.asked)
 
 console.log(
   `smoke: a schedule overdue by an hour asked itself on reopening — ${JSON.stringify(asked.asked)}`,
+)
+
+// --- a goal, broken into parts, ticked off where a person can watch ---------
+//
+// The plan is the answer to "is this nearly done", and it is the one question
+// the step trace above it cannot answer. Three things can only be checked here:
+// that the panel renders at all, that it is CURRENT while a turn is still
+// running — the record is only re-read when a conversation is opened, so the
+// only thing that can update it mid-turn is `EventName.PLAN` — and that the
+// empty state says the right one of its two sentences. `bun test` proves the
+// plan reaches the prompt and the store; no test outside a browser can render
+// a component.
+const decomposed = await evaluate(
+  `(async () => {
+     const pick = (id) => document.querySelector('[data-testid="' + id + '"]')
+     const until = async (get, ms = 8000) => {
+       for (let i = 0; i < ms / 50; i++) {
+         const value = get()
+         if (value) return value
+         await new Promise((r) => setTimeout(r, 50))
+       }
+       return null
+     }
+     const type = (node, text) => {
+       const proto = node.tagName === 'TEXTAREA' ? HTMLTextAreaElement : HTMLInputElement
+       Object.getOwnPropertyDescriptor(proto.prototype, 'value').set.call(node, text)
+       node.dispatchEvent(new Event('input', { bubbles: true }))
+     }
+     // A section toggle does not exist until the drawer is open. No backticks
+     // in this comment: it lives inside a template literal.
+     const openDrawer = async (id) => {
+       if (!pick(id)) pick('drawer-toggle')?.click()
+       return await until(() => pick(id))
+     }
+     const toggle = await openDrawer('run-toggle')
+     if (!toggle) return { where: 'the rail has no work button' }
+     toggle.click()
+
+     // Before anything: the sentence a conversation with no goal is told. The
+     // two empty states are different sentences on purpose, and the wrong one
+     // leaves a reader waiting for something that is never coming.
+     const cold = (await until(() => pick('goal-plan-empty')))?.textContent ?? ''
+
+     const field = await until(() => pick('goal-text'))
+     if (!field) return { where: 'the goal field never rendered' }
+     type(field, ${JSON.stringify(PLAN_GOAL)})
+     pick('goal-save')?.click()
+     // And the other sentence, now that there is something to break down.
+     const aimed = (await until(() => {
+       const said = pick('goal-plan-empty')?.textContent ?? ''
+       return said.includes('No plan yet') ? said : null
+     })) ?? ''
+
+     const input = pick('input')
+     if (!input) return { where: 'there is no composer' }
+     type(input, ${JSON.stringify(PLAN_QUESTION)})
+     input.form.requestSubmit()
+
+     // WATCHED rather than sampled, like the rail above: against a scripted
+     // endpoint the whole run is over in milliseconds, and a poll on a timer
+     // reads either side of the state it is there to find. What is being
+     // watched for is the plan on screen while the turn is still going, which
+     // is the whole claim of the live channel.
+     const seen = new Set()
+     const watcher = new MutationObserver(() => {
+       const list = pick('goal-plan')
+       if (list) seen.add(list.textContent)
+     })
+     watcher.observe(document.body, { childList: true, subtree: true, characterData: true })
+
+     const answered = await until(() =>
+       [...document.querySelectorAll('.turn.assistant .text')].find((node) =>
+         node.textContent.includes(${JSON.stringify(PLAN_ANSWER)}),
+       ),
+     )
+     watcher.disconnect()
+
+     const steps = [1, 2, 3].map((n) => {
+       const row = pick('goal-plan-step-' + n)
+       return row ? { text: row.textContent, state: row.dataset.state } : null
+     })
+     return {
+       cold,
+       aimed,
+       answered: Boolean(answered),
+       steps,
+       left: pick('goal-plan-left')?.textContent ?? '',
+       // Whether the list was on screen before the run ended. Every state the
+       // panel was ever in, from the observer.
+       during: [...seen],
+     }
+   })()`,
+  session,
+  true,
+)
+
+if (!decomposed?.answered)
+  await fail(`the decomposing turn never reached an answer: ${JSON.stringify(decomposed)}`, [
+    'The agent was scripted to call plan({"steps": [...]}), then plan({"done": 1}),',
+    'then answer. See tools: in agents/main/agent.md and BUILTIN_TOOLS.plan.',
+    ...problems,
+  ])
+// The two empty sentences, and that they are not the same sentence. A panel
+// that said "no plan yet" to somebody who had not set a goal would leave them
+// waiting for something nothing was going to produce.
+if (!String(decomposed.cold).includes('Set one above'))
+  await fail(`with no goal the plan panel said: ${JSON.stringify(decomposed.cold)}`, problems)
+if (!String(decomposed.aimed).includes('No plan yet'))
+  await fail(
+    `with a goal and no plan the panel said: ${JSON.stringify(decomposed.aimed)}`,
+    problems,
+  )
+// The steps, in the words the agent wrote, in the order it wrote them.
+const written = (decomposed.steps ?? []).map((step) => step?.text ?? '')
+for (const [index, wanted] of PLAN_STEPS.entries()) {
+  if (!written[index]?.includes(wanted))
+    await fail(
+      `step ${index + 1} of the plan panel read ${JSON.stringify(written[index] ?? null)}`,
+      problems,
+    )
+}
+// And the state of the one that was finished, which is the half of a plan that
+// makes it a plan rather than a list.
+if (decomposed.steps?.[0]?.state !== 'done')
+  await fail(`the finished step was not drawn as done: ${JSON.stringify(decomposed.steps)}`, [
+    'PlanTool writes the state; PlanPanel draws it as data-state.',
+    ...problems,
+  ])
+if (!String(decomposed.left).includes('2 of 3 left'))
+  await fail(`the plan panel miscounted what is left: ${JSON.stringify(decomposed.left)}`, problems)
+// The LIVE claim. The conversation row is re-read only when a conversation is
+// opened, so a panel that is right at the end of the turn and was empty
+// throughout it means EventName.PLAN never arrived — and a long run is exactly
+// when somebody is watching this.
+if (!(decomposed.during ?? []).some((text) => text.includes(PLAN_STEPS[0])))
+  await fail('the plan never appeared while the turn was still running', [
+    'ChatService._planFor emits EventName.PLAN; page.jsx writes it onto the row.',
+    ...problems,
+  ])
+
+console.log(
+  `smoke: a goal was broken into ${PLAN_STEPS.length} parts, ticked off while the turn ran, ` +
+    `and the panel said ${JSON.stringify(String(decomposed.left).trim())}`,
 )
 
 // --- a person writing into the agent's files, against the agent -------------

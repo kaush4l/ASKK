@@ -2587,3 +2587,102 @@ button {
   border-color: var(--rule);
   color: var(--faint);
 }
+
+/*
+ * The plan, under the goal it decomposes.
+ *
+ * A list of states, so the whole design problem is telling four states apart
+ * without colour being the only thing that does it — WCAG 1.4.1, and the reason
+ * every row carries its state in words on the right as well as in the mark on
+ * the left. The word is the answer for a reader who cannot separate the hues;
+ * the mark is the answer for a reader scanning ten rows for the one in
+ * progress, which words in a column do badly.
+ */
+.plan {
+  padding-bottom: var(--s2);
+  margin-bottom: var(--s2);
+  border-bottom: 1px solid var(--rule);
+}
+
+.plan h3 {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin: 0 0 0.5rem;
+  color: var(--text);
+  font-size: var(--t-small);
+  font-weight: 600;
+}
+
+.planlist {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  /* Numbered by CSS rather than by the browser's own marker, because the number
+     is an ADDRESS — it is what `plan({"done": n})` takes — and a marker that a
+     reset or a nested list could renumber would show the agent one address and
+     the reader another. */
+  counter-reset: planstep;
+}
+
+.planlist li {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: baseline;
+  gap: 0.5rem;
+  counter-increment: planstep;
+  color: var(--text);
+  font-size: var(--t-small);
+}
+
+.planlist li::before {
+  content: counter(planstep) ".";
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The mark. A shape and not merely a colour: a ring for what is waiting, a
+   filled dot for what is being done now, a tick for what is finished, a dash
+   for what was abandoned. */
+.planstate {
+  width: 0.7em;
+  height: 0.7em;
+  border: 1.5px solid var(--faint);
+  border-radius: 50%;
+}
+
+[data-state='active'] .planstate {
+  border-color: var(--signal);
+  background: var(--signal);
+}
+
+[data-state='done'] .planstate {
+  border-color: var(--signal);
+  background: var(--signal-soft);
+}
+
+[data-state='dropped'] .planstate {
+  border-radius: 0;
+  border-width: 0 0 1.5px 0;
+  height: 0;
+}
+
+/* Struck through, because a dropped step is kept on purpose — so that the next
+   turn does not write it again — and a reader needs to see at a glance that it
+   is not work anybody is waiting for. */
+[data-state='dropped'] .plantext {
+  color: var(--faint);
+  text-decoration: line-through;
+}
+
+[data-state='done'] .plantext {
+  color: var(--dim);
+}
+
+[data-state='active'] .plantext {
+  font-weight: 600;
+}

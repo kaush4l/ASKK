@@ -1,5 +1,6 @@
 import { newId } from './ids.js'
 import { Message } from './Message.js'
+import { Plan } from './Plan.js'
 
 /**
  * A conversation is its id, never its field values: two loads of the same
@@ -23,12 +24,22 @@ export class Conversation {
     // every turn. Empty is the ordinary state and costs nothing: the block is
     // dropped from the prompt when there is no goal.
     goal = '',
+    // How the goal is being done, as steps with states. Beside the goal and
+    // not inside it: a goal is what the user said and stays as they said it,
+    // while a plan is the agent's own working and is rewritten as the work
+    // teaches it what the parts really are.
+    plan = null,
     messages = [],
     createdAt = Date.now(),
   } = {}) {
     this.id = id
     this.title = title
     this.goal = typeof goal === 'string' ? goal : ''
+    // An instance and never a bare record, for the reason `messages` are
+    // `Message`s: the store hands back whatever was written, including by a
+    // version that had never heard of this field, and one owner of the shape is
+    // how a field stops meaning two things.
+    this.plan = plan instanceof Plan ? plan : Plan.fromJSON(plan)
     this.createdAt = createdAt
     // A record this module did not write is still evidence — that is the whole
     // doctrine of `Message`, which repairs an unknown role and a non-string
@@ -86,6 +97,20 @@ export class Conversation {
     return this.goal
   }
 
+  /**
+   * Replace the plan wholesale.
+   *
+   * Wholesale and not step-by-step, because the caller is the agent's own tool
+   * holding the live object it has just revised — see `PlanPort` for why it is
+   * handed the real plan rather than a copy. A conversation's job here is to
+   * own the field and to be written; the reasoning about steps belongs to
+   * `Plan` and happens before this is called.
+   */
+  compose(plan) {
+    this.plan = plan instanceof Plan ? plan : Plan.fromJSON(plan)
+    return this.plan
+  }
+
   static fromJSON(raw) {
     const record = raw ?? {}
     // Rehydrating is not creating, so a record written before `createdAt`
@@ -105,6 +130,7 @@ export class Conversation {
       id: this.id,
       title: this.title,
       goal: this.goal,
+      plan: this.plan.toJSON(),
       createdAt: this.createdAt,
       messages: this._messages.map((m) => m.toJSON()),
     }

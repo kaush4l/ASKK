@@ -4,6 +4,7 @@ import { MemoryRepository } from '../../../src/backend/repositories/MemoryReposi
 import { AgentCatalogue } from '../../../src/core/agent/AgentCatalogue.js'
 import { resolveTools } from '../../../src/core/agent/loadAgent.js'
 import { Outcome } from '../../../src/core/Outcome.js'
+import { Plan } from '../../../src/core/Plan.js'
 import { Blocked } from '../../../src/core/tools/HttpPort.js'
 import { BUILTIN_TOOLS } from '../../../src/core/tools/index.js'
 import { Toolbox } from '../../../src/core/tools/Toolbox.js'
@@ -123,6 +124,44 @@ describe('the tools the real agent file asks for', () => {
     // politely for ever.
     expect((await files.read('notes.md')).value.text).toBe('kept')
     expect((await toolbox.run('read_file({"path": "notes.md"})')).observation).toContain('kept')
+  })
+
+  test('main names plan, and it reaches the plan it was composed with', async () => {
+    // Same argument again, for the capability roadmap item 2 is: a plan the
+    // agent cannot write is a goal nobody decomposes. Every other test of the
+    // tool constructs it itself and would stay green through a missing word in
+    // `tools:`.
+    const spec = await catalogue.spec('main')
+    const plan = new Plan()
+    const stored = []
+
+    const resolved = resolveTools({
+      names: spec.value.tools,
+      services: {
+        plan: {
+          read: () => plan,
+          write: async (revised) => {
+            stored.push(revised.render())
+            return true
+          },
+        },
+      },
+    })
+    const toolbox = new Toolbox(resolved.value)
+
+    expect(toolbox.names).toContain('plan')
+
+    const composed = await toolbox.run('plan({"steps": ["read the spec", "write the test"]})')
+    expect(composed.observation).toContain('1. [ ] read the spec')
+    // Through the real port and back out, so a tool wired to `NO_PLAN` by a
+    // missing key in the services object fails here rather than answering
+    // politely for ever.
+    expect(plan.render()).toBe('1. [ ] read the spec\n2. [ ] write the test')
+    expect(stored).toHaveLength(1)
+
+    const ticked = await toolbox.run('plan({"done": 1})')
+    expect(ticked.observation).toContain('1. [x] read the spec')
+    expect(ticked.observation).toContain('1 step left of 2')
   })
 })
 

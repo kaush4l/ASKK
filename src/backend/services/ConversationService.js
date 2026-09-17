@@ -189,6 +189,27 @@ export class ConversationService {
     return Outcome.ok(conversation.toJSON(), notes)
   }
 
+  /**
+   * Keep the plan the agent has just revised.
+   *
+   * Through the same write queue as `aim` and for the same reason: a plan
+   * written mid-turn must not be undone by the append of that turn's own
+   * message landing after it — and a working agent revises the plan on exactly
+   * the turns that are also appending messages, so this is the ordinary case
+   * here rather than the rare one.
+   */
+  async compose({ id, plan }) {
+    const done = await this._write(id, (conversation) => {
+      conversation.compose(plan)
+      return []
+    })
+    if (!done.ok) return done
+
+    const { conversation, saved } = done.value
+    const notes = saved.ok ? done.notes : [...done.notes, `not saved: ${saved.failure.message}`]
+    return Outcome.ok(conversation.toJSON(), notes)
+  }
+
   async remove({ id }) {
     // Through the queue, like every other write of this record. It used to go
     // straight to the repository, so an append already in flight put its copy

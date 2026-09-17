@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { AgentSpec } from '../../../src/core/agent/AgentSpec.js'
 import { buildAgent, resolveTools } from '../../../src/core/agent/loadAgent.js'
+import { Plan, StepState } from '../../../src/core/Plan.js'
 
 /**
  * Where a name written in a markdown file becomes a thing the model can call.
@@ -142,13 +143,62 @@ describe('the goal reaches the prompt', () => {
     })
     expect(built.ok).toBe(true)
 
-    const planned = built.value.plan([])
+    const planned = built.value.assemble([])
     expect(planned.text).toContain('GOAL')
     expect(planned.text).toContain('get the suite green and keep it green')
   })
 
   test('no goal means no block, not an empty heading', () => {
     const built = buildAgent({ spec: specFor({ tools: [] }), inference: {} })
-    expect(built.value.plan([]).text).not.toContain('GOAL')
+    expect(built.value.assemble([]).text).not.toContain('GOAL')
+  })
+})
+
+describe('the plan reaches the prompt', () => {
+  test('a plan handed to buildAgent is a block the model reads', () => {
+    const plan = new Plan()
+    plan.compose(['read the spec', 'write the test'])
+    plan.mark(1, StepState.DONE)
+
+    const built = buildAgent({ spec: specFor({ tools: [] }), inference: {}, plan })
+    expect(built.ok).toBe(true)
+
+    const assembled = built.value.assemble([])
+    expect(assembled.text).toContain('PLAN')
+    expect(assembled.text).toContain('1. [x] read the spec')
+    expect(assembled.text).toContain('2. [ ] write the test')
+  })
+
+  test('an empty plan means no block, not an empty heading', () => {
+    const built = buildAgent({ spec: specFor({ tools: [] }), inference: {}, plan: new Plan() })
+    expect(built.value.assemble([]).text).not.toContain('PLAN')
+  })
+
+  test('a step ticked off mid-turn changes what the rest of the turn reads', () => {
+    // The live object, all the way through. This is the property the whole
+    // port exists for: the engine renders the plan on every step, so a step
+    // that finished part of the work must be read as finished by the next one.
+    const plan = new Plan()
+    plan.compose(['first', 'second'])
+    const built = buildAgent({ spec: specFor({ tools: [] }), inference: {}, plan })
+
+    expect(built.value.assemble([]).text).toContain('1. [ ] first')
+    plan.mark(1, StepState.DONE)
+    expect(built.value.assemble([]).text).toContain('1. [x] first')
+  })
+
+  test('the goal and the plan are both there, goal first', () => {
+    const plan = new Plan()
+    plan.compose(['the first part of it'])
+    const built = buildAgent({
+      spec: specFor({ tools: [] }),
+      inference: {},
+      goal: 'ship the thing',
+      plan,
+    })
+
+    const { text } = built.value.assemble([])
+    expect(text.indexOf('# GOAL')).toBeGreaterThan(-1)
+    expect(text.indexOf('# PLAN')).toBeGreaterThan(text.indexOf('# GOAL'))
   })
 })

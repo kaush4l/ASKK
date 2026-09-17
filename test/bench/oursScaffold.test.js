@@ -227,7 +227,11 @@ describe('the run is ReActEngine.run, and this file reaches into the engine for 
     // to a literal: this is the assertion that would go red if the scaffold
     // started composing its own text or its own history line.
     const again = buildRigAgent(loadSpec().value, tools).value
-    const expected = again.plan(taskHistory(task, tools), [], new Budget(loadSpec().value.budget))
+    const expected = again.assemble(
+      taskHistory(task, tools),
+      [],
+      new Budget(loadSpec().value.budget),
+    )
     expect(timeless(prompts[0])).toBe(timeless(expected.text))
     expect(prompts[0]).toContain(again.toolbox.render())
     expect(prompts[0]).toContain(ReActResponse.instructions())
@@ -263,14 +267,14 @@ describe('the run is ReActEngine.run, and this file reaches into the engine for 
     // anywhere but its end, goes red here before it goes silent in a run.
     const engine = buildRigAgent(loadSpec().value, rigTools()).value
     const history = taskHistory({ prompt: 'x' }, rigTools())
-    const first = engine.plan(history, [], null)
+    const first = engine.assemble(history, [], null)
     expect(scratchpadAdded('', first)).toEqual({ rendered: '', observation: null })
 
-    const one = engine.plan(history, [{ action: 'a({})', observation: 'first\nresult' }], null)
+    const one = engine.assemble(history, [{ action: 'a({})', observation: 'first\nresult' }], null)
     const got = scratchpadAdded('', one)
     expect(got.observation).toBe('first\nresult')
 
-    const two = engine.plan(
+    const two = engine.assemble(
       history,
       [
         { action: 'a({})', observation: 'first\nresult' },

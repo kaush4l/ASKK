@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { MemoryRepository } from '../../src/backend/repositories/MemoryRepository.js'
 import { ConversationService } from '../../src/backend/services/ConversationService.js'
 import { Outcome, Reason } from '../../src/core/Outcome.js'
+import { Plan, StepState } from '../../src/core/Plan.js'
 
 /**
  * The class had no test file at all, and it is the only thing in the tree that
@@ -507,6 +508,49 @@ describe('aiming a conversation', () => {
   test('aiming a conversation that is not there fails rather than inventing one', async () => {
     const service = new ConversationService(new MemoryRepository())
     const missed = await service.aim({ id: 'nope', goal: 'anything' })
+    expect(missed.ok).toBe(false)
+  })
+})
+
+describe('composing a conversation', () => {
+  test('stores the plan and gives it back on a later read', async () => {
+    // The measurement roadmap item 2 asks for, at this layer: a plan written on
+    // one turn is there to be read on the next, including after a reload, which
+    // for this service is any later `get`.
+    const service = new ConversationService(new MemoryRepository())
+    const made = await service.create({ title: 'work' })
+    const plan = new Plan()
+    plan.compose(['read the spec', 'write the test'])
+    plan.mark(1, StepState.DONE)
+
+    const composed = await service.compose({ id: made.value.id, plan })
+
+    expect(composed.ok).toBe(true)
+    expect(composed.value.plan.steps).toEqual([
+      { text: 'read the spec', state: 'done' },
+      { text: 'write the test', state: 'pending' },
+    ])
+    const read = await service.get({ id: made.value.id })
+    expect(Plan.fromJSON(read.value.plan).render()).toBe(
+      '1. [x] read the spec\n2. [ ] write the test',
+    )
+  })
+
+  test('a plan does not leak into another conversation', async () => {
+    const service = new ConversationService(new MemoryRepository())
+    const mine = await service.create({ title: 'mine' })
+    const theirs = await service.create({ title: 'theirs' })
+    const plan = new Plan()
+    plan.compose(['only mine'])
+
+    await service.compose({ id: mine.value.id, plan })
+
+    expect((await service.get({ id: theirs.value.id })).value.plan.steps).toEqual([])
+  })
+
+  test('composing a conversation that is not there fails rather than inventing one', async () => {
+    const service = new ConversationService(new MemoryRepository())
+    const missed = await service.compose({ id: 'nope', plan: new Plan() })
     expect(missed.ok).toBe(false)
   })
 })

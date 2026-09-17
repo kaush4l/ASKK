@@ -160,6 +160,12 @@ export const EventName = Object.freeze({
   // delegated run has no request of its own on this wire, and inventing one
   // would make the page correlate two ids for one thing it is watching.
   DELEGATE: 'delegate',
+  // The plan, as the agent has just revised it. A run that is working through a
+  // decomposition changes it mid-turn, and the record it is stored on is only
+  // re-read when the page loads a conversation — so without this the panel
+  // showed the plan as it stood when the turn STARTED, for however long the
+  // turn lasted, which on a long run is exactly when somebody is watching it.
+  PLAN: 'plan',
 })
 
 // There is no error class here any more. Failures are values: a handler

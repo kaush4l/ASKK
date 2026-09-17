@@ -869,6 +869,16 @@ export default function Page() {
           setDownload(data)
           return
         }
+        if (name === EventName.PLAN) {
+          // Onto the conversation row, which is where the plan lives — not into
+          // a second piece of state beside it. The row is what the panel reads
+          // and what a reload re-reads, and two places for one record is how a
+          // field ends up meaning different things to its two readers.
+          setConversations((current) =>
+            current.map((row) => (row.id === into ? { ...row, plan: data } : row)),
+          )
+          return
+        }
         if (name === EventName.DELEGATE) {
           setDelegates((current) => ({ ...current, [data.agent]: data }))
           return
@@ -1337,6 +1347,14 @@ export default function Page() {
    */
   const goal = conversations.find((one) => one.id === conversationId)?.goal ?? ''
 
+  /**
+   * The open conversation's plan, read off the same row as its goal and for the
+   * same reason: the record already carries it, and a copy would be a second
+   * thing to keep right. What keeps it current mid-turn is `EventName.PLAN`,
+   * which writes the revision straight onto this row.
+   */
+  const plan = conversations.find((one) => one.id === conversationId)?.plan ?? null
+
   const setGoal = useCallback(
     async (said) => {
       const done = await clientRef.current.call('conversations.aim', {
@@ -1618,6 +1636,7 @@ export default function Page() {
             agent={agentSpec}
             agentNotes={notes}
             goal={goal}
+            plan={plan}
             onGoal={setGoal}
           />
         ) : null}

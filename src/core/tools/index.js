@@ -1,5 +1,6 @@
 import { CheckTaskTool } from './CheckTaskTool.js'
 import { FetchTool } from './FetchTool.js'
+import { PlanTool } from './PlanTool.js'
 import { ReadFileTool } from './ReadFileTool.js'
 import { SearchTool } from './SearchTool.js'
 import { ShellTool } from './ShellTool.js'
@@ -49,10 +50,17 @@ export const BUILTIN_TOOLS = {
   // `tools:` list, and that list is the whole of how this tree decides what an
   // agent may do.
   check_task: ({ tasks } = {}) => new CheckTaskTool({ tasks }),
+  // Writing the decomposition, never reading it: the plan is rendered into
+  // every prompt beside the goal, so a `read_plan` would be the `now` tool this
+  // table already deleted — a round trip for text the model read a few hundred
+  // characters earlier.
+  plan: ({ plan } = {}) => new PlanTool({ plan }),
 }
 
 export { CheckTaskTool } from './CheckTaskTool.js'
 export { McpTool } from './McpTool.js'
+export { NO_PLAN, planOr } from './PlanPort.js'
+export { PlanTool } from './PlanTool.js'
 export { ShellTool } from './ShellTool.js'
 export { SubAgentTool } from './SubAgentTool.js'
 export { describeTask, NO_TASKS, TaskState, tasksOr } from './TasksPort.js'

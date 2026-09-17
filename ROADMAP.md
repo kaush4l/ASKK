@@ -12,55 +12,30 @@ the argued future, and where the two disagree `CAPABILITIES.md` wins.
 
 ## What is already here, which is more than the target assumes
 
-Three things the goal asks for are built, and knowing that shortens the list.
+Eight things the goal asks for are built, and knowing that shortens the list.
+The last two landed in this wave and are why the sequence below starts where it
+does.
 
 | Asked for | Where it already is |
 |---|---|
-| web search utilities | `search` and `fetch`, two of the five in `BUILTIN_TOOLS` (`src/core/tools/index.js`) |
+| web search utilities | `search` and `fetch`, two of the seven in `BUILTIN_TOOLS` (`src/core/tools/index.js`) |
 | a research agent | `agents/researcher/agent.md` — stateless, reads at most three pages, lists the URLs it actually opened |
-| prompt built from named elements, in order | every agent file's `prompt:` list — `[soul, instructions, tools, contract, context, conversation, scratchpad, budget, reminder, cue]` |
+| prompt built from named elements, in order | every agent file's `prompt:` list — `[soul, instructions, tools, contract, conversation, scratchpad, context, goal, plan, budget, reminder, cue]` |
 | work handed to another agent, on another thread | `researcher({..., "wait": false})` → `AgentWorkerPool.start`, read back with `check_task` |
 | ending that work | `AgentWorkerPool.stop(id)`, from the line that announces it |
 | a real machine to work in | the wasm guest — `uname -a` answers in about 1.1 s cold |
+| a goal that outlives the turn | `Conversation.goal`, set in the drawer, rendered as the `goal` block of every prompt — item 1, landed |
+| that goal composed into tasks | `Plan` and the `plan` tool — the agent writes the list, ticks it off, and reads it back in the `plan` block next turn; item 2, landed |
 
-So the gap to Hermes is not tools, not threads, and not prompt structure. **It
-is that nothing in this tree holds a goal.** A conversation holds turns; a pool
-holds tasks; no layer holds "what we are trying to achieve", which is the thing
-a goal-taking agent decomposes and returns to.
+So the gap to Hermes is not tools, not threads, not prompt structure, and no
+longer the goal: a conversation now holds one, and holds the decomposition of
+it. What is left is everything that makes work on that decomposition **outlive
+the turn it was started in** — a thread that survives a reload, a run that can
+ask before it acts, and a guest that keeps its filesystem between commands.
 
 ## The sequence
 
-### 1. A goal that outlives the turn
-
-The smallest thing that makes everything below it possible. A goal is a record —
-text, made at a time, still open or closed — kept where conversations and
-settings are kept (`IndexedDbRepository`), and rendered into the prompt as one
-block of the `prompt:` list, beside `context` and `scratchpad`.
-
-Why first: every later item is a thing done *toward* something, and there is
-currently no something. Recitation is also the cheapest known defence against a
-long run drifting — the goal re-entering the prompt every turn is what keeps
-turn forty pointed at what turn one was asked.
-
-Touches: a `Goal` record and repository, one new prompt element, one drawer
-section. Measured by: a goal set in one turn is in the prompt of the next, and
-survives a reload.
-
-### 2. Tasks composed from the goal
-
-The decomposition. The agent reads the goal and writes a list of tasks; each
-task is a record with a state, and the list is in the prompt. This is Manus's
-recitation and Open SWE's plan step, and it is the half of "compose it into
-tasks" that the pool already has a vocabulary for — `TaskState` gained a fourth
-member this wave and the records are already rendered by `describeTask`.
-
-Touches: a `plan` tool the agent calls to write and revise the list; the task
-records it makes are the same ones `check_task` reads.
-
-Measured by: a goal of three obvious parts produces three tasks without being
-told how many, and finishing one changes the block the next turn reads.
-
-### 3. A long-running agent that outlives the tab
+### 1. A long-running agent that outlives the tab
 
 Today the pool lives in the tab's own backend worker, so a reload is a new pool
 with nothing in it — stated plainly in `AgentWorkerPool._worker`. A "long-running
@@ -75,7 +50,7 @@ first.
 Measured by: hand over work, reload, and be told it is still going; and the same
 across a close and re-open.
 
-### 4. Approve an action mid-loop
+### 2. Approve an action mid-loop
 
 `CAPABILITIES.md` carries this as `absent` with the evidence "nothing". It is
 listed here rather than lower because it is the precondition for an agent
@@ -85,7 +60,7 @@ needs a way to ask before it does something the user would not have chosen.
 Measured by: a `shell` call matching a declared pattern pauses, surfaces, and
 runs or does not on the answer.
 
-### 5. An interactive session in the guest
+### 3. An interactive session in the guest
 
 `absent`, and the measurement for it is already in the tree:
 `scripts/probe/results/2026-09-01-pty.md` — one guest booted with blocking stdin
@@ -97,27 +72,29 @@ construction.
 This is what makes a real development loop affordable: `npm test` after every
 edit is currently a fresh boot every time.
 
-### 6. Files that persist inside the guest between commands
+### 4. Files that persist inside the guest between commands
 
 `absent`. The agent's own files already survive (`ShellTool` carries named files
 in and out), but the guest's filesystem dies with each command, so anything a
-build wrote — `node_modules`, a compiled binary — is gone. Item 5 makes this
+build wrote — `node_modules`, a compiled binary — is gone. Item 3 makes this
 nearly free: one session is one filesystem.
 
-### 7. The cluster — planner, programmer, reviewer
+### 5. The cluster — planner, programmer, reviewer
 
 Only now, and deliberately last of the agent work. Open SWE's shape is Manager →
 Planner → Programmer with a Reviewer inside it, and every mechanism it needs
 exists here already: agents are folders with `tools:` lists, delegation is a
-call, and threads are real. What is missing is items 1–3: a cluster without a
-goal and a plan is three agents interrupting each other.
+call, and threads are real. A goal and a plan are no longer what is missing:
+what is, is item 1 — a cluster whose threads die on reload is three agents
+interrupting each other.
 
 The bolt.diy reading is the dissent worth keeping in view: one agent, no
-sub-agents, the reply itself carrying the actions. If items 1–2 land and a single
-agent with a plan does the work, that is the cheaper answer and this item should
-be dropped rather than built.
+sub-agents, the reply itself carrying the actions. A single agent with a plan is
+now a thing this tree can actually run, so the cheap answer is testable rather
+than hypothetical — and if it does the work, this item should be dropped rather
+than built.
 
-### 8. A research agent that writes an architecture sheet
+### 6. A research agent that writes an architecture sheet
 
 The owner's own description: look for papers on a task, theorise what has
 happened, and produce an architecture sheet of everything so far. The current
@@ -125,16 +102,16 @@ researcher answers in a paragraph to a caller; this variant **writes a file**,
 which is a different contract and probably a different agent file beside it
 rather than a change to that one.
 
-Cheap once items 1–2 exist, because "everything that has happened so far" is
-exactly the goal and its task list.
+Cheap now that a goal and a plan exist, because "everything that has happened so
+far" is exactly the goal and its task list.
 
-### 9. A formatter and a linter in the guest
+### 7. A formatter and a linter in the guest
 
 Both `absent`, and both one run of `scripts/wasm/build.sh` away. Listed low
 because they improve work the agent is already doing rather than enabling work
 it cannot do.
 
-### 10. Network from inside the guest
+### 8. Network from inside the guest
 
 `barred` under C2: every WASI socket is stubbed `ENOTSUP` (`vm-worker.js:121-132`)
 and a page has no raw socket, so any guest network must be a `fetch` bridge and
@@ -151,11 +128,11 @@ against with vendored prompt bytes (`bench/README.md`).
 
 | | them | here |
 |---|---|---|
-| **Hermes** | `delegate_task(goal, context, toolsets, role)`, a global `SOUL.md` and a project `AGENTS.md` | the soul/agent split is the same shape and arrived at independently. What is missing is the first argument: `delegate_task` takes a **goal**, and nothing here holds one — items 1–2 |
+| **Hermes** | `delegate_task(goal, context, toolsets, role)`, a global `SOUL.md` and a project `AGENTS.md` | the soul/agent split is the same shape and arrived at independently. The first argument is here now: a conversation holds a **goal**, and the `plan` tool is what decomposes it into the tasks the threads take |
 | **agent-zero** | the benchmark's other arm, seventeen prompt files vendored at `6a6cecf` | measured head to head already. The asymmetries are recorded in `bench/README.md` rather than smoothed over, including one that runs against our own arm |
-| **Open SWE** | Manager / Planner / Programmer, Reviewer nested, human review of the plan | item 7, and it needs items 1–3 first. Human review of a plan is item 4 wearing a different hat |
+| **Open SWE** | Manager / Planner / Programmer, Reviewer nested, human review of the plan | item 5, and it needs item 1 first. Human review of a plan is item 2 wearing a different hat |
 | **bolt.diy** | one agent, no sub-agents, actions parsed out of the reply; ships as a static page | the deployment model is already the same, and stricter — bolt.diy fetches WebContainer from its vendor, this repo carries a 52 MB guest in the tree |
-| **Devin** | stateless brain plus a devbox; Fusion pairs a lead with a cheap executor on separate persistent contexts | the devbox is here and the pairing is possible today — what is missing is the persistent part, item 3 |
+| **Devin** | stateless brain plus a devbox; Fusion pairs a lead with a cheap executor on separate persistent contexts | the devbox is here and the pairing is possible today — what is missing is the persistent part, item 1 |
 
 ## What would tell us this is done
 

@@ -78,6 +78,9 @@ export function buildAgent({
   // caller's realm like `context` beside it, and handed in for the same
   // reason: an agent file cannot know it.
   goal = '',
+  // How that goal is being done. A `Plan`, and the SAME object the `plan` tool
+  // revises — see `PlanPort` for why it must be the live one and not a copy.
+  plan = null,
   services = {},
 } = {}) {
   const resolved = tools
@@ -139,6 +142,7 @@ export function buildAgent({
     // know them.
     context,
     goal,
+    plan,
     template: arranged.template,
     inference,
   })

@@ -179,7 +179,7 @@ describe('PromptTemplate.audit', () => {
         // Mirrors `Engine.blocks`, which is the only place these are declared.
         // A block whose volatility is wrong here passes an audit the real
         // prompt would fail, so the two lists have to be read together.
-        id === 'context' || id === 'goal' || id === 'budget'
+        id === 'context' || id === 'goal' || id === 'plan' || id === 'budget'
           ? Volatility.VOLATILE
           : id === 'conversation' || id === 'scratchpad'
             ? Volatility.APPEND

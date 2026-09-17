@@ -879,6 +879,8 @@ restating the field names goes last, where it is read.
     conversation  append    grows only at its end, so it extends the prefix
     scratchpad    append    this turn's own actions and observations
     context       volatile  carries a clock; nothing after it is reusable
+    goal          volatile  what this conversation is for, restated every turn
+    plan          volatile  what that goal was broken into, and where we are
     budget        volatile  empty on almost every turn; the hand-over when it is not
     reminder      static    one line restating the contract, for recency
     cue           static    hands the turn over
@@ -897,9 +899,21 @@ flag is what lets `PromptTemplate.audit` distinguish a design from an accident.
 An arrangement that wastes tokens reports itself as a note, on the same channel
 as every other correction.
 
+`goal` and `plan` are the pair that make a long run a run rather than forty
+unrelated turns, and they are volatile on purpose. A goal's bytes change rarely,
+but moving it into the cacheable prefix would invalidate that whole prefix on
+the one turn somebody edits it — the most expensive place to put something that
+can change at all — and a goal is read for *steering*, which is a recency
+argument, and recency puts it at the tail. `plan` sits immediately behind it
+because it is the same argument one level down: the goal is the destination, the
+plan is how far along it we are, and a working run revises it deliberately, often
+every turn. `context` has already ended the reusable prefix, so both cost their
+own length and nothing more. Both are dropped entirely when empty, so a
+conversation nobody has aimed or decomposed pays nothing for either.
+
 **Per agent.** An agent file may declare its own order, and `researcher` does:
 
-    prompt: [soul, instructions, tools, contract, context, conversation, scratchpad, budget, reminder, cue]
+    prompt: [soul, instructions, tools, contract, context, conversation, scratchpad, goal, plan, budget, reminder, cue]
 
 Because it is stateless. Every call brings a different single question, so its
 conversation block is not append-only and nothing after it could have been

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { AgentPanel } from './AgentPanel.jsx'
 import { FilesPanel } from './FilesPanel.jsx'
+import { PlanPanel } from './PlanPanel.jsx'
 import { PromptPanel } from './PromptPanel.jsx'
 import { RunPanel } from './RunPanel.jsx'
 import { SchedulePanel } from './SchedulePanel.jsx'
@@ -131,6 +132,7 @@ export function Drawer({
   agentNotes,
   goal,
   onGoal,
+  plan,
 }) {
   return (
     <aside className="drawer" data-testid={`${section}-panel`} aria-label="Activity">
@@ -163,6 +165,7 @@ export function Drawer({
         {section === 'run' ? (
           <>
             <GoalField goal={goal} onGoal={onGoal} />
+            <PlanPanel plan={plan} goal={goal} />
             <RunPanel run={run} usage={usage} observations={observations} />
           </>
         ) : null}
