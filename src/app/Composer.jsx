@@ -21,8 +21,15 @@ import { useEffect, useRef } from 'react'
  *
  * "Enter to send, Shift+Enter for a new line" is keyboard instruction given to
  * a device that shows a keyboard only while you are typing into it, and at
- * 390px it needs a second line the field is not tall enough to show. So a
- * coarse pointer gets the short one.
+ * 390px it needs a second line the field is not tall enough to show — the
+ * published page clipped it mid-word.
+ *
+ * WIDTH as well as pointer, because the fault is the width. A narrow window on
+ * a desktop is `hover: hover` and clips exactly the same way, so keying this to
+ * the pointer alone fixed the phone and left the case a person actually creates
+ * by dragging a window. The two conditions are an OR: a phone is short of room
+ * whatever it reports, and a narrow window is short of room whatever it
+ * points with.
  *
  * `matchMedia` is read at call time rather than stored, because this component
  * is prerendered to static HTML by a build with no viewport, and a value
@@ -31,8 +38,8 @@ import { useEffect, useRef } from 'react'
 function placeholder(blocked, ready) {
   if (blocked) return 'another tab is writing this conversation'
   if (!ready) return 'starting…'
-  const touch = globalThis.matchMedia?.('(hover: none)').matches
-  return touch ? 'Ask anything' : 'Ask anything — Enter to send, Shift+Enter for a new line'
+  const narrow = globalThis.matchMedia?.('(hover: none), (max-width: 40rem)').matches
+  return narrow ? 'Ask anything' : 'Ask anything — Enter to send, Shift+Enter for a new line'
 }
 
 export function Composer({

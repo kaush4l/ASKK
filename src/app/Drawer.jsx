@@ -90,7 +90,12 @@ function GoalField({ goal, onGoal }) {
         }}
       />
       <div className="goalactions">
-        <button type="submit" data-testid="goal-save">
+        {/* Three states, because there were two and one of them was a lie. An
+            untouched empty field offered "clear the goal" — a filled button
+            proposing to undo something that had never been done. The label now
+            names what pressing it would actually change, and when it would
+            change nothing the control says so by being unavailable. */}
+        <button type="submit" data-testid="goal-save" disabled={draft === (goal ?? '')}>
           {draft.trim() ? 'save the goal' : 'clear the goal'}
         </button>
         {saved ? (
