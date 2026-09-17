@@ -39,50 +39,59 @@ const SAYS = {
 
 export function PlanPanel({ plan, goal = '' }) {
   const steps = plan?.steps ?? []
-
-  if (!steps.length) {
-    // Two sentences and they are different sentences, because the two states
-    // are different: a conversation with no goal has nothing to decompose, and
-    // a conversation with a goal and no plan is one the agent has not broken
-    // down yet. Saying "no plan yet" to somebody who has not set a goal would
-    // leave them waiting for something that is never coming.
-    return (
-      <p className="hint" data-testid="goal-plan-empty">
-        {goal.trim()
-          ? 'No plan yet. Ask the agent how it would do this and it writes one here, then ticks the parts off as it works.'
-          : 'A goal broken into parts appears here. Set one above to give the agent something to break down.'}
-      </p>
-    )
-  }
-
   const left = steps.filter((step) => step.state === 'pending' || step.state === 'active').length
 
+  // The HEADING is outside the empty branch, and that is the whole of what this
+  // structure is for. It used to be inside the populated one, so the panel
+  // announced itself only once it had something to announce — and a reviewer
+  // meeting the drawer for the first time read the goal's hint, this panel's
+  // empty sentence and the run log's empty sentence as three paragraphs of one
+  // help text, because nothing between them said they were different panels.
+  // The moment a newcomer most needs the label is the moment there is nothing
+  // under it.
   return (
     <section className="plan" data-testid="goal-plan">
       <h3>
         the plan{' '}
-        <span className="measured" data-testid="goal-plan-left">
-          {left} of {steps.length} left
-        </span>
+        {steps.length ? (
+          <span className="measured" data-testid="goal-plan-left">
+            {left} of {steps.length} left
+          </span>
+        ) : null}
       </h3>
-      <ol className="planlist">
-        {steps.map((step, index) => (
-          <li
-            // The words, which `Plan.compose` has already made unique within a
-            // plan — it keeps a repeated step once and says so. The ordinal
-            // would be the wrong key for the reason it is the right ADDRESS: a
-            // revision renumbers the list, so keying on position would let a
-            // step that merely moved be redrawn as a different step.
-            key={step.text}
-            data-state={step.state}
-            data-testid={`goal-plan-step-${index + 1}`}
-          >
-            <span className="planstate" aria-hidden="true" />
-            <span className="plantext">{step.text}</span>
-            <span className="measured">{SAYS[step.state] ?? step.state}</span>
-          </li>
-        ))}
-      </ol>
+      {steps.length ? null : (
+        // Two sentences and they are different sentences, because the two
+        // states are different: a conversation with no goal has nothing to
+        // decompose, and a conversation with a goal and no plan is one the
+        // agent has not broken down yet. Saying "no plan yet" to somebody who
+        // has not set a goal would leave them waiting for something that is
+        // never coming.
+        <p className="hint" data-testid="goal-plan-empty">
+          {goal.trim()
+            ? 'No plan yet. Ask the agent how it would do this and it writes one here, then ticks the parts off as it works.'
+            : 'A goal broken into parts appears here. Set one above to give the agent something to break down.'}
+        </p>
+      )}
+      {steps.length ? (
+        <ol className="planlist">
+          {steps.map((step, index) => (
+            <li
+              // The words, which `Plan.compose` has already made unique within a
+              // plan — it keeps a repeated step once and says so. The ordinal
+              // would be the wrong key for the reason it is the right ADDRESS: a
+              // revision renumbers the list, so keying on position would let a
+              // step that merely moved be redrawn as a different step.
+              key={step.text}
+              data-state={step.state}
+              data-testid={`goal-plan-step-${index + 1}`}
+            >
+              <span className="planstate" aria-hidden="true" />
+              <span className="plantext">{step.text}</span>
+              <span className="measured">{SAYS[step.state] ?? step.state}</span>
+            </li>
+          ))}
+        </ol>
+      ) : null}
     </section>
   )
 }

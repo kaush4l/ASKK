@@ -107,15 +107,58 @@ thing a person wants while waiting is evidence that something is happening.
 
 ## The evidence drawer
 
-One control opens it. Inside, five sections on a segmented control:
+One control opens it. Inside, five sections on a segmented control, and they
+ship under the words they are named by rather than the words this page first
+proposed:
 
-    Run · Prompt · Files · Schedule · Agent
+    work · agent · files · schedule · prompt
 
-`Run`, `Prompt`, `Files` and `Schedule` are the existing panels. `Agent` is new
-and needs no backend: `agents.get` has existed since `AgentService` was written
-and had no caller. It shows the agent's instructions, its tools, its
-budget and its MCP servers — which is the only place any of that has ever been
-visible, and MCP has had no user surface at all.
+`work` is what this page called `Run`. `Agent` was new when this was written and
+needed no backend: `agents.get` has existed since `AgentService` was written and
+had no caller. It shows the agent's instructions, its tools, its budget and its
+MCP servers — which is the only place any of that has ever been visible, and MCP
+has had no user surface at all.
+
+### What is inside `work`, in order
+
+Three panels, top to bottom, and the order is the order the three things stand
+in — what this is for, what that was broken into, what happened last turn.
+
+1. **The goal.** A field, saved on submit rather than on every keystroke,
+   holding what the conversation is FOR in the user's own words. It is restated
+   to the agent every turn. Its one button is labelled with what pressing it
+   would change: `save the goal` while the box differs from what is stored,
+   `clear the goal` once it matches a stored goal, unavailable when it would
+   change nothing. That third case is why the label is computed rather than
+   fixed — a button reading "save the goal", disabled, over a goal that had just
+   been saved is a control offering to redo what is done, and it left no visible
+   way to unset a goal at all.
+
+2. **The plan.** Read-only, and the agent writes it: the goal broken into
+   numbered steps, each `to do`, `doing`, `done` or `dropped`. It is read-only
+   because the agent composes it and ticks it off, and a box the user could edit
+   would make two authors of one record — the interesting thing a person wants
+   to do to a plan is not "retype step three" but "no, do this instead", which
+   is a sentence to the agent and arrives through the turn it starts.
+
+   Two details are load-bearing and both were got wrong once. The panel **names
+   itself while it is empty**: the heading used to render only once there were
+   steps under it, so a first visit met the goal's hint, the plan's empty
+   sentence and the run log's empty sentence as three paragraphs of one grey
+   help text with nothing saying they were three panels. And each state is a
+   distinct SHAPE — an empty ring, a ring with a filled centre, a tick, a dash —
+   because the first version distinguished them by paint alone and `to do`
+   against `done` measured **1.05:1** in the light scheme. The word for the
+   state is also written at the end of every row, which is what a screen reader
+   reads; the mark is `aria-hidden`.
+
+3. **The run log.** Every pass of the last turn: the call the agent wrote, word
+   for word, and what it answered.
+
+Note the word **pass** in that last line. A *step* is a part of the plan; a
+*pass* is one circuit of the loop. They were both called "step", and a reviewer
+who had just set a goal read the note `failed on step 1` as their first planned
+part failing — a part that did not exist yet.
 
 On a screen wide enough it docks beside the conversation. Below that it is an
 overlay with a shadow; on a phone it is a sheet from the bottom with a handle.
@@ -228,7 +271,8 @@ and scrolling it dragged the whole panel away. All three are measured in
 2. The header: conversation switcher, one status line, two controls.
 3. The transcript: message, attachment, thinking, step-with-result, copy.
 4. The composer: attach, dictation with a level meter, stop.
-5. The drawer: the four existing panels, plus `Agent`.
+5. The drawer: the four existing panels, plus `Agent`. (The `work` panel has
+   since gained the goal and the plan above the run log — see above.)
 6. Settings: the model first, everything else folded under it.
 7. The native facilities: wake lock on a long turn, a notification when handed
    work finishes, the keyboard inset, storage.

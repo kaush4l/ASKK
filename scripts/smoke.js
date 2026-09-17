@@ -1502,6 +1502,12 @@ const decomposed = await evaluate(
      // two empty states are different sentences on purpose, and the wrong one
      // leaves a reader waiting for something that is never coming.
      const cold = (await until(() => pick('goal-plan-empty')))?.textContent ?? ''
+     // And that the panel NAMES itself while it is empty. It did not: the
+     // heading rendered only once there were steps under it, so a first-time
+     // reader met the goal hint, this panel's empty sentence and the run log's
+     // empty sentence as three paragraphs of one grey help text with nothing
+     // saying they were three panels.
+     const namedWhenEmpty = (pick('goal-plan')?.querySelector('h3')?.textContent ?? '').trim()
 
      const field = await until(() => pick('goal-text'))
      if (!field) return { where: 'the goal field never rendered' }
@@ -1537,12 +1543,26 @@ const decomposed = await evaluate(
      )
      watcher.disconnect()
 
+     // The goal control, once there IS a goal: pressing it must offer to clear
+     // the one that is stored. It offered "save the goal", disabled — a control
+     // proposing to redo what had just been done, with no way to unset a goal
+     // that anything on screen mentioned.
+     const button = pick('goal-save')
+     const offers = (button?.textContent ?? '').trim()
+     const pressable = Boolean(button && !button.disabled)
+     button?.click()
+     const cleared = await until(() => (pick('goal-text')?.value === '' ? 'yes' : null))
+
      const steps = [1, 2, 3].map((n) => {
        const row = pick('goal-plan-step-' + n)
        return row ? { text: row.textContent, state: row.dataset.state } : null
      })
      return {
        cold,
+       namedWhenEmpty,
+       offers,
+       pressable,
+       cleared,
        aimed,
        answered: Boolean(answered),
        steps,
@@ -1572,6 +1592,19 @@ if (!String(decomposed.aimed).includes('No plan yet'))
     `with a goal and no plan the panel said: ${JSON.stringify(decomposed.aimed)}`,
     problems,
   )
+if (!String(decomposed.namedWhenEmpty).includes('plan'))
+  await fail(
+    `the plan panel did not name itself while empty: ${JSON.stringify(decomposed.namedWhenEmpty)}`,
+    ['PlanPanel renders its heading outside the empty branch, on purpose.', ...problems],
+  )
+// The goal control, after a save. Asserted here rather than in a scene of its
+// own because this is the only place in the gate where a goal is ever stored.
+if (decomposed.offers !== 'clear the goal' || !decomposed.pressable)
+  await fail(
+    `with a goal stored, the goal button offered ${JSON.stringify(decomposed.offers)} (pressable: ${decomposed.pressable})`,
+    ['GoalField labels the button with what pressing it would change.', ...problems],
+  )
+if (decomposed.cleared !== 'yes') await fail('pressing "clear the goal" did not clear it', problems)
 // The steps, in the words the agent wrote, in the order it wrote them.
 const written = (decomposed.steps ?? []).map((step) => step?.text ?? '')
 for (const [index, wanted] of PLAN_STEPS.entries()) {

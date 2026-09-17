@@ -2645,24 +2645,63 @@ button {
   font-variant-numeric: tabular-nums;
 }
 
-/* The mark. A shape and not merely a colour: a ring for what is waiting, a
-   filled dot for what is being done now, a tick for what is finished, a dash
-   for what was abandoned. */
+/*
+ * The mark, and it is four SHAPES rather than four paints.
+ *
+ * It was four paints, and the measurement is the reason it is not. `to do` was
+ * a ring in `--faint` and `done` was the same ring tinted with `--signal-soft`,
+ * which is a ~9% alpha wash — so the two marks that matter most differed by
+ * **1.05:1** in the light scheme and 1.42:1 in the dark one. In greyscale, in a
+ * colour-blind simulation, or on a washed-out display, "not started" and
+ * "finished" were the identical glyph, and the only surviving cue was the row's
+ * label sliding from `--text` to `--dim`. WCAG 1.4.1 is the rule; a reviewer
+ * with a contrast meter is how it was caught.
+ *
+ * So: an empty ring for what is waiting, a ring with a filled centre for what
+ * is being done, a TICK for what is finished, and a dash for what was
+ * abandoned. Each is legible with every colour in the file set to one grey.
+ * The word on the right of each row says the same thing again, which is what a
+ * screen reader reads — the mark is `aria-hidden` and carries no meaning of its
+ * own.
+ */
 .planstate {
+  position: relative;
   width: 0.7em;
   height: 0.7em;
   border: 1.5px solid var(--faint);
   border-radius: 50%;
 }
 
+/* A centre, which is what tells this apart from the empty ring beside it. */
 [data-state='active'] .planstate {
   border-color: var(--signal);
+}
+
+[data-state='active'] .planstate::after {
+  content: '';
+  position: absolute;
+  inset: 1.5px;
+  border-radius: 50%;
   background: var(--signal);
 }
 
+/* A tick: two edges of a box, rotated. No ring at all, so the finished mark
+   shares no outline with the waiting one. */
 [data-state='done'] .planstate {
-  border-color: var(--signal);
-  background: var(--signal-soft);
+  border-color: transparent;
+  border-radius: 0;
+}
+
+[data-state='done'] .planstate::after {
+  content: '';
+  position: absolute;
+  top: -0.05em;
+  left: 0.15em;
+  width: 0.3em;
+  height: 0.55em;
+  border: solid var(--signal);
+  border-width: 0 1.75px 1.75px 0;
+  transform: rotate(45deg);
 }
 
 [data-state='dropped'] .planstate {

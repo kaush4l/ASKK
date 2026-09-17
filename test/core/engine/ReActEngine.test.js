@@ -192,7 +192,7 @@ describe('ReActEngine.run', () => {
 
     expect(outcome.ok).toBe(false)
     expect(outcome.failure.message).toContain('the script ran out after 1 call(s)')
-    expect(outcome.notes).toContain('failed on step 1')
+    expect(outcome.notes).toContain('failed on pass 1')
   })
 
   test('an engine with no inference reports it as an ordinary failure', async () => {
@@ -635,7 +635,7 @@ describe('a reply that never said what to do', () => {
  *   SPENT     the same
  *
  * Measured before the fix: the THINKING and SPENT rows made exactly one call
- * and returned `ok: false` with `failed on step 1` — eleven of this tree's
+ * and returned `ok: false` with `failed on pass 1` — eleven of this tree's
  * fifteen benchmark runs ended that way, against four of the reference arm's.
  */
 describe('the four states, through the engine', () => {
@@ -917,7 +917,7 @@ describe('the four states, through the engine', () => {
     expect(fetching.bodies).toHaveLength(1)
     expect(outcome.ok).toBe(false)
     expect(outcome.failure.code).toBe(Reason.UNAVAILABLE)
-    expect(outcome.notes).toContain('failed on step 1')
+    expect(outcome.notes).toContain('failed on pass 1')
   })
 })
 

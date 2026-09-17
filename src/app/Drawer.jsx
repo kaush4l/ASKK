@@ -65,12 +65,31 @@ function GoalField({ goal, onGoal }) {
     setSaved(false)
   }, [goal])
 
+  // What pressing the button would DO, which is the only honest thing to label
+  // it with. Three cases and not two:
+  //
+  //   the draft differs from what is stored  -> store the draft
+  //   it matches, and there is a goal        -> clear the goal
+  //   it matches, and there is no goal       -> nothing; the control says so
+  //
+  // The middle case is the one a reviewer lost. The label used to be chosen by
+  // whether the BOX had words in it, so a goal that had just been saved offered
+  // "save the goal", disabled — a control proposing to redo something already
+  // done, with the only way to unset a goal being to select the text, delete it
+  // and press again, which nothing on screen said. The clear affordance was
+  // present exactly when there was nothing to clear.
+  const stored = goal ?? ''
+  const dirty = draft !== stored
+  const clears = !dirty && Boolean(stored.trim())
+
   return (
     <form
       className="goalform"
       onSubmit={(submit) => {
         submit.preventDefault()
-        onGoal?.(draft)
+        const said = clears ? '' : draft
+        if (clears) setDraft('')
+        onGoal?.(said)
         setSaved(true)
       }}
     >
@@ -91,13 +110,10 @@ function GoalField({ goal, onGoal }) {
         }}
       />
       <div className="goalactions">
-        {/* Three states, because there were two and one of them was a lie. An
-            untouched empty field offered "clear the goal" — a filled button
-            proposing to undo something that had never been done. The label now
-            names what pressing it would actually change, and when it would
-            change nothing the control says so by being unavailable. */}
-        <button type="submit" data-testid="goal-save" disabled={draft === (goal ?? '')}>
-          {draft.trim() ? 'save the goal' : 'clear the goal'}
+        {/* The label names what pressing it would actually change, and when it
+            would change nothing the control says so by being unavailable. */}
+        <button type="submit" data-testid="goal-save" disabled={!dirty && !clears}>
+          {clears || !draft.trim() ? 'clear the goal' : 'save the goal'}
         </button>
         {saved ? (
           <span className="measured" data-testid="goal-saved">

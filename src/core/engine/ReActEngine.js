@@ -344,7 +344,13 @@ export class ReActEngine extends Engine {
       // only make the user wait longer for the same answer. That sentence was
       // once written over the overrun too, and it is only true of this branch:
       // a dead endpoint gets the same request again, an overrun does not.
-      if (!taken.ok) return taken.withNote(`failed on step ${at}`)
+      // "pass", not "step". A step is a thing in the PLAN now — a part of the
+      // goal, numbered, that the agent ticks off — and this note is about a
+      // circuit of the loop, which is a different thing that happens to have
+      // been called the same word. A reviewer who had just set a goal read
+      // "failed on step 1" as their first planned part failing, and it did not
+      // exist yet.
+      if (!taken.ok) return taken.withNote(`failed on pass ${at}`)
 
       // A reply that never said what it wanted to do is not a turn, it is a turn
       // that did not finish, and ending on it was this loop's fail-open. It is
