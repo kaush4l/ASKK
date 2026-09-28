@@ -1,0 +1,55 @@
+{
+  "default": "local",
+  "models": {
+    "local": {
+      "provider": "openai",
+      "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+      "base_url": "http://127.0.0.1:8873/v1",
+      "max_output_tokens": 8192,
+      "context_length": 32768,
+      "temperature": 0,
+      "request_params": { "chat_template_kwargs": { "enable_thinking": false } }
+    },
+    "ollama": {
+      "provider": "openai",
+      "model": "qwen3:8b",
+      "base_url": "http://127.0.0.1:11434/v1"
+    },
+    "claude": {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "base_url": "https://api.anthropic.com"
+    },
+    "openai": {
+      "provider": "openai",
+      "model": "gpt-5",
+      "base_url": "https://api.openai.com/v1"
+    },
+    "openrouter": {
+      "provider": "openai",
+      "model": "anthropic/claude-sonnet-5",
+      "base_url": "https://openrouter.ai/api/v1",
+      "headers": {
+        "X-Title": "HARNESS"
+      }
+    },
+    "claude-cli": {
+      "provider": "cli",
+      "cli": "claude",
+      "model": "sonnet",
+      "context_length": 200000
+    },
+    "codex-cli": {
+      "provider": "cli",
+      "cli": "codex",
+      "model": "default",
+      "context_length": 200000
+    },
+    "gemini-cli": {
+      "provider": "cli",
+      "cli": "gemini",
+      "model": "default",
+      "context_length": 1000000
+    }
+  }
+}

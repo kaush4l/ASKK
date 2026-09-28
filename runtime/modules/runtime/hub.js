@@ -1,0 +1,1441 @@
+/**
+ * The hub — the page side of the harness. It spawns, routes and records, and has no opinions.
+ *
+ *     const hub = new Hub({ base: document.baseURI })
+ *     hub.subscribe((message) => render(message))
+ *     await hub.start()
+ *     const run = hub.ask('hello')                    // main's next run
+ *
+ * One Web Worker per agent thread (runtime/agent.worker.js). Resident threads (main, agents
+ * that remember, agents that write) live as long as the page; any other agent called as a tool
+ * gets a fresh thread per call, so parallel calls never share history. Every run is on the
+ * roster with a status slot posted by its loop, so the page reads progress without asking.
+ *
+ * Only the hub touches storage, the board, memory, the host bridge and the owner's approvals,
+ * so every one of those has a single writer and cannot race. A thread asks with `request` and
+ * gets exactly one `reply`.
+ *
+ * See docs/rewrite/ARCHITECTURE.md §6 (threads), §7 (bridge), §13–§16 (permissions, memory,
+ * dreaming, tracing).
+ */
+
+import { agentHash, agentPaths, headPaths, loader, loadIndex, readSpec, skillFiles } from '../core/folder.js'
+import { inference } from '../core/inference.js'
+import { describeTool, mcp } from '../core/mcp.js'
+import { read } from '../core/markdown.js'
+import { merge, resolve } from '../core/models.js'
+import { DEFAULT_POLICY, withAgentRules } from '../core/permissions.js'
+import { snapshot } from '../core/prompt.js'
+import { openStore } from './store.js'
+
+const LIMITS = { depth: 3, outstanding: 3 }
+const KEEP_RUNS = 200
+const TICK_MS = 20000
+const READY_TIMEOUT = 10000
+const DREAM_AFTER = 20000
+const ACTIVE = new Set(['thinking', 'calling', 'waiting', 'compacting'])
+const WRITERS = new Set(['host', 'files', 'workspace'])
+const HOSTED = new Set(['host', 'web', 'mcp'])
+
+const lastOpen = (spans, kind) => {
+  for (let index = spans.length - 1; index >= 0; index -= 1) if (spans[index].kind === kind && spans[index].ms == null) return spans[index]
+  return null
+}
+
+/** Partial provider counts, never estimates. Missing counters stay absent, including totals. */
+function traceUsage(runs) {
+  const result = { attempts: 0, reportedAttempts: 0, unknownAttempts: 0, reportedTokens: {}, tokenCoverage: {} }
+  const numeric = values => values.find(value => Number.isSafeInteger(value) && value >= 0)
+  for (const run of runs) {
+    const attempts = (run.requests ?? []).map(() => ({ usage: null }))
+    const completions = run.completions ?? (run.log ?? []).filter(event => event.kind === 'completion')
+    for (const completion of completions) {
+      const index = completion.requestIndex
+      const request = Number.isInteger(index) && index >= 0 ? run.requests?.[index] : null
+      if (request && request.attemptId === completion.attemptId && !attempts[index].completed) attempts[index] = { completed: true, usage: completion.usage }
+      else if (!run.completions && attempts.length) continue // Older traces lack the association and all requests remain unknown.
+      else attempts.push({ completed: true, usage: completion.usage })
+    }
+    for (const attempt of attempts) {
+      const usage = attempt.usage ?? {}
+      const counters = {
+        inputTokens: numeric([usage.prompt_tokens, usage.input_tokens]),
+        outputTokens: numeric([usage.completion_tokens, usage.output_tokens]),
+        totalTokens: numeric([usage.total_tokens]),
+        cachedInputTokens: numeric([usage.prompt_tokens_details?.cached_tokens, usage.cache_read_input_tokens]),
+        cacheCreationInputTokens: numeric([usage.cache_creation_input_tokens]),
+        reasoningOutputTokens: numeric([usage.completion_tokens_details?.reasoning_tokens, usage.output_tokens_details?.reasoning_tokens]),
+      }
+      result.attempts++
+      if (Object.values(counters).every(value => value === undefined)) result.unknownAttempts++
+      else result.reportedAttempts++
+      for (const [name, value] of Object.entries(counters)) if (value !== undefined) {
+        result.reportedTokens[name] = (result.reportedTokens[name] ?? 0) + value
+        result.tokenCoverage[name] = (result.tokenCoverage[name] ?? 0) + 1
+      }
+    }
+  }
+  return result
+}
+
+export class Hub {
+  constructor({ base = globalThis.document?.baseURI, workerUrl = new URL('./agent.worker.js', import.meta.url), storeName = 'harness', fetch: fetcher } = {}) {
+    this.base = base
+    this.workerUrl = workerUrl
+    this.storeName = storeName
+    this.fetch = fetcher ?? globalThis.fetch.bind(globalThis)
+    this.listeners = new Set()
+    this.threads = new Map() // key → resident thread
+    this.runs = new Map() // id → run
+    this.scheduled = { items: [], next: 1 } // schedules, saved in settings
+    this.mcpServers = new Map() // name → {name, url, from, status, tools, error, client}
+    this.boards = new Map() // trace → {entries, next, released}
+    this.approvals = new Map() // id → approval
+    this.index = { files: {} }
+    this.specs = new Map() // path → spec
+    this.failed = new Map() // path → error
+    this.readyInfo = new Map() // path → {tools, notes, shadowed, unavailable}
+    this.changed = new Map() // path → files changed at the last reload
+    this.fileCatalogue = {}
+    this.saved = { catalogue: {}, policy: DEFAULT_POLICY, dreaming: true }
+    this.bridgeState = { status: 'unpaired', since: Date.now(), url: '', token: '', health: null, error: '' }
+    this.lockState = 'starting'
+    this.nextRun = 1
+    this.nextApproval = 1
+    this.dreamTimer = null
+    this.started = false
+    this.disposed = false
+    this.allThreads = new Set()
+    this.externalOps = {}
+  }
+
+  // ─── events ────────────────────────────────────────────────────────────────
+
+  subscribe(listener) {
+    this.listeners.add(listener)
+    return () => this.listeners.delete(listener)
+  }
+
+  publish(message) {
+    for (const listener of this.listeners) {
+      try {
+        listener(message)
+      } catch (error) {
+        console.error('hub listener failed', error)
+      }
+    }
+  }
+
+  // ─── boot ──────────────────────────────────────────────────────────────────
+
+  async start() {
+    if (this.startPromise) return this.startPromise
+    this.startPromise = this.startOnce()
+    return this.startPromise
+  }
+
+  async startOnce() {
+    this.store = await openStore(this.storeName)
+    if (this.disposed) return this
+    // Settings and folders are read before the lock, so a second tab can still show Team and
+    // Settings read-only while it waits (UX U10). They are read again once this tab leads.
+    const loadSettings = async () => {
+      const [catalogue, policy, dreaming, bridge, servers] = await Promise.all(
+        ['catalogue', 'policy', 'dreaming', 'bridge', 'mcp'].map((key) => this.store.get('settings', key).then((row) => row?.value)),
+      )
+      this.saved = { catalogue: catalogue ?? {}, policy: policy ?? DEFAULT_POLICY, dreaming: dreaming ?? true, mcp: servers ?? {} }
+      return bridge
+    }
+    await loadSettings()
+    this.publish({ type: 'boot', stage: 'agents' })
+    await this.readFolders()
+    this.publish({ type: 'boot', stage: 'agents', build: this.index.build ?? '', total: this.specs.size })
+    const waited = await this.lead()
+    if (this.disposed) return this
+    const bridge = await loadSettings()
+    await this.markInterrupted()
+    if (waited) await this.readFolders()
+    if (bridge?.url) await this.bridgeCheck(bridge.url, bridge.token)
+    await this.mcpRefresh({ restart: false })
+    this.publish({ type: 'boot', stage: 'threads', done: 0, total: this.specs.size })
+    await this.startThreads()
+    this.started = true
+    this.publish({ type: 'boot', stage: 'ready', durable: this.store.durable, why: this.store.why, build: this.index.build ?? '' })
+    this.poll = setInterval(() => this.bridgeState.url && this.bridgeCheck(this.bridgeState.url, this.bridgeState.token), 30000)
+    this.scheduled = (await this.store.get('settings', 'schedules'))?.value ?? { items: [], next: 1 }
+    for (const item of this.scheduled.items) item.next = item.next == null ? Infinity : item.next
+    this.tick()
+    this.ticker = setInterval(() => this.tick(), TICK_MS)
+    globalThis.addEventListener?.('pagehide', () => this.stop('the tab closed'))
+    return this
+  }
+
+  /** Only one tab runs the agents. A second tab waits for the lock and takes over when it frees. */
+  async lead() {
+    const locks = globalThis.navigator?.locks
+    if (!locks) {
+      this.lockState = 'leader'
+      return false
+    }
+    let waited = false
+    this.leadAbort = new AbortController()
+    await new Promise((granted) => {
+      const hold = () => {
+        if (this.disposed) { granted(); return }
+        this.lockState = 'leader'
+        granted()
+        return new Promise((release) => (this.releaseLock = release))
+      }
+      locks
+        .request('harness:leader', { ifAvailable: true }, (lock) => (lock ? hold() : null))
+        .then(() => {
+          if (this.disposed) { granted(); return }
+          if (this.lockState === 'leader') return
+          this.lockState = 'follower'
+          waited = true
+          this.publish({ type: 'lock', state: 'follower' })
+          locks.request('harness:leader', { signal: this.leadAbort.signal }, () => {
+            this.publish({ type: 'lock', state: 'leader' })
+            return hold()
+          }).catch(() => granted())
+        })
+    })
+    return waited
+  }
+
+  lock() {
+    return this.lockState
+  }
+
+  stop(why = 'stopped') {
+    this.disposed = true
+    this.leadAbort?.abort()
+    clearTimeout(this.dreamTimer)
+    clearInterval(this.poll)
+    clearInterval(this.ticker)
+    for (const run of this.runs.values()) if (!run.ended) {
+      this.abort(run)
+      // The page is about to terminate its workers, so their abort replies cannot be relied on.
+      const status = why === 'the tab closed' ? 'interrupted' : 'cancelled'
+      this.end(run, `(${status}: ${why})`, false, why, { status, terminationReason: status })
+    }
+    for (const thread of this.allThreads) thread.worker.terminate()
+    this.allThreads.clear()
+    this.threads.clear()
+    this.releaseLock?.()
+    this.publish({ type: 'stopped', why })
+  }
+
+  /** Runs that were active when the page last went away are interrupted, and can be resumed. */
+  async markInterrupted() {
+    for (const record of await this.store.all('runs')) {
+      if (ACTIVE.has(record.slot?.status) || record.slot?.status === 'idle') {
+        record.slot = { ...record.slot, status: 'interrupted', terminationReason: 'interrupted' }
+        await this.store.put('runs', record)
+      }
+    }
+  }
+
+  async readFolders() {
+    this.index = await loadIndex(this.base, this.fetch)
+    const load = loader(this.base, this.index, this.fetch)
+    try {
+      this.fileCatalogue = JSON.parse(await load('models.json'))
+    } catch {
+      this.fileCatalogue = {}
+    }
+    this.specs.clear()
+    this.failed.clear()
+    await Promise.all(
+      agentPaths(this.index).map(async (path) => {
+        try {
+          this.specs.set(path, await readSpec(path, { index: this.index, load }))
+        } catch (error) {
+          this.failed.set(path, String(error?.message ?? error))
+        }
+      }),
+    )
+  }
+
+  catalogue() {
+    return merge(this.fileCatalogue, this.saved.catalogue)
+  }
+
+  isResident(spec) {
+    return spec.path === 'main' || Boolean(spec.engine.remembers) || spec.grants.some((grant) => WRITERS.has(grant))
+  }
+
+  /** Start every resident thread; probe every other agent once so its tools and notes are known. */
+  async startThreads() {
+    let done = 0
+    await Promise.all(
+      [...this.specs.values()].map(async (spec) => {
+        if (this.isResident(spec)) await this.thread(spec.path)
+        else await this.probe(spec.path)
+        done += 1
+        this.publish({ type: 'boot', stage: 'threads', done, total: this.specs.size })
+      }),
+    )
+  }
+
+  // ─── threads ───────────────────────────────────────────────────────────────
+
+  /** Everything a worker needs to build its engine. */
+  async initMessage(spec) {
+    const agents = [...spec.peers, ...spec.owned]
+      .map((path) => this.specs.get(path))
+      .filter(Boolean)
+      .map((peer) => ({ path: peer.path, name: peer.name, description: peer.description }))
+    const heads = new Set(headPaths(this.index))
+    return {
+      type: 'init',
+      spec,
+      catalogue: this.catalogue(),
+      policy: withAgentRules(this.saved.policy, spec.path, spec.permissions),
+      host: this.hostInfo(),
+      base: String(this.base),
+      index: this.index,
+      agents,
+      learned: await this.learnedFor(spec),
+      mcp: spec.grants.includes('mcp') ? this.mcpTools() : [],
+      compactor: heads.has('compactor') && !['compactor', 'dreamer'].includes(spec.path) ? 'compactor' : null,
+    }
+  }
+
+  async learnedFor(spec) {
+    return [spec.learned, (await this.store.get('learned', spec.path))?.text].filter(Boolean).join('\n')
+  }
+
+  hostInfo() {
+    const bridge = this.bridgeState
+    if (bridge.status !== 'answering') return null
+    return { url: bridge.url, token: bridge.token, root: bridge.health?.root, capabilities: bridge.health?.capabilities ?? [] }
+  }
+
+  /** A resident thread, started if it is not running. */
+  async thread(path) {
+    const existing = this.threads.get(path)
+    if (existing) return existing.ready
+    const session = await this.store.get('sessions', path)
+    return this.spawn(this.specs.get(path), { key: path, resident: true, history: session?.turns ?? [] })
+  }
+
+  /** Start a worker for a spec and wait for `ready`, or fail it after ten seconds. */
+  async spawn(spec, { key, resident, history = [] }) {
+    if (this.disposed) throw new Error('The runtime has been disposed')
+    const worker = new Worker(this.workerUrl, { type: 'module', name: spec.path })
+    const thread = { key, path: spec.path, spec, worker, resident, busy: false, queue: [], run: null, stale: false }
+    this.allThreads.add(thread)
+    let readied
+    thread.ready = new Promise((resolveReady) => (readied = resolveReady))
+    const timer = setTimeout(() => {
+      thread.dead = `sent no ready after ${READY_TIMEOUT / 1000}s`
+      this.readyInfo.set(spec.path, { ...(this.readyInfo.get(spec.path) ?? {}), error: thread.dead })
+      this.publish({ type: 'ready', agent: spec.path, error: thread.dead })
+      readied(thread)
+    }, READY_TIMEOUT)
+    worker.onmessage = ({ data }) => {
+      if (data.type === 'ready') {
+        clearTimeout(timer)
+        this.readyInfo.set(spec.path, data)
+        this.publish({ type: 'ready', agent: spec.path, ...data })
+        readied(thread)
+        return
+      }
+      this.onThreadMessage(thread, data)
+    }
+    worker.onerror = (event) => {
+      event.preventDefault?.()
+      clearTimeout(timer)
+      thread.dead = thread.dead ?? String(event.message ?? 'the thread crashed')
+      readied(thread)
+      this.onThreadMessage(thread, { type: 'fatal', message: event.message ?? 'the thread crashed' })
+    }
+    if (resident) this.threads.set(key, thread)
+    worker.postMessage({ ...(await this.initMessage(spec)), history })
+    return thread.ready
+  }
+
+  /** Start and immediately retire a thread, to learn an agent's tools and import notes. */
+  async probe(path) {
+    const thread = await this.spawn(this.specs.get(path), { key: `probe:${path}`, resident: false })
+    this.retire(thread)
+  }
+
+  retire(thread) {
+    thread.worker.terminate()
+    this.allThreads.delete(thread)
+    if (this.threads.get(thread.key) === thread) this.threads.delete(thread.key)
+  }
+
+  async restart(thread, why = 'restarted') {
+    this.retire(thread)
+    const fresh = await this.thread(thread.path)
+    fresh.queue.push(...thread.queue)
+    this.publish({ type: 'restarted', agent: thread.path, why, at: Date.now() })
+    this.pump(fresh)
+    return fresh
+  }
+
+  // ─── runs ──────────────────────────────────────────────────────────────────
+
+  /** Ask main something. Returns the new run's id. */
+  ask(query, options) {
+    return this.startRun('main', query, options).id
+  }
+
+  /** Start a run of an agent. Resident agents queue; any other agent gets a fresh thread. */
+  startRun(path, query, { parent = null, call = '', kind = 'task', context = null, resume = null } = {}) {
+    const spec = this.specs.get(path)
+    const up = parent ? this.runs.get(parent) : null
+    const id = `r${Date.now().toString(36)}${(this.nextRun++).toString(36)}`
+    const run = {
+      id,
+      trace: up?.trace ?? id,
+      agent: path,
+      parent,
+      depth: up ? up.depth + 1 : 0,
+      kind,
+      query,
+      taskId: resume?.taskId ?? id,
+      resumedFrom: resume?.id ?? null,
+      resumeAttempt: resume ? (resume.resumeAttempt ?? 0) + 1 : 0,
+      originalQuery: resume?.originalQuery ?? resume?.query ?? query,
+      todo: resume ? snapshot((Array.isArray(resume.todo) ? resume.todo : []).slice(0, 50)) : [],
+      context: snapshot(up?.context ?? context),
+      call,
+      turns: [],
+      prompts: [],
+      requests: [],
+      completions: [],
+      spans: [],
+      log: [],
+      children: [],
+      at: Date.now(),
+    }
+    run.slot = {
+      run: id,
+      agent: path,
+      parent,
+      depth: run.depth,
+      trace: run.trace,
+      status: 'idle',
+      goal: query,
+      steps: 0,
+      maxSteps: spec?.engine.maxSteps ?? 10,
+      seconds: 0,
+      startedAt: run.at,
+      calls: 0,
+      repeats: 0,
+      current: '',
+      model: '',
+      error: '',
+    }
+    run.answer = new Promise((resolveAnswer) => (run.finish = resolveAnswer))
+    this.runs.set(id, run)
+    if (up) {
+      up.children.push(id)
+      this.publish({ type: 'event', run: parent, agent: up.agent, kind: 'child', name: call, value: id, at: Date.now() })
+    }
+    this.publish({ type: 'run', run: this.describe(run) })
+    if (run.todo.length) this.publish({ type: 'todo', run: id, items: run.todo })
+    this.persist(run)
+    clearTimeout(this.dreamTimer)
+
+    if (!spec) {
+      this.end(run, `(failed: no agent at agents/${path})`, false, `no agent at agents/${path}`)
+      return run
+    }
+    const begin = async () => {
+      const thread = this.isResident(spec) ? await this.thread(path) : await this.spawn(spec, { key: `call:${id}`, resident: false })
+      if (thread.dead) {
+        this.retire(thread)
+        return this.end(run, `(failed: ${thread.dead})`, false, thread.dead)
+      }
+      if (run.ended) return
+      thread.queue.push(run)
+      this.pump(thread)
+    }
+    begin().catch((error) => this.end(run, `(failed: ${error.message})`, false, error.message))
+    return run
+  }
+
+  pump(thread) {
+    if (thread.busy || !thread.queue.length) return
+    const run = thread.queue.shift()
+    if (run.ended) return this.pump(thread)
+    thread.busy = true
+    thread.run = run.id
+    run.thread = thread
+    thread.worker.postMessage({ type: 'invoke', query: run.query, context: run.context })
+  }
+
+  onThreadMessage(thread, message) {
+    const run = thread.run ? this.runs.get(thread.run) : null
+    switch (message.type) {
+      case 'status':
+        if (!run) return
+        run.slot = { ...run.slot, ...message.slot, run: run.id, agent: run.agent, parent: run.parent, depth: run.depth, trace: run.trace, startedAt: run.slot.startedAt }
+        this.publish({ type: 'status', run: run.id, slot: run.slot })
+        return
+      case 'event':
+        if (run) this.record(run, message)
+        return
+      case 'history':
+        if (!run) return
+        if (thread.resident) {
+          if (run.turnsFrom == null) {
+            const at = message.turns.findLastIndex((turn) => turn.role === 'user' && turn.content === run.query)
+            run.turnsFrom = at === -1 ? 0 : at
+          }
+          run.turns = message.turns.slice(run.turnsFrom)
+          this.store.put('sessions', { agent: thread.path, turns: message.turns }).catch(error => this.publish({ type: 'persistence-error', run: run.id, error: `Conversation could not be saved: ${error.message}` }))
+        } else run.turns = message.turns
+        this.publish({ type: 'history', run: run.id, agent: run.agent, turns: run.turns, session: thread.resident ? message.turns : null })
+        this.persist(run)
+        return
+      case 'request':
+        this.handle(thread, run, message)
+        return
+      case 'answer':
+        if (run) this.end(run, message.text, message.ok, message.ok ? '' : message.slot?.error, message.slot)
+        this.idle(thread)
+        return
+      case 'fatal':
+        if (run) this.end(run, `(failed: the thread stopped: ${message.message})`, false, `the thread stopped: ${message.message}`)
+        thread.busy = false
+        thread.run = null
+        this.retire(thread)
+        this.publish({ type: 'fatal', agent: thread.path, message: message.message })
+        return
+      default:
+    }
+  }
+
+  /** Keep what the thread view needs: prompts, spans and the system lines. Deltas pass through. */
+  record(run, event) {
+    const at = Date.now()
+    const spans = run.spans
+    if (event.kind === 'prompt') {
+      run.prompts.push(snapshot({ step: event.step, attemptId: event.attemptId, attempt: event.attempt, sheet: event.value, tokens: event.tokens, snapshot: event.requestSnapshot }))
+      const open = lastOpen(spans, 'step')
+      if (open) open.ms = at - open.start
+      spans.push({ kind: 'step', step: event.step, start: at, tokens: event.tokens })
+    } else if (event.kind === 'request') {
+      // Preserve exact redacted provider attempts separately from compiled prompt snapshots.
+      ;(run.requests ??= []).push(snapshot({ ...event, at }))
+    } else if (event.kind === 'completion') {
+      // One compiled attempt may retry transport. Link to the last actual request, not
+      // the prompt's repair counter; earlier failed requests still have unknown usage.
+      const requestIndex = (run.requests ?? []).findLastIndex(request => request.attemptId === event.attemptId)
+      ;(run.completions ??= []).push(snapshot({ ...event, at, requestIndex: requestIndex < 0 ? null : requestIndex }))
+    } else if (event.kind === 'call') {
+      const open = lastOpen(spans, 'step')
+      if (open) open.ms = at - open.start
+    } else if (event.kind === 'observation') {
+      spans.push({ kind: 'call', name: event.name, start: at - (event.ms ?? 0), ms: event.ms ?? 0, ok: event.ok })
+    } else if (event.kind === 'approval') {
+      spans.push({ kind: 'approval', name: event.value, start: at })
+    } else if (event.kind === 'approved') {
+      const open = lastOpen(spans, 'approval')
+      if (open) {
+        open.ms = at - open.start
+        open.ok = event.value === 'approved'
+      }
+    }
+    if (!['delta', 'reasoning', 'prompt', 'field'].includes(event.kind)) {
+      run.log.push({ at, kind: event.kind, name: event.name, value: String(event.value).slice(0, 4000), ms: event.ms, ok: event.ok, step: event.step, ...(event.attemptId ? { attemptId: event.attemptId } : {}), ...(event.kind === 'completion' ? { finishReason: event.finishReason } : {}) })
+      if (run.log.length > 400) run.log.shift()
+    }
+    this.publish({ ...event, type: 'event', run: run.id, agent: run.agent, at })
+    if (['prompt', 'request', 'completion', 'observation', 'repair', 'retry'].includes(event.kind)) this.persist(run)
+  }
+
+  end(run, text, ok, error = '', slot = null) {
+    if (run.ended) return
+    run.ended = true
+    run.result = text
+    const terminal = slot?.status ?? run.slot.status
+    run.slot = { ...run.slot, ...(slot ?? {}), run: run.id, status: ok ? 'done' : ['incomplete', 'cancelled', 'interrupted'].includes(terminal) ? terminal : 'failed', error: ok ? '' : error || run.slot.error || 'failed', current: '', startedAt: run.slot.startedAt }
+    const open = lastOpen(run.spans, 'step')
+    if (open) open.ms = Date.now() - open.start
+    this.publish({ type: 'status', run: run.id, slot: run.slot })
+    this.publish({ type: 'answer', run: run.id, agent: run.agent, text, ok })
+    for (const approval of [...this.approvals.values()]) if (approval.run === run.id) this.answerApproval(approval.id, { approved: false, note: 'the run ended', by: 'system' })
+    this.persist(run)
+    run.finish(text)
+    if (!run.parent) this.finishTask(run)
+  }
+
+  idle(thread) {
+    thread.busy = false
+    thread.run = null
+    if (!thread.resident) return this.retire(thread)
+    if (thread.stale) {
+      thread.stale = false
+      this.restart(thread, 'restarted with your edits')
+      return
+    }
+    this.pump(thread)
+  }
+
+  async persist(run) {
+    const record = { ...this.describe(run), turns: run.turns, prompts: run.prompts, requests: run.requests ?? [], completions: run.completions ?? [], spans: run.spans, log: run.log, result: run.result ?? '', todo: run.todo ?? [] }
+    try {
+      await this.store.put('runs', record)
+      if (!run.ended) return
+      const all = await this.store.all('runs')
+      if (all.length <= KEEP_RUNS) return
+      const old = all.sort((a, b) => a.at - b.at).slice(0, all.length - KEEP_RUNS)
+      await Promise.all(old.map((stale) => this.store.delete('runs', stale.id)))
+    } catch (error) {
+      this.publish({ type: 'persistence-error', run: run.id, error: `Run evidence could not be saved: ${error.message}` })
+    }
+  }
+
+  describe(run) {
+    return { id: run.id, trace: run.trace, taskId: run.taskId ?? run.id, resumedFrom: run.resumedFrom ?? null, resumeAttempt: run.resumeAttempt ?? 0, originalQuery: run.originalQuery ?? run.query, agent: run.agent, parent: run.parent, depth: run.depth, kind: run.kind, query: run.query, context: run.context, call: run.call, children: [...run.children], slot: run.slot, at: run.at }
+  }
+
+  // ─── what the page may send to a run ───────────────────────────────────────
+
+  /** `invoke` (an agent), `nudge`, `abort`, `resume`. */
+  send(target, message) {
+    if (message.type === 'invoke') { const previous = this.runs.get(target); return this.startRun(previous?.agent ?? target, message.query, { context: previous?.context ?? null }).id }
+    if (message.type === 'resume') return this.resume(target)
+    const run = this.runs.get(target)
+    if (!run) return null
+    if (message.type === 'nudge') {
+      if (run.thread?.run === run.id) run.thread.worker.postMessage({ type: 'nudge', text: String(message.text) })
+      return run.id
+    }
+    if (message.type === 'abort') {
+      this.abort(run)
+      return run.id
+    }
+    return null
+  }
+
+  abort(run) {
+    for (const child of run.children) {
+      const below = this.runs.get(child)
+      if (below && !below.ended) this.abort(below)
+    }
+    for (const approval of [...this.approvals.values()]) if (approval.run === run.id) this.answerApproval(approval.id, { approved: false, note: 'the run was stopped', by: 'system' })
+    if (run.thread?.run === run.id) run.thread.worker.postMessage({ type: 'abort' })
+    else if (!run.ended) this.end(run, '(cancelled: stopped by the owner)', false, 'stopped by the owner', { status: 'cancelled', terminationReason: 'cancelled' })
+  }
+
+  /** The number of active runs under a run, for "Abort this run and 2 below". */
+  below(id) {
+    const run = this.runs.get(id)
+    if (!run) return 0
+    return run.children.reduce((count, child) => {
+      const below = this.runs.get(child)
+      return count + (below && !below.ended ? 1 + this.below(child) : 0)
+    }, 0)
+  }
+
+  async resume(id) {
+    const record = this.runs.get(id) ?? (await this.store.get('runs', id))
+    if (!record) return null
+    if (ACTIVE.has(record.slot?.status) || record.slot?.status === 'idle') throw new Error('Stop the active run before starting a new continuation.')
+    // A continuation is an explicit new attempt. It does not restore processes, replay tools,
+    // inherit verification, or overwrite the original evidence. Keep the summary bounded.
+    const note = `The owner requested a new attempt continuing run ${record.id} (${record.slot?.status ?? 'unknown'}).\nOriginal task: ${record.originalQuery ?? record.query}\nPrior result (up to 4000 characters): ${String(record.result ?? '').slice(0, 4000)}\nThe saved plan is carried forward as prior work state, not proof of completion. Inspect the current workspace and prior evidence before deciding what remains. No previous process or tool call has been restarted. Do not repeat completed side effects without checking them.`
+    return this.startRun(record.agent, note, { context: record.context ?? null, resume: { ...record, taskId: record.taskId ?? record.id } }).id
+  }
+
+  // ─── requests from threads ─────────────────────────────────────────────────
+
+  async handle(thread, run, { id, op, args }) {
+    try {
+      const handler = this.externalOps[op] ?? this.ops[op]
+      if (!handler) throw new Error(`unknown request "${op}"`)
+      const value = await handler.call(this, args ?? {}, run, thread)
+      thread.worker.postMessage({ type: 'reply', id, ok: true, value })
+    } catch (error) {
+      thread.worker.postMessage({ type: 'reply', id, ok: false, error: String(error?.message ?? error) })
+    }
+  }
+
+  ops = {
+    async call({ agent, query, call }, run) {
+      if (!run) throw new Error('no run is active on this thread')
+      if (run.depth + 1 > LIMITS.depth) throw new Error(`calls may nest ${LIMITS.depth} deep; ${agent} would be deeper`)
+      for (let up = run; up; up = up.parent ? this.runs.get(up.parent) : null) {
+        if (up.agent === agent) throw new Error(`${agent} is already working on this chain; calling it again would loop`)
+      }
+      const active = run.children.filter((child) => !this.runs.get(child)?.ended).length
+      if (active >= LIMITS.outstanding) throw new Error(`${run.agent} already has ${active} agents working; wait for one to answer`)
+      const kind = agent === 'compactor' ? 'compact' : run.kind === 'dream' ? 'dream' : 'task'
+      const child = this.startRun(agent, query, { parent: run.id, call: call ?? `${agent}(…)`, kind })
+      const answer = await child.answer
+      // Terminal text is also returned for failed and incomplete runs. It is evidence for
+      // ordinary callers, but must never replace conversation history as a valid summary.
+      if (kind === 'compact' && child.slot.status !== 'done') throw new Error(`Compactor ${child.id} ended with ${child.slot.status}; no summary was accepted.`)
+      return answer
+    },
+
+    'board.post'({ kind, text }, run) {
+      const board = this.boardFor(run)
+      const entry = { id: board.next++, kind: ['plan', 'question', 'finding', 'note'].includes(kind) ? kind : 'note', text: String(text), author: run.agent, rev: 1, resolved: false, at: Date.now() }
+      board.entries.push(entry)
+      this.publish({ type: 'board', trace: run.trace, entries: board.entries, released: false })
+      return entry
+    },
+    'board.list'(_, run) {
+      return run ? this.boardFor(run).entries : []
+    },
+    'board.resolve'({ id, note }, run) {
+      const board = this.boardFor(run)
+      const entry = board.entries.find((item) => item.id === id)
+      if (!entry) throw new Error(`no board entry #${id}`)
+      entry.resolved = true
+      entry.rev += 1
+      if (note) entry.text += ` — resolved: ${note}`
+      this.publish({ type: 'board', trace: run.trace, entries: board.entries, released: false })
+      return entry
+    },
+    'board.tell'({ agent, text }, run) {
+      const target = [...this.runs.values()].find((other) => other.trace === run.trace && other.agent === agent && !other.ended && other.thread?.run === other.id)
+      if (!target) return { delivered: false }
+      target.thread.worker.postMessage({ type: 'nudge', text: `(from ${run.agent}) ${text}` })
+      return { delivered: true }
+    },
+
+    async 'memory.save'({ text, scope }, run) {
+      const entry = { agent: scope === 'shared' ? 'shared' : run.agent, text: String(text).trim(), source: run.kind === 'dream' ? 'dream' : run.id, at: Date.now() }
+      entry.id = await this.store.put('memory', entry)
+      this.publish({ type: 'memory' })
+      return entry
+    },
+    async 'memory.list'(_, run) {
+      const all = await this.store.all('memory')
+      return all.filter((entry) => entry.agent === 'shared' || entry.agent === run?.agent).sort((a, b) => b.at - a.at)
+    },
+    async 'memory.search'({ query }, run) {
+      const words = String(query ?? '').toLowerCase().split(/\s+/).filter(Boolean)
+      const all = await this.ops['memory.list'].call(this, {}, run)
+      return all.filter((entry) => words.every((word) => entry.text.toLowerCase().includes(word)))
+    },
+    async 'memory.forget'({ id }) {
+      await this.store.delete('memory', id)
+      this.publish({ type: 'memory' })
+      return true
+    },
+
+    async 'files.list'({ prefix = '' }) {
+      return (await this.store.all('files')).filter((file) => file.path.startsWith(prefix)).map((file) => ({ path: file.path, rev: file.rev, size: file.content.length }))
+    },
+    async 'files.read'({ path }) {
+      return (await this.store.get('files', clean(path))) ?? null
+    },
+    async 'files.write'({ path, content, expect }) {
+      const key = clean(path)
+      const result = await this.store.update('files', key, (current) => {
+        const rev = current?.rev ?? 0
+        if (expect != null && expect !== '' && Number(expect) !== rev) return { conflict: true, rev }
+        return { value: { path: key, content, rev: rev + 1, at: Date.now() }, rev: rev + 1 }
+      })
+      this.publish({ type: 'files' })
+      return { conflict: Boolean(result.conflict), rev: result.rev }
+    },
+
+    async 'skill.list'() {
+      const load = loader(this.base, this.index, this.fetch)
+      const published = await Promise.all(
+        Object.entries(skillFiles(this.index)).map(async ([name, file]) => {
+          const { settings } = read(await load(file))
+          return { name: settings.name ?? name, description: settings.description ?? '', source: 'published' }
+        }),
+      )
+      const names = new Set(published.map((skill) => skill.name))
+      const saved = (await this.savedSkills()).filter((skill) => !names.has(skill.name))
+      return [...published, ...saved.map((skill) => ({ name: skill.name, description: `${skill.description} (saved by ${skill.by})`, source: 'saved' }))]
+    },
+    async 'skill.load'({ name }) {
+      const file = skillFiles(this.index)[name]
+      if (file) return { name, body: read(await loader(this.base, this.index, this.fetch)(file)).body }
+      const saved = (await this.savedSkills()).find((skill) => skill.name === name)
+      return saved ? { name, body: saved.body } : null
+    },
+    /** A skill an agent wrote. It lives in the page's files under skills/, never over a published one. */
+    async 'skill.save'({ name, description = '', body = '' }, run) {
+      const slug = String(name ?? '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+      if (!slug) throw new Error('a skill needs a name')
+      if (skillFiles(this.index)[slug]) throw new Error(`"${slug}" is a published skill in skills/; choose another name`)
+      if (!String(body).trim()) throw new Error('a skill needs a body: the steps')
+      const text = `---\nname: ${slug}\ndescription: ${String(description).replace(/\n/g, ' ')}\nby: ${run?.agent ?? 'owner'}\n---\n\n${String(body).trim()}\n`
+      const result = await this.ops['files.write'].call(this, { path: `skills/${slug}.md`, content: text })
+      this.publish({ type: 'skills' })
+      return { name: slug, rev: result.rev }
+    },
+
+    async 'sessions.search'({ query, agent, limit = 5 }, run) {
+      const words = String(query ?? '').toLowerCase().split(/\s+/).filter(Boolean)
+      if (!words.length) return []
+      const seen = new Map()
+      for (const record of await this.store.all('runs')) seen.set(record.id, record)
+      for (const live of this.runs.values()) if (live.ended) seen.set(live.id, { ...this.describe(live), turns: live.turns, result: live.result ?? '' })
+      const hits = []
+      for (const record of seen.values()) {
+        if (record.id === run?.id || record.trace === run?.trace) continue
+        if (agent && record.agent !== agent) continue
+        const parts = [record.query, record.result, ...(record.turns ?? []).map((turn) => turn.content)].map((part) => String(part ?? ''))
+        const all = parts.join('\n').toLowerCase()
+        if (!words.every((word) => all.includes(word))) continue
+        // The snippet shows where most of the words meet, preferring what was said over what was asked.
+        const score = (part) => words.filter((word) => part.toLowerCase().includes(word)).length
+        const where = [...parts.slice(1), parts[0]].reduce((best, part) => (score(part) > score(best) ? part : best), '')
+        const first = words.find((word) => where.toLowerCase().includes(word)) ?? ''
+        const at = Math.max(where.toLowerCase().indexOf(first) - 80, 0)
+        hits.push({ id: record.id, agent: record.agent, at: record.at, when: new Date(record.at).toISOString().slice(0, 16).replace('T', ' '), query: String(record.query).slice(0, 160), snippet: `${at ? '…' : ''}${where.slice(at, at + 240).replace(/\s+/g, ' ')}` })
+      }
+      return hits.sort((a, b) => b.at - a.at).slice(0, Math.min(Number(limit) || 5, 20))
+    },
+    async 'sessions.read'({ id }) {
+      const live = this.runs.get(id)
+      const record = live?.ended ? { ...this.describe(live), turns: live.turns, result: live.result } : await this.store.get('runs', String(id))
+      if (!record) return null
+      const steps = (record.turns ?? []).map((turn) => `### ${turn.role}\n${String(turn.content).slice(0, 2000)}`)
+      return `run ${record.id} · ${record.agent} · ${new Date(record.at).toISOString()}\n\n## asked\n${record.query}\n\n${steps.join('\n\n')}\n\n## answer\n${record.result ?? ''}`.slice(0, 16000)
+    },
+
+    async 'mcp.call'({ server, tool, args }) {
+      const found = this.mcpServers.get(server)
+      if (!found || found.status !== 'answering') throw new Error(`MCP server "${server}" is not connected`)
+      return found.client.call(tool, args ?? {})
+    },
+
+    'todo.set'({ items }, run) {
+      if (!run) throw new Error('no run is active on this thread')
+      const STATUSES = ['todo', 'doing', 'done', 'dropped']
+      run.todo = items
+        .map((item) => (typeof item === 'string' ? { text: item, status: 'todo' } : item))
+        .filter((item) => item && String(item.text ?? '').trim())
+        .slice(0, 50)
+        .map((item) => ({ text: String(item.text).trim(), status: STATUSES.includes(item.status) ? item.status : 'todo' }))
+      this.publish({ type: 'todo', run: run.id, items: run.todo })
+      this.persist(run)
+      return run.todo
+    },
+    'todo.get'(_, run) {
+      return run?.todo ?? []
+    },
+
+    async 'schedule.add'({ agent, query, every_minutes, in_minutes }, run) {
+      return this.schedules.add({ agent, query, every: every_minutes, in: in_minutes, by: run?.agent ?? 'owner' })
+    },
+    'schedule.list'() {
+      return this.schedules.list()
+    },
+    'schedule.cancel'({ id }) {
+      return this.schedules.cancel(id)
+    },
+
+    host({ endpoint, body }) {
+      return this.bridgeCall(endpoint, body)
+    },
+
+    approve({ tool, call, risk, reason, args }, run) {
+      const approval = { id: this.nextApproval++, run: run?.id, agent: run?.agent ?? '?', trace: run?.trace, tool, call, risk, reason, args, at: Date.now() }
+      return new Promise((settle) => {
+        approval.settle = settle
+        this.approvals.set(approval.id, approval)
+        this.publish({ type: 'approval', approval: publicApproval(approval) })
+      })
+    },
+
+    async 'dream.propose'({ agent, text, why }, run) {
+      if (!this.specs.has(agent)) throw new Error(`no agent at agents/${agent}; propose for one of: ${[...this.specs.keys()].join(', ')}`)
+      const root = run ? this.rootOf(run) : null
+      const proposal = { agent, text: String(text).trim(), why: String(why ?? ''), trace: root?.reviewing ?? root?.trace ?? '', dream: root?.id ?? '', status: 'pending', at: Date.now() }
+      proposal.id = await this.store.put('dreams', proposal)
+      this.publish({ type: 'dreams' })
+      return { id: proposal.id }
+    },
+  }
+
+  // ─── MCP servers: the owner's, plus each one the paired bridge runs ─────────
+
+  /** Every server the owner configured, and every stdio server the bridge runs for them. */
+  mcpConfigured() {
+    const out = Object.entries(this.saved.mcp ?? {}).map(([name, server]) => ({ name, url: server.url, headers: server.headers ?? {}, from: 'settings' }))
+    const bridge = this.bridgeState
+    if (bridge.status === 'answering') {
+      for (const name of bridge.health?.mcp ?? []) {
+        if (out.some((server) => server.name === name)) continue
+        out.push({ name, url: `${bridge.url}/mcp/${encodeURIComponent(name)}`, headers: { authorization: `Bearer ${bridge.token}` }, from: 'bridge' })
+      }
+    }
+    return out.filter((server) => /^[A-Za-z0-9_-]+$/.test(server.name) && server.url)
+  }
+
+  /** List each server's tools. Threads granting `mcp` restart when what they would see changed. */
+  async mcpRefresh({ restart = true } = {}) {
+    const before = JSON.stringify(this.mcpTools())
+    const next = new Map()
+    await Promise.all(
+      this.mcpConfigured().map(async (server) => {
+        const client = mcp({ url: server.url, headers: server.headers }, { fetch: this.fetch })
+        const row = { ...server, client, status: 'answering', tools: [], error: '', at: Date.now() }
+        try {
+          row.tools = (await client.tools()).map((tool) => describeTool(server.name, tool))
+        } catch (error) {
+          row.status = 'down'
+          row.error = String(error.message ?? error)
+        }
+        next.set(server.name, row)
+      }),
+    )
+    this.mcpServers = next
+    this.publish({ type: 'mcp', servers: this.mcp.list() })
+    if (restart && JSON.stringify(this.mcpTools()) !== before) this.hostChanged('MCP tools changed')
+    return this.mcp.list()
+  }
+
+  mcpTools() {
+    return [...this.mcpServers.values()].filter((server) => server.status === 'answering').map((server) => ({ name: server.name, tools: server.tools }))
+  }
+
+  mcp = {
+    list: () => [...this.mcpServers.values()].map(({ client, headers, ...row }) => ({ ...row, tools: row.tools.map((tool) => ({ name: tool.name, risk: tool.risk, description: tool.description })) })),
+    /** Replace the owner's servers: {name: {url, headers?}}. */
+    set: async (servers) => {
+      this.saved.mcp = servers ?? {}
+      await this.store.put('settings', { key: 'mcp', value: this.saved.mcp })
+      return this.mcpRefresh()
+    },
+    configured: () => ({ ...(this.saved.mcp ?? {}) }),
+    refresh: () => this.mcpRefresh(),
+  }
+
+  async savedSkills() {
+    const files = (await this.store.all('files')).filter((file) => /^skills\/[^/]+\.md$/.test(file.path))
+    return files.map((file) => {
+      const { settings, body } = read(file.content)
+      return { name: settings.name ?? file.path.slice(7, -3), description: settings.description ?? '', by: settings.by ?? 'an agent', body, path: file.path, rev: file.rev }
+    })
+  }
+
+  // ─── schedules: tasks that start themselves while a tab is open ─────────────
+
+  /** Start every schedule that is due. One that fell due while no tab was open runs once now. */
+  tick(now = Date.now()) {
+    if (!this.started || this.lockState === 'follower') return
+    let changed = false
+    for (const item of this.scheduled.items) {
+      if (item.next > now || item.running) continue
+      if (!this.specs.has(item.agent)) {
+        item.last = { status: 'failed', at: now, error: `no agent at agents/${item.agent}` }
+        item.next = item.every ? now + item.every * 60000 : Infinity
+        changed = true
+        continue
+      }
+      const run = this.startRun(item.agent, item.query, { kind: 'scheduled' })
+      item.running = run.id
+      item.last = { run: run.id, status: 'running', at: now }
+      item.next = item.every ? now + item.every * 60000 : Infinity
+      changed = true
+      run.answer.then(() => {
+        item.running = null
+        item.last = { run: run.id, status: run.slot.status, at: Date.now() }
+        if (!item.every) this.scheduled.items = this.scheduled.items.filter((other) => other !== item)
+        this.saveSchedules()
+      })
+    }
+    if (changed) this.saveSchedules()
+  }
+
+  saveSchedules() {
+    const value = { ...this.scheduled, items: this.scheduled.items.map(({ running, ...item }) => ({ ...item, next: Number.isFinite(item.next) ? item.next : null })) }
+    this.publish({ type: 'schedules', items: this.schedules.list() })
+    return this.store.put('settings', { key: 'schedules', value }).catch(() => {})
+  }
+
+  schedules = {
+    list: () => this.scheduled.items.map(({ running, ...item }) => ({ ...item, running: Boolean(running) })),
+    add: ({ agent, query, every, in: later, by = 'owner' }) => {
+      if (!this.specs.has(agent)) throw new Error(`no agent at agents/${agent}; schedule one of: ${[...this.specs.keys()].join(', ')}`)
+      if (!String(query ?? '').trim()) throw new Error('a schedule needs a query: what the agent should do')
+      const minutes = every != null && every !== '' ? Number(every) : null
+      if (minutes != null && !(minutes >= 1)) throw new Error('every_minutes must be at least 1')
+      const delay = later != null && later !== '' ? Math.max(Number(later) || 0, 0) : (minutes ?? 0)
+      const item = { id: this.scheduled.next++, agent, query: String(query).trim(), every: minutes, next: Date.now() + delay * 60000, by, at: Date.now(), last: null }
+      this.scheduled.items.push(item)
+      this.saveSchedules()
+      return item
+    },
+    cancel: (id) => {
+      const before = this.scheduled.items.length
+      this.scheduled.items = this.scheduled.items.filter((item) => item.id !== Number(id))
+      if (this.scheduled.items.length === before) return false
+      this.saveSchedules()
+      return true
+    },
+  }
+
+  rootOf(run) {
+    let up = run
+    while (up?.parent) up = this.runs.get(up.parent)
+    return up
+  }
+
+  boardFor(run) {
+    if (!this.boards.has(run.trace)) this.boards.set(run.trace, { entries: [], next: 1, released: false })
+    return this.boards.get(run.trace)
+  }
+
+  board(trace) {
+    return this.boards.get(trace) ?? { entries: [], released: false }
+  }
+
+  // ─── the end of a task: board released, dreaming scheduled ──────────────────
+
+  finishTask(run) {
+    const board = this.boards.get(run.trace)
+    if (board) {
+      board.released = true
+      this.publish({ type: 'board', trace: run.trace, entries: board.entries, released: true })
+    }
+    if (run.kind === 'task' && this.saved.dreaming && this.specs.has('dreamer')) {
+      clearTimeout(this.dreamTimer)
+      this.dreamTimer = setTimeout(() => this.dream(run.trace), DREAM_AFTER)
+    }
+  }
+
+  /** Review a finished task: save what stays true, propose prompt changes for the owner. */
+  async dream(trace) {
+    if ([...this.runs.values()].some((run) => !run.ended)) return null
+    const runs = [...this.runs.values()].filter((run) => run.trace === trace)
+    if (!runs.length) return null
+    const learned = await this.store.all('learned')
+    const lines = runs.map((run) => {
+      const calls = run.spans.filter((span) => span.kind === 'call')
+      const failed = calls.filter((span) => span.ok === false).map((span) => span.name)
+      return [
+        `## ${run.agent} (${run.slot.status}, ${run.slot.steps} steps, ${Math.round(run.slot.seconds)}s, repeated calls ${run.slot.repeats})`,
+        `task: ${run.query.slice(0, 600)}`,
+        `calls: ${calls.map((span) => span.name).join(' | ').slice(0, 1500) || 'none'}`,
+        failed.length ? `failed calls: ${failed.join(' | ').slice(0, 800)}` : '',
+        run.slot.error ? `error: ${run.slot.error}` : '',
+        `answer: ${String(run.result ?? '').slice(0, 800)}`,
+      ]
+        .filter(Boolean)
+        .join('\n')
+    })
+    const already = learned.map((row) => `- ${row.agent}: ${row.text.replace(/\n/g, ' ').slice(0, 400)}`).join('\n') || '(nothing yet)'
+    const agents = [...this.specs.keys()].filter((path) => !['dreamer', 'compactor'].includes(path)).join(', ')
+    const query = `A task just finished. Review it.\n\nAgents you may propose for: ${agents}\n\n${lines.join('\n\n')}\n\n## Already learned\n\n${already}`
+    const dreaming = this.startRun('dreamer', query, { kind: 'dream' })
+    dreaming.reviewing = trace
+    this.lastDream = { run: dreaming.id, trace, at: Date.now() }
+    this.publish({ type: 'dreams' })
+    return dreaming.id
+  }
+
+  // ─── approvals ─────────────────────────────────────────────────────────────
+
+  answerApproval(id, { approved, note = '', always = false, by = 'owner' }) {
+    const approval = this.approvals.get(id)
+    if (!approval) return false
+    this.approvals.delete(id)
+    if (approved && always) {
+      const policy = structuredClone(this.saved.policy)
+      policy.rules = policy.rules ?? {}
+      policy.rules[approval.agent] = { ...(policy.rules[approval.agent] ?? {}), [approval.tool]: 'allow' }
+      this.setSettings({ policy })
+    }
+    approval.settle({ approved: Boolean(approved), note, by })
+    this.publish({ type: 'approved', id, run: approval.run, approved: Boolean(approved), note, by })
+    return true
+  }
+
+  // ─── the host bridge ───────────────────────────────────────────────────────
+
+  async bridgeCall(endpoint, body) {
+    const bridge = this.bridgeState
+    if (bridge.status !== 'answering') throw new Error('the host bridge is not paired or not answering')
+    let response
+    try {
+      response = await this.fetch(`${bridge.url}${endpoint}`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${bridge.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify(body ?? {}),
+      })
+    } catch (error) {
+      this.setBridge('down', error.message)
+      throw new Error(`the host bridge did not answer: ${error.message}`)
+    }
+    if ((response.headers.get('content-type') ?? '').includes('ndjson')) return collectRun(await response.text())
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(data.error ?? `the host bridge answered ${response.status}`)
+    return data
+  }
+
+  async bridgeCheck(url, token) {
+    const base = String(url).trim().replace(/\/+$/, '')
+    const was = this.bridgeState.status
+    try {
+      const health = await (await this.fetch(`${base}/health`)).json()
+      const check = await this.fetch(`${base}/whoami`, { method: 'POST', headers: { authorization: `Bearer ${token}` } })
+      if (check.status === 401) throw new Error('the bridge refused the token')
+      if (check.status === 403) throw new Error('the bridge refused this page’s origin; start it with --allow-origin')
+      if (!check.ok) throw new Error(`the bridge answered ${check.status}`)
+      this.bridgeState = { url: base, token, health, status: 'answering', since: was === 'answering' ? this.bridgeState.since : Date.now(), error: '' }
+      if (was !== 'answering') {
+        await this.mcpRefresh({ restart: false })
+        this.hostChanged('the bridge is answering')
+      }
+    } catch (error) {
+      this.bridgeState = { ...this.bridgeState, url: base, token, status: 'down', since: was === 'down' ? this.bridgeState.since : Date.now(), error: String(error.message) }
+      if (was === 'answering') {
+        await this.mcpRefresh({ restart: false })
+        this.hostChanged('the bridge stopped answering')
+      }
+    }
+    this.publish({ type: 'bridge', state: this.bridge.state() })
+    return this.bridge.state()
+  }
+
+  setBridge(status, error = '') {
+    if (this.bridgeState.status === status) return
+    this.bridgeState = { ...this.bridgeState, status, since: Date.now(), error }
+    this.hostChanged(status === 'down' ? 'the bridge stopped answering' : 'host changed')
+    this.publish({ type: 'bridge', state: this.bridge.state() })
+  }
+
+  /** Host tools are decided when a thread builds, so resident threads restart when idle. */
+  hostChanged(why) {
+    if (!this.started) return
+    for (const thread of [...this.threads.values()]) {
+      if (thread.busy) thread.stale = true
+      else this.restart(thread, why)
+    }
+    // An agent with no resident thread is known by its last probe; probe again the ones whose
+    // tools hang on the bridge or on MCP, so Team shows what they would get now.
+    for (const spec of this.specs.values()) {
+      if (this.isResident(spec) || !spec.grants.some((grant) => HOSTED.has(grant))) continue
+      this.probe(spec.path).catch(() => {})
+    }
+  }
+
+  bridge = {
+    state: () => {
+      const { url, status, since, health, error } = this.bridgeState
+      return { url, status, since, root: health?.root ?? '', capabilities: health?.capabilities ?? [], version: health?.version ?? '', error: error ?? '' }
+    },
+    pair: async (url, token) => {
+      const state = await this.bridgeCheck(url, token)
+      if (state.status === 'answering') await this.store.put('settings', { key: 'bridge', value: { url: this.bridgeState.url, token } })
+      return state
+    },
+    check: () => (this.bridgeState.url ? this.bridgeCheck(this.bridgeState.url, this.bridgeState.token) : this.bridge.state()),
+    disconnect: async () => {
+      await this.store.delete('settings', 'bridge')
+      const was = this.bridgeState.status
+      this.bridgeState = { status: 'unpaired', since: Date.now(), url: '', token: '', health: null, error: '' }
+      if (was === 'answering') {
+        await this.mcpRefresh({ restart: false })
+        this.hostChanged('the bridge was disconnected')
+      }
+      this.publish({ type: 'bridge', state: this.bridge.state() })
+    },
+  }
+
+  // ─── reading for the page ──────────────────────────────────────────────────
+
+  roster() {
+    return new Map([...this.runs.values()].map((run) => [run.id, run.slot]))
+  }
+
+  history(id) {
+    return this.runs.get(id)?.turns ?? []
+  }
+
+  run(id) {
+    const run = this.runs.get(id)
+    return run ? { ...this.describe(run), turns: run.turns, prompts: run.prompts, requests: run.requests ?? [], completions: run.completions ?? [], spans: run.spans, log: run.log, result: run.result ?? '', todo: run.todo ?? [] } : null
+  }
+
+  runsApi = {
+    get: async (id) => this.run(id) ?? (await this.store.get('runs', id)) ?? null,
+    list: async () => {
+      const byId = new Map((await this.store.all('runs')).map((record) => [record.id, record]))
+      for (const run of this.runs.values()) byId.set(run.id, this.run(run.id))
+      return [...byId.values()].sort((a, b) => b.at - a.at)
+    },
+  }
+
+  async session(agent = 'main') {
+    return (await this.store.get('sessions', agent))?.turns ?? []
+  }
+
+  async clearSession(agent = 'main') {
+    await this.store.delete('sessions', agent)
+    const thread = this.threads.get(agent)
+    if (thread && !thread.busy) await this.restart(thread, 'the conversation was cleared')
+  }
+
+  manifest() {
+    const catalogue = this.catalogue()
+    const rows = [...this.specs.values()].map((spec) => {
+      const info = this.readyInfo.get(spec.path) ?? {}
+      const model = resolve(spec.inference, catalogue)
+      return {
+        path: spec.path,
+        name: spec.name,
+        description: spec.description,
+        model: model.model ?? '',
+        alias: model.alias,
+        pinned: Boolean(spec.inference.model),
+        resident: this.isResident(spec),
+        peers: spec.peers,
+        owned: spec.owned,
+        grants: spec.grants,
+        context: spec.context,
+        permissions: spec.permissions,
+        soulFrom: spec.soulFrom,
+        files: Object.keys(this.index.files).filter((file) => file.startsWith(`agents/${spec.path}/`) && !file.slice(`agents/${spec.path}/`.length).includes('/')),
+        tools: info.tools ?? [],
+        shadowed: info.shadowed ?? [],
+        unavailable: info.unavailable ?? [],
+        notes: [...new Set([...(spec.notes ?? []), ...(info.notes ?? [])])],
+        error: info.error ?? '',
+        changed: this.changed.get(spec.path) ?? [],
+        stale: [...this.threads.values()].some((thread) => thread.path === spec.path && thread.stale),
+      }
+    })
+    const broken = [...this.failed.entries()].map(([path, error]) => ({ path, name: path, broken: true, error, notes: [], tools: [], changed: [] }))
+    return [...broken, ...rows]
+  }
+
+  /** Re-read the folders; restart only changed, idle resident threads. */
+  async reloadAgents() {
+    const before = this.index
+    const oldSpecs = new Map(this.specs)
+    await this.readFolders()
+    const result = { build: this.index.build ?? '', changed: [], added: [], removed: [], failed: [...this.failed.entries()].map(([path, error]) => ({ path, error })), stale: [], at: Date.now() }
+    this.changed.clear()
+    for (const path of this.specs.keys()) {
+      if (!oldSpecs.has(path)) {
+        result.added.push(path)
+        continue
+      }
+      if (agentHash(before, path) === agentHash(this.index, path)) continue
+      const prefix = `agents/${path}/`
+      const files = [...new Set([...Object.keys(before.files), ...Object.keys(this.index.files)])]
+        .filter((file) => (file.startsWith(prefix) && !file.slice(prefix.length).includes('/')) || file === 'agents/soul.md')
+        .filter((file) => before.files[file] !== this.index.files[file])
+        .map((file) => (file === 'agents/soul.md' ? 'agents/soul.md' : file.slice(prefix.length)))
+      result.changed.push({ path, files })
+      this.changed.set(path, files)
+    }
+    for (const path of oldSpecs.keys()) if (!this.specs.has(path)) result.removed.push(path)
+    if (before.files['models.json'] !== this.index.files['models.json']) this.broadcastSettings()
+
+    const touched = new Set([...result.changed.map((change) => change.path), ...result.added])
+    for (const thread of [...this.threads.values()]) {
+      if (result.removed.includes(thread.path)) {
+        if (!thread.busy) this.retire(thread)
+        continue
+      }
+      if (!touched.has(thread.path)) continue
+      thread.spec = this.specs.get(thread.path)
+      if (thread.busy) {
+        thread.stale = true
+        result.stale.push(thread.path)
+      } else await this.restart(thread, 'restarted with your edits')
+    }
+    await Promise.all(
+      [...touched].map((path) => {
+        const spec = this.specs.get(path)
+        if (!spec) return null
+        if (this.isResident(spec)) return this.threads.has(path) ? null : this.thread(path)
+        return this.probe(path)
+      }),
+    )
+    this.lastReload = result
+    this.publish({ type: 'reloaded', result })
+    return result
+  }
+
+  // ─── settings, models, approvals, memory, dreams, learned, traces, data ────
+
+  settings = {
+    get: () => ({ catalogue: this.catalogue(), saved: this.saved.catalogue, file: this.fileCatalogue, policy: this.saved.policy, dreaming: this.saved.dreaming, durable: this.store?.durable ?? false }),
+    set: (patch) => this.setSettings(patch),
+  }
+
+  async setSettings(patch) {
+    for (const key of ['catalogue', 'policy', 'dreaming']) {
+      if (!(key in patch)) continue
+      this.saved[key] = patch[key]
+      await this.store.put('settings', { key, value: patch[key] })
+    }
+    this.broadcastSettings()
+    this.publish({ type: 'settings', settings: this.settings.get() })
+  }
+
+  broadcastSettings() {
+    for (const thread of this.allThreads) {
+      thread.worker.postMessage({ type: 'settings', catalogue: this.catalogue(), policy: withAgentRules(this.saved.policy, thread.path, thread.spec.permissions) })
+    }
+  }
+
+  models = {
+    /** List the models a catalogue entry's server offers (the default entry when none is named). */
+    refresh: async (alias) => {
+      const catalogue = this.catalogue()
+      const settings = resolve(alias ? { model: alias } : (this.specs.get('main')?.inference ?? {}), catalogue)
+      try {
+        const bridge = this.bridgeState.status === 'answering' ? (url, init) => this.bridgeFetch(url, init) : null
+        const listed = await inference(settings, { fetch: this.fetch, bridge, bridgeURL: this.bridgeState.url, pageURL: globalThis.location?.href ?? this.base, run: bridge ? (body) => this.bridgeRun(body) : null }).models()
+        return { ids: listed.map((model) => model.id), models: listed, at: Date.now() }
+      } catch (error) {
+        return { error: String(error.message), at: Date.now() }
+      }
+    },
+  }
+
+  bridgeFetch(url, init = {}) {
+    const bridge = this.bridgeState
+    return this.fetch(`${bridge.url}/fetch`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${bridge.token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ url: String(url), method: init.method ?? 'GET', headers: init.headers ?? {}, body: init.body ?? null, stream: true }),
+      signal: init.signal,
+    })
+  }
+
+  bridgeRun(body) {
+    const bridge = this.bridgeState
+    return this.fetch(`${bridge.url}/run`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${bridge.token}`, 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+  }
+
+  approvalsApi = {
+    list: () => [...this.approvals.values()].map(publicApproval),
+    answer: (id, decision) => this.answerApproval(id, decision),
+  }
+
+  memory = {
+    list: async (agent) => (await this.store.all('memory')).filter((entry) => !agent || entry.agent === agent).sort((a, b) => b.at - a.at),
+    remove: async (id) => {
+      await this.store.delete('memory', id)
+      this.publish({ type: 'memory' })
+    },
+    edit: async (id, text) => {
+      await this.store.update('memory', id, (current) => (current ? { value: { ...current, text, source: 'owner', at: Date.now() } } : {}))
+      this.publish({ type: 'memory' })
+    },
+  }
+
+  learned = {
+    get: async (agent) => (await this.store.get('learned', agent))?.text ?? '',
+    fromFile: (agent) => this.specs.get(agent)?.learned ?? '',
+    /** Replace an agent's accepted learned text (the owner removing or rewording an entry). */
+    set: async (agent, text) => {
+      await this.store.put('learned', { agent, text: String(text).trim(), at: Date.now() })
+      const spec = this.specs.get(agent)
+      if (spec) this.threads.get(agent)?.worker.postMessage({ type: 'settings', learned: await this.learnedFor(spec) })
+      this.publish({ type: 'dreams' })
+    },
+    /** Write an agent's learned layer into its folder through the bridge, so it becomes a file. */
+    writeFile: async (agent, folder = 'public/agents') => {
+      const text = await this.learned.get(agent)
+      const content = `---\nname: learned\ndescription: What experience taught ${agent}, accepted by the owner.\n---\n\n${text}\n`
+      return this.bridgeCall('/fs/write', { path: `${folder}/${agent}/learned.md`, content })
+    },
+  }
+
+  dreams = {
+    list: async () => (await this.store.all('dreams')).sort((a, b) => b.at - a.at),
+    last: () => this.lastDream ?? null,
+    run: () => {
+      const latest = [...this.runs.values()].filter((run) => !run.parent && run.kind === 'task').sort((a, b) => b.at - a.at)[0]
+      return latest ? this.dream(latest.trace) : null
+    },
+    accept: async (id, text) => {
+      const proposal = await this.store.get('dreams', id)
+      if (!proposal) return false
+      const line = String(text ?? proposal.text).trim()
+      const current = await this.learned.get(proposal.agent)
+      await this.store.put('dreams', { ...proposal, text: line, status: 'accepted', decided: Date.now() })
+      await this.learned.set(proposal.agent, [current, `- ${line}`].filter(Boolean).join('\n'))
+      return true
+    },
+    reject: async (id) => {
+      const proposal = await this.store.get('dreams', id)
+      if (proposal) await this.store.put('dreams', { ...proposal, status: 'rejected', decided: Date.now() })
+      this.publish({ type: 'dreams' })
+      return true
+    },
+  }
+
+  traces = {
+    /** Every run of one task, with spans and logs, as one JSON document the owner can save. */
+    export: async (trace) => {
+      const runs = (await this.runsApi.list()).filter((run) => run.trace === trace)
+      return { harness: 'trace', version: 1, trace, exported: new Date().toISOString(), build: this.index.build ?? '', runs, usage: traceUsage(runs) }
+    },
+  }
+
+  data = {
+    export: async () => {
+      const [memory, dreams, learned, sessions, files] = await Promise.all(['memory', 'dreams', 'learned', 'sessions', 'files'].map((name) => this.store.all(name)))
+      const catalogue = structuredClone(this.saved.catalogue ?? {})
+      const secret = /auth|key|token|secret|cookie/i
+      const scrub = (headers) => headers && Object.fromEntries(Object.entries(headers).filter(([name]) => !secret.test(name)))
+      for (const entry of Object.values(catalogue.models ?? {})) {
+        delete entry.api_key
+        delete entry.apiKey
+        if (entry.headers) entry.headers = scrub(entry.headers)
+      }
+      const mcpServers = Object.fromEntries(Object.entries(this.saved.mcp ?? {}).map(([name, server]) => [name, { ...server, headers: scrub(server.headers) }]))
+      return { harness: 'data', version: 1, exported: new Date().toISOString(), settings: { catalogue, policy: this.saved.policy, dreaming: this.saved.dreaming, mcp: mcpServers }, memory, dreams, learned, sessions, files }
+    },
+    import: async (data) => {
+      if (data?.harness !== 'data') throw new Error('not a harness data file')
+      for (const name of ['memory', 'dreams', 'learned', 'sessions', 'files']) for (const row of data[name] ?? []) await this.store.put(name, row)
+      if (data.settings) await this.setSettings(data.settings)
+      if (data.settings?.mcp) await this.mcp.set({ ...this.saved.mcp, ...data.settings.mcp })
+      this.publish({ type: 'memory' })
+      this.publish({ type: 'dreams' })
+      return true
+    },
+  }
+}
+
+/** A `/run` stream read whole: stdout joined, stderr's tail, the exit code. */
+function collectRun(text) {
+  const result = { out: '', err: '', code: -1, timedOut: false }
+  for (const line of text.split('\n')) {
+    if (!line.trim()) continue
+    let event
+    try {
+      event = JSON.parse(line)
+    } catch {
+      continue
+    }
+    if (event.out != null) result.out += event.out
+    if (event.err != null) result.err = (result.err + event.err).slice(-4000)
+    if (event.code != null) Object.assign(result, { code: event.code, timedOut: Boolean(event.timedOut) })
+    if (event.error) throw new Error(event.error)
+  }
+  return result
+}
+
+function publicApproval({ settle: _settle, ...approval }) {
+  return approval
+}
+
+function clean(path) {
+  return String(path ?? '')
+    .replace(/^\/+/, '')
+    .replace(/\/{2,}/g, '/')
+}
