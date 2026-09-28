@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { reconcileMissingDocuments, mayOpenFile } from '../src/workbench/external-files.js'
+import { reconcileMissingDocuments, mayOpenFile, readEditorDocument } from '../src/workbench/external-files.js'
 import { createEditorGroup, openEditorTab, closeEditorTab, editorSession, editorGeneration, rememberEditorState, forgetEditorFile } from '../src/workbench/editor-layout.js'
 import { acknowledgeSavedDraft, saveAllDrafts } from '../src/workbench/save-all.js'
 
@@ -71,4 +71,100 @@ test('forgetting a deleted file prevents late unmount caching without touching a
   expect(rememberEditorState(left, key, generation, entry)).toBe(false)
   for (const session of [left, right]) { expect(session.states.has(key)).toBe(false); expect(session.states.has('project:b.js')).toBe(true); expect(session.states.has('other:a.js')).toBe(true) }
   expect(rememberEditorState(left, key, editorGeneration(left, key), { ...entry, state: { doc: 'explicitly recreated file' } })).toBe(true)
+})
+
+function openingFixture() {
+  let state = { ready: true, files: [{ path: 'a.js', rev: 'A' }], documents: {} }
+  let current = true
+  const requests = [], installed = []
+  const result = readEditorDocument({
+    path: 'a.js', snapshot: () => state, isCurrent: () => current,
+    read: () => new Promise((resolve, reject) => requests.push({ resolve, reject })),
+    install: file => { installed.push(file); state = { ...state, documents: { 'a.js': file } } },
+  })
+  return { result, requests, installed, snapshot: () => state,
+    list: files => { state = { ...state, files } },
+    document: doc => { state = { ...state, documents: { 'a.js': doc } } },
+    supersede: () => { current = false },
+  }
+}
+const fileVersion = rev => ({ path: 'a.js', rev, content: `version ${rev}` })
+
+for (const operation of ['replacement', 'deletion and recreation']) test(`opening retries a stale snapshot after ${operation}`, async () => {
+  const f = openingFixture()
+  if (operation === 'deletion and recreation') f.list([])
+  f.list([{ path: 'a.js', rev: 'B' }])
+  f.requests[0].resolve(fileVersion('A'))
+  await Promise.resolve()
+  expect(f.requests).toHaveLength(2)
+  expect(f.installed).toEqual([])
+  f.requests[1].resolve(fileVersion('B'))
+  expect(await f.result).toBe(true)
+  expect(f.installed).toEqual([fileVersion('B')])
+})
+
+test('a superseded open never installs a snapshot or changes another document', async () => {
+  const f = openingFixture()
+  const newer = { content: 'other view typing', baseContent: 'saved', baseRev: 'B' }
+  f.document(newer); f.supersede()
+  f.requests[0].resolve(fileVersion('A'))
+  expect(await f.result).toBe(false)
+  expect(f.installed).toEqual([])
+  expect(f.snapshot().documents['a.js']).toBe(newer)
+})
+
+test('a draft restored during opening is preserved even when the file is deleted', async () => {
+  const f = openingFixture()
+  f.list([]); f.document(dirty)
+  f.requests[0].resolve(fileVersion('A'))
+  expect(await f.result).toBe(true)
+  expect(f.installed).toEqual([])
+  expect(f.snapshot().documents['a.js']).toBe(dirty)
+})
+
+test('a fresh read is admitted when an unchanged file listing lags behind it', async () => {
+  const f = openingFixture()
+  f.requests[0].resolve(fileVersion('B'))
+  expect(await f.result).toBe(true)
+  expect(f.requests).toHaveLength(1)
+  expect(f.installed).toEqual([fileVersion('B')])
+})
+
+test('a newer unknown revision can pass a retry without waiting for the listing poll', async () => {
+  const f = openingFixture()
+  f.list([{ path: 'a.js', rev: 'B' }])
+  f.requests[0].resolve(fileVersion('A'))
+  await Promise.resolve()
+  f.requests[1].resolve(fileVersion('C'))
+  expect(await f.result).toBe(true)
+  expect(f.installed).toEqual([fileVersion('C')])
+})
+
+test('known stale revisions cannot reenter on a retry and opening stops after three reads', async () => {
+  const f = openingFixture()
+  const outcome = f.result.then(() => null, error => error)
+  f.list([{ path: 'a.js', rev: 'B' }])
+  for (let attempt = 0; attempt < 3; attempt++) {
+    expect(f.requests).toHaveLength(attempt + 1)
+    f.requests[attempt].resolve(fileVersion('A'))
+    await Promise.resolve()
+  }
+  expect((await outcome)?.message).toContain('kept changing while opening')
+  expect(f.requests).toHaveLength(3)
+  expect(f.installed).toEqual([])
+})
+
+test('read admission cannot reinstall an authoritatively deleted clean file', async () => {
+  const f = openingFixture()
+  const outcome = f.result.then(() => null, error => error)
+  f.list([]); f.requests[0].resolve(fileVersion('A'))
+  expect((await outcome)?.message).toContain('no longer exists')
+  expect(f.installed).toEqual([])
+})
+
+test('a superseded failed read does not surface an obsolete open failure', async () => {
+  const f = openingFixture()
+  f.supersede(); f.requests[0].reject(new Error('obsolete read failure'))
+  expect(await f.result).toBe(false)
+  expect(f.installed).toEqual([])
 })

@@ -13,7 +13,7 @@ import PhoneWorkspaceTabs from './PhoneWorkspaceTabs.jsx'
 import DiffView from './DiffView.jsx'
 import { createEditorGroup, openEditorTab, closeEditorTab, pinEditorTab, createEditorNavigation, editorGroupGeometry, isDiffTab, isPreviewTab, editorFilePath, forgetEditorFile } from './editor-layout.js'
 import { acknowledgeSavedDraft, draftForConflict, saveAllDrafts } from './save-all.js'
-import { reconcileMissingDocuments, mayOpenFile } from './external-files.js'
+import { reconcileMissingDocuments, readEditorDocument } from './external-files.js'
 
 const Editor = dynamic(() => import('./Editor.jsx'), { ssr: false, loading: () => <div className="surface-loading">Opening editor…</div> })
 const Terminal = dynamic(() => import('./Terminal.jsx'), { ssr: false, loading: () => <div className="surface-loading">Opening terminal…</div> })
@@ -377,13 +377,20 @@ export default function Workbench() {
     if (!automatic) setFollow(false)
     try {
       if (!docsRef.current[path]) {
-        const file = await perform('readFile', path)
-        if (!mayOpenFile(path, docsRef.current, fileSnapshot.current.files, fileSnapshot.current.ready)) throw new Error(`${path} no longer exists.`)
-        if (!file && !docsRef.current[path]) throw new Error(`${path} no longer exists.`)
-        if (!docsRef.current[path]) {
-          const next = { ...docsRef.current, [path]: { content: file.content, baseContent: file.content, baseRev: file.rev } }
-          docsRef.current = next; setDocuments(next)
-        }
+        const accepted = await readEditorDocument({
+          path, read: name => perform('readFile', name),
+          snapshot: () => ({ documents: docsRef.current, files: fileSnapshot.current.files, ready: fileSnapshot.current.ready }),
+          isCurrent: () => fileNavigation.current.isCurrent(groupId, navigation),
+          install: file => {
+            if (!fileNavigation.current.isCurrent(groupId, navigation)) return false
+            if (!docsRef.current[path]) {
+              const next = { ...docsRef.current, [path]: { content: file.content, baseContent: file.content, baseRev: file.rev } }
+              docsRef.current = next; setDocuments(next)
+            }
+            return true
+          },
+        })
+        if (!accepted) return false
       }
       if (!fileNavigation.current.isCurrent(groupId, navigation)) return false
       const dirty = new Set(Object.entries(docsRef.current).filter(([, doc]) => doc.content !== doc.baseContent).map(([name]) => name))
