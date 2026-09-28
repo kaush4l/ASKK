@@ -1,0 +1,254 @@
+{
+  "startedAt": "2026-09-28T21:10:22.705Z",
+  "start": 2180157.449999988,
+  "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36",
+  "isolated": true,
+  "controller": "https://kaush4l.github.io/ASKK/sw.js",
+  "stages": [
+    {
+      "phase": "Preparing environment",
+      "ms": 37
+    },
+    {
+      "phase": "Downloading",
+      "ms": 464
+    },
+    {
+      "phase": "Verifying",
+      "ms": 6403,
+      "detail": "qemu-system-aarch64.wasm"
+    },
+    {
+      "phase": "Downloading",
+      "ms": 6403,
+      "detail": "out.js"
+    },
+    {
+      "phase": "Verifying",
+      "ms": 6562,
+      "detail": "out.js"
+    },
+    {
+      "phase": "Downloading",
+      "ms": 6563,
+      "detail": "arg-module.js"
+    },
+    {
+      "phase": "Verifying",
+      "ms": 7105,
+      "detail": "arg-module.js"
+    },
+    {
+      "phase": "Downloading",
+      "ms": 7106,
+      "detail": "load.js"
+    },
+    {
+      "phase": "Verifying",
+      "ms": 7159,
+      "detail": "load.js"
+    },
+    {
+      "phase": "Downloading",
+      "ms": 7161,
+      "detail": "network.js"
+    },
+    {
+      "phase": "Verifying",
+      "ms": 7212,
+      "detail": "network.js"
+    },
+    {
+      "phase": "Downloading",
+      "ms": 7214,
+      "detail": "network-worker.js"
+    },
+    {
+      "phase": "Verifying",
+      "ms": 7287,
+      "detail": "network-worker.js"
+    },
+    {
+      "phase": "Downloading",
+      "ms": 7288,
+      "detail": "pty.js"
+    },
+    {
+      "phase": "Verifying",
+      "ms": 7340,
+      "detail": "pty.js"
+    },
+    {
+      "phase": "Downloading",
+      "ms": 7341,
+      "detail": "network.wasm.gz"
+    },
+    {
+      "phase": "Verifying",
+      "ms": 8572,
+      "detail": "network.wasm.gz"
+    },
+    {
+      "phase": "Downloading",
+      "ms": 8572,
+      "detail": "supervisor.js"
+    },
+    {
+      "phase": "Verifying",
+      "ms": 8710,
+      "detail": "supervisor.js"
+    },
+    {
+      "phase": "Downloading",
+      "ms": 8715,
+      "detail": "qemu-system-aarch64.data"
+    },
+    {
+      "phase": "Verifying",
+      "ms": 10600,
+      "detail": "qemu-system-aarch64.data.part-000"
+    },
+    {
+      "phase": "Downloading",
+      "ms": 12088,
+      "detail": "qemu-system-aarch64.data.part-001"
+    },
+    {
+      "phase": "Verifying",
+      "ms": 13774,
+      "detail": "qemu-system-aarch64.data.part-001"
+    },
+    {
+      "phase": "Downloading",
+      "ms": 15200,
+      "detail": "qemu-system-aarch64.data.part-002"
+    },
+    {
+      "phase": "Verifying",
+      "ms": 17457,
+      "detail": "qemu-system-aarch64.data.part-002"
+    },
+    {
+      "phase": "Downloading",
+      "ms": 19564,
+      "detail": "qemu-system-aarch64.data.part-003"
+    },
+    {
+      "phase": "Verifying",
+      "ms": 26797,
+      "detail": "qemu-system-aarch64.data.part-003"
+    },
+    {
+      "phase": "Downloading",
+      "ms": 28976,
+      "detail": "qemu-system-aarch64.data.part-004"
+    },
+    {
+      "phase": "Verifying",
+      "ms": 42131,
+      "detail": "qemu-system-aarch64.data.part-004"
+    },
+    {
+      "phase": "Downloading",
+      "ms": 43992,
+      "detail": "qemu-system-aarch64.data.part-005"
+    },
+    {
+      "phase": "Verifying",
+      "ms": 45917,
+      "detail": "qemu-system-aarch64.data.part-005"
+    },
+    {
+      "phase": "Downloading",
+      "ms": 48136,
+      "detail": "qemu-system-aarch64.data.part-006"
+    },
+    {
+      "phase": "Verifying",
+      "ms": 51317,
+      "detail": "qemu-system-aarch64.data.part-006"
+    },
+    {
+      "phase": "Downloading",
+      "ms": 54612,
+      "detail": "qemu-system-aarch64.data.part-007"
+    },
+    {
+      "phase": "Verifying",
+      "ms": 66477,
+      "detail": "qemu-system-aarch64.data.part-007"
+    },
+    {
+      "phase": "Downloading",
+      "ms": 69276,
+      "detail": "qemu-system-aarch64.data.part-008"
+    },
+    {
+      "phase": "Verifying",
+      "ms": 75499,
+      "detail": "qemu-system-aarch64.data.part-008"
+    },
+    {
+      "phase": "Downloading",
+      "ms": 77969,
+      "detail": "qemu-system-aarch64.data.part-009"
+    },
+    {
+      "phase": "Verifying",
+      "ms": 95586,
+      "detail": "qemu-system-aarch64.data.part-009"
+    },
+    {
+      "phase": "Downloading",
+      "ms": 97155,
+      "detail": "qemu-system-aarch64.data.part-010"
+    },
+    {
+      "phase": "Verifying",
+      "ms": 98832,
+      "detail": "qemu-system-aarch64.data.part-010"
+    },
+    {
+      "phase": "Compiling",
+      "ms": 98833
+    },
+    {
+      "phase": "Restoring files",
+      "ms": 98951
+    },
+    {
+      "phase": "Booting",
+      "ms": 98968
+    },
+    {
+      "phase": "Environment unavailable",
+      "ms": 699068,
+      "detail": "Node guest did not complete its readiness handshake"
+    }
+  ],
+  "origin": "https://kaush4l.github.io/ASKK/",
+  "outcome": "failed",
+  "imageId": "c2w-node24-38d093f4a38002db",
+  "shell": "legacy cached b31d26 export; HTML SHA e43b4238f8220389ea08482c97ce28ee8c562d24af62d04c294f91ba38ad8ef1",
+  "companions": {
+    "7717": "stopped before startup",
+    "7718": "stopped before startup",
+    "capture7721": "write-only diagnostic receiver started after startup; no guest or execution capability"
+  },
+  "environment": {
+    "logicalCpus": 16,
+    "physicalMemoryBytes": 137438953472,
+    "swapIns": 0,
+    "swapOuts": 0,
+    "otherActivity": "Dedicated Colima build engine present; no runtime relay. Source and native-test work continued."
+  },
+  "runtime": {
+    "status": "failed",
+    "phase": "Environment unavailable",
+    "detail": "Node guest did not complete its readiness handshake",
+    "target": "browser"
+  },
+  "draftPreserved": true,
+  "console": "UEFI firmware (version edk2-stable202302-for-qemu built at 18:12:10 on Sep 11 2023)\r\r\nError: Image at 0009FD42000 start failed: Not Found\r\r\nError: Image at 0009FC94000 start failed: Unsupported\r\r\nTpm2SubmitCommand - Tcg2 - Not Found\r\r\nTpm2GetCapabilityPcrs fail!\r\r\nTpm2SubmitCommand - Tcg2 - Not Found\r\r\nImage type X64 can't be loaded on AARCH64 UEFI system.\r\r\n\u001b[2J\u001b[01;01H\u001b[=3h\u001b[2J\u001b[01;01H\u001b[2J\u001b[01;01H\u001b[=3h\u001b[2J\u001b[01;01HEFI stub: Booting Linux Kernel...\r\r\nEFI stub: EFI_RNG_PROTOCOL unavailable\r\r\nEFI stub: Generating empty DTB\r\r\nEFI stub: Exiting boot services...\r\r\n1970/01/01 00:00:41 mounting {FSType:proc Src:proc Dst:/proc Flags:0 Data: Dir:[] File:[] PostDir:[] PostFile:[] Cmd:[] Async:false Optional:false}\r\r\n1970/01/01 00:00:42 mounting {FSType:tmpfs Src:tmpfs Dst:/run Flags:0 Data: Dir:[] File:[] PostDir:[] PostFile:[] Cmd:[] Async:false Optional:false}\r\r\n1970/01/01 00:00:42 mounting {FSType:tmpfs Src:tmpfs Dst:/sys Flags:0 Data: Dir:[] File:[] PostDir:[] PostFile:[] Cmd:[] Async:false Optional:false}\r\r\n1970/01/01 00:00:42 mounting {FSType:tmpfs Src:tmpfs Dst:/tmp Flags:0 Data: Dir:[] File:[] PostDir:[] PostFile:[] Cmd:[] Async:false Optional:false}\r\r\n1970/01/01 00:00:42 mounting {FSType:tmpfs Src:tmpfs Dst:/var Flags:0 Data: Dir:[] File:[] PostDir:[] PostFile:[] Cmd:[] Async:false Optional:false}\r\r\n1970/01/01 00:00:43 mounting {FSType:tmpfs Src:tmpfs Dst:/mnt Flags:0 Data: Dir:[] File:[] PostDir:[] PostFile:[] Cmd:[] Async:false Optional:false}\r\r\n1970/01/01 00:00:43 mounting {FSType:cgroup2 Src:none Dst:/sys/fs/cgroup Flags:0 Data: Dir:[{Path:/sys/fs/cgroup Mode:438}] File:[] PostDir:[] PostFile:[] Cmd:[] Async:false Optional:false}\r\r\n1970/01/01 00:00:43 mounting {FSType:tmpfs Src:tmpfs Dst:/etc Flags:0 Data: Dir:[] File:[] PostDir:[] PostFile:[{Path:/etc/hosts Mode:420 Contents:127.0.0.1\tlocalhost\r\r\n} {Path:/etc/resolv.conf Mode:420 Contents:}] Cmd:[] Async:false Optional:false}\r\r\n1970/01/01 00:00:43 mounting {FSType:tmpfs Src:tmpfs Dst:/run/bundle Flags:0 Data: Dir:[{Path:/run/bundle Mode:438}] File:[] PostDir:[] PostFile:[] Cmd:[] Async:false Optional:false}\r\r\n1970/01/01 00:00:43 mounting {FSType:overlay Src:overlay Dst:/run/rootfs Flags:0 Data:lowerdir=/oci/rootfs,upperdir=/run/rootfs-upper,workdir=/run/rootfs-work Dir:[{Path:/run/rootfs Mode:493} {Path:/run/rootfs-upper Mode:493} {Path:/run/rootfs-work Mode:493}] File:[] PostDir:[{Path:/run/rootfs/etc/ Mode:420} {Path:/run/rootfs/etc/ Mode:420}] PostFile:[{Path:/run/rootfs/etc/hosts Mode:420 Contents:127.0.0.1\tlocalhost\r\r\n} {Path:/run/rootfs/etc/resolv.conf Mode:420 Contents:}] Cmd:[] Async:false Optional:false}\r\r\n1970/01/01 00:00:49 executing(pre-run): [vmtouch -tv /sbin/runc /sbin/init]\r\r\n/sbin/runc\r\r\n\r[                                                            ] 0/3040\r[o                                                           ] 1/3040\r[o                                                           ] 33/3040\r[Oo                                                          ] 97/3040\r[OOOo                                                        ] 161/3040\r[OOOo                                                        ] 162/3040\r[OOOo                                                        ] 193/3040\r[OOOOo                                                       ] 251/3040\r[OOOOOo                                                      ] 267/3040\r[OOOOOo                                                      ] 299/3040\r[OOOOOOo                                                     ] 353/3040\r[OOOOOOOOo                                                   ] 417/3040\r[OOOOOOOOOo                                                  ] 481/3040\r[OOOOOOOOOOo                                                 ] 523/3040\r[OOOOOOOOOOOo                                                ] 577/3040\r[OOOOOOOOOOOOo                                               ] 641/3040\r[OOOOOOOOOOOOOo                                              ] 683/3040\r[OOOOOOOOOOOOOOo                                             ] 737/3040\r[OOOOOOOOOOOOOOOo                                            ] 801/3040\r[OOOOOOOOOOOOOOOOo                                           ] 865/3040\r[OOOOOOOOOOOOOOOOOo                                          ] 897/3040\r[OOOOOOOOOOOOOOOOOOo                                         ] 929/3040\r[OOOOOOOOOOOOOOOOOOo                                         ] 961/3040\r[OOOOOOOOOOOOOOOOOOOo                                        ] 1019/3040\r[OOOOOOOOOOOOOOOOOOOOo                                       ] 1057/3040\r[OOOOOOOOOOOOOOOOOOOOOo                                      ] 1089/3040\r[OOOOOOOOOOOOOOOOOOOOOOo                                     ] 1153/3040\r[OOOOOOOOOOOOOOOOOOOOOOOo                                    ] 1185/3040\r[OOOOOOOOOOOOOOOOOOOOOOOOo                                   ] 1227/3040\r[OOOOOOOOOOOOOOOOOOOOOOOOOo                                  ] 1281/3040\r[OOOOOOOOOOOOOOOOOOOOOOOOOOo                                 ] 1339/3040\r[OOOOOOOOOOOOOOOOOOOOOOOOOOo                                 ] 1355/3040\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOo                                ] 1409/3040\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOo                               ] 1467/3040\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOo                              ] 1505/3040\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo                             ] 1569/3040\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo                            ] 1595/3040\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo                            ] 1627/3040\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo                           ] 1659/3040\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo                          ] 1697/3040\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo                         ] 1761/3040\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo                       ] 1857/3040\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo                      ] 1921/3040\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo                    ] 1995/3040\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo                   ] 2049/3040\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo                  ] 2113/3040\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo                 ] 2177/3040\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo                ] 2209/3040\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo               ] 2273/3040\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo              ] 2337/3040\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo            ] 2401/3040\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo           ] 2465/3040\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo          ] 2529/3040\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo         ] 2593/3040\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo        ] 2651/3040\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo       ] 2689/3040\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo      ] 2753/3040\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo     ] 2785/3040\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo    ] 2849/3040\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo  ] 2923/3040\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO] 3040/3040\r\r\n/sbin/init\r\r\n\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO] 625/625\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO] 625/625\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO] 625/625\r\r\n\r\r\n           Files: 2\r\r\n     Directories: 0\r\r\n   Touched Pages: 3665 (14M)\r\r\n         Elapsed: 8.4483 seconds\r\r\n==========1970/01/01 00:01:02 mounting \"wasi0\" to \"/mnt/wasi0\"\r\r\n1970/01/01 00:01:03 INFO:\r\r\nt:1790629922\r\r\nn:02:6C:95:EB:86:4F\r\r\nmr: .wasmenv\r\r\nenv: SSL_CERT_FILE=/.wasmenv/proxy.crt\r\r\nenv: https_proxy=http://192.168.127.253:80\r\r\nenv: http_proxy=http://192.168.127.253:80\r\r\nenv: HTTPS_PROXY=http://192.168.127.253:80\r\r\nenv: HTTP_PROXY=http://192.168.127.253:80\r\r\nenv: no_proxy=localhost,127.0.0.1\r\r\nenv: NO_PROXY=localhost,127.0.0.1\r\r\nm:workspaces/default\r\r\nm:harness-control\r\r\ne:node\r\r\nc:/harness-control/supervisor.js\r\r\nenv:HARNESS_WORKSPACE=/workspaces/default\r\r\nenv:NODE_EXTRA_CA_CERTS=/.wasmenv/proxy.crt\r\r\nenv:NODE_OPTIONS=--use-env-proxy\r\r\n\r\r\n2026/09/28 21:12:02 Prepared mount wasi0 => \".wasmenv\"\r\r\n2026/09/28 21:12:02 Prepared mount wasi0 => \"workspaces/default\"\r\r\n2026/09/28 21:12:02 Prepared mount wasi0 => \"harness-control\"\r\r\n2026/09/28 21:12:15 finished udhcpc: udhcpc: started, v1.36.1\r\r\nClearing IP addresses on eth0, upping it\r\r\nudhcpc: broadcasting discover\r\r\nudhcpc: broadcasting select for 192.168.127.2, server 192.168.127.1\r\r\nudhcpc: lease of 192.168.127.2 obtained from 192.168.127.1, lease time 3600\r\r\nSetting IP address 192.168.127.2 on eth0\r\r\nDeleting routers\r\r\nroute: SIOCDELRT: No such process\r\r\nAdding router 192.168.127.1\r\r\nRecreating /etc/resolv.conf\r\r\n Adding DNS server 192.168.127.1\r\r\n\r\r\n 1: lo: <LOOPBACK> mtu 65536 qdisc noop qlen 1000\r\r\n    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00\r\r\n2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc pfifo_fast qlen 1000\r\r\n    link/ether 02:6c:95:eb:86:4f brd ff:ff:ff:ff:ff:ff\r\r\n    inet 192.168.127.2/24 brd 192.168.127.255 scope global eth0\r\r\n       valid_lft forever preferred_lft forever\r\r\n\r\r\n2026/09/28 21:12:16 Running: [node /harness-control/supervisor.js]\r\r\n2026/09/28 21:12:17 executing: [/sbin/runc run -b /run/bundle foo]\r\r\n",
+  "limits": "First observed download on the Pages origin; global browser compiler/cache state uncontrolled. No successful Node handshake, command, or Next build."
+}
