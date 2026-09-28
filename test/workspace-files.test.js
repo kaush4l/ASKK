@@ -40,7 +40,11 @@ for (const operation of ['write', 'rename', 'delete']) test(`mounted ${operation
   files.store.put = async () => { throw new Error('Cache unavailable') }
   files.store.delete = async () => { throw new Error('Cache unavailable') }
   const mutate = operation === 'write' ? () => files.save({ path: 'a.js', content: 'changed', expect: 1 }) : operation === 'rename' ? () => files.rename('a.js', 'b.js', 1) : () => files.remove('a.js', 1)
-  await expect(mutate()).rejects.toThrow('Cache unavailable')
+  const outcome = await mutate().catch(error => error)
+  expect(outcome).toMatchObject({ code: 'WORKSPACE_RECONCILIATION_FAILED', committed: true, operation, path: operation === 'rename' ? 'b.js' : 'a.js' })
+  expect(outcome.message).toContain('Cache unavailable')
+  expect(outcome.message).toContain('runtime acknowledged')
+  if (operation === 'write') expect(outcome.writtenRevision).toBe(2)
   expect(events).toHaveLength(1)
   expect(events[0].operation).toBe(operation)
   if (operation === 'write') expect((await backend.read('a.js')).content).toBe('changed')
@@ -88,7 +92,10 @@ test('a committed save invalidates evidence even when its verification read fail
     backend.read = async () => { throw new Error('Disconnected after commit') }
     return receipt
   }
-  await expect(files.save({ path: 'a.js', content: 'owner edit', expect: 1 })).rejects.toThrow('Disconnected after commit')
+  const outcome = await files.save({ path: 'a.js', content: 'owner edit', expect: 1 }).catch(error => error)
+  expect(outcome).toMatchObject({ code: 'WORKSPACE_RECONCILIATION_FAILED', committed: true, operation: 'write', path: 'a.js', writtenRevision: 2 })
+  expect(outcome.cause.message).toBe('Disconnected after commit')
+  expect(backend.operations).toHaveLength(1)
   expect(events).toEqual([expect.objectContaining({ operation: 'write', content: 'owner edit', rev: 2 })])
   expect(backend.records.get('a.js').content).toBe('owner edit')
 })

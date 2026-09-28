@@ -25,6 +25,8 @@ function mountConflict(conflicts, cause) {
   return Object.assign(new Error(`Saved offline changes conflict with runtime files: ${conflicts.map(row => row.path).join(', ')}. Your saved browser copies are preserved; resolve these files before mounting the runtime.`, cause ? { cause } : undefined), { code: 'WORKSPACE_MOUNT_CONFLICT', conflicts })
 }
 
+const reconciliationFailure = (cause, receipt) => Object.assign(new Error(`The runtime acknowledged the file ${receipt.operation}, but workspace reconciliation failed: ${cause.message}. Review the runtime file before trying again.`, { cause }), { code: 'WORKSPACE_RECONCILIATION_FAILED', committed: true, ...receipt })
+
 /** Clean checkpoints are cache. Offline acknowledgements remain in a durable CAS journal until a backend confirms their desired state. */
 export class ProjectFiles {
   constructor({ name = 'askk-workspace', onCommit = () => {} } = {}) { this.name = name; this.onCommit = onCommit; this.backend = null; this.chain = Promise.resolve() }
@@ -77,9 +79,11 @@ export class ProjectFiles {
         // unrelated writer and must never advance the editor's CAS base to its revision.
         this.onCommit({ type: 'workspace.committed', operation: 'write', path, content, rev: writtenRevision })
         if (writtenRevision == null || result.content !== undefined && result.content !== content) throw new Error('The runtime returned an invalid acknowledgement for the written content')
-        const file = await this.read(path)
-        if (!file || file.content !== content || !sameRevision(file.rev, writtenRevision)) return { conflict: true, committed: true, writtenRevision, rev: revisionOf(file), current: file }
-        await this.cache(file); return { ok: true, rev: writtenRevision }
+        try {
+          const file = await this.read(path)
+          if (!file || file.content !== content || !sameRevision(file.rev, writtenRevision)) return { conflict: true, committed: true, writtenRevision, rev: revisionOf(file), current: file }
+          await this.cache(file); return { ok: true, rev: writtenRevision }
+        } catch (error) { throw reconciliationFailure(error, { operation: 'write', path, writtenRevision }) }
       }
       this.requireDurable()
       const cached = await this.store.get('files', path)
@@ -105,7 +109,8 @@ export class ProjectFiles {
         const result = await this.backend.remove({ path, expectedRevision: expect ?? revisionOf(current) })
         if (result?.conflict) throw new Error('This file changed. Reopen it before deleting.')
         this.onCommit({ type: 'workspace.committed', operation: 'delete', path })
-        await this.store.delete('files', path)
+        try { await this.store.delete('files', path) }
+        catch (error) { throw reconciliationFailure(error, { operation: 'delete', path }) }
       } else {
         this.requireDurable()
         const cached = await this.store.get('files', path)
@@ -131,7 +136,8 @@ export class ProjectFiles {
         const result = await this.backend.rename({ path: from, destination: to, expectedRevision: file.rev })
         if (result?.conflict) throw new Error('This file changed. Reopen it before renaming.')
         this.onCommit({ type: 'workspace.committed', operation: 'rename', path: to, from })
-        await this.store.delete('files', from); await this.cache(await this.read(to))
+        try { await this.store.delete('files', from); await this.cache(await this.read(to)) }
+        catch (error) { throw reconciliationFailure(error, { operation: 'rename', path: to, from }) }
       } else {
         this.requireDurable()
         const [sourceCache, destinationCache] = await Promise.all([this.store.get('files', from), this.store.get('files', to)])

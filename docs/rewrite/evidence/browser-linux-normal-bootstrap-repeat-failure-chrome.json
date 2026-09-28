@@ -1,0 +1,392 @@
+{
+  "preparedAt": "2026-09-28T23:28:47.119Z",
+  "scope": "main process/webpack compilers --max-opt=0; separate workers default tiers; Wasm/RegExp codegen enabled",
+  "warmState": "fresh production boot after manual shutdown of prior guest; persisted exact same source; no CPU profiler, compilecache disabled",
+  "priorLateListReceipt": ".cache/browser-linux/chrome-20260928-max-opt-late-list-recovery.json",
+  "nativePreflight": ".cache/browser-linux/max-opt-main-native-receipt.json",
+  "deadlineMilliseconds": 900000,
+  "colimaStoppedAt": "2026-09-28T23:17:31Z",
+  "companions": "7717/7718 stopped; no relay authorized",
+  "preloadSource": "const before=process.execArgv.slice();const tagBefore=require(\"node:v8\").cachedDataVersionTag();const i=process.execArgv.indexOf(\"--max-opt=0\");if(i>=0)process.execArgv.splice(i,1);console.error(\"ASKK_PROFILE_SCOPE \"+JSON.stringify({pid:process.pid,role:i>=0?\"main-interpreter-tier\":\"child-default-tiers\",before,after:process.execArgv,tagBefore,tagAfter:require(\"node:v8\").cachedDataVersionTag()}));",
+  "startupTimerObservation": {
+    "startedAt": "2026-09-28T23:31:00.390Z",
+    "top": {
+      "visibilityState": "visible",
+      "hidden": false,
+      "focused": true,
+      "deltasMs": [
+        220.41500002145767,
+        170.38999998569489,
+        105.71000000834465,
+        251.33499997854233,
+        190.3100000023842,
+        179.90000000596046,
+        149.0949999988079,
+        204.3250000178814
+      ]
+    },
+    "iframe": {
+      "visibilityState": "visible",
+      "hidden": false,
+      "focused": false,
+      "deltasMs": [
+        220.43000000715256,
+        170.4399999976158,
+        105.62999999523163,
+        251.36500000953674,
+        190.2999999821186,
+        179.9050000011921,
+        149.08000001311302,
+        204.29499998688698
+      ]
+    },
+    "intervalRequestedMs": 100,
+    "count": 8,
+    "completedAt": "2026-09-28T23:31:01.862Z"
+  },
+  "preparationError": "Error: Node guest did not complete its readiness handshake",
+  "boot": {
+    "state": "failed",
+    "startedAt": "2026-09-28T23:26:28.602Z",
+    "log": [
+      "UEFI firmware (version edk2-stable202302-for-qemu",
+      " built at 18:12:10 on Sep 11 2023)\r\r\n",
+      "Error: Image at 0009FD42000 start failed: Not Found\r\r\n",
+      "Error: Image at 0009FC94000 start failed: Unsupported\r\r\n",
+      "Tpm2SubmitCommand - Tcg2 - Not Found\r\r\nTpm2GetCapabilityPcrs fail!\r\r\nTpm2Sub",
+      "mitCommand - Tcg2 - Not Found\r\r\n",
+      "Image type X64 can't be loaded on AARCH64 UEFI system.\r\r\n",
+      "\u001b[2J\u001b[01;01H\u001b[=3h\u001b[2J\u001b[01;01H",
+      "\u001b[2J\u001b[01;01H\u001b[=3h\u001b[2J\u001b[01;01H",
+      "EFI stub: Booting Linux Kernel...\r\r\nEFI stub: EFI_RNG_PROTOCO",
+      "L unavailable\r\r\n",
+      "EFI stub: Generating empty DTB\r\r\nEFI stub: Exiting boot services...\r\r\n",
+      "1970/01/01 00:00:27 mounting {FSType:proc Src:proc Dst:/proc Flags:0 Data: Dir:[] File:[] PostDir:[] PostFile:[] Cmd:[] Async:false Optional:false}",
+      "\r\r\n",
+      "1970/01/01 00:00:27 mounting {FSType:tmpfs Src:tmpfs Dst:/run Flags:0 Data: Dir:[] File:[] PostDir:[] PostFile:[] Cmd:[] Async:false Optional:false}",
+      "\r\r\n",
+      "1970/01/01 00:00:28 mounting {FSType:tmpfs Src:tmpfs Dst:/sys Flags:0 Data: Dir:[] File:[] PostDir:[] PostFile:[] Cmd:[] Async:",
+      "false Optional:false}\r\r\n",
+      "1970/01/01 00:00:28 mounting {FSType:tmpfs Src:tmpfs Dst:/tmp Flags:0 Data: Dir:[] File:[] PostDir:[] PostFile:[] Cmd:[] Async:false Optional:fa",
+      "lse}\r\r\n",
+      "1970/01/01 00:00:28 mounting {FSType:tmpfs Src:tmpfs Dst:/var Flags:0 Data: Dir:[] File:[] PostDir:",
+      "[] PostFile:[] Cmd:[] Async:false Op",
+      "tional:false}\r\r\n",
+      "1970/01/01 00:00:28 mounting {FSType:tmpfs Src:tmpfs Dst:/mnt Flags:0 Data: Dir:[] File:[] PostDir:[] PostFile:[] Cmd:[] Async:false Optional:false}",
+      "\r\r\n",
+      "1970/01/01 00:00:28 mounting {FSType:cgroup2 Src:none Dst:/sys/fs/cgroup Flags:0 Data: Dir:[{Path:/sys/fs/cgroup ",
+      "Mode:438}] File:[] PostDir:[] PostFile:[] Cmd:[] Async:false Optional:false}\r\r\n",
+      "1970/01/01 00:00:28 mounting {FSType:tmpfs Src:tmpfs Dst:/etc Flags:0 Data: Dir:[] File:[] PostDir:[] PostFile:[{Path:/etc/hosts Mode:420 Contents:127.0.0.1",
+      "\tlocalhost\r\r\n} {Path:/etc/resolv.conf Mode:420 Contents:}] Cmd:[] Async:false Optional:false}\r\r\n",
+      "1970/01/01 00:00:28 mounting {FSType:tmpfs Src:tmpfs Dst:/run/bundle Flags:0 Data: Dir:[{Path:/run/bundle Mode:438}] File:[] PostDir",
+      ":[] PostFile:[] Cmd:[] Async:false Optional:",
+      "false}\r\r\n",
+      "1970/01/01 00:00:28 mounting {FSType:overlay Src:overlay Dst:/run/rootfs Flags:0 Data:lowerdir=/oci/rootfs,upperdir=/run/",
+      "rootfs-upper,workdir=/run/rootfs-work Dir:[{Path:/run/rootfs Mode:493} {Path:/run/rootfs-upper Mode:493} {Path:/ru",
+      "n/rootfs-work Mode:493}] File:[] PostDir:[{Path:/run/rootfs/etc/ Mode:420} {Path:/run/rootfs/etc/ Mode:420}] PostFile:[{Path:/run/root",
+      "fs/etc/hosts Mode:420 Contents:127.0.0.1\tlocalhost\r\r\n",
+      "} {Path:/run/rootfs/etc/resolv.conf Mode:420 Contents:}] Cmd:[] Async:false Optional:false}\r\r\n",
+      "1970/01/01 00:00:35 executing(pre-run): [vmtouch -tv /sbin/runc /sbin/init]",
+      "\r\r\n",
+      "/sbin/runc\r\r\n",
+      "\r[                                                            ] 0/3040",
+      "\r[o                                                           ] 25/3040",
+      "\r[Oo                                                          ] 65/3040",
+      "\r[OOo                                                         ] 125/3040",
+      "\r[OOOo                                                        ] 157/3040",
+      "\r[OOOo                                                        ] 193/3040",
+      "\r[OOOOo                                                       ] 225/3040",
+      "\r[OOOOOo                                                      ] 269/3040",
+      "\r[OOOOOOo                                                     ] 321/3040",
+      "\r[OOOOOOOo                                                    ] 365/3040",
+      "\r[OOOOOOOo                                                    ] 397/3040",
+      "\r[OOOOOOOOo                                                   ] 449/3040",
+      "\r[OOOOOOOOOOo                                                 ] 513/3040",
+      "\r[OOOOOOOOOOOo                                                ] 577/3040",
+      "\r[OOOOOOOOOOOOo                                               ] 641/3040",
+      "\r[OOOOOOOOOOOOOo                                              ] 705/3040",
+      "\r[OOOOOOOOOOOOOOOo                                            ] 769/3040",
+      "\r[OOOOOOOOOOOOOOOOo                                           ] 833/3040",
+      "\r[OOOOOOOOOOOOOOOOOo                                          ] 897/3040",
+      "\r[OOOOOOOOOOOOOOOOOOo                                         ] 961/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOo                                        ] 993/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOo                                       ] 1057/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOo                                      ] 1101/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOo                                     ] 1153/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOo                                    ] 1185/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOo                                    ] 1217/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOo                                  ] 1281/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOo                                 ] 1345/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOO                                 ] 1377/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOo                               ] 1441/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOo                              ] 1499/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo                             ] 1537/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo                            ] 1601/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo                           ] 1665/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo                          ] 1729/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo                        ] 1793/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo                       ] 1857/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo                      ] 1921/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo                     ] 1985/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo                   ] 2049/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo                  ] 2113/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo                 ] 2177/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo                ] 2241/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo              ] 2305/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo             ] 2369/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo            ] 2433/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo           ] 2497/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo         ] 2561/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo        ] 2625/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo       ] 2689/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo      ] 2753/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo    ] 2817/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo   ] 2881/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo ] 2959/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO] 3040/3040",
+      "\r\r\n",
+      "/sbin/init\r\r\n",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO] 625/625",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO] 625/625",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO] 625/625",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO] 625/625",
+      "\r\r\n",
+      "\r\r\n           Files: 2\r\r\n",
+      "     Directories: 0\r\r\n   To",
+      "uched Pages: 3665 (14M)\r\r\n",
+      "         Elapsed: 7.8436 seconds\r\r\n",
+      "==========",
+      "1970/01/01 00:00:47 mounting \"wasi0\" to \"/mnt/wasi0\"\r\r\n",
+      "1970/01/01 00:00:47 INFO:\r\r\nt:1790637995\r\r\nn:02:46:10:7E:C6:CC",
+      "\r\r\nmr: .wasmenv\r\r\nenv: SSL_CERT_FILE=/.wasmenv/proxy.crt\r\r\n",
+      "env: https_proxy=http://192.168.127.253:80\r\r\nenv: http_proxy=http://192.168.127.253:80\r\r\nenv: HTTPS_PROXY=http://192.168.127.253:80\r\r\nenv: HTTP_PROXY=http://192.168.127.253:80\r\r\nenv: no_pr",
+      "oxy=localhost,127.0.0.1\r\r\nenv: NO_PROXY=localhost,127.0.0.1\r\r\nm:workspaces/cua-prepared-template-proof",
+      "\r\r\nm:harness-control\r\r\ne:node\r\r\nc:/harness-control/supervisor.js\r\r\nenv:HARNESS_WORKSPACE=/workspaces/cua-prepared-template-proof",
+      "\r\r\nenv:NODE_EXTRA_CA_CERTS=/.wasmenv/proxy.crt\r\r\nenv:NODE_OPTIONS=--use-env-proxy\r\r\n\r\r\n",
+      "2026/09/28 23:26:35 Prepared mount wasi0 => \".wasmenv\"\r\r\n",
+      "2026/09/28 23:26:35 Prepared mount wasi0 => \"workspaces/cua-prepared-template-proof\"\r\r\n",
+      "2026/09/28 23:26:35 Prepared mount wasi0 => \"harness-control\"\r\r\n",
+      "2026/09/28 23:26:46 finished udhcpc: udhcpc: started, v1.36.1\r\r\nClearing IP addresses on eth0, u",
+      "pping it\r\r\nudhcpc: broadcasting discover\r\r\nudhcpc: broadcasting select for 192.168.127.2, serv",
+      "er 192.168.127.1\r\r\nudhcpc: lease of 192.168.127.2 obtained from 192.168.127.1, lease time 3600\r\r\nSetting IP address 192.168.127.2 on eth0\r\r\n",
+      "Deleting routers\r\r\nroute: SIOCDELRT: No such process\r\r\nAdding router 192.168.127.1\r\r\nRecreating /etc/resolv.conf",
+      "\r\r\n Adding DNS server 192.168.127.1\r\r\n\r\r\n 1: lo: <LOOPBACK> mtu 65536 qdisc noop qlen 1000\r\r\n    link/loopback 00:00:00:00:00",
+      ":00 brd 00:00:00:00:00:00\r\r\n2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc pfifo_fast qlen 1000\r\r\n    link/ether 02",
+      ":46:10:7e:c6:cc brd ff:ff:ff:ff:ff:ff\r\r\n    inet 192.168.127.2/24 brd 192.168.127.255 scope global eth0\r\r\n       valid_lft forever preferre",
+      "d_lft forever\r\r\n\r\r\n",
+      "2026/09/28 23:26:46 Running: [node /harness-control/supervisor.js]\r\r\n",
+      "2026/09/28 23:26:47 executing: [/sbin/runc run -b /run/bundle foo]\r\r\n"
+    ],
+    "stages": [
+      {
+        "phase": "Downloading",
+        "atMilliseconds": 394.9650000035763
+      },
+      {
+        "phase": "Verifying",
+        "atMilliseconds": 573.9250000119209
+      },
+      {
+        "phase": "Downloading",
+        "atMilliseconds": 575.1999999880791
+      },
+      {
+        "phase": "Verifying",
+        "atMilliseconds": 595.2899999916553
+      },
+      {
+        "phase": "Downloading",
+        "atMilliseconds": 599.75
+      },
+      {
+        "phase": "Verifying",
+        "atMilliseconds": 620.955000013113
+      },
+      {
+        "phase": "Downloading",
+        "atMilliseconds": 624.7450000047684
+      },
+      {
+        "phase": "Verifying",
+        "atMilliseconds": 630.3249999880791
+      },
+      {
+        "phase": "Downloading",
+        "atMilliseconds": 631.7849999964237
+      },
+      {
+        "phase": "Verifying",
+        "atMilliseconds": 644.4950000047684
+      },
+      {
+        "phase": "Downloading",
+        "atMilliseconds": 645.8100000023842
+      },
+      {
+        "phase": "Verifying",
+        "atMilliseconds": 663.3100000023842
+      },
+      {
+        "phase": "Downloading",
+        "atMilliseconds": 670.3799999952316
+      },
+      {
+        "phase": "Verifying",
+        "atMilliseconds": 760.4350000023842
+      },
+      {
+        "phase": "Downloading",
+        "atMilliseconds": 762.4650000035763
+      },
+      {
+        "phase": "Verifying",
+        "atMilliseconds": 794.1599999964237
+      },
+      {
+        "phase": "Downloading",
+        "atMilliseconds": 794.8599999845028
+      },
+      {
+        "phase": "Verifying",
+        "atMilliseconds": 804.6099999845028
+      },
+      {
+        "phase": "Downloading",
+        "atMilliseconds": 848.8899999856949
+      },
+      {
+        "phase": "Verifying",
+        "atMilliseconds": 1110.7599999904633
+      },
+      {
+        "phase": "Downloading",
+        "atMilliseconds": 1169.7400000095367
+      },
+      {
+        "phase": "Verifying",
+        "atMilliseconds": 1405.3700000047684
+      },
+      {
+        "phase": "Downloading",
+        "atMilliseconds": 1432.5200000107288
+      },
+      {
+        "phase": "Verifying",
+        "atMilliseconds": 1813.344999998808
+      },
+      {
+        "phase": "Downloading",
+        "atMilliseconds": 1975.1200000047684
+      },
+      {
+        "phase": "Verifying",
+        "atMilliseconds": 2189.770000010729
+      },
+      {
+        "phase": "Downloading",
+        "atMilliseconds": 2218.3799999952316
+      },
+      {
+        "phase": "Verifying",
+        "atMilliseconds": 2414.0900000035763
+      },
+      {
+        "phase": "Downloading",
+        "atMilliseconds": 2488.425000011921
+      },
+      {
+        "phase": "Verifying",
+        "atMilliseconds": 2718.3849999904633
+      },
+      {
+        "phase": "Downloading",
+        "atMilliseconds": 2753.484999984503
+      },
+      {
+        "phase": "Verifying",
+        "atMilliseconds": 2955.270000010729
+      },
+      {
+        "phase": "Downloading",
+        "atMilliseconds": 3160.699999988079
+      },
+      {
+        "phase": "Verifying",
+        "atMilliseconds": 3321.2400000095367
+      },
+      {
+        "phase": "Downloading",
+        "atMilliseconds": 3436.2100000083447
+      },
+      {
+        "phase": "Verifying",
+        "atMilliseconds": 3614.6500000059605
+      },
+      {
+        "phase": "Downloading",
+        "atMilliseconds": 3714.5
+      },
+      {
+        "phase": "Verifying",
+        "atMilliseconds": 3886.6599999964237
+      },
+      {
+        "phase": "Downloading",
+        "atMilliseconds": 3968.3499999940395
+      },
+      {
+        "phase": "Verifying",
+        "atMilliseconds": 4151.219999998808
+      },
+      {
+        "phase": "Downloading",
+        "atMilliseconds": 4238.060000002384
+      },
+      {
+        "phase": "Verifying",
+        "atMilliseconds": 4481.889999985695
+      },
+      {
+        "phase": "Downloading",
+        "atMilliseconds": 4508.6500000059605
+      },
+      {
+        "phase": "Verifying",
+        "atMilliseconds": 5917.120000004768
+      },
+      {
+        "phase": "Compiling",
+        "atMilliseconds": 5922.069999992847
+      },
+      {
+        "phase": "Restoring files",
+        "atMilliseconds": 6535.439999997616
+      },
+      {
+        "phase": "Booting",
+        "atMilliseconds": 6569.280000001192
+      }
+    ],
+    "checks": [],
+    "metadata": {
+      "experiment": "main-only-max-opt-zero",
+      "bootstrap": "production runtime, fresh boot after retained-guest FS/control timeout",
+      "crossOriginIsolated": true,
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36",
+      "companionAuthorization": false,
+      "profile": "main Node and webpack compilers interpreter tier; separate workers use default tiers; WebAssembly and RegExp code generation remain enabled"
+    },
+    "phase": "Booting",
+    "error": "Error: Node guest did not complete its readiness handshake"
+  },
+  "observedAt": "2026-09-28T23:37:10.243Z",
+  "outcome": "Normal production bootstrap failed its600s Node readiness handshake; no source verification, mutation, or main-only Next job was reached.",
+  "imageId": "c2w-node24-8f08d6cef80797be",
+  "runtimeWrapperSha256": "c865954dde97cdcf8470b40a5da0ba66a012a3bd831eb6fa1648ed2cbcf12e7a",
+  "concurrentWork": [
+    {
+      "description": "Root lightweight MessageChannel adapter QA onseparate5207 tab around23:35UTC; noVM/model/Next build; exacttimespending"
+    }
+  ],
+  "frameReleased": true
+}

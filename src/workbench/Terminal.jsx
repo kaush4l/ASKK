@@ -4,10 +4,12 @@ import { Terminal as Xterm } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { createTerminalSnapshotWriter } from './terminal-writer.js'
 
-export default function Terminal({ controller, sessionId, output = '', outputLength, theme = 'dark', interactive = false }) {
+export default function Terminal({ controller, sessionId, output = '', outputLength, theme = 'dark', interactive = false, onError }) {
   const node = useRef(null)
   const instance = useRef(null)
   const writer = useRef(null)
+  const errors = useRef(onError)
+  errors.current = onError
   useEffect(() => {
     const terminal = new Xterm({
       cursorBlink: interactive, disableStdin: !interactive, convertEol: true,
@@ -22,11 +24,12 @@ export default function Terminal({ controller, sessionId, output = '', outputLen
     const delivery = interactive ? null : createTerminalSnapshotWriter(terminal)
     writer.current = delivery
     let live = true
-    const resize = () => { if (!live || !node.current?.clientWidth || !node.current?.clientHeight) return; fit.fit(); if (interactive && sessionId) controller?.resizeTerminal?.(sessionId, terminal.cols, terminal.rows) }
+    const send = action => { try { Promise.resolve(action()).catch(error => { if (live) errors.current?.(error?.message || String(error)) }) } catch (error) { if (live) errors.current?.(error?.message || String(error)) } }
+    const resize = () => { if (!live || !node.current?.clientWidth || !node.current?.clientHeight) return; fit.fit(); if (interactive && sessionId) send(() => controller?.resizeTerminal?.(sessionId, terminal.cols, terminal.rows)) }
     const observer = new ResizeObserver(resize)
     observer.observe(node.current)
     resize()
-    const input = terminal.onData(data => { if (interactive && sessionId) controller?.terminalInput?.(sessionId, data) })
+    const input = terminal.onData(data => { if (interactive && sessionId) send(() => controller?.terminalInput?.(sessionId, data)) })
     const unsubscribe = interactive && sessionId ? controller?.subscribeTerminal?.(sessionId, chunk => terminal.write(typeof chunk === 'string' ? chunk : chunk.data || chunk.output || '')) : null
     return () => { live = false; observer.disconnect(); input.dispose(); unsubscribe?.(); delivery?.dispose(); terminal.dispose(); writer.current = null; instance.current = null }
   }, [controller, sessionId, interactive, theme])

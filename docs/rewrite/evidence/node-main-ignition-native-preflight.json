@@ -1,0 +1,96 @@
+{
+  "startedAt": "2026-09-28T23:17:22.347Z",
+  "completedAt": "2026-09-28T23:17:24.723Z",
+  "image": "askk-browser-node:template24",
+  "imageId": "sha256:3e3c2fce31f5348ec6be59601f795f726f0784fb8ada6c21883c257e2d98b6cf",
+  "args": [
+    "docker",
+    "--context",
+    "colima-askk-browser-build",
+    "run",
+    "--rm",
+    "--entrypoint",
+    "node",
+    "--env",
+    "NODE_OPTIONS=--use-env-proxy",
+    "--env",
+    "NODE_DISABLE_COMPILE_CACHE=1",
+    "-i",
+    "askk-browser-node:template24"
+  ],
+  "code": 0,
+  "source": "\nconst fs=require('node:fs'),crypto=require('node:crypto'),{spawnSync}=require('node:child_process');\nconst root='/tmp/askk-max-opt-main-native';\nfs.mkdirSync(root+'/pages',{recursive:true});\nconst files={\n 'package.json':JSON.stringify({private:true,scripts:{build:'next build --webpack'},dependencies:{next:'16.3.6',react:'19.3.0','react-dom':'19.3.0'}}),\n 'next.config.mjs':'export default {output:\"export\",images:{unoptimized:true},experimental:{cpus:1,webpackBuildWorker:false}}',\n 'pages/index.js':'import React from \"react\";export default function Page(){return React.createElement(\"main\",null,\"Browser Linux build proof\")}'\n};\nfor(const [name,content] of Object.entries(files))fs.writeFileSync(root+'/'+name,content);\nconst proof={runtime:{node:process.version,arch:process.arch,v8:process.versions.v8,uid:process.getuid(),nodeSha256:crypto.createHash('sha256').update(fs.readFileSync(process.execPath)).digest('hex')},files:Object.fromEntries(Object.entries(files).map(([name,content])=>[name,{content,sha256:crypto.createHash('sha256').update(content).digest('hex')}])),profile:'--max-opt=0; main process and webpack compilers limited to Ignition; separate workers use default tiers; WebAssembly and RegExp code generation remain enabled'};\nconst env={...process.env,NODE_ENV:'production',NEXT_TELEMETRY_DISABLED:'1',NODE_DISABLE_COMPILE_CACHE:'1',DEBUG:'next:build:webpack-build'};\nfunction run(name,args){const start=performance.now();const result=spawnSync('node',args,{cwd:root,env,encoding:'utf8',timeout:180000,maxBuffer:4*1024*1024});proof[name]={args,status:result.status,signal:result.signal,stdout:result.stdout,stderr:result.stderr,error:result.error?.message,milliseconds:performance.now()-start};if(result.status!==0)throw new Error(name+' failed');}\ntry{\nrun('prepare',['/opt/harness/prepare-template.js']);\nrun('hashPreflight',['--max-opt=0','-e',\n 'const w=require(\"/opt/harness/template/node_modules/next/dist/compiled/webpack/webpack\");const expected={xxhash64:\"ef46db3751d8e999\",md4:\"31d6cfe0d16ae931b73c59d7e0c089c0\"};const hashes={};for(const [name,digest]of Object.entries(expected)){hashes[name]=w.webpack.util.createHash(name).update(\"\").digest(\"hex\");if(hashes[name]!==digest)throw new Error(name+\" mismatch\")}if(typeof WebAssembly!==\"object\")throw new Error(\"WebAssembly unavailable\");console.log(JSON.stringify({wasm:typeof WebAssembly,hashes,execArgv:process.execArgv.slice(0,1)}))']);\nconst preloadSource='const before=process.execArgv.slice();const tagBefore=require(\"node:v8\").cachedDataVersionTag();const i=process.execArgv.indexOf(\"--max-opt=0\");if(i>=0)process.execArgv.splice(i,1);console.error(\"ASKK_PROFILE_SCOPE \"+JSON.stringify({pid:process.pid,role:i>=0?\"main-interpreter-tier\":\"child-default-tiers\",before,after:process.execArgv,tagBefore,tagAfter:require(\"node:v8\").cachedDataVersionTag()}));';\nfs.writeFileSync(root+'/main-scope.cjs',preloadSource);proof.preload={source:preloadSource,sha256:crypto.createHash('sha256').update(preloadSource).digest('hex')};\nrun('nextBuild',['--max-opt=0','--require',root+'/main-scope.cjs','node_modules/next/dist/bin/next','build','--webpack']);\nconst html=fs.readFileSync(root+'/out/index.html');if(!html.includes('Browser Linux build proof'))throw new Error('Missing artifact text');proof.artifact={bytes:html.length,sha256:crypto.createHash('sha256').update(html).digest('hex')};proof.passed=true;\n}catch(error){proof.error=String(error);proof.passed=false}\nconsole.log(JSON.stringify(proof));process.exitCode=proof.passed?0:1;\n",
+  "sourceSha256": "5d817adfd9333b138cb9f143f6892411d3f180473de02f7a6d1ee4b2de88dc04",
+  "stdout": "{\"runtime\":{\"node\":\"v24.21.0\",\"arch\":\"arm64\",\"v8\":\"13.6.233.17-node.53\",\"uid\":0,\"nodeSha256\":\"0f8949d1028f6d61506b2d5bc57e7e6fe893d7b1997509b7847294fc9c616584\"},\"files\":{\"package.json\":{\"content\":\"{\\\"private\\\":true,\\\"scripts\\\":{\\\"build\\\":\\\"next build --webpack\\\"},\\\"dependencies\\\":{\\\"next\\\":\\\"16.3.6\\\",\\\"react\\\":\\\"19.3.0\\\",\\\"react-dom\\\":\\\"19.3.0\\\"}}\",\"sha256\":\"d1d4b25a56d04dae202f206536be2dbcff3bded86f703d76f5d384689776f57a\"},\"next.config.mjs\":{\"content\":\"export default {output:\\\"export\\\",images:{unoptimized:true},experimental:{cpus:1,webpackBuildWorker:false}}\",\"sha256\":\"a2a2ec4d0296bab449cd789f3d3aba45ea7492d390777c1f4a0e268d9b675fc6\"},\"pages/index.js\":{\"content\":\"import React from \\\"react\\\";export default function Page(){return React.createElement(\\\"main\\\",null,\\\"Browser Linux build proof\\\")}\",\"sha256\":\"f9b45f61f4d44190cad0dba01f260cc1f4ac7d2bae2583c45d7702ae941bfe9b\"}},\"profile\":\"--max-opt=0; main process and webpack compilers limited to Ignition; separate workers use default tiers; WebAssembly and RegExp code generation remain enabled\",\"prepare\":{\"args\":[\"/opt/harness/prepare-template.js\"],\"status\":0,\"signal\":null,\"stdout\":\"{\\\"prepared\\\":true,\\\"dependencies\\\":{\\\"next\\\":\\\"16.3.6\\\",\\\"react\\\":\\\"19.3.0\\\",\\\"react-dom\\\":\\\"19.3.0\\\"},\\\"lockSha256\\\":\\\"72013276c996cd104fc0f6c7883e74ec9073e0385ea61412f13b03eba62006f0\\\",\\\"modules\\\":\\\"/opt/harness/template/node_modules\\\",\\\"customInstall\\\":\\\"Detach this generated link before running a custom package installation\\\"}\\n\",\"stderr\":\"\",\"milliseconds\":23.554007},\"hashPreflight\":{\"args\":[\"--max-opt=0\",\"-e\",\"const w=require(\\\"/opt/harness/template/node_modules/next/dist/compiled/webpack/webpack\\\");const expected={xxhash64:\\\"ef46db3751d8e999\\\",md4:\\\"31d6cfe0d16ae931b73c59d7e0c089c0\\\"};const hashes={};for(const [name,digest]of Object.entries(expected)){hashes[name]=w.webpack.util.createHash(name).update(\\\"\\\").digest(\\\"hex\\\");if(hashes[name]!==digest)throw new Error(name+\\\" mismatch\\\")}if(typeof WebAssembly!==\\\"object\\\")throw new Error(\\\"WebAssembly unavailable\\\");console.log(JSON.stringify({wasm:typeof WebAssembly,hashes,execArgv:process.execArgv.slice(0,1)}))\"],\"status\":0,\"signal\":null,\"stdout\":\"{\\\"wasm\\\":\\\"object\\\",\\\"hashes\\\":{\\\"xxhash64\\\":\\\"ef46db3751d8e999\\\",\\\"md4\\\":\\\"31d6cfe0d16ae931b73c59d7e0c089c0\\\"},\\\"execArgv\\\":[\\\"--max-opt=0\\\"]}\\n\",\"stderr\":\"\",\"milliseconds\":54.52493399999999},\"preload\":{\"source\":\"const before=process.execArgv.slice();const tagBefore=require(\\\"node:v8\\\").cachedDataVersionTag();const i=process.execArgv.indexOf(\\\"--max-opt=0\\\");if(i>=0)process.execArgv.splice(i,1);console.error(\\\"ASKK_PROFILE_SCOPE \\\"+JSON.stringify({pid:process.pid,role:i>=0?\\\"main-interpreter-tier\\\":\\\"child-default-tiers\\\",before,after:process.execArgv,tagBefore,tagAfter:require(\\\"node:v8\\\").cachedDataVersionTag()}));\",\"sha256\":\"0b500f74e33e6329506e502eb0c72296bfd4ac028510e00c6df16a503b55916a\"},\"nextBuild\":{\"args\":[\"--max-opt=0\",\"--require\",\"/tmp/askk-max-opt-main-native/main-scope.cjs\",\"node_modules/next/dist/bin/next\",\"build\",\"--webpack\"],\"status\":0,\"signal\":null,\"stdout\":\"▲ Next.js 16.3.6 (webpack)\\n✓ Running next.config.mjs took 9ms\\n- Experiments (use with caution):\\n  · cpus: 1\\n  ⨯ webpackBuildWorker\\n\\n  Running TypeScript ...\\n  Finished TypeScript in 0ms ...\\n  Creating an optimized production build ...\\n✓ Compiled successfully in 1095ms\\n  Collecting page data using 1 worker ...\\n  Generating static pages using 1 worker (0/3) ...\\n✓ Generating static pages using 1 worker (3/3) in 18ms\\n  Finalizing page optimization ...\\n  Collecting build traces ...\\n  Exporting using 1 worker (0/3) ...\\n✓ Exporting using 1 worker (3/3) in 105ms\\n\\nRoute (pages)\\n┌ ○ /\\n└ ○ /404\\n\\n○  (Static)  prerendered as static content\\n\\n\",\"stderr\":\"ASKK_PROFILE_SCOPE {\\\"pid\\\":31,\\\"role\\\":\\\"main-interpreter-tier\\\",\\\"before\\\":[\\\"--max-opt=0\\\",\\\"--require\\\",\\\"/tmp/askk-max-opt-main-native/main-scope.cjs\\\"],\\\"after\\\":[\\\"--require\\\",\\\"/tmp/askk-max-opt-main-native/main-scope.cjs\\\"],\\\"tagBefore\\\":2292197379,\\\"tagAfter\\\":2292197379}\\n2026-09-28T23:17:22.764Z next:build:webpack-build building all compilers in same process\\n2026-09-28T23:17:22.862Z next:build:webpack-build starting compiler null\\n2026-09-28T23:17:22.862Z next:build:webpack-build starting server compiler\\n2026-09-28T23:17:23.274Z next:build:webpack-build server compiler finished 412ms\\n2026-09-28T23:17:23.275Z next:build:webpack-build starting edge-server compiler\\n2026-09-28T23:17:23.281Z next:build:webpack-build edge-server compiler finished 6ms\\n2026-09-28T23:17:23.281Z next:build:webpack-build starting client compiler\\n2026-09-28T23:17:23.957Z next:build:webpack-build client compiler finished 676ms\\nASKK_PROFILE_SCOPE {\\\"pid\\\":49,\\\"role\\\":\\\"child-default-tiers\\\",\\\"before\\\":[],\\\"after\\\":[],\\\"tagBefore\\\":2521476671,\\\"tagAfter\\\":2521476671}\\nASKK_PROFILE_SCOPE {\\\"pid\\\":67,\\\"role\\\":\\\"child-default-tiers\\\",\\\"before\\\":[],\\\"after\\\":[],\\\"tagBefore\\\":2521476671,\\\"tagAfter\\\":2521476671}\\n\",\"milliseconds\":2058.8922279999997},\"artifact\":{\"bytes\":1152,\"sha256\":\"cf404c728c9eeb4fa3b1782c70eba98f2806823d4afdfeb3095160c88007900f\"},\"passed\":true}\n",
+  "stderr": "",
+  "proof": {
+    "runtime": {
+      "node": "v24.21.0",
+      "arch": "arm64",
+      "v8": "13.6.233.17-node.53",
+      "uid": 0,
+      "nodeSha256": "0f8949d1028f6d61506b2d5bc57e7e6fe893d7b1997509b7847294fc9c616584"
+    },
+    "files": {
+      "package.json": {
+        "content": "{\"private\":true,\"scripts\":{\"build\":\"next build --webpack\"},\"dependencies\":{\"next\":\"16.3.6\",\"react\":\"19.3.0\",\"react-dom\":\"19.3.0\"}}",
+        "sha256": "d1d4b25a56d04dae202f206536be2dbcff3bded86f703d76f5d384689776f57a"
+      },
+      "next.config.mjs": {
+        "content": "export default {output:\"export\",images:{unoptimized:true},experimental:{cpus:1,webpackBuildWorker:false}}",
+        "sha256": "a2a2ec4d0296bab449cd789f3d3aba45ea7492d390777c1f4a0e268d9b675fc6"
+      },
+      "pages/index.js": {
+        "content": "import React from \"react\";export default function Page(){return React.createElement(\"main\",null,\"Browser Linux build proof\")}",
+        "sha256": "f9b45f61f4d44190cad0dba01f260cc1f4ac7d2bae2583c45d7702ae941bfe9b"
+      }
+    },
+    "profile": "--max-opt=0; main process and webpack compilers limited to Ignition; separate workers use default tiers; WebAssembly and RegExp code generation remain enabled",
+    "prepare": {
+      "args": [
+        "/opt/harness/prepare-template.js"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "{\"prepared\":true,\"dependencies\":{\"next\":\"16.3.6\",\"react\":\"19.3.0\",\"react-dom\":\"19.3.0\"},\"lockSha256\":\"72013276c996cd104fc0f6c7883e74ec9073e0385ea61412f13b03eba62006f0\",\"modules\":\"/opt/harness/template/node_modules\",\"customInstall\":\"Detach this generated link before running a custom package installation\"}\n",
+      "stderr": "",
+      "milliseconds": 23.554007
+    },
+    "hashPreflight": {
+      "args": [
+        "--max-opt=0",
+        "-e",
+        "const w=require(\"/opt/harness/template/node_modules/next/dist/compiled/webpack/webpack\");const expected={xxhash64:\"ef46db3751d8e999\",md4:\"31d6cfe0d16ae931b73c59d7e0c089c0\"};const hashes={};for(const [name,digest]of Object.entries(expected)){hashes[name]=w.webpack.util.createHash(name).update(\"\").digest(\"hex\");if(hashes[name]!==digest)throw new Error(name+\" mismatch\")}if(typeof WebAssembly!==\"object\")throw new Error(\"WebAssembly unavailable\");console.log(JSON.stringify({wasm:typeof WebAssembly,hashes,execArgv:process.execArgv.slice(0,1)}))"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "{\"wasm\":\"object\",\"hashes\":{\"xxhash64\":\"ef46db3751d8e999\",\"md4\":\"31d6cfe0d16ae931b73c59d7e0c089c0\"},\"execArgv\":[\"--max-opt=0\"]}\n",
+      "stderr": "",
+      "milliseconds": 54.52493399999999
+    },
+    "preload": {
+      "source": "const before=process.execArgv.slice();const tagBefore=require(\"node:v8\").cachedDataVersionTag();const i=process.execArgv.indexOf(\"--max-opt=0\");if(i>=0)process.execArgv.splice(i,1);console.error(\"ASKK_PROFILE_SCOPE \"+JSON.stringify({pid:process.pid,role:i>=0?\"main-interpreter-tier\":\"child-default-tiers\",before,after:process.execArgv,tagBefore,tagAfter:require(\"node:v8\").cachedDataVersionTag()}));",
+      "sha256": "0b500f74e33e6329506e502eb0c72296bfd4ac028510e00c6df16a503b55916a"
+    },
+    "nextBuild": {
+      "args": [
+        "--max-opt=0",
+        "--require",
+        "/tmp/askk-max-opt-main-native/main-scope.cjs",
+        "node_modules/next/dist/bin/next",
+        "build",
+        "--webpack"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "▲ Next.js 16.3.6 (webpack)\n✓ Running next.config.mjs took 9ms\n- Experiments (use with caution):\n  · cpus: 1\n  ⨯ webpackBuildWorker\n\n  Running TypeScript ...\n  Finished TypeScript in 0ms ...\n  Creating an optimized production build ...\n✓ Compiled successfully in 1095ms\n  Collecting page data using 1 worker ...\n  Generating static pages using 1 worker (0/3) ...\n✓ Generating static pages using 1 worker (3/3) in 18ms\n  Finalizing page optimization ...\n  Collecting build traces ...\n  Exporting using 1 worker (0/3) ...\n✓ Exporting using 1 worker (3/3) in 105ms\n\nRoute (pages)\n┌ ○ /\n└ ○ /404\n\n○  (Static)  prerendered as static content\n\n",
+      "stderr": "ASKK_PROFILE_SCOPE {\"pid\":31,\"role\":\"main-interpreter-tier\",\"before\":[\"--max-opt=0\",\"--require\",\"/tmp/askk-max-opt-main-native/main-scope.cjs\"],\"after\":[\"--require\",\"/tmp/askk-max-opt-main-native/main-scope.cjs\"],\"tagBefore\":2292197379,\"tagAfter\":2292197379}\n2026-09-28T23:17:22.764Z next:build:webpack-build building all compilers in same process\n2026-09-28T23:17:22.862Z next:build:webpack-build starting compiler null\n2026-09-28T23:17:22.862Z next:build:webpack-build starting server compiler\n2026-09-28T23:17:23.274Z next:build:webpack-build server compiler finished 412ms\n2026-09-28T23:17:23.275Z next:build:webpack-build starting edge-server compiler\n2026-09-28T23:17:23.281Z next:build:webpack-build edge-server compiler finished 6ms\n2026-09-28T23:17:23.281Z next:build:webpack-build starting client compiler\n2026-09-28T23:17:23.957Z next:build:webpack-build client compiler finished 676ms\nASKK_PROFILE_SCOPE {\"pid\":49,\"role\":\"child-default-tiers\",\"before\":[],\"after\":[],\"tagBefore\":2521476671,\"tagAfter\":2521476671}\nASKK_PROFILE_SCOPE {\"pid\":67,\"role\":\"child-default-tiers\",\"before\":[],\"after\":[],\"tagBefore\":2521476671,\"tagAfter\":2521476671}\n",
+      "milliseconds": 2058.8922279999997
+    },
+    "artifact": {
+      "bytes": 1152,
+      "sha256": "cf404c728c9eeb4fa3b1782c70eba98f2806823d4afdfeb3095160c88007900f"
+    },
+    "passed": true
+  }
+}

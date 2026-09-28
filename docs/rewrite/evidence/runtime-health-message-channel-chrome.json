@@ -1,0 +1,218 @@
+{
+  "scope": "Production adapter; real browser MessageChannel; controlled guest replies, no guest boot or durability proof",
+  "at": "2026-09-28T23:36:38.709Z",
+  "browser": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36",
+  "visibility": "visible",
+  "checks": [
+    {
+      "name": "Read deadline rejects caller without claiming readiness",
+      "passed": true
+    },
+    {
+      "name": "New preparation and write are refused without replay or replacement",
+      "passed": true
+    },
+    {
+      "name": "Late read reconciles against the same runtime",
+      "passed": true
+    },
+    {
+      "name": "Write, job and PTY admission remain unsettled after deadline",
+      "passed": true
+    },
+    {
+      "name": "Health evidence contains identities without private payloads",
+      "passed": true
+    },
+    {
+      "name": "Cancellation request does not invent a process exit",
+      "passed": true
+    },
+    {
+      "name": "Durable write resolves on its actual receipt while others remain unknown",
+      "passed": true
+    },
+    {
+      "name": "Late PTY admission preserves its session identity",
+      "passed": true
+    },
+    {
+      "name": "Actual output and exit finish the tracked job",
+      "passed": true
+    },
+    {
+      "name": "All delayed receipts recover without killing the shared frame",
+      "passed": true
+    },
+    {
+      "name": "Late outcomes are observable and no uncaught errors occurred",
+      "passed": true
+    }
+  ],
+  "elapsedMs": 725.3000000119209,
+  "errors": [],
+  "requestMethods": [
+    "fs.list",
+    "fs.write",
+    "terminal.open",
+    "job.start",
+    "job.cancel"
+  ],
+  "events": [
+    {
+      "runtimeId": "browser-linux:health-contract-qa:synthetic-image:synthetic-boot",
+      "projectId": "health-contract-qa",
+      "type": "runtime.health",
+      "health": "unresponsive",
+      "code": "RPC_TIMEOUT",
+      "outcome": "no-receipt",
+      "request": {
+        "id": "9ecd4001-a6e1-4c30-8332-9add179c09f8",
+        "method": "fs.list",
+        "path": ""
+      },
+      "unresolvedRequests": [
+        {
+          "id": "9ecd4001-a6e1-4c30-8332-9add179c09f8",
+          "method": "fs.list",
+          "path": ""
+        }
+      ]
+    },
+    {
+      "runtimeId": "browser-linux:health-contract-qa:synthetic-image:synthetic-boot",
+      "projectId": "health-contract-qa",
+      "type": "runtime.reconciled",
+      "health": "responsive",
+      "settled": [
+        {
+          "id": "9ecd4001-a6e1-4c30-8332-9add179c09f8",
+          "method": "fs.list",
+          "path": "",
+          "ok": true,
+          "outcome": "acknowledged"
+        }
+      ],
+      "unresolvedRequests": []
+    },
+    {
+      "runtimeId": "browser-linux:health-contract-qa:synthetic-image:synthetic-boot",
+      "projectId": "health-contract-qa",
+      "type": "runtime.health",
+      "health": "responsive",
+      "unresolvedRequests": []
+    },
+    {
+      "runtimeId": "browser-linux:health-contract-qa:synthetic-image:synthetic-boot",
+      "projectId": "health-contract-qa",
+      "type": "runtime.health",
+      "health": "unresponsive",
+      "code": "RPC_OUTCOME_UNKNOWN",
+      "outcome": "unknown",
+      "request": {
+        "id": "6db90399-b542-4d25-8884-9cbb77d757a6",
+        "method": "fs.write",
+        "path": "receipt.txt"
+      },
+      "unresolvedRequests": [
+        {
+          "id": "6db90399-b542-4d25-8884-9cbb77d757a6",
+          "method": "fs.write",
+          "path": "receipt.txt"
+        }
+      ]
+    },
+    {
+      "runtimeId": "browser-linux:health-contract-qa:synthetic-image:synthetic-boot",
+      "projectId": "health-contract-qa",
+      "type": "runtime.health",
+      "health": "unresponsive",
+      "code": "RPC_OUTCOME_UNKNOWN",
+      "outcome": "unknown",
+      "request": {
+        "id": "ffe6f657-492f-4887-aaa6-c5c30517601e",
+        "method": "terminal.open",
+        "terminalId": "f330bc4a-e7f3-424c-8a72-30cbf6ab1c49"
+      },
+      "unresolvedRequests": [
+        {
+          "id": "6db90399-b542-4d25-8884-9cbb77d757a6",
+          "method": "fs.write",
+          "path": "receipt.txt"
+        },
+        {
+          "id": "ffe6f657-492f-4887-aaa6-c5c30517601e",
+          "method": "terminal.open",
+          "terminalId": "f330bc4a-e7f3-424c-8a72-30cbf6ab1c49"
+        }
+      ]
+    },
+    {
+      "runtimeId": "browser-linux:health-contract-qa:synthetic-image:synthetic-boot",
+      "projectId": "health-contract-qa",
+      "type": "runtime.health",
+      "health": "unresponsive",
+      "code": "RPC_OUTCOME_UNKNOWN",
+      "outcome": "unknown",
+      "request": {
+        "id": "48f3a4f6-ffeb-4382-99ea-5ed4b3e61987",
+        "method": "job.start",
+        "jobId": "controlled-job"
+      },
+      "unresolvedRequests": [
+        {
+          "id": "6db90399-b542-4d25-8884-9cbb77d757a6",
+          "method": "fs.write",
+          "path": "receipt.txt"
+        },
+        {
+          "id": "ffe6f657-492f-4887-aaa6-c5c30517601e",
+          "method": "terminal.open",
+          "terminalId": "f330bc4a-e7f3-424c-8a72-30cbf6ab1c49"
+        },
+        {
+          "id": "48f3a4f6-ffeb-4382-99ea-5ed4b3e61987",
+          "method": "job.start",
+          "jobId": "controlled-job"
+        }
+      ]
+    },
+    {
+      "runtimeId": "browser-linux:health-contract-qa:synthetic-image:synthetic-boot",
+      "projectId": "health-contract-qa",
+      "type": "runtime.reconciled",
+      "health": "responsive",
+      "settled": [
+        {
+          "id": "6db90399-b542-4d25-8884-9cbb77d757a6",
+          "method": "fs.write",
+          "path": "receipt.txt",
+          "ok": true,
+          "outcome": "acknowledged"
+        },
+        {
+          "id": "ffe6f657-492f-4887-aaa6-c5c30517601e",
+          "method": "terminal.open",
+          "terminalId": "f330bc4a-e7f3-424c-8a72-30cbf6ab1c49",
+          "ok": true,
+          "outcome": "acknowledged"
+        },
+        {
+          "id": "48f3a4f6-ffeb-4382-99ea-5ed4b3e61987",
+          "method": "job.start",
+          "jobId": "controlled-job",
+          "ok": true,
+          "outcome": "acknowledged"
+        }
+      ],
+      "unresolvedRequests": []
+    },
+    {
+      "runtimeId": "browser-linux:health-contract-qa:synthetic-image:synthetic-boot",
+      "projectId": "health-contract-qa",
+      "type": "runtime.health",
+      "health": "responsive",
+      "unresolvedRequests": []
+    }
+  ]
+}

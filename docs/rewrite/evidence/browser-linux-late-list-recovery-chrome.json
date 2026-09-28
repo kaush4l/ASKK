@@ -1,0 +1,197 @@
+{
+  "preparedAt": "2026-09-28T23:18:18.213Z",
+  "runtime": {
+    "runtimeId": "browser-linux:cua-prepared-template-proof:c2w-node24-8f08d6cef80797be:65fc8dc2-24ad-4ffd-b428-e5ab5231d729",
+    "root": "/workspaces/cua-prepared-template-proof",
+    "imageId": "c2w-node24-8f08d6cef80797be",
+    "bootId": "65fc8dc2-24ad-4ffd-b428-e5ab5231d729",
+    "kind": "browser-linux",
+    "state": "ready",
+    "ready": true,
+    "toolchain": {
+      "kind": "node",
+      "version": "24.21.0",
+      "packageManager": "npm",
+      "preparedTemplate": {
+        "id": "next-default-72013276c996cd10",
+        "dependencies": {
+          "next": "16.3.6",
+          "react": "19.3.0",
+          "react-dom": "19.3.0"
+        },
+        "lockSha256": "72013276c996cd104fc0f6c7883e74ec9073e0385ea61412f13b03eba62006f0",
+        "prepareSha256": "01f761ac1f0350adc4aa1102c0fc0f58d01b3f7f45aeda981d03389ccf3d573c",
+        "npmGuardSha256": "2ce131db3a3a9c1349bf3808ed1645b0b7f9bdf427a14c5e9107c9337884b9d5",
+        "prepareCommand": [
+          "node",
+          "/opt/harness/prepare-template.js"
+        ],
+        "detachCommand": [
+          "node",
+          "/opt/harness/prepare-template.js",
+          "--detach"
+        ],
+        "npmTarballCacheIncluded": false
+      }
+    },
+    "filesystem": true,
+    "shell": true,
+    "pty": true,
+    "persistentProcesses": true,
+    "persistence": "idbfs",
+    "capabilities": [
+      "files",
+      "shell",
+      "pty",
+      "node",
+      "npm",
+      "static-export",
+      "browser-network",
+      "prepared-template"
+    ],
+    "network": "browser-fetch-cors",
+    "preview": [
+      "next-static-export"
+    ],
+    "requiresCrossOriginIsolation": true
+  },
+  "scope": "main Node process and webpack compilers use --max-opt=0; separate static/export/tracing workers use default tiers; Wasm and RegExp code generation remain enabled",
+  "warmState": "retained guest after failed default build, cacheABBA and failed CPUprofile; generated.next/out cleared, compilecache disabled; no CPUprofiler",
+  "nativePreflight": {
+    "path": ".cache/browser-linux/max-opt-main-native-receipt.json",
+    "passed": true,
+    "nextMilliseconds": 2058.892228,
+    "nodeSha256": "0f8949d1028f6d61506b2d5bc57e7e6fe893d7b1997509b7847294fc9c616584",
+    "mainV8Tag": 2292197379,
+    "childDefaultV8Tag": 2521476671
+  },
+  "colimaStoppedAt": "2026-09-28T23:17:31Z",
+  "companions": "7717/7718 stopped; no relay authorized",
+  "deadlineMilliseconds": 900000,
+  "preloadSource": "const before=process.execArgv.slice();const tagBefore=require(\"node:v8\").cachedDataVersionTag();const i=process.execArgv.indexOf(\"--max-opt=0\");if(i>=0)process.execArgv.splice(i,1);console.error(\"ASKK_PROFILE_SCOPE \"+JSON.stringify({pid:process.pid,role:i>=0?\"main-interpreter-tier\":\"child-default-tiers\",before,after:process.execArgv,tagBefore,tagAfter:require(\"node:v8\").cachedDataVersionTag()}));",
+  "preparationError": "Error: fs.list timed out",
+  "healthCheck": {
+    "at": "2026-09-28T23:21:04.531Z",
+    "error": "Error: runtime.metrics timed out"
+  },
+  "hostSourceInventory": {
+    "at": "2026-09-28T23:22:15.663Z",
+    "files": [
+      {
+        "path": "assets/proof.bin",
+        "size": 5,
+        "mode": 33188
+      },
+      {
+        "path": "next.config.mjs",
+        "size": 105,
+        "mode": 33188
+      },
+      {
+        "path": "package-lock.json",
+        "size": 31690,
+        "mode": 33188
+      },
+      {
+        "path": "package.json",
+        "size": 130,
+        "mode": 33188
+      },
+      {
+        "path": "pages/index.js",
+        "size": 125,
+        "mode": 33188
+      },
+      {
+        "path": "persisted.txt",
+        "size": 26,
+        "mode": 33188
+      }
+    ]
+  },
+  "lateResponses": [
+    {
+      "at": "2026-09-28T23:22:34.400Z",
+      "data": {
+        "id": "79d57b9e-b9c7-4f0b-9adc-52c973fc111d",
+        "ok": true,
+        "result": [
+          {
+            "path": "assets/proof.bin",
+            "kind": "file",
+            "size": 5,
+            "editable": true,
+            "revision": "b0874e92cddcf0a9556f1b2e0764ddafd5dfbd51e4a35f62ab8450244eac69b5"
+          },
+          {
+            "path": "next.config.mjs",
+            "kind": "file",
+            "size": 105,
+            "editable": true,
+            "revision": "a2a2ec4d0296bab449cd789f3d3aba45ea7492d390777c1f4a0e268d9b675fc6"
+          },
+          {
+            "path": "package-lock.json",
+            "kind": "file",
+            "size": 31690,
+            "editable": true,
+            "revision": "72013276c996cd104fc0f6c7883e74ec9073e0385ea61412f13b03eba62006f0"
+          },
+          {
+            "path": "package.json",
+            "kind": "file",
+            "size": 130,
+            "editable": true,
+            "revision": "d1d4b25a56d04dae202f206536be2dbcff3bded86f703d76f5d384689776f57a"
+          },
+          {
+            "path": "pages/index.js",
+            "kind": "file",
+            "size": 125,
+            "editable": true,
+            "revision": "f9b45f61f4d44190cad0dba01f260cc1f4ac7d2bae2583c45d7702ae941bfe9b"
+          },
+          {
+            "path": "persisted.txt",
+            "kind": "file",
+            "size": 26,
+            "editable": true,
+            "revision": "63656286c99aeff811c289d6277cba1f23de3dc528e1d1ae8edeb7f7d03a8e3f"
+          }
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T23:22:41.520Z",
+      "data": {
+        "id": "07a1f399-7a87-4661-8116-464aa50a52ba",
+        "ok": true,
+        "result": {
+          "cpu": {
+            "user": 380478792,
+            "system": 443261675
+          },
+          "uptime": 3880.09546496,
+          "pollCount": 2773,
+          "idlePollMs": 20,
+          "jobs": []
+        }
+      }
+    },
+    {
+      "at": "2026-09-28T23:25:04.311Z",
+      "data": {
+        "id": "27297175-b50a-46e1-9620-7c519c6629a2",
+        "ok": true,
+        "result": true
+      }
+    }
+  ],
+  "outcome": "Source-list succeeded late at23:22:34.400Z (~256s), followed by queued metrics success at23:22:41.520Z. Read-only dispatch latency, not a proven permanent deadlock. Manual shutdown later completed normally in7.4s; no prep mutation/build was admitted.",
+  "recordedAt": "2026-09-28T23:22:53.883Z",
+  "manualRecovery": {
+    "requestedAt": "2026-09-28T23:24:56.889Z",
+    "reason": "Read-only source listing blocked serial dispatch; both60s list and metrics requests timed out; no preparation mutation or build admission occurred.",
+    "completedAt": "2026-09-28T23:25:04.311Z"
+  }
+}

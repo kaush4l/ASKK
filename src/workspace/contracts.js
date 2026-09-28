@@ -24,6 +24,10 @@ export const WORKSPACE_CONTRACT_VERSION = 1
  * @typedef {Object} ExecutionPort
  * @property {function(Object=):Promise<Object>} prepare Resolves only when usable; rejects failed boot/pairing.
  * @property {function():Object} describeCapabilities Current runtimeId, root, toolchain and explicit capabilities.
+ * Browser Linux also publishes independent lifecycle `state`, responsiveness
+ * `health`, and sanitized `unresolvedRequests`; `ready` is false while receipts
+ * are delayed. Existing receipts still validate against their original binding.
+ * A response deadline does not authorize replay, restart, or an invented exit.
  * @property {function(Object):Promise<Object>} startJob Receives id, program, args, cwd, signal, onOutput; resolves an exit receipt.
  * @property {function(string):Promise<*>} cancelJob
  * @property {function():Promise<*>|void} dispose

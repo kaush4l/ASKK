@@ -1053,3 +1053,220 @@ test('a native destination disconnect during final transfer saving is observed b
   expect(files.backend).toBe(browser)
   expect(await files.store.get('settings', 'workspace-location:default')).toEqual(previous)
 })
+
+function healthFixturePort() {
+  const port = new ControlledExecution('browser', source)
+  port.descriptor.health = 'responsive'
+  let listener
+  const createExecution = async (_target, options) => { listener = options.onEvent; return port }
+  const emit = event => listener(event)
+  const delayed = (outstanding = [{ id: 'slow-read', method: 'fs.list' }]) => { port.descriptor.health = 'unresponsive'; emit({ type: 'runtime.health', health: 'unresponsive', unresolvedRequests: outstanding }) }
+  const reconciled = () => { port.descriptor.health = 'responsive'; emit({ type: 'runtime.reconciled', settled: [] }); emit({ type: 'runtime.health', health: 'responsive', outstanding: [] }) }
+  return { port, createExecution, emit, delayed, reconciled }
+}
+
+function snapshotWhen(controller, predicate) {
+  if (predicate(controller.getSnapshot())) return Promise.resolve(controller.getSnapshot())
+  return new Promise(resolve => { const off = controller.subscribe(() => { const state = controller.getSnapshot(); if (predicate(state)) { off(); resolve(state) } }) })
+}
+
+test('delayed runtime pauses new work, preserves terminals and invalidates verified evidence once', async () => {
+  const runtime = healthFixturePort()
+  const { controller, hub } = await startedFixture({ createExecution: runtime.createExecution, inspectArtifact: async artifact => ({ ok: true, artifactId: artifact.id, revision: artifact.revision, buildId: artifact.buildId }) })
+  await controller.buildPreview(); await controller.checkArtifact({ assertions })
+  const terminal = await controller.openTerminal({})
+  const binding = controller.getSnapshot().runtime.binding
+  const context = { context: { binding } }
+  const revision = hub.externalOps['workspace.environment']({}, context).revision
+  runtime.delayed()
+  runtime.delayed([{ id: 'slow-write', method: 'fs.write', path: 'app/page.jsx' }])
+  runtime.emit({ type: 'runtime.progress', phase: 'Ready' })
+  const state = controller.getSnapshot()
+  expect(state.runtime).toMatchObject({ status: 'unresponsive', phase: 'Response delayed', outstanding: [{ id: 'slow-write', method: 'fs.write', path: 'app/page.jsx' }] })
+  expect(state.runtime.detail).toContain('outcomes are unknown')
+  expect(state.artifacts.at(-1)).toMatchObject({ stale: true, verified: false })
+  for (const operation of [() => controller.saveFile({ path: 'app/page.jsx', content: 'not admitted' }), () => controller.runCommand('not admitted'), () => controller.startRuntime(), () => controller.openTerminal({}), () => controller.setExecutionTarget('local', { transfer: true })]) await expect(operation()).rejects.toMatchObject({ code: 'RUNTIME_UNRESPONSIVE' })
+  expect(() => controller.readFile('app/page.jsx')).toThrow('outcomes are unknown')
+  expect(() => hub.externalOps['workspace.list']({}, context)).toThrow('outcomes are unknown')
+  expect(runtime.port.jobs).toHaveLength(1)
+  await controller.closeTerminal(terminal.id)
+  expect(runtime.port.closedTerminals).toEqual([terminal.id])
+  const ready = snapshotWhen(controller, state => state.runtime.status === 'ready')
+  runtime.reconciled(); await ready
+  expect(hub.externalOps['workspace.environment']({}, context).revision).toBe(revision + 1)
+  expect(controller.getSnapshot().artifacts.at(-1)).toMatchObject({ stale: true, verified: false })
+})
+
+test('late job completion waits for responses and preserves controls and terminal reservations', async () => {
+  const runtime = healthFixturePort()
+  const { controller } = await fixture({ createExecution: runtime.createExecution })
+  await controller.startRuntime()
+  const terminal = await controller.openTerminal({})
+  const entered = deferred(), finished = deferred()
+  runtime.port.onJob = request => { entered.resolve(request); return finished.promise }
+  const command = controller.runCommand('delayed command')
+  const job = await entered.promise
+  const controls = []
+  runtime.port.cancelJob = async id => { controls.push(['cancel', id]) }
+  runtime.port.resizeTerminal = async (id, cols, rows) => { controls.push(['resize', id, cols, rows]) }
+  runtime.port.terminalInput = async (id, data) => { controls.push(['input', id, data]) }
+  runtime.delayed([{ id: 'unrelated-read', method: 'fs.read', path: 'package.json' }])
+  await controller.resizeTerminal(terminal.id, 100, 30)
+  expect(() => controller.terminalInput(terminal.id, 'echo unexpected\n')).toThrow('outcomes are unknown')
+  await controller.terminalInput(terminal.id, '\u0003')
+  await controller.stopCommand(job.id)
+  finished.resolve({ code: 0, cancelled: false })
+  await Promise.resolve(); await Promise.resolve()
+  expect(controller.getSnapshot().commands.at(-1).status).toBe('running')
+  const refresh = pauseOnce(runtime.port, 'list')
+  const ready = snapshotWhen(controller, state => state.runtime.status === 'ready')
+  runtime.reconciled()
+  await refresh.entered
+  expect(controller.getSnapshot().runtime.status).toBe('unresponsive')
+  refresh.release(); await ready
+  expect((await command).code).toBe(0)
+  expect(controller.getSnapshot().commands.at(-1).status).toBe('done')
+  expect(controls).toEqual([['resize', terminal.id, 100, 30], ['input', terminal.id, '\u0003'], ['cancel', job.id]])
+  await expect(controller.setExecutionTarget('local', { transfer: true })).rejects.toThrow('Close terminal')
+  await controller.closeTerminal(terminal.id)
+})
+
+test('file watcher has one in-flight read and suspends polling throughout delayed health', async () => {
+  const original = globalThis.setInterval; let tick
+  globalThis.setInterval = callback => { tick = callback; return 0 }
+  cleanups.push(() => { globalThis.setInterval = original })
+  const runtime = healthFixturePort()
+  const { controller } = await startedFixture({ createExecution: runtime.createExecution })
+  await controller.startRuntime()
+  const read = deferred(); const entered = deferred(); let calls = 0
+  const list = runtime.port.list.bind(runtime.port)
+  runtime.port.list = async (...args) => { calls++; entered.resolve(); return read.promise }
+  const first = tick(); await entered.promise
+  await tick(); await tick(); expect(calls).toBe(1)
+  runtime.delayed()
+  await tick(); expect(calls).toBe(1)
+  read.resolve(await list()); await first
+  await tick(); expect(calls).toBe(1)
+  expect(controller.getSnapshot().runtime.status).toBe('unresponsive')
+  runtime.port.list = list
+  const ready = snapshotWhen(controller, state => state.runtime.status === 'ready')
+  runtime.reconciled(); await ready
+  await tick()
+  expect(controller.getSnapshot().runtime.status).toBe('ready')
+})
+
+test('initial mount timeout remains delayed and requires explicit same-port setup after reconciliation', async () => {
+  const runtime = healthFixturePort(); let starts = 0; let disposed = 0
+  runtime.port.dispose = () => { disposed++ }
+  const { controller, files } = await fixture({ createExecution: async (...args) => { starts++; return runtime.createExecution(...args) } })
+  const list = runtime.port.list.bind(runtime.port)
+  const entered = deferred(), reply = deferred()
+  runtime.port.list = async () => { entered.resolve(); return reply.promise }
+  const setup = controller.startRuntime()
+  const failure = setup.catch(error => error)
+  await entered.promise; runtime.delayed(); reply.reject(Object.assign(new Error('fs.list timed out'), { code: 'RPC_TIMEOUT' }))
+  expect((await failure).code).toBe('RPC_TIMEOUT')
+  expect(controller.getSnapshot().runtime.status).toBe('unresponsive')
+  expect(await files.store.get('settings', 'workspace-location:default')).toBeUndefined()
+  runtime.port.list = list
+  runtime.reconciled(); await Promise.resolve(); await Promise.resolve()
+  expect(controller.getSnapshot().runtime.status).toBe('unresponsive')
+  expect(starts).toBe(1); expect(disposed).toBe(0)
+  expect(await controller.startRuntime()).toBe(runtime.port)
+  expect(controller.getSnapshot().runtime.status).toBe('ready')
+  expect(starts).toBe(2); expect(disposed).toBe(0)
+})
+
+test('reconciliation cannot restore Ready after the binding changes during its refresh', async () => {
+  const runtime = healthFixturePort()
+  const { controller } = await fixture({ createExecution: runtime.createExecution })
+  await controller.startRuntime(); runtime.delayed()
+  const refresh = pauseOnce(runtime.port, 'list')
+  runtime.reconciled(); await refresh.entered
+  runtime.port.descriptor.runtimeId = 'browser:replacement-session'
+  const rejected = snapshotWhen(controller, state => state.runtime.detail.includes('binding runtimeId changed'))
+  refresh.release(); await rejected
+  expect(controller.getSnapshot().runtime.status).toBe('unresponsive')
+  await expect(controller.startRuntime()).rejects.toThrow('outcomes are unknown')
+})
+
+test('stop observes rejected asynchronous environment disposal', async () => {
+  const runtime = healthFixturePort(); const disposal = deferred()
+  runtime.port.dispose = () => disposal.promise
+  const { controller } = await fixture({ createExecution: runtime.createExecution })
+  await controller.startRuntime(); controller.stop(); controllers.delete(controller)
+  disposal.reject(new Error('checkpoint outcome unknown'))
+  await Promise.resolve(); await Promise.resolve()
+  expect(controller.getSnapshot().error).toContain('Environment shutdown could not be confirmed: checkpoint outcome unknown')
+})
+
+test('a newer reconciled health cycle queues a fresh refresh after the obsolete one settles', async () => {
+  const runtime = healthFixturePort()
+  const { controller } = await fixture({ createExecution: runtime.createExecution })
+  await controller.startRuntime(); runtime.delayed()
+  const refresh = pauseOnce(runtime.port, 'list', { after: true })
+  runtime.reconciled(); await refresh.entered
+  runtime.delayed([{ id: 'second-list', method: 'fs.list' }])
+  runtime.port.externalWrite('new.txt', 'only the second refresh sees this')
+  runtime.reconciled()
+  expect(controller.getSnapshot().runtime.status).toBe('unresponsive')
+  const ready = snapshotWhen(controller, state => state.runtime.status === 'ready')
+  refresh.release(); await ready
+  expect(controller.getSnapshot().files.some(file => file.path === 'new.txt')).toBe(true)
+})
+
+test('failed recovery read does not automatically repeat the same reconciliation cycle', async () => {
+  const runtime = healthFixturePort()
+  const { controller } = await fixture({ createExecution: runtime.createExecution })
+  await controller.startRuntime(); runtime.delayed()
+  let reads = 0
+  runtime.port.list = async () => { reads++; throw new Error('controlled refresh failure') }
+  const failed = snapshotWhen(controller, state => state.runtime.detail.includes('controlled refresh failure'))
+  runtime.reconciled(); await failed; await Promise.resolve(); await Promise.resolve()
+  expect(reads).toBe(1)
+  expect(controller.getSnapshot().runtime.status).toBe('unresponsive')
+})
+
+test('a post-exit checkpoint failure preserves the actual exit without accepting its build', async () => {
+  const { controller, files } = await fixture()
+  const prior = await controller.buildPreview()
+  files.checkpoint = async () => { throw new Error('checkpoint timed out') }
+  await expect(controller.buildPreview()).rejects.toThrow('checkpoint timed out')
+  expect(controller.getSnapshot().commands.at(-1)).toMatchObject({ status: 'failed', exitCode: 0, cancelled: false, signal: null, executionEnded: true, stage: 'reconciliation-failed' })
+  expect(controller.getSnapshot().commands.at(-1).error).toBe('Command exited with code 0; workspace reconciliation failed: checkpoint timed out')
+  expect(controller.getSnapshot().artifacts).toHaveLength(1)
+  expect(controller.getSnapshot().artifacts[0].id).toBe(prior.id)
+})
+
+test('an actual crash after delay releases stale health for explicit replacement setup', async () => {
+  let port = new ControlledExecution('browser', source), emit
+  port.descriptor.health = 'responsive'
+  const { controller } = await fixture({ createExecution: async (_target, options) => { emit = options.onEvent; return port } })
+  await controller.startRuntime()
+  port.descriptor.health = 'unresponsive'
+  emit({ type: 'runtime.health', health: 'unresponsive', unresolvedRequests: [{ id: 'delayed-before-crash', method: 'fs.list' }] })
+  port.descriptor.health = 'responsive' // The crashed adapter has released its pending request journal.
+  emit({ type: 'runtime.error', error: 'Actual guest failure after delay' })
+  expect(controller.getSnapshot().runtime.status).toBe('failed')
+  port = new ControlledExecution('browser', source)
+  port.descriptor.health = 'responsive'; port.descriptor.runtimeId = 'browser:replacement-after-crash'
+  await controller.startRuntime()
+  expect(controller.getSnapshot().runtime).toMatchObject({ status: 'ready', binding: { runtimeId: 'browser:replacement-after-crash' } })
+})
+
+test('stopping a task observes late cancellation rejection without inventing a cancelled exit', async () => {
+  const { controller, browser } = await fixture()
+  const admitted = deferred(), finished = deferred(), cancellation = deferred()
+  browser.onJob = request => { admitted.resolve(request); return finished.promise }
+  browser.cancelJob = () => cancellation.promise
+  const command = controller.runCommand('actual completion still pending', { runId: 'controlled-task' })
+  await admitted.promise
+  controller.stopRun()
+  cancellation.reject(new Error('Cancellation receipt unavailable'))
+  await Promise.resolve(); await Promise.resolve()
+  expect(controller.getSnapshot().error).toBe('Cancellation receipt unavailable')
+  expect(controller.getSnapshot().commands.at(-1).status).toBe('running')
+  finished.resolve({ code: 0, cancelled: false })
+  await command
+  expect(controller.getSnapshot().commands.at(-1)).toMatchObject({ status: 'done', exitCode: 0, cancelled: false })
+})

@@ -1,0 +1,282 @@
+{
+  "version": 1,
+  "startedAt": "2026-09-28T23:37:47.748Z",
+  "completedAt": "2026-09-28T23:41:52.157Z",
+  "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36",
+  "origin": "http://127.0.0.1:5209",
+  "checks": [
+    {
+      "name": "persistent delayed notice and disabled new goal/build",
+      "passed": true
+    },
+    {
+      "name": "health changes preserve mounted terminal and editor",
+      "passed": true
+    },
+    {
+      "name": "unsaved file and goal draft survive delayed Enter and recovery",
+      "passed": true
+    },
+    {
+      "name": "Explicit synthetic DOM Control+C reaches real xterm input callback",
+      "passed": true,
+      "inputMethod": "KeyboardEvent keydown ctrlKey:true keyCode:67",
+      "observedData": "\u0003"
+    },
+    {
+      "name": "rejected terminal promise displayed without unhandled rejection",
+      "passed": true
+    },
+    {
+      "name": "recovery clears notice and retains terminal output",
+      "passed": true
+    },
+    {
+      "name": "disabled command submit via Enter preserves text and never runs",
+      "passed": true
+    }
+  ],
+  "delayed": {
+    "sameTerminal": true,
+    "sameEditor": true,
+    "draft": "export const draft = \"UNSAVED retained\";",
+    "goal": "Preserve this goal draft",
+    "buildDisabled": true,
+    "sendDisabled": true,
+    "notice": "Environment response delayed. Outstanding actions may still complete. New work is paused; processes and terminals are preserved.",
+    "toast": "Synthetic input rejected: environment response delayed",
+    "fixture": {
+      "state": {
+        "ready": true,
+        "storageDurable": true,
+        "project": {
+          "id": "synthetic-health-fixture",
+          "name": "Delayed response component QA"
+        },
+        "files": [
+          {
+            "path": "draft.js",
+            "rev": 1,
+            "size": 30
+          }
+        ],
+        "messages": [],
+        "commands": [],
+        "artifacts": [],
+        "agents": [],
+        "plans": [],
+        "approvals": [],
+        "activity": [],
+        "runtime": {
+          "target": "browser",
+          "status": "unresponsive",
+          "phase": "Response delayed",
+          "capabilities": [
+            "files",
+            "shell",
+            "pty"
+          ],
+          "health": "unresponsive",
+          "detail": "The environment is taking longer to respond. Outstanding operations may still complete; their outcomes are unknown. Existing processes and terminals are preserved. New work is paused and no requests will be replayed."
+        },
+        "companion": {
+          "status": "disconnected"
+        },
+        "model": {
+          "id": "fixture-model",
+          "status": "configured"
+        },
+        "goal": ""
+      },
+      "calls": [
+        {
+          "method": "openTerminal"
+        },
+        {
+          "method": "resizeTerminal",
+          "id": "controlled-terminal",
+          "cols": 113,
+          "rows": 10
+        },
+        {
+          "method": "resizeTerminal",
+          "id": "controlled-terminal",
+          "cols": 113,
+          "rows": 10
+        },
+        {
+          "method": "terminalInput",
+          "id": "controlled-terminal",
+          "data": "x"
+        }
+      ],
+      "terminalSubscriptions": 1,
+      "errors": []
+    }
+  },
+  "recovered": {
+    "sameTerminal": true,
+    "sameEditor": true,
+    "noticeGone": true,
+    "draft": "export const draft = \"UNSAVED retained\";",
+    "terminalText": "Retained terminal output         ",
+    "fixture": {
+      "state": {
+        "ready": true,
+        "storageDurable": true,
+        "project": {
+          "id": "synthetic-health-fixture",
+          "name": "Delayed response component QA"
+        },
+        "files": [
+          {
+            "path": "draft.js",
+            "rev": 1,
+            "size": 30
+          }
+        ],
+        "messages": [],
+        "commands": [],
+        "artifacts": [],
+        "agents": [],
+        "plans": [],
+        "approvals": [],
+        "activity": [],
+        "runtime": {
+          "target": "browser",
+          "status": "ready",
+          "phase": "Ready",
+          "capabilities": [
+            "files",
+            "shell",
+            "pty"
+          ],
+          "health": "responsive",
+          "detail": ""
+        },
+        "companion": {
+          "status": "disconnected"
+        },
+        "model": {
+          "id": "fixture-model",
+          "status": "configured"
+        },
+        "goal": ""
+      },
+      "calls": [
+        {
+          "method": "openTerminal"
+        },
+        {
+          "method": "resizeTerminal",
+          "id": "controlled-terminal",
+          "cols": 113,
+          "rows": 10
+        },
+        {
+          "method": "resizeTerminal",
+          "id": "controlled-terminal",
+          "cols": 113,
+          "rows": 10
+        },
+        {
+          "method": "terminalInput",
+          "id": "controlled-terminal",
+          "data": "x"
+        }
+      ],
+      "terminalSubscriptions": 1,
+      "errors": []
+    }
+  },
+  "final": {
+    "state": {
+      "ready": true,
+      "storageDurable": true,
+      "project": {
+        "id": "synthetic-health-fixture",
+        "name": "Delayed response component QA"
+      },
+      "files": [
+        {
+          "path": "draft.js",
+          "rev": 1,
+          "size": 30
+        }
+      ],
+      "messages": [],
+      "commands": [],
+      "artifacts": [],
+      "agents": [],
+      "plans": [],
+      "approvals": [],
+      "activity": [],
+      "runtime": {
+        "target": "browser",
+        "status": "unresponsive",
+        "phase": "Response delayed",
+        "capabilities": [
+          "files",
+          "shell",
+          "pty"
+        ],
+        "health": "unresponsive",
+        "detail": "The environment is taking longer to respond. Outstanding operations may still complete; their outcomes are unknown. Existing processes and terminals are preserved. New work is paused and no requests will be replayed."
+      },
+      "companion": {
+        "status": "disconnected"
+      },
+      "model": {
+        "id": "fixture-model",
+        "status": "configured"
+      },
+      "goal": ""
+    },
+    "calls": [
+      {
+        "method": "openTerminal"
+      },
+      {
+        "method": "resizeTerminal",
+        "id": "controlled-terminal",
+        "cols": 113,
+        "rows": 10
+      },
+      {
+        "method": "resizeTerminal",
+        "id": "controlled-terminal",
+        "cols": 113,
+        "rows": 10
+      },
+      {
+        "method": "terminalInput",
+        "id": "controlled-terminal",
+        "data": "x"
+      }
+    ],
+    "terminalSubscriptions": 1,
+    "errors": []
+  },
+  "limitations": [
+    "Real production Workbench, Editor, Modal, Terminal and xterm components; synthetic controller and backend inputs",
+    "Controller admission/reconciliation separately covered by controlled unit tests",
+    "No guest, model, shell command, runtime assets or shared project data used",
+    "No viewport override; other agent runtime timing may overlap; not a performance benchmark",
+    "Native Control+C was not verified; the terminal processing check used an explicitly synthetic DOM keyboard event."
+  ],
+  "nativeControlC": {
+    "verified": false,
+    "reason": "Initial locator press produced no Control+C receipt; later locator attempts timed out on the terminal textarea. Raw CDP input is unsupported by the browser connector. No native-keyboard claim."
+  },
+  "cleanup": {
+    "ownedTabClosed": true,
+    "tabClosedAt": "2026-09-28T23:41:52.169Z",
+    "fixtureServerStopped": true,
+    "viewportOverrideUsed": false
+  },
+  "sourceHashes": {
+    "src/workbench/Workbench.jsx": "0c70814bf3a4b5057ae6738d3e9a2e8032623be976800797a13e1250994b2f4b",
+    "src/workbench/Terminal.jsx": "d12ef4a35975c1da9c54d1445b3f80059080ad0c79e7e14a8c4549849bafdc75",
+    "src/workbench/Editor.jsx": "d0bb083d4bebcccb9c0124b2db1a0f577c746c0af725a892c654afdaae57f75b"
+  }
+}
