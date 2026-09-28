@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "at": "2026-09-28T22:46:33.444Z",
+  "browser": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36",
+  "origin": "https://kaush4l.github.io/ASKK/",
+  "sourceCommit": "e2aef34",
+  "deploymentCommit": "da12119",
+  "artifactHash": "b5b8c267a143314aac6fb02390db21aa40f3e3bb9d9e194b70f7cbc9e5b8d758",
+  "totalBytes": 802890421,
+  "fileCount": 134,
+  "indexSha256": "44fd7f2dd80b7d60e4e7fdbdfa144ddd22e48062ff3bd038e2f4455861507753",
+  "normalReloads": 1,
+  "cacheCleared": false,
+  "storageCleared": false,
+  "isolation": true,
+  "controller": "https://kaush4l.github.io/ASKK/coi-serviceworker.js",
+  "pageResources": [
+    "https://kaush4l.github.io/ASKK/_next/static/chunks/app/page-b14726aabdd041af.js"
+  ],
+  "draftBefore": "Browser Linux checkpoint — keep this draft through startup.",
+  "draftAfter": "Browser Linux checkpoint — keep this draft through startup.",
+  "agentCount": 6,
+  "modelSelectionRetained": true,
+  "databases": [
+    {
+      "name": "askk-agents-v2",
+      "version": 2
+    },
+    {
+      "name": "askk-workspace",
+      "version": 2
+    }
+  ],
+  "runtime": {
+    "target": "Browser Linux",
+    "state": "Not started",
+    "network": "Browser Fetch",
+    "relayDisabled": true,
+    "notice": "Browser Linux is experimental. App builds are not ready for reliable use yet. Startup can take several minutes."
+  },
+  "limitations": [
+    "No guest boot, inference, or application build attempted during this update smoke.",
+    "No fresh-origin, Safari, VoiceOver, or one-shot completion claim.",
+    "Model configured is retained selection, not verified connectivity."
+  ]
+}
