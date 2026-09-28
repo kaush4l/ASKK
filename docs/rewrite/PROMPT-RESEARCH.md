@@ -1,0 +1,29 @@
+# Prompt and agent-loop decisions
+
+Reviewed 2026-09-28 against the primary sources linked below. These are design comparisons, not benchmark results or evidence that ASKK matches another product’s reliability.
+
+| Reference | Observed design | ASKK decision |
+| --- | --- | --- |
+| [ElizaOS runtime](https://docs.elizaos.ai/runtime/core) | Separates context providers, actions, evaluators, services, and lifecycle events. Context composition gathers provider state before action execution and evaluation. | Keep context collection, tools, completion checks, and observable state as separate contracts. A tool result can update the workbench without letting generated content grant itself verification. |
+| [Agent Zero profiles](https://github.com/agent0ai/agent-zero/blob/main/agents/AGENTS.md) | Profiles own configuration and optional local prompts/tools/extensions; narrow prompt overrides avoid duplicating the framework. Capability guidance belongs with policy-filtered tools. | Keep agent jobs and templates in published folders. Describe only granted tools. Execution authority remains in the owner’s bound capability ports, never in prompt text. |
+| [Hermes prompt assembly](https://github.com/NousResearch/hermes-agent/blob/main/website/docs/developer-guide/prompt-assembly.md) | Distinguishes stable instructions, contextual material, and volatile snapshots; transient call-time additions are kept separate from the cached prompt. | Order stable identity/job/tool instructions before changing workspace/goal/plan context. Record the assembled bytes for each attempt so configuration and retry differences can be inspected. This is a design choice; cache savings have not been measured. |
+| [Hermes loop](https://github.com/NousResearch/hermes-agent/blob/main/website/docs/developer-guide/agent-loop.md) | Explicit turn phases cover preparation, inference, tool execution, recovery, compression, and persistence. Tool observations retain their order and cancellation rejects partial replies. | Keep complete action envelopes in history, stable call identities, bounded repair attempts, and distinct cancelled/interrupted outcomes. Do not treat truncated content or a stopped subprocess as success. |
+| [Plotly agent workflow](https://dash.plotly.com/plotly-cloud/ai-agents) | A shell-capable agent can develop, run, publish, and inspect deployment status using the Plotly CLI. | Adopt the observable build→run→inspect feedback cycle. The public guide does not reveal Plotly’s internal system prompt or prove an autonomous closed-loop algorithm; no such claim is made here. |
+
+## What a real ASKK prompt contains
+
+The configured template in `public/prompts/workbench.md` renders identity, the folder’s job, learned context, granted tools with argument descriptions, configured context, conversation, response grammar, and the current note. The current main agent’s context includes execution identity, bounded file metadata, saved conversation goal, run-owned plan, budget, memory, board, and time. History contains full validated action envelopes and actual observations. A repair includes the configured response instructions and a concrete valid example.
+
+The current template places task history before the changing step context, so a new clock/budget/workspace snapshot no longer changes the beginning of the conversation text. This preserves a longer unchanged input prefix; actual provider cache hits and latency improvement remain unmeasured. In the recorded third trial, history occupied 57,463 of 69,333 prompt characters at step 5, while the tool sheet occupied 4,061. Production main/coder now use the injected environment unless it is missing or contradicted, and demo arithmetic/haiku/repository-authoring capabilities live under nonpublished `examples/agents/`.
+
+Execution identity is a capability boundary: model transport, companion networking, filesystem location, and command execution are independent. A prompt may describe the binding; only the controller can authorize operations against it. Old checks cannot validate a new root, runtime, source revision, or artifact.
+
+Each attempt stores `PromptSnapshot`; each transport attempt separately stores a redacted `ProviderRequest`. Provider usage and finish reasons are evidence, while character counts and estimated token budgets are diagnostics. Do not replace missing provider usage with invented exact counts. Credentials in transport fields are redacted; private data deliberately placed in user files/prompts still needs owner review before sharing a trace.
+
+## Quality means measurable task behavior
+
+A useful instruction names an available action, its required arguments, the observation to inspect, and the condition for stopping. The task-board configuration therefore gives a concrete asynchronous artifact-storage example and requires a reload followed by an assertion of restored state. It describes the supported single-page export profile before generation. It does not promise that adding more instruction text fixes every model error.
+
+Our actual Qwen trials exposed two separate failures: output truncation and malformed action history. The second trial created the application and built it but did not complete verification; it also used an unsuitable persistence path. Changes to examples, history serialization, and repair context are hypotheses until the same delivered application passes checks. Retain failed attempts rather than reporting only successful tool calls.
+
+Compare future prompt revisions on identical fresh task boards, pinned model/settings/runtime, and explicit acceptance cases: add/edit/delete, completion, filters, durable reload, failed build repair, cancellation, and exact-revision verification. Record total attempts, repairs, provider usage coverage, wall time, and failures. A repaired continuation is useful evidence but is not a one-shot result.

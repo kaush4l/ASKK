@@ -1,0 +1,24 @@
+{
+  "browser": "Chrome",
+  "source": "CUA controlled browser tab 1744669562; actual guest mailbox diagnostics",
+  "url": "http://127.0.0.1:5199/browser-linux/probe.html?project=cua-browser-proof",
+  "imageId": "c2w-node24-a65a214ffe694729",
+  "instanceId": "5e98a583-d9ab-4ce9-bfb8-f0cecb8b6053",
+  "node": "24.21.0",
+  "state": "failed",
+  "error": "runtime.prepare timed out",
+  "milliseconds": 900284.3400000036,
+  "checks": [],
+  "lastPhase": "Checking tools",
+  "network": "browser-fetch-cors",
+  "companionAuthorization": false,
+  "companionsPresent": true,
+  "observedEvidence": [
+    "Guest Linux arm64 Node supervisor wrote a structured ready.json through the 9p mount after the proc-fd symlink fix.",
+    "The npm --version child was admitted as PID17. A later real ps child reported it in running state with elapsed07:59; no npm output or exit arrived before the outer15-minute timeout.",
+    "The real ps process produced stdout and an exit event. Its table showed supervisorPID1 sleeping, npmPID17 running, psPID25 running.",
+    "A real /bin/echo childPID26 produced real-child-output followed by newline before the runtime timeout.",
+    "At the mailbox inspection, no syncfs request was pending and inbox/outbox/events were empty between polls."
+  ],
+  "acceptance": { "browserReady": false, "npm": false, "next": false, "safari": false }
+}

@@ -1,0 +1,441 @@
+{
+  "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36",
+  "crossOriginIsolated": true,
+  "at": "2026-09-28T19:43:41.822Z",
+  "results": [
+    {
+      "name": "Next hydration and persistence across real frame reload",
+      "passed": true,
+      "expected": true,
+      "receipt": {
+        "ok": true,
+        "errors": [],
+        "interactionMode": "programmatic-dom",
+        "results": [
+          {
+            "index": 0,
+            "action": "assertText",
+            "ok": true,
+            "frame": 0
+          },
+          {
+            "index": 1,
+            "action": "click",
+            "ok": true,
+            "frame": 0
+          },
+          {
+            "index": 2,
+            "action": "assertText",
+            "ok": true,
+            "frame": 0
+          },
+          {
+            "index": 3,
+            "action": "reload",
+            "ok": true,
+            "frame": 1
+          },
+          {
+            "index": 4,
+            "action": "assertText",
+            "ok": true,
+            "frame": 1
+          },
+          {
+            "index": 5,
+            "action": "assertText",
+            "ok": true,
+            "frame": 1
+          }
+        ],
+        "assertions": [
+          {
+            "action": "assertText",
+            "selector": "#ready",
+            "value": "Storage ready"
+          },
+          {
+            "action": "click",
+            "selector": "button"
+          },
+          {
+            "action": "assertText",
+            "selector": "#count",
+            "value": "Count: 1"
+          },
+          {
+            "action": "reload"
+          },
+          {
+            "action": "assertText",
+            "selector": "#ready",
+            "value": "Storage ready"
+          },
+          {
+            "action": "assertText",
+            "selector": "#count",
+            "value": "Count: 1"
+          }
+        ],
+        "artifactId": "artifact-06fd7d5d-ef37-44a0-bc9e-05291389c0ca",
+        "revision": 1,
+        "buildId": "next-isolation-fixture",
+        "checkedAt": 1790624592781
+      }
+    },
+    {
+      "name": "Repeated inspection of the same artifact starts with fresh test storage",
+      "passed": true,
+      "expected": true,
+      "receipt": {
+        "ok": true,
+        "errors": [],
+        "interactionMode": "programmatic-dom",
+        "results": [
+          {
+            "index": 0,
+            "action": "assertText",
+            "ok": true,
+            "frame": 0
+          },
+          {
+            "index": 1,
+            "action": "click",
+            "ok": true,
+            "frame": 0
+          },
+          {
+            "index": 2,
+            "action": "assertText",
+            "ok": true,
+            "frame": 0
+          }
+        ],
+        "assertions": [
+          {
+            "action": "assertText",
+            "selector": "#count",
+            "value": "Count: 0"
+          },
+          {
+            "action": "click",
+            "selector": "button"
+          },
+          {
+            "action": "assertText",
+            "selector": "#count",
+            "value": "Count: 1"
+          }
+        ],
+        "artifactId": "artifact-06fd7d5d-ef37-44a0-bc9e-05291389c0ca",
+        "revision": 1,
+        "buildId": "next-isolation-fixture",
+        "checkedAt": 1790624597807
+      }
+    },
+    {
+      "name": "Next explicit DOM blur commits React edit and survives reload",
+      "passed": true,
+      "expected": true,
+      "receipt": {
+        "ok": true,
+        "errors": [],
+        "interactionMode": "programmatic-dom",
+        "results": [
+          {
+            "index": 0,
+            "action": "assertText",
+            "ok": true,
+            "frame": 0
+          },
+          {
+            "index": 1,
+            "action": "fill",
+            "ok": true,
+            "frame": 0
+          },
+          {
+            "index": 2,
+            "action": "assertText",
+            "ok": true,
+            "frame": 0
+          },
+          {
+            "index": 3,
+            "action": "blur",
+            "ok": true,
+            "frame": 0
+          },
+          {
+            "index": 4,
+            "action": "assertText",
+            "ok": true,
+            "frame": 0
+          },
+          {
+            "index": 5,
+            "action": "assertText",
+            "ok": true,
+            "frame": 0
+          },
+          {
+            "index": 6,
+            "action": "assertText",
+            "ok": true,
+            "frame": 0
+          },
+          {
+            "index": 7,
+            "action": "reload",
+            "ok": true,
+            "frame": 1
+          },
+          {
+            "index": 8,
+            "action": "assertText",
+            "ok": true,
+            "frame": 1
+          },
+          {
+            "index": 9,
+            "action": "assertText",
+            "ok": true,
+            "frame": 1
+          }
+        ],
+        "assertions": [
+          {
+            "action": "assertText",
+            "selector": "#ready",
+            "value": "Ready"
+          },
+          {
+            "action": "fill",
+            "selector": "#title",
+            "value": "Edited task"
+          },
+          {
+            "action": "assertText",
+            "selector": "#draft",
+            "value": "Edited task"
+          },
+          {
+            "action": "blur",
+            "selector": "#title"
+          },
+          {
+            "action": "assertText",
+            "selector": "#events",
+            "value": "blur"
+          },
+          {
+            "action": "assertText",
+            "selector": "#committed",
+            "value": "Edited task"
+          },
+          {
+            "action": "assertText",
+            "selector": "#saved",
+            "value": "Saved"
+          },
+          {
+            "action": "reload"
+          },
+          {
+            "action": "assertText",
+            "selector": "#ready",
+            "value": "Ready"
+          },
+          {
+            "action": "assertText",
+            "selector": "#committed",
+            "value": "Edited task"
+          }
+        ],
+        "artifactId": "artifact-df1bc0e9-ad12-4251-8107-8a429a10b01f",
+        "revision": 1,
+        "buildId": "next-blur-fixture",
+        "checkedAt": 1790624610830
+      }
+    },
+    {
+      "name": "Silent localStorage fallback loses state and must fail",
+      "passed": true,
+      "expected": false,
+      "receipt": {
+        "ok": false,
+        "errors": [
+          "Expected text at #count"
+        ],
+        "results": [
+          {
+            "index": 0,
+            "action": "click",
+            "ok": true,
+            "frame": 0
+          },
+          {
+            "index": 1,
+            "action": "assertText",
+            "ok": true,
+            "frame": 0
+          },
+          {
+            "index": 2,
+            "action": "reload",
+            "ok": true,
+            "frame": 1
+          }
+        ],
+        "interactionMode": "programmatic-dom",
+        "assertions": [
+          {
+            "action": "click",
+            "selector": "#add"
+          },
+          {
+            "action": "assertText",
+            "selector": "#count",
+            "value": "1"
+          },
+          {
+            "action": "reload"
+          },
+          {
+            "action": "assertText",
+            "selector": "#count",
+            "value": "1"
+          }
+        ],
+        "artifactId": "artifact-ac909190-c494-4407-aaaf-6eaf6a0eda80",
+        "revision": 1,
+        "buildId": "artifact-ac909190-c494-4407-aaaf-6eaf6a0eda80",
+        "checkedAt": 1790624615462
+      }
+    },
+    {
+      "name": "port forgery must fail",
+      "passed": true,
+      "expected": false,
+      "receipt": {
+        "ok": false,
+        "errors": [
+          "Expected text at #missing"
+        ],
+        "results": [
+          {
+            "index": 0,
+            "action": "click",
+            "ok": true,
+            "frame": 0
+          }
+        ],
+        "interactionMode": "programmatic-dom",
+        "assertions": [
+          {
+            "action": "click",
+            "selector": "button"
+          },
+          {
+            "action": "assertText",
+            "selector": "#missing",
+            "value": "forged proof"
+          }
+        ],
+        "artifactId": "artifact-9a28275e-80ee-4408-a74f-438e873a17a3",
+        "revision": 1,
+        "buildId": "artifact-9a28275e-80ee-4408-a74f-438e873a17a3",
+        "checkedAt": 1790624616685
+      }
+    },
+    {
+      "name": "dom forgery must fail",
+      "passed": true,
+      "expected": false,
+      "receipt": {
+        "ok": false,
+        "errors": [
+          "Expected text at #missing"
+        ],
+        "results": [
+          {
+            "index": 0,
+            "action": "click",
+            "ok": true,
+            "frame": 0
+          }
+        ],
+        "interactionMode": "programmatic-dom",
+        "assertions": [
+          {
+            "action": "click",
+            "selector": "button"
+          },
+          {
+            "action": "assertText",
+            "selector": "#missing",
+            "value": "forged proof"
+          }
+        ],
+        "artifactId": "artifact-c4742755-f617-45b6-be45-66f2baebaca2",
+        "revision": 1,
+        "buildId": "artifact-c4742755-f617-45b6-be45-66f2baebaca2",
+        "checkedAt": 1790624617690
+      }
+    },
+    {
+      "name": "Normal URL and native Blob APIs",
+      "passed": true,
+      "expected": true,
+      "receipt": {
+        "ok": true,
+        "errors": [],
+        "interactionMode": "programmatic-dom",
+        "results": [
+          {
+            "index": 0,
+            "action": "click",
+            "ok": true,
+            "frame": 0
+          },
+          {
+            "index": 1,
+            "action": "assertText",
+            "ok": true,
+            "frame": 0
+          }
+        ],
+        "assertions": [
+          {
+            "action": "click",
+            "selector": "#add"
+          },
+          {
+            "action": "assertText",
+            "selector": "#proof",
+            "value": "URL APIs passed"
+          }
+        ],
+        "artifactId": "artifact-88bdb292-10ec-413e-ab40-bafe5437e176",
+        "revision": 1,
+        "buildId": "artifact-88bdb292-10ec-413e-ab40-bafe5437e176",
+        "checkedAt": 1790624621819
+      }
+    },
+    {
+      "name": "Parent composer focus and draft preserved",
+      "passed": true
+    }
+  ],
+  "cssObservation": {
+    "source": "CUA frame-scoped browser inspection",
+    "background": "rgb(22, 101, 52)",
+    "color": "rgb(255, 255, 255)",
+    "stylesheet": {
+      "href": "/_next/static/css/cd42ae0d7529f19a.css",
+      "disabled": true
+    },
+    "frameURL": "about:srcdoc"
+  }
+}

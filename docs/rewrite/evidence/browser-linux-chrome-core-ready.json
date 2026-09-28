@@ -1,0 +1,31 @@
+{
+  "browser": "Chrome",
+  "source": "CUA controlled browser tab1744669562; observed structured probe result and actual proc filesystem reads",
+  "url": "http://127.0.0.1:5199/browser-linux/probe.html?project=cua-browser-proof&profile=1",
+  "imageId": "c2w-node24-a65a214ffe694729",
+  "instanceId": "00bc3e58-c37f-49f4-a246-64208303295b",
+  "network": "browser-fetch-cors",
+  "companionAuthorization": false,
+  "companions": "Present but unauthorized at run start; root confirmed both task companions stopped before Node command/file checks; restart planned later for independent native QA.",
+  "benchmarkLimit": "Diagnostic, not clean benchmark: unrelated browser work occurred concurrently, and a shell CPU sampler added its own guest work.",
+  "stagesMilliseconds": {
+    "compiling": 3291.8400000035763,
+    "restoring": 3793.2100000083447,
+    "booting": 3826.1349999904633,
+    "supervisorHandshake": 231778.2800000012,
+    "nodeVersionAdmitted": 246777.62000000477,
+    "nodeVersionCompleted": 276760.5600000024,
+    "readyAfterFilesystemCheckpoint": 291740.00999999046
+  },
+  "checks": [
+    { "name": "node --version and shared-file checkpoint", "passed": true, "node": "24.21.0" },
+    { "name": "Node-e default", "deadlineMilliseconds": 180000, "millisecondsUntilRealExit": 229438.02500000596, "code": null, "signal": "SIGTERM", "cancelled": true, "stdout": "", "stderr": "" },
+    { "name": "Node-e --jitless", "deadlineMilliseconds": 180000, "millisecondsUntilRealExit": 190200.49000000954, "code": null, "signal": "SIGTERM", "cancelled": true, "stdout": "", "stderr": "" }
+  ],
+  "cpuTicks": {
+    "supervisorPid1": { "before": { "user": 12549, "system": 6722 }, "after": { "user": 13514, "system": 7346 }, "delta": 1589 },
+    "childPid18": { "before": { "user": 578, "system": 605 }, "after": { "user": 1129, "system": 1095 }, "delta": 1041 }
+  },
+  "operatorStop": { "atMilliseconds": 857149.880000025, "method": "runtime.shutdown", "reason": "Stop remaining flag experiments and prioritize measured adaptive-poll comparison" },
+  "acceptance": { "coreReady": true, "JavaScriptChild": false, "npm": false, "next": false, "safari": false }
+}

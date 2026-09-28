@@ -1,0 +1,25 @@
+{
+  "profile": "workbench-responsive-qa",
+  "origin": "http://127.0.0.1:5198/ASKK/",
+  "browserInteraction": "CUA Chrome extension UI and scoped CDP developer testing",
+  "checks": [
+    { "name": "390px full Commands surface", "allTabsVisible": true, "panelHeight": 669, "workspaceHeight": 669, "selected": "Commands", "width": 390, "tabs": ["commands", "terminal", "problems", "output"] },
+    { "name": "320px Commands tabs fit", "allTabsVisible": true, "noHorizontalDocumentOverflow": true, "panelHeight": 393, "width": 320 },
+    { "name": "Palette Escape restores prior focus", "focusedLabel": "Shell command", "passed": true },
+    { "name": "Code survives Preview switch with undo history", "selectedTab": "qa-navigation.js", "undoRestoredEmpty": true },
+    { "name": "Files to Code preserves draft", "passed": true, "selected": "Code" },
+    { "name": "1440px desktop with Explorer and real code", "buildButtonVisible": true, "chatWidth": 400, "editorWidth": 786, "explorerWidth": 208, "noHorizontalDocumentOverflow": true, "viewport": 1440 },
+    { "name": "Explorer keyboard resize", "width": 223 },
+    { "name": "1280px desktop with resized Explorer", "buildButtonVisible": true, "chatWidth": 360, "editorWidth": 651, "explorerWidth": 223, "noHorizontalDocumentOverflow": true, "viewport": 1280 },
+    { "name": "Draft quota warning and isolation cancellation", "injectedFailure": "Storage.setItem for draft keys only", "defaultPrevented": true, "reloadAllowed": false },
+    { "name": "Quota warning visible on phone", "editorDraftPreserved": true, "goalDraftPreserved": true, "text": "Draft recovery could not be saved: Controlled QA quota failure. Keep this tab open and save or copy your work before reloading.Retry draft save", "visible": true },
+    { "name": "Retry restores durable draft recovery", "editorDraftPreserved": true, "goalDraftPreserved": true, "warningCleared": true },
+    { "name": "Actual reload after storage retry recovers drafts", "editorDraftRecovered": true, "goalDraftRecovered": true, "quotaInjectionAbsent": true }
+  ],
+  "limitations": ["Chrome desktop viewport emulation; native touch keyboard and VoiceOver were not tested.", "Isolation cancellation used the actual cancelable before-isolation event, without forcing an unnecessary service-worker reload."],
+  "at": "2026-09-28T19:28:53.368Z",
+  "browser": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36",
+  "controlledMutation": "Storage.setItem temporarily threw for the two draft keys on the disposable 5198 QA origin; original descriptor restored before retry and reload.",
+  "qaData": "One disposable qa-navigation.js file and a goal draft were created on the QA origin; no goal, command, or guest boot was started.",
+  "cleanup": "Temporary viewport reset and own QA tab closed; storage failure injection removed. Root live workbench untouched."
+}

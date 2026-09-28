@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "browser": "Chrome 153 via CUA",
+  "execution": "Local Bun",
+  "sourceRevision": 24,
+  "buildIdPrefix": "3fb9d0a2e77f2d7e",
+  "scope": "Independent real user interactions in the visible artifact preview; not the agent's programmatic check receipt or browser guest proof",
+  "checks": [
+    {
+      "name": "add two tasks through React form submit",
+      "passed": true,
+      "observed": "2 active \u00b7 0 done; latest task prepended"
+    },
+    {
+      "name": "edit title with Enter",
+      "passed": true,
+      "observed": "Review execution contracts"
+    },
+    {
+      "name": "mark another task completed",
+      "passed": true,
+      "observed": "1 active \u00b7 1 done"
+    },
+    {
+      "name": "Active filter",
+      "passed": true,
+      "observed": [
+        "Review execution contracts"
+      ]
+    },
+    {
+      "name": "Completed filter",
+      "passed": true,
+      "observed": [
+        "Publish milestone"
+      ]
+    },
+    {
+      "name": "Refresh preview restores edited title and completed status",
+      "passed": true,
+      "observed": "Both tasks retained; 1 active \u00b7 1 done"
+    },
+    {
+      "name": "delete completed item and inspect Completed empty state",
+      "passed": true,
+      "observed": "Nothing completed"
+    },
+    {
+      "name": "delete last remaining item",
+      "passed": true,
+      "observed": "No tasks yet; 0 active \u00b7 0 done; 0 tasks total"
+    }
+  ],
+  "finalPreviewState": "Two newly added demonstration tasks, one active and one completed",
+  "automationNote": "CUA setChecked reported no match after its successful click changed the accessible label. Fresh DOM observations confirmed the checked state; no click was repeated blindly.",
+  "screenshot": "workbench-chrome.jpg"
+}

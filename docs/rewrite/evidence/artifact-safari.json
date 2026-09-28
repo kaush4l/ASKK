@@ -1,0 +1,119 @@
+{
+  "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.2 Safari/605.1.15",
+  "at": "2026-09-28T17:58:59.458Z",
+  "results": [
+    {
+      "test": "Next hydration and interaction",
+      "ok": true,
+      "results": [
+        {
+          "index": 0,
+          "ok": true
+        },
+        {
+          "index": 1,
+          "ok": true
+        },
+        {
+          "index": 2,
+          "ok": true
+        }
+      ],
+      "errors": [],
+      "artifactId": "artifact-f939b72a-812f-4b65-990a-508d9d08b675",
+      "revision": 1,
+      "buildId": "next-fixture",
+      "checkedAt": 1790618336269
+    },
+    {
+      "test": "Scoped storage across iframe reload",
+      "ok": true,
+      "results": [
+        {
+          "index": 0,
+          "ok": true
+        },
+        {
+          "index": 1,
+          "ok": true
+        },
+        {
+          "index": 2,
+          "ok": true
+        }
+      ],
+      "errors": [],
+      "artifactId": "artifact-f939b72a-812f-4b65-990a-508d9d08b675",
+      "revision": 1,
+      "buildId": "next-fixture",
+      "checkedAt": 1790618337351
+    },
+    {
+      "test": "private-port-forgery",
+      "expectedRejected": true,
+      "passed": true,
+      "receipt": {
+        "ok": false,
+        "results": [
+          {
+            "index": 0,
+            "ok": true
+          }
+        ],
+        "errors": [
+          "Expected text at #missing"
+        ],
+        "artifactId": "artifact-7ddd5f3d-4e09-4492-a7f4-5cadefcac092",
+        "revision": 1,
+        "buildId": "artifact-7ddd5f3d-4e09-4492-a7f4-5cadefcac092",
+        "checkedAt": 1790618337955
+      }
+    },
+    {
+      "test": "native-DOM-forgery",
+      "expectedRejected": true,
+      "passed": true,
+      "receipt": {
+        "ok": false,
+        "results": [
+          {
+            "index": 0,
+            "ok": true
+          }
+        ],
+        "errors": [
+          "Expected text at #missing"
+        ],
+        "artifactId": "artifact-4d22dc7f-909d-4a41-be7f-1f99a37ddefc",
+        "revision": 1,
+        "buildId": "artifact-4d22dc7f-909d-4a41-be7f-1f99a37ddefc",
+        "checkedAt": 1790618338552
+      }
+    },
+    {
+      "test": "blocked-resource",
+      "expectedRejected": true,
+      "passed": true,
+      "receipt": {
+        "ok": false,
+        "results": [
+          {
+            "index": 0,
+            "ok": true
+          },
+          {
+            "index": 1,
+            "ok": true
+          }
+        ],
+        "errors": [
+          "Blocked artifact resource: https://example.com/forbidden"
+        ],
+        "artifactId": "artifact-e7721b5d-be54-4d1c-9f6e-3be8d9f25c85",
+        "revision": 1,
+        "buildId": "artifact-e7721b5d-be54-4d1c-9f6e-3be8d9f25c85",
+        "checkedAt": 1790618339457
+      }
+    }
+  ]
+}

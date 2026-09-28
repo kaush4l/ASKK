@@ -1,0 +1,200 @@
+{
+  "profile": "workbench-two-code-groups-and-draft-diff",
+  "at": "2026-09-28T19:51:47Z",
+  "origin": "http://127.0.0.1:5198/ASKK/",
+  "browser": "Chrome 153 desktop",
+  "browserInteraction": "CUA Chrome extension UI, keyboard input, viewport capability, and read-only DOM geometry",
+  "build": "Root production build session 15147; tested before the three follow-up UI fixes listed below",
+  "checks": [
+    {
+      "name": "Two actual CodeMirror views of one file",
+      "viewport": 1440,
+      "groupWidths": [
+        497.5,
+        497.5
+      ],
+      "sharedEditsVisibleInBoth": true
+    },
+    {
+      "name": "Each group owns its undo history",
+      "sequence": "Add primary line in group 1, add secondary line in group 2, undo group 2 then group 1",
+      "bothViewsSynchronizedAfterEachUndo": true,
+      "primaryRedoPreserved": true
+    },
+    {
+      "name": "Draft diff preserves editable tab",
+      "comparison": "Saved empty base versus two-line draft",
+      "additions": 2,
+      "deletions": 0,
+      "normalFileTabStillOpen": true,
+      "lineEndingLabelsVisible": true
+    },
+    {
+      "name": "Saving from diff updates both groups",
+      "actualControllerSave": true,
+      "peerSaved": true,
+      "comparisonBecameNoChanges": true
+    },
+    {
+      "name": "Collapse preserves both selected surfaces",
+      "viewport": 1100,
+      "visibleGroup": 2,
+      "visibleGroupWidth": 735,
+      "hiddenGroupWidth": 0,
+      "noHorizontalDocumentOverflow": true,
+      "primaryUndoSurvivedSwitchBack": true
+    },
+    {
+      "name": "Restoring wide layout preserves selection",
+      "viewport": 1440,
+      "primary": "qa-navigation.js",
+      "secondary": "qa-navigation.js Changes",
+      "passed": true
+    },
+    {
+      "name": "Different files in independent groups",
+      "createdThroughExplorer": "qa-group-two.js",
+      "newFileOpenedOnlyInActiveGroup": true,
+      "peerFileUnchanged": true,
+      "explorerWidth": 223,
+      "groupWidths": [
+        385.5,
+        385.5
+      ]
+    },
+    {
+      "name": "Divider minimum width",
+      "input": "Keyboard Left twice",
+      "groupWidths": [
+        380,
+        391
+      ],
+      "passed": true
+    },
+    {
+      "name": "Close and reopen second group preserves draft and undo",
+      "draftRecovered": true,
+      "undoRestoredEmptyFile": true,
+      "redoRecoveredDraft": true
+    },
+    {
+      "name": "Phone group navigation",
+      "viewport": 390,
+      "activeEditorWidth": 350,
+      "groupSwitcherWorks": true,
+      "noHorizontalDocumentOverflow": true
+    },
+    {
+      "name": "Small phone surfaces fit",
+      "viewport": 320,
+      "activeEditorWidth": 280,
+      "phoneSurfaceTabWidths": [
+        80,
+        80,
+        80,
+        80
+      ],
+      "noHorizontalDocumentOverflow": true
+    },
+    {
+      "name": "Actual reload recovers group layout",
+      "primarySelected": "qa-navigation.js",
+      "secondarySelected": "qa-group-two.js",
+      "committedPrimaryContentRecovered": true,
+      "secondaryOnlyDraftRecovered": true,
+      "secondaryDraftNotAddedToPrimaryTabs": true
+    }
+  ],
+  "followUpSourceFixes": [
+    "Editor reports cursor position on initial creation and cached-state restoration, avoiding a stale footer on a new empty file.",
+    "Palette and file-menu pin actions use the active or owning editor group.",
+    "Selecting or restoring a tab reveals it within its own horizontal tab strip without scrolling or focusing the whole workspace."
+  ],
+  "followUpValidation": {
+    "unitTestsPassed": 25,
+    "assertions": 524,
+    "testFiles": [
+      "test/editor-layout.test.js",
+      "test/workbench-diff.test.js",
+      "test/workbench-save-all.test.js"
+    ],
+    "serverRenderPassed": true,
+    "browserRetestPendingNextRootBuild": false,
+    "browserRetestBuild": "72964",
+    "browserRetest": "All three listed follow-up source fixes passed actual CUA Chrome QA."
+  },
+  "limitations": [
+    "Late asynchronous file-open rejection is covered by the navigation-ticket test and source review; the live browser test did not force an artificial pending backend read.",
+    "The save used the real offline durable workspace staging path. Live mounted-backend CAS conflict interleavings are tested separately in controller/files tests.",
+    "Cursor mapping is covered by a real CodeMirror EditorState transaction test; independent undo, tab state, and resize behavior were exercised in the actual browser.",
+    "Chrome desktop viewport emulation only; Safari, native touch keyboard, and VoiceOver were not tested in this session."
+  ],
+  "qaData": "Three explicitly disposable QA files (qa-navigation.js, qa-group-two.js, qa-folder/nested.js) and existing goal draft on origin 5198; no goal, command, or guest boot started.",
+  "cleanup": "Temporary viewport and reduced-motion emulation reset; own QA tabs closed. Root live workbench 5193 untouched.",
+  "followUpBrowserChecks": [
+    {
+      "name": "Restored active secondary tab is fully visible",
+      "stripRight": 1440,
+      "selectedButtonRight": 1408.8203125,
+      "passed": true
+    },
+    {
+      "name": "Cursor footer follows file selection and cache",
+      "secondaryDraftEnd": "Ln 1, Col 30",
+      "otherFileStart": "Ln 1, Col 1",
+      "returnToDraft": "Ln 1, Col 30",
+      "newEmptyFile": "Ln 1, Col 1"
+    },
+    {
+      "name": "Secondary temporary tab pin from F2 file menu",
+      "keyboardActivated": true,
+      "temporaryPinControlRemoved": true,
+      "primarySelectionUnchanged": true,
+      "focusRestoredToTreeRow": true
+    },
+    {
+      "name": "Secondary temporary tab pin from command palette",
+      "keyboardActivated": true,
+      "temporaryPinControlRemoved": true,
+      "focusRestoredToTreeRow": true
+    },
+    {
+      "name": "Nested file tree keyboard navigation",
+      "keys": [
+        "Left to parent",
+        "Left collapses folder",
+        "Right expands folder",
+        "Right focuses child",
+        "End to final file",
+        "Home to first folder",
+        "Down traverses visible rows",
+        "Enter opens/pins selected file"
+      ],
+      "passed": true
+    },
+    {
+      "name": "F2 file menu Escape focus restoration",
+      "focusReturnedTo": "qa-navigation.js tree row",
+      "passed": true
+    },
+    {
+      "name": "Reduced motion",
+      "method": "Temporary per-tab CDP media emulation",
+      "modalAnimation": "none",
+      "buttonTransition": "0s",
+      "emulationRestored": true
+    },
+    {
+      "name": "Browser console errors during retest",
+      "errors": []
+    }
+  ],
+  "newBoundedFinding": {
+    "name": "Active tab clipping after group-divider resize",
+    "observedWrapperRight": 1469.296875,
+    "stripRight": 1440,
+    "fix": "Add groupRatio to horizontal selected-tab reveal effect dependencies.",
+    "sourceFixed": true,
+    "browserRetestPendingNextRootBuild": true
+  }
+}

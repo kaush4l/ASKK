@@ -1,0 +1,17 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="referrer" content="no-referrer"><title>Application artifact</title></head><body><script>
+// This shell is always embedded with sandbox="allow-scripts" and an opaque origin.
+// It receives only immutable HTML. No model, workspace or companion credentials enter.
+(() => {
+  const parameters = new URL(location.href).searchParams
+  const id = parameters.get('id'); const nonce = parameters.get('nonce')
+  if (!id || !nonce || parent === window) return
+  const receive = event => {
+    if (!event.isTrusted || event.source !== parent || event.data?.type !== 'askk.artifact.html' || event.data.id !== id || event.data.nonce !== nonce || typeof event.data.html !== 'string') return
+    event.stopImmediatePropagation()
+    removeEventListener('message', receive, true)
+    document.open(); document.write(event.data.html); document.close()
+  }
+  addEventListener('message', receive, true)
+  parent.postMessage({ type: 'askk.artifact.shell', id, nonce }, '*')
+})()
+</script></body></html>
