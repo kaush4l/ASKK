@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "at": "2026-09-28T23:11:28.267Z",
+  "origin": "https://kaush4l.github.io/ASKK/",
+  "browser": "Chrome 153",
+  "sourceCommit": "6850383",
+  "deploymentCommit": "4840be7",
+  "artifactHash": "9c63469ae2e13ba4b1e8c8235f131adfbf16d5c21ea5441cc3f694eb5e4652c5",
+  "totalBytes": 802891686,
+  "fileCount": 134,
+  "nextBuild": "0jEeOg82zx0B1y1Gks_Zg",
+  "indexSha256": "f1079cb73970dc58b7512d126b49a1e461fbe5b3cd8c54c652d40bb1d6258013",
+  "normalReloads": 1,
+  "cacheCleared": false,
+  "storageCleared": false,
+  "isolated": true,
+  "controller": "https://kaush4l.github.io/ASKK/coi-serviceworker.js",
+  "draftBefore": "Browser Linux checkpoint \u2014 keep this draft through startup.",
+  "draftAfter": "Browser Linux checkpoint \u2014 keep this draft through startup.",
+  "agentsRestored": 6,
+  "runtime": "Browser Linux \u00b7 Not started",
+  "model": "Configured; not connectivity proof",
+  "assetFetch": "Default fetch options and normal URLs from the actual controlled hosted tab; no cache-busting query or override",
+  "assets": [
+    {
+      "path": "browser-linux/assets.js",
+      "status": 200,
+      "bytes": 3998,
+      "sha256": "90e2c063709c943c9e1bf425553d4a36b692b553f5fef7db291d263c1b3a1cb1"
+    },
+    {
+      "path": "browser-linux/runtime.js",
+      "status": 200,
+      "bytes": 14819,
+      "sha256": "c865954dde97cdcf8470b40a5da0ba66a012a3bd831eb6fa1648ed2cbcf12e7a"
+    }
+  ],
+  "limitations": [
+    "Verifies delivered source bytes and retained shell state, not a new guest boot.",
+    "Corruption recovery has separate tiny synthetic-asset Chrome evidence.",
+    "No Safari, VoiceOver, model inference or build acceptance."
+  ]
+}
