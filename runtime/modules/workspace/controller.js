@@ -17,7 +17,12 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
   let uiLoaded = false; let persistTimer; let savingUI = Promise.resolve()
   let binding; let workspaceLocation = null; let locationLoaded = false; let legacyNative = false; let modelProfiles = []; let modelEpoch = 0; let launchEpoch = 0; const runBindings = new Map()
   const executionEpochs = { browser: 0, local: 0 }; const executionErrors = {}
-  const assertExecutionAlive = (target, epoch) => { if (executionEpochs[target] !== epoch) throw new Error(executionErrors[target] || 'The execution environment stopped during setup.') }
+  const executionHealth = { browser: 'responsive', local: 'responsive' }; const healthVersions = { browser: 0, local: 0 }; const healthWaiters = new Set()
+  let runtimeEstablished = false; let recovering; let watching = false
+  const delayedMessage = 'The environment is taking longer to respond. Outstanding operations may still complete; their outcomes are unknown. Existing processes and terminals are preserved. New work is paused and no requests will be replayed.'
+  const unresponsive = () => Object.assign(new Error(delayedMessage), { code: 'RUNTIME_UNRESPONSIVE' })
+  const requireResponsive = () => { if (state.runtime.status === 'unresponsive' || executor?.describeCapabilities().health === 'unresponsive') throw unresponsive() }
+  const assertExecutionAlive = (target, epoch) => { if (executionEpochs[target] !== epoch) throw new Error(executionErrors[target] || 'The execution environment stopped during setup.'); if (executionHealth[target] === 'unresponsive') throw unresponsive() }
   const persistUI = ({ strict = false } = {}) => {
     clearTimeout(persistTimer)
     if (!uiLoaded || !files.store?.durable) return Promise.resolve()
@@ -27,6 +32,7 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
   }
   const notify = patch => { if (disposed) return; state = { ...state, ...patch }; for (const listener of listeners) listener(); if (uiLoaded && ['messages', 'run', 'plans', 'commands', 'artifacts'].some(key => key in patch)) { clearTimeout(persistTimer); persistTimer = setTimeout(persistUI, 200) } }
   const report = error => { notify({ error: error?.message ?? String(error) }); return error }
+  const requestCancellation = key => { try { Promise.resolve(executor?.cancelJob?.(key)).catch(report) } catch (error) { report(error) } }
   const activity = event => notify({ activity: [...state.activity.slice(-199), { id: id('event'), at: Date.now(), ...event }] })
   const refreshFiles = async () => notify({ files: await files.list() })
   const invalidate = () => { projectRevision++; if (currentArtifact) { currentArtifact = { ...currentArtifact, stale: true, verified: false }; notify({ artifacts: state.artifacts.map(row => row.id === currentArtifact.id ? currentArtifact : row) }) } }
@@ -37,7 +43,7 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
   let fileMutations = 0; let openingTerminals = 0
   const requireIdle = () => { if (active(state.run?.status) || running.size || fileMutations || openingTerminals || runtimeBoot) throw new Error('Finish or stop active work before changing its execution environment') }
   let transferring = false; let connecting = false; let connectingEndpoint = null
-  const requireWritable = () => { if (transferring) throw new Error('Wait for the workspace snapshot transfer to finish'); if (connecting) throw new Error('Wait for the companion connection change to finish') }
+  const requireWritable = ({ allowReconciledSetup = false } = {}) => { if (!allowReconciledSetup) requireResponsive(); if (transferring) throw new Error('Wait for the workspace snapshot transfer to finish'); if (connecting) throw new Error('Wait for the companion connection change to finish') }
   const mutateFiles = async callback => { requireWritable(); fileMutations++; try { return await callback() } finally { fileMutations-- } }
   const fingerprint = async () => {
     const manifest = JSON.stringify((await files.list()).map(row => ({ path: row.path, revision: row.rev ?? row.revision, size: row.size })).sort((a, b) => a.path.localeCompare(b.path)))
@@ -96,17 +102,61 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
     if (legacyNative) throw locationReview('legacy', proposed, 'This saved native workspace has no recorded root identity. Review the companion endpoint and root, then explicitly adopt it before mounting saved files.')
     if (workspaceLocation?.binding.target === 'local' && !sameLocation(workspaceLocation, proposed)) throw locationReview('transfer', proposed, 'A different native workspace root or companion endpoint requires an explicit snapshot transfer. Reconnect the original workspace before transferring it.')
   }
-  const forRun = handler => (args, run) => { if (!run?.context?.binding) throw new Error('This task has no pinned workspace. Start a new task from the current workspace before using its files or execution tools.'); assertBound(run.context.binding); return handler(args, run) }
+  const forRun = handler => (args, run) => { requireResponsive(); if (!run?.context?.binding) throw new Error('This task has no pinned workspace. Start a new task from the current workspace before using its files or execution tools.'); assertBound(run.context.binding); return handler(args, run) }
+  const settleHealthWaiters = error => { for (const waiter of healthWaiters) { if (error) waiter.reject(error); else waiter.resolve() } healthWaiters.clear() }
+  const awaitReceiptHealth = async expected => {
+    while (!disposed && executor?.describeCapabilities().health === 'unresponsive') await new Promise((resolve, reject) => healthWaiters.add({ resolve, reject }))
+    if (disposed) throw new Error('The workspace was closed before the operation could be reconciled')
+    assertBound(expected)
+  }
+  async function reconcileRuntime(target) {
+    if (recovering) return recovering
+    if (!runtimeEstablished || runtimeBoot || transferring || connecting || target !== state.runtime.target || state.runtime.status !== 'unresponsive' || executionHealth[target] !== 'responsive') return
+    const port = executor; const expected = binding; const epoch = executionEpochs[target]; const version = healthVersions[target]
+    recovering = (async () => {
+      assertBound(expected)
+      const rows = await files.list()
+      if (disposed || executor !== port || state.runtime.target !== target || healthVersions[target] !== version) return
+      assertExecutionAlive(target, epoch); assertBound(expected)
+      if (port.describeCapabilities().health === 'unresponsive') return
+      watched = JSON.stringify(rows)
+      notify({ files: rows, runtime: { ...state.runtime, status: 'ready', health: 'responsive', phase: 'Ready', progress: null, detail: '', outstanding: [] } })
+    })().catch(error => {
+      if (!disposed && executor === port && state.runtime.target === target && state.runtime.status === 'unresponsive') notify({ runtime: { ...state.runtime, detail: `${delayedMessage} Workspace reconciliation: ${error.message}` } })
+    }).finally(() => {
+      recovering = null
+      // A newer health cycle may have reconciled while this read was pending.
+      // Follow that event once; a read failure in the same cycle is not retried.
+      if (!disposed && executor === port && healthVersions[target] !== version && executionHealth[target] === 'responsive') reconcileRuntime(target)
+    })
+    return recovering
+  }
   function runtimeEvent(target, event) {
     activity({ ...event, target })
+    if (event.type === 'runtime.health') {
+      executionHealth[target] = event.health
+      if (event.health === 'unresponsive') healthVersions[target]++
+      if (state.runtime.target !== target) return
+      if (event.health === 'unresponsive') {
+        if (state.runtime.status === 'failed') return
+        if (state.runtime.status !== 'unresponsive') invalidate()
+        notify({ runtime: { ...state.runtime, status: 'unresponsive', health: 'unresponsive', phase: 'Response delayed', detail: delayedMessage, progress: null, outstanding: event.unresolvedRequests ?? event.outstanding ?? event.requests ?? [] } })
+      } else if (event.health === 'responsive') {
+        settleHealthWaiters()
+        reconcileRuntime(target)
+      }
+      return
+    }
+    if (event.type === 'runtime.reconciled') return // The following health event admits the same-binding refresh.
     const failed = event.type === 'runtime.error' || event.type === 'runtime.state' && event.state === 'failed'
-    if (failed) { executionEpochs[target]++; executionErrors[target] = event.error || 'The execution environment stopped.' }
+    if (failed) { executionEpochs[target]++; executionErrors[target] = event.error || 'The execution environment stopped.'; executionHealth[target] = 'responsive'; healthVersions[target]++ }
     if (state.runtime.target !== target) return
     if (failed) {
+      runtimeEstablished = false; settleHealthWaiters(new Error(event.error || 'The execution environment stopped.'))
       if (state.runtime.status === 'ready') invalidate()
       if (target === 'browser') terminals.clear() // The failed frame's PTYs no longer exist.
       notify({ runtime: { ...state.runtime, status: 'failed', phase: 'Environment unavailable', progress: null, detail: event.error || 'The execution environment stopped.' } })
-    } else if (state.runtime.status !== 'failed' && (event.phase || event.stage)) notify({ runtime: { ...state.runtime, phase: event.phase ?? event.stage, progress: event.progress, detail: event.message } })
+    } else if (!['failed', 'unresponsive'].includes(state.runtime.status) && (event.phase || event.stage)) notify({ runtime: { ...state.runtime, phase: event.phase ?? event.stage, progress: event.progress, detail: event.message } })
     if (event.type === 'output' && event.terminalId) for (const listener of terminalListeners.get(event.terminalId) ?? []) listener(event)
   }
   async function prepareExecutor(target) {
@@ -150,6 +200,8 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
       await rememberLocation(destinationBinding, destination, validate)
       invalidate()
       const descriptor = destination.describeCapabilities()
+      assertExecutionAlive(target, destinationEpoch)
+      runtimeEstablished = true
       notify({ runtime: { target, status: 'ready', phase: 'Ready', capabilities: descriptor.capabilities ?? [], binding, savedBinding: workspaceLocation, bindingReview: null } })
       activity({ type: 'workspace.transferred', from: previous.target, to: target, files: source.length, sourceFingerprint: before, binding })
     } catch (error) {
@@ -157,9 +209,10 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
       await files.checkpoint().catch(() => {}); await refreshFiles().catch(() => {})
       let restored = previous
       try { validateSource() } catch (failure) { if (state.runtime.status !== 'failed') invalidate(); restored = { ...previous, status: 'failed', phase: 'Environment unavailable', progress: null, detail: failure.message } }
+      if (state.runtime.status === 'unresponsive' && previous.target === state.runtime.target) restored = { ...restored, status: 'unresponsive', health: 'unresponsive', phase: 'Response delayed', detail: delayedMessage, outstanding: state.runtime.outstanding }
       notify({ runtime: restored }); throw report(error)
     }
-    finally { transferring = false }
+    finally { transferring = false; reconcileRuntime(state.runtime.target) }
   }
 
   function onHub(message) {
@@ -274,12 +327,24 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
         if (hub.bridgeState.status === 'answering') local = new LocalExecution({ url: hub.bridgeState.url, token: hub.bridgeState.token })
         await controller.setModel({ baseUrl: state.model.baseUrl, model: state.model.id, apiKey: hub.settings.get().catalogue.models?.workbench?.api_key ?? '' })
         notify({ ready: true, agents: hub.manifest().map(row => ({ id: row.path, name: row.name, status: 'idle', description: row.description })) })
-        watcher = setInterval(async () => { if (disposed || !files.backend || running.size) return; try { const rows = await files.list(); const fingerprint = JSON.stringify(rows); if (watched && fingerprint !== watched) { invalidate(); notify({ files: rows }) } watched = fingerprint } catch {} }, 2500)
+        watcher = setInterval(async () => {
+          if (disposed || watching || !files.backend || running.size || state.runtime.status !== 'ready') return
+          watching = true
+          const port = executor; const target = state.runtime.target; const version = healthVersions[target]
+          try {
+            const rows = await files.list()
+            if (disposed || executor !== port || state.runtime.target !== target || state.runtime.status !== 'ready' || healthVersions[target] !== version) return
+            const fingerprint = JSON.stringify(rows)
+            if (watched && fingerprint !== watched) { invalidate(); notify({ files: rows }) }
+            watched = fingerprint
+          } catch (error) { if (state.runtime.status === 'ready') report(error) }
+          finally { watching = false }
+        }, 2500)
       })().catch(error => { report(error); throw error })
       return started
     },
-    stop() { persistUI(); disposed = true; clearInterval(watcher); clearTimeout(persistTimer); unsubscribe?.(); hub?.stop(); for (const abort of running.values()) abort.abort(); browser?.dispose(); local?.dispose(); for (const artifact of state.artifacts) URL.revokeObjectURL(artifact.url); listeners.clear() },
-    readFile: path => files.read(path),
+    stop() { persistUI(); disposed = true; clearInterval(watcher); clearTimeout(persistTimer); unsubscribe?.(); hub?.stop(); settleHealthWaiters(new Error('The workspace was closed before the operation could be reconciled')); for (const abort of running.values()) abort.abort(); for (const port of new Set([browser, local, executor].filter(Boolean))) { try { Promise.resolve(port.dispose()).catch(error => { state = { ...state, error: `Environment shutdown could not be confirmed: ${error.message}` } }) } catch (error) { state = { ...state, error: `Environment shutdown could not be confirmed: ${error.message}` } } } for (const artifact of state.artifacts) URL.revokeObjectURL(artifact.url); listeners.clear() },
+    readFile: path => { requireResponsive(); return files.read(path) },
     saveFile: args => mutateFiles(() => files.save(args)),
     createFile: (path, content = '') => mutateFiles(() => files.save({ path, content, expect: 0 })),
     renameFile: (from, to, expect) => mutateFiles(() => files.rename(from, to, expect)),
@@ -309,10 +374,10 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
       await refreshFiles(); return result
     },
     async sendGoal(text) {
-      requireWritable()
+      requireWritable({ allowReconciledSetup: active(state.run?.status) })
       if (!text.trim()) return
       await controller.start()
-      requireWritable()
+      requireWritable({ allowReconciledSetup: active(state.run?.status) })
       if (active(state.run?.status)) {
         if (!activeRun) throw new Error('The current task cannot receive steering yet')
         hub.send(activeRun, { type: 'nudge', text })
@@ -335,13 +400,13 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
         return activeRun
       } catch (error) { if (launch !== launchEpoch) return null; notify({ run: { status: 'failed', agent: 'main' } }); throw report(error) }
     },
-    stopRun() { launchEpoch++; if (activeRun) { const run = hub.runs.get(activeRun); if (run) hub.abort(run) } else if (state.run?.status === 'starting') notify({ run: { ...state.run, status: 'cancelled' } }); for (const [key, abort] of running) { const command = state.commands.find(row => row.id === key); if (command?.runId) { abort.abort(); executor?.cancelJob?.(key) } } },
+    stopRun() { launchEpoch++; if (activeRun) { const run = hub.runs.get(activeRun); if (run) hub.abort(run) } else if (state.run?.status === 'starting') notify({ run: { ...state.run, status: 'cancelled' } }); for (const [key, abort] of running) { const command = state.commands.find(row => row.id === key); if (command?.runId) { abort.abort(); requestCancellation(key) } } },
     stopAgent(runId) {
       const run = hub?.runs.get(runId); if (!run || run.ended) return
       const affected = new Set()
       const collect = row => { if (!row || affected.has(row.id)) return; affected.add(row.id); for (const child of row.children) collect(hub.runs.get(child)) }
       collect(run); hub.abort(run)
-      for (const [key, abort] of running) if (affected.has(state.commands.find(command => command.id === key)?.runId)) { abort.abort(); executor?.cancelJob?.(key) }
+      for (const [key, abort] of running) if (affected.has(state.commands.find(command => command.id === key)?.runId)) { abort.abort(); requestCancellation(key) }
     },
     approve: (approvalId, approved, always = false) => hub.answerApproval(approvalId, { approved, always }),
     async setModel({ baseUrl, model, apiKey, via }) {
@@ -406,6 +471,7 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
               executor = next; binding = proposed.binding
             }
             if (!native) invalidate()
+            if (native) runtimeEstablished = true
             notify({ runtime: { ...state.runtime, ...(native ? { status: 'ready', phase: 'Ready', binding } : {}), savedBinding: workspaceLocation, bindingReview: null } })
           } catch (error) {
             files.backend = previousBackend; executor = previousExecutor; binding = previousBinding
@@ -456,10 +522,15 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
       } finally { transferring = false }
     },
     async startRuntime() {
-      requireWritable()
+      const reconciledSetup = state.runtime.status === 'unresponsive' && executionHealth[state.runtime.target] === 'responsive' && executor?.describeCapabilities().health !== 'unresponsive'
+      requireWritable({ allowReconciledSetup: reconciledSetup })
+      if (state.runtime.status === 'unresponsive' && runtimeEstablished) {
+        await reconcileRuntime(state.runtime.target); requireResponsive(); return executor
+      }
       if (state.runtime.status === 'ready') { assertBound(); return executor }
       if (runtimeBoot) return runtimeBoot
       runtimeBoot = (async () => {
+        runtimeEstablished = false
         const target = state.runtime.target; const epoch = executionEpochs[target]
         notify({ error: '', runtime: { ...state.runtime, status: 'starting', phase: 'Preparing environment' } })
         await loadLocation()
@@ -470,8 +541,10 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
         await files.mount(executor); await refreshFiles(); const descriptor = executor.describeCapabilities()
         assertBound()
         await rememberLocation(binding, executor, () => { assertExecutionAlive(target, epoch); assertBound() })
-        notify({ runtime: { ...state.runtime, status: 'ready', phase: 'Ready', capabilities: descriptor.capabilities ?? [], detail: descriptor.toolchain?.kind ?? descriptor.toolchain ?? '', binding, savedBinding: workspaceLocation, bindingReview: null, conflicts: [] } }); return executor
-      })().catch(error => { notify({ runtime: { ...state.runtime, status: 'failed', phase: error.code === 'WORKSPACE_MOUNT_CONFLICT' ? 'Saved changes need review' : 'Environment unavailable', detail: error.message, conflicts: error.conflicts ?? [] } }); throw report(error) }).finally(() => { runtimeBoot = null })
+        if (executionHealth[target] === 'unresponsive' || executor.describeCapabilities().health === 'unresponsive') throw unresponsive()
+        runtimeEstablished = true
+        notify({ runtime: { ...state.runtime, status: 'ready', health: 'responsive', phase: 'Ready', capabilities: descriptor.capabilities ?? [], detail: descriptor.toolchain?.kind ?? descriptor.toolchain ?? '', binding, savedBinding: workspaceLocation, bindingReview: null, conflicts: [], outstanding: [] } }); return executor
+      })().catch(error => { if (state.runtime.status !== 'unresponsive') notify({ runtime: { ...state.runtime, status: 'failed', phase: error.code === 'WORKSPACE_MOUNT_CONFLICT' ? 'Saved changes need review' : 'Environment unavailable', detail: error.message, conflicts: error.conflicts ?? [] } }); throw report(error) }).finally(() => { runtimeBoot = null })
       return runtimeBoot
     },
     async runCommand(command, { actor = 'You', runId } = {}) {
@@ -480,17 +553,21 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
       invalidate()
       const jobRevision = projectRevision; const jobRuntime = state.runtime.target; const jobBinding = assertBound()
       notify({ commands: [...state.commands, { id: jobId, command, cwd: jobBinding.root, actor, runId, runtime: state.runtime.target, binding: jobBinding, revision: jobRevision, status: 'running', output: '', outputLength: 0, at: Date.now() }] })
+      let receivedExit
       try {
         const result = await executor.startJob({ id: jobId, program: '/bin/sh', args: ['-lc', command], cwd: '.', signal: abort.signal, onOutput(event) { const row = state.commands.find(row => row.id === jobId); const chunk = String(event.data ?? event.text ?? ''); commandUpdate(jobId, { output: `${row?.output ?? ''}${chunk}`.slice(-500000), outputLength: (row?.outputLength ?? 0) + chunk.length }) } })
         assertBound(jobBinding)
         if (result.runtimeId && result.runtimeId !== jobBinding.runtimeId) throw new Error('The command receipt came from a different runtime session')
         const code = result.code ?? result.exitCode
+        receivedExit = { exitCode: code, cancelled: Boolean(result.cancelled), signal: result.signal ?? null }
+        commandUpdate(jobId, { ...receivedExit, executionEnded: true, stage: 'reconciling' })
+        await awaitReceiptHealth(jobBinding)
         await files.checkpoint(); await refreshFiles(); watched = JSON.stringify(await files.list())
         assertBound(jobBinding)
-        commandUpdate(jobId, { status: result.cancelled ? 'cancelled' : code === 0 ? 'done' : 'failed', exitCode: code })
+        commandUpdate(jobId, { status: result.cancelled ? 'cancelled' : code === 0 ? 'done' : 'failed', stage: 'complete', exitCode: code })
         const row = state.commands.find(row => row.id === jobId)
         return { ...result, id: jobId, output: row.output, outputLength: row.outputLength, runtime: jobRuntime, binding: jobBinding, revision: jobRevision }
-      } catch (error) { commandUpdate(jobId, { status: abort.signal.aborted ? 'cancelled' : 'failed', error: error.message }); throw error }
+      } catch (error) { commandUpdate(jobId, { status: receivedExit?.cancelled ? 'cancelled' : 'failed', stage: receivedExit ? 'reconciliation-failed' : 'outcome-unknown', error: receivedExit ? `Command exited${receivedExit.exitCode != null ? ` with code ${receivedExit.exitCode}` : ''}; workspace reconciliation failed: ${error.message}` : error.message }); throw error }
       finally { running.delete(jobId) }
     },
     async stopCommand(commandId) { running.get(commandId)?.abort(); await executor?.cancelJob?.(commandId) },
@@ -514,6 +591,7 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
       currentArtifact = { ...artifact, manifest: provenance, sourceFingerprint, status: 'ready', verified: false }; notify({ artifacts: [...state.artifacts, currentArtifact], activeArtifactId: artifact.id }); return { id: artifact.id, revision, status: 'ready', manifest: provenance, message: 'Built and packaged. Use workspace_check to run interaction assertions before claiming verification.' }
     },
     async checkArtifact({ assertions = [] } = {}) {
+      requireResponsive()
       if (!currentArtifact || currentArtifact.revision !== projectRevision || running.size) return { ok: false, reason: 'Finish running commands and build the current source revision first' }
       const { inspectArtifact, validateAssertions } = await import('./artifacts.js')
       let plan; try { plan = validateAssertions(assertions, { requireInteraction: acceptance.requireInteraction }) } catch (error) { return { ok: false, reason: error.message } }
@@ -527,7 +605,7 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
     selectArtifact(artifactId) { notify({ activeArtifactId: artifactId }) },
     refreshPreview() { if (currentArtifact) notify({ artifacts: state.artifacts.map(row => row.id === currentArtifact.id ? { ...row, reload: (row.reload ?? 0) + 1 } : row) }) },
     async openTerminal(size) { requireWritable(); openingTerminals++; try { await controller.startRuntime(); requireWritable(); assertExecutionPort(executor, { binding, requireTerminal: true }); const terminal = await executor.openTerminal(size); terminals.add(terminal.id); return terminal } finally { openingTerminals-- } },
-    terminalInput: (terminalId, data) => { invalidate(); return executor?.terminalInput(terminalId, data) },
+    terminalInput: (terminalId, data) => { if (data !== '\u0003') requireResponsive(); invalidate(); return executor?.terminalInput(terminalId, data) },
     resizeTerminal: (terminalId, cols, rows) => executor?.resizeTerminal(terminalId, cols, rows),
     async closeTerminal(terminalId) { if (!terminals.has(terminalId)) return; await executor?.closeTerminal(terminalId); terminals.delete(terminalId) },
     subscribeTerminal(terminalId, listener) { if (executor?.subscribeTerminal) return executor.subscribeTerminal(terminalId, listener); const set = terminalListeners.get(terminalId) ?? new Set(); set.add(listener); terminalListeners.set(terminalId, set); return () => set.delete(listener) },
