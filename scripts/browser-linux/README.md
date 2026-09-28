@@ -35,6 +35,8 @@ The browser readiness handshake records the running supervisor's Node version, e
 
 The CUA-driven verification page is available through `bun scripts/browser-linux/probe.js --serve`. Its browser-visible result retains image/boot identity, each readiness phase, elapsed milliseconds, actual command results and failures. `?profile=1` runs bounded comparisons of ordinary Node, V8 `--jitless`, Node's debug-only `--no-node-snapshot`, and both flags; these are diagnostic experiments, not production defaults. `?build=1` adds the baked-cache npm/Next build, `?network=1` installs and executes a package absent from that cache, and `?phase=reload` verifies an earlier checkpoint. A failed or timed-out run remains a failed receipt.
 
+The pinned Next/React proof copies `/opt/harness/template/package-lock.json` from the actual guest image and runs `npm ci --offline --no-audit --no-fund`. This exact lock avoids reparsing large registry histories during dependency resolution. It is valid only for the matching pinned template; applications with custom dependencies or their own lockfiles must retain their own dependency contract. Unlocked npm installation remains a real supported command, but its browser execution time must be reported separately.
+
 ## Provenance
 
 - container2wasm: `6ed3d98882a2b22eafc1334f574c364a5b2b8c47` (v0.8.4), Apache-2.0, <https://github.com/container2wasm/container2wasm>.

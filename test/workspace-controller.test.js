@@ -91,6 +91,24 @@ class ControlledExecution {
 const source = { 'package.json': JSON.stringify({ scripts: { build: 'next build --webpack' } }), 'app/page.jsx': 'export default function Page() { return "original" }' }
 const assertions = [{ action: 'click', selector: 'button' }, { action: 'assertText', selector: 'output', value: '1' }]
 
+test('command output tracks repeated chunks after the retained tail becomes identical', async () => {
+  const { controller, browser } = await fixture()
+  const observed = []
+  browser.onJob = async request => {
+    for (const chunk of ['x'.repeat(500000), 'x'.repeat(1000), 'x'.repeat(1000)]) {
+      request.onOutput({ data: chunk })
+      const row = controller.getSnapshot().commands.at(-1)
+      observed.push({ output: row.output, length: row.outputLength })
+    }
+    return { code: 0 }
+  }
+  const receipt = await controller.runCommand('repeated output fixture')
+  expect(observed.map(row => row.output.length)).toEqual([500000, 500000, 500000])
+  expect(observed[0].output).toBe(observed[2].output)
+  expect(observed.map(row => row.length)).toEqual([500015, 501015, 502015])
+  expect(receipt.outputLength).toBe(502015)
+})
+
 async function fixture({ seed = source, localSeed = {}, inspectArtifact, createExecution, createCompanion, createHub } = {}) {
   const files = new ProjectFiles()
   files.store = await openStore(`controller-fixture-${crypto.randomUUID()}`)

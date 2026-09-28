@@ -1,4 +1,4 @@
-export const ARTIFACT_TIMING = Object.freeze({ bootMs: 15000, settleMs: 1250, settleDelayMs: 500, drainMs: 12000, storageMs: 10000, overheadMs: 2000, maximumMs: 240000 })
+export const ARTIFACT_TIMING = Object.freeze({ bootMs: 15000, settleMs: 3000, settleDelayMs: 500, drainMs: 12000, storageMs: 10000, overheadMs: 2000, maximumMs: 240000 })
 
 export const artifactSegmentMs = count => Math.max(12000, 4000 + count * 1250)
 

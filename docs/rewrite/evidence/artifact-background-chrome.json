@@ -1,0 +1,435 @@
+{
+  "name": "37-action background native form counter",
+  "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36",
+  "at": "2026-09-28T20:19:17.742Z",
+  "crossOriginIsolated": true,
+  "elapsedMs": 40085.610000014305,
+  "visibility": [
+    {
+      "state": "hidden",
+      "ms": 0
+    }
+  ],
+  "assertionCount": 37,
+  "expectedSubmissions": 12,
+  "passed": true,
+  "receipt": {
+    "ok": true,
+    "errors": [],
+    "interactionMode": "programmatic-dom",
+    "results": [
+      {
+        "index": 0,
+        "action": "assertText",
+        "ok": true,
+        "frame": 0
+      },
+      {
+        "index": 1,
+        "action": "fill",
+        "ok": true,
+        "frame": 0
+      },
+      {
+        "index": 2,
+        "action": "click",
+        "ok": true,
+        "frame": 0
+      },
+      {
+        "index": 3,
+        "action": "assertText",
+        "ok": true,
+        "frame": 0
+      },
+      {
+        "index": 4,
+        "action": "fill",
+        "ok": true,
+        "frame": 0
+      },
+      {
+        "index": 5,
+        "action": "click",
+        "ok": true,
+        "frame": 0
+      },
+      {
+        "index": 6,
+        "action": "assertText",
+        "ok": true,
+        "frame": 0
+      },
+      {
+        "index": 7,
+        "action": "fill",
+        "ok": true,
+        "frame": 0
+      },
+      {
+        "index": 8,
+        "action": "click",
+        "ok": true,
+        "frame": 0
+      },
+      {
+        "index": 9,
+        "action": "assertText",
+        "ok": true,
+        "frame": 0
+      },
+      {
+        "index": 10,
+        "action": "fill",
+        "ok": true,
+        "frame": 0
+      },
+      {
+        "index": 11,
+        "action": "click",
+        "ok": true,
+        "frame": 0
+      },
+      {
+        "index": 12,
+        "action": "assertText",
+        "ok": true,
+        "frame": 0
+      },
+      {
+        "index": 13,
+        "action": "fill",
+        "ok": true,
+        "frame": 0
+      },
+      {
+        "index": 14,
+        "action": "click",
+        "ok": true,
+        "frame": 0
+      },
+      {
+        "index": 15,
+        "action": "assertText",
+        "ok": true,
+        "frame": 0
+      },
+      {
+        "index": 16,
+        "action": "fill",
+        "ok": true,
+        "frame": 0
+      },
+      {
+        "index": 17,
+        "action": "click",
+        "ok": true,
+        "frame": 0
+      },
+      {
+        "index": 18,
+        "action": "assertText",
+        "ok": true,
+        "frame": 0
+      },
+      {
+        "index": 19,
+        "action": "fill",
+        "ok": true,
+        "frame": 0
+      },
+      {
+        "index": 20,
+        "action": "click",
+        "ok": true,
+        "frame": 0
+      },
+      {
+        "index": 21,
+        "action": "assertText",
+        "ok": true,
+        "frame": 0
+      },
+      {
+        "index": 22,
+        "action": "fill",
+        "ok": true,
+        "frame": 0
+      },
+      {
+        "index": 23,
+        "action": "click",
+        "ok": true,
+        "frame": 0
+      },
+      {
+        "index": 24,
+        "action": "assertText",
+        "ok": true,
+        "frame": 0
+      },
+      {
+        "index": 25,
+        "action": "fill",
+        "ok": true,
+        "frame": 0
+      },
+      {
+        "index": 26,
+        "action": "click",
+        "ok": true,
+        "frame": 0
+      },
+      {
+        "index": 27,
+        "action": "assertText",
+        "ok": true,
+        "frame": 0
+      },
+      {
+        "index": 28,
+        "action": "fill",
+        "ok": true,
+        "frame": 0
+      },
+      {
+        "index": 29,
+        "action": "click",
+        "ok": true,
+        "frame": 0
+      },
+      {
+        "index": 30,
+        "action": "assertText",
+        "ok": true,
+        "frame": 0
+      },
+      {
+        "index": 31,
+        "action": "fill",
+        "ok": true,
+        "frame": 0
+      },
+      {
+        "index": 32,
+        "action": "click",
+        "ok": true,
+        "frame": 0
+      },
+      {
+        "index": 33,
+        "action": "assertText",
+        "ok": true,
+        "frame": 0
+      },
+      {
+        "index": 34,
+        "action": "fill",
+        "ok": true,
+        "frame": 0
+      },
+      {
+        "index": 35,
+        "action": "click",
+        "ok": true,
+        "frame": 0
+      },
+      {
+        "index": 36,
+        "action": "assertText",
+        "ok": true,
+        "frame": 0
+      }
+    ],
+    "assertions": [
+      {
+        "action": "assertText",
+        "selector": "#ready",
+        "value": "Form ready"
+      },
+      {
+        "action": "fill",
+        "selector": "#entry",
+        "value": "Entry 1"
+      },
+      {
+        "action": "click",
+        "selector": "#submit-entry"
+      },
+      {
+        "action": "assertText",
+        "selector": "#count",
+        "value": "Count: 1; Last: Entry 1."
+      },
+      {
+        "action": "fill",
+        "selector": "#entry",
+        "value": "Entry 2"
+      },
+      {
+        "action": "click",
+        "selector": "#submit-entry"
+      },
+      {
+        "action": "assertText",
+        "selector": "#count",
+        "value": "Count: 2; Last: Entry 2."
+      },
+      {
+        "action": "fill",
+        "selector": "#entry",
+        "value": "Entry 3"
+      },
+      {
+        "action": "click",
+        "selector": "#submit-entry"
+      },
+      {
+        "action": "assertText",
+        "selector": "#count",
+        "value": "Count: 3; Last: Entry 3."
+      },
+      {
+        "action": "fill",
+        "selector": "#entry",
+        "value": "Entry 4"
+      },
+      {
+        "action": "click",
+        "selector": "#submit-entry"
+      },
+      {
+        "action": "assertText",
+        "selector": "#count",
+        "value": "Count: 4; Last: Entry 4."
+      },
+      {
+        "action": "fill",
+        "selector": "#entry",
+        "value": "Entry 5"
+      },
+      {
+        "action": "click",
+        "selector": "#submit-entry"
+      },
+      {
+        "action": "assertText",
+        "selector": "#count",
+        "value": "Count: 5; Last: Entry 5."
+      },
+      {
+        "action": "fill",
+        "selector": "#entry",
+        "value": "Entry 6"
+      },
+      {
+        "action": "click",
+        "selector": "#submit-entry"
+      },
+      {
+        "action": "assertText",
+        "selector": "#count",
+        "value": "Count: 6; Last: Entry 6."
+      },
+      {
+        "action": "fill",
+        "selector": "#entry",
+        "value": "Entry 7"
+      },
+      {
+        "action": "click",
+        "selector": "#submit-entry"
+      },
+      {
+        "action": "assertText",
+        "selector": "#count",
+        "value": "Count: 7; Last: Entry 7."
+      },
+      {
+        "action": "fill",
+        "selector": "#entry",
+        "value": "Entry 8"
+      },
+      {
+        "action": "click",
+        "selector": "#submit-entry"
+      },
+      {
+        "action": "assertText",
+        "selector": "#count",
+        "value": "Count: 8; Last: Entry 8."
+      },
+      {
+        "action": "fill",
+        "selector": "#entry",
+        "value": "Entry 9"
+      },
+      {
+        "action": "click",
+        "selector": "#submit-entry"
+      },
+      {
+        "action": "assertText",
+        "selector": "#count",
+        "value": "Count: 9; Last: Entry 9."
+      },
+      {
+        "action": "fill",
+        "selector": "#entry",
+        "value": "Entry 10"
+      },
+      {
+        "action": "click",
+        "selector": "#submit-entry"
+      },
+      {
+        "action": "assertText",
+        "selector": "#count",
+        "value": "Count: 10; Last: Entry 10."
+      },
+      {
+        "action": "fill",
+        "selector": "#entry",
+        "value": "Entry 11"
+      },
+      {
+        "action": "click",
+        "selector": "#submit-entry"
+      },
+      {
+        "action": "assertText",
+        "selector": "#count",
+        "value": "Count: 11; Last: Entry 11."
+      },
+      {
+        "action": "fill",
+        "selector": "#entry",
+        "value": "Entry 12"
+      },
+      {
+        "action": "click",
+        "selector": "#submit-entry"
+      },
+      {
+        "action": "assertText",
+        "selector": "#count",
+        "value": "Count: 12; Last: Entry 12."
+      }
+    ],
+    "artifactId": "artifact-715228e8-5f52-45d1-b037-bee2b810126b",
+    "revision": 1,
+    "buildId": "artifact-715228e8-5f52-45d1-b037-bee2b810126b",
+    "checkedAt": 1790626757741,
+    "timing": {
+      "budgetMs": 82250,
+      "elapsedMs": 40082.80500000715
+    }
+  },
+  "_provenance": {
+    "originalSha256": "6fb76d41afb2193a43c945c3a5b9bbb7220e23768ac0f55bc372b335e05e5c52",
+    "originalBytes": 8496,
+    "rawOriginalLocation": ".cache/evidence/raw/artifact-background-chrome.json",
+    "homeDirectoryPrefixesRedacted": 0,
+    "notice": "Browser fixture evidence. Receipt numbers and timing measurements are retained from the original browser result. Public copy includes this provenance metadata; raw original is retained locally with mode0600. This is not a model run or generated-application acceptance receipt."
+  }
+}

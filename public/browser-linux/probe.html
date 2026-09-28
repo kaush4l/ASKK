@@ -13,7 +13,7 @@ const runtime = new BrowserLinuxExecution({ projectId: params.get('project') || 
   if (event.type === 'runtime.progress') { window.__browserLinuxProbe.phase = event.phase; if (stages.at(-1)?.phase !== event.phase || event.phase === 'Checking tools') stages.push({ phase: event.phase, message: event.message, atMilliseconds: performance.now() - started }) }
   document.getElementById('status').textContent = `${event.type}${event.phase ? `: ${event.phase}` : ''}${event.message ? ` — ${event.message}` : ''}\n${JSON.stringify(checks)}\n${log.join('').slice(-4000)}`
 } })
-const assert = (condition, name, evidence) => { if (!condition) throw new Error(name); checks.push({ name, evidence, atMilliseconds: performance.now() - started }) }
+const assert = (condition, name, evidence) => { checks.push({ name, passed: Boolean(condition), evidence, atMilliseconds: performance.now() - started }); if (!condition) throw new Error(name) }
 const job = async (id, program, args) => { const began = performance.now(); const result = await runtime.startJob({ id, program, args, signal: AbortSignal.timeout(id === 'read-shared-file' ? 600000 : 900000) }); assert(result.code === 0, id, { ...result, milliseconds: performance.now() - began }); return result }
 try {
   await runtime.prepare()
@@ -55,7 +55,8 @@ try {
       await runtime.write({ path: 'package.json', content: JSON.stringify({ private: true, scripts: { build: 'next build --webpack' }, dependencies: { next: '16.3.6', react: '19.3.0', 'react-dom': '19.3.0' } }) })
       await runtime.write({ path: 'next.config.mjs', content: 'export default {output:"export",images:{unoptimized:true},experimental:{cpus:1}}' })
       await runtime.write({ path: 'pages/index.js', content: 'import React from "react";export default function Page(){return React.createElement("main",null,"Browser Linux build proof")}' })
-      await job('npm-install', 'npm', ['install', '--offline', '--no-audit', '--no-fund'])
+      await job('pinned-template-lock', 'cp', ['/opt/harness/template/package-lock.json', 'package-lock.json'])
+      await job('npm-ci', 'npm', ['ci', '--offline', '--no-audit', '--no-fund'])
       await job('next-build', 'env', ['NODE_ENV=production', 'NEXT_TELEMETRY_DISABLED=1', 'npm', 'run', 'build'])
       const artifact = await runtime.snapshot('out')
       const index = artifact.files.find((file) => file.path === 'index.html')

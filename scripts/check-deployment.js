@@ -2,9 +2,9 @@
 import { readdir, readFile, stat } from 'node:fs/promises'
 import { resolve, join, relative } from 'node:path'
 import { createHash } from 'node:crypto'
-export async function checkDeployment(directory = 'out', { basePath = '/ASKK', requireRuntime = true } = {}) {
+export async function checkDeployment(directory = 'out', { basePath = '/ASKK', requireRuntime = true, worktree = false } = {}) {
   const root = resolve(directory); const files = []
-  async function walk(folder) { for (const entry of await readdir(folder, { withFileTypes: true })) { const path = join(folder, entry.name); if (entry.isDirectory()) await walk(path); else if (entry.isFile()) { const size = (await stat(path)).size; if (size >= 100 * 1024 * 1024) throw new Error(`Asset exceeds the GitHub 100 MiB file limit: ${relative(root, path)}`); files.push({ path: relative(root, path), bytes: size, sha256: createHash('sha256').update(await readFile(path)).digest('hex') }) } else throw new Error(`Deployment contains a nonregular asset: ${path}`) } }
+  async function walk(folder) { for (const entry of await readdir(folder, { withFileTypes: true })) { const path = join(folder, entry.name); if (worktree && folder === root && entry.name === '.git') continue; if (entry.isDirectory()) await walk(path); else if (entry.isFile()) { const size = (await stat(path)).size; if (size >= 100 * 1024 * 1024) throw new Error(`Asset exceeds the GitHub 100 MiB file limit: ${relative(root, path)}`); files.push({ path: relative(root, path), bytes: size, sha256: createHash('sha256').update(await readFile(path)).digest('hex') }) } else throw new Error(`Deployment contains a nonregular asset: ${path}`) } }
   await walk(root)
   const bytes = files.reduce((sum, file) => sum + file.bytes, 0)
   if (bytes > 1_000_000_000) throw new Error('Published site exceeds 1 GB')
@@ -27,4 +27,4 @@ export async function checkDeployment(directory = 'out', { basePath = '/ASKK', r
   }
   return { version: 1, basePath, totalBytes: bytes, fileCount: files.length, runtimeId: runtime?.id, artifactHash: createHash('sha256').update(JSON.stringify(files.sort((a,b)=>a.path.localeCompare(b.path)))).digest('hex'), files }
 }
-if (import.meta.main) { const result = await checkDeployment(process.argv[2] || 'out', { requireRuntime: !process.argv.includes('--without-runtime') }); console.log(JSON.stringify({ ...result, files: undefined }, null, 2)) }
+if (import.meta.main) { const result = await checkDeployment(process.argv[2] || 'out', { requireRuntime: !process.argv.includes('--without-runtime'), worktree: process.argv.includes('--worktree') }); console.log(JSON.stringify({ ...result, files: undefined }, null, 2)) }

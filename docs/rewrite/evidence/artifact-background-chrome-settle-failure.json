@@ -1,0 +1,214 @@
+{
+  "name": "37-action background native form counter",
+  "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36",
+  "at": "2026-09-28T20:15:14.742Z",
+  "crossOriginIsolated": true,
+  "elapsedMs": 1581.4800000190735,
+  "visibility": [
+    {
+      "state": "hidden",
+      "ms": 0
+    }
+  ],
+  "assertionCount": 37,
+  "expectedSubmissions": 12,
+  "passed": false,
+  "receipt": {
+    "ok": false,
+    "errors": [
+      "Artifact settling exceeded its time budget"
+    ],
+    "interactionMode": "programmatic-dom",
+    "results": [],
+    "assertions": [
+      {
+        "action": "assertText",
+        "selector": "#ready",
+        "value": "Form ready"
+      },
+      {
+        "action": "fill",
+        "selector": "#entry",
+        "value": "Entry 1"
+      },
+      {
+        "action": "click",
+        "selector": "#submit-entry"
+      },
+      {
+        "action": "assertText",
+        "selector": "#count",
+        "value": "Count: 1; Last: Entry 1."
+      },
+      {
+        "action": "fill",
+        "selector": "#entry",
+        "value": "Entry 2"
+      },
+      {
+        "action": "click",
+        "selector": "#submit-entry"
+      },
+      {
+        "action": "assertText",
+        "selector": "#count",
+        "value": "Count: 2; Last: Entry 2."
+      },
+      {
+        "action": "fill",
+        "selector": "#entry",
+        "value": "Entry 3"
+      },
+      {
+        "action": "click",
+        "selector": "#submit-entry"
+      },
+      {
+        "action": "assertText",
+        "selector": "#count",
+        "value": "Count: 3; Last: Entry 3."
+      },
+      {
+        "action": "fill",
+        "selector": "#entry",
+        "value": "Entry 4"
+      },
+      {
+        "action": "click",
+        "selector": "#submit-entry"
+      },
+      {
+        "action": "assertText",
+        "selector": "#count",
+        "value": "Count: 4; Last: Entry 4."
+      },
+      {
+        "action": "fill",
+        "selector": "#entry",
+        "value": "Entry 5"
+      },
+      {
+        "action": "click",
+        "selector": "#submit-entry"
+      },
+      {
+        "action": "assertText",
+        "selector": "#count",
+        "value": "Count: 5; Last: Entry 5."
+      },
+      {
+        "action": "fill",
+        "selector": "#entry",
+        "value": "Entry 6"
+      },
+      {
+        "action": "click",
+        "selector": "#submit-entry"
+      },
+      {
+        "action": "assertText",
+        "selector": "#count",
+        "value": "Count: 6; Last: Entry 6."
+      },
+      {
+        "action": "fill",
+        "selector": "#entry",
+        "value": "Entry 7"
+      },
+      {
+        "action": "click",
+        "selector": "#submit-entry"
+      },
+      {
+        "action": "assertText",
+        "selector": "#count",
+        "value": "Count: 7; Last: Entry 7."
+      },
+      {
+        "action": "fill",
+        "selector": "#entry",
+        "value": "Entry 8"
+      },
+      {
+        "action": "click",
+        "selector": "#submit-entry"
+      },
+      {
+        "action": "assertText",
+        "selector": "#count",
+        "value": "Count: 8; Last: Entry 8."
+      },
+      {
+        "action": "fill",
+        "selector": "#entry",
+        "value": "Entry 9"
+      },
+      {
+        "action": "click",
+        "selector": "#submit-entry"
+      },
+      {
+        "action": "assertText",
+        "selector": "#count",
+        "value": "Count: 9; Last: Entry 9."
+      },
+      {
+        "action": "fill",
+        "selector": "#entry",
+        "value": "Entry 10"
+      },
+      {
+        "action": "click",
+        "selector": "#submit-entry"
+      },
+      {
+        "action": "assertText",
+        "selector": "#count",
+        "value": "Count: 10; Last: Entry 10."
+      },
+      {
+        "action": "fill",
+        "selector": "#entry",
+        "value": "Entry 11"
+      },
+      {
+        "action": "click",
+        "selector": "#submit-entry"
+      },
+      {
+        "action": "assertText",
+        "selector": "#count",
+        "value": "Count: 11; Last: Entry 11."
+      },
+      {
+        "action": "fill",
+        "selector": "#entry",
+        "value": "Entry 12"
+      },
+      {
+        "action": "click",
+        "selector": "#submit-entry"
+      },
+      {
+        "action": "assertText",
+        "selector": "#count",
+        "value": "Count: 12; Last: Entry 12."
+      }
+    ],
+    "artifactId": "artifact-838db955-fba6-4f5b-86e6-1a0344cf6a61",
+    "revision": 1,
+    "buildId": "artifact-838db955-fba6-4f5b-86e6-1a0344cf6a61",
+    "checkedAt": 1790626514740,
+    "timing": {
+      "budgetMs": 80500,
+      "elapsedMs": 1578.3950000107288
+    }
+  },
+  "_provenance": {
+    "originalSha256": "ba009a71d61a4a788a4ea3d325f0c19e1adb5ec582fc34cd34ad0445a8b0a5ab",
+    "originalBytes": 4660,
+    "rawOriginalLocation": ".cache/evidence/raw/artifact-background-chrome-settle-failure.json",
+    "homeDirectoryPrefixesRedacted": 0,
+    "notice": "Browser fixture evidence. Receipt numbers and timing measurements are retained from the original browser result. Public copy includes this provenance metadata; raw original is retained locally with mode0600. This is not a model run or generated-application acceptance receipt."
+  }
+}

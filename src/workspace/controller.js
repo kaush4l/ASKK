@@ -419,9 +419,9 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
       await controller.startRuntime(); requireWritable(); const jobId = id('command'); const abort = new AbortController(); running.set(jobId, abort)
       invalidate()
       const jobRevision = projectRevision; const jobRuntime = state.runtime.target; const jobBinding = assertBound()
-      notify({ commands: [...state.commands, { id: jobId, command, cwd: jobBinding.root, actor, runId, runtime: state.runtime.target, binding: jobBinding, revision: jobRevision, status: 'running', output: '', at: Date.now() }] })
+      notify({ commands: [...state.commands, { id: jobId, command, cwd: jobBinding.root, actor, runId, runtime: state.runtime.target, binding: jobBinding, revision: jobRevision, status: 'running', output: '', outputLength: 0, at: Date.now() }] })
       try {
-        const result = await executor.startJob({ id: jobId, program: '/bin/sh', args: ['-lc', command], cwd: '.', signal: abort.signal, onOutput(event) { const row = state.commands.find(row => row.id === jobId); commandUpdate(jobId, { output: `${row?.output ?? ''}${event.data ?? event.text ?? ''}`.slice(-500000) }) } })
+        const result = await executor.startJob({ id: jobId, program: '/bin/sh', args: ['-lc', command], cwd: '.', signal: abort.signal, onOutput(event) { const row = state.commands.find(row => row.id === jobId); const chunk = String(event.data ?? event.text ?? ''); commandUpdate(jobId, { output: `${row?.output ?? ''}${chunk}`.slice(-500000), outputLength: (row?.outputLength ?? 0) + chunk.length }) } })
         assertBound(jobBinding)
         if (result.runtimeId && result.runtimeId !== jobBinding.runtimeId) throw new Error('The command receipt came from a different runtime session')
         const code = result.code ?? result.exitCode
@@ -429,7 +429,7 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
         assertBound(jobBinding)
         commandUpdate(jobId, { status: result.cancelled ? 'cancelled' : code === 0 ? 'done' : 'failed', exitCode: code })
         const row = state.commands.find(row => row.id === jobId)
-        return { ...result, id: jobId, output: row.output, runtime: jobRuntime, binding: jobBinding, revision: jobRevision }
+        return { ...result, id: jobId, output: row.output, outputLength: row.outputLength, runtime: jobRuntime, binding: jobBinding, revision: jobRevision }
       } catch (error) { commandUpdate(jobId, { status: abort.signal.aborted ? 'cancelled' : 'failed', error: error.message }); throw error }
       finally { running.delete(jobId) }
     },

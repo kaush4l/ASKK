@@ -1,13 +1,13 @@
 # Remote behavior reconciliation
 
-Updated 2026-09-28. This records decisions for all 13 commits in the already-fetched `HEAD..origin/main` history. It does not claim a fresh fetch or complete behavioral parity.
+Updated 2026-09-28. This records decisions for all 13 remote commits newer than the original local ancestor. A fresh fetch before integration confirmed the inspected tip; the decisions do not claim complete behavioral parity.
 
 - Local ancestor: `3c911271a6d717858e281cd238cab0e483b190a8`.
 - Remote tip inspected: [`7b825eefa40872df5613ee4d22d33accd4560bf9`](https://github.com/kaush4l/ASKK/commit/7b825eefa40872df5613ee4d22d33accd4560bf9).
 - The 13 commits are dated 2026-09-17 and touch 88 paths. Paths include tests and the historical Python archive; they are not 88 product features.
-- References to current code describe the pending rewrite. No commit, merge, or staging operation was performed by this reconciliation task.
+- The rewrite was committed as `d1296c5c`, then integrated with the inspected remote ancestry by merge commit `edc6ad1e`. The `ours` merge strategy preserves the reviewed replacement tree and both histories; it is not a claim that legacy code was mechanically merged. The branch `codex/browser-workbench` is pushed.
 
-Port observable behavior through the current engine, worker hub, execution contracts, and workbench. The old framework, generated assets, selectors, and service hierarchy are not required to preserve those behaviors. A later history-preserving merge should retain these decisions and the remote ancestry.
+Port observable behavior through the current engine, worker hub, execution contracts, and workbench. The old framework, generated assets, selectors, and service hierarchy are not required to preserve those behaviors. The history-preserving merge retains these decisions and the remote ancestry.
 
 ## Decision for every remote commit
 

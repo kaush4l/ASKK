@@ -1,0 +1,36 @@
+{
+  "source": "CUA controlled Chrome tab1744669562, structured browser probe receipt",
+  "startedAt": "2026-09-28T20:03:17.657Z",
+  "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36",
+  "crossOriginIsolated": true,
+  "imageId": "c2w-node24-38d093f4a38002db",
+  "instanceId": "1a1bc1ba-8cd2-40b6-8557-dc69a7fe3f13",
+  "runtimeId": "browser-linux:cua-backoff-proof:c2w-node24-38d093f4a38002db:1a1bc1ba-8cd2-40b6-8557-dc69a7fe3f13",
+  "root": "/workspaces/cua-backoff-proof",
+  "network": "browser-fetch-cors",
+  "companionAuthorization": false,
+  "companionPresence": "7718 running for independent native UI test;7717 stopped. Neither authorized to this guest.",
+  "stagesMilliseconds": {
+    "booting": 5179.424999982119,
+    "supervisorHandshake": 228082.72499999404,
+    "nodeVersionAdmitted": 231142.5949999988,
+    "nodeVersionCompleted": 233663.12000000477,
+    "readyAfterSharedFilesystemCheckpoint": 236423.07499998808
+  },
+  "checks": [
+    { "name": "Linux missing-file errno", "passed": true, "atMilliseconds": 236842.79999998212 },
+    { "name": "Actual Node-e shared Unicode file read", "passed": true, "milliseconds": 31600.524999976158, "code": 0, "signal": null, "cancelled": false, "stdout": "durable browser guest 🦊\n{\"cpu\":{\"user\":20673899,\"system\":4684156},\"uptime\":25.785240064}\n", "atMilliseconds": 269363.1850000024 },
+    { "name": "Binary workspace snapshot round trip", "passed": true, "atMilliseconds": 280203.17999997735 },
+    { "name": "Stale editor write rejected", "passed": true, "atMilliseconds": 281302.625 },
+    { "name": "Interactive PTY resize", "passed": true, "output": "# stty size\r\n37 103\r\n", "atMilliseconds": 286245.0949999988 },
+    { "name": "Real process cancellation", "passed": true, "atMilliseconds": 290863.1399999857 }
+  ],
+  "supervisorDuringJavaScript": {
+    "before": { "cpu": { "user": 80777851, "system": 45357600 }, "uptime": 114.17199488, "pollCount": 12 },
+    "after": { "cpu": { "user": 82551724, "system": 46832038 }, "uptime": 147.160014848, "pollCount": 46 },
+    "cpuMicroseconds": 3248311,
+    "pollCount": 34
+  },
+  "acceptance": { "chromeCore": true, "npm": false, "next": false, "durableReload": false, "safari": false },
+  "remainingRun": "npm offline install and Next static export still running; brief UI QA foreground bracket occurred after core performance evidence was captured."
+}

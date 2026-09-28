@@ -10,6 +10,7 @@ const published = path.join(root, 'public/browser-linux/generated')
 const id = process.argv[2]
 if (!/^c2w-node24-[a-f0-9]{16}$/.test(id ?? '')) throw new Error('Supply one exact obsolete image id')
 const current = JSON.parse(await readFile(path.join(published, 'manifest.json'), 'utf8'))
+if (!/^c2w-node24-[a-f0-9]{16}$/.test(current.id ?? '')) throw new Error('Invalid current published image id')
 if (current.id === id) throw new Error('Refusing to retire the current published image')
 const directory = path.join(published, id)
 const metadata = await readFile(path.join(directory, 'manifest.json'))

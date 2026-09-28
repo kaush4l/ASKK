@@ -2,11 +2,13 @@
 import { useEffect, useRef } from 'react'
 import { Terminal as Xterm } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
+import { terminalOutputDelta } from './terminal-output.js'
 
-export default function Terminal({ controller, sessionId, output = '', theme = 'dark', interactive = false }) {
+export default function Terminal({ controller, sessionId, output = '', outputLength, theme = 'dark', interactive = false }) {
   const node = useRef(null)
   const instance = useRef(null)
   const written = useRef('')
+  const writtenLength = useRef(0)
   useEffect(() => {
     const terminal = new Xterm({
       cursorBlink: interactive, disableStdin: !interactive, convertEol: true,
@@ -19,6 +21,7 @@ export default function Terminal({ controller, sessionId, output = '', theme = '
     terminal.open(node.current)
     instance.current = terminal
     written.current = ''
+    writtenLength.current = 0
     let live = true
     const resize = () => { if (!live || !node.current?.clientWidth || !node.current?.clientHeight) return; fit.fit(); if (interactive && sessionId) controller?.resizeTerminal?.(sessionId, terminal.cols, terminal.rows) }
     const observer = new ResizeObserver(resize)
@@ -31,9 +34,11 @@ export default function Terminal({ controller, sessionId, output = '', theme = '
   useEffect(() => {
     if (!instance.current || interactive) return
     const text = String(output)
-    if (text.startsWith(written.current)) instance.current.write(text.slice(written.current.length))
-    else { instance.current.reset(); instance.current.write(text) }
+    const delta = terminalOutputDelta(written.current, text, { previousLength: writtenLength.current, outputLength })
+    if (delta.reset) instance.current.reset()
+    if (delta.text) instance.current.write(delta.text)
     written.current = text
-  }, [output, sessionId, theme, interactive])
+    writtenLength.current = outputLength
+  }, [controller, output, outputLength, sessionId, theme, interactive])
   return <div className="terminal-viewport" ref={node} aria-label={interactive ? 'Interactive terminal' : 'Command output'}/>
 }

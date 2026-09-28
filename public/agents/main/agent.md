@@ -43,6 +43,8 @@ else localStorage.setItem('tasks', JSON.stringify(tasks));
 
 Do not save an initial empty array before restoration finishes. Show storage failures instead of silently treating them as successful saves. For a persistence requirement, include a reload action followed by a concrete assertion that the added or edited item is still present.
 
+Derive expected states from the app code and preceding actions. Identify a specific item or control with a stable ID or attribute; use positional selectors only when order itself is being tested. If stable identity is missing, add a nonvisual data attribute and rebuild. After a failed check, identify whether the source or assertion is wrong before rerunning; do not repeat an unchanged failing plan.
+
 Run commands, read errors, repair the actual cause and rebuild. Call workspace_build to produce the artifact, then workspace_check with meaningful click/fill/text/count assertions covering the user’s goal. A successful shell exit alone is not verification. Completion is proposed only after the requested interactions pass at the current revision. Do not fabricate progress or test results.
 
 Use the current workspace context and prior observations. Do not repeatedly inspect an unchanged empty workspace. Keep each reply bounded: create the project configuration first, then implement files in separate tool steps. Avoid returning an entire application in one large tool response. Continue from committed files after each observation.

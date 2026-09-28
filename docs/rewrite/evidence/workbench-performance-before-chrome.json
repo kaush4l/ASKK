@@ -1,0 +1,169 @@
+{
+  "profile": "actual-workbench-components-synthetic-input",
+  "browser": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36",
+  "at": "2026-09-28T20:11:42.518Z",
+  "results": [
+    {
+      "name": "Mount 1000 files",
+      "files": 1000,
+      "commitMs": 16.3,
+      "throughTwoFramesMs": 51.8,
+      "renderedTreeRows": 1101,
+      "longTasks": []
+    },
+    {
+      "name": "Filter 1000 files to last filename",
+      "files": 1000,
+      "commitMs": 6.7,
+      "throughTwoFramesMs": 15.6,
+      "renderedTreeRows": 3,
+      "longTasks": []
+    },
+    {
+      "name": "Restore 1000 files from filter",
+      "files": 1000,
+      "commitMs": 10.2,
+      "throughTwoFramesMs": 86.2,
+      "renderedTreeRows": 1101,
+      "longTasks": []
+    },
+    {
+      "name": "Select last of 1000 files",
+      "files": 1000,
+      "commitMs": 3,
+      "throughTwoFramesMs": 16.4,
+      "renderedTreeRows": 1101,
+      "longTasks": []
+    },
+    {
+      "name": "Mount 10000 files",
+      "files": 10000,
+      "commitMs": 120.6,
+      "throughTwoFramesMs": 662.3,
+      "renderedTreeRows": 10101,
+      "longTasks": []
+    },
+    {
+      "name": "Filter 10000 files to last filename",
+      "files": 10000,
+      "commitMs": 56.7,
+      "throughTwoFramesMs": 58.1,
+      "renderedTreeRows": 3,
+      "longTasks": [
+        57
+      ]
+    },
+    {
+      "name": "Restore 10000 files from filter",
+      "files": 10000,
+      "commitMs": 86.5,
+      "throughTwoFramesMs": 380.1,
+      "renderedTreeRows": 10101,
+      "longTasks": [
+        197
+      ]
+    },
+    {
+      "name": "Select last of 10000 files",
+      "files": 10000,
+      "commitMs": 27,
+      "throughTwoFramesMs": 30.5,
+      "renderedTreeRows": 10101,
+      "longTasks": []
+    },
+    {
+      "name": "Render bounded 500k-character command tail",
+      "sourceCharacters": 4860000,
+      "displayedSnapshotCharacters": 500000,
+      "commitMs": 0.2,
+      "markerVisible": true,
+      "markerLatencyMs": 997.8,
+      "screenRows": 22
+    },
+    {
+      "name": "Thirty rolling output updates after retention limit",
+      "updates": 30,
+      "retainedCharacters": 500000,
+      "reactCommitMs": [
+        2.4,
+        1,
+        1,
+        1.2,
+        0.9,
+        1.9,
+        0.9,
+        1.1,
+        4.9,
+        1.1,
+        0.8,
+        0.8,
+        0.9,
+        0.8,
+        1,
+        0.7,
+        0.5,
+        0.8,
+        0.5,
+        0.7,
+        0.7,
+        0.6,
+        0.7,
+        0.7,
+        0.8,
+        0.8,
+        0.6,
+        0.6,
+        0.5,
+        0.9
+      ],
+      "totalMs": 4190.3,
+      "markerVisible": true,
+      "markerLatencyMs": 903.9,
+      "screenRows": 22,
+      "longTasks": [
+        132,
+        113,
+        94,
+        110,
+        148,
+        101,
+        101,
+        96,
+        103,
+        102,
+        100,
+        89,
+        101,
+        102,
+        96,
+        88,
+        90,
+        97,
+        85,
+        85,
+        77,
+        80,
+        76,
+        86,
+        91,
+        81,
+        95,
+        96,
+        100,
+        95
+      ]
+    }
+  ],
+  "origin": "http://127.0.0.1:5201/",
+  "components": [
+    "src/workbench/FileTree.jsx",
+    "src/workbench/Terminal.jsx"
+  ],
+  "input": "Synthetic1k/10k filesystem metadata and4.86m-character compiler text; actual production components bundled with React production mode. No real files, commands, model, or guest used.",
+  "method": "CUA clicked benchmark controls. Fixture measured performance.now around flushSync and two requestAnimationFrames; output completion measured actual visible accessibility marker. These are one-run desktop observations, not general performance guarantees.",
+  "limitations": [
+    "A CUA accessibility snapshot overlapped the10k mount; through-two-frame timing may include instrumentation overhead. Commit time and rendered DOM count still show unbounded tree cost.",
+    "Concurrent browser Linux npm work was temporarily backgrounded by agreement; timings are not an idle-machine benchmark.",
+    "Output source retained500000 characters as the real controller does; actual controller transport was not part of this component fixture."
+  ]
+}

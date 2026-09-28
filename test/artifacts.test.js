@@ -138,11 +138,11 @@ test('a malformed out-of-order frame receipt cannot be promoted to passing evide
 // Timers can be clamped without waiting in real time. jump() deliberately moves
 // the clock without delivering timers, reproducing a late callback beating its
 // timeout callback in the browser's task queues.
-function controlledClock({ minimumDelay = 0 } = {}) {
+function controlledClock({ minimumDelay = 0, settleDelay = 0 } = {}) {
   let time = 0; let serial = 0; let fired = 0; const timers = new Map()
   const clock = {
     now: () => time,
-    setTimeout(callback, ms) { const id = ++serial; timers.set(id, { at: time + Math.max(minimumDelay, ms), callback }); return id },
+    setTimeout(callback, ms) { const id = ++serial; timers.set(id, { at: time + Math.max(minimumDelay, ms, ms === ARTIFACT_TIMING.settleDelayMs ? settleDelay : 0), callback }); return id },
     clearTimeout: id => timers.delete(id),
     jump: ms => { time += ms },
     get fired() { return fired },
@@ -178,9 +178,9 @@ class ControlledChannel {
 const longPlan = count => [...Array.from({ length: count - 1 }, () => ({ action: 'click', selector: '#add' })), { action: 'assertText', selector: '#count', value: String(count - 1) }]
 
 test('the plan ledger reserves every action and each reload while rejecting oversized checks before a frame exists', async () => {
-  expect(artifactInspectionBudget(longPlan(36))).toEqual({ totalMs: 79250, frames: 1, segments: [49000] })
-  expect(artifactInspectionBudget(longPlan(100)).totalMs).toBe(159250)
-  expect(artifactInspectionBudget(reloadPlan)).toEqual({ totalMs: 82500, frames: 2, segments: [12000, 12000] })
+  expect(artifactInspectionBudget(longPlan(36))).toEqual({ totalMs: 81000, frames: 1, segments: [49000] })
+  expect(artifactInspectionBudget(longPlan(100)).totalMs).toBe(161000)
+  expect(artifactInspectionBudget(reloadPlan)).toEqual({ totalMs: 86000, frames: 2, segments: [12000, 12000] })
   const plan = [{ action: 'click', selector: '#add' }, ...Array.from({ length: 8 }, () => [{ action: 'reload' }, { action: 'assertText', selector: '#count', value: '1' }]).flat()]
   await frameHarness(async ({ artifact, frames }) => {
     await expect(inspectArtifact(artifact, plan)).rejects.toThrow('240-second time budget')
@@ -245,4 +245,17 @@ test('storage drain counts elapsed time under clamping and refuses a late quiet 
     expect(settled).toBe(expected)
     expect(sleeps).toBe(calls)
   }
+})
+
+
+test('a background-aligned initial settle timer can wake at1500ms without exhausting the plan', async () => {
+  const clock = controlledClock({ minimumDelay: 1000, settleDelay: 1500 }); const plan = longPlan(37)
+  await frameHarness(async ({ artifact, frames }) => {
+    const receipt = await clock.run(inspectArtifact(artifact, plan, { clock }))
+    expect(receipt.ok).toBe(true)
+    expect(receipt.results).toHaveLength(37)
+    expect(frames[0].clicks).toBe(36)
+    expect(receipt.timing).toEqual({ elapsedMs: 38500, budgetMs: artifactInspectionBudget(plan).totalMs })
+    expect(clock.pending).toBe(0)
+  }, { clock, actionDelayMs: 80 })
 })

@@ -14,7 +14,7 @@ try { new PerformanceObserver(list => { for (const entry of list.getEntries()) l
 
 function Fixture() {
   const [files, setFiles] = useState([]); const [query, setQuery] = useState(''); const [selected, setSelected] = useState('')
-  const [output, setOutput] = useState(''); const [session, setSession] = useState('fixture-0')
+  const [output, setOutput] = useState(''); const [outputLength, setOutputLength] = useState(0); const [session, setSession] = useState('fixture-0')
   const [busy, setBusy] = useState(false); const [results, setResults] = useState([]); const records = useRef([])
   const open = useCallback(path => setSelected(path), [])
   async function record(value) {
@@ -51,23 +51,23 @@ function Fixture() {
   async function commandOutput() {
     setBusy(true)
     try {
-      flushSync(() => { setSession(`fixture-${Date.now()}`); setOutput('') }); await paint()
+      flushSync(() => { setSession(`fixture-${Date.now()}`); setOutput(''); setOutputLength(0) }); await paint()
       const source = Array.from({ length: 60000 }, (_, index) => `line ${String(index).padStart(6, '0')} synthetic compiler output ${'x'.repeat(42)}\n`).join('')
-      let tail = `${source}\nTAIL-INITIAL\n`.slice(-500000)
-      const started = performance.now(); flushSync(() => setOutput(tail)); const commitMs = performance.now() - started
+      let total = `${source}\nTAIL-INITIAL\n`.length; let tail = `${source}\nTAIL-INITIAL\n`.slice(-500000)
+      const started = performance.now(); flushSync(() => { setOutput(tail); setOutputLength(total) }); const commitMs = performance.now() - started
       const initial = await waitForMarker('TAIL-INITIAL')
       await record({ name: 'Render bounded 500k-character command tail', sourceCharacters: source.length, displayedSnapshotCharacters: tail.length, commitMs: round(commitMs), ...initial, screenRows: document.querySelectorAll('.xterm-accessibility-tree [role="listitem"]').length })
       const streamStarted = performance.now(); const commitSamples = []
       for (let index = 0; index < 30; index++) {
         const chunk = `${`stream ${index} ${'y'.repeat(80)}\n`.repeat(170)}TAIL-STREAM-${index}\n`
-        tail = (tail + chunk).slice(-500000)
-        const start = performance.now(); flushSync(() => setOutput(tail)); commitSamples.push(round(performance.now() - start))
+        total += chunk.length; tail = (tail + chunk).slice(-500000)
+        const start = performance.now(); flushSync(() => { setOutput(tail); setOutputLength(total) }); commitSamples.push(round(performance.now() - start))
         await new Promise(resolve => setTimeout(resolve, 30))
       }
       const streamed = await waitForMarker('TAIL-STREAM-29')
       await record({ name: 'Thirty rolling output updates after retention limit', updates: 30, retainedCharacters: tail.length, reactCommitMs: commitSamples, totalMs: round(performance.now() - streamStarted), ...streamed, screenRows: document.querySelectorAll('.xterm-accessibility-tree [role="listitem"]').length, longTasks: longTasks.filter(task => task.start >= streamStarted).map(task => round(task.duration)) })
     } finally { setBusy(false) }
   }
-  return <main><h1>ASKK UI performance fixture</h1><p>Synthetic filenames and command text rendered by the actual FileTree and Terminal components. No model, guest, command, or project is started. Timings are measurements, not pass flags.</p><div className="controls"><button disabled={busy} onClick={trees}>Run Explorer benchmarks</button><button disabled={busy} onClick={commandOutput}>Run command-output benchmarks</button><button disabled={busy} onClick={() => { setFiles(datasets.get(10000)); setQuery('') }}>Show 10,000 files for keyboard/scroll QA</button><label>Filter files<input value={query} onChange={event => setQuery(event.target.value)}/></label><span role="status">{busy ? 'Measuring…' : 'Ready'}</span></div><div className="panes"><section className="fixture-explorer"><FileTree files={files} selected={selected} dirtyPaths={noDirtyPaths} onOpen={open} onPin={open} onMenu={open} query={query}/></section><section className="fixture-terminal"><Terminal sessionId={session} output={output}/></section></div><pre id="results">{JSON.stringify(results, null, 2)}</pre></main>
+  return <main><h1>ASKK UI performance fixture</h1><p>Synthetic filenames and command text rendered by the actual FileTree and Terminal components. No model, guest, command, or project is started. Timings are measurements, not pass flags.</p><div className="controls"><button disabled={busy} onClick={trees}>Run Explorer benchmarks</button><button disabled={busy} onClick={commandOutput}>Run command-output benchmarks</button><button disabled={busy} onClick={async () => { flushSync(() => { setOutput("DISCONTINUITY-PROOF\n"); setOutputLength(20) }); const result = await waitForMarker("DISCONTINUITY-PROOF"); await record({ name: "Replace output within same session", ...result, visibleText: document.querySelector(".xterm-accessibility-tree")?.textContent.trim() }) }}>Replace output</button><button disabled={busy} onClick={async () => { flushSync(() => { setOutput(""); setOutputLength(0) }); await paint(); await record({ name: "Clear output within same session", visibleText: document.querySelector(".xterm-accessibility-tree")?.textContent.trim() }) }}>Clear output</button><button disabled={busy} onClick={() => { setFiles(datasets.get(10000)); setQuery('') }}>Show 10,000 files for keyboard/scroll QA</button><label>Filter files<input value={query} onChange={event => setQuery(event.target.value)}/></label><span role="status">{busy ? 'Measuring…' : 'Ready'}</span></div><div className="panes"><section className="fixture-explorer"><FileTree files={files} selected={selected} dirtyPaths={noDirtyPaths} onOpen={open} onPin={open} onMenu={open} query={query}/></section><section className="fixture-terminal"><Terminal sessionId={session} output={output} outputLength={outputLength}/></section></div><pre id="results">{JSON.stringify(results, null, 2)}</pre></main>
 }
 createRoot(document.querySelector('#root')).render(<Fixture/>)
