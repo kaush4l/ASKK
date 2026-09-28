@@ -1,0 +1,191 @@
+{
+  "schemaVersion": 1,
+  "type": "real-browser-indexeddb-source-probe",
+  "ok": true,
+  "error": null,
+  "at": "2026-09-28T21:54:50.896Z",
+  "elapsedMs": 40.900000005960464,
+  "browser": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36",
+  "origin": "http://127.0.0.1:5205",
+  "checks": [
+    {
+      "name": "upgrade remains durable",
+      "ok": true,
+      "actual": {
+        "durable": true
+      }
+    },
+    {
+      "name": "old file preserved",
+      "ok": true,
+      "actual": {
+        "path": "owner.txt",
+        "content": "Preserve this original workspace file",
+        "rev": 7,
+        "at": 1
+      }
+    },
+    {
+      "name": "old setting preserved",
+      "ok": true,
+      "actual": {
+        "key": "owner-setting",
+        "value": {
+          "theme": "fixture",
+          "nested": {
+            "keep": true
+          }
+        }
+      }
+    },
+    {
+      "name": "legacy inline run preserved",
+      "ok": true,
+      "actual": {
+        "id": "legacy",
+        "trace": "legacy-trace",
+        "at": 1,
+        "slot": {
+          "status": "done"
+        },
+        "toolEvents": [
+          {
+            "sequence": 1,
+            "kind": "observation",
+            "value": "Exact legacy proof"
+          }
+        ]
+      }
+    },
+    {
+      "name": "concurrent idempotent append is ordered and exact",
+      "ok": true,
+      "actual": [
+        {
+          "sequence": 1,
+          "kind": "call",
+          "value": "run fixture",
+          "args": {
+            "nested": [
+              1,
+              2
+            ]
+          }
+        },
+        {
+          "sequence": 2,
+          "kind": "observation",
+          "value": "exact result",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "name": "bounded event read stops at captured sequence",
+      "ok": true,
+      "actual": [
+        {
+          "sequence": 1,
+          "kind": "call",
+          "value": "run fixture",
+          "args": {
+            "nested": [
+              1,
+              2
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "same identity replacement rejected",
+      "ok": true,
+      "actual": {
+        "error": "Tool evidence new-run/1 already exists with different content"
+      }
+    },
+    {
+      "name": "run deletion removes metadata and its event range",
+      "ok": true,
+      "actual": {
+        "metadataPresent": false,
+        "events": 0
+      }
+    },
+    {
+      "name": "run deletion preserves unrelated evidence",
+      "ok": true,
+      "actual": {
+        "events": 1
+      }
+    },
+    {
+      "name": "run deletion leaves original files/settings/legacy untouched",
+      "ok": true,
+      "actual": {
+        "files": 1,
+        "legacyPresent": true
+      }
+    },
+    {
+      "name": "blocked old connection refuses empty-memory fallback",
+      "ok": true,
+      "actual": {
+        "code": "STORE_UPGRADE_BLOCKED",
+        "message": "Storage upgrade requires closing or reloading other tabs running the older application. Existing saved work has not been changed."
+      }
+    },
+    {
+      "name": "blocked upgrade recovers original file/settings/legacy",
+      "ok": true,
+      "actual": {
+        "durable": true,
+        "file": {
+          "path": "owner.txt",
+          "content": "Preserve this original workspace file",
+          "rev": 7,
+          "at": 1
+        }
+      }
+    },
+    {
+      "name": "newer schema refuses empty-memory fallback",
+      "ok": true,
+      "actual": {
+        "name": "VersionError",
+        "message": "The requested version (2) is less than the existing version (3)."
+      }
+    },
+    {
+      "name": "newer schema refusal preserves existing file",
+      "ok": true,
+      "actual": {
+        "path": "owner.txt",
+        "content": "Preserve this original workspace file",
+        "rev": 7,
+        "at": 1
+      }
+    }
+  ],
+  "cleanup": [
+    {
+      "name": "askk-evidence-migration-c1be41ce-528d-49cc-8931-38fe403d749f",
+      "deleted": true
+    },
+    {
+      "name": "askk-evidence-blocked-16a3dfc1-2fc7-4aa3-832e-cc4115b4efb6",
+      "deleted": true
+    },
+    {
+      "name": "askk-evidence-future-9b67659d-ee4d-41a6-b1a1-af8b7ea19ed3",
+      "deleted": true
+    }
+  ],
+  "scope": "Synthetic unique IndexedDB names only, using frozen source store.js in a dedicated disposable Chrome tab. No app workspace/model/runtime mutation or viewport change; existing tabs were not navigated. The owned tab was closed immediately after checks.",
+  "sourceSHA256": "6b5117bb28a9435ce349d09c221ec9a490f835cf6f6e7e5fcab9dbee3dc0f7e4",
+  "limitations": [
+    "Source storage adapter proof on isolated HTTP loopback origin; not a full application upgrade or Safari proof.",
+    "Existing runtime tab was owned by another CUA session; runtime owner authorized the separate fixture tab during a safe bracket."
+  ],
+  "fixtureServerStopped": true
+}

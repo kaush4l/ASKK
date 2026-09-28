@@ -11,6 +11,7 @@ test('production main uses version 2 prompts and the host-owned completion gate 
   const site = await mkdtemp(join(tmpdir(), 'askk-production-contract-'))
   let hub
   try {
+    const fixtureContent = `Fixture environment\n${'Exact tool evidence survives the compact display log.\n'.repeat(120)}`
     await cp(join(import.meta.dir, '../public'), site, { recursive: true, filter: path => !['browser-linux', 'runtime'].includes(path.split('/').at(-1)) })
     // Keep production agents unchanged; only inference and external effects are fixtures.
     await writeFile(join(site, 'models.json'), JSON.stringify({ default: 'fixture', models: { fixture: {
@@ -28,7 +29,7 @@ test('production main uses version 2 prompts and the host-owned completion gate 
     hub.externalOps = {
       'workspace.goal': () => ({ text: inspected ? 'Deliver the inspected evidence' : 'Inspect before claiming completion', revision: inspected ? 2 : 1 }),
       'workspace.environment': () => ({ target: 'fixture', status: 'ready', capabilities: [] }),
-      'workspace.read': () => { inspected = true; return { path: 'fixture.txt', content: 'Fixture environment', revision: '1' } },
+      'workspace.read': () => { inspected = true; return { path: 'fixture.txt', content: fixtureContent, revision: '1' } },
       'workspace.acceptance': () => { proposals++; return { ok: inspected, reason: inspected ? 'Fixture environment inspected' : 'Read the fixture environment first' } },
     }
     const events = []
@@ -72,6 +73,41 @@ test('production main uses version 2 prompts and the host-owned completion gate 
     expect(prompts[2].value).toContain('Verify the fixture environment')
     expect((await hub.runsApi.get(run.id)).context.binding.runtimeId).toBe('fixture-browser-session')
     expect(new Set(prompts.map((event) => event.attemptId)).size).toBe(3)
+    const callEvent = run.toolEvents.find(event => event.kind === 'call' && event.name === 'workspace_read')
+    const observation = run.toolEvents.find(event => event.kind === 'observation' && event.callId === callEvent.callId)
+    expect(callEvent.args).toEqual({ path: 'fixture.txt' })
+    expect(JSON.parse(observation.value).content).toBe(fixtureContent)
+    expect(observation.value.length).toBeGreaterThan(4000)
+    expect(Object.isFrozen(callEvent.args)).toBe(true)
+    expect(Object.isFrozen(observation)).toBe(true)
+    expect(run.toolEvents.map(event => event.sequence)).toEqual([1, 2, 3, 4])
+    expect(run.log.some(event => event.kind === 'observation' && event.value.length === 4000)).toBe(true)
+    await hub.persist(run)
+    const stored = await hub.store.get('runs', run.id)
+    expect(stored.toolEvents).toBeUndefined()
+    expect(stored.toolEventCount).toBe(run.toolEvents.length)
+    expect(await hub.store.readToolEvents(run.id)).toEqual(run.toolEvents)
+    const exported = await hub.traces.export(run.trace)
+    expect(exported.runs.find(item => item.id === run.id).toolEvents).toEqual(run.toolEvents)
+    const proof = structuredClone(run.toolEvents)
+    const assertImmutableEvidence = record => {
+      expect(Object.isFrozen(record.toolEvents)).toBe(true)
+      expect(() => record.toolEvents.pop()).toThrow()
+      const call = record.toolEvents.find(event => event.args)
+      expect(() => { call.args.path = 'tampered.txt' }).toThrow()
+      expect(record.toolEvents).toEqual(proof)
+    }
+    assertImmutableEvidence(await hub.runsApi.get(run.id))
+    assertImmutableEvidence(exported.runs.find(item => item.id === run.id))
+    await hub.persist(run)
+    expect(await hub.store.readToolEvents(run.id)).toEqual(proof)
+    // A reloaded run is served from durable storage, with the same immutable
+    // public boundary even though structured cloning removes Object.freeze.
+    hub.runs.delete(run.id)
+    assertImmutableEvidence(await hub.runsApi.get(run.id))
+    assertImmutableEvidence((await hub.runsApi.list()).find(item => item.id === run.id))
+    assertImmutableEvidence((await hub.traces.export(run.trace)).runs.find(item => item.id === run.id))
+    expect(await hub.store.readToolEvents(run.id)).toEqual(proof)
   } finally {
     hub?.stop()
     await rm(site, { recursive: true, force: true })
