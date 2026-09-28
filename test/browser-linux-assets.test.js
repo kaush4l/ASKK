@@ -1,6 +1,6 @@
 import { test, expect } from 'bun:test'
 import { createHash } from 'node:crypto'
-import { verifiedAsset } from '../public/browser-linux/assets.js'
+import { verifiedAsset, createDownloadProgress } from '../public/browser-linux/assets.js'
 import { BrowserLinuxExecution } from '../src/execution/browser-linux.js'
 import { acquireWorkspace } from '../public/browser-linux/ownership.js'
 const hash = (bytes) => createHash('sha256').update(bytes).digest('hex')
@@ -21,6 +21,22 @@ test('runtime assets reject traversal, truncated downloads and extra bytes', asy
   await expect(verifiedAsset({ ...entry, name: '../runtime.wasm' }, 'https://runtime.invalid/')).rejects.toThrow('Invalid runtime asset descriptor')
   await expect(verifiedAsset(entry, 'https://runtime.invalid/', { fetch: async () => new Response(bytes.subarray(1)) })).rejects.toThrow('size mismatch')
   await expect(verifiedAsset(entry, 'https://runtime.invalid/', { fetch: async () => new Response(Buffer.concat([bytes, bytes])) })).rejects.toThrow('size exceeded')
+})
+
+test('small assets and multipart verification retain cumulative byte progress without resetting', async () => {
+  const chunks = [Buffer.from('first'), Buffer.from('second'), Buffer.from('third')]
+  const progress = createDownloadProgress(chunks.reduce((sum, chunk) => sum + chunk.length, 0))
+  const seen = [progress.snapshot()]
+  await verifiedAsset({ name: 'script.js', bytes: chunks[0].length, sha256: hash(chunks[0]) }, 'https://runtime.invalid/', {
+    fetch: async () => new Response(chunks[0]), onProgress: (bytes) => progress.add(bytes), onVerifying: () => seen.push(progress.snapshot()),
+  })
+  const bytes = Buffer.concat(chunks.slice(1))
+  await verifiedAsset({ name: 'qemu.data', bytes: bytes.length, sha256: hash(bytes), parts: chunks.slice(1).map((chunk, index) => ({ name: `part-${index}`, bytes: chunk.length, sha256: hash(chunk) })) }, 'https://runtime.invalid/', {
+    fetch: async (url) => new Response(chunks[1 + Number(String(url).split('-').at(-1))]), onProgress: (count) => progress.add(count), onVerifying: () => seen.push(progress.snapshot()),
+  })
+  expect(seen).toEqual([{ received: 0, total: 16 }, { received: 5, total: 16 }, { received: 11, total: 16 }, { received: 16, total: 16 }])
+  expect(() => progress.add(1)).toThrow('Invalid runtime download progress')
+  expect(() => createDownloadProgress(NaN)).toThrow('Invalid runtime download total')
 })
 
 test('guest networking requires explicit relay configuration and never exposes its token in capabilities', async () => {
@@ -69,4 +85,33 @@ test('a browser project rejects a second owner until its first guest releases th
   const reacquired = await acquireWorkspace(locks, 'same-project')
   reacquired(); releaseOther()
   await expect(acquireWorkspace(null, 'same-project')).rejects.toMatchObject({ code: 'LOCKS_REQUIRED' })
+})
+
+test('a guest crash invalidates readiness and rejects admitted jobs, admission and filesystem RPCs immediately', async () => {
+  const events = [], sent = []
+  let closed = 0, removed = 0
+  const browser = new BrowserLinuxExecution({ projectId: 'crash-test', onEvent: (event) => events.push(event) })
+  browser.state = 'ready'
+  browser.info = { imageId: 'test-image', instanceId: 'test-boot', node: '24.21.0' }
+  browser.port = { postMessage: (message) => sent.push(message), close: () => closed++ }
+  browser.frame = { remove: () => removed++ }
+  const admitted = browser.startJob({ id: 'running', program: 'node' })
+  const admittedFailure = admitted.catch((error) => error)
+  await Promise.resolve(); await Promise.resolve()
+  const admission = sent.find((message) => message.method === 'job.start')
+  browser.message({ id: admission.id, ok: true, result: { pid: 21 } })
+  await Promise.resolve(); await Promise.resolve()
+  const waiting = browser.startJob({ id: 'waiting', program: 'node' })
+  const waitingFailure = waiting.catch((error) => error)
+  const reading = browser.read('index.js')
+  const readingFailure = reading.catch((error) => error)
+  await Promise.resolve(); await Promise.resolve()
+  browser.message({ event: { type: 'runtime.error', error: 'Guest worker terminated' } })
+  for (const error of await Promise.all([admittedFailure, waitingFailure, readingFailure])) expect(error.message).toBe('Guest worker terminated')
+  expect(browser.describeCapabilities()).toMatchObject({ state: 'failed', ready: false })
+  expect(browser.jobs.size).toBe(0)
+  expect(browser.pending.size).toBe(0)
+  expect(closed).toBe(1); expect(removed).toBe(1)
+  expect(events.some((event) => event.type === 'runtime.state' && event.state === 'failed')).toBe(true)
+  expect(events.some((event) => event.type === 'runtime.error')).toBe(true)
 })

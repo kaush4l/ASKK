@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { createHash } from 'node:crypto'
 import { patchRuntime } from './patch-runtime.js'
 import { errnoMarker, errnoTranslation } from './patch-errno.js'
+import { templateMetadata } from './template-metadata.js'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const cache = path.join(root, '.cache/browser-linux')
@@ -96,6 +97,6 @@ const sourceInfo = { container2wasm: commit, qemu: '8604ed49a3cde392890b014a8d5a
   generatedRuntimePatch: runtimePatch.provenance, runtimePatchScriptSha256: sha(await readFile(path.join(root, 'scripts/browser-linux/patch-runtime.js'))),
   errnoTranslation: { source: 'Linux v6.1 UAPI asm-generic errno', mapSha256: sha(await readFile(path.join(root, 'scripts/browser-linux/linux-errno.json'))), patchSha256: sha(await readFile(path.join(root, 'scripts/browser-linux/patch-errno.js'))) },
   patches: ['IDBFS link and exports', 'maintained upstream source URL', 'GNU kernel.org mirror', 'Go 1.25 Bookworm with async preemption disabled', 'GCC 14 Bookworm', 'guest shared-filesystem diagnostic errors', 'verified pack cache identity v1'],
-  builderImages, buildLogSha256: sha(log), emscripten: '4.0.10', nodePty: '1.1.0', next: '16.3.6', react: '19.3.0' }
-await writeFile(path.join(output, 'manifest.json'), JSON.stringify({ version: 1, id: `c2w-node24-${imageHash.slice(0, 16)}`, builtAt: new Date().toISOString(), source: sourceInfo, architecture: 'aarch64', guestMemoryMiB: 1536, wasmMemoryMiB: 2300, filesystem: '9p-idbfs', files, verification: { nativePty: true, nativeNextStaticExport: true, browser: false } }, null, 2))
+  builderImages, buildLogSha256: sha(log), emscripten: '4.0.10', nodePty: '1.1.0', next: '16.3.6', react: '19.3.0', preparedTemplate: await templateMetadata(root) }
+await writeFile(path.join(output, 'manifest.json'), JSON.stringify({ version: 1, id: `c2w-node24-${imageHash.slice(0, 16)}`, builtAt: new Date().toISOString(), source: sourceInfo, architecture: 'aarch64', guestMemoryMiB: 1536, wasmMemoryMiB: 2300, filesystem: '9p-idbfs', files, verification: { nativePty: true, nativePreparedTemplate: true, nativeNextStaticExport: true, browser: false } }, null, 2))
 console.log(`Built runtime: ${output}`)

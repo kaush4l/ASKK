@@ -8,7 +8,10 @@ FROM ${NODE_IMAGE}
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates git procps util-linux && rm -rf /var/lib/apt/lists/*
 COPY --from=pty /opt/harness/node_modules /opt/harness/node_modules
 COPY supervisor.js /opt/harness/supervisor.js
-RUN npm install --prefix /opt/harness/template --save-exact next@16.3.6 react@19.3.0 react-dom@19.3.0 && rm -rf /opt/harness/template/node_modules
+COPY template /opt/harness/template
+RUN npm ci --prefix /opt/harness/template --no-audit --no-fund && rm -rf /root/.npm/_cacache /root/.npm/_logs
+COPY prepare-template.js npm-guard.cjs /opt/harness/
+RUN chmod 755 /opt/harness/npm-guard.cjs && ln -sf /opt/harness/npm-guard.cjs /usr/local/bin/npm
 RUN mkdir -p /workspace /harness-control && chmod 1777 /workspace
 ENV HARNESS_WORKSPACE=/workspace HARNESS_MAILBOX=/harness-control
 WORKDIR /workspace

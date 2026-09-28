@@ -1,4 +1,16 @@
 /** Reassemble immutable runtime assets from individually verified hosting-sized parts. */
+export function createDownloadProgress(total) {
+  if (!Number.isSafeInteger(total) || total < 0) throw new Error('Invalid runtime download total')
+  let received = 0
+  return {
+    add(bytes) {
+      if (!Number.isSafeInteger(bytes) || bytes < 0 || received + bytes > total) throw new Error('Invalid runtime download progress')
+      received += bytes
+    },
+    snapshot: () => ({ received, total }),
+  }
+}
+
 export async function verifiedAsset(entry, base, { fetch: fetcher = globalThis.fetch, onProgress = () => {}, onVerifying = () => {} } = {}) {
   if (!entry || !/^[a-zA-Z0-9_.-]+$/.test(entry.name) || !Number.isSafeInteger(entry.bytes) || entry.bytes < 0 || entry.bytes > 1024 ** 3 || !/^[a-f0-9]{64}$/.test(entry.sha256)) throw new Error('Invalid runtime asset descriptor')
   const parts = entry.parts ?? [entry]

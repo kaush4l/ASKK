@@ -52,24 +52,36 @@ try {
     assert((await running).cancelled, 'live process cancellation')
   }
   if (params.get('build') === '1') {
+    try {
       await runtime.write({ path: 'package.json', content: JSON.stringify({ private: true, scripts: { build: 'next build --webpack' }, dependencies: { next: '16.3.6', react: '19.3.0', 'react-dom': '19.3.0' } }) })
       await runtime.write({ path: 'next.config.mjs', content: 'export default {output:"export",images:{unoptimized:true},experimental:{cpus:1}}' })
       await runtime.write({ path: 'pages/index.js', content: 'import React from "react";export default function Page(){return React.createElement("main",null,"Browser Linux build proof")}' })
-      await job('pinned-template-lock', 'cp', ['/opt/harness/template/package-lock.json', 'package-lock.json'])
-      await job('npm-ci', 'npm', ['ci', '--offline', '--no-audit', '--no-fund'])
-      await job('next-build', 'env', ['NODE_ENV=production', 'NEXT_TELEMETRY_DISABLED=1', 'npm', 'run', 'build'])
+      const template = runtime.describeCapabilities().toolchain.preparedTemplate
+      if (template) {
+        const [program, ...args] = template.prepareCommand
+        await job('prepare-template', program, args)
+      } else {
+        await job('pinned-template-lock', 'cp', ['/opt/harness/template/package-lock.json', 'package-lock.json'])
+        await job('npm-ci', 'npm', ['ci', '--offline', '--no-audit', '--no-fund'])
+      }
+      const direct = params.get('runner') === 'next-direct'
+      metadata.buildRunner = direct ? 'direct Next CLI; npm startup bypassed' : 'npm run build'
+      await job('next-build', 'env', ['NODE_ENV=production', 'NEXT_TELEMETRY_DISABLED=1', ...(direct ? ['node', 'node_modules/next/dist/bin/next', 'build', '--webpack'] : ['npm', 'run', 'build'])])
       const artifact = await runtime.snapshot('out')
+      window.__browserLinuxArtifact = artifact
       const index = artifact.files.find((file) => file.path === 'index.html')
       assert(index && atob(index.base64).includes('Browser Linux build proof'), 'actual Next static export', { revision: artifact.revision, files: artifact.files.length })
+    } catch (error) { checks.push({ name: 'template build group', passed: false, evidence: { error: error.message } }) }
   }
   if (params.get('network') === '1') {
-    const cache = await job('npm-cache-check', 'npm', ['cache', 'ls', 'left-pad'])
-    assert(!cache.stdout.trim(), 'network package absent from the baked npm cache')
-    await job('npm-network-install', 'npm', ['install', '--no-save', '--ignore-scripts', '--package-lock=false', '--no-audit', '--no-fund', '--fetch-retries=0', '--fetch-timeout=30000', 'left-pad@1.3.0'])
-    await job('network-package-execution', 'node', ['-e', 'const pad=require("left-pad");if(pad("7",3,"0")!=="007")process.exit(2);console.log("uncached registry package executed")'])
+    try {
+      await job('network-empty-cache', 'sh', ['-c', "test ! -e /tmp/askk-network-cache && mkdir /tmp/askk-network-proof && echo '{\"private\":true}' > /tmp/askk-network-proof/package.json"])
+      await job('npm-network-install', 'npm', ['install', '--prefix', '/tmp/askk-network-proof', '--cache', '/tmp/askk-network-cache', '--no-save', '--ignore-scripts', '--package-lock=false', '--no-audit', '--no-fund', '--fetch-retries=0', '--fetch-timeout=30000', 'left-pad@1.3.0'])
+      await job('network-package-execution', 'node', ['-e', 'const pad=require("/tmp/askk-network-proof/node_modules/left-pad");if(pad("7",3,"0")!=="007")process.exit(2);console.log("uncached registry package executed")'])
+    } catch (error) { checks.push({ name: 'uncached registry group', passed: false, evidence: { error: error.message } }) }
   }
   await runtime.dispose()
-  window.__browserLinuxProbe = { state: 'passed', checks, log, metadata, stages, milliseconds: performance.now() - started }
+  window.__browserLinuxProbe = { state: checks.some(check => check.passed === false) ? 'failed' : 'passed', checks, log, metadata, stages, milliseconds: performance.now() - started }
 } catch (error) {
   window.__browserLinuxProbe = { state: 'failed', error: error.stack || String(error), checks, log, metadata, stages, milliseconds: performance.now() - started }
   await runtime.dispose().catch(() => {})

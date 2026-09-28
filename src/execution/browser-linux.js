@@ -18,9 +18,9 @@ export class BrowserLinuxExecution {
 
   describeCapabilities() {
     return { runtimeId: this.runtimeId, root: this.info?.workspace ?? `/workspaces/${this.projectId}`, imageId: this.info?.imageId ?? null, bootId: this.info?.instanceId ?? null, kind: 'browser-linux', state: this.state, ready: this.state === 'ready',
-      toolchain: { kind: 'node', version: this.info?.node ?? null, packageManager: 'npm' },
+      toolchain: { kind: 'node', version: this.info?.node ?? null, packageManager: 'npm', preparedTemplate: this.info?.preparedTemplate ?? null },
       filesystem: true, shell: true, pty: true, persistentProcesses: true, persistence: 'idbfs',
-      capabilities: ['files', 'shell', 'pty', 'node', 'npm', 'static-export', 'browser-network'],
+      capabilities: ['files', 'shell', 'pty', 'node', 'npm', 'static-export', 'browser-network', ...(this.info?.preparedTemplate ? ['prepared-template'] : [])],
       network: this.networkRelay ? 'companion-network-relay' : this.state === 'ready' ? 'browser-fetch-cors' : 'unavailable', preview: ['next-static-export'], requiresCrossOriginIsolation: true }
   }
 
@@ -34,7 +34,7 @@ export class BrowserLinuxExecution {
     if (!this.document || !globalThis.crossOriginIsolated || typeof SharedArrayBuffer === 'undefined') throw failure('Browser Linux requires cross-origin isolation. Reload the isolated application to enable this runtime.', 'ISOLATION_REQUIRED')
     this.state = 'preparing'
     this.emit({ type: 'runtime.state', state: this.state })
-    this.preparing = this.boot(signal).catch((error) => { this.state = 'failed'; this.emit({ type: 'runtime.error', error: error.message }); this.release(error); throw error }).finally(() => { this.preparing = null })
+    this.preparing = this.boot(signal).catch((error) => { this.state = 'failed'; this.emit({ type: 'runtime.state', state: 'failed' }); this.emit({ type: 'runtime.error', error: error.message }); this.release(error); throw error }).finally(() => { this.preparing = null })
     return this.preparing
   }
 
@@ -125,6 +125,9 @@ export class BrowserLinuxExecution {
     if (this.jobs.has(id)) throw failure('Job id is already active')
     let resolve, reject
     const completed = new Promise((yes, no) => { resolve = yes; reject = no })
+    // A crashed frame can reject completion while admission is still pending.
+    // Keep that rejection observed until the caller receives the returned job promise.
+    completed.catch(() => {})
     let admitted = false, cancellationRequested = false
     const abort = () => { cancellationRequested = true; if (admitted) this.cancelJob(id).catch(reject) }
     signal?.addEventListener('abort', abort, { once: true })
