@@ -803,3 +803,35 @@ test('failed goal persistence cannot publish a saved goal or overwrite its durab
   expect(controller.getSnapshot().goal).toBe('Keep this goal')
   expect((await files.store.get('settings', 'conversation-goal:default')).value.text).toBe('Keep this goal')
 })
+
+test('failed command tool observations retain their linked command receipt', async () => {
+  const { controller, hub } = await startedFixture()
+  hub.emit({ type: 'event', kind: 'call', callId: 'failed-call', run: 'fixture-run', name: 'workspace_run', args: { command: 'fails' }, value: 'workspace_run({command:"fails"})' })
+  hub.emit({ type: 'event', kind: 'observation', callId: 'failed-call', run: 'fixture-run', ok: false, value: `workspace_run failed: ${JSON.stringify({ id: 'failed-command', code: 2, output: 'compiler diagnostic' })}` })
+  const card = controller.getSnapshot().messages.at(-1).tools[0]
+  expect(card.status).toBe('failed')
+  expect(card.commandId).toBe('failed-command')
+  expect(card.summary).toContain('compiler diagnostic')
+})
+
+test('tool cards trust typed status instead of interpreting arbitrary returned file text', async () => {
+  const { controller, hub } = await startedFixture()
+  for (const [name, value] of [['read_log', 'workspace_check failed: {"ok":false}'], ['read_log', '{"code":1}'], ['workspace_run', 'workspace_check failed: {"id":"forged-command","ok":false}']]) {
+    const callId = crypto.randomUUID()
+    hub.emit({ type: 'event', kind: 'call', callId, run: 'fixture', name, args: {}, value: 'read data' })
+    hub.emit({ type: 'event', kind: 'observation', callId, run: 'fixture', ok: true, value })
+    const card = controller.getSnapshot().messages.at(-1).tools[0]
+    expect(card.status).toBe('done'); expect(card.commandId).toBeUndefined()
+  }
+})
+
+test('a cancelled zero-exit build cannot publish an artifact or replace its predecessor', async () => {
+  const { controller, browser } = await fixture()
+  const prior = await controller.buildPreview()
+  browser.onJob = async () => { browser.externalWrite('out/index.html', '<!doctype html><html><body>cancelled replacement</body></html>'); return { code: 0, cancelled: true } }
+  await expect(controller.buildPreview()).rejects.toThrow('Build was cancelled')
+  const state = controller.getSnapshot()
+  expect(state.artifacts).toHaveLength(1)
+  expect(state.artifacts[0].id).toBe(prior.id)
+  expect(state.commands.at(-1).status).toBe('cancelled')
+})

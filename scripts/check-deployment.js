@@ -2,10 +2,19 @@
 import { readdir, readFile, stat } from 'node:fs/promises'
 import { resolve, join, relative } from 'node:path'
 import { createHash } from 'node:crypto'
+import { execFileSync } from 'node:child_process'
 export async function checkDeployment(directory = 'out', { basePath = '/ASKK', requireRuntime = true, worktree = false } = {}) {
   const root = resolve(directory); const files = []
   async function walk(folder) { for (const entry of await readdir(folder, { withFileTypes: true })) { const path = join(folder, entry.name); if (worktree && folder === root && entry.name === '.git') continue; if (entry.isDirectory()) await walk(path); else if (entry.isFile()) { const size = (await stat(path)).size; if (size >= 100 * 1024 * 1024) throw new Error(`Asset exceeds the GitHub 100 MiB file limit: ${relative(root, path)}`); files.push({ path: relative(root, path), bytes: size, sha256: createHash('sha256').update(await readFile(path)).digest('hex') }) } else throw new Error(`Deployment contains a nonregular asset: ${path}`) } }
   await walk(root)
+  if (worktree) {
+    const tracked = new Set(execFileSync('git', ['ls-files', '-z'], { cwd: root, encoding: 'utf8' }).split('\0').filter(Boolean))
+    const omitted = files.filter(file => !tracked.has(file.path))
+    if (omitted.length) throw new Error(`Validated assets are absent from the Git index: ${omitted.map(file => file.path).join(', ')}`)
+    const unexpected = [...tracked].filter(path => !files.some(file => file.path === path))
+    if (unexpected.length) throw new Error(`Git index contains files absent from the export: ${unexpected.join(', ')}`)
+    execFileSync('git', ['diff', '--quiet', '--'], { cwd: root })
+  }
   const bytes = files.reduce((sum, file) => sum + file.bytes, 0)
   if (bytes > 1_000_000_000) throw new Error('Published site exceeds 1 GB')
   const index = await readFile(join(root, 'index.html'), 'utf8')

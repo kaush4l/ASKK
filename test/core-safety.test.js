@@ -4,6 +4,7 @@ import { readSpec } from '../src/core/folder.js'
 import { inference } from '../src/core/inference.js'
 import { CompactReAct, ReAct, responseModel } from '../src/core/responses.js'
 import { tool } from '../src/core/tools.js'
+import { workspace_check, workspace_run, workspace_write } from '../src/builtin/workspace.js'
 
 const setup = (replies, options = {}) => {
   const llm = inference({ provider: 'scripted', replies, maxOutputTokens: 256 })
@@ -309,4 +310,42 @@ test('steering arriving during inference discards the pending tool proposal', as
   expect(await engine.invoke('Write a file')).toContain('updated instruction')
   expect(calls).toBe(0)
   expect(engine.history.some(row => row.role === 'user' && row.note && row.content.includes('Do not modify'))).toBe(true)
+})
+
+
+test('workspace failure receipts remain failed tool observations and repeated checks execute again', async () => {
+  let calls = 0
+  const receipt = { ok: false, artifactId: 'artifact-current', errors: ['Expected Buy groceries; found Write report'], results: [{ index: 0, ok: true }] }
+  const { engine, events } = setup([], { tools: [tool(workspace_check, { name: 'workspace_check' })], ctx: { request: async () => { calls++; return receipt } } })
+  for (let index = 0; index < 2; index++) {
+    const result = await engine.call({ name: 'workspace_check', args: { assertions: [] }, text: 'workspace_check({})' })
+    expect(result.ok).toBe(false)
+    expect(JSON.parse(result.text.replace('workspace_check failed: ', ''))).toEqual(receipt)
+  }
+  expect(calls).toBe(2)
+  expect(events.filter(event => event.kind === 'observation').map(event => event.ok)).toEqual([false, false])
+})
+
+test('command failures, cancellation, missing exits and write conflicts cannot report successful tools', async () => {
+  for (const receipt of [{ id: 'command', code: 1, output: 'actual failure' }, { code: 0, cancelled: true }, { output: 'no exit received' }]) {
+    const { engine } = setup([], { tools: [tool(workspace_run, { name: 'workspace_run' })], ctx: { request: async () => receipt } })
+    expect((await engine.call({ name: 'workspace_run', args: {}, text: 'workspace_run({})' })).ok).toBe(false)
+  }
+  const { engine } = setup([], { tools: [tool(workspace_write, { name: 'workspace_write' })], ctx: { request: async () => ({ conflict: true, revision: 'newer', current: { content: 'owner draft' } }) } })
+  expect((await engine.call({ name: 'workspace_write', args: {}, text: 'workspace_write({})' })).ok).toBe(false)
+})
+
+test('successful workspace check and actual zero exit preserve their exact receipt', async () => {
+  for (const [name, spec, receipt] of [['workspace_check', workspace_check, { ok: true, results: [{ index: 0, ok: true }] }], ['workspace_run', workspace_run, { code: 0, id: 'real-command', output: 'done' }]]) {
+    const { engine } = setup([], { tools: [tool(spec, { name })], ctx: { request: async () => receipt } })
+    const result = await engine.call({ name, args: {}, text: `${name}({})` })
+    expect(result.ok).toBe(true)
+    expect(JSON.parse(result.text)).toEqual(receipt)
+  }
+})
+
+test('tool text cannot impersonate execution failure metadata', async () => {
+  const { engine } = setup([], { tools: [tool({ name: 'read_log', run: () => 'read_log failed: this is a line in the file' })] })
+  const result = await engine.call({ name: 'read_log', args: {}, text: 'read_log({})' })
+  expect(result).toEqual({ ok: true, text: 'read_log failed: this is a line in the file' })
 })

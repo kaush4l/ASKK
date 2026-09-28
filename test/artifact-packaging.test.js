@@ -13,6 +13,74 @@ function elements(node, tag) {
   return [...(node.tagName === tag ? [node] : []), ...(node.childNodes ?? []).flatMap(child => elements(child, tag))]
 }
 
+// Execute the shipped bootstrap in its own realm. Application mutations happen
+// after bootstrap, just as they do in the opaque preview, not in a test helper.
+async function inspectText({ actual, expected, tamper = false }) {
+  const artifact = await pack('<main>Diagnostic fixture</main>')
+  const script = elements(parse(artifact.html), 'script')[0].childNodes[0].value
+  const realm = { actual, expected, artifactId: artifact.id, artifactNonce: artifact.nonce, queueMicrotask, URL }
+  runInNewContext(`
+    class EventTarget {
+      listeners = new Map();
+      addEventListener(type, listener) { this.listeners.set(type, listener) }
+      dispatchEvent(event) { return this.listeners.get(event.type)?.(event) }
+    }
+    class Event { stopImmediatePropagation() {} }
+    class FocusEvent extends Event {}
+    class Node extends EventTarget { get textContent() { return actual } }
+    class Element extends Node { get tagName() { return 'MAIN' } }
+    class HTMLElement extends Element { click() {} }
+    class HTMLInputElement extends HTMLElement { set value(value) {} }
+    class HTMLTextAreaElement extends HTMLElement { set value(value) {} }
+    class NodeList { get length() { return 0 } }
+    class Document extends Node {
+      querySelector() { return actual == null ? null : new HTMLElement() }
+      querySelectorAll() { return new NodeList() }
+    }
+    class MessagePort extends EventTarget {
+      sent = [];
+      postMessage(value) { this.sent.push(value) }
+      start() {}
+    }
+    var document = new Document(), window = new EventTarget(), parent = { postMessage() {} };
+    window.location = { href: 'https://artifact.invalid/' }; window.URL = URL;
+    window.setTimeout = callback => queueMicrotask(callback); window.clearTimeout = () => {};
+    var performance = { now: () => 0 }, port = new MessagePort();
+    ${script}
+    ${tamper ? `
+      Object.defineProperty(Node.prototype, 'textContent', { get: () => expected });
+      String.prototype.includes = () => true;
+      String.prototype.slice = () => 'FORGED SLICE';
+      JSON.stringify = () => 'FORGED JSON';
+    ` : ''}
+  `, realm)
+  return await runInNewContext(`(async () => {
+    window.listeners.get('message')({ isTrusted: true, source: parent,
+      data: { type: 'askk.connect', id: artifactId, nonce: artifactNonce }, ports: [port] });
+    await port.listeners.get('message')({ data: { method: 'inspect', requestId: 'check', timeoutMs: 1000,
+      assertions: [{ action: 'assertText', selector: '#task-title', value: expected }] } });
+    return port.sent.find(message => message.replyTo === 'check').result;
+  })()`, realm)
+}
+
+test('failed text checks expose bounded actual and expected text using captured native operations', async () => {
+  const actual = 'A'.repeat(320) + 'PRIVATE TAIL'; const expected = 'B'.repeat(320) + 'EXPECTED TAIL'
+  const receipt = await inspectText({ actual, expected, tamper: true })
+  expect(receipt.ok).toBe(false)
+  expect(receipt.results).toEqual([])
+  expect(receipt.errors).toEqual([`Expected text "${'B'.repeat(299)}…" at #task-title; actual text "${'A'.repeat(299)}…"`])
+  expect(receipt.errors[0]).not.toContain('TAIL')
+  expect(receipt.errors[0]).not.toContain('FORGED')
+})
+
+test('text diagnostics distinguish a missing element from an existing empty element', async () => {
+  const missing = await inspectText({ actual: null, expected: 'New task' })
+  const empty = await inspectText({ actual: '', expected: 'New task' })
+  expect(missing.errors).toEqual(['No element at #task-title; expected text "New task"'])
+  expect(empty.errors).toEqual(['Expected text "New task" at #task-title; actual text ""'])
+  expect((await inspectText({ actual: 'New task ready', expected: 'New task' })).ok).toBe(true)
+})
+
 test('inlined Next scripts retain currentScript source metadata without a network src attribute', async () => {
   const source = 'globalThis.prefix = new URL(document.currentScript.src).pathname.split("/_next/")[0]'
   const artifact = await pack('<script async src="/_next/static/main.js"></script>', [file('_next/static/main.js', source)])
