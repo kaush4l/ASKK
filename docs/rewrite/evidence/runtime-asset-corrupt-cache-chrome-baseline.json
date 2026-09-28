@@ -1,0 +1,122 @@
+{
+  "version": 1,
+  "startedAt": "2026-09-28T23:03:14.144Z",
+  "completedAt": "2026-09-28T23:03:14.367Z",
+  "elapsedMs": 221.97999998927116,
+  "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36",
+  "origin": "http://127.0.0.1:5198",
+  "crossOriginIsolated": true,
+  "productionLoaderURL": "http://127.0.0.1:5198/ASKK/browser-linux/assets.js",
+  "productionLoaderSHA256": "b79d00dabe47d3269237dc19e04f02fc37c73a5065baa8e72db7ad7bd985460c",
+  "syntheticAsset": {
+    "url": "http://127.0.0.1:5208/tiny-89f31d06-be01-45a6-8336-cd89d8e5b6c3/image.bin",
+    "bytes": 66,
+    "sha256": "ab185c5f2165d9c9805423f210b96d2ffba1eda7b0140bb263732932c3df55ed"
+  },
+  "primeBytes": 66,
+  "attempts": [
+    {
+      "ok": false,
+      "error": "Runtime asset failed integrity verification: image.bin"
+    },
+    {
+      "ok": false,
+      "error": "Runtime asset failed integrity verification: image.bin"
+    }
+  ],
+  "afterRepeated": {
+    "requests": [
+      {
+        "method": "GET",
+        "phase": "corrupt",
+        "at": "2026-09-28T23:03:14.148Z",
+        "cacheControl": null
+      }
+    ],
+    "phase": "good"
+  },
+  "refreshedBytes": 66,
+  "afterReload": {
+    "ok": true,
+    "bytes": 66
+  },
+  "beforeCleanup": {
+    "requests": [
+      {
+        "method": "GET",
+        "phase": "corrupt",
+        "at": "2026-09-28T23:03:14.148Z",
+        "cacheControl": null
+      },
+      {
+        "method": "GET",
+        "phase": "good",
+        "at": "2026-09-28T23:03:14.355Z",
+        "cacheControl": "no-cache"
+      }
+    ],
+    "phase": "good"
+  },
+  "cleanup": {
+    "method": "POST invalidates only this synthetic asset URL, followed by non-cacheable empty GET",
+    "bytes": 0,
+    "final": {
+      "requests": [
+        {
+          "method": "GET",
+          "phase": "corrupt",
+          "at": "2026-09-28T23:03:14.148Z",
+          "cacheControl": null
+        },
+        {
+          "method": "GET",
+          "phase": "good",
+          "at": "2026-09-28T23:03:14.355Z",
+          "cacheControl": "no-cache"
+        },
+        {
+          "method": "POST",
+          "phase": "good",
+          "at": "2026-09-28T23:03:14.364Z",
+          "cacheControl": null
+        },
+        {
+          "method": "GET",
+          "phase": "cleanup",
+          "at": "2026-09-28T23:03:14.365Z",
+          "cacheControl": null
+        }
+      ],
+      "phase": "cleanup"
+    },
+    "ownedTabClosed": true,
+    "ownedServerStopped": true,
+    "CacheStorageUnmodified": true,
+    "runtimeGuestNotStarted": true
+  },
+  "automaticRecovery": false,
+  "limitations": [
+    "Tiny synthetic immutable HTTP response; no runtime image chunks, VM, model or workspace data",
+    "Production loader imported unchanged from held export; this is not full runtime startup acceptance",
+    "Separate ephemeral5208 asset origin with CORS from disposable QA5198; runtime HTTP cache keys untouched",
+    "Concurrent browser runtime CPU profiling; no clean timing/performance claim"
+  ],
+  "checks": [
+    {
+      "name": "cached corrupt bytes rejected on first and repeated load",
+      "passed": true
+    },
+    {
+      "name": "both loader attempts used cached corruption without network retry",
+      "passed": true
+    },
+    {
+      "name": "explicit reload fetched good bytes then loader verified them",
+      "passed": true
+    },
+    {
+      "name": "scoped POST invalidation followed by non-cacheable empty network GET",
+      "passed": true
+    }
+  ]
+}

@@ -23,6 +23,16 @@ test('runtime assets reject traversal, truncated downloads and extra bytes', asy
   await expect(verifiedAsset(entry, 'https://runtime.invalid/', { fetch: async () => new Response(Buffer.concat([bytes, bytes])) })).rejects.toThrow('size exceeded')
 })
 
+test('a single explicit part must agree with the complete asset identity before downloading', async () => {
+  const bytes = Buffer.from('single verified part')
+  const part = { name: 'image.part-0', bytes: bytes.length, sha256: hash(bytes) }
+  let calls = 0
+  const fetcher = async () => { calls++; return new Response(bytes) }
+  await expect(verifiedAsset({ name: 'image.data', bytes: bytes.length, sha256: hash('different asset'), parts: [part] }, 'https://runtime.invalid/', { fetch: fetcher })).rejects.toThrow('part identity')
+  expect(calls).toBe(0)
+  expect(Buffer.from(await verifiedAsset({ name: 'image.data', bytes: bytes.length, sha256: part.sha256, parts: [part] }, 'https://runtime.invalid/', { fetch: fetcher }))).toEqual(bytes)
+})
+
 test('small assets and multipart verification retain cumulative byte progress without resetting', async () => {
   const chunks = [Buffer.from('first'), Buffer.from('second'), Buffer.from('third')]
   const progress = createDownloadProgress(chunks.reduce((sum, chunk) => sum + chunk.length, 0))
@@ -37,6 +47,58 @@ test('small assets and multipart verification retain cumulative byte progress wi
   expect(seen).toEqual([{ received: 0, total: 16 }, { received: 5, total: 16 }, { received: 11, total: 16 }, { received: 16, total: 16 }])
   expect(() => progress.add(1)).toThrow('Invalid runtime download progress')
   expect(() => createDownloadProgress(NaN)).toThrow('Invalid runtime download total')
+})
+
+test('a corrupt cached part retries only that URL with cache bypass and no duplicate byte credit', async () => {
+  const chunks = [Buffer.from('first'), Buffer.from('second')]
+  const bytes = Buffer.concat(chunks)
+  const entry = { name: 'image.data', bytes: bytes.length, sha256: hash(bytes), parts: chunks.map((chunk, index) => ({ name: `part-${index}`, bytes: chunk.length, sha256: hash(chunk) })) }
+  const requests = [], retries = [], seen = []
+  const progress = createDownloadProgress(bytes.length)
+  const actual = await verifiedAsset(entry, 'https://runtime.invalid/', {
+    fetch: async (url, options) => {
+      requests.push({ url: String(url), cache: options?.cache })
+      const index = Number(String(url).split('-').at(-1))
+      return new Response(index === 1 && !options?.cache ? Buffer.from('broken') : chunks[index])
+    },
+    onRetry: (name) => retries.push(name),
+    onProgress: (count) => { progress.add(count); seen.push(progress.snapshot().received) },
+  })
+  expect(Buffer.from(actual)).toEqual(bytes)
+  expect(requests).toEqual([
+    { url: 'https://runtime.invalid/part-0', cache: undefined },
+    { url: 'https://runtime.invalid/part-1', cache: undefined },
+    { url: 'https://runtime.invalid/part-1', cache: 'reload' },
+  ])
+  expect(retries).toEqual(['part-1'])
+  expect(seen).toEqual([5, 11])
+})
+
+test('truncated cached streams recover without exceeding the known asset byte total', async () => {
+  const bytes = Buffer.from('whole asset')
+  const progress = createDownloadProgress(bytes.length)
+  const attempts = []
+  const actual = await verifiedAsset({ name: 'image.wasm', bytes: bytes.length, sha256: hash(bytes) }, 'https://runtime.invalid/', {
+    fetch: async (_url, options) => { attempts.push(options?.cache); return new Response(options?.cache ? bytes : bytes.subarray(0, 3)) },
+    onProgress: (count) => progress.add(count),
+  })
+  expect(Buffer.from(actual)).toEqual(bytes)
+  expect(attempts).toEqual([undefined, 'reload'])
+  expect(progress.snapshot()).toEqual({ received: bytes.length, total: bytes.length })
+})
+
+test('fresh corrupt payloads stay rejected and HTTP or network errors do not trigger cache recovery', async () => {
+  const bytes = Buffer.from('good')
+  const entry = { name: 'image.wasm', bytes: bytes.length, sha256: hash(bytes) }
+  for (const [response, expectedCalls, error] of [
+    [() => new Response('evil'), 2, 'integrity verification'],
+    [() => new Response('missing', { status: 404 }), 1, 'unavailable: 404'],
+    [() => { throw new Error('network unavailable') }, 1, 'network unavailable'],
+  ]) {
+    let calls = 0
+    await expect(verifiedAsset(entry, 'https://runtime.invalid/', { fetch: async () => { calls++; return response() } })).rejects.toThrow(error)
+    expect(calls).toBe(expectedCalls)
+  }
 })
 
 test('guest networking requires explicit relay configuration and never exposes its token in capabilities', async () => {
