@@ -2,6 +2,7 @@
 import { verifiedAsset, createDownloadProgress } from './assets.js'
 import { acquireWorkspace } from './ownership.js'
 import { installIDBFSSymlinks } from './idbfs-links.js'
+import { browserRequestOptions } from './network-policy.js'
 let port, projectId, base, runtime, booting
 let fs, pollTimer, syncing = Promise.resolve()
 let polling = false, restoreError
@@ -156,7 +157,16 @@ async function boot() {
 
 async function guestFetch(url, options = {}) {
   const relay = networkRelay
-  if (!relay) return fetch(url, options)
+  if (!relay) {
+    try { return await fetch(url, browserRequestOptions(url, options)) }
+    catch (error) {
+      // The upstream network shim converts rejected Fetch promises into503.
+      // Keep the actual browser failure visible without logging private paths,
+      // queries, or authentication headers. A failed request does not crash VM.
+      consoleOut(`Browser network request failed for ${new URL(url).origin} (${error.name || 'Error'}); check this origin's CORS support or explicitly configure a network relay.\n`)
+      throw error
+    }
+  }
   let bodyBase64
   if (options.body != null) {
     const bytes = new Uint8Array(await new Response(options.body).arrayBuffer())
