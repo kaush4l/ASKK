@@ -1,0 +1,149 @@
+{
+  "startedAt": "2026-09-28T22:46:00.071Z",
+  "runtime": {
+    "runtimeId": "browser-linux:cua-prepared-template-proof:c2w-node24-8f08d6cef80797be:65fc8dc2-24ad-4ffd-b428-e5ab5231d729",
+    "root": "/workspaces/cua-prepared-template-proof",
+    "imageId": "c2w-node24-8f08d6cef80797be",
+    "bootId": "65fc8dc2-24ad-4ffd-b428-e5ab5231d729",
+    "kind": "browser-linux",
+    "state": "ready",
+    "ready": true,
+    "toolchain": {
+      "kind": "node",
+      "version": "24.21.0",
+      "packageManager": "npm",
+      "preparedTemplate": {
+        "id": "next-default-72013276c996cd10",
+        "dependencies": {
+          "next": "16.3.6",
+          "react": "19.3.0",
+          "react-dom": "19.3.0"
+        },
+        "lockSha256": "72013276c996cd104fc0f6c7883e74ec9073e0385ea61412f13b03eba62006f0",
+        "prepareSha256": "01f761ac1f0350adc4aa1102c0fc0f58d01b3f7f45aeda981d03389ccf3d573c",
+        "npmGuardSha256": "2ce131db3a3a9c1349bf3808ed1645b0b7f9bdf427a14c5e9107c9337884b9d5",
+        "prepareCommand": [
+          "node",
+          "/opt/harness/prepare-template.js"
+        ],
+        "detachCommand": [
+          "node",
+          "/opt/harness/prepare-template.js",
+          "--detach"
+        ],
+        "npmTarballCacheIncluded": false
+      }
+    },
+    "filesystem": true,
+    "shell": true,
+    "pty": true,
+    "persistentProcesses": true,
+    "persistence": "idbfs",
+    "capabilities": [
+      "files",
+      "shell",
+      "pty",
+      "node",
+      "npm",
+      "static-export",
+      "browser-network",
+      "prepared-template"
+    ],
+    "network": "browser-fetch-cors",
+    "preview": [
+      "next-static-export"
+    ],
+    "requiresCrossOriginIsolation": true
+  },
+  "transfer": {
+    "startedAt": "2026-09-28T22:43:49.539Z",
+    "archiveSHA256": "5245358cae28c31fa7006a5816d932eb95d059286e72e3df1cf571025cf59b2f",
+    "nativeReceipt": "compile-cache-native.json",
+    "diagnostic": true,
+    "write": {
+      "path": ".cache/native-node-bytecode.tar",
+      "revision": "5245358cae28c31fa7006a5816d932eb95d059286e72e3df1cf571025cf59b2f",
+      "size": 2621440,
+      "rev": "5245358cae28c31fa7006a5816d932eb95d059286e72e3df1cf571025cf59b2f",
+      "conflict": false,
+      "bytes": 2621440,
+      "milliseconds": 13683.694999992847
+    },
+    "extract": {
+      "id": "stage-native-bytecode",
+      "runtimeId": "browser-linux:cua-prepared-template-proof:c2w-node24-8f08d6cef80797be:65fc8dc2-24ad-4ffd-b428-e5ab5231d729",
+      "code": 0,
+      "signal": null,
+      "cancelled": false,
+      "stdout": "644\n",
+      "stderr": "",
+      "outputTruncated": false,
+      "milliseconds": 10371.955000013113
+    },
+    "passed": true
+  },
+  "taskCompanions": "7717/7718 absent; dedicated Colima stopped before timings",
+  "checks": [
+    {
+      "cacheEnabled": false,
+      "id": "bytecode-0",
+      "runtimeId": "browser-linux:cua-prepared-template-proof:c2w-node24-8f08d6cef80797be:65fc8dc2-24ad-4ffd-b428-e5ab5231d729",
+      "code": 0,
+      "signal": null,
+      "cancelled": false,
+      "stdout": "{\"sum\":1783293664,\"exports\":70,\"requireMilliseconds\":1741.575168000003,\"loopMilliseconds\":4843.194879999999,\"cpu\":{\"user\":27102949,\"system\":4536421},\"uptime\":32.149374976,\"node\":\"v24.21.0\",\"cache\":null}\n",
+      "stderr": "",
+      "outputTruncated": false,
+      "milliseconds": 38059.939999997616
+    },
+    {
+      "cacheEnabled": true,
+      "id": "bytecode-1",
+      "runtimeId": "browser-linux:cua-prepared-template-proof:c2w-node24-8f08d6cef80797be:65fc8dc2-24ad-4ffd-b428-e5ab5231d729",
+      "code": 0,
+      "signal": null,
+      "cancelled": false,
+      "stdout": "{\"sum\":1783293664,\"exports\":70,\"requireMilliseconds\":2067.8551039999984,\"loopMilliseconds\":4713.819904000004,\"cpu\":{\"user\":26721604,\"system\":5043991},\"uptime\":37.342374912,\"node\":\"v24.21.0\",\"cache\":\"/tmp/askk-compile-cache/v24.21.0-arm64-964aae3f-0\"}\n",
+      "stderr": "",
+      "outputTruncated": false,
+      "milliseconds": 43539.965000003576
+    },
+    {
+      "cacheEnabled": true,
+      "id": "bytecode-2",
+      "runtimeId": "browser-linux:cua-prepared-template-proof:c2w-node24-8f08d6cef80797be:65fc8dc2-24ad-4ffd-b428-e5ab5231d729",
+      "code": 0,
+      "signal": null,
+      "cancelled": false,
+      "stdout": "{\"sum\":1783293664,\"exports\":70,\"requireMilliseconds\":1518.404864,\"loopMilliseconds\":4867.455232,\"cpu\":{\"user\":27062144,\"system\":4783615},\"uptime\":32.203755008,\"node\":\"v24.21.0\",\"cache\":\"/tmp/askk-compile-cache/v24.21.0-arm64-964aae3f-0\"}\n",
+      "stderr": "",
+      "outputTruncated": false,
+      "milliseconds": 38200.110000014305
+    },
+    {
+      "cacheEnabled": false,
+      "id": "bytecode-3",
+      "runtimeId": "browser-linux:cua-prepared-template-proof:c2w-node24-8f08d6cef80797be:65fc8dc2-24ad-4ffd-b428-e5ab5231d729",
+      "code": 0,
+      "signal": null,
+      "cancelled": false,
+      "stdout": "{\"sum\":1783293664,\"exports\":70,\"requireMilliseconds\":2344.2700799999984,\"loopMilliseconds\":4884.9950720000015,\"cpu\":{\"user\":27701034,\"system\":4473818},\"uptime\":32.455760128,\"node\":\"v24.21.0\",\"cache\":null}\n",
+      "stderr": "",
+      "outputTruncated": false,
+      "milliseconds": 37999.95999997854
+    }
+  ],
+  "order": "off,on,on,off; same retained guest; no timing claim from diagnostic admission",
+  "admission": {
+    "id": "bytecode-admission",
+    "runtimeId": "browser-linux:cua-prepared-template-proof:c2w-node24-8f08d6cef80797be:65fc8dc2-24ad-4ffd-b428-e5ab5231d729",
+    "code": 0,
+    "signal": null,
+    "cancelled": false,
+    "stdout": "{\"exports\":70,\"cache\":\"/tmp/askk-compile-cache/v24.21.0-arm64-964aae3f-0\",\"tag\":2521476671}\n",
+    "stderr": "[compile cache] resolved path /tmp/askk-compile-cache + v24.21.0-arm64-964aae3f-0 -> /tmp/askk-compile-cache/v24.21.0-arm64-964aae3f-0\n[compile cache] creating cache directory /tmp/askk-compile-cache/v24.21.0-arm64-964aae3f-0...success\n[compile cache] reading cache from /tmp/askk-compile-cache/v24.21.0-arm64-964aae3f-0/712488c2 for CommonJS [eval]...[2329926578 119 736 3947042520 3853043465]...code size mismatch: expected 206, actual 119\n[compile cache] V8 code cache for CommonJS [eval] was not initialized, initializing the in-memory entry\n[compile cache] reading cache from /tmp/askk-compile-cache/v24.21.0-arm64-964aae3f-0/8e9c99c2 for CommonJS [eval]-wrapper...[2329926578 182 824 3428517510 2298278184]... success, size=824\n[compile cache] V8 code cache for CommonJS [eval]-wrapper was accepted, keeping the in-memory entry\n[compile cache] reading cache from /tmp/askk-compile-cache/v24.21.0-arm64-964aae3f-0/935b4e86 for CommonJS /opt/harness/template/node_modules/next/dist/shared/lib/constants.js...[2329926578 15373 16600 1440387907 2088852198]... success, size=16600\n[compile cache] V8 code cache for CommonJS /opt/harness/template/node_modules/next/dist/shared/lib/constants.js was accepted, keeping the in-memory entry\n[compile cache] reading cache from /tmp/askk-compile-cache/v24.21.0-arm64-964aae3f-0/6a389ba3 for ESM file:///opt/harness/template/node_modules/@swc/helpers/esm/_interop_require_default.js...[2329926578 144 712 970798339 3322843357]... success, size=712\n[compile cache] V8 code cache for ESM file:///opt/harness/template/node_modules/@swc/helpers/esm/_interop_require_default.js was accepted, keeping the in-memory entry\n[compile cache] reading cache from /tmp/askk-compile-cache/v24.21.0-arm64-964aae3f-0/2322cc16 for CommonJS /opt/harness/template/node_modules/next/dist/shared/lib/modern-browserslist-target.js...[2329926578 582 944 4230355948 965326530]... success, size=944\n[compile cache] V8 code cache for CommonJS /opt/harness/template/node_modules/next/dist/shared/lib/modern-browserslist-target.js was accepted, keeping the in-memory entry\n[compile cache] reading cache from /tmp/askk-compile-cache/v24.21.0-arm64-964aae3f-0/3767e123 for CommonJS /opt/harness/template/node_modules/next/dist/shared/lib/entry-constants.js...[2329926578 1184 1800 159927496 1728700367]... success, size=1800\n[compile cache] V8 code cache for CommonJS /opt/harness/template/node_modules/next/dist/shared/lib/entry-constants.js was accepted, keeping the in-memory entry\n[compile cache] skip persisting CommonJS /opt/harness/template/node_modules/next/dist/shared/lib/entry-constants.js because cache was the same\n[compile cache] skip persisting CommonJS /opt/harness/template/node_modules/next/dist/shared/lib/modern-browserslist-target.js because cache was the same\n[compile cache] skip persisting ESM file:///opt/harness/template/node_modules/@swc/helpers/esm/_interop_require_default.js because cache was the same\n[compile cache] skip persisting CommonJS /opt/harness/template/node_modules/next/dist/shared/lib/constants.js because cache was the same\n[compile cache] skip persisting CommonJS [eval]-wrapper because cache was the same\n[compile cache] Creating temporary file for cache of [eval] (CommonJS)... -> /tmp/askk-compile-cache/v24.21.0-arm64-964aae3f-0/712488c2.A9vrUO\n[compile cache] writing cache for CommonJS [eval] to temporary file /tmp/askk-compile-cache/v24.21.0-arm64-964aae3f-0/712488c2.A9vrUO [2329926578 206 1040 4286251429 84655846]...success\n[compile cache] Renaming /tmp/askk-compile-cache/v24.21.0-arm64-964aae3f-0/712488c2.A9vrUO to /tmp/askk-compile-cache/v24.21.0-arm64-964aae3f-0/712488c2...success\n[compile cache] Clear deserialized cache.\n",
+    "outputTruncated": false,
+    "milliseconds": 37243.639999985695
+  },
+  "passed": true
+}
