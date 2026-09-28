@@ -1,5 +1,5 @@
 {
-  "build": "0e0a762aab",
+  "build": "0fb344cdff",
   "files": {
     "agents/coder/agent.md": "3afbea3eaa",
     "agents/coder/reviewer/agent.md": "2ca84fdcea",
@@ -10,7 +10,7 @@
     "agents/researcher/agent.md": "9a85eb27b3",
     "agents/soul.md": "5a659e2a71",
     "artifact-preview.html": "7d16fd5613",
-    "browser-linux/assets.js": "d345badf9a",
+    "browser-linux/assets.js": "6039688a5b",
     "browser-linux/generated/c2w-node24-38d093f4a38002db/arg-module.js": "7afc47f366",
     "browser-linux/generated/c2w-node24-38d093f4a38002db/browser_wasi_shim.LICENSE-APACHE": "7df0595970",
     "browser-linux/generated/c2w-node24-38d093f4a38002db/browser_wasi_shim.LICENSE-MIT": "ce3a260309",
@@ -42,7 +42,7 @@
     "browser-linux/ownership.js": "aec7cb2004",
     "browser-linux/probe.html": "9578290114",
     "browser-linux/runtime.html": "b0f314a6b2",
-    "browser-linux/runtime.js": "166c168cbb",
+    "browser-linux/runtime.js": "5f60be72f4",
     "browser-linux/vendor/browser_wasi_shim.LICENSE-APACHE": "7df0595970",
     "browser-linux/vendor/browser_wasi_shim.LICENSE-MIT": "ce3a260309",
     "browser-linux/vendor/container2wasm.LICENSE": "2b8b815229",

@@ -50,6 +50,7 @@ async function verified(entry, assets) {
   const result = await verifiedAsset(entry, assets, {
     onProgress(bytes, name) { downloads.add(bytes); const received = downloads.snapshot().received; if (received - announced > 4 * 1024 * 1024) { announced = received; emit({ type: 'runtime.progress', phase: 'Downloading', message: name }) } },
     onVerifying(name) { emit({ type: 'runtime.progress', phase: 'Verifying', message: name }) },
+    onRetry(name) { emit({ type: 'runtime.progress', phase: 'Downloading', message: `Retrying ${name} with a fresh copy after verification failed` }) },
   })
   emit({ type: 'runtime.progress', phase: 'Verifying', message: entry.name })
   return result
