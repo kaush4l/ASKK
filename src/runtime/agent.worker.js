@@ -91,12 +91,12 @@ function guarded(item) {
     ...item,
     run: async (args, ctx) => {
       const verdict = decide(item, args, { policy, agent: spec.path })
-      if (verdict.action === 'deny') return `refused by policy: ${verdict.reason}`
+      if (verdict.action === 'deny') throw new Error(`refused by policy: ${verdict.reason}`)
       if (verdict.action === 'ask') {
         engine?.emit('approval', item.name, ctx.call, { risk: verdict.risk, reason: verdict.reason })
         const answer = await request('approve', { tool: item.name, call: ctx.call, risk: verdict.risk, reason: verdict.reason, args })
         engine?.emit('approved', item.name, answer.approved ? 'approved' : 'denied', { note: answer.note ?? '' })
-        if (!answer.approved) return `the owner refused this call${answer.note ? `: ${answer.note}` : '.'} Do not retry it unchanged.`
+        if (!answer.approved) throw new Error(`the owner refused this call${answer.note ? `: ${answer.note}` : '.'} Do not retry it unchanged.`)
       }
       return run(args, ctx)
     },
@@ -193,6 +193,7 @@ async function build(message) {
     learned: message.learned ?? '',
     llm,
     responseFormat: spec.engine.responseFormat ?? 'toon',
+    observationFormat: spec.engine.observationFormat,
     contractVersion: spec.engine.contractVersion,
     promptTemplate: spec.engine.promptTemplate,
     outputReserve: spec.engine.outputReserve,

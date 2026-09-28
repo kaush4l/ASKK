@@ -31,6 +31,7 @@ export function tool(spec, defaults = {}) {
     // Results may depend on files, permissions, time or another agent. Caching is opt-in.
     cacheable: spec.cacheable === true && !spec.writes,
     writes: Boolean(spec.writes),
+    projectObservation: typeof spec.projectObservation === 'function' ? spec.projectObservation : null,
     run,
     tier: defaults.tier ?? spec.tier ?? 'built-in',
     source: defaults.source ?? spec.source ?? '',

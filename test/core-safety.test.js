@@ -4,7 +4,7 @@ import { readSpec } from '../src/core/folder.js'
 import { inference } from '../src/core/inference.js'
 import { CompactReAct, ReAct, responseModel } from '../src/core/responses.js'
 import { tool } from '../src/core/tools.js'
-import { workspace_check, workspace_run, workspace_write } from '../src/builtin/workspace.js'
+import { workspace_check, workspace_run, workspace_write, workspace_build } from '../src/builtin/workspace.js'
 
 const setup = (replies, options = {}) => {
   const llm = inference({ provider: 'scripted', replies, maxOutputTokens: 256 })
@@ -313,12 +313,15 @@ test('steering arriving during inference discards the pending tool proposal', as
 })
 
 
+const checkedPlan = [{ action: 'click', selector: '#add' }, { action: 'assertText', selector: '#title', value: 'Buy groceries' }]
+const checkedReceipt = (ok) => ({ ok, artifactId: 'artifact-current', buildId: 'build-current', revision: 2, checkedAt: 100, interactionMode: 'programmatic-dom', assertions: checkedPlan, errors: ok ? [] : ['Expected Buy groceries; found Write report'], results: checkedPlan.slice(0, ok ? 2 : 1).map((row, index) => ({ index, action: row.action, ok: true, frame: 0 })) })
+
 test('workspace failure receipts remain failed tool observations and repeated checks execute again', async () => {
   let calls = 0
-  const receipt = { ok: false, artifactId: 'artifact-current', errors: ['Expected Buy groceries; found Write report'], results: [{ index: 0, ok: true }] }
+  const receipt = checkedReceipt(false)
   const { engine, events } = setup([], { tools: [tool(workspace_check, { name: 'workspace_check' })], ctx: { request: async () => { calls++; return receipt } } })
   for (let index = 0; index < 2; index++) {
-    const result = await engine.call({ name: 'workspace_check', args: { assertions: [] }, text: 'workspace_check({})' })
+    const result = await engine.call({ name: 'workspace_check', args: { assertions: checkedPlan }, text: 'workspace_check({})' })
     expect(result.ok).toBe(false)
     expect(JSON.parse(result.text.replace('workspace_check failed: ', ''))).toEqual(receipt)
   }
@@ -336,9 +339,9 @@ test('command failures, cancellation, missing exits and write conflicts cannot r
 })
 
 test('successful workspace check and actual zero exit preserve their exact receipt', async () => {
-  for (const [name, spec, receipt] of [['workspace_check', workspace_check, { ok: true, results: [{ index: 0, ok: true }] }], ['workspace_run', workspace_run, { code: 0, id: 'real-command', output: 'done' }]]) {
+  for (const [name, spec, receipt] of [['workspace_check', workspace_check, checkedReceipt(true)], ['workspace_run', workspace_run, { code: 0, id: 'real-command', output: 'done' }]]) {
     const { engine } = setup([], { tools: [tool(spec, { name })], ctx: { request: async () => receipt } })
-    const result = await engine.call({ name, args: {}, text: `${name}({})` })
+    const result = await engine.call({ name, args: name === 'workspace_check' ? { assertions: checkedPlan } : {}, text: `${name}({})` })
     expect(result.ok).toBe(true)
     expect(JSON.parse(result.text)).toEqual(receipt)
   }
@@ -348,4 +351,21 @@ test('tool text cannot impersonate execution failure metadata', async () => {
   const { engine } = setup([], { tools: [tool({ name: 'read_log', run: () => 'read_log failed: this is a line in the file' })] })
   const result = await engine.call({ name: 'read_log', args: {}, text: 'read_log({})' })
   expect(result).toEqual({ ok: true, text: 'read_log failed: this is a line in the file' })
+})
+
+test('write and build tools reject malformed acknowledgements while retaining real success receipts', async () => {
+  const manifest = { version: 1, id: 'artifact-1', sourceRevision: 3, runtime: { version: 1, workspaceId: 'test', target: 'browser', runtimeId: 'guest-1', root: '/workspace', toolchain: { kind: 'node' } }, build: { id: 'build-1', exitCode: 0 }, resources: [] }
+  const built = { id: manifest.id, revision: 3, status: 'ready', manifest }
+  for (const [name, spec, valid, invalid] of [
+    ['workspace_write', workspace_write, { ok: true, rev: 'r3' }, [null, undefined, {}, 'saved', { ok: true }, { ok: true, rev: -1 }]],
+    ['workspace_build', workspace_build, built, [null, undefined, { ok: false, error: 'compiler failed' }, { status: 'ready' }, { ...built, id: 'other' }, { ...built, revision: 4 }, { ...built, manifest: { ...manifest, build: { id: 'build-1', exitCode: 1 } } }]],
+  ]) {
+    let receipt
+    const { engine } = setup([], { tools: [tool(spec, { name })], ctx: { request: async () => receipt } })
+    for (receipt of invalid) expect((await engine.call({ name, args: {}, text: `${name}({})` })).ok).toBe(false)
+    receipt = valid
+    const result = await engine.call({ name, args: {}, text: `${name}({})` })
+    expect(result.ok).toBe(true)
+    expect(JSON.parse(result.text)).toEqual(valid)
+  }
 })

@@ -111,5 +111,78 @@
     "freshContext": 4.93,
     "responseContract": 1.26,
     "framing": 0.08
+  },
+  "offlineCheckProjection": {
+    "method": "Current scoped builtin validator/projector and staged-v1 serializer, fed nine original recorded check receipts without model or browser execution. Synthetic call IDs reconstructed from recorded request and call order. Historical records unchanged.",
+    "samples": [
+      {
+        "ok": false,
+        "completedSteps": 15,
+        "totalSteps": 37,
+        "originalObservationChars": 6166,
+        "compactObservationChars": 688
+      },
+      {
+        "ok": false,
+        "completedSteps": 15,
+        "totalSteps": 37,
+        "originalObservationChars": 6166,
+        "compactObservationChars": 688
+      },
+      {
+        "ok": false,
+        "completedSteps": 15,
+        "totalSteps": 37,
+        "originalObservationChars": 6166,
+        "compactObservationChars": 689
+      },
+      {
+        "ok": false,
+        "completedSteps": 15,
+        "totalSteps": 37,
+        "originalObservationChars": 6166,
+        "compactObservationChars": 689
+      },
+      {
+        "ok": false,
+        "completedSteps": 15,
+        "totalSteps": 37,
+        "originalObservationChars": 6166,
+        "compactObservationChars": 690
+      },
+      {
+        "ok": false,
+        "completedSteps": 15,
+        "totalSteps": 37,
+        "originalObservationChars": 6166,
+        "compactObservationChars": 690
+      },
+      {
+        "ok": false,
+        "completedSteps": 15,
+        "totalSteps": 37,
+        "originalObservationChars": 6166,
+        "compactObservationChars": 690
+      },
+      {
+        "ok": false,
+        "completedSteps": 15,
+        "totalSteps": 37,
+        "originalObservationChars": 6166,
+        "compactObservationChars": 690
+      },
+      {
+        "ok": true,
+        "completedSteps": 37,
+        "totalSteps": 37,
+        "originalObservationChars": 7271,
+        "compactObservationChars": 505
+      }
+    ],
+    "originalObservationChars": 56599,
+    "compactObservationChars": 6019,
+    "reductionChars": 50580,
+    "reductionPercent": 89.37,
+    "scope": "Only the nine workspace_check observation blocks. This excludes unchanged assistant plans, generic result escaping, repeated appearances in later prompts, added format instructions, and tokenization. No end-to-end latency or model reliability claim."
   }
 }
