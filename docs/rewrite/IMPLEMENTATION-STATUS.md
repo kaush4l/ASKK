@@ -1,83 +1,78 @@
 # Implementation status
 
-Evidence checkpoint: 2026-09-28. The rewrite is changing actively. “Implemented” describes inspected code; “verified” names an actual check and its scope. Neither means production readiness. Update measurements rather than inferring readiness from a successful compile or a status badge.
+Evidence checkpoint: 2026-09-28. The workbench completed a guided native application verification. Browser Linux passed core execution and reload checks, but offline npm installation still exceeds the test deadline; browser-contained Next builds and current Safari acceptance remain unverified. These are engineering-preview results, not production readiness or one-shot reliability.
 
-## Measured or inspected now
+## Source, build, and published site
 
-| Area | Evidence | Scope and limit |
+| Checkpoint | Recorded result | Scope |
 | --- | --- | --- |
-| Regression suite | Last completed run: `bun test ./test` → **279 passed, 1 skipped, 0 failed, 2046 assertions**, 27 files. | This records the completed run at the reconciliation checkpoint; later concurrent changes need a fresh run. The skipped test is the opt-in real CLI check. |
-| Core loop | `test/core-safety.test.js`: malformed replies, v2 actions, mutable tools, call IDs, completion rejection, truncation/EOF/CLI failure, redacted retries, full prompt estimates, compaction preservation. | Deterministic fixtures/local streams, not arbitrary model reliability. |
-| Production worker | `test/runtime-production.test.js`: production main and completion gate through a real worker. | Scripted v2 model; production wiring, not a real-model coding benchmark. |
-| Bun companion | `test/companion.test.js`: auth/origin, pairing POST, streamed relay, CAS, path/symlink confinement, real output/exit, process-group cancellation, duplicate identity, PTY input/resize/close. | Ephemeral local HTTP tests. No certificate trust, hosted Safari pairing, installer, or OS sandbox proof. |
-| Artifact packaging | `test/artifact-packaging.test.js`, `test/workspace-artifacts.test.js`: source metadata, CSS/local resources, unsupported-profile rejection, resulting-state assertions. | Unit/package checks; runtime-created assets and arbitrary routes remain unsupported. |
-| Actual Next artifact: Chrome | Chrome 153 CUA: **10/10 checks passed** with `crossOriginIsolated:true`: Next hydration/reload, fresh inspection storage, React onBlur persistence, forbidden storage failure, port/DOM forgery rejection, normal URL/Blob behavior, and parent composer focus/draft preservation. | Opaque `srcdoc` renderer; the repeated suite now includes emitted CSS imports and measured applied styles in `evidence/artifact-chrome-forms-and-isolation.json`. Earlier fixtures omitted CSS and forms, missing two failures exposed by the live task. The current suite proves client form handlers and rejects external/harness-origin native POSTs; a real mouse click also increments the form counter. Next 16.3.6 built natively, not inside the browser guest. DOM blur is synthetic; native keyboard focus remains separate acceptance. |
-| Actual Next artifact: Safari | Earlier opaque HTTP-shell fixture passed locally. | This does **not** verify the new isolated `srcdoc` renderer. Current Safari checks are pending while the Mac is locked. |
-| Adversarial artifact cases | Root Chrome probes rejected private-port forgery, replaced DOM accessors, and CSP-forbidden fetch. Fixture: `scripts/verify-artifacts.js`. | Bounded cases, not a complete security audit. Re-run after shell/inspection changes. |
-| Native guest protocol | `test/browser-linux.test.js`: supervisor files, revisions, process output/exit, cancellation, binary snapshots/transfers. | Supervisor executed with native Node. Does not instantiate Wasm, QEMU, IDBFS, or Safari. Some transfer cases were added after the recorded suite. |
-| Runtime assets | `test/browser-linux-assets.test.js`: chunk/manifest integrity, unsafe/truncated assets, explicit network relay, cancellation during job admission. | Recently added; include in next recorded suite. Does not prove guest boot. |
-| Workspace coordination | `bun test ./test/workspace-controller.test.js --timeout 5000` → **33 passed, 0 failed, 168 assertions**. | Real `ProjectFiles` and controller with a deterministic in-memory transaction store, controlled execution/inspection ports, and a fake Hub for dispatch boundaries. No guest, shell, browser, or Next process is started. |
-| Worker binding and cancellation | `bun test ./test/runtime-binding.test.js --timeout 15000` → **4 passed, 0 failed, 59 assertions**. Real workers inherit detached context into child prompts, stored records, and exported traces; persisted resume/invoke retain context and saved plans; continuation has a separate linked attempt; stopping one child preserves sibling/parent completion; shutdown settles callers and reload never replays work automatically. | Scripted inference and controlled external operations. Persistence uses the in-memory store; this does not prove browser reload durability or controller/Hub capability enforcement. |
-| Boot and connection diagnostics | Inline-watchdog tests execute without React; inference diagnostics test direct HTTPS→HTTP loopback, relay routing, and explicit HTTP errors. | Fixture evidence only; missing-chunk and hosted connection behavior still require browser checks. |
-| Real local model diagnostic | Earlier probe called an in-memory read tool once and returned `42`: two steps, about 20.4 seconds, no repairs. | Compact JSON example with 4096 output budget. Earlier failures used different limits; no causal prompt-improvement claim. Not a generated application. |
+| Latest completed regression suite | `bun test ./test`: **305 passed, 1 skipped, 0 failed, 2274 assertions**, 30 files. | Completed source checkpoint; later changes need another run. The skipped test is the opt-in real CLI check. |
+| Latest checked Pages export | Build/deployment check passed: **802,850,265 bytes, 131 files**; artifact hash `3dcdd9a70a05bbbbd037a17cf8f03191449ea73d043c8706971edcabf60ad2d2`. | Published as **`93509b3`**. Runtime image: `c2w-node24-38d093f4a38002db`. Asset validation is not browser-runtime acceptance. |
+| Hosted browser smoke checkpoint | Earlier commit **`65fa913`**, artifact hash beginning `b31d26`, **802,844,496 bytes**. | The complete hosted Chrome smoke receipt applies to this earlier version; cached clients can still receive its HTML. |
 
-## Browser guest is not yet ready
+A cache-busting actual Pages GET at 21:07:08 UTC confirmed the newer deployment: 29,961-byte index, SHA-256 `2e7d8e1404662694ed261945284913e6485ea8713c7072cb626f474774d40339`, Next build `djYgwGNyMIdJm_Ij2ACrU`. An existing legacy service-worker client still returned the older index hash beginning `e43b`. Publication is confirmed; migration of that cached client remains pending. A compatibility `sw.js` entry point is in source for a subsequent release. A new hosted guest proof is in progress, with no outcome claimed here.
 
-The container2wasm/QEMU image has compiled and its native Linux guest passed Node/npm, offline Next export, and PTY probes. The runtime owner reports Chrome reaching Linux, 9p, DHCP, runc, and Node. The preceding image failed while creating its ready receipt: pinned QEMU passed Emscripten ENOENT=44 through the Linux 9p boundary, where ENOENT must be 2. A symbolic errno translation fix compiled and passed a native mapping regression. Image `c2w-node24-f1ad7720a3169805` removed the errno mismatch and reached Node, exposing a second measured failure: QEMU chmod through `/proc/self/fd/34` returned EPERM because the generated Emscripten lookup node omitted symlink mode. The bounded generated-code correction is published as `c2w-node24-a65a214ffe694729` with its regression and provenance. The new image emitted its structured supervisor handshake from actual Linux arm64 / Node 24.21.0. Diagnostic `ps` and `/bin/echo` children produced output and real process exits. However, preparation failed at **900,284 ms (15 minutes)** while `npm --version` remained CPU-running (observed elapsed 07:59). npm and Next acceptance have not passed. A subsequent Chrome run reached Ready at **291.740 seconds** with cached assets: supervisor at 231.778s, real Node version child completed at 276.761s, then shared-file write/read/remove and durable checkpoint. Companions were stopped before those command/file checks, but were present when that run began booting. npm, arbitrary Node JavaScript startup, and Next performance are still being investigated. A completed compile and native guest tests do not establish browser runtime readiness.
+The [hosted receipt](evidence/workbench-pages-chrome.json) records matching bytes/hashes for the published index, agent catalogue, agent worker, and isolation worker. The shell hydrated, six agents became idle, and worker paths resolved beneath `/ASKK/`. A composer draft survived actual reload. Blocking application chunks in a disposable tab produced the startup diagnostic and reload link without touching the paired tab.
 
-Image `c2w-node24-38d093f4a38002db` reduces empty-mailbox polling with an adaptive 20–1000 ms delay. In actual Chrome with cached assets it reached Ready in **236.423 seconds**. A real `node -e` read of a Unicode workspace file exited zero in **31.601 seconds**; binary snapshot round trip, stale revision rejection, PTY resize, and process cancellation also passed. The supervisor consumed 3.248 CPU seconds during the roughly 33-second JavaScript interval, compared with the previous control-plane starvation. The companion was present but not authorized to this guest, so this is not the requested companion-stopped boot. npm, Next, and reload durability remain separate gates. See `evidence/browser-linux-chrome-core-38d.json`.
+The page was secure and cross-origin isolated, but retained a legacy `sw.js` controller. This does **not** prove clean installation of `coi-serviceworker.js` or migration from the old cache. Source migration handling and regression tests are present, but existing cached clients still require browser migration proof. The earlier published narrow desktop drawer overlaid content without a clear scrim; its source correction needs separate browser evidence.
 
-The earlier `.cache/browser-linux/chrome-proof.json` explicitly records **failure because the Linux image was not installed**. That is historical failure evidence, not the status of the newly compiled image. There is no successful full browser-guest acceptance receipt yet. Native supervisor tests and the separate artifact fixture do not replace it.
+Pages paired through trusted HTTPS loopback with only `model-relay` and `network-relay` capabilities. Settings successfully listed the selected local Qwen model. No native execution was granted, no hosted generation was sent, and no browser guest started during this smoke test.
 
-Before marking Browser Linux ready, record on both requested browsers:
+## Guided native application completion
 
-1. Image identity/integrity, cold boot, actual Node/npm versions, memory requirements, and timings.
-2. One filesystem across independent jobs; binary/Unicode round trips; revision conflicts; no prompt-based completion.
-3. Real install/build/test with the stated network mode. Prove browser-contained execution independently of optional host commands.
-4. Real stdout/stderr/exit, cancellation including descendants, and PTY input/resize/close.
-5. Durable acknowledgement after synchronization; reload restores exact bytes. Storage failures reject acknowledgement and permit honest recovery/retry.
-6. Guest-produced Next export → immutable package → opaque Chrome/Safari preview → meaningful interaction checks against unchanged source.
+The [sixth continuation audit](evidence/native-run-rmulp44n21.md) records local Qwen verification of the existing Daylight application through Local Bun. Revision **26** passed **37 ordered steps: 20 outcome assertions and 17 actions**, including reload. The complete receipt matches the artifact/build identity and records **39,901.135 ms** within a 115,000 ms budget.
 
-An optional network relay must be named in the receipt. Host command execution must never be counted as browser execution.
+The run took **23 minutes 58.546 seconds**. Eight earlier checks repeated the same wrong task-order expectation; one targeted owner message explained it. The successful plan corrected expected titles but still used positional `nth-child` selectors despite the requested stable identity strategy. This run made eight reads, one build, nine checks, and no application writes. It continued earlier work; it was not fresh-goal or one-shot generation.
 
-## Workbench browser evidence
+The main agent completed 16 model requests and three compactor children completed one each, all with `stop` and no format repairs. Each version-2, tool-free compactor summary appeared in later main prompts. The audit preserves provider metrics, intervention, failed checks, and final evidence. Public home paths are redacted; numeric receipts remain original and raw files remain local with mode `0600`.
 
-`evidence/workbench-responsive-chrome.json` records 12 actual Chrome observations: 320/390px phone surfaces without horizontal overflow, preserved drafts and undo across surfaces, modal focus restoration, desktop editor/explorer widths, keyboard divider resizing, and injected storage-quota failure cancelling isolation reload until retry succeeds. `evidence/workbench-editor-groups-chrome.json` separately records twelve two-group checks for shared drafts, independent undo, diff/save behavior, width collapse, phone group switching, and reload recovery. These checks do not stand in for VoiceOver or Safari. The actual background-tab fixture passed 37 assertions and 12 form submissions in 40.09 seconds under an 82.25-second finite budget (`evidence/artifact-background-chrome.json`); it also preserves the earlier settling-deadline failure. Deadline regressions do not replay timed-out actions.
+The running release incorrectly marked failed workspace receipts as successful transport observations although their inner `ok` was false. Newer source propagates typed failure status, preserves full failed receipts, prevents arbitrary tool text from spoofing status, reports bounded expected/actual text from captured native DOM operations, and rejects cancelled zero-exit builds. Those fixes were not patched into the live trial.
 
-A dedicated compactor JSON v2 prompt and Hub completion-status guard now prevent an incomplete child from replacing parent history with a step-limit message. The real-worker regression reproduced this loss before the fix, then proved the original six turns survive.
+## Browser Linux: core checks pass, npm/Next blocked
+
+The native ARM64 guest image includes Node 24.21.0/npm and passed native offline Next and PTY probes. That does not replace browser acceptance.
+
+Image **`c2w-node24-38d093f4a38002db`** passed actual Chrome boot, a real `node -e` Unicode file read, binary snapshot round trip, stale revision rejection, PTY resize, and process cancellation. The [core receipt](evidence/browser-linux-chrome-core-38d.json) records cached-asset Ready at **236.423 seconds** and the Node command at **31.601 seconds**. Adaptive mailbox polling reduced measured supervisor CPU use. Companions were present for independent tests but unauthorized to this guest; this is not a companion-stopped cold boot.
+
+A later cached reload reached Ready at **61.228 seconds** and restored an acknowledged Unicode file. Exact pinned-lock `npm ci --offline --no-audit --no-fund` then failed its 15-minute bound: **924,814.885 ms** including cancellation, ending with `SIGKILL`, no output, and no subsequent Next build. A comparison launching only npm with `--jitless` also failed at **919,999.565 ms** with the same cancelled/no-output outcome. Neither is a successful install or a clean performance comparison.
+
+These later local receipts remain ignored and unpublished: `.cache/browser-linux/chrome-20260928-2021-locked-ci-failure.json` and `chrome-20260928-2040-jitless-ci-failure.json`. The first includes brief coordinated browser QA interruptions. Early file counts in the second may include restored leftovers and do not prove extraction progress.
+
+A data-only repack with the exact template dependencies already installed is being prepared. Native validation, size/integrity, and actual Chrome build gates remain pending; public image assets have not changed. This profile would not prove arbitrary npm installation performance.
+
+Browser readiness still requires both requested browsers to demonstrate cold boot and memory/timing bounds, the supported install/build/test workflow with network mode stated, output/exits/descendant cancellation, PTY lifecycle, broad binary/Unicode fidelity, revision conflicts, durable acknowledgement and failure recovery, and a guest-produced export passing opaque-preview checks against unchanged source. One restored file does not establish crash durability or complete backups. Optional relays must be named; host commands must never count as browser execution.
+
+## Implementation and browser evidence
+
+The full-suite count above is the current aggregate checkpoint. These fixtures describe coverage, not new claims about every historical targeted test count.
+
+| Area | Evidence | Limit |
+| --- | --- | --- |
+| Core and workers | `core-safety`, `runtime-production`, `runtime-binding`, and `runtime-compactor` tests: v2/repair boundaries, truncation, full prompt budgets, mutable tools, typed status, completion gates, exact requests, inherited bindings/plans, child cancellation, compaction preservation, no automatic replay. | Scripted inference/local streams and in-memory persistence are not general model or browser durability proof. |
+| Companion and guest ports | `companion`, `browser-linux`, and `browser-linux-assets` tests: auth/origin, streaming, CAS/path checks, real exits/cancellation/PTY, byte snapshots, manifests, relay selection and admission cancellation. | Native/unit tests do not instantiate browser QEMU. Filesystem API confinement is not an OS sandbox or installer. |
+| Workspace coordination | Controller tests use explicit asynchronous barriers for transfers, nonempty destinations, snapshot/source mutation, reservations, checkpoints, persisted root review/re-pair, stale builds/checks, task bindings, credentials, durable goals and cancelled-build rejection. | Real `ProjectFiles` with controlled ports and in-memory storage. Real adapter interleavings remain separate. |
+| Artifact packaging and inspection | Packaging/artifact tests cover bounded resources, CSS metadata, unsupported profiles, ordered checks, finite deadlines, no replay and captured-native diagnostics. | General routes, external runtime assets and arbitrary Next hosting remain unsupported. |
+| Workbench performance | [Virtualized explorer/terminal](evidence/workbench-performance-after-chrome.json), [terminal delivery](evidence/terminal-delivery-chrome.json), and corresponding tests. | Tested bounded datasets. Command snapshot batching is not interactive PTY backpressure. |
+
+Actual Chrome [forms/isolation checks](evidence/artifact-chrome-forms-and-isolation.json) pass Next CSS hydration, client form handlers, asynchronous scoped storage/reload, fresh inspection storage, URL/Blob behavior, and rejection of port/DOM forgery, forbidden fetches, and native external/harness-origin form POSTs. That Next fixture was built natively. DOM blur is synthetic; keyboard focus acceptance is separate.
+
+The [background-tab fixture](evidence/artifact-background-chrome.json) passed 37 check steps and 12 form submissions in 40.09 seconds within an 82.25-second budget; its earlier settling failure is retained separately. Deadlines count elapsed time and never replay timed-out actions.
+
+[Responsive](evidence/workbench-responsive-chrome.json) and [editor-group](evidence/workbench-editor-groups-chrome.json) receipts cover narrow screens, draft/undo preservation, focus restoration, divider resizing, quota failure preventing reload until retry, independent groups and restored drafts. These are not VoiceOver or Safari results. Earlier Safari artifact checks used a different opaque HTTP-shell renderer; current isolated `srcdoc` acceptance remains pending.
 
 ## Critical pending gates
 
-| Gate | Required evidence |
+| Gate | Remaining evidence |
 | --- | --- |
-| Real local Qwen application task | Five actual Local Bun attempts recorded in `evidence/native-run-*.json`. Second attempt created Daylight files, installed dependencies, and completed Next export, but failed the action contract before verification. Its generated persistence was also incorrect. The third repaired asynchronous artifact storage and rebuilt source revision 17, but exposed the harness CSS hydration bug; it was cancelled to repair that bug. The fourth rebuilt revision 21 but exposed the missing form-event permission; it was cancelled for the harness repair. The fifth rebuilt revision 24, but six long interaction checks each hit the harness’s fixed 12-second deadline. It was cancelled for a deadline repair; its completed compactor child correctly produced a JSON v2 summary which appeared in the parent’s next prompt. Independent manual Chrome interactions passed add, edit, complete, filter, reload persistence, and delete on that artifact (`evidence/daylight-manual-chrome.json`). A sixth continuation has started against the corrected bounded checker. A completed application goal with matching interaction/persistence receipts remains pending; these attempts are neither one-shot success nor browser execution. |
-| Transfer/build concurrency | The 33 controller cases below pass. Remaining evidence includes real adapter/browser interleavings, output mutation during native snapshot capture, revoked pairing, and reload/disposal during active work. |
-| Byte fidelity and complete manifests | PNG/font/random-byte round trips and destination comparison. Oversized/unsupported files cannot disappear silently. Editor text reads remain separate from transfer bytes. |
-| Build provenance | A success-exit command producing no fresh export cannot reuse old `out` with a new revision. Concurrent output writes make snapshot capture fail/retry. |
-| Checkpoint failures | Controller fixtures now reject a failed checkpoint while preserving real mutation/invalidation, and roll back failed transfer bindings. Browser IndexedDB quota/crash/reload behavior remains unverified. Partial recovery copies cannot be called complete backups. |
-| Hosted Chrome/Safari | Exact `/ASKK` export, asset integrity/size, isolation reload and draft preservation, shell/worker paths, and trusted HTTPS companion access from the published origin. |
-| Companion packaging | Bundled Bun, Apple Silicon launch/trust setup, explicit capabilities, token lifecycle, reconnect/failure behavior. A source command is not an installer. |
-| General browser automation | Owned Chrome plus explicit existing-tab attachment and the agreed Safari route, selected-tab identity, and MCP contract. Worker/iframe tests do not prove it. |
-| Remote contributions | Goal/plan context and UI, per-agent cancellation, explicit linked continuation, pre-hydration watchdog, loopback guidance, and the source archive are ported. Unread/ack inbox and current-browser acceptance remain pending; no automatic replay is an intentional policy. See all 13 [commit decisions](REMOTE-RECONCILIATION.md). |
+| Browser coding | Complete the supported guest dependency/build profile and check its exported application. Browser npm/Next is the primary blocking capability. |
+| Reliable model completion | Repeat representative fresh goals without targeted owner repair. Guided native success does not establish stable selectors, efficient recovery or one-shot results. |
+| Hosted update and Safari | Prove fresh isolation and legacy-cache migration on the published update, preserve drafts, repeat current Safari renderer/workbench checks, and verify hosted generation through the authorized relay. |
+| Real races and durability | Adapter/browser interleavings, native output mutation during snapshot, revoked pairing, active-work reload/disposal, broad binary/font/image fidelity, oversized-file rejection and quota/crash recovery. |
+| Companion packaging | Bundled Bun, Apple Silicon launch/trust setup, explicit capabilities, token lifecycle and reconnect. A source command is not an installer. |
+| General browser automation | Owned Chrome, explicit existing-tab attachment, the agreed Safari route, selected-tab identity and MCP contract. Worker/iframe tests do not establish this. |
+| Remote contributions | Preserve all 13 [remote commit decisions](REMOTE-RECONCILIATION.md). Unread/ack inbox behavior remains pending; linked continuation without automatic process replay is intentional. |
 
-## Controller concurrency evidence
-
-The 33 tests in `test/workspace-controller.test.js` use explicit asynchronous barriers to control operation ordering. The final targeted run passed with 168 assertions. Coverage includes endpoint-scoped credentials, model-specific request options, pairing reservations/restarted-runtime identity, and durable revision-checked conversation goals, plus:
-
-- Required explicit transfer, nonempty-destination preservation, binary byte fidelity, and successful binding changes.
-- External source mutation during snapshot capture or copying, destination write conflicts, and failed checkpoint rollback without deleting copied destination files.
-- Transfer reservations against writes, commands, terminal opening, runtime starts, and another transfer; active writes, runtime preparation, jobs, and opening/open/closing terminals against transfers.
-- Source commits during builds or artifact capture, failed replacement builds, and preservation of the previous immutable preview.
-- Successful inspection bound to the exact artifact/build/command/runtime, and rejection after editor commits, external edits, or replacement builds.
-- Relay-only denial of native execution and explicit PTY authority checks.
-- Runtime identity changes during command or transfer checkpoints, plus a storage failure after a real file mutation that still invalidates old evidence.
-- Missing/stale bindings rejected at all eight workspace Hub operations before effects, invalid model transport rejected before task dispatch, one frozen binding exported for a valid goal, and restored/refreshed companion capabilities preserved without changing the selected execution target.
-
-These tests exposed three bugs fixed before the final run: command receipts and transfers were not revalidating runtime identity after checkpoint awaits, and terminal opening lacked an explicit PTY capability check. Their failure-first results and final passes exercise controller behavior; they do not prove browser durability or generated-page correctness. Inspection itself is a controlled port in these tests, while packaging uses the real artifact packager.
-
-Browser fixtures still need repeated inspection, reload/disposal, target switching, revoked pairing, storage failures, narrow screens, focus, and reduced motion. Actual build-output snapshot consistency and the complete browser controller/Hub launch path remain separate integration checks.
-
-## Reproduction and evidence
+## Reproduction and evidence handling
 
 ```sh
 bun test ./test
@@ -85,8 +80,6 @@ bun run build:pages
 bun scripts/check-deployment.js out
 ```
 
-The deployment check expects complete runtime assets. `--without-runtime` permits a **UI-only** inspection; it cannot prove full readiness. The check currently warns when a manifest lacks browser verification, which does not pass the missing browser gate.
+The deployment check validates size/hash/path constraints and expects complete runtime assets. `--without-runtime` is a UI-only inspection. Missing browser verification in the manifest remains a warning, not a passed gate.
 
-`scripts/verify-artifacts.js` uses an actual local static export (default `.cache/artifact-fixture/out`). Runtime build/probe instructions are in [scripts/browser-linux/README.md](../../scripts/browser-linux/README.md). Keep generated caches separate from source and retain sanitized receipts when promoting a gate to verified.
-
-Record browser/version, origin, image/build identity, model/settings, source/artifact revisions, loop passes, repairs, provider usage when available, and concrete outcomes. Transport authentication is redacted; prompts/files may still contain private user data and need review before sharing.
+Runtime instructions: [scripts/browser-linux/README.md](../../scripts/browser-linux/README.md). `scripts/verify-artifacts.js` uses a local static export, defaulting to `.cache/artifact-fixture/out`. Record browser/version, origin, image/build, model/settings, revisions, repairs, intervention, usage and concrete outcomes. Keep raw receipts local; redact public text explicitly without recalculating original lengths or token measurements from the redacted copy.

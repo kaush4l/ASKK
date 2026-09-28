@@ -1,0 +1,115 @@
+{
+  "version": 1,
+  "source": "native-run-rmulp44n21.json",
+  "measurementSource": "Original private PromptSnapshots before home-path redaction; raw file unchanged. Public receipt contains the same recorded numeric measurements but redacted text.",
+  "originalSha256": "3771a288a790cdd2dd7990093f9332838ce042fdd789378edf2c885527c45657",
+  "method": "Unicode character counts of the two message contents in each of16 main PromptSnapshots, excluding JSON envelope syntax. These shares are not tokenizer attribution. Provider usage is reported separately.",
+  "mainInputMessageChars": 780125,
+  "mainInputs": 16,
+  "sections": {
+    "conversation": 590171,
+    "systemInstructions": 84944,
+    "toolCatalogue": 56128,
+    "freshContext": 38450,
+    "responseContract": 9792,
+    "framing": 640
+  },
+  "stableSystem": {
+    "distinctHashes": 1,
+    "charsPerRequest": 8817,
+    "soulCharsPerRequest": 1821,
+    "jobCharsPerRequest": 3488,
+    "catalogueCharsPerRequest": 3508,
+    "providerReportedCachedTokens": 0
+  },
+  "repeatedSourceReceipts": {
+    "totalChars": 197956,
+    "byFile": {
+      "app/page.js": {
+        "occurrences": 16,
+        "chars": 146288
+      },
+      "app/globals.css": {
+        "occurrences": 7,
+        "chars": 42630
+      },
+      "package.json": {
+        "occurrences": 7,
+        "chars": 3437
+      },
+      "next.config.js": {
+        "occurrences": 7,
+        "chars": 2709
+      },
+      "app/layout.js": {
+        "occurrences": 6,
+        "chars": 2892
+      }
+    }
+  },
+  "checkPayload": {
+    "assistantPlanCopies": 34,
+    "assistantPlanArrayChars": 84886,
+    "observationReceiptCopies": 44,
+    "receiptChars": 150062,
+    "echoedCallChars": 112056,
+    "assertionArraysWithinReceiptChars": 109856,
+    "note": "Repeated appearances across input snapshots include inherited prior-run history. These counts are not unique tool invocations."
+  },
+  "redundantCurrentRunAttempts": {
+    "steps": [
+      5,
+      7,
+      8,
+      10,
+      11,
+      12,
+      13
+    ],
+    "explanation": "Seven calls repeated the same already-failed assertion plan after its first failure. They are model attempts, not transport retries or parse repairs.",
+    "providerInputTokens": 105321,
+    "providerOutputTokens": 4375,
+    "providerTotalSeconds": 530.59,
+    "providerPrefillSeconds": 397.14,
+    "providerGenerationSeconds": 133.44,
+    "note": "Observed expenditure, not a guaranteed counterfactual saving; a corrected recovery still needs inference and checks."
+  },
+  "compaction": {
+    "calls": 3,
+    "providerInputTokens": 43067,
+    "providerTotalSeconds": 260.41,
+    "summaryChars": [
+      986,
+      1608,
+      1612
+    ],
+    "sourceMessageChars": [
+      56626,
+      54614,
+      50721
+    ],
+    "outcome": "All three completed and were adopted. Lowering the compaction threshold is not justified by this one run."
+  },
+  "providerAll19Completions": {
+    "inputTokens": 249637,
+    "outputTokens": 6909,
+    "totalSeconds": 1267.75,
+    "prefillSeconds": 989.41,
+    "generationSeconds": 278.31,
+    "reasoningChars": 0
+  },
+  "recommendationOrder": [
+    "Keep typed workspace failures and bounded captured-native expected/actual diagnostics.",
+    "Project workspace_check receipts for model input while retaining full immutable check proof and exact event records separately.",
+    "Use stage/call references in opt-in model observation history instead of echoing arguments already present in the assistant action.",
+    "Only then evaluate smaller workbench instructions or unused capability grants using matched settings. Do not add generic repeat denial or mutable-tool caching."
+  ],
+  "sectionPercentages": {
+    "conversation": 75.65,
+    "systemInstructions": 10.89,
+    "toolCatalogue": 7.19,
+    "freshContext": 4.93,
+    "responseContract": 1.26,
+    "framing": 0.08
+  }
+}

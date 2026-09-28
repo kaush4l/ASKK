@@ -1,0 +1,154 @@
+{
+  "version": 1,
+  "at": "2026-09-28T20:39:02.416647+00:00",
+  "url": "https://kaush4l.github.io/ASKK/",
+  "deploymentCommit": "65fa913",
+  "method": "Actual Chrome UI through CUA plus HTTP asset byte comparison; no model generation or browser Linux boot",
+  "assets": [
+    {
+      "path": "index.html",
+      "status": 200,
+      "bytes": 29606,
+      "sha256": "e43b4238f8220389ea08482c97ce28ee8c562d24af62d04c294f91ba38ad8ef1",
+      "matchesLocalExport": true
+    },
+    {
+      "path": "agents/index.json",
+      "status": 200,
+      "bytes": 5771,
+      "sha256": "bafea64e7d58aeb71e88909597db724e070f459d5b7533e5e48a6580db447bb4",
+      "matchesLocalExport": true
+    },
+    {
+      "path": "runtime/modules/runtime/agent.worker.js",
+      "status": 200,
+      "bytes": 11053,
+      "sha256": "f8460b5ac9f726437a99f75fbd7115ac7934e00d1b4f7dcfbb01fb3214a1d243",
+      "matchesLocalExport": true
+    },
+    {
+      "path": "coi-serviceworker.js",
+      "status": 200,
+      "bytes": 1043,
+      "sha256": "2efda4bf137ea9d440b8b291f0c8ce98fd68e47c3afe47fc9063604deb99a5dc",
+      "matchesLocalExport": true
+    }
+  ],
+  "shell": {
+    "hydration": "ready",
+    "agentDefinitions": 6,
+    "agentNames": [
+      "reviewer",
+      "researcher",
+      "main",
+      "dreamer",
+      "coder",
+      "compactor"
+    ],
+    "agentStatus": "idle",
+    "workerResourceCountObserved": 10,
+    "workerResourcePath": "https://kaush4l.github.io/ASKK/runtime/modules/runtime/agent.worker.js",
+    "scriptPathsWithinASKK": true,
+    "consoleErrorsOrWarningsObserved": 0
+  },
+  "isolation": {
+    "secureContext": true,
+    "crossOriginIsolated": true,
+    "sharedArrayBufferType": "function",
+    "controller": "https://kaush4l.github.io/ASKK/sw.js",
+    "legacyController": true,
+    "freshServiceWorkerInstallVerified": false,
+    "limitation": "This origin retained the legacy service worker. The published sw.js URL is404; source migration is being corrected separately. This receipt does not establish a clean first-visit installation of coi-serviceworker.js."
+  },
+  "draft": {
+    "typedTestDraft": true,
+    "preservedAcrossActualReload": true,
+    "originalEmptyDraftRestored": true,
+    "submitted": false
+  },
+  "responsive": {
+    "desktop": {
+      "width": 1200,
+      "height": 863,
+      "scrollWidth": 1200
+    },
+    "phone": {
+      "width": 390,
+      "height": 844,
+      "scrollWidth": 390,
+      "conversationTabVisible": true,
+      "workspaceTabNavigationPassed": true,
+      "workspaceSurfaces": [
+        "Files",
+        "Code",
+        "Preview",
+        "Commands"
+      ]
+    },
+    "viewportOverrideReset": true,
+    "sidebar": {
+      "1200": {
+        "position": "absolute",
+        "x": 365,
+        "width": 232,
+        "editorX": 365,
+        "editorWidth": 835,
+        "overlap": true,
+        "screenshot": "workbench-pages-agents-before.jpg"
+      },
+      "1280": {
+        "position": "static",
+        "x": 405,
+        "width": 184,
+        "editorX": 590,
+        "editorWidth": 690,
+        "overlap": false
+      },
+      "1440": {
+        "position": "static",
+        "x": 445,
+        "width": 208,
+        "editorX": 654,
+        "editorWidth": 786,
+        "overlap": false
+      },
+      "limitation": "Narrow desktop drawer overlays Getting Started content without a visible scrim in this deployment; source UX correction is being reviewed separately."
+    }
+  },
+  "relay": {
+    "url": "https://127.0.0.1:7717",
+    "healthStatus": 200,
+    "originAllowed": true,
+    "capabilities": [
+      "model-relay",
+      "network-relay"
+    ],
+    "pairedThroughTrustedOriginScopedHelper": true,
+    "modelEndpoint": "http://127.0.0.1:8873/v1",
+    "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+    "actualSettingsTestConnection": "passed",
+    "modelGenerationSent": false,
+    "nativeExecutionGranted": false,
+    "tokenRecorded": false
+  },
+  "browserLinux": {
+    "selected": true,
+    "status": "Not started",
+    "runtimeAssetRequestsObserved": 0
+  },
+  "missingChunkFaultInjection": {
+    "method": "Separate disposable Chrome tab; CDP Network.setBlockedURLs matched the deployed /ASKK/_next/static/* path before index navigation.",
+    "blockedScriptRequestsObserved": 7,
+    "blockedStylesheetRequestsObserved": 2,
+    "blockedReason": "inspector",
+    "bootState": "stalled",
+    "observedAtElapsedMs": 13503.205000013111,
+    "message": "ASKK has not finished loading.",
+    "explanation": "The application files may be missing, blocked, or still loading. This is separate from an agent or its execution environment starting.",
+    "reloadLinkVisible": true,
+    "pairedTabUntouched": true,
+    "blockingResetBeforeTabClosed": true,
+    "screenshot": "workbench-pages-missing-chunks.jpg"
+  },
+  "screenshot": "workbench-pages-chrome.jpg"
+}

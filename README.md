@@ -2,7 +2,9 @@
 
 A browser-owned agent workbench: describe a goal, inspect actual tool calls, edit files, run commands, and verify a generated application beside the conversation.
 
-The UI is a Next.js static export written in JavaScript/JSX. Agents run in Web Workers. Commands use an explicitly selected runtime: a container2wasm Linux guest with Node/npm in the browser, or an optional Bun companion on your computer. **Chrome has booted the guest and passed a real Node command plus durable filesystem checks; npm/Next and Safari remain unverified.** The measured cached-asset startup took 4 minutes 52 seconds, so this is an engineering preview rather than a production-ready coding environment.
+The UI is a Next.js static export written in JavaScript/JSX. Agents run in Web Workers. Commands use an explicitly selected runtime: a container2wasm Linux guest with Node/npm in the browser, or an optional Bun companion on your computer. **Chrome has passed guest boot, real Node commands, filesystem checks, and acknowledged-file recovery after reload. Browser npm/Next and current Safari acceptance remain unverified.** A locked offline npm install exceeded its 15-minute bound, so Browser Linux remains an engineering preview.
+
+A local Qwen model completed a native task-board verification with 37 passing check steps, after eight repeated failures and targeted owner steering over roughly 24 minutes. This proves a guided recovery on an existing application, not one-shot reliability. The [published Chrome workbench](https://kaush4l.github.io/ASKK/) has passed shell, worker, draft-reload, missing-chunk, and trusted HTTPS model-relay connection checks; hosted model generation and browser-guest application builds remain separate gates.
 
 - [Current architecture and seven contracts](docs/rewrite/ARCHITECTURE.md)
 - [Measured status and remaining gates](docs/rewrite/IMPLEMENTATION-STATUS.md)
@@ -89,6 +91,6 @@ The immutable artifact renders in an opaque `srcdoc` sandbox with client-side fo
 
 Concrete interaction checks bind verification to the artifact and source revision. A successful command exit alone is not verification. A previous preview remains available when a new build fails, but stale previews cannot satisfy completion.
 
-Current Chrome checks pass real Next stylesheet hydration, form interaction, scoped storage across reload, and adversarial isolation cases. Current Safari checks remain pending while the Mac is locked; an earlier renderer’s Safari result is not proof for this version. The full path **real model → browser guest → build → verified artifact**, guest reload durability, and hosted deployment remain release gates. See [implementation status](docs/rewrite/IMPLEMENTATION-STATUS.md).
+Current Chrome checks pass real Next stylesheet hydration, form interaction, scoped storage across reload, and adversarial isolation cases. Current Safari checks remain pending; an earlier renderer’s Safari result is not proof for this version. The full path **real model → browser guest → build → verified artifact**, cold-start performance, fresh hosted isolation setup, and hosted generation remain release gates. A newer checked Pages export is published, but legacy cached clients still need migration proof; see [implementation status](docs/rewrite/IMPLEMENTATION-STATUS.md) for exact identities and evidence limits.
 
 The historical tree remains at `pre-folder-threads`. Later remote contributions are recorded against exact commits in the reconciliation document rather than silently discarded.
