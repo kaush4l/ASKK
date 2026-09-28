@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "scope": "Actual hosted Chrome tab, normal fetch URLs/default cache options, then one normal reload. No guest or model started.",
+  "sourceCommit": "0ed9685",
+  "deploymentCommit": "8be7253",
+  "artifactHash": "d21af1fd52711fa300804cff94e8918b87141a1cf49ee0cf70da1fd995923720",
+  "deploymentBytes": 802914517,
+  "deploymentFileCount": 134,
+  "fetchedAt": "2026-09-28T23:45:54.759Z",
+  "resources": [
+    { "path": "/ASKK/", "status": 200, "bytes": 29951, "sha256": "68cd51ad9d1370c5d725372ed694fa9eac8204d9dde64393b755a7751e80bc54" },
+    { "path": "/ASKK/runtime/modules/execution/browser-linux.js", "status": 200, "bytes": 17611, "sha256": "f9366a33b492a785b4d2b6d98870e56ed41be4d191e2461759e3375e50dd6281" },
+    { "path": "/ASKK/runtime/modules/workspace/controller.js", "status": 200, "bytes": 56962, "sha256": "2e95b6cf32fd7dac6cfdfb70a85712839b418019dbb0e4e2d879c271ecbe4d7a" },
+    { "path": "/ASKK/runtime/modules/workspace/files.js", "status": 200, "bytes": 18252, "sha256": "2911bb4ba54ab41383740c1f2fe6862be6d828194f317c3723e5561624f34300" }
+  ],
+  "afterReload": {
+    "at": "2026-09-28T23:46:53.282Z",
+    "url": "https://kaush4l.github.io/ASKK/",
+    "isolated": true,
+    "worker": "https://kaush4l.github.io/ASKK/coi-serviceworker.js",
+    "draft": "Browser Linux checkpoint — keep this draft through startup.",
+    "status": "Browser Linux · Not started\nChanges saved locally\nModel configured",
+    "agents": "6 agents\nShift ↵ for a new line",
+    "scripts": ["https://kaush4l.github.io/ASKK/_next/static/chunks/app/page-badbc587424ef43a.js"],
+    "runtimeFrames": 0
+  },
+  "limits": [
+    "Module delivery and shell restoration only; not a guest boot or inference run",
+    "Public image remains c2w-node24-38d093f4a38002db; the private candidate is not promoted",
+    "Current Safari and VoiceOver acceptance remain unverified"
+  ]
+}
