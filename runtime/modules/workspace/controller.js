@@ -15,7 +15,9 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
   let state = { ready: false, error: '', project: { name: 'Untitled workspace', id: 'default' }, goal: '', goalRevision: 0, files: [], messages: [], run: null, runtime: { target: 'browser', status: 'idle', phase: 'Not started', capabilities: [] }, companion: { status: 'disconnected', url: 'https://127.0.0.1:7717' }, model: { status: 'unconfigured', id: '', baseUrl: '' }, commands: [], artifacts: [], agents: [], plans: [], approvals: [], activity: [] }
   let hub; let local; let executor; let browser; let started; let disposed = false; let activeRun; let projectRevision = 0; let taskStartRevision = 0; let currentArtifact; let unsubscribe; let runtimeBoot; let taskArtifactId; let watcher; let watched = ''; let acceptance = { requireArtifact: true, requireInteraction: true }
   let uiLoaded = false; let persistTimer; let savingUI = Promise.resolve()
-  let binding; let workspaceLocation = null; let locationLoaded = false; let legacyNative = false; let modelProfiles = []; let launchEpoch = 0; const runBindings = new Map()
+  let binding; let workspaceLocation = null; let locationLoaded = false; let legacyNative = false; let modelProfiles = []; let modelEpoch = 0; let launchEpoch = 0; const runBindings = new Map()
+  const executionEpochs = { browser: 0, local: 0 }; const executionErrors = {}
+  const assertExecutionAlive = (target, epoch) => { if (executionEpochs[target] !== epoch) throw new Error(executionErrors[target] || 'The execution environment stopped during setup.') }
   const persistUI = ({ strict = false } = {}) => {
     clearTimeout(persistTimer)
     if (!uiLoaded || !files.store?.durable) return Promise.resolve()
@@ -34,7 +36,7 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
   const commandUpdate = (key, patch) => notify({ commands: state.commands.map(command => command.id === key ? { ...command, ...patch } : command) })
   let fileMutations = 0; let openingTerminals = 0
   const requireIdle = () => { if (active(state.run?.status) || running.size || fileMutations || openingTerminals || runtimeBoot) throw new Error('Finish or stop active work before changing its execution environment') }
-  let transferring = false; let connecting = false
+  let transferring = false; let connecting = false; let connectingEndpoint = null
   const requireWritable = () => { if (transferring) throw new Error('Wait for the workspace snapshot transfer to finish'); if (connecting) throw new Error('Wait for the companion connection change to finish') }
   const mutateFiles = async callback => { requireWritable(); fileMutations++; try { return await callback() } finally { fileMutations-- } }
   const fingerprint = async () => {
@@ -68,10 +70,18 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
     } else legacyNative = state.runtime.target === 'local'
     locationLoaded = true
   }
-  const rememberLocation = async (value, port) => {
+  const rememberLocation = async (value, port, validate = () => {}) => {
     const next = locationOf(value, port)
     if (!files.store.durable) throw new Error('Workspace location could not be saved durably. The execution binding was not acknowledged.')
-    await files.store.put('settings', { key: `workspace-location:${state.project.id}`, value: next })
+    const key = `workspace-location:${state.project.id}`; const previous = workspaceLocation
+    validate()
+    await files.store.put('settings', { key, value: next })
+    try { validate() } catch (error) {
+      // A stopped guest cannot commit a transfer while the durable write yields.
+      try { if (previous) await files.store.put('settings', { key, value: previous }); else await files.store.delete('settings', key) }
+      catch (rollback) { throw new Error(`${error.message} The previous workspace location could not be restored: ${rollback.message}`) }
+      throw error
+    }
     workspaceLocation = next; legacyNative = false
     return next
   }
@@ -87,12 +97,24 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
     if (workspaceLocation?.binding.target === 'local' && !sameLocation(workspaceLocation, proposed)) throw locationReview('transfer', proposed, 'A different native workspace root or companion endpoint requires an explicit snapshot transfer. Reconnect the original workspace before transferring it.')
   }
   const forRun = handler => (args, run) => { if (!run?.context?.binding) throw new Error('This task has no pinned workspace. Start a new task from the current workspace before using its files or execution tools.'); assertBound(run.context.binding); return handler(args, run) }
+  function runtimeEvent(target, event) {
+    activity({ ...event, target })
+    const failed = event.type === 'runtime.error' || event.type === 'runtime.state' && event.state === 'failed'
+    if (failed) { executionEpochs[target]++; executionErrors[target] = event.error || 'The execution environment stopped.' }
+    if (state.runtime.target !== target) return
+    if (failed) {
+      if (state.runtime.status === 'ready') invalidate()
+      if (target === 'browser') terminals.clear() // The failed frame's PTYs no longer exist.
+      notify({ runtime: { ...state.runtime, status: 'failed', phase: 'Environment unavailable', progress: null, detail: event.error || 'The execution environment stopped.' } })
+    } else if (state.runtime.status !== 'failed' && (event.phase || event.stage)) notify({ runtime: { ...state.runtime, phase: event.phase ?? event.stage, progress: event.progress, detail: event.message } })
+    if (event.type === 'output' && event.terminalId) for (const listener of terminalListeners.get(event.terminalId) ?? []) listener(event)
+  }
   async function prepareExecutor(target) {
     if (!['browser', 'local'].includes(target)) throw new Error('Unknown execution environment')
-    if (executionFactory) return executionFactory(target)
+    if (executionFactory) return executionFactory(target, { onEvent: event => runtimeEvent(target, event) })
     if (target === 'local') { if (!local) throw new Error('Connect the local companion first'); const health = await local.prepare(); if (!['fs', 'exec'].every(capability => health.capabilities.includes(capability))) throw new Error('This companion does not grant host files and native commands. Model relay pairing alone cannot enable Local Bun execution.'); return local }
     const { BrowserLinuxExecution } = await import('../execution/browser-linux.js')
-    browser ??= new BrowserLinuxExecution({ projectId: state.project.id, assetsURL: new URL(`${base}browser-linux/`, location.origin).href, onEvent(event) { activity(event); if (event.phase || event.stage) notify({ runtime: { ...state.runtime, phase: event.phase ?? event.stage, progress: event.progress, detail: event.message } }); if (event.type === 'output' && event.terminalId) for (const listener of terminalListeners.get(event.terminalId) ?? []) listener(event) } })
+    browser ??= new BrowserLinuxExecution({ projectId: state.project.id, assetsURL: new URL(`${base}browser-linux/`, location.origin).href, onEvent: event => runtimeEvent('browser', event) })
     if (state.runtime.networkRelay && !local) throw new Error('Reconnect the selected guest network relay')
     await browser.setNetworkRelay(state.runtime.networkRelay ? { url: local.url, token: local.token } : null)
     await browser.prepare({}); return browser
@@ -100,6 +122,8 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
 
   async function transferWorkspace(target, { transfer = false, supplied = null } = {}) {
     const previous = state.runtime; const originalBackend = files.backend; const originalExecutor = executor; const originalBinding = binding
+    const sourceEpoch = executionEpochs[previous.target]; const destinationEpoch = executionEpochs[target]
+    const validateSource = () => { assertExecutionAlive(previous.target, sourceEpoch); if (originalExecutor && originalBinding) assertWorkspaceBinding(bindExecutor(originalExecutor, previous.target), originalBinding) }
     transferring = true
     try {
       if (workspaceLocation?.binding.target === 'local' && !files.backend) throw new Error('Reconnect and mount the original native workspace before transferring it. The offline editor cache is not a complete workspace snapshot.')
@@ -110,6 +134,7 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
       notify({ runtime: { ...previous, status: 'transferring', phase: 'Transferring snapshot' } })
       const destination = supplied ?? await prepareExecutor(target)
       const destinationBinding = bindExecutor(destination, target)
+      const validate = () => { validateSource(); assertExecutionAlive(target, destinationEpoch); assertWorkspaceBinding(bindExecutor(destination, target), destinationBinding) }
       if ((await destination.list('')).length) throw new Error('Transfer requires an empty destination workspace. The original workspace and destination files were preserved.')
       for (const file of source) {
         const result = await destination.write({ path: file.path, base64: file.base64, expectedRevision: 0 })
@@ -122,18 +147,36 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
       assertWorkspaceBinding(bindExecutor(destination, target), destinationBinding)
       files.backend = destination; executor = destination; binding = destinationBinding; await files.checkpoint(); await refreshFiles()
       assertWorkspaceBinding(bindExecutor(destination, target), destinationBinding)
-      await rememberLocation(destinationBinding, destination)
+      await rememberLocation(destinationBinding, destination, validate)
       invalidate()
       const descriptor = destination.describeCapabilities()
       notify({ runtime: { target, status: 'ready', phase: 'Ready', capabilities: descriptor.capabilities ?? [], binding, savedBinding: workspaceLocation, bindingReview: null } })
       activity({ type: 'workspace.transferred', from: previous.target, to: target, files: source.length, sourceFingerprint: before, binding })
-    } catch (error) { files.backend = originalBackend; executor = originalExecutor; binding = originalBinding; await files.checkpoint().catch(() => {}); await refreshFiles().catch(() => {}); notify({ runtime: previous }); throw report(error) }
+    } catch (error) {
+      files.backend = originalBackend; executor = originalExecutor; binding = originalBinding
+      await files.checkpoint().catch(() => {}); await refreshFiles().catch(() => {})
+      let restored = previous
+      try { validateSource() } catch (failure) { if (state.runtime.status !== 'failed') invalidate(); restored = { ...previous, status: 'failed', phase: 'Environment unavailable', progress: null, detail: failure.message } }
+      notify({ runtime: restored }); throw report(error)
+    }
     finally { transferring = false }
   }
 
   function onHub(message) {
     if (message.type === 'persistence-error') notify({ error: message.error })
-    if (message.type === 'bridge') notify({ companion: { status: message.state.status === 'answering' ? 'connected' : message.state.status, url: message.state.url, capabilities: message.state.capabilities ?? [], root: message.state.root, error: message.state.error } })
+    if (message.type === 'bridge') {
+      const connected = message.state.status === 'answering'
+      const changed = state.companion.status !== (connected ? 'connected' : message.state.status) || state.companion.url !== message.state.url
+      const nativeEndpoints = [binding?.target === 'local' ? executor?.url : null, local?.url, connectingEndpoint].filter(Boolean).map(url => url.replace(/\/$/, ''))
+      const lostNative = changed && ['down', 'unpaired'].includes(message.state.status) && nativeEndpoints.length > 0 &&
+        (!message.state.url || nativeEndpoints.includes(message.state.url.replace(/\/$/, '')))
+      notify({ companion: { status: connected ? 'connected' : message.state.status, url: message.state.url, capabilities: message.state.capabilities ?? [], root: message.state.root, error: message.state.error } })
+      if (lostNative) runtimeEvent('local', { type: 'runtime.error', error: message.state.error || 'The native companion connection is unavailable.' })
+      if (changed && state.model.via === 'bridge') {
+        modelEpoch++
+        notify({ model: { ...state.model, status: connected ? 'configured' : 'failed', checkedAt: null, error: connected ? '' : message.state.error || 'The model relay is unavailable.' } })
+      }
+    }
     if (message.type === 'boot' && message.stage === 'ready') notify({ ready: true })
     if (message.type === 'lock' && message.state === 'follower') notify({ error: 'Another tab owns the agent runtime. Close it to work here.' })
     if (message.type === 'todo') notify({ plans: [...state.plans.filter(plan => plan.runId !== message.run), { runId: message.run, agent: hub.runs.get(message.run)?.agent ?? 'Agent', items: message.items }] })
@@ -302,6 +345,7 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
     },
     approve: (approvalId, approved, always = false) => hub.answerApproval(approvalId, { approved, always }),
     async setModel({ baseUrl, model, apiKey, via }) {
+      modelEpoch++
       const previous = hub?.settings.get().catalogue.models?.workbench ?? {}
       const configured = modelProfiles.find(profile => profile.model === model && profile.base_url === baseUrl) ?? { provider: 'openai' }
       const sameModel = previous.model === model && previous.base_url === baseUrl
@@ -314,6 +358,8 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
       requireWritable(); requireIdle()
       if (terminals.size) throw new Error('Close terminal sessions before changing companion connections')
       connecting = true
+      connectingEndpoint = url
+      const connectionEpoch = executionEpochs.local
       try {
         await loadLocation()
         const native = state.runtime.target === 'local' ? executor : null
@@ -354,7 +400,7 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
               }
               assertWorkspaceBinding(bindExecutor(next, 'local'), proposed.binding)
             }
-            await rememberLocation(proposed.binding, next)
+            await rememberLocation(proposed.binding, next, () => { assertExecutionAlive('local', connectionEpoch); assertWorkspaceBinding(bindExecutor(next, 'local'), proposed.binding) })
             if (native) {
               if (files.backend === previousBackend && previousBackend) files.backend = next
               executor = next; binding = proposed.binding
@@ -370,14 +416,20 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
         local = next
         notify({ companion: { status: 'connected', url: endpointOf(next), capabilities: health.capabilities, root: health.root } })
         return health
-      } finally { connecting = false }
+      } finally { connecting = false; connectingEndpoint = null }
     },
     async testModel() {
-      const result = await hub.models.refresh('workbench')
-      if (result.error) { notify({ model: { ...state.model, status: 'failed', error: result.error } }); throw new Error(result.error) }
-      const available = result.ids.includes(state.model.id)
-      if (!available) throw new Error(`The server answered, but did not list model ${state.model.id}. Available: ${result.ids.slice(0, 12).join(', ')}`)
-      notify({ model: { ...state.model, status: 'connected', checkedAt: result.at } }); return result
+      const epoch = ++modelEpoch
+      try {
+        const result = await hub.models.refresh('workbench')
+        if (epoch !== modelEpoch) throw new Error('The model connection changed during this check. Test the current connection again.')
+        if (result.error) throw new Error(result.error)
+        if (!result.ids.includes(state.model.id)) throw new Error(`The server answered, but did not list model ${state.model.id}. Available: ${result.ids.slice(0, 12).join(', ')}`)
+        notify({ model: { ...state.model, status: 'connected', error: '', checkedAt: result.at } }); return result
+      } catch (error) {
+        if (epoch === modelEpoch) notify({ model: { ...state.model, status: 'failed', error: error.message, checkedAt: null } })
+        throw error
+      }
     },
     async setGuestNetworkRelay(enabled) {
       requireWritable(); requireIdle()
@@ -408,6 +460,7 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
       if (state.runtime.status === 'ready') { assertBound(); return executor }
       if (runtimeBoot) return runtimeBoot
       runtimeBoot = (async () => {
+        const target = state.runtime.target; const epoch = executionEpochs[target]
         notify({ error: '', runtime: { ...state.runtime, status: 'starting', phase: 'Preparing environment' } })
         await loadLocation()
         const next = await prepareExecutor(state.runtime.target)
@@ -416,7 +469,7 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
         executor = next; binding = nextBinding
         await files.mount(executor); await refreshFiles(); const descriptor = executor.describeCapabilities()
         assertBound()
-        await rememberLocation(binding, executor)
+        await rememberLocation(binding, executor, () => { assertExecutionAlive(target, epoch); assertBound() })
         notify({ runtime: { ...state.runtime, status: 'ready', phase: 'Ready', capabilities: descriptor.capabilities ?? [], detail: descriptor.toolchain?.kind ?? descriptor.toolchain ?? '', binding, savedBinding: workspaceLocation, bindingReview: null, conflicts: [] } }); return executor
       })().catch(error => { notify({ runtime: { ...state.runtime, status: 'failed', phase: error.code === 'WORKSPACE_MOUNT_CONFLICT' ? 'Saved changes need review' : 'Environment unavailable', detail: error.message, conflicts: error.conflicts ?? [] } }); throw report(error) }).finally(() => { runtimeBoot = null })
       return runtimeBoot
@@ -476,7 +529,7 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
     async openTerminal(size) { requireWritable(); openingTerminals++; try { await controller.startRuntime(); requireWritable(); assertExecutionPort(executor, { binding, requireTerminal: true }); const terminal = await executor.openTerminal(size); terminals.add(terminal.id); return terminal } finally { openingTerminals-- } },
     terminalInput: (terminalId, data) => { invalidate(); return executor?.terminalInput(terminalId, data) },
     resizeTerminal: (terminalId, cols, rows) => executor?.resizeTerminal(terminalId, cols, rows),
-    async closeTerminal(terminalId) { await executor?.closeTerminal(terminalId); terminals.delete(terminalId) },
+    async closeTerminal(terminalId) { if (!terminals.has(terminalId)) return; await executor?.closeTerminal(terminalId); terminals.delete(terminalId) },
     subscribeTerminal(terminalId, listener) { if (executor?.subscribeTerminal) return executor.subscribeTerminal(terminalId, listener); const set = terminalListeners.get(terminalId) ?? new Set(); set.add(listener); terminalListeners.set(terminalId, set); return () => set.delete(listener) },
   }
   return controller

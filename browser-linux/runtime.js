@@ -1,6 +1,7 @@
 /** Trusted same-origin runtime frame. Generated application code never executes here. */
-import { verifiedAsset } from './assets.js'
+import { verifiedAsset, createDownloadProgress } from './assets.js'
 import { acquireWorkspace } from './ownership.js'
+import { installIDBFSSymlinks } from './idbfs-links.js'
 let port, projectId, base, runtime, booting
 let fs, pollTimer, syncing = Promise.resolve()
 let polling = false, restoreError
@@ -8,8 +9,8 @@ let releaseWorkspace
 let networkRelay = null
 const pending = new Map()
 const checking = new Map()
-let downloaded = 0, downloadTotal = 0
-const emit = (event) => port?.postMessage({ event })
+let downloads
+const emit = (event) => port?.postMessage({ event: event.type === 'runtime.progress' && downloads ? { ...event, progress: downloads.snapshot() } : event })
 let consoleBuffer = '', consoleTimer
 const consoleOut = (data) => { consoleBuffer += String(data); consoleTimer ??= setTimeout(() => { emit({ type: 'runtime.console', data: consoleBuffer }); consoleBuffer = ''; consoleTimer = undefined }, 20) }
 const reply = (id, ok, result) => port.postMessage(ok ? { id, ok, result } : { id, ok, error: { code: result.code ?? 'RUNTIME_ERROR', message: result.message } })
@@ -43,12 +44,14 @@ addEventListener('message', (event) => {
 })
 
 async function verified(entry, assets) {
-  emit({ type: 'runtime.progress', phase: 'Downloading', message: entry.name, progress: downloadTotal ? downloaded / downloadTotal : 0 })
-  let announced = downloaded
-  return verifiedAsset(entry, assets, {
-    onProgress(bytes, name) { downloaded += bytes; if (downloaded - announced > 4 * 1024 * 1024) { announced = downloaded; emit({ type: 'runtime.progress', phase: 'Downloading', message: name, progress: downloaded / downloadTotal }) } },
+  emit({ type: 'runtime.progress', phase: 'Downloading', message: entry.name })
+  let announced = downloads.snapshot().received
+  const result = await verifiedAsset(entry, assets, {
+    onProgress(bytes, name) { downloads.add(bytes); const received = downloads.snapshot().received; if (received - announced > 4 * 1024 * 1024) { announced = received; emit({ type: 'runtime.progress', phase: 'Downloading', message: name }) } },
     onVerifying(name) { emit({ type: 'runtime.progress', phase: 'Verifying', message: name }) },
   })
+  emit({ type: 'runtime.progress', phase: 'Verifying', message: entry.name })
+  return result
 }
 
 async function boot() {
@@ -61,7 +64,8 @@ async function boot() {
   const manifest = await response.json()
   if (manifest.version !== 1 || !Array.isArray(manifest.files) || !/^[a-zA-Z0-9_.-]+$/.test(manifest.id) || manifest.files.some((file) => !/^[a-zA-Z0-9_.-]+$/.test(file.name))) throw new Error('Invalid runtime manifest')
   const assets = new URL(`${manifest.id}/`, published)
-  downloadTotal = manifest.files.reduce((total, file) => total + file.bytes, 0)
+  const required = new Set(['qemu-system-aarch64.wasm', 'out.js', 'arg-module.js', 'load.js', 'network.js', 'network-worker.js', 'pty.js', 'network.wasm.gz', 'supervisor.js'])
+  downloads = createDownloadProgress(manifest.files.filter((file) => required.has(file.name) || file.name.endsWith('.data')).reduce((total, file) => total + file.bytes, 0))
   const file = (name) => { const entry = manifest.files.find((f) => f.name === name); if (!entry) throw new Error(`Missing runtime asset ${name}`); return entry }
   emit({ type: 'runtime.progress', phase: 'Downloading', imageId: manifest.id })
   const wasmName = 'qemu-system-aarch64.wasm'
@@ -85,6 +89,7 @@ async function boot() {
   module.getPreloadedPackage = (name) => { const key = name.split('/').at(-1); const data = dataPackages.get(key); dataPackages.delete(key); return data }
   module.preRun.push((mod) => {
     fs = mod.FS
+    installIDBFSSymlinks(fs, mod.IDBFS)
     fs.mkdirTree(workspace)
     fs.mount(mod.IDBFS, {}, workspace)
     fs.mkdirTree('/harness-control/inbox'); fs.mkdirTree('/harness-control/outbox'); fs.mkdirTree('/harness-control/events')
@@ -143,8 +148,8 @@ async function boot() {
       if (read.content !== checkId) throw new Error('Guest shared filesystem check failed')
       await guest(crypto.randomUUID(), 'fs.remove', { path: testPath, expectedRevision: read.revision })
       await persist()
-      emit({ type: 'runtime.progress', phase: 'Ready', progress: 1 })
-      return { ...ready, imageId: manifest.id, network: networkRelay ? 'companion-network-relay' : 'browser-fetch-cors' }
+      emit({ type: 'runtime.progress', phase: 'Ready' })
+      return { ...ready, imageId: manifest.id, preparedTemplate: manifest.source?.preparedTemplate ?? null, network: networkRelay ? 'companion-network-relay' : 'browser-fetch-cors' }
   }
   throw new Error('Node guest did not complete its readiness handshake')
 }

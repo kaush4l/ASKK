@@ -12,6 +12,7 @@ context:
   - board
 agents: [researcher, coder]
 response_format: json
+observation_format: compact
 contract_version: 2
 prompt_template: prompts/workbench.md
 require_verification: true

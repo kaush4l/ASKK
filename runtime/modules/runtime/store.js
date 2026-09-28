@@ -4,6 +4,7 @@
  *     settings   {key, value}                    catalogue, policy, bridge pairing, ui
  *     sessions   {agent, turns}                  a resident agent's history, saved after every turn
  *     runs       {id, trace, agent, parent, ...}  every run's slot, turns and spans (last 200)
+ *     toolEvents {runId, sequence, event}         raw evidence, separate from run rewrites
  *     files      {path, content, rev, at}        the browser workspace
  *     memory     {id, agent, text, source, at}   what agents keep between tasks
  *     dreams     {id, agent, text, why, run, status, at}   proposals waiting for the owner
@@ -11,12 +12,15 @@
  *
  * If IndexedDB cannot open (a private window, blocked storage), the same interface runs in
  * memory and `durable` is false, so the page can say that nothing will survive a reload.
+ * A blocked schema upgrade or an older client fails visibly instead; existing saved work
+ * must not appear to have been replaced by an empty temporary workspace.
  */
 
 const STORES = {
   settings: { keyPath: 'key' },
   sessions: { keyPath: 'agent' },
   runs: { keyPath: 'id' },
+  toolEvents: { keyPath: ['runId', 'sequence'] },
   files: { keyPath: 'path' },
   memory: { keyPath: 'id', autoIncrement: true },
   dreams: { keyPath: 'id', autoIncrement: true },
@@ -26,18 +30,22 @@ const STORES = {
 export async function openStore(name = 'harness') {
   try {
     const db = await new Promise((resolve, reject) => {
-      const opening = indexedDB.open(name, 1)
+      let abandoned = false
+      const opening = indexedDB.open(name, 2)
       opening.onupgradeneeded = () => {
         for (const [store, options] of Object.entries(STORES)) {
           if (!opening.result.objectStoreNames.contains(store)) opening.result.createObjectStore(store, options)
         }
       }
-      opening.onsuccess = () => resolve(opening.result)
-      opening.onerror = () => reject(opening.error)
-      opening.onblocked = () => reject(new Error('the database is open in an older tab'))
+      opening.onsuccess = () => { if (abandoned) opening.result.close(); else resolve(opening.result) }
+      opening.onerror = () => { abandoned = true; reject(opening.error) }
+      opening.onblocked = () => { abandoned = true; reject(Object.assign(new Error('Storage upgrade requires closing or reloading other tabs running the older application. Existing saved work has not been changed.'), { code: 'STORE_UPGRADE_BLOCKED' })) }
     })
     return idbStore(db)
   } catch (error) {
+    // A known existing database must never be replaced by an empty memory view
+    // just because another tab prevents its upgrade (or this client is older).
+    if (error.code === 'STORE_UPGRADE_BLOCKED' || error.name === 'VersionError') throw error
     return memoryStore(String(error?.message ?? error))
   }
 }
@@ -57,7 +65,7 @@ function idbStore(db) {
     transaction.onerror = () => reject(transaction.error)
     transaction.onabort = () => reject(transaction.error ?? new Error('Storage transaction aborted'))
   })
-  return {
+  const result = {
     durable: true,
     why: '',
     get: (name, key) => done(store(name).get(key)),
@@ -65,6 +73,26 @@ function idbStore(db) {
     put: (name, value) => mutate(name, store => store.put(value)),
     delete: (name, key) => mutate(name, store => store.delete(key)),
     clear: (name) => mutate(name, store => store.clear()),
+    appendToolEvent: (runId, event) => new Promise((resolve, reject) => {
+      const transaction = db.transaction('toolEvents', 'readwrite'); const objects = transaction.objectStore('toolEvents')
+      const read = objects.get([runId, event.sequence]); let conflict
+      read.onsuccess = () => {
+        if (!read.result) objects.add({ runId, sequence: event.sequence, event })
+        else if (JSON.stringify(read.result.event) !== JSON.stringify(event)) { conflict = new Error(`Tool evidence ${runId}/${event.sequence} already exists with different content`); transaction.abort() }
+      }
+      transaction.oncomplete = () => resolve(event.sequence)
+      transaction.onerror = () => reject(transaction.error)
+      transaction.onabort = () => reject(conflict ?? transaction.error ?? new Error('Tool evidence transaction aborted'))
+    }),
+    readToolEvents: async (runId, through = Infinity) => (await done(store('toolEvents').getAll(IDBKeyRange.bound([runId, 0], [runId, through])))).map(row => row.event),
+    deleteRun: (runId) => new Promise((resolve, reject) => {
+      const transaction = db.transaction(['runs', 'toolEvents'], 'readwrite')
+      transaction.objectStore('runs').delete(runId)
+      transaction.objectStore('toolEvents').delete(IDBKeyRange.bound([runId, 0], [runId, Infinity]))
+      transaction.oncomplete = () => resolve()
+      transaction.onerror = () => reject(transaction.error)
+      transaction.onabort = () => reject(transaction.error ?? new Error('Run retention transaction aborted'))
+    }),
     /**
      * Read, decide and write in ONE transaction, so no other write can land in between.
      * `change(current)` returns `{value, ...}` to put `value`, or anything without `value` to leave it.
@@ -97,6 +125,8 @@ function idbStore(db) {
       transaction.onabort = () => reject(transaction.error ?? new Error('Storage transaction aborted'))
     }),
   }
+  db.onversionchange = () => { db.close(); result.durable = false; result.why = 'Storage was upgraded in another tab; reload this application before saving more work' }
+  return result
 }
 
 function memoryStore(why) {
@@ -124,6 +154,14 @@ function memoryStore(why) {
     },
     delete: async (name, key) => void data[name].delete(key),
     clear: async (name) => void data[name].clear(),
+    appendToolEvent: async (runId, event) => {
+      const key = JSON.stringify([runId, event.sequence]); const current = data.toolEvents.get(key)
+      if (current && JSON.stringify(current.event) !== JSON.stringify(event)) throw new Error(`Tool evidence ${runId}/${event.sequence} already exists with different content`)
+      if (!current) data.toolEvents.set(key, clone({ runId, sequence: event.sequence, event }))
+      return event.sequence
+    },
+    readToolEvents: async (runId, through = Infinity) => [...data.toolEvents.values()].filter(row => row.runId === runId && row.sequence <= through).sort((a, b) => a.sequence - b.sequence).map(row => clone(row.event)),
+    deleteRun: async (runId) => { data.runs.delete(runId); for (const [key, row] of data.toolEvents) if (row.runId === runId) data.toolEvents.delete(key) },
     update: async (name, key, change) => {
       const result = change(clone(data[name].get(key)))
       if (result?.value !== undefined) data[name].set(keyOf(name, result.value), clone(result.value))

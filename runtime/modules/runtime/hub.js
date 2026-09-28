@@ -36,10 +36,23 @@ const DREAM_AFTER = 20000
 const ACTIVE = new Set(['thinking', 'calling', 'waiting', 'compacting'])
 const WRITERS = new Set(['host', 'files', 'workspace'])
 const HOSTED = new Set(['host', 'web', 'mcp'])
+const TOOL_EVENT_STORAGE = 'separate-v1'
+const EVIDENCE_TIMEOUT_MS = 15000
 
 const lastOpen = (spans, kind) => {
   for (let index = spans.length - 1; index >= 0; index -= 1) if (spans[index].kind === kind && spans[index].ms == null) return spans[index]
   return null
+}
+
+// The archive owner appends internally. Public run/trace views must not expose
+// that mutable collection; records read from storage also need frozen entries.
+const evidenceView = record => record && ({ ...record, toolEvents: Object.freeze((record.toolEvents ?? []).map(event => Object.isFrozen(event) ? event : snapshot(event))) })
+
+const boundedEvidence = async (work, timeoutMs = EVIDENCE_TIMEOUT_MS) => {
+  const budget = Math.max(1, Math.min(60000, Number(timeoutMs) || EVIDENCE_TIMEOUT_MS))
+  let timer
+  try { return await Promise.race([work, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`Evidence export did not finish within ${budget} ms; no partial export was produced`)), budget) })]) }
+  finally { clearTimeout(timer) }
 }
 
 /** Partial provider counts, never estimates. Missing counters stay absent, including totals. */
@@ -87,6 +100,11 @@ export class Hub {
     this.listeners = new Set()
     this.threads = new Map() // key → resident thread
     this.runs = new Map() // id → run
+    this.toolEventWrites = new Map() // id → ordered writes and retryable failures
+    this.runRecordWrites = new Map() // id → pending metadata writes, including the event watermark
+    this.runEvictions = new Map() // id → retention reservation; later writes wait outside its drain
+    this.evictedEvidence = new Set() // completed runs still visible in memory, no longer retained on disk
+    this.retentionQueue = Promise.resolve()
     this.scheduled = { items: [], next: 1 } // schedules, saved in settings
     this.mcpServers = new Map() // name → {name, url, from, status, tools, error, client}
     this.boards = new Map() // trace → {entries, next, released}
@@ -408,6 +426,7 @@ export class Hub {
       prompts: [],
       requests: [],
       completions: [],
+      toolEvents: [],
       spans: [],
       log: [],
       children: [],
@@ -516,6 +535,14 @@ export class Hub {
   record(run, event) {
     const at = Date.now()
     const spans = run.spans
+    // Model-facing observations may be projected. Keep the exact paired calls
+    // and results independently of the bounded UI log and later compaction.
+    if (event.kind === 'call' || event.kind === 'observation') {
+      const entries = run.toolEvents ??= []
+      const entry = snapshot({ ...event, sequence: entries.length + 1, at })
+      entries.push(entry)
+      this.queueToolEvent(run.id, entry)
+    }
     if (event.kind === 'prompt') {
       run.prompts.push(snapshot({ step: event.step, attemptId: event.attemptId, attempt: event.attempt, sheet: event.value, tokens: event.tokens, snapshot: event.requestSnapshot }))
       const open = lastOpen(spans, 'step')
@@ -548,7 +575,7 @@ export class Hub {
       if (run.log.length > 400) run.log.shift()
     }
     this.publish({ ...event, type: 'event', run: run.id, agent: run.agent, at })
-    if (['prompt', 'request', 'completion', 'observation', 'repair', 'retry'].includes(event.kind)) this.persist(run)
+    if (['prompt', 'request', 'completion', 'call', 'observation', 'repair', 'retry'].includes(event.kind)) this.persist(run)
   }
 
   end(run, text, ok, error = '', slot = null) {
@@ -579,15 +606,110 @@ export class Hub {
     this.pump(thread)
   }
 
+  queueToolEvent(runId, event, { retry = false } = {}) {
+    if (this.runEvictions.has(runId)) return this.runEvictions.get(runId).then(() => this.queueToolEvent(runId, event, { retry }))
+    if (this.evictedEvidence.has(runId)) return Promise.resolve()
+    let state = this.toolEventWrites.get(runId)
+    if (!state) { state = { tail: Promise.resolve(), pending: new Map(), failures: new Map() }; this.toolEventWrites.set(runId, state) }
+    if (state.pending.has(event.sequence)) return state.pending.get(event.sequence)
+    // Retrying an older immutable key does not depend on newer queued events.
+    // Otherwise a captured export could wait for work beyond its own boundary.
+    const job = (retry ? Promise.resolve() : state.tail).then(() => this.store.appendToolEvent(runId, event)).then(() => state.failures.delete(event.sequence), error => {
+      state.failures.set(event.sequence, { event, error })
+      this.publish({ type: 'persistence-error', run: runId, error: `Tool evidence ${event.sequence} could not be saved: ${error.message}` })
+    })
+    state.pending.set(event.sequence, job); if (!retry) state.tail = job
+    job.then(() => state.pending.delete(event.sequence))
+    return job
+  }
+
+  async flushToolEvents(runId, through) {
+    if (this.runEvictions.has(runId)) await this.runEvictions.get(runId)
+    if (this.evictedEvidence.has(runId)) return
+    const state = this.toolEventWrites.get(runId)
+    if (!state) return
+    // Retry persistence only, never the tool. A failure stays available in memory
+    // and keeps export from presenting an incomplete durable archive as complete.
+    for (const [sequence, { event }] of state.failures) if (sequence <= through) this.queueToolEvent(runId, event, { retry: true })
+    await Promise.all([...state.pending].filter(([sequence]) => sequence <= through).map(([, job]) => job))
+    const failed = [...state.failures].find(([sequence]) => sequence <= through)
+    if (failed) throw new Error(`Tool evidence ${runId}/${failed[0]} is not saved: ${failed[1].error.message}`)
+  }
+
+  async storedRun(record) {
+    if (!record || record.toolEventStorage !== TOOL_EVENT_STORAGE) return evidenceView(record)
+    const count = record.toolEventCount
+    if (!Number.isSafeInteger(count) || count < 0) throw new Error(`Invalid tool evidence count for run ${record.id}`)
+    const toolEvents = await this.store.readToolEvents(record.id)
+    if (toolEvents.length !== count || toolEvents.some((event, index) => event.sequence !== index + 1)) throw new Error(`Stored tool evidence for run ${record.id} is incomplete; expected ${count} ordered events`)
+    return evidenceView({ ...record, toolEvents })
+  }
+
+  async retainRuns() {
+    const all = await this.store.all('runs')
+    if (all.length <= KEEP_RUNS) return
+    const old = all.filter(record => ['done', 'failed', 'incomplete', 'cancelled', 'interrupted'].includes(record.slot?.status)).sort((a, b) => a.at - b.at).slice(0, all.length - KEEP_RUNS)
+    for (const stale of old) {
+      // Reserve synchronously: subsequent appends/metadata retries wait outside
+      // this drain, then observe eviction or resume if deletion failed.
+      let release
+      this.runEvictions.set(stale.id, new Promise(resolve => { release = resolve }))
+      try {
+        await Promise.allSettled([...(this.toolEventWrites.get(stale.id)?.pending.values() ?? []), ...[...(this.runRecordWrites.get(stale.id) ?? [])].map(entry => entry.job)])
+        await this.store.deleteRun(stale.id)
+        this.evictedEvidence.add(stale.id); this.toolEventWrites.delete(stale.id); this.runRecordWrites.delete(stale.id)
+      } finally { this.runEvictions.delete(stale.id); release() }
+    }
+  }
+
+  runRecord(run) {
+    return { ...this.describe(run), turns: run.turns, prompts: run.prompts, requests: run.requests ?? [], completions: run.completions ?? [], toolEventStorage: TOOL_EVENT_STORAGE, toolEventCount: run.toolEvents?.length ?? 0, spans: run.spans, log: run.log, result: run.result ?? '', todo: run.todo ?? [] }
+  }
+
+  writeRunRecord(record) {
+    if (this.runEvictions.has(record.id)) return this.runEvictions.get(record.id).then(() => this.writeRunRecord(record))
+    if (this.evictedEvidence.has(record.id)) return Promise.resolve()
+    let pending = this.runRecordWrites.get(record.id)
+    if (!pending) { pending = new Set(); this.runRecordWrites.set(record.id, pending) }
+    // Dispatch before yielding: an eviction either reserves first or waits for
+    // this already-started write. No delayed put can cross its deletion boundary.
+    let job; try { job = Promise.resolve(this.store.put('runs', record)) } catch (error) { job = Promise.reject(error) }
+    const entry = { count: record.toolEventCount, job }
+    pending.add(entry)
+    entry.job.then(() => pending.delete(entry), () => pending.delete(entry))
+    return entry.job
+  }
+
+  async flushRunRecord(runId, through) {
+    if (this.runEvictions.has(runId)) await this.runEvictions.get(runId)
+    if (this.evictedEvidence.has(runId)) return
+    await Promise.allSettled([...(this.runRecordWrites.get(runId) ?? [])].filter(entry => entry.count <= through).map(entry => entry.job))
+    if (this.runEvictions.has(runId)) await this.runEvictions.get(runId)
+    if (this.evictedEvidence.has(runId)) return
+    let record = await this.store.get('runs', runId)
+    if (this.runEvictions.has(runId)) await this.runEvictions.get(runId)
+    if (this.evictedEvidence.has(runId)) return
+    if (record?.toolEventStorage !== TOOL_EVENT_STORAGE || record.toolEventCount < through) {
+      const live = this.runs.get(runId)
+      if (live) {
+        try { await this.writeRunRecord(this.runRecord(live)); if (this.evictedEvidence.has(runId)) return; record = await this.store.get('runs', runId) }
+        catch (error) { this.publish({ type: 'persistence-error', run: runId, error: `Run evidence metadata could not be saved: ${error.message}` }); throw new Error(`Run evidence metadata is not saved: ${error.message}`) }
+      }
+    }
+    if (this.runEvictions.has(runId)) await this.runEvictions.get(runId)
+    if (this.evictedEvidence.has(runId)) return
+    if (!record || record.toolEventStorage !== TOOL_EVENT_STORAGE || record.toolEventCount < through) throw new Error(`Run evidence metadata for ${runId} is incomplete; no partial export was produced`)
+  }
+
   async persist(run) {
-    const record = { ...this.describe(run), turns: run.turns, prompts: run.prompts, requests: run.requests ?? [], completions: run.completions ?? [], spans: run.spans, log: run.log, result: run.result ?? '', todo: run.todo ?? [] }
+    if (this.evictedEvidence.has(run.id)) return
+    const record = this.runRecord(run)
     try {
-      await this.store.put('runs', record)
+      await this.writeRunRecord(record)
+      await this.flushToolEvents(run.id, record.toolEventCount)
       if (!run.ended) return
-      const all = await this.store.all('runs')
-      if (all.length <= KEEP_RUNS) return
-      const old = all.sort((a, b) => a.at - b.at).slice(0, all.length - KEEP_RUNS)
-      await Promise.all(old.map((stale) => this.store.delete('runs', stale.id)))
+      this.retentionQueue = this.retentionQueue.catch(() => {}).then(() => this.retainRuns())
+      await this.retentionQueue
     } catch (error) {
       this.publish({ type: 'persistence-error', run: run.id, error: `Run evidence could not be saved: ${error.message}` })
     }
@@ -1156,15 +1278,15 @@ export class Hub {
 
   run(id) {
     const run = this.runs.get(id)
-    return run ? { ...this.describe(run), turns: run.turns, prompts: run.prompts, requests: run.requests ?? [], completions: run.completions ?? [], spans: run.spans, log: run.log, result: run.result ?? '', todo: run.todo ?? [] } : null
+    return run ? evidenceView({ ...this.describe(run), turns: run.turns, prompts: run.prompts, requests: run.requests ?? [], completions: run.completions ?? [], toolEvents: run.toolEvents ?? [], spans: run.spans, log: run.log, result: run.result ?? '', todo: run.todo ?? [] }) : null
   }
 
   runsApi = {
-    get: async (id) => this.run(id) ?? (await this.store.get('runs', id)) ?? null,
+    get: async (id) => this.run(id) ?? await this.storedRun(await this.store.get('runs', id)) ?? null,
     list: async () => {
       const byId = new Map((await this.store.all('runs')).map((record) => [record.id, record]))
       for (const run of this.runs.values()) byId.set(run.id, this.run(run.id))
-      return [...byId.values()].sort((a, b) => b.at - a.at)
+      return Promise.all([...byId.values()].sort((a, b) => b.at - a.at).map(record => this.runs.has(record.id) ? record : this.storedRun(record)))
     },
   }
 
@@ -1379,10 +1501,18 @@ export class Hub {
 
   traces = {
     /** Every run of one task, with spans and logs, as one JSON document the owner can save. */
-    export: async (trace) => {
-      const runs = (await this.runsApi.list()).filter((run) => run.trace === trace)
-      return { harness: 'trace', version: 1, trace, exported: new Date().toISOString(), build: this.index.build ?? '', runs, usage: traceUsage(runs) }
-    },
+    export: (trace, { timeoutMs = EVIDENCE_TIMEOUT_MS } = {}) => boundedEvidence((async () => {
+      // Snapshot once: a continuing run cannot extend this export's wait forever.
+      // Filter metadata first; unrelated large or incomplete event archives must
+      // not be loaded or prevent this trace's export.
+      const byId = new Map((await this.store.all('runs')).map(record => [record.id, record]))
+      for (const run of this.runs.values()) byId.set(run.id, this.run(run.id))
+      const selected = snapshot([...byId.values()].filter(run => run.trace === trace).sort((a, b) => b.at - a.at))
+      const runs = await Promise.all(selected.map(record => this.runs.has(record.id) ? record : this.storedRun(record)))
+      await Promise.all(runs.filter(run => this.runs.has(run.id)).map(async run => { await this.flushToolEvents(run.id, run.toolEvents.length); await this.flushRunRecord(run.id, run.toolEvents.length) }))
+      const evidence = runs.map(run => ({ ...run, toolEventPersistence: this.evictedEvidence.has(run.id) ? 'retention-evicted' : this.store.durable ? 'committed' : 'memory-only' }))
+      return { harness: 'trace', version: 1, trace, exported: new Date().toISOString(), build: this.index.build ?? '', runs: evidence, usage: traceUsage(runs) }
+    })(), timeoutMs),
   }
 
   data = {

@@ -44,6 +44,8 @@ export class Engine {
     if (![1, 2].includes(this.contractVersion)) throw new Error(`unsupported contract version: ${this.contractVersion}`)
     if (this.contractVersion === 2 && options.responseFormat && options.responseFormat !== 'json') throw new Error('contract version 2 requires JSON')
     this.response = responseModel(options.shape ?? (this.contractVersion === 2 ? CompactReAct : ReAct), options.responseFormat ?? (this.contractVersion === 2 ? 'json' : 'toon'))
+    this.observationFormat = options.observationFormat ?? 'legacy'
+    if (!['legacy', 'compact'].includes(this.observationFormat)) throw new Error(`unsupported observation format: ${this.observationFormat}`)
     this.promptTemplate = options.promptTemplate
     this.outputReserve = options.outputReserve ?? null
     this.tools = options.tools ?? []
@@ -167,6 +169,7 @@ export class Engine {
       conversation: `## CONVERSATION\n\n${turns}`,
       response: this.response.instructions({ tools: this.tools }), note,
     }
+    if (this.observationFormat === 'compact') values.response += '\nTool results use staged-v1 observations: stages and calls match the preceding action in order; callId identifies the exact recorded call. These observations are not response envelopes.'
     let rendered = renderPrompt(this.promptTemplate, values)
     for (let pass = 0; pass < 3; pass += 1) {
       const inputTokens = tokens(JSON.stringify(rendered.messages)) + 16
@@ -214,7 +217,7 @@ export class Engine {
       this.attempts += 1
       const attemptId = `${this.runId}:${this.steps}:${attempt + 1}`
       this.currentAttemptId = attemptId
-      const requestSnapshot = snapshot({ attemptId, step: this.steps, attempt: attempt + 1, contractVersion: this.contractVersion, model: this.activeLLM.model, messages, budget })
+      const requestSnapshot = snapshot({ attemptId, step: this.steps, attempt: attempt + 1, contractVersion: this.contractVersion, observationFormat: this.observationFormat, model: this.activeLLM.model, messages, budget })
       this.emit('prompt', `step ${this.steps}`, sheet, { step: this.steps, attempt: attempt + 1, attemptId, tokens: budget.inputTokens, requestSnapshot })
       if (budget.total > budget.window) {
         this.error = `request budget exceeds context window (${budget.inputTokens} input + ${budget.outputReserve} output > ${budget.window})`
@@ -275,17 +278,36 @@ export class Engine {
   async act(value) {
     const stages = this.response.calls(value)
     if (!stages.length) return 'no tool calls given; put them in act, or set do to done'
-    const observations = []
+    const observations = []; const compact = this.observationFormat === 'compact'
     for (const stage of stages) {
       const waits = stage.every((call) => this.find(call.name)?.waits)
       this.running = stage.map((call) => call.text)
       this.enter(waits ? 'waiting' : 'calling')
-      const results = await Promise.all(stage.map((call) => this.call(call)))
-      stage.forEach((call, index) => observations.push(`${call.text} -> ${results[index].text}`))
+      const results = await Promise.all(stage.map((call) => this.call(call, { includeIdentity: compact })))
+      if (compact) observations.push(stage.map((call, index) => {
+        const { text, ok, callId } = results[index]
+        let result = text
+        try {
+          const project = this.find(call.name)?.projectObservation
+          if (project) {
+            const projected = project({ text, ok, name: call.name, args: call.args })
+            if (projected?.then) {
+              Promise.resolve(projected).catch(() => {}) // An invalid async hook must not leave an unhandled rejection.
+              throw new TypeError('observation projectors must return synchronous JSON data')
+            }
+            result = snapshot(projected)
+          }
+        } catch (error) {
+          // Projection cannot hide a raw receipt or change execution status.
+          this.emit('projection_failed', call.name, error?.message ?? String(error), { callId })
+        }
+        return { callId, name: call.name, ok, result }
+      }))
+      else stage.forEach((call, index) => observations.push(`${call.text} -> ${results[index].text}`))
       this.running = []
       if (this.signal?.aborted) break
     }
-    return observations.join('\n')
+    return compact ? JSON.stringify({ format: 'staged-v1', stages: observations }) : observations.join('\n')
   }
 
   find(name) {
@@ -293,7 +315,7 @@ export class Engine {
   }
 
   /** Run one call. Always resolves to `{text, ok}`. */
-  async call(call) {
+  async call(call, { includeIdentity = false } = {}) {
     const started = Date.now()
     const key = JSON.stringify([call.name, call.args])
     const callId = `${this.currentAttemptId || this.runId}:call:${this.calls.length + 1}`
@@ -302,7 +324,7 @@ export class Engine {
     const done = (text, ok) => {
       this.running = this.running.filter((running) => running !== call.text)
       this.emit('observation', call.text, text, { callId, ms: Date.now() - started, ok, slot: this.progress() })
-      return { text, ok }
+      return { text, ok, ...(includeIdentity ? { callId } : {}) }
     }
 
     const item = this.find(call.name)

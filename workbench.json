@@ -4,7 +4,7 @@
   "executionNotices": {
     "browser": {
       "title": "Browser Linux preview",
-      "body": "Startup currently takes several minutes. npm and Next.js build validation is still in progress."
+      "body": "Browser Linux is experimental. App builds are not ready for reliable use yet. Startup can take several minutes."
     }
   },
   "acceptance": {
