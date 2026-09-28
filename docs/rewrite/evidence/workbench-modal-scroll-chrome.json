@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "type": "actual-component-synthetic-content",
+  "origin": "http://127.0.0.1:5203",
+  "scope": "Real Modal.jsx and workbench.css; 24 synthetic input fields and a final inert action. No guest, model or project data used.",
+  "browser": "Chrome via CUA",
+  "checks": [
+    {"viewport": [1280,720], "focused": "last-action", "bodyScrollTop":1491.5, "headingY":57, "headingHeight":65.5, "closeY":77.25, "closeHeight":28, "outerScrollTop":0, "lastActionVisible":true},
+    {"viewport": [390,844], "focused": "last-action", "bodyScrollTop":1357.5, "headingY":47.203125, "headingHeight":83, "closeY":76.203125, "closeHeight":28, "outerScrollTop":0, "horizontalOverflow":false, "lastActionVisible":true},
+    {"viewport": [320,400], "focused": "last-action", "bodyScrollTop":1779, "headingY":25, "headingHeight":83, "closeY":54, "closeHeight":28, "outerScrollTop":0, "horizontalOverflow":false, "lastActionVisible":true},
+    {"action":"Escape", "dialogClosed":true, "focusRestoredTo":"opener"}
+  ],
+  "screenshot":"workbench-modal-scroll-chrome.jpg",
+  "cleanup":"Temporary viewport reset; owned tab and local fixture servers closed.",
+  "limitations":["Safari and touch-keyboard behavior not tested in this fixture.","This confirms the reusable modal shell with synthetic content, not a completed Browser Linux boot."]
+}

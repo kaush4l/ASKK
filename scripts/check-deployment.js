@@ -19,9 +19,10 @@ export async function checkDeployment(directory = 'out', { basePath = '/ASKK', r
   if (bytes > 1_000_000_000) throw new Error('Published site exceeds 1 GB')
   const index = await readFile(join(root, 'index.html'), 'utf8')
   if (!index.includes(`${basePath}/_next/`)) throw new Error(`Export does not reference the configured ${basePath} asset prefix`)
-  for (const name of ['.nojekyll', 'coi-serviceworker.js', 'artifact-preview.html', 'agents/index.json', 'workbench.json', 'runtime/modules/runtime/agent.worker.js']) if (!files.some(file => file.path === name)) throw new Error(`Missing required deployment asset: ${name}`)
+  for (const name of ['.nojekyll', 'coi-serviceworker.js', 'sw.js', 'artifact-preview.html', 'agents/index.json', 'workbench.json', 'runtime/modules/runtime/agent.worker.js']) if (!files.some(file => file.path === name)) throw new Error(`Missing required deployment asset: ${name}`)
   let runtime
   if (requireRuntime) {
+    for (const name of ['runtime.html', 'runtime.js', 'assets.js', 'ownership.js', 'idbfs-links.js']) if (!files.some(file => file.path === `browser-linux/${name}`)) throw new Error(`Missing runtime support module: ${name}`)
     runtime = JSON.parse(await readFile(join(root, 'browser-linux/generated/manifest.json'), 'utf8'))
     if (!runtime.id || runtime.verification?.browser === false) console.warn('Runtime manifest does not yet record a browser boot; the deployment must be tested before readiness is claimed.')
     // Publisher and runtime loader verify asset hashes. Validate all declared public pieces here too.

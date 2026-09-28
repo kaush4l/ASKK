@@ -56,13 +56,18 @@ test('failed draft storage cancels isolation reload without marking it attempted
   expect(row.reloads()).toBe(0); expect(row.saved.size).toBe(0)
 })
 
-test('current policy refreshes mutable modules but retains immutable asset caching', async () => {
+test.each(['coi-serviceworker.js', 'sw.js'])('%s refreshes mutable modules but retains immutable asset caching', async entrypoint => {
   const listeners = new Map(); const calls = []
-  runInNewContext(readFileSync(new URL('../public/coi-serviceworker.js', import.meta.url), 'utf8'), {
+  const context = {
     URL, Headers, Response,
     self: { location: { origin: 'https://example.test' }, registration: { scope: 'https://example.test/ASKK/' }, addEventListener: (name, callback) => listeners.set(name, callback) },
     fetch: async (request, options) => { calls.push({ url: request.url, options }); return new Response('verified bytes') },
-  })
+  }
+  context.importScripts = script => {
+    expect(script).toBe('./coi-serviceworker.js')
+    runInNewContext(readFileSync(new URL('../public/coi-serviceworker.js', import.meta.url), 'utf8'), context)
+  }
+  runInNewContext(readFileSync(new URL(`../public/${entrypoint}`, import.meta.url), 'utf8'), context)
   async function request(path, { method = 'GET', origin = 'https://example.test' } = {}) {
     let result
     listeners.get('fetch')({ request: { url: `${origin}${path}`, method }, respondWith: value => { result = value } })
