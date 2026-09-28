@@ -1,6 +1,6 @@
 # Implementation status
 
-Evidence checkpoint: 2026-09-28. The workbench completed a guided native application verification. Browser Linux has core execution evidence, but the latest private candidate's Next production build timed out and its uncached npm installation failed. No browser-built application has passed acceptance. The private candidate's normal startup/reload path now restores its dependency links; current Safari checks and VoiceOver remain unverified. These are engineering-preview results, not production readiness or one-shot reliability.
+Evidence checkpoint: 2026-09-28. The workbench completed a guided native application verification. Browser Linux now has core execution and uncached npm evidence, but the private candidate's first Next production build timed out. A compiler-process experiment is in progress. No browser-built application has passed acceptance. The private candidate's normal startup/reload path now restores its dependency links; current Safari checks and VoiceOver remain unverified. These are engineering-preview results, not production readiness or one-shot reliability.
 
 ## Source, build, and published site
 
@@ -30,7 +30,7 @@ The main agent completed 16 model requests and three compactor children complete
 
 The running release incorrectly marked failed workspace receipts as successful transport observations although their inner `ok` was false. Newer source propagates typed failure status, preserves full failed receipts, prevents arbitrary tool text from spoofing status, reports bounded expected/actual text from captured native DOM operations, and rejects cancelled zero-exit builds. Those fixes were not patched into the live trial.
 
-## Browser Linux: core checks pass, npm/Next blocked
+## Browser Linux: core and uncached npm pass, Next pending
 
 The native ARM64 guest image includes Node 24.21.0/npm and passed native offline Next and PTY probes. That does not replace browser acceptance.
 
@@ -45,6 +45,8 @@ The [first hosted guest receipt](evidence/browser-linux-pages-38d-first-boot.jso
 The private data-only candidate **`c2w-node24-8f08d6cef80797be`**, **903,638,559 bytes**, includes the exact template dependencies already installed. Native activation, dependency mutation guards, PTY and npm-run Next static export passed. In actual Chrome, a diagnostic-shell boot reached Ready at **64.531 seconds**; a Unicode Node command exited successfully in **24.620 seconds**. Binary round trip, stale CAS rejection, PTY resize to **37 rows × 103 columns**, and live process cancellation passed. Template activation exited zero in **42.221 seconds**, and its checkpoint succeeded. A subsequent clean reload through the normal production wrapper reached Ready at **62.021 seconds**. The guest restored the Unicode file, matched the exact lock hash, and dereferenced its restored dependency symlink to read the Next package. This proves that restore path, not cold production readiness or successful application builds.
 
 The candidate's direct Next 16.3.6 CLI with webpack reached “Creating an optimized production build” but exceeded its 15-minute bound: **909,320.090 ms** including cancellation, ending with `SIGKILL` and **no application artifact**. A separate small uncached npm install exited **1** after **146,520.005 ms** with a synthetic **503** from the browser network path. Optional npm telemetry headers and CORS preflight are under investigation; a plain browser registry GET returned 200. The synthetic error is not evidence of a registry outage, and the install did not pass.
+
+The final production wrapper then passed a fresh-cache registry installation with both companions stopped and Browser Fetch selected. [The npm checkpoint](evidence/browser-linux-production-npm-chrome.json) records `left-pad@1.3.0` installed successfully in **202,860.005 ms**, followed by a separate Node process importing and executing it correctly in **22,320.055 ms**. This uses the exact source `network-policy.js`; no injected transport wrapper was used. The policy strips only captured optional metadata on anonymous public unscoped registry GET/HEAD requests, preserving credentials and package integrity verification. Normal startup reached Ready at **62.050 seconds** and repeated the durable file/lock/link checks. The receipt is a partial checkpoint with the following Next experiment still running, not a whole-suite success. Installation latency remains substantial, and this private-candidate proof does not verify the public image or scoped/private packages.
 
 The complete candidate receipt remains private at `.cache/browser-linux/chrome-20260928-2134-candidate-final.json`, with separate `candidate-core` and `candidate-next-timeout` receipts alongside it. The candidate is **unpromoted**; public image `38d093f4a38002db` is unchanged. Installed template dependencies do not prove arbitrary npm installation performance.
 
@@ -85,7 +87,7 @@ The shared modal shell passed [Chrome scrolling and focus checks](evidence/workb
 
 | Gate | Remaining evidence |
 | --- | --- |
-| Browser coding | Complete the private candidate's Next build and check the exported application; normal startup and symlink-restoring reload now pass. Diagnose the uncached npm network failure. Browser npm/Next is the primary blocking capability; core guest checks do not satisfy it. |
+| Browser coding | Complete the private candidate's Next build and check the exported application; normal startup and symlink-restoring reload now pass. The private production-wrapper uncached npm install now passes; repeat the supported workflow on Pages and Safari. The Next build remains the primary blocking capability; core guest checks do not satisfy it. |
 | Reliable model completion | Repeat representative fresh goals without targeted owner repair. Guided native success does not establish stable selectors, efficient recovery or one-shot results. |
 | Hosted update and Safari | The new export and legacy-cache/storage migration pass. Prove fresh-origin isolation and verify hosted generation through the authorized relay. Current Safari and VoiceOver sessions are locked; their renderer/workbench/accessibility acceptance remains pending. |
 | Real races and durability | Adapter/browser interleavings, native output mutation during snapshot, revoked pairing, active-work reload/disposal, broad binary/font/image fidelity, oversized-file rejection and quota/crash recovery. |

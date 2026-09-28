@@ -1,0 +1,476 @@
+{
+  "state": "running",
+  "checks": [
+    {
+      "name": "ready",
+      "evidence": {
+        "runtimeId": "browser-linux:cua-prepared-template-proof:c2w-node24-8f08d6cef80797be:65fc8dc2-24ad-4ffd-b428-e5ab5231d729",
+        "root": "/workspaces/cua-prepared-template-proof",
+        "imageId": "c2w-node24-8f08d6cef80797be",
+        "bootId": "65fc8dc2-24ad-4ffd-b428-e5ab5231d729",
+        "kind": "browser-linux",
+        "state": "ready",
+        "ready": true,
+        "toolchain": {
+          "kind": "node",
+          "version": "24.21.0",
+          "packageManager": "npm",
+          "preparedTemplate": {
+            "id": "next-default-72013276c996cd10",
+            "dependencies": {
+              "next": "16.3.6",
+              "react": "19.3.0",
+              "react-dom": "19.3.0"
+            },
+            "lockSha256": "72013276c996cd104fc0f6c7883e74ec9073e0385ea61412f13b03eba62006f0",
+            "prepareSha256": "01f761ac1f0350adc4aa1102c0fc0f58d01b3f7f45aeda981d03389ccf3d573c",
+            "npmGuardSha256": "2ce131db3a3a9c1349bf3808ed1645b0b7f9bdf427a14c5e9107c9337884b9d5",
+            "prepareCommand": [
+              "node",
+              "/opt/harness/prepare-template.js"
+            ],
+            "detachCommand": [
+              "node",
+              "/opt/harness/prepare-template.js",
+              "--detach"
+            ],
+            "npmTarballCacheIncluded": false
+          }
+        },
+        "filesystem": true,
+        "shell": true,
+        "pty": true,
+        "persistentProcesses": true,
+        "persistence": "idbfs",
+        "capabilities": [
+          "files",
+          "shell",
+          "pty",
+          "node",
+          "npm",
+          "static-export",
+          "browser-network",
+          "prepared-template"
+        ],
+        "network": "browser-fetch-cors",
+        "preview": [
+          "next-static-export"
+        ],
+        "requiresCrossOriginIsolation": true
+      },
+      "atMilliseconds": 62050.0150000155
+    },
+    {
+      "name": "durable reload",
+      "passed": true,
+      "atMilliseconds": 62508.84999999404
+    },
+    {
+      "name": "durable exact template lock",
+      "passed": true,
+      "atMilliseconds": 63009.14500001073
+    },
+    {
+      "name": "durable-template-link",
+      "passed": true,
+      "evidence": {
+        "id": "durable-template-link",
+        "runtimeId": "browser-linux:cua-prepared-template-proof:c2w-node24-8f08d6cef80797be:65fc8dc2-24ad-4ffd-b428-e5ab5231d729",
+        "code": 0,
+        "signal": null,
+        "cancelled": false,
+        "stdout": "/opt/harness/template/node_modules\n",
+        "stderr": "",
+        "outputTruncated": false,
+        "milliseconds": 2020.6899999976158
+      },
+      "atMilliseconds": 65029.89500001073
+    },
+    {
+      "name": "network-empty-cache",
+      "passed": true,
+      "evidence": {
+        "id": "network-empty-cache",
+        "runtimeId": "browser-linux:cua-prepared-template-proof:c2w-node24-8f08d6cef80797be:65fc8dc2-24ad-4ffd-b428-e5ab5231d729",
+        "code": 0,
+        "signal": null,
+        "cancelled": false,
+        "stdout": "",
+        "stderr": "",
+        "outputTruncated": false,
+        "milliseconds": 2559.9000000059605
+      },
+      "atMilliseconds": 67589.81000000238
+    },
+    {
+      "name": "npm-network-install",
+      "passed": true,
+      "evidence": {
+        "id": "npm-network-install",
+        "runtimeId": "browser-linux:cua-prepared-template-proof:c2w-node24-8f08d6cef80797be:65fc8dc2-24ad-4ffd-b428-e5ab5231d729",
+        "code": 0,
+        "signal": null,
+        "cancelled": false,
+        "stdout": "\nadded 1 package in 3m\n",
+        "stderr": "npm warn deprecated left-pad@1.3.0: use String.prototype.padStart()\nnpm notice\nnpm notice New major version of npm available! 11.19.0 -> 12.1.0\nnpm notice Changelog: https://github.com/npm/cli/releases/tag/v12.1.0\nnpm notice To update run: npm install -g npm@12.1.0\nnpm notice\n",
+        "outputTruncated": false,
+        "milliseconds": 202860.00499999523
+      },
+      "atMilliseconds": 270449.8250000179
+    },
+    {
+      "name": "network-package-execution",
+      "passed": true,
+      "evidence": {
+        "id": "network-package-execution",
+        "runtimeId": "browser-linux:cua-prepared-template-proof:c2w-node24-8f08d6cef80797be:65fc8dc2-24ad-4ffd-b428-e5ab5231d729",
+        "code": 0,
+        "signal": null,
+        "cancelled": false,
+        "stdout": "uncached registry package executed\n",
+        "stderr": "",
+        "outputTruncated": false,
+        "milliseconds": 22320.05499997735
+      },
+      "atMilliseconds": 292769.8900000155
+    },
+    {
+      "name": "single-process compiler configuration",
+      "passed": true,
+      "evidence": {
+        "previous": "74781b164e97ebad545fdc492fba8e319b924a1cda6fdf0222e7490b969c365b",
+        "next": "a2a2ec4d0296bab449cd789f3d3aba45ea7492d390777c1f4a0e268d9b675fc6",
+        "content": "export default {output:\"export\",images:{unoptimized:true},experimental:{cpus:1,webpackBuildWorker:false}}"
+      },
+      "atMilliseconds": 293950.16499999166
+    },
+    {
+      "name": "clear-generated-build-cache",
+      "passed": true,
+      "evidence": {
+        "id": "clear-generated-build-cache",
+        "runtimeId": "browser-linux:cua-prepared-template-proof:c2w-node24-8f08d6cef80797be:65fc8dc2-24ad-4ffd-b428-e5ab5231d729",
+        "code": 0,
+        "signal": null,
+        "cancelled": false,
+        "stdout": "",
+        "stderr": "",
+        "outputTruncated": false,
+        "milliseconds": 2220.564999997616
+      },
+      "atMilliseconds": 296170.7350000143
+    }
+  ],
+  "log": [
+    "UEFI firmware (version edk2-stable202302-for-qemu built at 18:12:10 on Sep 11 2023)\r\r\n",
+    "Error: Image at 0009FD42000 start failed: Not Found\r\r\n",
+    "Error: Image at 0009FC94000 start failed: Unsupported\r\r\n",
+    "Tpm2SubmitCommand - Tcg2 - Not Found\r\r\nTpm2GetCapabilityPcrs fail!\r\r\nTpm2SubmitCommand - Tcg2 - Not Found\r\r\n",
+    "Image type X64 can't be loaded on AARCH64 UEFI system.\r\r\n",
+    "\u001b[2J\u001b[01;01H\u001b[=3h\u001b[2J\u001b[01;01H",
+    "\u001b[2J\u001b[01;01H\u001b[=3h\u001b[2J\u001b[01;01H",
+    "EFI stub: Booting Linux Kernel...\r\r\nEFI stub: EFI_RNG_PROTOCOL unavailable\r\r\nEFI stub: Generating empty DTB\r\r\nEFI stub: Exiting boot services...\r\r\n",
+    "1970/01/01 00:00:03 mounting {FSType:proc Src:proc Dst:/proc Flags:0 Data: Dir:[] File:[] PostDir:[] PostFile:[] Cmd:[] Async:false Optional:false}\r\r\n1970/01/01 00:00:03 mounting {FSType:tmpfs Src:tmpfs Dst:/run Flags:0 Data: Dir:[] File:[] PostDir:[] PostFile:[] Cmd:[] Async:false Optional:false}\r\r\n",
+    "1970/01/01 00:00:03 mounting {FSType:tmpfs Src:tmpfs Dst:/sys Flags:0 Data: Dir:[] File:[] PostDir:[] PostFile:[] Cmd:[] Async:false Optional:false}\r\r\n1970/01/01 00:00:03 mounting {FSType:tmpfs Src:tmpfs Dst:/tmp Flags:0 Data: Dir:[] File:[] PostDir:[] PostFile:[] Cmd:[] Async:false Optional:false}\r\r\n",
+    "1970/01/01 00:00:03 mounting {FSType:tmpfs Src:tmpfs Dst:/var Flags:0 Data: Dir:[] File:[] PostDir:[] PostFile:[] Cmd:[] Async:false Optional:false}\r\r\n1970/01/01 00:00:03 mounting {FSType:tmpfs Src:tmpfs Dst:/mnt Flags:0 Data: Dir:[] File:[] PostDir:[] PostFile:[] Cmd:[] Async:false Optional:false}\r\r\n",
+    "1970/01/01 00:00:03 mounting {FSType:cgroup2 Src:none Dst:/sys/fs/cgroup Flags:0 Data: Dir:[{Path:/sys/fs/cgroup Mode:438}] File:[] PostDir:[] PostFile:[] Cmd:[] Async:false Optional:false}\r\r\n",
+    "1970/01/01 00:00:04 mounting {FSType:tmpfs Src:tmpfs Dst:/etc Flags:0 Data: Dir:[] File:[] PostDir:[] PostFile:[{Path:/etc/hosts Mode:420 Contents:127.0.0.1\tlocalhost\r\r\n} {Path:/etc/resolv.conf Mode:420 Contents:}] Cmd:[] Async:false Optional:false}\r\r\n",
+    "1970/01/01 00:00:04 mounting {FSType:tmpfs Src:tmpfs Dst:/run/bundle Flags:0 Data: Dir:[{Path:/run/bundle Mode:438}] File:[] PostDir:[] PostFile:[] Cmd:[] Async:false Optional:false}\r\r\n1970/01/01 00:00:04 mounting {FSType:ove",
+    "rlay Src:overlay Dst:/run/rootfs Flags:0 Data:lowerdir=/oci/rootfs,upperdir=/run/rootfs-upper,workdir=/run/rootfs-work Dir:[{Path:/run/rootfs Mode:493} {Path:/run/rootfs-upper Mode:493} {Path:/run/rootfs-work Mode:493}] File:[] PostDir:[{Path:/run/rootfs/etc/ Mode:420} {Path:/run/rootfs/etc/ Mode:420}] PostFile:[{Path:/run/rootfs/etc/hosts Mode:420 Contents:127.0.0.1\tlocalhost\r\r\n} {Path:/run/rootfs/etc/resolv.conf Mode:420 Contents:}] Cmd:[] Async:false Optional:false}\r\r\n",
+    "1970/01/01 00:00:04 executing(pre-run): [vmtouch -tv /sbin/runc /sbin/init]\r\r\n",
+    "/sbin/runc\r\r\n\r[                                                            ] 0/3040",
+    "\r[OOOOo                                                       ] 244/3040",
+    "\r[OOOOOOOOOOo                                                 ] 545/3040",
+    "\r[OOOOOOOOOOOOOOOOOo                                          ] 897/3040",
+    "\r[OOOOOOOOOOOOOOOOOOOOOOOo                                    ] 1217/3040",
+    "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo                           ] 1633/3040",
+    "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo                 ] 2145/3040",
+    "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo       ] 2657/3040",
+    "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO] 3040/3040\r\r\n",
+    "/sbin/init\r\r\n\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO] 625/625",
+    "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO] 625/625\r\r\n\r\r\n           Files: 2\r\r\n     Directories: 0\r\r\n   Touched Pages: 3665 (14M)\r\r\n         Elapsed: 0.9519 seconds\r\r\n",
+    "==========",
+    "1970/01/01 00:00:06 mounting \"wasi0\" to \"/mnt/wasi0\"\r\r\n",
+    "1970/01/01 00:00:06 INFO:\r\r\nt:1790633859\r\r\nn:02:6E:F2:04:82:F8\r\r\nmr: .wasmenv\r\r\nenv: SSL_CERT_FILE=/.wasmenv/proxy.crt\r\r\nenv: https_proxy=http://192.168.127.253:80\r\r\nenv: http_proxy=http://192.168.127.253:80\r\r\nenv: HTTPS_PROXY=http://192.168.127.253:80\r\r\nenv: HTTP_PROXY=http://192.168.127.253:80\r\r\nenv: no_proxy=localhost,127.0.0.1\r\r\nenv: NO_PROXY=localhost,127.0.0.1\r\r\nm:workspaces/cua-prepared-template-proof\r\r\nm:harness-control\r\r\ne:node\r\r\nc:/harness-control/supervisor.js\r\r\nenv:HARNESS_WORKSPACE=/workspaces/cua-prepared-template-proof\r\r\nenv:NODE_EXTRA_CA",
+    "_CERTS=/.wasmenv/proxy.crt\r\r\nenv:NODE_OPTIONS=--use-env-proxy\r\r\n\r\r\n",
+    "2026/09/28 22:17:39 Prepared mount wasi0 => \".wasmenv\"\r\r\n2026/09/28 22:17:39 Prepared mount wasi0 => \"workspaces/cua-prepared-template-proof\"\r\r\n2026/09/28 22:17:39 Prepared mount wasi0 => \"harness-control\"\r\r\n",
+    "2026/09/28 22:17:40 finished udhcpc: udhcpc: started, v1.36.1\r\r\nClearing IP addresses on eth0, upping it\r\r\nudhcpc: broadcasting discover\r\r\nudhcpc: broadcasting select for 192.168.127.2, server 192.168.127.1\r\r\nudhcpc: lease of 192.168.127.2 obtained from 192.168.127.1, lease time 3600\r\r\nSetting IP address 192.168.127.2 on eth0\r\r\nDeleting routers\r\r\nroute: SIOCDELRT: No such process\r\r\nAdding router 192.168.127.1\r\r\nRecreating /etc/resolv.conf\r\r\n Adding DNS server 192.168.127.1\r\r\n\r\r\n 1: lo: <LOOPBACK> mtu 65536 qdisc noop qlen 1000\r\r\n    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00\r\r\n2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc pfifo_fast qlen 1000\r\r\n    link/ether 02:6e:f2",
+    ":04:82:f8 brd ff:ff:ff:ff:ff:ff\r\r\n    inet 192.168.127.2/24 brd 192.168.127.255 scope global eth0\r\r\n       valid_lft forever preferred_lft forever\r\r\n\r\r\n",
+    "2026/09/28 22:17:40 Running: [node /harness-control/supervisor.js]\r\r\n",
+    "2026/09/28 22:17:40 executing: [/sbin/runc run -b /run/bundle foo]\r\r\n",
+    "[durable-template-link/stdout] /opt/harness/template/node_modules\n",
+    "[npm-network-install/stderr] npm warn deprecated left-pad@1.3.0: use String.prototype.padStart()\n",
+    "[npm-network-install/stdout] \nadded 1 package in 3m\n",
+    "[npm-network-install/stderr] npm notice\nnpm notice New major version of npm available! 11.19.0 -> 12.1.0\nnpm notice Changelog: https://github.com/npm/cli/releases/tag/v12.1.0\nnpm notice To update run: npm install -g npm@12.1.0\nnpm notice\n",
+    "[network-package-execution/stdout] uncached registry package executed\n"
+  ],
+  "metadata": {
+    "experiment": "production-network-policy-and-single-process-webpack",
+    "bootstrap": "production entrypoint; clean reload",
+    "buildRunner": "direct-next-cli; only webpackBuildWorker:false; DEBUG stage logging; fresh generated cache",
+    "taskCompanions": "7717 and 7718 stopped before this boot; no relay authorization",
+    "startedAt": "2026-09-28T22:17:36.254Z",
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36",
+    "crossOriginIsolated": true,
+    "network": "browser-fetch-cors",
+    "companionAuthorization": false,
+    "runtimeSupportSHA256": {
+      "runtime.js": "8973a692a67a8260bc92ce6482deaa251e4f64b92c1422f581c2f253c292aed4",
+      "network-policy.js": "ec4808d067c745c75a94ff3db53721801a449035c1716b4865ae1b5c2a9a394f",
+      "idbfs-links.js": "be1d464d409ce4c7cf8ae77598eadc690917c0cb700160c0ba65458a7d2346d0"
+    },
+    "originalNextConfig": "export default {output:\"export\",images:{unoptimized:true},experimental:{cpus:1}}"
+  },
+  "stages": [
+    {
+      "phase": "Downloading",
+      "atMilliseconds": 333.830000013113
+    },
+    {
+      "phase": "Verifying",
+      "message": "qemu-system-aarch64.wasm",
+      "atMilliseconds": 465.14500001072884
+    },
+    {
+      "phase": "Downloading",
+      "message": "out.js",
+      "atMilliseconds": 465.5349999964237
+    },
+    {
+      "phase": "Verifying",
+      "message": "out.js",
+      "atMilliseconds": 470.92500001192093
+    },
+    {
+      "phase": "Downloading",
+      "message": "arg-module.js",
+      "atMilliseconds": 470.9950000047684
+    },
+    {
+      "phase": "Verifying",
+      "message": "arg-module.js",
+      "atMilliseconds": 475.80500000715256
+    },
+    {
+      "phase": "Downloading",
+      "message": "load.js",
+      "atMilliseconds": 475.875
+    },
+    {
+      "phase": "Verifying",
+      "message": "load.js",
+      "atMilliseconds": 477.17500001192093
+    },
+    {
+      "phase": "Downloading",
+      "message": "network.js",
+      "atMilliseconds": 477.22999998927116
+    },
+    {
+      "phase": "Verifying",
+      "message": "network.js",
+      "atMilliseconds": 478.30000001192093
+    },
+    {
+      "phase": "Downloading",
+      "message": "network-worker.js",
+      "atMilliseconds": 478.330000013113
+    },
+    {
+      "phase": "Verifying",
+      "message": "network-worker.js",
+      "atMilliseconds": 479.50999999046326
+    },
+    {
+      "phase": "Downloading",
+      "message": "pty.js",
+      "atMilliseconds": 479.55000001192093
+    },
+    {
+      "phase": "Verifying",
+      "message": "pty.js",
+      "atMilliseconds": 481.24000000953674
+    },
+    {
+      "phase": "Downloading",
+      "message": "network.wasm.gz",
+      "atMilliseconds": 481.2950000166893
+    },
+    {
+      "phase": "Verifying",
+      "message": "network.wasm.gz",
+      "atMilliseconds": 492.99000000953674
+    },
+    {
+      "phase": "Downloading",
+      "message": "supervisor.js",
+      "atMilliseconds": 493.0300000011921
+    },
+    {
+      "phase": "Verifying",
+      "message": "supervisor.js",
+      "atMilliseconds": 495.0349999964237
+    },
+    {
+      "phase": "Downloading",
+      "message": "qemu-system-aarch64.data",
+      "atMilliseconds": 496.5949999988079
+    },
+    {
+      "phase": "Verifying",
+      "message": "qemu-system-aarch64.data.part-000",
+      "atMilliseconds": 631.0999999940395
+    },
+    {
+      "phase": "Downloading",
+      "message": "qemu-system-aarch64.data.part-001",
+      "atMilliseconds": 639.1649999916553
+    },
+    {
+      "phase": "Verifying",
+      "message": "qemu-system-aarch64.data.part-001",
+      "atMilliseconds": 764.7750000059605
+    },
+    {
+      "phase": "Downloading",
+      "message": "qemu-system-aarch64.data.part-002",
+      "atMilliseconds": 779.2800000011921
+    },
+    {
+      "phase": "Verifying",
+      "message": "qemu-system-aarch64.data.part-002",
+      "atMilliseconds": 899.3799999952316
+    },
+    {
+      "phase": "Downloading",
+      "message": "qemu-system-aarch64.data.part-003",
+      "atMilliseconds": 908.6949999928474
+    },
+    {
+      "phase": "Verifying",
+      "message": "qemu-system-aarch64.data.part-003",
+      "atMilliseconds": 1026.594999998808
+    },
+    {
+      "phase": "Downloading",
+      "message": "qemu-system-aarch64.data.part-004",
+      "atMilliseconds": 1036.6049999892712
+    },
+    {
+      "phase": "Verifying",
+      "message": "qemu-system-aarch64.data.part-004",
+      "atMilliseconds": 1152.5450000166893
+    },
+    {
+      "phase": "Downloading",
+      "message": "qemu-system-aarch64.data.part-005",
+      "atMilliseconds": 1164.125
+    },
+    {
+      "phase": "Verifying",
+      "message": "qemu-system-aarch64.data.part-005",
+      "atMilliseconds": 1287.7899999916553
+    },
+    {
+      "phase": "Downloading",
+      "message": "qemu-system-aarch64.data.part-006",
+      "atMilliseconds": 1313.9500000178814
+    },
+    {
+      "phase": "Verifying",
+      "message": "qemu-system-aarch64.data.part-006",
+      "atMilliseconds": 1431.4799999892712
+    },
+    {
+      "phase": "Downloading",
+      "message": "qemu-system-aarch64.data.part-007",
+      "atMilliseconds": 1445.6949999928474
+    },
+    {
+      "phase": "Verifying",
+      "message": "qemu-system-aarch64.data.part-007",
+      "atMilliseconds": 1569.6949999928474
+    },
+    {
+      "phase": "Downloading",
+      "message": "qemu-system-aarch64.data.part-008",
+      "atMilliseconds": 1583.7899999916553
+    },
+    {
+      "phase": "Verifying",
+      "message": "qemu-system-aarch64.data.part-008",
+      "atMilliseconds": 1713.8499999940395
+    },
+    {
+      "phase": "Downloading",
+      "message": "qemu-system-aarch64.data.part-009",
+      "atMilliseconds": 1730.6800000071526
+    },
+    {
+      "phase": "Verifying",
+      "message": "qemu-system-aarch64.data.part-009",
+      "atMilliseconds": 1845.7249999940395
+    },
+    {
+      "phase": "Downloading",
+      "message": "qemu-system-aarch64.data.part-010",
+      "atMilliseconds": 1860.3400000035763
+    },
+    {
+      "phase": "Verifying",
+      "message": "qemu-system-aarch64.data.part-010",
+      "atMilliseconds": 1984.6850000023842
+    },
+    {
+      "phase": "Downloading",
+      "message": "qemu-system-aarch64.data.part-011",
+      "atMilliseconds": 1998.0399999916553
+    },
+    {
+      "phase": "Verifying",
+      "message": "qemu-system-aarch64.data.part-011",
+      "atMilliseconds": 2124.594999998808
+    },
+    {
+      "phase": "Downloading",
+      "message": "qemu-system-aarch64.data.part-012",
+      "atMilliseconds": 2137.939999997616
+    },
+    {
+      "phase": "Verifying",
+      "message": "qemu-system-aarch64.data.part-012",
+      "atMilliseconds": 2542.354999989271
+    },
+    {
+      "phase": "Compiling",
+      "atMilliseconds": 2543.2549999952316
+    },
+    {
+      "phase": "Restoring files",
+      "atMilliseconds": 2654.1700000166893
+    },
+    {
+      "phase": "Booting",
+      "atMilliseconds": 2676.610000014305
+    },
+    {
+      "phase": "Checking tools",
+      "atMilliseconds": 53208.90500000119
+    },
+    {
+      "phase": "Checking tools",
+      "message": "Node version check started (process 16)",
+      "atMilliseconds": 55568.83000001311
+    },
+    {
+      "phase": "Checking tools",
+      "message": "Node command completed; checking shared files and persistence",
+      "atMilliseconds": 58970.909999996424
+    },
+    {
+      "phase": "Ready",
+      "atMilliseconds": 62049.83000001311
+    }
+  ],
+  "phase": "Ready"
+}
