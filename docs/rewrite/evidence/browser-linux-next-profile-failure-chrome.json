@@ -1,0 +1,262 @@
+{
+  "startedAt": "2026-09-28T22:55:04.248Z",
+  "runtime": {
+    "runtimeId": "browser-linux:cua-prepared-template-proof:c2w-node24-8f08d6cef80797be:65fc8dc2-24ad-4ffd-b428-e5ab5231d729",
+    "root": "/workspaces/cua-prepared-template-proof",
+    "imageId": "c2w-node24-8f08d6cef80797be",
+    "bootId": "65fc8dc2-24ad-4ffd-b428-e5ab5231d729",
+    "kind": "browser-linux",
+    "state": "ready",
+    "ready": true,
+    "toolchain": {
+      "kind": "node",
+      "version": "24.21.0",
+      "packageManager": "npm",
+      "preparedTemplate": {
+        "id": "next-default-72013276c996cd10",
+        "dependencies": {
+          "next": "16.3.6",
+          "react": "19.3.0",
+          "react-dom": "19.3.0"
+        },
+        "lockSha256": "72013276c996cd104fc0f6c7883e74ec9073e0385ea61412f13b03eba62006f0",
+        "prepareSha256": "01f761ac1f0350adc4aa1102c0fc0f58d01b3f7f45aeda981d03389ccf3d573c",
+        "npmGuardSha256": "2ce131db3a3a9c1349bf3808ed1645b0b7f9bdf427a14c5e9107c9337884b9d5",
+        "prepareCommand": [
+          "node",
+          "/opt/harness/prepare-template.js"
+        ],
+        "detachCommand": [
+          "node",
+          "/opt/harness/prepare-template.js",
+          "--detach"
+        ],
+        "npmTarballCacheIncluded": false
+      }
+    },
+    "filesystem": true,
+    "shell": true,
+    "pty": true,
+    "persistentProcesses": true,
+    "persistence": "idbfs",
+    "capabilities": [
+      "files",
+      "shell",
+      "pty",
+      "node",
+      "npm",
+      "static-export",
+      "browser-network",
+      "prepared-template"
+    ],
+    "network": "browser-fetch-cors",
+    "preview": [
+      "next-static-export"
+    ],
+    "requiresCrossOriginIsolation": true
+  },
+  "purpose": "diagnostic 300-second CPU profile; normal build deadline already failed",
+  "warmState": "same retained VM after failed single-process build and small cache comparisons; compile cache explicitly disabled",
+  "samplingIntervalMicroseconds": 10000,
+  "termAfterSeconds": 300,
+  "killGraceSeconds": 60,
+  "outerDeadlineSeconds": 420,
+  "checks": [],
+  "nextConfig": {
+    "path": "next.config.mjs",
+    "content": "export default {output:\"export\",images:{unoptimized:true},experimental:{cpus:1,webpackBuildWorker:false}}",
+    "revision": "a2a2ec4d0296bab449cd789f3d3aba45ea7492d390777c1f4a0e268d9b675fc6",
+    "size": 105,
+    "rev": "a2a2ec4d0296bab449cd789f3d3aba45ea7492d390777c1f4a0e268d9b675fc6"
+  },
+  "preload": {
+    "path": ".cache/harness-diag/profile300-20260928/profile-signal.cjs",
+    "revision": "31075877bc8e1ee4ca486fee3f2bf84390337b5b5befcf8d3cc5fb56aee88ffe",
+    "size": 50,
+    "content": "process.once(\"SIGTERM\", () => process.exit(143));\n",
+    "rev": "31075877bc8e1ee4ca486fee3f2bf84390337b5b5befcf8d3cc5fb56aee88ffe",
+    "conflict": false
+  },
+  "preflight": {
+    "id": "profile-preflight",
+    "runtimeId": "browser-linux:cua-prepared-template-proof:c2w-node24-8f08d6cef80797be:65fc8dc2-24ad-4ffd-b428-e5ab5231d729",
+    "code": 0,
+    "signal": null,
+    "cancelled": false,
+    "stdout": "/usr/bin/timeout\ntimeout (GNU coreutils) 9.1\n",
+    "stderr": "",
+    "outputTruncated": false
+  },
+  "directory": ".cache/harness-diag/profile300-20260928",
+  "preloadSource": "process.once(\"SIGTERM\", () => process.exit(143));\n",
+  "prepared": true,
+  "monitorBefore": {
+    "at": "2026-09-28T22:59:14.440Z",
+    "logOffset": 92,
+    "raw": "(qemu) i\u001b[K\u001b[Din\u001b[K\u001b[D\u001b[Dinf\u001b[K\u001b[D\u001b[D\u001b[Dinfo\u001b[K\u001b[D\u001b[D\u001b[D\u001b[Dinfo \u001b[K\u001b[D\u001b[D\u001b[D\u001b[D\u001b[Dinfo j\u001b[K\u001b[D\u001b[D\u001b[D\u001b[D\u001b[D\u001b[Dinfo ji\u001b[K\u001b[D\u001b[D\u001b[D\u001b[D\u001b[D\u001b[D\u001b[Dinfo jit\u001b[K\r\r\nAccelerator settings:\r\r\none-insn-per-tb: off\r\r\n\r\r\nTranslation buffer state:\r\r\ngen code size       118885568/134151168\r\r\nTB count            80002\r\r\nTB avg target size  19 max=692 bytes\r\r\nTB avg host size    1302 bytes (expansion ratio: 66.2)\r\r\ncross page TB count 0 (0%)\r\r\ndirect jump count   49985 (62%) (2 jumps=38365 47%)\r\r\nTB hash buckets     29997/32768 (91.54% head buckets used)\r\r\nTB hash occupancy   39.97% avg chain occ. Histogram: [0,10)%|▃▆ █ ▇▄▁▂▁|[90,100]%\r\r\nTB hash avg chain   1.013 buckets. Histogram: 1|█▁|2\r\r\n\r\r\nStatistics:\r\r\nTB flush count      155\r\r\nTB invalidate count 28717\r\r\nTLB full flushes    0\r\r\nTLB partial flushes 2065826\r\r\nTLB elided flushes  10111268\r\r\n[TCG profiler not compiled]\r\r\n(qemu) ",
+    "completedAt": "2026-09-28T22:59:35.566Z"
+  },
+  "command": {
+    "program": "env",
+    "args": [
+      "NODE_ENV=production",
+      "NEXT_TELEMETRY_DISABLED=1",
+      "NODE_DISABLE_COMPILE_CACHE=1",
+      "DEBUG=next:build:webpack-build",
+      "timeout",
+      "--signal=TERM",
+      "--kill-after=60s",
+      "300s",
+      "node",
+      "--require",
+      "/workspaces/cua-prepared-template-proof/.cache/harness-diag/profile300-20260928/profile-signal.cjs",
+      "--cpu-prof",
+      "--cpu-prof-interval=10000",
+      "--cpu-prof-dir=/workspaces/cua-prepared-template-proof/.cache/harness-diag/profile300-20260928",
+      "node_modules/next/dist/bin/next",
+      "build",
+      "--webpack"
+    ],
+    "cwd": "."
+  },
+  "output": [],
+  "profileStartedAt": "2026-09-28T22:59:54.141Z",
+  "profileStartedMs": 2537914.8200000226,
+  "companions": "ports 7717/7718 stopped; no relay authorized",
+  "concurrentWork": "root light CDN/UI/docs only; no heavy host builds or models; root Safari availability check at22:59 found desktop locked; UX tiny synthetic cache-fault test on5198 (exact times pending)",
+  "nodeCompileCache": "disabled",
+  "filenamePolicy": "Node default timestamp/PID/thread-specific names",
+  "procSamples": [
+    {
+      "requestedAt": "2026-09-28T23:01:13.197Z",
+      "result": {
+        "id": "profile-proc-early",
+        "runtimeId": "browser-linux:cua-prepared-template-proof:c2w-node24-8f08d6cef80797be:65fc8dc2-24ad-4ffd-b428-e5ab5231d729",
+        "code": 0,
+        "signal": null,
+        "cancelled": false,
+        "stdout": "100\n2632.34 964.32\nMemTotal:        1528796 kB\nMemFree:         1340184 kB\nMemAvailable:    1461708 kB\nBuffers:            2192 kB\nCached:           133796 kB\nSwapCached:            0 kB\nActive:            66520 kB\nInactive:         102548 kB\nActive(anon):        960 kB\nInactive(anon):    35752 kB\nActive(file):      65560 kB\nInactive(file):    66796 kB\nUnevictable:           0 kB\nMlocked:               0 kB\nSwapTotal:             0 kB\nSwapFree:              0 kB\nDirty:                 0 kB\nWriteback:             0 kB\nAnonPages:         33092 kB\nMapped:            62460 kB\nShmem:              3632 kB\nKReclaimable:       7252 kB\nSlab:              12800 kB\nSReclaimable:       7252 kB\nSUnreclaim:         5548 kB\nKernelStack:        1072 kB\nPageTables:         1384 kB\nSecPageTables:         0 kB\nNFS_Unstable:          0 kB\nBounce:                0 kB\nWritebackTmp:          0 kB\nCommitLimit:      764396 kB\nCommitted_AS:     316768 kB\nVmallocTotal:   259653632 kB\nVmallocUsed:        1144 kB\nVmallocChunk:          0 kB\nPercpu:               60 kB\n",
+        "stderr": "",
+        "outputTruncated": false
+      },
+      "completedAt": "2026-09-28T23:01:43.844Z"
+    },
+    {
+      "requestedAt": "2026-09-28T23:02:25.476Z",
+      "note": "Earlier exact comm=node filter matched no process; this sample uses ps plus all /proc stat records.",
+      "result": {
+        "id": "profile-proc-mid",
+        "runtimeId": "browser-linux:cua-prepared-template-proof:c2w-node24-8f08d6cef80797be:65fc8dc2-24ad-4ffd-b428-e5ab5231d729",
+        "code": 0,
+        "signal": null,
+        "cancelled": false,
+        "stdout": " PID PPID STAT     TIME   RSS COMMAND\n   1    0 Ssl+ 00:04:34 63784 node /harness-control/supervisor.js\n 118    1 Ss   00:00:01   780 timeout --signal=TERM --kill-after=60s 300s node --require /workspaces/cua-prepared-template-proof/.cache/harness-diag/profile300-20260928/profile-signal.cjs --cpu-prof --cpu-prof-interval=10000 --cpu-prof-dir=/workspaces/cua-prepared-template-proof/.cache/harness-diag/profile300-20260928 node_modules/next/dist/bin/next build --webpack\n 119  118 Rl   00:02:10 52604 node --require /workspaces/cua-prepared-template-proof/.cache/harness-diag/profile300-20260928/profile-signal.cjs --cpu-prof --cpu-prof-interval=10000 --cpu-prof-dir=/workspaces/cua-prepared-template-proof/.cache/harness-diag/profile300-20260928 node_modules/next/dist/bin/next build --webpack\n 130    1 Ss   00:00:01   816 sh -c ps -eo pid,ppid,stat,time,rss,args; cat /proc/[0-9]*/stat; cat /proc/uptime\n 131  130 R    00:00:05  3504 ps -eo pid,ppid,stat,time,rss,args\n1 (MainThread) S 0 1 1 34816 1 4194560 16364 81696 575 548 12071 15731 110735 16327 20 0 11 0 1016 1416622080 15946 18446744073709551615 4194304 106840773 548946063024 0 0 0 0 16781312 134301186 0 0 0 17 0 0 0 0 0 0 106939480 107206648 107421696 548946066860 548946066896 548946066896 548946067428 0\n118 (timeout) S 1 118 118 0 -1 4194304 183 0 0 0 24 142 0 0 20 0 1 0 253015 2281472 195 18446744073709551615 366743257088 366743294304 549270537472 0 0 0 0 3145728 90119 1 0 0 17 0 0 0 0 0 0 366743387120 366743389396 366743392256 549270539287 549270539625 549270539625 549270540263 0\n119 (MainThread) R 118 118 118 0 -1 4194304 4077 0 20 0 8537 5133 0 0 20 0 8 0 253359 1239166976 13151 18446744073709551615 4194304 106840773 548952824608 0 0 67108864 67108864 16781312 67126786 0 0 0 17 0 0 0 0 0 0 106939480 107206648 107421696 548952828992 548952829286 548952829286 548952829924 0\n130 (sh) S 1 130 130 0 -1 4194560 133 439 0 26 17 122 141 566 20 0 1 0 268418 2375680 204 18446744073709551615 366803746816 366803866104 549531168416 0 0 0 0 0 65538 1 0 0 17 0 0 0 0 0 0 366803938176 366803943952 366803955712 549531172230 549531172312 549531172312 549531172844 0\n2728.81 964.32\n",
+        "stderr": "",
+        "outputTruncated": false
+      },
+      "completedAt": "2026-09-28T23:03:34.306Z"
+    },
+    {
+      "requestedAt": "2026-09-28T23:04:18.077Z",
+      "note": "Targeted final sample of profile PID119 and supervisorPID1",
+      "result": {
+        "id": "profile-proc-late",
+        "runtimeId": "browser-linux:cua-prepared-template-proof:c2w-node24-8f08d6cef80797be:65fc8dc2-24ad-4ffd-b428-e5ab5231d729",
+        "code": 0,
+        "signal": null,
+        "cancelled": false,
+        "stdout": "119 (MainThread) R 118 118 118 0 -1 4194304 4598 0 22 0 12155 6915 0 0 20 0 9 0 253359 1315778560 13913 18446744073709551615 4194304 106840773 548952824608 0 0 67108864 0 16781312 67126786 0 0 0 17 0 0 0 0 0 0 106939480 107206648 107421696 548952828992 548952829286 548952829286 548952829924 0\n1 (MainThread) R 0 1 1 34816 1 4194560 16561 82367 575 574 12980 16487 110941 17177 20 0 11 0 1016 1416622080 15947 18446744073709551615 4194304 106840773 548946063024 0 0 0 0 16781312 134301186 0 0 0 17 0 0 0 0 0 0 106939480 107206648 107421696 548946066860 548946066896 548946066896 548946067428 0\n2802.77 964.32\n",
+        "stderr": "",
+        "outputTruncated": false
+      },
+      "completedAt": "2026-09-28T23:04:34.922Z"
+    }
+  ],
+  "overlaps": [
+    {
+      "start": "2026-09-28T23:03:14.144Z",
+      "end": "2026-09-28T23:03:14.367Z",
+      "closed": "2026-09-28T23:03:18.489Z",
+      "description": "UX production-loader synthetic66byte cache-fault check on separate5198 tab; no VM/model"
+    }
+  ],
+  "result": {
+    "id": "next-cpu-profile-300",
+    "runtimeId": "browser-linux:cua-prepared-template-proof:c2w-node24-8f08d6cef80797be:65fc8dc2-24ad-4ffd-b428-e5ab5231d729",
+    "code": null,
+    "signal": "SIGKILL",
+    "cancelled": false,
+    "stdout": "",
+    "stderr": "",
+    "outputTruncated": false
+  },
+  "elapsedMs": 430201.7949999869,
+  "profileEndedAt": "2026-09-28T23:07:04.344Z",
+  "monitorAfter": {
+    "at": "2026-09-28T23:07:23.591Z",
+    "logOffset": 105,
+    "raw": "(qemu) i\u001b[K\u001b[Din\u001b[K\u001b[D\u001b[Dinf\u001b[K\u001b[D\u001b[D\u001b[Dinfo\u001b[K\u001b[D\u001b[D\u001b[D\u001b[Dinfo \u001b[K\u001b[D\u001b[D\u001b[D\u001b[D\u001b[Dinfo j\u001b[K\u001b[D\u001b[D\u001b[D\u001b[D\u001b[D\u001b[Dinfo ji\u001b[K\u001b[D\u001b[D\u001b[D\u001b[D\u001b[D\u001b[D\u001b[Dinfo jit\u001b[K\r\r\nAccelerator settings:\r\r\none-insn-per-tb: off\r\r\n\r\r\nTranslation buffer state:\r\r\ngen code size       80905984/134151168\r\r\nTB count            54481\r\r\nTB avg target size  19 max=692 bytes\r\r\nTB avg host size    1301 bytes (expansion ratio: 65.8)\r\r\ncross page TB count 0 (0%)\r\r\ndirect jump count   34737 (63%) (2 jumps=26866 49%)\r\r\nTB hash buckets     15842/16384 (96.69% head buckets used)\r\r\nTB hash occupancy   52.12% avg chain occ. Histogram: [0,10)%|▁▄ ▆ █▆▁▄▂|[90,100]%\r\r\nTB hash avg chain   1.054 buckets. Histogram: 1|█▁|2\r\r\n\r\r\nStatistics:\r\r\nTB flush count      159\r\r\nTB invalidate count 28717\r\r\nTLB full flushes    0\r\r\nTLB partial flushes 2575917\r\r\nTLB elided flushes  12536087\r\r\n[TCG profiler not compiled]\r\r\n(qemu) ",
+    "completedAt": "2026-09-28T23:07:42.214Z"
+  },
+  "profileFiles": [
+    {
+      "path": ".cache/harness-diag/profile300-20260928/profile-signal.cjs",
+      "kind": "file",
+      "size": 50,
+      "editable": true,
+      "revision": "31075877bc8e1ee4ca486fee3f2bf84390337b5b5befcf8d3cc5fb56aee88ffe"
+    }
+  ],
+  "hostProfileInventory": {
+    "at": "2026-09-28T23:08:13.339Z",
+    "files": [
+      {
+        "name": "profile-signal.cjs",
+        "size": 50
+      }
+    ]
+  },
+  "outcome": {
+    "kind": "diagnostic-failed-no-profile",
+    "buildSucceeded": false,
+    "profilePresent": false,
+    "profileFiles": [
+      {
+        "path": ".cache/harness-diag/profile300-20260928/profile-signal.cjs",
+        "kind": "file",
+        "size": 50,
+        "editable": true,
+        "revision": "31075877bc8e1ee4ca486fee3f2bf84390337b5b5befcf8d3cc5fb56aee88ffe"
+      }
+    ],
+    "reason": "Bounded profiled command ended SIGKILL with no Next output; no .cpuprofile file was created. Do not infer sampled JS/native bottleneck from absent data.",
+    "requestedTermSeconds": 300,
+    "requestedKillGraceSeconds": 60,
+    "outerAbortSeconds": 420,
+    "actualJobElapsedMs": 430201.7949999869,
+    "cancelled": false,
+    "signal": "SIGKILL"
+  },
+  "monitorDelta": {
+    "tbFlush": 4,
+    "tbInvalidate": 0,
+    "tlbFullFlush": 0,
+    "tlbPartialFlush": 510091,
+    "tlbElidedFlush": 2424819,
+    "note": "Interval includes profiling, monitor reads and diagnostic shell samples; does not establish cause of flushes or an unprofiled Next bottleneck."
+  },
+  "procDelta": {
+    "mainPid": 119,
+    "clockTicksPerSecond": 100,
+    "fromGuestUptime": 2728.81,
+    "toGuestUptime": 2802.77,
+    "mainUserTicks": 3618,
+    "mainSystemTicks": 1782,
+    "mainCpuSeconds": 54,
+    "supervisorUserTicks": 909,
+    "supervisorSystemTicks": 756,
+    "supervisorCpuSeconds": 16.65,
+    "note": "Reads are sequential, so exact per-process sample times differ slightly; whole diagnostic was heavily instrumented."
+  },
+  "recordedAt": "2026-09-28T23:08:44.997Z"
+}

@@ -1,0 +1,226 @@
+{
+  "version": 1,
+  "startedAt": "2026-09-28T23:08:07.935Z",
+  "completedAt": "2026-09-28T23:08:07.958Z",
+  "elapsedMs": 22.63500002026558,
+  "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36",
+  "origin": "http://127.0.0.1:5198",
+  "crossOriginIsolated": true,
+  "sourceFile": "public/browser-linux/assets.js",
+  "exactSourceSHA256": "90e2c063709c943c9e1bf425553d4a36b692b553f5fef7db291d263c1b3a1cb1",
+  "sourceDelivery": "byte-identical private snapshot /assets-fixed.js; out export untouched",
+  "syntheticAssetBytes": 66,
+  "checks": [
+    {
+      "name": "inconsistent single-part manifest rejected before fetch",
+      "passed": true
+    },
+    {
+      "name": "cached corruption automatically recovered from same URL fresh bytes",
+      "passed": true
+    },
+    {
+      "name": "fresh corruption remains rejected after exactly two loader attempts",
+      "passed": true
+    },
+    {
+      "name": "progress counts each declared byte once for successful and failed retries",
+      "passed": true
+    },
+    {
+      "name": "both unique fixture cache entries invalidated and cleanup GETs not cached",
+      "passed": true
+    }
+  ],
+  "cases": [
+    {
+      "name": "recover.bin",
+      "url": "http://127.0.0.1:5208/fixed-05981d3d-63c7-4494-962e-993f92bdc488/recover.bin",
+      "outcome": {
+        "ok": true,
+        "bytes": 66,
+        "sha256": "ab185c5f2165d9c9805423f210b96d2ffba1eda7b0140bb263732932c3df55ed"
+      },
+      "fetchCalls": [
+        {
+          "url": "http://127.0.0.1:5208/fixed-05981d3d-63c7-4494-962e-993f92bdc488/recover.bin",
+          "cache": "default"
+        },
+        {
+          "url": "http://127.0.0.1:5208/fixed-05981d3d-63c7-4494-962e-993f92bdc488/recover.bin",
+          "cache": "reload"
+        }
+      ],
+      "retries": [
+        "recover.bin"
+      ],
+      "verification": [
+        "recover.bin",
+        "recover.bin"
+      ],
+      "progressSeen": [
+        {
+          "received": 0,
+          "total": 66
+        },
+        {
+          "received": 66,
+          "total": 66
+        }
+      ],
+      "beforeCleanup": [
+        {
+          "name": "recover.bin",
+          "method": "GET",
+          "phase": "corrupt",
+          "at": "2026-09-28T23:08:07.938Z",
+          "cacheControl": null
+        },
+        {
+          "name": "recover.bin",
+          "method": "GET",
+          "phase": "good",
+          "at": "2026-09-28T23:08:07.942Z",
+          "cacheControl": "no-cache"
+        }
+      ],
+      "cleanup": {
+        "bytes": 0,
+        "requests": [
+          {
+            "name": "recover.bin",
+            "method": "GET",
+            "phase": "corrupt",
+            "at": "2026-09-28T23:08:07.938Z",
+            "cacheControl": null
+          },
+          {
+            "name": "recover.bin",
+            "method": "GET",
+            "phase": "good",
+            "at": "2026-09-28T23:08:07.942Z",
+            "cacheControl": "no-cache"
+          },
+          {
+            "name": "recover.bin",
+            "method": "POST",
+            "phase": "good",
+            "at": "2026-09-28T23:08:07.946Z",
+            "cacheControl": null
+          },
+          {
+            "name": "recover.bin",
+            "method": "GET",
+            "phase": "cleanup",
+            "at": "2026-09-28T23:08:07.947Z",
+            "cacheControl": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "fail.bin",
+      "url": "http://127.0.0.1:5208/fixed-05981d3d-63c7-4494-962e-993f92bdc488/fail.bin",
+      "outcome": {
+        "ok": false,
+        "error": "Runtime asset failed integrity verification: fail.bin",
+        "code": "RUNTIME_ASSET_CORRUPT"
+      },
+      "fetchCalls": [
+        {
+          "url": "http://127.0.0.1:5208/fixed-05981d3d-63c7-4494-962e-993f92bdc488/fail.bin",
+          "cache": "default"
+        },
+        {
+          "url": "http://127.0.0.1:5208/fixed-05981d3d-63c7-4494-962e-993f92bdc488/fail.bin",
+          "cache": "reload"
+        }
+      ],
+      "retries": [
+        "fail.bin"
+      ],
+      "verification": [
+        "fail.bin",
+        "fail.bin"
+      ],
+      "progressSeen": [
+        {
+          "received": 0,
+          "total": 66
+        },
+        {
+          "received": 66,
+          "total": 66
+        }
+      ],
+      "beforeCleanup": [
+        {
+          "name": "fail.bin",
+          "method": "GET",
+          "phase": "corrupt",
+          "at": "2026-09-28T23:08:07.949Z",
+          "cacheControl": null
+        },
+        {
+          "name": "fail.bin",
+          "method": "GET",
+          "phase": "corrupt",
+          "at": "2026-09-28T23:08:07.952Z",
+          "cacheControl": "no-cache"
+        }
+      ],
+      "cleanup": {
+        "bytes": 0,
+        "requests": [
+          {
+            "name": "fail.bin",
+            "method": "GET",
+            "phase": "corrupt",
+            "at": "2026-09-28T23:08:07.949Z",
+            "cacheControl": null
+          },
+          {
+            "name": "fail.bin",
+            "method": "GET",
+            "phase": "corrupt",
+            "at": "2026-09-28T23:08:07.952Z",
+            "cacheControl": "no-cache"
+          },
+          {
+            "name": "fail.bin",
+            "method": "POST",
+            "phase": "corrupt",
+            "at": "2026-09-28T23:08:07.955Z",
+            "cacheControl": null
+          },
+          {
+            "name": "fail.bin",
+            "method": "GET",
+            "phase": "cleanup",
+            "at": "2026-09-28T23:08:07.956Z",
+            "cacheControl": null
+          }
+        ]
+      }
+    }
+  ],
+  "invalidManifest": {
+    "ok": false,
+    "error": "Runtime asset part identity does not match its asset",
+    "fetches": 0
+  },
+  "limitations": [
+    "Two 66-byte synthetic immutable HTTP resources with native browser HTTP caching",
+    "Exact production-source loader, but private-source delivery rather than published full runtime",
+    "No guest, model, real runtime asset URL, workspace data or CacheStorage mutation",
+    "Other agents may have active browser-runtime profiling or execution; this is a functional check, not a performance benchmark"
+  ],
+  "cleanup": {
+    "scopedHTTPEntriesInvalidated": true,
+    "ownedTabClosed": true,
+    "tabClosedAt": "2026-09-28T23:08:11.461Z",
+    "fixtureServerStopped": true,
+    "viewportOverrideUsed": false,
+    "globalCacheCleared": false
+  }
+}
