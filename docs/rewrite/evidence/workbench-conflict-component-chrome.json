@@ -1,0 +1,206 @@
+{
+  "version": 1,
+  "sourceCommit": "15d3d63",
+  "startedAt": "2026-09-28T22:23:52Z",
+  "checksCompletedAt": "2026-09-28T22:26:12.663Z",
+  "scope": "Actual Chrome Workbench/CodeMirror/Modal on isolated synthetic-controller origin5206; production source unchanged",
+  "limitations": [
+    "Concurrent real Browser Linux Next build; not a clean performance benchmark",
+    "Synthetic controller I/O; no real filesystem, model or build execution",
+    "Stale first-read replacement race identified separately and not covered by this source snapshot",
+    "One read-only locator evaluation timed out although the dialog remained present; direct scoped DOM observation confirmed its value"
+  ],
+  "checks": [
+    {
+      "name": "clean external deletion closes editor and tab",
+      "passed": true
+    },
+    {
+      "name": "dirty deletion retains editor and resolution text",
+      "passed": true
+    },
+    {
+      "name": "explicit recreation uses absent revision and preserves draft",
+      "passed": true
+    },
+    {
+      "name": "recreated file has no stale conflict blocking build admission",
+      "passed": true
+    },
+    {
+      "name": "discard removes draft/tab without recreating backend file",
+      "passed": true
+    },
+    {
+      "name": "late save conflict uses newest typing after fallback read",
+      "passed": true
+    },
+    {
+      "name": "resolved draft saved at expected external revision and stale marker cleared",
+      "passed": true
+    }
+  ],
+  "receipts": {
+    "recreation": {
+      "calls": [
+        {
+          "method": "readFile",
+          "path": "draft.js"
+        },
+        {
+          "content": "export const draft = \"preserve this typing\";\n",
+          "expect": 0,
+          "method": "saveFile",
+          "path": "draft.js"
+        },
+        {
+          "method": "readFile",
+          "path": "draft.js"
+        }
+      ],
+      "files": [
+        {
+          "content": "export const clean = true;\n",
+          "path": "clean.js",
+          "rev": 1
+        },
+        {
+          "content": "export const value = \"base\";\n",
+          "path": "conflict.js",
+          "rev": 1
+        },
+        {
+          "content": "export const draft = \"preserve this typing\";\n",
+          "path": "draft.js",
+          "rev": 1
+        }
+      ],
+      "pendingSave": false,
+      "waitingReads": 0
+    },
+    "buildAdmission": {
+      "calls": [
+        {
+          "method": "readFile",
+          "path": "draft.js"
+        },
+        {
+          "content": "export const draft = \"preserve this typing\";\n",
+          "expect": 0,
+          "method": "saveFile",
+          "path": "draft.js"
+        },
+        {
+          "method": "readFile",
+          "path": "draft.js"
+        },
+        {
+          "method": "buildPreview"
+        }
+      ],
+      "files": [
+        {
+          "content": "export const clean = true;\n",
+          "path": "clean.js",
+          "rev": 1
+        },
+        {
+          "content": "export const value = \"base\";\n",
+          "path": "conflict.js",
+          "rev": 1
+        },
+        {
+          "content": "export const draft = \"preserve this typing\";\n",
+          "path": "draft.js",
+          "rev": 1
+        }
+      ],
+      "pendingSave": false,
+      "waitingReads": 0
+    },
+    "discard": {
+      "calls": [
+        {
+          "method": "readFile",
+          "path": "draft.js"
+        }
+      ],
+      "files": [
+        {
+          "content": "export const clean = true;\n",
+          "path": "clean.js",
+          "rev": 1
+        },
+        {
+          "content": "export const value = \"base\";\n",
+          "path": "conflict.js",
+          "rev": 1
+        }
+      ],
+      "pendingSave": false,
+      "waitingReads": 0
+    },
+    "late": {
+      "errors": [],
+      "snapshot": {
+        "calls": [
+          {
+            "method": "readFile",
+            "path": "conflict.js"
+          },
+          {
+            "content": "submitted A",
+            "expect": 1,
+            "method": "saveFile",
+            "path": "conflict.js"
+          },
+          {
+            "method": "readFile",
+            "path": "conflict.js"
+          },
+          {
+            "method": "readFile",
+            "path": "conflict.js"
+          },
+          {
+            "content": "latest typing C during fallback read",
+            "expect": 2,
+            "method": "saveFile",
+            "path": "conflict.js"
+          },
+          {
+            "method": "readFile",
+            "path": "conflict.js"
+          }
+        ],
+        "files": [
+          {
+            "content": "export const clean = true;\n",
+            "path": "clean.js",
+            "rev": 1
+          },
+          {
+            "content": "export const draft = \"saved\";\n",
+            "path": "draft.js",
+            "rev": 1
+          },
+          {
+            "content": "latest typing C during fallback read",
+            "path": "conflict.js",
+            "rev": 3
+          }
+        ],
+        "pendingSave": false,
+        "waitingReads": 0
+      }
+    }
+  },
+  "endedAt": "2026-09-28T22:26:12.687Z",
+  "cleanup": {
+    "ownedTabClosed": true,
+    "fixtureServerStopped": true,
+    "viewportChanged": false,
+    "runtimeTabTouched": false
+  },
+  "screenshot": "workbench-conflict-component-chrome.jpg"
+}
