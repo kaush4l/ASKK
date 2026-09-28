@@ -22,7 +22,7 @@
 
 import { tokens } from './inference.js'
 import { CompactReAct, ReAct, responseModel } from './responses.js'
-import { instructions, runTool } from './tools.js'
+import { instructions, runToolResult } from './tools.js'
 import { renderPrompt, snapshot } from './prompt.js'
 
 const FINAL_NOTE =
@@ -316,8 +316,7 @@ export class Engine {
     const names = Object.keys(item.parameters ?? {})
     if ('value' in args && Object.keys(args).length === 1 && names.length && !names.includes('value')) args = { [names[0]]: args.value }
 
-    const text = await runTool(item, args, { ...this.ctx, signal: this.signal, caller: this.path, call: call.text, callId })
-    const ok = !text.startsWith(`${item.name} failed:`)
+    const { text, ok } = await runToolResult(item, args, { ...this.ctx, signal: this.signal, caller: this.path, call: call.text, callId })
     if (ok && item.cacheable === true && !item.writes) this.results.set(key, text)
     return done(text, ok)
   }

@@ -153,9 +153,16 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
       } else if (message.kind === 'observation') {
         let found = false
         const messages = [...state.messages].reverse().map(row => {
-          if (found || !row.tools?.some(tool => message.callId ? tool.id === message.callId : tool.runId === message.run && tool.status === 'running')) return row
-          let result; try { result = JSON.parse(message.value) } catch {}
-          const failed = message.ok === false || result?.conflict || result?.ok === false || Number.isInteger(result?.code ?? result?.exitCode) && (result.code ?? result.exitCode) !== 0
+          const matched = row.tools?.find(tool => message.callId ? tool.id === message.callId : tool.runId === message.run && tool.status === 'running')
+          if (found || !matched) return row
+          const hasReceipt = ['workspace_write', 'workspace_run', 'workspace_check', 'workspace_build'].includes(matched.name)
+          let result
+          if (hasReceipt) {
+            const prefix = `${matched.name} failed: `
+            const value = String(message.value)
+            try { result = JSON.parse(message.ok === false && value.startsWith(prefix) ? value.slice(prefix.length) : value) } catch {}
+          }
+          const failed = typeof message.ok === 'boolean' ? !message.ok : Boolean(hasReceipt && (result?.conflict || result?.ok === false || result?.cancelled || Number.isInteger(result?.code ?? result?.exitCode) && (result.code ?? result.exitCode) !== 0))
           found = true; return { ...row, tools: row.tools.map(tool => ({ ...tool, status: failed ? 'failed' : 'done', summary: String(message.value).slice(0, 4000), ...(tool.name === 'workspace_run' && result?.id ? { commandId: result.id } : {}), ...(tool.name === 'workspace_build' && result?.id ? { artifactId: result.id } : {}) })) }
         }).reverse(); notify({ messages })
       } else if (['error', 'repair', 'retry', 'incomplete'].includes(message.kind)) activity({ type: message.kind, text: message.value, runId: message.run })
@@ -442,7 +449,7 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
       const packageFile = await files.read('package.json'); if (!packageFile) throw new Error('Create a package.json with a build script first')
       const manifest = JSON.parse(packageFile.content); if (!manifest.scripts?.build) throw new Error('package.json does not define a build script')
       const result = await controller.runCommand(state.runtime.target === 'browser' ? 'rm -rf -- out && npm run build' : 'rm -rf -- out && bun run build', options)
-      if ((result.code ?? result.exitCode) !== 0) throw new Error('Build failed. Open Commands for the actual output.')
+      if (result.cancelled || (result.code ?? result.exitCode) !== 0) throw new Error(result.cancelled ? 'Build was cancelled. The last successful preview is preserved.' : 'Build failed. Open Commands for the actual output.')
       const revision = result.revision; const target = result.runtime; const buildExecutor = executor; const sourceFingerprint = await fingerprint()
       if (sourceFingerprint !== inputFingerprint) throw new Error('Source files changed during the build. Review the saved files and build again; the last successful preview is preserved.')
       const unchanged = async () => { assertBound(result.binding); if (revision !== projectRevision || target !== state.runtime.target || buildExecutor !== executor || running.size || await fingerprint() !== sourceFingerprint) throw new Error('The workspace changed while packaging this build. Build the current saved files again; the last successful preview is preserved.') }

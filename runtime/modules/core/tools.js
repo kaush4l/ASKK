@@ -91,13 +91,16 @@ export function toolbox(tiers, { has = () => true } = {}) {
   return { tools: [...taken.values()], shadowed, unavailable }
 }
 
-/** Run one tool and always come back with text. A throw is an observation, not an ending. */
-export async function runTool(item, args, ctx) {
+/** Status comes from execution, never from text that the tool happens to return. */
+export async function runToolResult(item, args, ctx) {
   try {
     const result = await item.run(args ?? {}, ctx)
-    if (result == null || result === '') return '(no output)'
-    return typeof result === 'string' ? result : JSON.stringify(result, null, 2)
+    const text = result == null || result === '' ? '(no output)' : typeof result === 'string' ? result : JSON.stringify(result, null, 2)
+    return { text, ok: true }
   } catch (error) {
-    return `${item.name} failed: ${error?.message ?? error}`
+    return { text: `${item.name} failed: ${error?.message ?? error}`, ok: false }
   }
 }
+
+/** Compatibility text adapter. Engines consume the typed result above. */
+export async function runTool(item, args, ctx) { return (await runToolResult(item, args, ctx)).text }

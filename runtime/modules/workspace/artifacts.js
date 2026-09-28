@@ -188,6 +188,9 @@ function artifactBootstrap({ id, nonce }, settleStorage) {
   const inputValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set
   const textareaValue = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set
   const includes = String.prototype.includes
+  const slice = String.prototype.slice
+  const quote = bind(JSON.stringify, JSON)
+  const excerpt = text => quote(text.length > 300 ? `${apply(slice, text, [0, 299])}…` : text)
   const push = Array.prototype.push
   const NativeEvent = Event; const NativeFocusEvent = FocusEvent; const NativePromise = Promise; const NativeError = Error
   const timeout = window.setTimeout.bind(window); const clear = window.clearTimeout.bind(window)
@@ -242,7 +245,11 @@ function artifactBootstrap({ id, nonce }, settleStorage) {
             apply(dispatch, element, [new NativeFocusEvent('blur', { bubbles: false, relatedTarget: null })])
             apply(dispatch, element, [new NativeFocusEvent('focusout', { bubbles: true, relatedTarget: null })])
           }
-          else if (assertion.action === 'assertText') { if (!element || !apply(includes, apply(getText, element, []), [assertion.value])) throw new NativeError(`Expected text at ${assertion.selector}`) }
+          else if (assertion.action === 'assertText') {
+            if (!element) throw new NativeError(`No element at ${assertion.selector}; expected text ${excerpt(assertion.value)}`)
+            const actual = apply(getText, element, [])
+            if (!apply(includes, actual, [assertion.value])) throw new NativeError(`Expected text ${excerpt(assertion.value)} at ${assertion.selector}; actual text ${excerpt(actual)}`)
+          }
           else if (assertion.action === 'assertCount') { const count = apply(getLength, queryAll(assertion.selector), []); if (count !== assertion.count) throw new NativeError(`Expected ${assertion.count} matches at ${assertion.selector}, found ${count}`) }
           else throw new NativeError('Unknown assertion action')
           await new NativePromise(resolve => timeout(resolve, 80))
