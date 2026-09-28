@@ -835,3 +835,221 @@ test('a cancelled zero-exit build cannot publish an artifact or replace its pred
   expect(state.artifacts[0].id).toBe(prior.id)
   expect(state.commands.at(-1).status).toBe('cancelled')
 })
+
+test('relay loss invalidates a model check without changing Browser Linux or its artifact', async () => {
+  const { controller, hub } = await startedFixture({ restoredBridge: true, inspectArtifact: async () => ({ ok: true, results: assertions.map(assertion => ({ ...assertion, ok: true })) }) })
+  hub.models = { refresh: async () => ({ ids: ['fixture-model'], at: 123 }) }
+  await controller.startRuntime()
+  await controller.buildPreview()
+  const before = controller.getSnapshot()
+  await controller.testModel()
+  expect(controller.getSnapshot().model.status).toBe('connected')
+  hub.emit({ type: 'bridge', state: { status: 'down', url: 'https://127.0.0.1:7717', error: 'Connection refused' } })
+  expect(controller.getSnapshot().model).toMatchObject({ status: 'failed', checkedAt: null, error: 'Connection refused' })
+  expect(controller.getSnapshot().runtime).toEqual(before.runtime)
+  expect(controller.getSnapshot().artifacts).toEqual(before.artifacts)
+  hub.emit({ type: 'bridge', state: { status: 'answering', url: 'https://127.0.0.1:7717', capabilities: ['model-relay'] } })
+  expect(controller.getSnapshot().model.status).toBe('configured')
+  await controller.testModel()
+  expect(controller.getSnapshot().model).toMatchObject({ status: 'connected', error: '', checkedAt: 123 })
+})
+
+test('an in-flight model check cannot restore success after relay loss or model changes', async () => {
+  const { controller, hub } = await startedFixture({ restoredBridge: true })
+  const pending = deferred()
+  hub.models = { refresh: () => pending.promise }
+  const check = controller.testModel()
+  hub.emit({ type: 'bridge', state: { status: 'down', url: 'https://127.0.0.1:7717', error: 'Relay stopped' } })
+  pending.resolve({ ids: ['fixture-model'], at: 123 })
+  await expect(check).rejects.toThrow('connection changed')
+  expect(controller.getSnapshot().model.status).toBe('failed')
+  const second = deferred()
+  hub.models.refresh = () => second.promise
+  const oldCheck = controller.testModel()
+  await controller.setModel({ model: 'fixture-model', baseUrl: 'https://new-provider.invalid/v1', via: 'direct' })
+  second.resolve({ ids: ['fixture-model'], at: 456 })
+  await expect(oldCheck).rejects.toThrow('connection changed')
+  expect(controller.getSnapshot().model).toMatchObject({ status: 'configured', baseUrl: 'https://new-provider.invalid/v1' })
+})
+
+test('failed or missing-model probes clear previous success; relay loss leaves direct models alone', async () => {
+  const { controller, hub } = await startedFixture()
+  await controller.setModel({ model: 'fixture-model', baseUrl: 'https://model.invalid/v1', via: 'direct' })
+  hub.models = { refresh: async () => ({ ids: ['fixture-model'], at: 123 }) }
+  await controller.testModel()
+  hub.emit({ type: 'bridge', state: { status: 'down', url: 'https://127.0.0.1:7717', error: 'Relay stopped' } })
+  expect(controller.getSnapshot().model.status).toBe('connected')
+  hub.models.refresh = async () => ({ ids: ['another-model'], at: 456 })
+  await expect(controller.testModel()).rejects.toThrow('did not list model')
+  expect(controller.getSnapshot().model).toMatchObject({ status: 'failed', checkedAt: null })
+  hub.models.refresh = async () => { throw new Error('Provider offline') }
+  await expect(controller.testModel()).rejects.toThrow('Provider offline')
+  expect(controller.getSnapshot().model).toMatchObject({ status: 'failed', checkedAt: null, error: 'Provider offline' })
+})
+
+test('guest failure clears readiness and dead terminal handles while preserving its last artifact', async () => {
+  const browser = new ControlledExecution('browser', source)
+  let emit
+  const { controller } = await fixture({ createExecution: async (_, { onEvent }) => { emit = onEvent; return browser } })
+  const artifact = await controller.buildPreview()
+  const terminal = await controller.openTerminal({})
+  emit({ type: 'runtime.error', error: 'Guest memory trap' })
+  const state = controller.getSnapshot()
+  expect(state.runtime).toMatchObject({ target: 'browser', status: 'failed', phase: 'Environment unavailable', detail: 'Guest memory trap' })
+  expect(state.artifacts).toHaveLength(1)
+  expect(state.artifacts[0]).toMatchObject({ id: artifact.id, stale: true, verified: false })
+  emit({ type: 'runtime.progress', phase: 'Ready' })
+  expect(controller.getSnapshot().runtime.phase).toBe('Environment unavailable')
+  browser.closeTerminal = async () => { throw new Error('A dead guest cannot receive a close RPC') }
+  await expect(controller.closeTerminal(terminal.id)).resolves.toBeUndefined()
+})
+
+test('events from the previous browser guest cannot replace the selected native runtime state', async () => {
+  const browser = new ControlledExecution('browser', source)
+  const local = new ControlledExecution('local')
+  let emitBrowser
+  const { controller } = await fixture({ createExecution: async (target, { onEvent }) => { if (target === 'browser') emitBrowser = onEvent; return target === 'browser' ? browser : local } })
+  await controller.startRuntime()
+  await controller.setExecutionTarget('local', { transfer: true })
+  const before = controller.getSnapshot().runtime
+  emitBrowser({ type: 'runtime.error', error: 'Old guest stopped' })
+  emitBrowser({ type: 'runtime.progress', phase: 'Booting' })
+  expect(controller.getSnapshot().runtime).toEqual(before)
+})
+
+test('a guest crash during durable location saving cannot restore readiness', async () => {
+  const browser = new ControlledExecution('browser', source)
+  let emit
+  const { controller, files } = await fixture({ createExecution: async (_, { onEvent }) => { emit = onEvent; return browser } })
+  const gate = pauseOnce(files.store, 'put', { when: (table, row) => table === 'settings' && row.key === 'workspace-location:default' })
+  const boot = controller.startRuntime()
+  await gate.entered
+  emit({ type: 'runtime.error', error: 'Guest stopped during setup' })
+  gate.release()
+  await expect(boot).rejects.toThrow('Guest stopped during setup')
+  expect(controller.getSnapshot().runtime.status).toBe('failed')
+  expect(await files.store.get('settings', 'workspace-location:default')).toBeUndefined()
+})
+
+test('a failed destination cannot commit a transfer during its durable location save', async () => {
+  const browser = new ControlledExecution('browser', source); const local = new ControlledExecution('local')
+  let emitLocal
+  const { controller, files } = await fixture({ createExecution: async (target, { onEvent }) => { if (target === 'local') emitLocal = onEvent; return target === 'browser' ? browser : local } })
+  await controller.startRuntime()
+  const previous = await files.store.get('settings', 'workspace-location:default')
+  const gate = pauseOnce(files.store, 'put', { when: (table, row) => table === 'settings' && row.key === 'workspace-location:default' })
+  const transfer = controller.setExecutionTarget('local', { transfer: true })
+  await gate.entered
+  emitLocal({ type: 'runtime.error', error: 'Destination stopped during transfer' })
+  gate.release()
+  await expect(transfer).rejects.toThrow('Destination stopped during transfer')
+  expect(controller.getSnapshot().runtime).toMatchObject({ target: 'browser', status: 'ready' })
+  expect(files.backend).toBe(browser)
+  expect(await files.store.get('settings', 'workspace-location:default')).toEqual(previous)
+  expect((await browser.read('app/page.jsx')).content).toBe(source['app/page.jsx'])
+})
+
+test('a source crash during transfer stays failed after transfer rollback', async () => {
+  const browser = new ControlledExecution('browser', source); const local = new ControlledExecution('local')
+  let emitBrowser
+  const { controller, files } = await fixture({ createExecution: async (target, { onEvent }) => { if (target === 'browser') emitBrowser = onEvent; return target === 'browser' ? browser : local } })
+  await controller.startRuntime()
+  const gate = pauseOnce(local, 'snapshot')
+  const transfer = controller.setExecutionTarget('local', { transfer: true })
+  await gate.entered
+  emitBrowser({ type: 'runtime.error', error: 'Source stopped during transfer' })
+  gate.release()
+  await expect(transfer).rejects.toThrow('Source stopped during transfer')
+  expect(controller.getSnapshot().runtime).toMatchObject({ target: 'browser', status: 'failed', detail: 'Source stopped during transfer' })
+  expect(files.backend).toBe(browser)
+})
+
+test('a native reconnect lost during location saving cannot acknowledge the replacement', async () => {
+  const original = new ControlledExecution('local'); const replacement = new ControlledExecution('local')
+  original.url = replacement.url = 'https://companion.invalid'; original.token = replacement.token = 'fixture-only'
+  replacement.descriptor.runtimeId = 'local:session-2'
+  let pairs = 0
+  const { controller, hub, files } = await startedFixture({ createCompanion: () => pairs++ ? replacement : original, createExecution: async () => original })
+  await controller.connectCompanion({ url: original.url, token: original.token })
+  await controller.setExecutionTarget('local', { transfer: true })
+  await controller.createFile('retained.txt', 'native bytes before reconnect')
+  replacement.files = original.files; replacement.serial = original.serial
+  const previous = await files.store.get('settings', 'workspace-location:default')
+  const gate = pauseOnce(files.store, 'put', { when: (table, row) => table === 'settings' && row.key === 'workspace-location:default' })
+  const reconnect = controller.connectCompanion({ url: original.url, token: original.token })
+  await gate.entered
+  // The Hub's real health/transport event, not an invented callback on the port.
+  hub.emit({ type: 'bridge', state: { status: 'down', url: original.url, error: 'Native companion stopped during reconnect' } })
+  gate.release()
+  await expect(reconnect).rejects.toThrow('Native companion stopped during reconnect')
+  expect(controller.getSnapshot().runtime).toMatchObject({ target: 'local', status: 'failed' })
+  expect(controller.getSnapshot().companion.status).toBe('down')
+  expect(files.backend).toBe(original)
+  expect(await files.store.get('settings', 'workspace-location:default')).toEqual(previous)
+  expect((await controller.readFile('retained.txt')).content).toBe('native bytes before reconnect')
+})
+
+test('a runtime identity restart during the final location save rejects startup and its durable acknowledgement', async () => {
+  const { controller, files, browser } = await fixture()
+  const gate = pauseOnce(files.store, 'put', { when: (table, row) => table === 'settings' && row.key === 'workspace-location:default' })
+  const boot = controller.startRuntime()
+  await gate.entered
+  browser.descriptor.runtimeId = 'browser:restarted-without-old-error-event'
+  gate.release()
+  await expect(boot).rejects.toThrow('runtimeId')
+  expect(controller.getSnapshot().runtime.status).toBe('failed')
+  expect(await files.store.get('settings', 'workspace-location:default')).toBeUndefined()
+  expect((await browser.read('app/page.jsx')).content).toBe(source['app/page.jsx'])
+})
+
+test('a destination identity restart during final transfer saving restores the source location', async () => {
+  const { controller, files, browser, local } = await fixture()
+  await controller.startRuntime()
+  const previous = await files.store.get('settings', 'workspace-location:default')
+  const gate = pauseOnce(files.store, 'put', { when: (table, row) => table === 'settings' && row.key === 'workspace-location:default' })
+  const transfer = controller.setExecutionTarget('local', { transfer: true })
+  await gate.entered
+  local.descriptor.runtimeId = 'local:restarted-during-transfer'
+  gate.release()
+  await expect(transfer).rejects.toThrow('runtimeId')
+  expect(controller.getSnapshot().runtime).toMatchObject({ target: 'browser', status: 'ready', binding: previous.value.binding })
+  expect(files.backend).toBe(browser)
+  expect(await files.store.get('settings', 'workspace-location:default')).toEqual(previous)
+  expect((await browser.read('app/page.jsx')).content).toBe(source['app/page.jsx'])
+})
+
+test('a source identity restart during final transfer saving cannot restore stale readiness', async () => {
+  const { controller, files, browser } = await fixture()
+  await controller.startRuntime()
+  const previous = await files.store.get('settings', 'workspace-location:default')
+  const gate = pauseOnce(files.store, 'put', { when: (table, row) => table === 'settings' && row.key === 'workspace-location:default' })
+  const transfer = controller.setExecutionTarget('local', { transfer: true })
+  await gate.entered
+  browser.descriptor.runtimeId = 'browser:source-restarted-during-transfer'
+  gate.release()
+  await expect(transfer).rejects.toThrow('runtimeId')
+  expect(controller.getSnapshot().runtime).toMatchObject({ target: 'browser', status: 'failed' })
+  expect(files.backend).toBe(browser)
+  expect(await files.store.get('settings', 'workspace-location:default')).toEqual(previous)
+  expect((await browser.read('app/page.jsx')).content).toBe(source['app/page.jsx'])
+})
+
+test('a native destination disconnect during final transfer saving is observed before target selection commits', async () => {
+  const browser = new ControlledExecution('browser', source); const local = new ControlledExecution('local')
+  Object.assign(local, { url: 'https://companion.invalid', token: 'fixture-only' })
+  const { controller, hub, files } = await startedFixture({ createCompanion: () => local, createExecution: async target => target === 'browser' ? browser : local })
+  await controller.connectCompanion({ url: local.url, token: local.token })
+  await controller.startRuntime()
+  const previous = await files.store.get('settings', 'workspace-location:default')
+  const gate = pauseOnce(files.store, 'put', { when: (table, row) => table === 'settings' && row.key === 'workspace-location:default' })
+  const transfer = controller.setExecutionTarget('local', { transfer: true })
+  await gate.entered
+  expect(controller.getSnapshot().runtime.target).toBe('browser')
+  hub.emit({ type: 'bridge', state: { status: 'down', url: local.url, error: 'Native destination stopped before commit' } })
+  gate.release()
+  await expect(transfer).rejects.toThrow('Native destination stopped before commit')
+  expect(controller.getSnapshot().runtime).toMatchObject({ target: 'browser', status: 'ready' })
+  expect(controller.getSnapshot().companion.status).toBe('down')
+  expect(files.backend).toBe(browser)
+  expect(await files.store.get('settings', 'workspace-location:default')).toEqual(previous)
+})
