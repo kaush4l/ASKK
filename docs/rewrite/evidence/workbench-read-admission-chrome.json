@@ -1,0 +1,152 @@
+{
+  "version": 1,
+  "sourceCommit": "ecd514c",
+  "headAtPreparation": "647296f",
+  "sourceHashes": {
+    "src/workbench/Workbench.jsx": "3c3659de1159bf5fa6df06fa0f9724a08ba7d74c4941dd859bad9cbb6de85364",
+    "src/workbench/external-files.js": "b9376038f7f6b55223c8ccc72bd43122a5290e330bfc8b4e2254ad778ed09f0d",
+    "src/workbench/Editor.jsx": "d0bb083d4bebcccb9c0124b2db1a0f577c746c0af725a892c654afdaae57f75b",
+    "src/workbench/editor-layout.js": "5efb3e807740783d71a171c8be8d7fa6f02387a4ac84ad3d252509c67e6bd172"
+  },
+  "startedAt": "2026-09-28T22:32:08Z",
+  "checksCompletedAt": "2026-09-28T22:33:23.452Z",
+  "scope": "Real Workbench/CodeMirror/Modal on synthetic controller; delayed first-read admission",
+  "limitations": [
+    "Synthetic in-memory I/O, not a guest filesystem concurrency test",
+    "Concurrent real Browser Linux Next functional build; not a pristine performance measurement",
+    "DOM MutationObserver records editor text; this does not measure every compositor paint",
+    "No global viewport override, runtime tab action, model, or guest boot"
+  ],
+  "checks": [
+    {
+      "name": "replacement during first read retries current revision without rendering stale A",
+      "passed": true
+    },
+    {
+      "name": "superseded first read does not create tab, render document or leave preview",
+      "passed": true
+    },
+    {
+      "name": "reopening after superseded navigation performs a new read instead of using hidden stale cache",
+      "passed": true
+    }
+  ],
+  "receipts": {
+    "replacement": {
+      "errors": [],
+      "fixture": {
+        "calls": [
+          {
+            "method": "readFile",
+            "path": "clean.js"
+          },
+          {
+            "method": "readFile",
+            "path": "clean.js"
+          }
+        ],
+        "capturedRead": null,
+        "files": [
+          {
+            "content": "export const currentRevision = \"B\";\n",
+            "path": "clean.js",
+            "rev": 2
+          },
+          {
+            "content": "export const draft = \"saved\";\n",
+            "path": "draft.js",
+            "rev": 1
+          },
+          {
+            "content": "export const value = \"base\";\n",
+            "path": "conflict.js",
+            "rev": 1
+          }
+        ],
+        "observedEditorTexts": [
+          "export const currentRevision = \"B\";"
+        ],
+        "pendingSave": false,
+        "waitingReads": 0
+      }
+    },
+    "superseded": {
+      "errors": [],
+      "fixture": {
+        "calls": [
+          {
+            "method": "readFile",
+            "path": "clean.js"
+          }
+        ],
+        "capturedRead": null,
+        "files": [
+          {
+            "content": "export const clean = true;\n",
+            "path": "clean.js",
+            "rev": 1
+          },
+          {
+            "content": "export const draft = \"saved\";\n",
+            "path": "draft.js",
+            "rev": 1
+          },
+          {
+            "content": "export const value = \"base\";\n",
+            "path": "conflict.js",
+            "rev": 1
+          }
+        ],
+        "observedEditorTexts": [],
+        "pendingSave": false,
+        "waitingReads": 0
+      }
+    },
+    "reopened": {
+      "errors": [],
+      "fixture": {
+        "calls": [
+          {
+            "method": "readFile",
+            "path": "clean.js"
+          },
+          {
+            "method": "readFile",
+            "path": "clean.js"
+          }
+        ],
+        "capturedRead": null,
+        "files": [
+          {
+            "content": "export const clean = true;\n",
+            "path": "clean.js",
+            "rev": 1
+          },
+          {
+            "content": "export const draft = \"saved\";\n",
+            "path": "draft.js",
+            "rev": 1
+          },
+          {
+            "content": "export const value = \"base\";\n",
+            "path": "conflict.js",
+            "rev": 1
+          }
+        ],
+        "observedEditorTexts": [
+          "export const clean = true;"
+        ],
+        "pendingSave": false,
+        "waitingReads": 0
+      }
+    }
+  },
+  "endedAt": "2026-09-28T22:33:23.474Z",
+  "cleanup": {
+    "ownedTabClosed": true,
+    "fixtureServerStopped": true,
+    "viewportChanged": false,
+    "runtimeTabTouched": false
+  },
+  "screenshot": "workbench-read-admission-chrome.jpg"
+}
