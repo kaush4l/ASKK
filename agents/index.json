@@ -1,5 +1,5 @@
 {
-  "build": "a6db047895",
+  "build": "0e0a762aab",
   "files": {
     "agents/coder/agent.md": "3afbea3eaa",
     "agents/coder/reviewer/agent.md": "2ca84fdcea",
@@ -38,10 +38,11 @@
     "browser-linux/generated/c2w-node24-38d093f4a38002db/xterm-pty.LICENSE": "039528e966",
     "browser-linux/generated/manifest.json": "0ffbac681a",
     "browser-linux/idbfs-links.js": "b7f76eeb46",
+    "browser-linux/network-policy.js": "2da47339d3",
     "browser-linux/ownership.js": "aec7cb2004",
     "browser-linux/probe.html": "9578290114",
     "browser-linux/runtime.html": "b0f314a6b2",
-    "browser-linux/runtime.js": "79a790ecbd",
+    "browser-linux/runtime.js": "166c168cbb",
     "browser-linux/vendor/browser_wasi_shim.LICENSE-APACHE": "7df0595970",
     "browser-linux/vendor/browser_wasi_shim.LICENSE-MIT": "ce3a260309",
     "browser-linux/vendor/container2wasm.LICENSE": "2b8b815229",
