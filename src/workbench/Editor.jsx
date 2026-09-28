@@ -9,7 +9,7 @@ import { css } from '@codemirror/lang-css'
 import { json } from '@codemirror/lang-json'
 import { markdown } from '@codemirror/lang-markdown'
 import { oneDark } from '@codemirror/theme-one-dark'
-import { editorSession, externalEditorChange } from './editor-layout.js'
+import { editorSession, editorGeneration, rememberEditorState, externalEditorChange } from './editor-layout.js'
 
 const appearance = EditorView.theme({
   '&': { height: '100%', backgroundColor: 'var(--editor)', color: 'var(--text)' },
@@ -47,8 +47,9 @@ export default function Editor({ path, value, theme, onChange, onSave, onFocus, 
   const readSlot = useRef(shared.readSlot)
   const initialValue = useRef(value)
   const key = name => `${scope}:${name}`
+  const generation = useRef(editorGeneration(shared, key(path)))
   function remember(name, editor) {
-    states.current.set(key(name), { state: editor.state, top: editor.scrollDOM.scrollTop, left: editor.scrollDOM.scrollLeft })
+    rememberEditorState(shared, key(name), generation.current, { state: editor.state, top: editor.scrollDOM.scrollTop, left: editor.scrollDOM.scrollLeft })
   }
   function restoreScroll(editor, entry) {
     if (entry) requestAnimationFrame(() => { if (view.current === editor) { editor.scrollDOM.scrollTop = entry.top; editor.scrollDOM.scrollLeft = entry.left } })
@@ -86,6 +87,7 @@ export default function Editor({ path, value, theme, onChange, onSave, onFocus, 
     if (path !== currentPath.current) {
       remember(currentPath.current, editor)
       const saved = states.current.get(key(path))
+      generation.current = editorGeneration(shared, key(path))
       editor.setState(saved?.state || editor.makeState(path, value))
       restoreScroll(editor, saved)
       currentPath.current = path

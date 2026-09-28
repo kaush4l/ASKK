@@ -1,6 +1,15 @@
 /** Save the drafts visible at admission, then reject any edit made during saving. */
 export function acknowledgeSavedDraft(current, submitted, revision) {
-  return { ...current, baseContent: submitted.content, baseRev: revision, incoming: current.incoming?.rev === revision ? null : current.incoming }
+  const incoming = current.incoming
+  // A successful CAS save resolves the reviewed base as well as its own receipt.
+  // Keep a different incoming revision: another writer may have committed meanwhile.
+  const resolved = incoming && (incoming.rev === submitted.baseRev || incoming.rev === revision)
+  return { ...current, baseContent: submitted.content, baseRev: revision, incoming: resolved ? null : incoming }
+}
+
+/** Keep new editor typing; otherwise retain the submitted draft or merge attempt. */
+export function draftForConflict(current, submitted, contentAtAdmission) {
+  return current && current.content !== contentAtAdmission ? current.content : submitted.content
 }
 
 export async function saveAllDrafts(readDocuments, save) {

@@ -49,8 +49,23 @@ export function editorGroupGeometry(width, ratio = .5) {
 /** Never share callback refs or cached EditorState instances across concurrent views. */
 export function editorSession(cache, groupId = 'primary') {
   cache.sessions ||= new Map()
-  if (!cache.sessions.has(groupId)) cache.sessions.set(groupId, { states: new Map(), callbacks: { current: {} } })
+  if (!cache.sessions.has(groupId)) cache.sessions.set(groupId, { states: new Map(), generations: new Map(), callbacks: { current: {} } })
   return cache.sessions.get(groupId)
+}
+
+export function editorGeneration(session, key) { return session.generations?.get(key) || 0 }
+export function rememberEditorState(session, key, generation, entry) {
+  if (editorGeneration(session, key) !== generation) return false
+  session.states.set(key, entry)
+  return true
+}
+export function forgetEditorFile(cache, scope, path) {
+  const key = `${scope || 'default'}:${path}`
+  for (const session of cache.sessions?.values() || []) {
+    session.generations ||= new Map()
+    session.generations.set(key, editorGeneration(session, key) + 1)
+    session.states.delete(key)
+  }
 }
 
 /** A small external edit preserves unaffected cursor positions in the other group. */

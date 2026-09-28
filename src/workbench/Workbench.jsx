@@ -11,8 +11,9 @@ import ToolCard from './ToolCard.jsx'
 import BindingReview from './BindingReview.jsx'
 import PhoneWorkspaceTabs from './PhoneWorkspaceTabs.jsx'
 import DiffView from './DiffView.jsx'
-import { createEditorGroup, openEditorTab, closeEditorTab, pinEditorTab, createEditorNavigation, editorGroupGeometry, isDiffTab, isPreviewTab, editorFilePath } from './editor-layout.js'
-import { acknowledgeSavedDraft, saveAllDrafts } from './save-all.js'
+import { createEditorGroup, openEditorTab, closeEditorTab, pinEditorTab, createEditorNavigation, editorGroupGeometry, isDiffTab, isPreviewTab, editorFilePath, forgetEditorFile } from './editor-layout.js'
+import { acknowledgeSavedDraft, draftForConflict, saveAllDrafts } from './save-all.js'
+import { reconcileMissingDocuments, mayOpenFile } from './external-files.js'
 
 const Editor = dynamic(() => import('./Editor.jsx'), { ssr: false, loading: () => <div className="surface-loading">Opening editor…</div> })
 const Terminal = dynamic(() => import('./Terminal.jsx'), { ssr: false, loading: () => <div className="surface-loading">Opening terminal…</div> })
@@ -62,6 +63,8 @@ function ResizeHandle({ onResize, label, vertical = false, className = '', value
 export default function Workbench() {
   const [controller, raw] = useController()
   const state = { ...EMPTY, ...raw, runtime: { ...EMPTY.runtime, ...raw.runtime }, companion: { ...EMPTY.companion, ...raw.companion }, model: { ...raw.model } }
+  const fileSnapshot = useRef(state)
+  fileSnapshot.current = state
   const [surface, setSurface] = useState('conversation')
   const [phoneSurface, setPhoneSurface] = useState('code')
   const phoneSurfaceRef = useRef(phoneSurface)
@@ -375,6 +378,7 @@ export default function Workbench() {
     try {
       if (!docsRef.current[path]) {
         const file = await perform('readFile', path)
+        if (!mayOpenFile(path, docsRef.current, fileSnapshot.current.files, fileSnapshot.current.ready)) throw new Error(`${path} no longer exists.`)
         if (!file && !docsRef.current[path]) throw new Error(`${path} no longer exists.`)
         if (!docsRef.current[path]) {
           const next = { ...docsRef.current, [path]: { content: file.content, baseContent: file.content, baseRev: file.rev } }
@@ -400,17 +404,25 @@ export default function Workbench() {
   }, [controller, state.ready, selected, secondaryGroup.selected, openFile])
 
   useEffect(() => {
+    const openPaths = [...readGroup('primary').tabs, ...readGroup('secondary').tabs].map(editorFilePath)
+    const reconciled = reconcileMissingDocuments(docsRef.current, state.files, { ready: state.ready, hydrated: hydratedDrafts, saving: savesInFlight.current, openPaths })
+    if (reconciled.documents !== docsRef.current) { docsRef.current = reconciled.documents; setDocuments(reconciled.documents) }
+    for (const path of reconciled.closedPaths) { removeFileTabs(path); forgetEditorFile(editorCache.current, state.project?.id, path) }
+  }, [state.files, state.ready, hydratedDrafts, documents])
+
+  useEffect(() => {
     if (!controller || !state.ready) return
     let live = true
     const before = previousFiles.current
     const after = new Map(state.files.map(file => [file.path, file.rev]))
     for (const file of state.files) {
       const doc = docsRef.current[file.path]
-      if (doc && file.rev !== doc.baseRev) controller.readFile(file.path).then(latest => {
+      if (doc && (file.rev !== doc.baseRev || doc.incoming?.deleted)) controller.readFile(file.path).then(latest => {
         if (!live || !latest) return
         setDocuments(previous => {
           const current = previous[file.path]
-          if (!current || current.baseRev === latest.rev) return previous
+          if (!current || current.baseRev === latest.rev && !current.incoming?.deleted) return previous
+          if (current.incoming?.deleted && current.baseRev === latest.rev && current.baseContent === latest.content) return { ...previous, [file.path]: { ...current, incoming: null } }
           return { ...previous, [file.path]: current.content !== current.baseContent ? { ...current, incoming: latest } : { content: latest.content, baseContent: latest.content, baseRev: latest.rev } }
         })
       }).catch(error => setToast(error.message))
@@ -432,13 +444,15 @@ export default function Workbench() {
   async function save(path = editorFilePath(activeSelectionRef.current), override) {
     const doc = override || docsRef.current[path]
     if (!doc || savesInFlight.current.has(path)) return false
+    const contentAtAdmission = docsRef.current[path]?.content
     savesInFlight.current.add(path)
     try {
       const result = await perform('saveFile', { path, content: doc.content, expect: doc.baseRev })
       if (result.conflict) {
         const latest = result.current || await perform('readFile', path)
-        setModal({ type: 'conflict', path, base: doc.baseContent, latest, draft: doc.content })
-        setModalValue(doc.content)
+        const draft = draftForConflict(docsRef.current[path], doc, contentAtAdmission)
+        setModal({ type: 'conflict', path, base: doc.baseContent, latest, draft, deleted: !latest })
+        setModalValue(draft)
         return false
       }
       const next = { ...docsRef.current, [path]: acknowledgeSavedDraft(docsRef.current[path] || doc, doc, result.rev) }
@@ -456,6 +470,12 @@ export default function Workbench() {
   function removeTab(id, groupId = activeEditorGroupRef.current) { fileNavigation.current.invalidate(groupId); writeGroup(groupId, closeEditorTab(readGroup(groupId), id)) }
   function removeFileTabs(path) {
     for (const id of ['primary', 'secondary']) { fileNavigation.current.invalidate(id); let group = readGroup(id); for (const tab of group.tabs) if (editorFilePath(tab) === path) group = closeEditorTab(group, tab); writeGroup(id, group) }
+  }
+  function discardDeletedDraft(path) {
+    const next = { ...docsRef.current }; delete next[path]
+    docsRef.current = next; setDocuments(next)
+    removeFileTabs(path); forgetEditorFile(editorCache.current, fileSnapshot.current.project?.id, path)
+    setModal(null)
   }
   async function saveAndClose() {
     const path = modal.path
@@ -579,7 +599,7 @@ export default function Workbench() {
         {selection === 'welcome' ? <Welcome state={state} onModel={() => openSettings('model')} onRuntime={() => openSettings('runtime')} onCreate={showCreate} onCompose={() => { showConversation(true) }}/>
         : isPreviewTab(selection) ? <div className="preview-surface"><div className="preview-toolbar"><div className="preview-address"><Icon name="globe" size={13}/><span>{artifact?.name || 'Application preview'}</span></div><select aria-label={`Preview viewport in group ${number}`} value={previewSize} onChange={event => setPreviewSize(event.target.value)}><option value="fit">Fit</option><option value="390">Phone · 390</option><option value="768">Tablet · 768</option></select><IconButton icon="refresh" label="Refresh preview" disabled={!artifact?.html} onClick={() => action('refreshPreview')}/></div>{artifact?.html ? <ArtifactPreview artifact={artifact} projectId={state.project?.id} size={previewSize}/> : <div className="empty-preview"><div className="preview-illustration"><Icon name="globe" size={38}/></div><h2>A place for your creation.</h2><p>{artifact?.error || 'Build your project to see it running here. Your files, commands, and preview stay together.'}</p><button className="button primary" onClick={build} disabled={!!busy || !state.files.length || activeStatus(artifact?.status)}><Icon name="play" size={14}/>{busy === 'build' || activeStatus(artifact?.status) ? 'Building…' : dirtyPaths.size ? 'Save all & build' : 'Build preview'}</button></div>}</div>
         : isDiffTab(selection) && doc ? <><div className="editor-breadcrumb"><span>{path} · Changes</span><div><button className="text-button" onClick={() => selectEditor(path, groupId)}>Open file</button><button className="text-button" disabled={!dirtyPaths.has(path)} onClick={() => save(path)}><Icon name="save" size={13}/>Save</button></div></div><DiffView path={path} base={doc.baseContent} draft={doc.content} baseLabel="Saved base" draftLabel="Your draft"/></>
-        : doc ? <><div className="editor-breadcrumb"><span>{path.split('/').join('  /  ')}</span><div>{doc.incoming && <button className="incoming-button" onClick={() => { setModal({ type: 'conflict', path, base: doc.baseContent, latest: doc.incoming }); setModalValue(doc.content) }}>New committed version</button>}<button className="text-button" disabled={!dirtyPaths.has(path)} onClick={() => save(path)}><Icon name="save" size={13}/>{dirtyPaths.has(path) ? 'Save' : 'Saved'}</button><IconButton icon="changes" label={`Compare draft for ${lastName(path)}`} disabled={!dirtyPaths.has(path)} onClick={() => openDiff(path)}/><IconButton icon="more" label="File actions" onClick={() => { setModalValue(path); setModal({ type: 'fileMenu', path, groupId }) }}/></div></div><Editor key={`${state.project?.id || 'default'}:${groupId}`} cache={editorCache.current} groupId={groupId} scope={state.project?.id} path={path} value={doc.content} theme={resolvedTheme} onChange={content => changeDocument(path, content)} onSave={() => save(path)} onFocus={() => { activateGroup(groupId); setFollow(false) }} onPosition={next => { positions.current[groupId] = next; if (activeEditorGroupRef.current === groupId) setPosition(next) }}/></> : <div className="surface-loading">Opening file…</div>}
+        : doc ? <><div className="editor-breadcrumb"><span>{path.split('/').join('  /  ')}</span><div>{doc.incoming && <button className="incoming-button" onClick={() => { setModal({ type: 'conflict', path, base: doc.baseContent, latest: doc.incoming.deleted ? null : doc.incoming, deleted: !!doc.incoming.deleted }); setModalValue(doc.content) }}>{doc.incoming.deleted ? 'File deleted · Review' : 'New committed version'}</button>}<button className="text-button" disabled={!dirtyPaths.has(path)} onClick={() => save(path)}><Icon name="save" size={13}/>{dirtyPaths.has(path) ? 'Save' : 'Saved'}</button><IconButton icon="changes" label={`Compare draft for ${lastName(path)}`} disabled={!dirtyPaths.has(path)} onClick={() => openDiff(path)}/><IconButton icon="more" label="File actions" onClick={() => { setModalValue(path); setModal({ type: 'fileMenu', path, groupId }) }}/></div></div><Editor key={`${state.project?.id || 'default'}:${groupId}`} cache={editorCache.current} groupId={groupId} scope={state.project?.id} path={path} value={doc.content} theme={resolvedTheme} onChange={content => changeDocument(path, content)} onSave={() => save(path)} onFocus={() => { activateGroup(groupId); setFollow(false) }} onPosition={next => { positions.current[groupId] = next; if (activeEditorGroupRef.current === groupId) setPosition(next) }}/></> : <div className="surface-loading">Opening file…</div>}
       </div></div>
     </section>
   }
@@ -652,8 +672,8 @@ export default function Workbench() {
     {(modal?.type === 'create' || modal?.type === 'rename') && <Modal title={modal.type === 'create' ? 'Create a file' : 'Rename file'} onClose={() => setModal(null)}><form onSubmit={submitFileAction}><label className="field-label" htmlFor="file-path">Path relative to your project</label><input id="file-path" className="form-input" autoFocus placeholder="src/app.js" value={modalValue} onChange={event => setModalValue(event.target.value)}/>{modalError && <p className="form-error">{modalError}</p>}<div className="modal-footer"><button type="button" className="button subtle" onClick={() => setModal(null)}>Cancel</button><button className="button primary" disabled={!!busy}>{modal.type === 'create' ? 'Create file' : 'Rename'}</button></div></form></Modal>}
     {modal?.type === 'fileMenu' && <Modal title={lastName(modal.path)} onClose={() => setModal(null)}><p className="modal-description mono">{modal.path}</p><div className="menu-actions">{readGroup(modal.groupId || activeEditorGroupRef.current).temporaryTab === modal.path && <button onClick={() => { pinTab(modal.path, modal.groupId || activeEditorGroupRef.current); setModal(null) }}><Icon name="pin"/>Keep file open</button>}<button onClick={() => setModal({ ...modal, type: 'rename' })}><Icon name="files"/>Rename file</button><button onClick={() => { navigator.clipboard?.writeText(modal.path).then(() => setToast('Path copied.')); setModal(null) }}><Icon name="code"/>Copy path</button><button className="danger-text" onClick={() => setModal({ ...modal, type: 'delete' })}><Icon name="close"/>Delete file</button></div></Modal>}
     {modal?.type === 'delete' && <Modal title="Delete this file?" onClose={() => setModal(null)}><p className="modal-description">{modal.path}{dirtyPaths.has(modal.path) ? ' has an unsaved draft. Deleting removes the file and this draft.' : ' will be removed from this project.'}</p><div className="modal-footer"><button className="button subtle" onClick={() => setModal(null)}>Cancel</button><button className="button danger" onClick={async () => { try { await perform('deleteFile', modal.path, documents[modal.path]?.baseRev); removeFileTabs(modal.path); setDocuments(previous => { const next = { ...previous }; delete next[modal.path]; return next }); setModal(null) } catch (error) { setToast(error.message) } }}>Delete file</button></div></Modal>}
-    {modal?.type === 'close' && <Modal title="Save your changes?" onClose={() => { if (!busy) setModal(null) }}><p className="modal-description">Your changes to {lastName(modal.path)} haven’t been committed to the workspace.</p><div className="modal-footer"><button className="button subtle" disabled={!!busy} onClick={() => setModal(null)}>Cancel</button><button className="button subtle" disabled={!!busy} onClick={() => { const path = modal.path; setDocuments(previous => ({ ...previous, [path]: { ...previous[path], content: previous[path].baseContent } })); removeTab(path, modal.groupId); setModal(null) }}>Discard</button><button className="button primary" disabled={!!busy} onClick={saveAndClose}>Save & close</button></div></Modal>}
-    {modal?.type === 'conflict' && <Modal wide title="Keep both changes in view" onClose={() => { if (!busy) setModal(null) }}><p className="modal-description">{modal.path} changed after your draft began. Compare the versions, edit your resolution, then save against the latest revision.</p><div className="conflict-grid"><label>Original base<textarea readOnly value={modal.base || ''}/></label><label>Latest committed · r{modal.latest?.rev}<textarea readOnly value={modal.latest?.content || ''}/></label><label>Your resolution<textarea disabled={!!busy} value={modalValue} onChange={event => setModalValue(event.target.value)}/></label></div><div className="modal-footer"><button className="button subtle" disabled={!!busy} onClick={() => setModal(null)}>Keep editing later</button><button className="button primary" disabled={!!busy} onClick={resolveDraftConflict}>Save resolved draft</button></div></Modal>}
+    {modal?.type === 'close' && <Modal title="Save your changes?" onClose={() => { if (!busy) setModal(null) }}><p className="modal-description">Your changes to {lastName(modal.path)} haven’t been committed to the workspace.</p><div className="modal-footer"><button className="button subtle" disabled={!!busy} onClick={() => setModal(null)}>Cancel</button><button className="button subtle" disabled={!!busy} onClick={() => { const path = modal.path; if (docsRef.current[path]?.incoming?.deleted) { discardDeletedDraft(path); return }; setDocuments(previous => ({ ...previous, [path]: { ...previous[path], content: previous[path].baseContent } })); removeTab(path, modal.groupId); setModal(null) }}>Discard</button><button className="button primary" disabled={!!busy} onClick={saveAndClose}>Save & close</button></div></Modal>}
+    {modal?.type === 'conflict' && <Modal wide title={modal.deleted ? 'This file was deleted' : 'Keep both changes in view'} onClose={() => { if (!busy) setModal(null) }}><p className="modal-description">{modal.path}{modal.deleted ? ' was deleted from the workspace. Your draft is preserved. Recreate the file explicitly, discard the draft, or keep editing.' : ' changed after your draft began. Compare the versions, edit your resolution, then save against the latest revision.'}</p><div className="conflict-grid"><label>Original base<textarea readOnly value={modal.base || ''}/></label><label>{modal.deleted ? 'Deleted from workspace' : `Latest committed · r${modal.latest?.rev}`}<textarea readOnly value={modal.latest?.content || ''}/></label><label>Your resolution<textarea disabled={!!busy} value={modalValue} onChange={event => setModalValue(event.target.value)}/></label></div><div className="modal-footer"><button className="button subtle" disabled={!!busy} onClick={() => setModal(null)}>Keep editing later</button>{modal.deleted && <button className="button subtle" disabled={!!busy} onClick={() => discardDeletedDraft(modal.path)}>Discard draft</button>}<button className="button primary" disabled={!!busy} onClick={resolveDraftConflict}>{modal.deleted ? 'Recreate file' : 'Save resolved draft'}</button></div></Modal>}
   </div>
 }
 
