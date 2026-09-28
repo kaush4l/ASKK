@@ -1,0 +1,196 @@
+{
+  "version": 1,
+  "sourceCommit": "78e57b7",
+  "export": {
+    "bytes": 802890535,
+    "files": 134,
+    "sha256": "6cb657492804bdc0d9099bc5d873e93ad242b9ef10d09f54178c4a088d8026ca"
+  },
+  "startedAt": "2026-09-28T22:51:37Z",
+  "checksCompletedAt": "2026-09-28T22:53:13.428Z",
+  "scope": "Actual static export at http://127.0.0.1:5198/ASKK/, real controller and CSS; no synthetic controller",
+  "limitations": [
+    "Dedicated QA origin retained disposable files/layout/draft from earlier tests; conversation was empty",
+    "Desktop1440x900 and narrow390x844 are tab-local CDP emulation, not native phone browser/keyboard",
+    "No model generation, runtime startup or streaming run was performed"
+  ],
+  "checks": [
+    {
+      "name": "neutral heading and one configured notice on desktop",
+      "passed": true
+    },
+    {
+      "name": "notice visible within desktop transcript",
+      "passed": true
+    },
+    {
+      "name": "notice visible within narrow transcript",
+      "passed": true
+    },
+    {
+      "name": "desktop and narrow have no horizontal overflow",
+      "passed": true
+    },
+    {
+      "name": "narrow composer remains pinned when transcript scrolls",
+      "passed": true
+    },
+    {
+      "name": "keyboard reaches model control and original draft remains unchanged",
+      "passed": true
+    },
+    {
+      "name": "runtime not started and model only configured",
+      "passed": true
+    }
+  ],
+  "measurements": {
+    "desktop": {
+      "composer": {
+        "bottom": 874,
+        "height": 188.5,
+        "left": 0,
+        "right": 400,
+        "top": 685.5,
+        "width": 400,
+        "x": 0,
+        "y": 685.5
+      },
+      "crossOriginIsolated": true,
+      "goal": "Disposable QA draft for storage recovery.",
+      "heading": "Start with an idea.Keep the work in view.",
+      "notice": {
+        "bottom": 536.765625,
+        "height": 81.4453125,
+        "left": 25,
+        "right": 375,
+        "top": 455.3203125,
+        "width": 350,
+        "x": 25,
+        "y": 455.3203125
+      },
+      "noticeCount": 1,
+      "noticeText": "Browser Linux previewBrowser Linux is experimental. App builds are not ready for reliable use yet. Startup can take several minutes.",
+      "overflow": false,
+      "status": "Browser Linux \u00b7 Not started1 unsavedModel configured",
+      "transcript": {
+        "bottom": 685.5,
+        "height": 543,
+        "left": 0,
+        "right": 400,
+        "top": 142.5,
+        "width": 400,
+        "x": 0,
+        "y": 142.5
+      },
+      "viewport": {
+        "height": 900,
+        "width": 1440
+      }
+    },
+    "narrowBeforeScroll": {
+      "composer": {
+        "bottom": 844,
+        "height": 185.28125,
+        "left": 0,
+        "right": 390,
+        "top": 658.71875,
+        "width": 390,
+        "x": 0,
+        "y": 658.71875
+      },
+      "crossOriginIsolated": true,
+      "goal": "Disposable QA draft for storage recovery.",
+      "heading": "Start with an idea.Keep the work in view.",
+      "notice": {
+        "bottom": 526.046875,
+        "height": 81.4453125,
+        "left": 22,
+        "right": 368,
+        "top": 444.6015625,
+        "width": 346,
+        "x": 22,
+        "y": 444.6015625
+      },
+      "noticeCount": 1,
+      "noticeText": "Browser Linux previewBrowser Linux is experimental. App builds are not ready for reliable use yet. Startup can take several minutes.",
+      "overflow": false,
+      "status": "Browser Linux \u00b7 Not started1 unsavedModel configured",
+      "transcript": {
+        "bottom": 658.71875,
+        "height": 493.21875,
+        "left": 0,
+        "right": 390,
+        "top": 165.5,
+        "width": 390,
+        "x": 0,
+        "y": 165.5
+      },
+      "viewport": {
+        "height": 844,
+        "width": 390
+      }
+    },
+    "narrowAfterScroll": {
+      "composer": {
+        "bottom": 844,
+        "height": 185.28125,
+        "left": 0,
+        "right": 390,
+        "top": 658.71875,
+        "width": 390,
+        "x": 0,
+        "y": 658.71875
+      },
+      "crossOriginIsolated": true,
+      "goal": "Disposable QA draft for storage recovery.",
+      "heading": "Start with an idea.Keep the work in view.",
+      "notice": {
+        "bottom": 472.546875,
+        "height": 81.4453125,
+        "left": 22,
+        "right": 368,
+        "top": 391.1015625,
+        "width": 346,
+        "x": 22,
+        "y": 391.1015625
+      },
+      "noticeCount": 1,
+      "noticeText": "Browser Linux previewBrowser Linux is experimental. App builds are not ready for reliable use yet. Startup can take several minutes.",
+      "overflow": false,
+      "status": "Browser Linux \u00b7 Not started1 unsavedModel configured",
+      "transcript": {
+        "bottom": 658.71875,
+        "height": 493.21875,
+        "left": 0,
+        "right": 390,
+        "top": 165.5,
+        "width": 390,
+        "x": 0,
+        "y": 165.5
+      },
+      "viewport": {
+        "height": 844,
+        "width": 390
+      }
+    },
+    "keyboard": {
+      "activeClass": "model-picker",
+      "activeText": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+      "goal": "Disposable QA draft for storage recovery.",
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36"
+    }
+  },
+  "endedAt": "2026-09-28T22:53:13.465Z",
+  "cleanup": {
+    "tabLocalDeviceOverrideCleared": true,
+    "ownedTabClosed": true,
+    "receiptServerStopped": true,
+    "runtimeNotStarted": true,
+    "globalViewportUntouched": true
+  },
+  "screenshots": {
+    "desktop": "workbench-welcome-export-desktop.jpg",
+    "narrow": "workbench-welcome-export-narrow.jpg"
+  }
+}
