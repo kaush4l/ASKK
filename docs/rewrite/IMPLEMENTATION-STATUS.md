@@ -6,8 +6,9 @@ Evidence checkpoint: 2026-09-28. The workbench completed a guided native applica
 
 | Checkpoint | Recorded result | Scope |
 | --- | --- | --- |
-| Latest completed regression suite | `bun test ./test`: **361 passed, 1 skipped, 0 failed, 2620 assertions**, 34 files. | Completed source checkpoint; later changes need another run. The skipped test is the opt-in real CLI check. |
+| Latest completed regression suite | `bun test ./test`: **375 passed, 1 skipped, 0 failed, 2673 assertions**, 36 files. | Completed source checkpoint; later changes need another run. The skipped test is the opt-in real CLI check. |
 | Currently published Pages export | Build/deployment check passed: **802,885,489 bytes, 133 files**; artifact hash `9f79c6c2ad04c9ced2673bc299081de5aa29d14800541df6e48104c61075e668`. | Published as **`bd413de`** from source **`2358fc0`**, with an identical staged-worktree hash. Public runtime remains `c2w-node24-38d093f4a38002db`. Asset validation is not browser-runtime acceptance. |
+| Next checked export | **802,889,658 bytes, 134 files**, hash `5fc0c4b1b7334bec149ad3ecea4c8c5dfbf95e3780c8e27968339efd3d44d6b7`, source `15d3d63`. | Includes anonymous npm header normalization and file-conflict/deletion fixes. Publication pending final component smoke; public runtime image remains unchanged. |
 | Hosted application update | [Actual Chrome update passed](evidence/workbench-pages-update-chrome.json). | One normal reload migrated the legacy worker, retained the composer draft and model selection, restored six agents, and opened both application databases at schema v2 with `toolEvents`. The private runtime candidate has not been promoted. |
 | Hosted browser smoke checkpoint | Earlier commit **`65fa913`**, artifact hash beginning `b31d26`, **802,844,496 bytes**. | The complete hosted Chrome smoke receipt applies to this earlier version; cached clients can still receive its HTML. |
 
@@ -73,6 +74,8 @@ The latest source preserves complete paired tool calls/results separately from c
 The real Chrome migration fixture preserved an existing file, setting and legacy run, verified concurrent/idempotent appends and replacement rejection, checked bounded reads and deletion isolation, and exercised blocked old-tab and newer-schema refusal/recovery without an empty-memory replacement. All three synthetic databases were removed. This does not prove a full application upgrade against the user's existing workspace.
 
 The audited nine check observations shrink from 56,599 to 6,019 characters after projection; this measures those blocks only, not token savings, speed or model reliability. Configuration chooses the projection; exact transmitted prompts and raw receipts remain separate evidence.
+
+File editing regressions now cover three additional failure paths: a resolved base revision clears its obsolete conflict marker; typing during a rejected save or fallback read survives in the conflict dialog; and an authoritative external deletion closes clean tabs while preserving dirty drafts for explicit recreation or discard. Per-file editor cache generations prevent unmount cleanup from restoring deleted state. These fixes are in the next checked export; actual component browser verification is pending.
 
 Runtime failure handling now invalidates readiness and verification, preserves the last artifact, and rejects a crash during durable workspace binding publication. Model relay loss clears model connection success while retaining the selected execution target. Download progress uses known byte totals, and Output exposes bounded actual guest console text. These changes are included in the published export; the hosted update smoke is recorded above.
 
