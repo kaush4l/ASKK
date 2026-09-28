@@ -130,6 +130,7 @@
   .status-dot.error { background: var(--red); }
   .status-dot.busy { background: var(--accent); animation: status-pulse 1.5s ease-in-out infinite; }
   .workspace-main { flex: 1; min-height: 0; display: flex; }
+  .workspace-drawer-scrim { display: none; }
   .activity-bar { flex: 0 0 44px; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 9px 0; border-right: 1px solid var(--line); background: var(--surface); }
   .activity-bar .icon-button { width: 35px; height: 35px; color: var(--muted); position: relative; }
   .activity-bar .icon-button.active { color: var(--text); }
@@ -487,6 +488,7 @@
 
 @layer responsive {
   @media (min-width: 601px) and (max-width: 1279px) {
+    .workspace-drawer-scrim { display: block; position: absolute; z-index: 5; inset: 0 0 0 44px; padding: 0; border: 0; background: #0006; cursor: pointer; }
     .explorer-divider { position: absolute; left: calc(44px + var(--explorer-width, 232px)); top: 0; bottom: 0; z-index: 7; }
   }
   @media (max-width: 600px) {

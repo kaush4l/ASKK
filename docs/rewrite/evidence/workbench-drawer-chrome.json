@@ -1,0 +1,172 @@
+{
+  "profile": "production-export-drawer-chrome",
+  "at": "2026-09-28T21:00:36.944377+00:00",
+  "origin": "http://127.0.0.1:5198/ASKK/",
+  "exportBuildSession": "24161",
+  "browser": "Chrome153",
+  "method": "Actual CUA button/keyboard/viewport actions and read-only DOM observations against the built export. No goals, commands, model calls, or browser guest started. Existing disposable QA drafts were not edited.",
+  "drawer1200": {
+    "viewport": [
+      1200,
+      900
+    ],
+    "sidebar": {
+      "left": 365,
+      "right": 588,
+      "width": 223
+    },
+    "editor": {
+      "left": 365,
+      "right": 1200,
+      "width": 835
+    },
+    "scrimPresent": true,
+    "editorInert": true,
+    "conversationInert": false,
+    "openFocus": "Close sidebar"
+  },
+  "keyboard": [
+    {
+      "action": "Tab from drawer close control",
+      "active": "Resize file explorer",
+      "insideEditorUnderlay": false
+    },
+    {
+      "action": "Escape from drawer resize control",
+      "active": "Agents",
+      "scrimPresent": false,
+      "editorInert": false
+    },
+    {
+      "action": "Open Search",
+      "active": "Find a file",
+      "editorInert": true
+    },
+    {
+      "action": "Escape from Search",
+      "active": "Search files"
+    },
+    {
+      "action": "Open Artifacts then click scrim",
+      "active": "Artifacts",
+      "sidebarPresent": false
+    },
+    {
+      "action": "Open Agents then explicit Close sidebar",
+      "active": "Agents",
+      "sidebarPresent": false
+    },
+    {
+      "action": "Open Agents then focus existing composer and press Escape",
+      "activeId": "conversation-input",
+      "sidebarPresent": false,
+      "existingDraftUnchanged": true
+    }
+  ],
+  "desktop": [
+    {
+      "width": 1280,
+      "views": [
+        "Agents",
+        "Search",
+        "Artifacts"
+      ],
+      "sidebar": {
+        "left": 405,
+        "right": 628,
+        "width": 223,
+        "position": "static"
+      },
+      "editor": {
+        "left": 629,
+        "right": 1280,
+        "width": 651
+      },
+      "overlap": false,
+      "scrimPresent": false,
+      "editorInert": false,
+      "documentOverflow": false
+    },
+    {
+      "width": 1440,
+      "views": [
+        "Agents",
+        "Search",
+        "Artifacts"
+      ],
+      "sidebar": {
+        "left": 445,
+        "right": 668,
+        "width": 223,
+        "position": "static"
+      },
+      "editor": {
+        "left": 669,
+        "right": 1440,
+        "width": 771
+      },
+      "overlap": false,
+      "scrimPresent": false,
+      "editorInert": false,
+      "documentOverflow": false
+    }
+  ],
+  "phone": [
+    {
+      "viewport": [
+        390,
+        844
+      ],
+      "surfaces": [
+        "Files",
+        "Code",
+        "Preview",
+        "Commands"
+      ],
+      "allSelectedAndVisible": true,
+      "scrimPresent": false,
+      "editorInert": false,
+      "documentOverflow": false,
+      "commands": {
+        "left": 40,
+        "top": 175,
+        "width": 350,
+        "height": 669
+      }
+    },
+    {
+      "viewport": [
+        320,
+        740
+      ],
+      "surface": "Commands",
+      "tabs": [
+        "commands",
+        "terminal",
+        "problems",
+        "output"
+      ],
+      "scrimPresent": false,
+      "editorInert": false,
+      "documentOverflow": false,
+      "commands": {
+        "left": 40,
+        "top": 175,
+        "width": 280,
+        "height": 565
+      }
+    }
+  ],
+  "screenshot": "docs/rewrite/evidence/workbench-drawer-chrome.jpg",
+  "cleanup": {
+    "viewportOverrideReset": true,
+    "ownedTabClosed": true,
+    "runtimeOwnerNotified": true
+  },
+  "limitations": [
+    "Sidebar width223px came from the pre-existing disposable QA layout; no default-width assumption was used.",
+    "Safari and VoiceOver were not tested.",
+    "The4KB writer had already passed actual-xterm and actual-component fixture checks in terminal-delivery-chrome.json; this pass did not start a real command solely to exercise output.",
+    "Existing scratch layout selections changed through ordinary UI navigation; file contents and goal drafts were preserved."
+  ]
+}

@@ -1,0 +1,186 @@
+{
+  "profile": "actual-workbench-components-synthetic-input",
+  "browser": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36",
+  "at": "2026-09-28T20:26:10.958Z",
+  "results": [
+    {
+      "name": "Mount 1000 files",
+      "files": 1000,
+      "commitMs": 12.3,
+      "throughTwoFramesMs": 18,
+      "renderedTreeRows": 23,
+      "longTasks": []
+    },
+    {
+      "name": "Filter 1000 files to last filename",
+      "files": 1000,
+      "commitMs": 1.4,
+      "throughTwoFramesMs": 21.3,
+      "renderedTreeRows": 3,
+      "longTasks": []
+    },
+    {
+      "name": "Restore 1000 files from filter",
+      "files": 1000,
+      "commitMs": 2,
+      "throughTwoFramesMs": 14.2,
+      "renderedTreeRows": 23,
+      "longTasks": []
+    },
+    {
+      "name": "Select last of 1000 files",
+      "files": 1000,
+      "commitMs": 0.5,
+      "throughTwoFramesMs": 14.1,
+      "renderedTreeRows": 24,
+      "longTasks": []
+    },
+    {
+      "name": "Mount 10000 files",
+      "files": 10000,
+      "commitMs": 52,
+      "throughTwoFramesMs": 66.1,
+      "renderedTreeRows": 23,
+      "longTasks": [
+        60
+      ]
+    },
+    {
+      "name": "Filter 10000 files to last filename",
+      "files": 10000,
+      "commitMs": 1.3,
+      "throughTwoFramesMs": 13.4,
+      "renderedTreeRows": 3,
+      "longTasks": []
+    },
+    {
+      "name": "Restore 10000 files from filter",
+      "files": 10000,
+      "commitMs": 12.2,
+      "throughTwoFramesMs": 22.9,
+      "renderedTreeRows": 23,
+      "longTasks": []
+    },
+    {
+      "name": "Select last of 10000 files",
+      "files": 10000,
+      "commitMs": 0.4,
+      "throughTwoFramesMs": 15.2,
+      "renderedTreeRows": 24,
+      "longTasks": []
+    },
+    {
+      "name": "Render bounded 500k-character command tail",
+      "sourceCharacters": 4860000,
+      "displayedSnapshotCharacters": 500000,
+      "commitMs": 11.3,
+      "markerVisible": true,
+      "markerLatencyMs": 975.7,
+      "screenRows": 22
+    },
+    {
+      "name": "Thirty rolling output updates after retention limit",
+      "updates": 30,
+      "retainedCharacters": 500000,
+      "reactCommitMs": [
+        0.4,
+        0.5,
+        0.5,
+        0.4,
+        0.6,
+        0.4,
+        0.5,
+        0.5,
+        0.4,
+        0.4,
+        0.9,
+        1.1,
+        1.6,
+        2,
+        0.5,
+        0.3,
+        0.5,
+        0.8,
+        0.4,
+        0.4,
+        0.4,
+        1,
+        2.2,
+        0.7,
+        0.5,
+        0.5,
+        0.4,
+        0.5,
+        0.5,
+        0.7
+      ],
+      "totalMs": 3517.6,
+      "markerVisible": true,
+      "markerLatencyMs": 433.7,
+      "screenRows": 22,
+      "longTasks": []
+    },
+    {
+      "name": "Replace output within same session",
+      "markerVisible": true,
+      "markerLatencyMs": 1197.2,
+      "visibleText": "DISCONTINUITY-PROOF"
+    },
+    {
+      "name": "Clear output within same session",
+      "visibleText": ""
+    }
+  ],
+  "implementation": "Virtualized FileTree plus exact monotonic UTF-16 outputLength Terminal deltas; no overlap heuristic.",
+  "origin": "http://127.0.0.1:5201/",
+  "components": [
+    "src/workbench/FileTree.jsx",
+    "src/workbench/Terminal.jsx"
+  ],
+  "input": "Synthetic 1,000/10,000 file metadata and 4,860,000-character compiler text rendered by actual production components with production React. No real project, model, command, or guest is controlled by the fixture.",
+  "method": "CUA clicked benchmark controls. Fixture measured performance.now around flushSync and two requestAnimationFrames. Output completion checks read actual xterm accessibility markers. Keyboard and wheel observations below came from CUA input plus read-only DOM inspection.",
+  "keyboardObservations": [
+    {
+      "action": "End from packages root",
+      "activePath": "packages/pkg-099/file-09999.js",
+      "activeConnected": true,
+      "renderedRows": 23,
+      "scrollTop": 292515,
+      "activeTop": 618,
+      "activeBottom": 647,
+      "scrollerTop": 229,
+      "scrollerBottom": 649
+    },
+    {
+      "action": "F2 on last file",
+      "activePath": "packages/pkg-099/file-09999.js",
+      "selectedPath": "packages/pkg-099/file-09999.js",
+      "note": "Fixture menu callback records the actual target as selection; it does not render the workbench rename dialog."
+    },
+    {
+      "action": "Two-page wheel scroll upward while final file stays focused",
+      "activePath": "packages/pkg-099/file-09999.js",
+      "activeConnected": true,
+      "renderedRows": 32,
+      "scrollTop": 290789,
+      "activeTop": 2344,
+      "note": "Focused off-window row remains mounted while visible row window changes."
+    },
+    {
+      "action": "Home then Left",
+      "activePath": "packages",
+      "expanded": "false",
+      "renderedRows": 1,
+      "scrollTop": 0
+    }
+  ],
+  "limitations": [
+    "Single Chrome 153 desktop run; Safari and VoiceOver were not tested in this performance fixture.",
+    "Concurrent browser Linux npm installation was deliberately backgrounded by agreement during this short foreground test; this is not an idle-machine benchmark.",
+    "Baseline fixture Explorer used flex/overflow-hidden; final fixture uses block/overflow-auto matching the actual Explorer. Exact timing ratios should not be treated as a controlled benchmark; DOM counts and reset-vs-delta behavior remain directly observed.",
+    "Initial 10,000-file construction still recorded a 60 ms long task. Virtualization bounds DOM cost but does not eliminate model sorting cost.",
+    "Initial 500,000-character xterm accessibility-marker latency was 975.7 ms; this is not parser duration. Installed xterm 6 throttles screen-reader row refresh to once per second. Rolling updates had no recorded long tasks in this run, but final marker arrived 433.7 ms after the update loop.",
+    "The fixture does not include actual controller transport. Separate controller and delta tests cover monotonic counts and identical retained snapshots.",
+    "External selected-path updates keep the selected row mounted; automatic scrolling to external selection was not added. Keyboard End/Home explicitly reveals its focus target."
+  ]
+}

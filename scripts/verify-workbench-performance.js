@@ -8,6 +8,17 @@ const bundle = await build.outputs[0].text()
 const html = `<!doctype html><html lang="en" data-theme="dark"><meta charset="utf-8"><title>ASKK synthetic UI performance</title><link rel="stylesheet" href="/workbench.css"><link rel="stylesheet" href="/xterm.css"><style>body{overflow:auto}main{max-width:1250px;margin:auto;padding:24px}h1{font-size:22px;margin-bottom:8px}p{max-width:920px;color:var(--secondary)}.controls{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin:18px 0}button{padding:9px 12px;border:1px solid var(--line-strong);border-radius:5px}label{display:flex;gap:8px;align-items:center}input{background:var(--editor);padding:8px;border:1px solid var(--line-strong)}.panes{display:grid;grid-template-columns:320px 1fr;height:420px;gap:16px}.fixture-explorer{display:block;min-height:0;border:1px solid var(--line-strong);overflow:auto}.fixture-terminal{display:flex;min-height:0;min-width:0;border:1px solid var(--line-strong)}.terminal-viewport{flex:1;min-width:0;min-height:0}pre{font:12px/1.6 monospace;white-space:pre-wrap;margin-top:20px;max-height:360px;overflow:auto}</style><div id="root"></div><script src="/fixture.js" type="module"></script></html>`
 const server = Bun.serve({ hostname: '127.0.0.1', port: 5201, async fetch(request) {
   const path = new URL(request.url).pathname
+  if (path === '/screenshot') {
+    const origin = request.headers.get('origin')
+    if (origin !== 'http://127.0.0.1:5198') return new Response('Origin not allowed', { status: 403 })
+    const headers = { 'access-control-allow-origin': origin, 'access-control-allow-methods': 'POST, OPTIONS', 'access-control-allow-headers': 'content-type' }
+    if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers })
+    if (request.method !== 'POST') return new Response('Method not allowed', { status: 405, headers })
+    const bytes = new Uint8Array(await request.arrayBuffer())
+    if (bytes.length > 8 * 1024 * 1024 || bytes[0] !== 255 || bytes[1] !== 216) return new Response('Expected a JPEG under 8 MiB', { status: 400, headers })
+    await writeFile('docs/rewrite/evidence/workbench-drawer-chrome.jpg', bytes)
+    return Response.json({ saved: true, bytes: bytes.length }, { headers })
+  }
   if (path === '/fixture.js') return new Response(bundle, { headers: { 'content-type': 'text/javascript', 'cache-control': 'no-store' } })
   if (path === '/workbench.css') return new Response(Bun.file('src/workbench/workbench.css'))
   if (path === '/xterm.css') return new Response(Bun.file('node_modules/@xterm/xterm/css/xterm.css'))

@@ -164,6 +164,7 @@
   "limitations": [
     "A CUA accessibility snapshot overlapped the10k mount; through-two-frame timing may include instrumentation overhead. Commit time and rendered DOM count still show unbounded tree cost.",
     "Concurrent browser Linux npm work was temporarily backgrounded by agreement; timings are not an idle-machine benchmark.",
-    "Output source retained500000 characters as the real controller does; actual controller transport was not part of this component fixture."
+    "Output source retained500000 characters as the real controller does; actual controller transport was not part of this component fixture.",
+    "Baseline fixture Explorer used flex/overflow-hidden; final fixture uses block/overflow-auto matching the actual Explorer. Exact timing ratios are not a controlled comparison."
   ]
 }

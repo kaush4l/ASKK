@@ -70,6 +70,10 @@ export default function Workbench() {
   const [activity, setActivity] = useState('files')
   const [explorerOpen, setExplorerOpen] = useState(true)
   const [explorerWidth, setExplorerWidth] = useState(null)
+  const [sidebarOverlay, setSidebarOverlay] = useState(false)
+  const sidebarNode = useRef(null)
+  const sidebarTrigger = useRef(null)
+  const drawerOpen = sidebarOverlay && explorerOpen
   const [panelOpen, setPanelOpen] = useState(false)
   const [panelTab, setPanelTab] = useState('commands')
   const [selectedCommand, setSelectedCommand] = useState(null)
@@ -199,6 +203,7 @@ export default function Workbench() {
     if (!isPreviewTab(next)) lastCodeSelection.current[groupId] = next
     writeGroup(groupId, openEditorTab(readGroup(groupId), next, { pin: isDiffTab(next) }))
     activateGroup(groupId); setPhoneSurface(isPreviewTab(next) ? 'preview' : 'code'); setFollow(false)
+    if (innerWidth < 1280) setExplorerOpen(false)
   }
   async function splitGroup(preview = false) {
     if (!editorGroupGeometry(editorGroupsNode.current?.getBoundingClientRect().width || 0).split && explorerOpen) {
@@ -224,9 +229,23 @@ export default function Workbench() {
     fileNavigation.current.invalidate('primary'); fileNavigation.current.invalidate('secondary'); setSurface('conversation')
     if (focus) requestAnimationFrame(() => composer.current?.focus())
   }
-  function closeExplorer() { setExplorerOpen(false); if (innerWidth <= 600 && phoneSurfaceRef.current === 'files') selectPhoneSurface('code') }
-  function toggleExplorer(next = activity) {
+  function rememberSidebarTrigger(trigger) {
+    if (innerWidth > 600 && innerWidth < 1280) sidebarTrigger.current = trigger || document.activeElement
+  }
+  function closeExplorer() {
+    const restore = drawerOpen && document.activeElement?.closest('.workspace-main')
+    const trigger = sidebarTrigger.current?.isConnected ? sidebarTrigger.current : document.querySelector('.activity-bar [aria-expanded="true"]')
+    setExplorerOpen(false)
+    if (innerWidth <= 600 && phoneSurfaceRef.current === 'files') selectPhoneSurface('code')
+    // Closing from the conversation must not take focus away from its composer.
+    if (restore && trigger?.isConnected) requestAnimationFrame(() => {
+      if (document.activeElement === document.body || document.activeElement?.closest('.workspace-main')) trigger.focus({ preventScroll: true })
+    })
+  }
+  function toggleExplorer(next = activity, trigger) {
     const opening = activity !== next || !explorerOpen || innerWidth <= 600 && phoneSurfaceRef.current !== 'files'
+    if (opening) rememberSidebarTrigger(trigger)
+    else if (drawerOpen) { closeExplorer(); return }
     setActivity(next); setExplorerOpen(opening)
     if (innerWidth <= 600) { setSurface('workspace'); if (opening) setPhoneSurface('files'); else selectPhoneSurface('code') }
   }
@@ -235,7 +254,7 @@ export default function Workbench() {
     if (innerWidth <= 600) { if (phoneSurfaceRef.current === 'commands') closePanel(); else { setPanelOpen(true); setPhoneSurface('commands'); setSurface('workspace'); setExplorerOpen(false) } }
     else setPanelOpen(value => !value)
   }
-  function showAgents() { setActivity('agents'); setExplorerOpen(true); setSurface('workspace'); setPhoneSurface('files') }
+  function showAgents(event) { rememberSidebarTrigger(event?.currentTarget); setActivity('agents'); setExplorerOpen(true); setSurface('workspace'); setPhoneSurface('files') }
   function showCommand(id) { setPanelOpen(true); setPanelTab('commands'); setSelectedCommand(id); setSurface('workspace'); setPhoneSurface('commands') }
   function showProblems() { setPanelOpen(true); setPanelTab('problems'); setSurface('workspace'); setPhoneSurface('commands') }
 
@@ -275,6 +294,7 @@ export default function Workbench() {
     let phone = innerWidth <= 600
     const resize = () => {
       const next = innerWidth < 1280
+      setSidebarOverlay(next && innerWidth > 600)
       if (next && !narrow) setExplorerOpen(false)
       if (innerWidth <= 600 && !phone) setPhoneSurface(isPreviewTab(activeSelectionRef.current) ? 'preview' : 'code')
       narrow = next; phone = innerWidth <= 600
@@ -312,6 +332,12 @@ export default function Workbench() {
     changed()
     return () => { media.removeEventListener('change', changed); window.removeEventListener('resize', resize) }
   }, [])
+  useEffect(() => {
+    if (!drawerOpen || sidebarNode.current?.contains(document.activeElement)) return
+    // This is a nonmodal workspace drawer; the conversation remains available.
+    // Search keeps its native autoFocus, other views start at the close control.
+    sidebarNode.current?.querySelector('input, [data-sidebar-close]')?.focus({ preventScroll: true })
+  }, [drawerOpen, activity])
   useEffect(() => {
     if (!hydratedDrafts) return
     safeSet('askk:theme', theme)
@@ -587,15 +613,16 @@ export default function Workbench() {
       <section className="workspace-pane" aria-label="Project workspace">
         <div className="workspace-toolbar"><div className="workspace-label"><Icon name="box" size={16}/><strong title={state.project?.name || 'Workspace'}>{state.project?.name || 'Workspace'}</strong><span className="workspace-private">{state.runtime.target === 'local' ? 'Companion workspace' : 'Saved in this browser'}</span></div><div className="workspace-actions"><button className="button subtle small build-action" aria-label="Save all and build" title="Save every open draft, then build the committed workspace" onClick={build} disabled={!!busy || running || !state.files.length}><Icon name="play" size={12}/><span>{busy === 'build' ? 'Building…' : 'Save all & build'}</span></button><button className={`follow-button ${follow ? 'active' : ''}`} onClick={() => setFollow(value => !value)} title="Follow committed agent changes"><Icon name="bolt" size={13}/><span>{follow ? 'Following' : 'Follow agent'}</span></button><button className="runtime-pill" onClick={() => openSettings('runtime')}><StatusDot status={state.runtime.status}/><span>{state.runtime.target === 'local' ? 'Local Bun' : 'Browser Linux'}</span><Icon name="down" size={12}/></button></div></div>
         <PhoneWorkspaceTabs selected={phoneSurface} onSelect={selectPhoneSurface}/>
-        <div className="workspace-main" id="phone-workspace-panel" role="tabpanel" aria-labelledby={`phone-tab-${phoneSurface}`}><nav className="activity-bar" aria-label="Workspace views">{[['files','files','Files'], ['search','search','Search files'], ['changes','changes','Changes'], ['agents','agents','Agents'], ['artifacts','box','Artifacts']].map(([key, icon, label]) => <IconButton key={key} icon={icon} label={label} className={activity === key && explorerOpen ? 'active' : ''} onClick={() => toggleExplorer(key)}/>) }<div className="activity-spacer"/><IconButton icon="terminal" label="Toggle terminal panel" className={panelOpen ? 'active' : ''} onClick={togglePanel}/><IconButton icon="settings" label="Runtime settings" onClick={() => openSettings('runtime')}/></nav>
-          {explorerOpen && <aside className="explorer"><div className="explorer-heading"><span>{({files:'EXPLORER',search:'SEARCH',changes:'CHANGES',agents:'AGENTS',artifacts:'ARTIFACTS'})[activity]}</span><div>{activity === 'files' && <IconButton icon="plus" label="New file" onClick={showCreate}/>}<IconButton icon="panel" label="Collapse sidebar" onClick={closeExplorer}/></div></div>
+        <div className="workspace-main" id="phone-workspace-panel" role="tabpanel" aria-labelledby={`phone-tab-${phoneSurface}`}><nav className="activity-bar" aria-label="Workspace views">{[['files','files','Files'], ['search','search','Search files'], ['changes','changes','Changes'], ['agents','agents','Agents'], ['artifacts','box','Artifacts']].map(([key, icon, label]) => <IconButton key={key} icon={icon} label={label} className={activity === key && explorerOpen ? 'active' : ''} aria-expanded={activity === key && explorerOpen} aria-controls="workspace-sidebar" onClick={event => toggleExplorer(key, event.currentTarget)}/>) }<div className="activity-spacer"/><IconButton icon="terminal" label="Toggle terminal panel" className={panelOpen ? 'active' : ''} onClick={togglePanel}/><IconButton icon="settings" label="Runtime settings" onClick={() => openSettings('runtime')}/></nav>
+          {drawerOpen && <button className="workspace-drawer-scrim" aria-label="Dismiss sidebar overlay" tabIndex={-1} onClick={closeExplorer}/>}
+          {explorerOpen && <aside id="workspace-sidebar" ref={sidebarNode} className="explorer" aria-label={`${activity} sidebar`}><div className="explorer-heading"><span>{({files:'EXPLORER',search:'SEARCH',changes:'CHANGES',agents:'AGENTS',artifacts:'ARTIFACTS'})[activity]}</span><div>{activity === 'files' && <IconButton icon="plus" label="New file" onClick={showCreate}/>}<IconButton icon={drawerOpen ? "close" : "panel"} label={drawerOpen ? "Close sidebar" : "Collapse sidebar"} data-sidebar-close onClick={closeExplorer}/></div></div>
             {(activity === 'files' || activity === 'search') && <>{activity === 'search' && <div className="sidebar-search"><Icon name="search" size={13}/><input autoFocus value={query} onChange={event => setQuery(event.target.value)} placeholder="Find a file…" aria-label="Find a file"/></div>}<div className="project-root"><Icon name="down" size={12}/><strong>{state.project?.name || 'YOUR PROJECT'}</strong><span>{state.files.length}</span></div>{state.files.length ? <FileTree files={state.files} selected={editorFilePath(activeSelection)} dirtyPaths={dirtyPaths} query={activity === 'search' ? query : ''} onOpen={openFile} onPin={path => openFile(path, false, { pin: true })} onMenu={path => { setModalValue(path); setModal({ type: 'fileMenu', path }) }}/>:<div className="sidebar-empty"><Icon name="folder" size={26}/><p>Your files will appear here as you build.</p><button className="text-button" onClick={showCreate}>Create a file <Icon name="plus" size={13}/></button></div>}</>}
             {activity === 'changes' && <div className="sidebar-list">{dirtyPaths.size ? [...dirtyPaths].map(path => <button className="sidebar-item" key={path} onClick={() => openDiff(path)}><FileIcon path={path}/><span>{lastName(path)}<small>Unsaved draft</small></span><span className="change-badge">M</span></button>) : <div className="sidebar-empty"><Icon name="check" size={25}/><p>All open files are saved.</p></div>}<p className="sidebar-note">Human drafts stay separate from committed agent changes.</p></div>}
             {activity === 'agents' && <div className="sidebar-list">{state.agents.map(agent => <div className="agent-item" key={agent.id || agent.name}><span className="agent-mark"><Icon name="spark" size={15}/></span><span><strong title={agent.name || agent.id}>{agent.name || agent.id}</strong><small title={agent.description}>{agent.status || agent.description || 'Available'}</small></span>{agent.id && activeStatus(agent.status) ? <IconButton icon="stop" label={`Stop ${agent.name || agent.id} and its subagents`} onClick={() => action('stopAgent', agent.id)}/> : <StatusDot status={agent.status}/>}</div>)}{!state.agents.length && <div className="sidebar-empty"><p>{state.ready ? 'Agents will appear when a task starts.' : 'Loading agent definitions…'}</p></div>}{state.plans.length === 0 && <section className="task-plans"><h3>Task plan</h3><p className="sidebar-empty">No plan recorded for this conversation.</p></section>}{state.plans.length > 0 && <section className="task-plans" aria-label="Recorded task plans"><h3>Task plans</h3>{[...state.plans].reverse().map((plan, index) => <details key={plan.runId} open={index === 0}><summary><span>{plan.agent || 'Agent'}</span><small>{(plan.items || []).filter(item => item.status === 'done').length}/{plan.items?.length || 0}</small><Icon name="down" size={12}/></summary><ol>{(plan.items || []).map((item, index) => <li key={index} className={`plan-${item.status}`}><span className="plan-mark" aria-hidden="true">{item.status === 'done' ? <Icon name="check" size={11}/> : item.status === 'doing' ? <Icon name="play" size={10}/> : item.status === 'dropped' ? '–' : index + 1}</span><span>{item.text}<small>{({todo:'Pending',doing:'In progress',done:'Completed',dropped:'Dropped'})[item.status] || item.status}</small></span></li>)}</ol></details>)}</section>}</div>}
             {activity === 'artifacts' && <div className="sidebar-list">{state.artifacts.map(artifact => <button className="sidebar-item" key={artifact.id} onClick={() => selectEditor(`artifact:${artifact.id}`)}><Icon name={artifact.type === 'app' || artifact.type === 'html' ? 'globe' : 'box'} size={16}/><span>{artifact.name || 'Application'}<small>{artifact.status || 'Created'}{artifact.buildId ? ` · ${artifact.buildId}` : ''}</small></span></button>)}{!state.artifacts.length && <div className="sidebar-empty"><Icon name="box" size={26}/><p>Built pages and generated artifacts will collect here.</p></div>}</div>}
           </aside>}
           {explorerOpen && <ResizeHandle className="explorer-divider" label="Resize file explorer" value={explorerWidth ?? undefined} min={160} max={360} onResize={delta => setExplorerWidth(previous => Math.max(160, Math.min(360, (previous || document.querySelector('.explorer')?.clientWidth || 184) + delta)))}/>}
-          <div className={`editor-stack ${splitEditors ? 'has-two-groups' : ''} ${groupsWide ? 'groups-wide' : 'groups-collapsed'}`}>
+          <div inert={drawerOpen} className={`editor-stack ${splitEditors ? 'has-two-groups' : ''} ${groupsWide ? 'groups-wide' : 'groups-collapsed'}`}>
             {splitEditors && <div className="editor-group-switcher" aria-label="Editor groups">{['primary', 'secondary'].map((id, index) => <button key={id} aria-pressed={activeEditorGroup === id} onClick={() => { activateGroup(id, true); setFollow(false) }}>Group {index + 1}<span>{lastName(editorFilePath(readGroup(id).selected))}</span></button>)}<span className="group-width-hint">One group at a time at this width</span></div>}
             <div ref={editorGroupsNode} className="editor-groups" style={{ '--group-split': `${groupGeometry.ratio * 100}%` }}>
               {renderEditorGroup('primary')}
