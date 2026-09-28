@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "at": "2026-09-28T22:55:19.444Z",
+  "browser": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36",
+  "origin": "https://kaush4l.github.io/ASKK/",
+  "sourceCommit": "78e57b7",
+  "deploymentCommit": "f28c85e",
+  "artifactHash": "6cb657492804bdc0d9099bc5d873e93ad242b9ef10d09f54178c4a088d8026ca",
+  "totalBytes": 802890535,
+  "fileCount": 134,
+  "indexSha256": "7e2c8e51433f04e1439c79cec66086d8b8a15f5f6f8468017a2f09a9cd7eb678",
+  "normalReloads": 1,
+  "cacheCleared": false,
+  "storageCleared": false,
+  "isolation": true,
+  "controller": "https://kaush4l.github.io/ASKK/coi-serviceworker.js",
+  "pageResources": [
+    "https://kaush4l.github.io/ASKK/_next/static/chunks/app/page-e9b65e4cb6fe4cb6.js"
+  ],
+  "draftBefore": "Browser Linux checkpoint — keep this draft through startup.",
+  "draftAfter": "Browser Linux checkpoint — keep this draft through startup.",
+  "agentCount": 6,
+  "heading": "Start with an idea.Keep the work in view.",
+  "notice": "Browser Linux previewBrowser Linux is experimental. App builds are not ready for reliable use yet. Startup can take several minutes.",
+  "runtime": "Browser Linux · Not started",
+  "model": "Configured; not connectivity proof",
+  "limitations": [
+    "No guest boot, model inference, or application build attempted.",
+    "No fresh-origin, Safari, VoiceOver, or one-shot completion claim."
+  ]
+}
