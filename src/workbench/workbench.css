@@ -89,6 +89,7 @@
   .welcome-orbit svg { transform: rotate(4deg); }
   .conversation-welcome h2 { font-size: 26px; line-height: 1.32; letter-spacing: -.9px; font-weight: 500; margin-bottom: 15px; }
   .conversation-welcome>p { font-size: 13px; color: var(--secondary); line-height: 1.8; max-width: 320px; }
+  .conversation-welcome>.execution-notice { margin-top: 18px; max-width: 400px; }
   .starter-prompts { display: flex; flex-direction: column; gap: 8px; margin-top: 29px; }
   .starter-prompts button { display: flex; align-items: center; gap: 10px; min-height: 42px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 7px; text-align: left; color: var(--secondary); background: color-mix(in srgb, var(--raised) 45%, transparent); font-size: 11px; transition: border-color 130ms, background 130ms; }
   .starter-prompts button:hover { background: var(--raised); border-color: var(--line-strong); color: var(--text); }

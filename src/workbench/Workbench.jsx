@@ -624,7 +624,7 @@ export default function Workbench() {
       <section className="conversation-pane" aria-label="Agent conversation">
         <div className="conversation-heading"><div><span className="eyebrow">YOUR BUILD PARTNER</span><h1>Let’s make something.</h1></div><IconButton icon="more" label="Conversation options" onClick={() => { setModalValue(state.goal || ''); setModal({ type: 'goal', revision: state.goalRevision }) }}/></div>
         <div className="transcript" ref={transcript} onScroll={() => { const node = transcript.current; atBottom.current = node.scrollHeight - node.scrollTop - node.clientHeight < 64 }}>
-          {!state.messages.length ? <div className="conversation-welcome"><div className="welcome-orbit"><Icon name="spark" size={27}/></div><h2>A thought to start.<br/>A working thing to finish.</h2><p>Describe what you want to build. Your agents will work through the files, run the commands, and bring it to life.</p><div className="starter-prompts">{[
+          {!state.messages.length ? <div className="conversation-welcome"><div className="welcome-orbit"><Icon name="spark" size={27}/></div><h2>Start with an idea.<br/>Keep the work in view.</h2><p>Describe your goal, choose a model and execution environment, then follow the files, commands, and results.</p><ExecutionNotice notice={state.executionNotices?.[state.runtime.target]}/><div className="starter-prompts">{[
             ['globe', 'Build a personal website', 'Build a polished personal portfolio website with a projects section and a contact page.'],
             ['box', 'Make a useful little tool', 'Build a beautiful habit tracker that saves my progress in the browser.'],
             ['code', 'Start with my own idea', ''],
