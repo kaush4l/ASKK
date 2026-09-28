@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "at": "2026-09-28T23:19:00Z",
+  "timestampPrecision": "minute; capture tool sequence",
+  "origin": "http://127.0.0.1:5193/ASKK/",
+  "sourceCommit": "6850383",
+  "exportHash": "9c63469ae2e13ba4b1e8c8235f131adfbf16d5c21ea5441cc3f694eb5e4652c5",
+  "browser": "Chrome 153",
+  "normalReloads": 1,
+  "checks": {
+    "selectedExecutionRestored": "Local Bun",
+    "executionStatus": "Not started",
+    "modelStatus": "Configured",
+    "conversationRestored": true,
+    "selectedPreviewRestored": true,
+    "tasksRestored": [
+      "Publish verified milestone",
+      "Review execution contracts"
+    ],
+    "activeCount": 1,
+    "completedCount": 1,
+    "artifactLabel": "Earlier build \u00b7 verification needed \u00b7 revision 26 \u00b7 539a8aa21e1c23bc"
+  },
+  "screenshot": "workbench-final-native.jpg",
+  "limits": [
+    "No new model inference, command, or application build during this reload check.",
+    "Task board was produced in earlier guided Local Bun runs; not Browser Linux or one-shot proof.",
+    "Historical assistant message says 37 assertions; independent audit counts 20 assertions and 17 actions (37 ordered steps).",
+    "No credentials are visible. Temporary screenshot receiver was stopped."
+  ]
+}
