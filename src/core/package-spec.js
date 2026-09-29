@@ -118,3 +118,5 @@ export async function compileAgentPackage(pkg, { installationId, namespace = 'in
   }
   return freeze(specs)
 }
+
+export { compilePackageWorkflows } from './package-workflows.js'

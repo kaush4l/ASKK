@@ -6,13 +6,15 @@
  * data is frozen JSON suitable for storage/export; source.list/read is the
  * package-local adapter. Restore always revalidates the original bytes.
  */
+import { resolvePackageWorkflows } from './package-workflows.js'
+
 export const PACKAGE_LOCK = 'askk.lock.json'
 export const PACKAGE_LIMITS = Object.freeze({ maxFiles: 256, maxFileBytes: 8 * 1024 * 1024, maxExpandedBytes: 32 * 1024 * 1024, maxAgents: 64 })
 const CEILINGS = { maxFiles: 4096, maxFileBytes: 128 * 1024 * 1024, maxExpandedBytes: 256 * 1024 * 1024, maxAgents: 256 }
 const ID = /^[a-z][a-z0-9_-]{0,63}$/
 const PACKAGE_ID = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/
 const VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/
-const KNOWN = new Set(['package_id', 'package_version', 'id', 'name', 'description', 'agents', 'services', 'tools', 'context', 'skills', 'private', 'permissions', 'model', 'temperature', 'max_output_tokens', 'context_length', 'response_format', 'observation_format', 'contract_version', 'prompt_template', 'output_reserve', 'require_verification', 'max_steps', 'repairs', 'compact_at', 'keep', 'remembers', 'session'])
+const KNOWN = new Set(['workflows', 'package_id', 'package_version', 'id', 'name', 'description', 'agents', 'services', 'tools', 'context', 'skills', 'private', 'permissions', 'model', 'temperature', 'max_output_tokens', 'context_length', 'response_format', 'observation_format', 'contract_version', 'prompt_template', 'output_reserve', 'require_verification', 'max_steps', 'repairs', 'compact_at', 'keep', 'remembers', 'session'])
 const UNSUPPORTED_CONFIG = /^(?:api[_-]?key|access[_-]?token|refresh[_-]?token|token|secret|password|credentials?|authorization|headers|private[_-]?key|provider|base[_-]?url|via)$/i
 const SCRIPT = /\.(?:[cm]?js|jsx|tsx?|wasm|sh|bash|zsh|py|pyc|exe|dll|dylib|so)$/i
 const SECRET_FILE = /(?:^|\/)(?:\.env(?:\..*)?|\.npmrc|\.netrc|id_rsa|id_ed25519)$|\.(?:pem|key|p12|pfx)$/i
@@ -195,6 +197,7 @@ function stringList(value, label) {
 }
 function validateSettings(settings, path, root) {
   if (typeof settings.id !== 'string' || !ID.test(settings.id)) fail('PACKAGE_SCHEMA', `${path} requires a stable lowercase id`)
+  if (settings.workflows !== undefined && (!root || typeof settings.workflows !== 'string')) fail('PACKAGE_SCHEMA', `${path}.workflows must be a root-only manifest reference`)
   if (!root && (Object.hasOwn(settings, 'package_id') || Object.hasOwn(settings, 'package_version'))) fail('PACKAGE_SCHEMA', `${path} cannot redefine root package identity`)
   for (const key of ['name', 'description', 'model']) if (settings[key] !== undefined && (typeof settings[key] !== 'string' || !settings[key].trim() || settings[key].length > (key === 'description' ? 4000 : 256))) fail('PACKAGE_SCHEMA', `${path}.${key} must be bounded text`)
   if (settings.model !== undefined && !/^[A-Za-z0-9][A-Za-z0-9._/-]{0,255}$/.test(settings.model)) fail('PACKAGE_SCHEMA', `${path}.model must be a desk profile alias, not a transport URL`)
@@ -304,6 +307,14 @@ export async function importAgentPackage(records, { limits: requestedLimits } = 
       agent.delegates[alias] = id
     }
     agent.references.sort()
+  }
+  if (root.settings.workflows !== undefined) {
+    await resolvePackageWorkflows(root.settings.workflows, {
+      agents: ids, agentSettings: new Map(agents.map(agent => [agent.id, agent.settings])),
+      refer: path => { if (!root.references.includes(path)) root.references.push(path) },
+      read: path => { if (!bytesByPath.has(path)) fail('PACKAGE_REFERENCE', `missing workflow resource ${path}`); return utf8(bytesByPath.get(path), path) },
+    })
+    root.references.sort()
   }
   validateServices(agents)
   const inventory = []

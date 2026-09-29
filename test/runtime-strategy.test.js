@@ -113,3 +113,98 @@ test('startup preserves completed graph records and marks unfinished roles inter
   expect(restored.strategyState.nodes.every(node => node.status === 'interrupted')).toBe(true)
   expect(hub.runs.size).toBe(count)
 }, 15000)
+
+const artifactCompletion = { checks: [{ capability: 'workspace.artifact', options: { requireFresh: true, requireInteraction: true } }] }
+const completionContext = () => ({ ...context, workflow: { workspace: true, completion: structuredClone(artifactCompletion) } })
+const agentStrategy = { version: 1, kind: 'agent', id: 'verify-agent', agent: 'bundled/starter/planner', delegation: 'none', session: 'agent' }
+
+test('agent strategies reject unsupported ephemeral verification callbacks before dispatch', async () => {
+  const hub = await fixture()
+  await expect(hub.startStrategy(agentStrategy, 'goal', { context, verifyCompletion: async () => ({ ok: false }) })).rejects.toThrow('declare workflow.completion')
+  expect(hub.runs.size).toBe(0)
+}, 15000)
+
+test('real agent worker retries rejected pinned completion and persists host evidence', async () => {
+  const hub = await fixture(); const seen = []; const supplied = completionContext()
+  hub.completionAdapters = { 'workspace.artifact': (options, run) => { seen.push({ options, runId: run.id }); return { ok: seen.length > 1, reason: seen.length === 1 ? 'stale evidence' : 'checked', revision: 42 } } }
+  const run = await hub.startStrategy(agentStrategy, 'check before finishing', { context: supplied })
+  supplied.workflow.completion.checks[0].options.requireFresh = false
+  expect(await run.answer).toBe('approach-result')
+  expect(run.slot.status).toBe('done'); expect(seen).toHaveLength(2)
+  expect(seen.every(row => row.options.requireFresh && row.runId === run.id)).toBe(true)
+  expect(run.completionReceipts.map(receipt => receipt.ok)).toEqual([false, true])
+  await hub.persist(run)
+  expect((await hub.store.get('runs', run.id)).completionReceipts).toEqual(run.completionReceipts)
+  expect((await hub.traces.export(run.id)).runs[0].completionReceipts).toEqual(run.completionReceipts)
+}, 15000)
+
+test('failed agent evidence never finishes successfully and owner cancellation wins pending evidence', async () => {
+  const hub = await fixture()
+  hub.completionAdapters = { 'workspace.artifact': () => ({ ok: false, reason: 'unchanged stale artifact' }) }
+  const failed = await hub.startStrategy(agentStrategy, 'evidence never passes', { context: completionContext() })
+  await failed.answer
+  expect(failed.slot.status).not.toBe('done'); expect(failed.completionReceipts.length).toBeGreaterThan(0)
+  expect(failed.completionReceipts.every(receipt => !receipt.ok)).toBe(true)
+  const entered = deferred(), release = deferred()
+  hub.completionAdapters = { 'workspace.artifact': async () => { entered.resolve(); return release.promise } }
+  const cancelled = await hub.startStrategy(agentStrategy, 'cancel pending verification', { context: completionContext() })
+  await entered.promise; hub.abort(cancelled); await cancelled.answer; release.resolve({ ok: true })
+  await new Promise(resolve => setTimeout(resolve, 30))
+  expect(cancelled.slot.status).toBe('cancelled')
+  expect(cancelled.completionReceipts).toEqual([])
+}, 15000)
+
+test('worker verification operation ignores forged checker arguments', async () => {
+  const hub = await fixture(); const seen = []
+  hub.completionAdapters = { 'workspace.artifact': (options, run) => { seen.push({ options, runId: run.id }); return { ok: false, reason: 'host rejection' } } }
+  const run = hub.createRun('bundled/starter/planner', 'verify forged arguments', { context: completionContext() })
+  const value = await hub.ops['run.verifyCompletion'].call(hub, { completion: { checks: [] }, options: { requireFresh: false }, ok: true }, run)
+  expect(value.ok).toBe(false)
+  expect(seen).toEqual([{ options: artifactCompletion.checks[0].options, runId: run.id }])
+  expect(run.completionReceipts).toHaveLength(1)
+  hub.abort(run)
+}, 15000)
+
+test('declared graph checks apply once at coordinator completion and cannot be bypassed with a callback', async () => {
+  const hub = await fixture(); const { definition } = await hub.loadStrategy('strategies/parallel-review.json')
+  const observed = []
+  hub.completionAdapters = { 'workspace.artifact': (options, run) => { observed.push(run.id); return { ok: false, reason: 'coordinator evidence rejected' } } }
+  await expect(hub.startStrategy(definition, 'bypass check', { context: completionContext(), verifyCompletion: async () => ({ ok: true }) })).rejects.toThrow('cannot be replaced')
+  expect(hub.runs.size).toBe(0)
+  const run = await hub.startStrategy(definition, 'verify whole graph', { context: completionContext() })
+  await run.answer
+  expect(run.slot.status).toBe('incomplete')
+  expect(observed).toEqual([run.id])
+  expect(run.children).toHaveLength(3)
+  for (const id of run.children) {
+    const child = hub.runs.get(id)
+    expect(child.context.workflow.completion).toEqual(artifactCompletion)
+    expect(child.completion.checks).toEqual([])
+    expect(child.completionReceipts).toEqual([])
+    expect(child.slot.status).toBe('done')
+  }
+  expect(run.completionReceipts[0].ok).toBe(false)
+  await hub.persist(run)
+  expect((await hub.store.get('runs', run.id)).completionReceipts).toEqual(run.completionReceipts)
+}, 15000)
+
+test('declared graph checks preserve cancellation while host verification is pending', async () => {
+  const hub = await fixture(); const { definition } = await hub.loadStrategy('strategies/parallel-review.json')
+  const entered = deferred(), release = deferred()
+  hub.completionAdapters = { 'workspace.artifact': async () => { entered.resolve(); return release.promise } }
+  const run = await hub.startStrategy(definition, 'cancel checker', { context: completionContext() })
+  await entered.promise; expect(run.slot.status).toBe('verifying')
+  hub.abort(run); await run.answer; release.resolve({ ok: true })
+  await new Promise(resolve => setTimeout(resolve, 30))
+  expect(run.slot.status).toBe('cancelled')
+  expect(run.completionReceipts).toEqual([])
+}, 15000)
+
+test('missing named checker prevents model and graph role admission', async () => {
+  const hub = await fixture(); const { definition } = await hub.loadStrategy('strategies/parallel-review.json')
+  await expect(hub.startStrategy(agentStrategy, 'no checker', { context: completionContext() })).rejects.toThrow('unavailable')
+  await expect(hub.startStrategy(definition, 'no graph checker', { context: completionContext() })).rejects.toThrow('unavailable')
+  hub.completionAdapters = Object.create({ 'workspace.artifact': () => ({ ok: true }) })
+  await expect(hub.startStrategy(agentStrategy, 'inherited checker', { context: completionContext() })).rejects.toThrow('unavailable')
+  expect(hub.runs.size).toBe(0)
+}, 15000)

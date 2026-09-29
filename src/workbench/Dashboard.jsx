@@ -16,7 +16,7 @@ const riskOf = tool => riskNames[tool?.risk] ? tool.risk : tool?.tier === 'agent
 const titleOf = text => String(text || '').replace(/[_.]/g, ' ').replace(/^\w/, letter => letter.toUpperCase())
 const textOf = value => typeof value === 'string' ? value : value == null ? '' : JSON.stringify(value, null, 2)
 const statusOf = row => row.status || row.slot?.status || 'idle'
-const labelOf = status => ({ idle: 'Available', ready: 'Ready', starting: 'Starting', thinking: 'Thinking', calling: 'Using a tool', waiting: 'Waiting', compacting: 'Organizing context', running: 'Running', cancelling: 'Stopping', verifying: 'Verifying application', done: 'Completed', verified: 'Verified', completed: 'Completed', failed: 'Failed', incomplete: 'Incomplete', cancelled: 'Stopped', interrupted: 'Interrupted', unresponsive: 'Response delayed' })[status] || titleOf(status)
+const labelOf = status => ({ idle: 'Available', ready: 'Ready', starting: 'Starting', thinking: 'Thinking', calling: 'Using a tool', waiting: 'Waiting', compacting: 'Organizing context', running: 'Running', cancelling: 'Stopping', verifying: 'Checking result', done: 'Completed', verified: 'Verified', completed: 'Completed', failed: 'Failed', incomplete: 'Incomplete', cancelled: 'Stopped', interrupted: 'Interrupted', unresponsive: 'Response delayed' })[status] || titleOf(status)
 
 function Status({ status, children }) {
   return <span className={`dashboard-status ${active(status) ? 'is-active' : ['failed', 'unresponsive', 'error'].includes(status) ? 'is-error' : ''}`}><i aria-hidden="true"/>{children || labelOf(status)}</span>
@@ -34,6 +34,20 @@ export function matchesAgentDefinition(definition, run) {
 export function SessionBoundaryNotice({ boundary }) {
   if (!boundary) return null
   return <aside className="session-boundary-notice" role="note"><strong>Agent session: {boundary.label || 'Selected agent'}</strong><span>Earlier conversation remains saved for review and is not automatically transferred.</span></aside>
+}
+
+/** Package declarations describe admission requirements, never permission grants. */
+export function WorkflowRequirements({ workflow, runtime = {} }) {
+  if (!workflow?.execution && !workflow?.completion) return null
+  const workspace = workflow.execution?.workspace === 'required'
+  const target = runtime.target === 'local' ? 'Local Bun' : runtime.target === 'browser' ? 'Browser Linux' : null
+  const checks = workflow.completion?.checks || []
+  return <aside className="dashboard-notice" aria-label="Workflow requirements">
+    <strong>{workspace ? `Requires workspace execution${target ? ` · ${target}` : ''}` : 'No workspace execution required'}</strong>
+    {workspace && <span>{target ? runtime.status === 'ready' ? `${target} is ready. Starting uses this selected environment.` : `Starting prepares the selected ${target} environment.` : 'Choose an execution environment in Settings before starting.'}</span>}
+    {checks.map((check, index) => <span key={`${check.capability}-${index}`}><strong>Completion check: </strong>{check.capability === 'workspace.artifact' ? `Workspace artifact${check.options?.requireFresh ? ' · new build from this task' : ''}${check.options?.requireInteraction ? ' · interaction evidence required' : ''}` : `Unsupported check: ${check.capability}`}</span>)}
+    <span>Requirements do not grant tool access or change your selected environment.</span>
+  </aside>
 }
 
 /** Projection only: the owner supplies live state and all operations. No runtime starts here. */
@@ -90,6 +104,7 @@ export default function Dashboard({ state = {}, goal = '', onGoalChange, onSubmi
             {workflow?.package && <p className="dashboard-agent-model">Agent model: <strong>{workflow.leadModel || 'Binding unavailable'}</strong><span>Connection checks below apply to the desk default profile.</span></p>}
             {workflow?.disabled && <p className="dashboard-error" role="status">{workflow.unavailableReason || 'This workflow is unavailable. Its saved definition has been preserved.'}</p>}
             <SessionBoundaryNotice boundary={state.sessionBoundary}/>
+            <WorkflowRequirements workflow={workflow} runtime={runtime}/>
             <form className="dashboard-composer" onSubmit={submit}>
               <label htmlFor="dashboard-goal">Dashboard goal</label>
               <textarea id="dashboard-goal" value={goal} onChange={event => onGoalChange?.(event.target.value)} placeholder={graphRunning ? 'Draft a goal for the next run…' : working ? 'Add a note to the current task…' : 'Describe the result you want…'} rows={4} onKeyDown={event => { if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') { event.preventDefault(); if (canSubmit) onSubmit?.() } }}/>

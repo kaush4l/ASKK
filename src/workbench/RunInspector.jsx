@@ -6,7 +6,7 @@ import { projectRunTools } from './run-evidence.js'
 import './run-inspector.css'
 
 const textOf = value => typeof value === 'string' ? value : value == null ? '' : JSON.stringify(value, null, 2)
-const labelOf = status => ({ queued: 'Queued', starting: 'Starting', thinking: 'Thinking', calling: 'Using a tool', waiting: 'Waiting', compacting: 'Organizing context', running: 'Running', verifying: 'Verifying application', interrupted: 'Interrupted', incomplete: 'Incomplete', cancelled: 'Stopped', cancelling: 'Stopping', done: 'Completed', completed: 'Completed', failed: 'Failed' })[status] || status || 'Not recorded'
+const labelOf = status => ({ queued: 'Queued', starting: 'Starting', thinking: 'Thinking', calling: 'Using a tool', waiting: 'Waiting', compacting: 'Organizing context', running: 'Running', verifying: 'Checking result', interrupted: 'Interrupted', incomplete: 'Incomplete', cancelled: 'Stopped', cancelling: 'Stopping', done: 'Completed', completed: 'Completed', failed: 'Failed' })[status] || status || 'Not recorded'
 
 /** Large records mount only after a deliberate expansion. */
 function Record({ title, value }) {

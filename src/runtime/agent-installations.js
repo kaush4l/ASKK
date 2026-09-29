@@ -1,6 +1,7 @@
 /** Browser-local, declarative installations. Authored bytes never become executable modules. */
 import { importAgentPackage, restoreAgentPackage } from '../core/agent-package.js'
-import { compileAgentPackage } from '../core/package-spec.js'
+import { compileAgentPackage, compilePackageWorkflows } from '../core/package-spec.js'
+import { resolvePackageWorkflows } from '../core/package-workflows.js'
 import { IMPORTABLE_TOOL_GROUPS } from '../core/builtin-registry.js'
 import { commonToolFiles } from '../core/folder.js'
 import { decide } from '../core/permissions.js'
@@ -49,31 +50,37 @@ export class AgentInstallations {
   async preview(records) {
     if (this.hub.disposed) fail('PACKAGE_STOPPED', 'The agent desk has stopped.')
     const pkg = await importAgentPackage(records)
+    const reference = pkg.data.agents.find(agent => agent.path === 'agent.md').settings.workflows
+    const declared = reference === undefined ? null : await resolvePackageWorkflows(reference, { read: path => pkg.source.read(path), agents: new Set(pkg.data.agents.map(agent => agent.id)), agentSettings: new Map(pkg.data.agents.map(agent => [agent.id, agent.settings])) })
+    const workflows = declared?.workflows.map(row => ({ id: row.id, label: row.label, description: row.description, agentId: row.outputId, execution: row.execution, completion: row.completion })) ?? []
     if (this.hub.disposed) fail('PACKAGE_STOPPED', 'The agent desk stopped during package validation.')
     this.prune()
     const size = bytesOf(pkg.data)
     while (this.stages.size && (this.stages.size >= STAGES || [...this.stages.values()].reduce((sum, stage) => sum + stage.bytes, 0) + size > STAGE_BYTES)) this.stages.delete(this.stages.keys().next().value)
     const stageId = crypto.randomUUID()
     this.stages.set(stageId, { pkg, bytes: size, at: Date.now() })
-    return snapshot({ stageId, packageId: pkg.data.packageId, packageVersion: pkg.data.packageVersion, revisionDigest: pkg.data.revisionDigest, entryAgentId: pkg.data.entryAgentId, agents: summaries(pkg.data), files: (await pkg.source.list()).map(({ path, bytes }) => ({ path, bytes })), modelAliases: [...new Set(pkg.data.agents.map(agent => agent.settings.model ?? '$default'))], availableModels: modelsFor(this.hub), availableTools: toolsFor(this.hub), notes: [] })
+    return snapshot({ stageId, packageId: pkg.data.packageId, packageVersion: pkg.data.packageVersion, revisionDigest: pkg.data.revisionDigest, entryAgentId: pkg.data.entryAgentId, agents: summaries(pkg.data), files: (await pkg.source.list()).map(({ path, bytes }) => ({ path, bytes })), modelAliases: [...new Set(pkg.data.agents.map(agent => agent.settings.model ?? '$default'))], availableModels: modelsFor(this.hub), availableTools: toolsFor(this.hub), workflows, defaultWorkflow: declared?.default ?? null, notes: [] })
   }
   admit(guard) {
     if (this.hub.disposed || !this.hub.started || this.hub.lockState !== 'leader') fail('PACKAGE_STOPPED', 'Only the active agent desk can install a package.')
     if (!this.hub.store?.durable || typeof this.hub.store.update !== 'function') fail('PACKAGE_STORAGE', 'Installing an agent requires durable browser storage; nothing was installed.')
     if (guard && guard() === false) fail('PACKAGE_ADMISSION', 'The desk changed while this package was being installed.')
   }
-  summary(record, status = 'ready', error = '') {
+  summary(record, status = 'ready', error = '', compiled = {}) {
     const text = value => typeof value === 'string' ? value.slice(0, 4000) : ''
     const data = record.data ?? {}, agents = Array.isArray(data.agents) ? data.agents.slice(0, 64).filter(agent => agent && typeof agent === 'object') : []
     const lead = agents.find(agent => agent.id === record.leadAgentId)
+    const leadSpec = compiled.specs?.find(spec => spec.package.agentId === record.leadAgentId)
     const modelBindings = Object.fromEntries(Object.entries(record.bindings?.models ?? {}).filter(([, value]) => typeof value === 'string').map(([key, value]) => [key, text(value)]))
-    return snapshot({ id: text(record.id), packageId: text(data.packageId), packageVersion: text(data.packageVersion), revisionDigest: text(data.revisionDigest), leadAgentId: text(record.leadAgentId), agentPath: `installed/${text(record.id)}/${text(record.leadAgentId)}`, label: text(lead?.settings?.name) || text(record.leadAgentId) || 'Unavailable package', description: text(lead?.settings?.description), modelBindings, leadModel: modelBindings[lead?.settings?.model ?? '$default'] ?? '', agents: agents.map(agent => ({ id: text(agent.id), name: text(agent.settings?.name) || text(agent.id), description: text(agent.settings?.description), agentPath: `installed/${text(record.id)}/${text(agent.id)}` })), createdAt: record.createdAt, status, error })
+    return snapshot({ id: text(record.id), packageId: text(data.packageId), packageVersion: text(data.packageVersion), revisionDigest: text(data.revisionDigest), leadAgentId: text(record.leadAgentId), agentPath: `installed/${text(record.id)}/${text(record.leadAgentId)}`, label: text(lead?.settings?.name) || text(record.leadAgentId) || 'Unavailable package', description: text(lead?.settings?.description), modelBindings, leadModel: modelBindings[lead?.settings?.model ?? '$default'] ?? '', leadRequireVerification: leadSpec?.engine.requireVerification === true, workflows: status === 'ready' ? compiled.workflows?.workflows ?? [] : [], defaultWorkflow: status === 'ready' ? compiled.workflows?.default ?? null : null, agents: agents.map(agent => ({ id: text(agent.id), name: text(agent.settings?.name) || text(agent.id), description: text(agent.settings?.description), agentPath: `installed/${text(record.id)}/${text(agent.id)}` })), createdAt: record.createdAt, status, error })
   }
   async compile(record) {
     if (!record || record.version !== 1 || !/^[a-z0-9-]{1,80}$/.test(record.id) || !Number.isFinite(record.createdAt)) fail('PACKAGE_STORAGE', 'The saved installation identity is invalid.')
     const pkg = await restoreAgentPackage(record.data)
     if (!pkg.data.agents.some(agent => agent.id === record.leadAgentId)) fail('PACKAGE_BINDING', 'The installed lead agent is missing from its verified package.')
-    return compileAgentPackage(pkg, { installationId: record.id, namespace: 'installed', bindings: record.bindings, catalogue: this.hub.catalogue(), index: this.hub.index })
+    const specs = await compileAgentPackage(pkg, { installationId: record.id, namespace: 'installed', bindings: record.bindings, catalogue: this.hub.catalogue(), index: this.hub.index })
+    const workflows = await compilePackageWorkflows(pkg, { specs })
+    return { specs, workflows }
   }
   async restore() {
     return this.ordered(async () => {
@@ -91,8 +98,9 @@ export class AgentInstallations {
       for (const record of saved.records) {
         try {
           if (this.items.has(record.id)) fail('PACKAGE_STORAGE', 'Duplicate installation identity in saved packages.')
-          const specs = await this.compile(record)
-          this.items.set(record.id, { record, specs, summary: this.summary(record) })
+          const compiled = await this.compile(record)
+          const { specs } = compiled
+          this.items.set(record.id, { record, specs, summary: this.summary(record, 'ready', '', compiled) })
           for (const spec of specs) this.hub.specs.set(spec.path, spec)
         } catch (error) {
           const id = typeof record?.id === 'string' && /^[a-z0-9-]{1,80}$/.test(record.id) ? record.id : `invalid-${this.items.size}`
@@ -112,7 +120,8 @@ export class AgentInstallations {
       const stage = this.stages.get(stageId)
       if (!stage) fail('PACKAGE_STAGE', 'This package preview expired; select the folder again.')
       const record = snapshot({ version: 1, id: crypto.randomUUID(), createdAt: Date.now(), data: stage.pkg.data, bindings: { models: choices.models, tools: choices.tools }, leadAgentId: choices.leadAgentId ?? stage.pkg.data.entryAgentId })
-      const specs = await this.compile(record)
+      const compiled = await this.compile(record)
+      const { specs } = compiled
       const checkModels = () => { for (const spec of specs) if (!installedModelAvailable(this.hub.catalogue(), spec.inference.model)) fail('PACKAGE_BINDING', `The bound model profile changed before installation: ${spec.inference.model}`) }
       this.admit(admissionGuard)
       checkModels()
@@ -130,25 +139,30 @@ export class AgentInstallations {
         this.hub.publish({ type: 'packages', installations: this.list() })
         fail('PACKAGE_ACTIVATION', 'The package was saved, but the desk changed before activation; reload to verify it.')
       }
-      this.items.set(record.id, { record, specs, summary: this.summary(record) })
+      this.items.set(record.id, { record, specs, summary: this.summary(record, 'ready', '', compiled) })
       for (const spec of specs) this.hub.specs.set(spec.path, spec)
       for (const spec of specs) await this.hub.probe(spec.path)
-      if (this.hub.disposed) fail('PACKAGE_ACTIVATION', 'The package was saved, but the desk stopped before its tools were inspected.')
+      if (this.hub.disposed) {
+        for (const spec of specs) this.hub.specs.delete(spec.path)
+        this.items.set(record.id, { record, specs: [], summary: this.summary(record, 'disabled', 'Saved, but tool inspection was interrupted; reload the desk to verify this installation.') })
+        this.hub.publish({ type: 'packages', installations: this.list() })
+        fail('PACKAGE_ACTIVATION', 'The package was saved, but the desk stopped before its tools were inspected.')
+      }
       const error = specs.map(spec => this.hub.readyInfo.get(spec.path)?.error).filter(Boolean).join('; ')
       if (error) {
         for (const spec of specs) this.hub.specs.delete(spec.path)
         this.items.set(record.id, { record, specs: [], summary: this.summary(record, 'disabled', error) })
       }
       this.hub.publish({ type: 'packages', installations: this.list() })
-      return this.items.get(record.id).summary
+      return this.list().find(item => item.id === record.id)
     })
   }
   list() {
     return snapshot([...this.items.values()].map(item => {
       const missing = item.specs?.find(spec => !installedModelAvailable(this.hub.catalogue(), spec.inference.model))
-      if (missing) return { ...item.summary, status: 'disabled', error: `Bound model profile is no longer configured: ${missing.inference.model}` }
+      if (missing) return { ...item.summary, status: 'disabled', workflows: [], defaultWorkflow: null, error: `Bound model profile is no longer configured: ${missing.inference.model}` }
       const failed = item.specs?.map(spec => this.hub.readyInfo.get(spec.path)?.error).filter(Boolean)
-      return failed?.length ? { ...item.summary, status: 'disabled', error: failed.join('; ') } : item.summary
+      return failed?.length ? { ...item.summary, status: 'disabled', workflows: [], defaultWorkflow: null, error: failed.join('; ') } : item.summary
     }))
   }
 }

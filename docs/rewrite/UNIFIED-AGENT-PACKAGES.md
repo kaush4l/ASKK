@@ -10,6 +10,7 @@ Shipped definitions and owner imports now take the same path:
 exact folder bytes → importAgentPackage / restoreAgentPackage
                   → validated {data, source.list/read}
                   → compileAgentPackage → frozen AgentSpecs → workers
+                  → compilePackageWorkflows → pinned workflow contracts
 ```
 
 The compiler consumes validated settings and exact Markdown bodies; it does not
@@ -52,7 +53,99 @@ retain namespace, installation ID, authored package ID/version and revision
 digest. Installing the same source again creates a separate installation.
 The owner may select any included role as an installed lead. The shipped default
 must name a definition in a configured shipped package; no `main` fallback is
-used. Workbench workflows are explicitly declared separately.
+used. Package workflows declare execution and completion; workbench rows select
+which packaged workflows to show.
+
+## Package workflow contract
+
+Only the root `agent.md` may declare `workflows: workflows.json`. That path,
+every strategy JSON path, and each graph `templateFile` path are relative to the
+package root and must exist in its inventory. Import validates their contents;
+compilation rechecks their exact bytes against SHA-256. Missing or invalid
+resources disable the package rather than falling back to global definitions.
+
+The manifest is strictly versioned and accepts only these fields:
+
+```json
+{
+  "version": 1,
+  "default": "answer",
+  "workflows": [{
+    "id": "answer",
+    "label": "Answer a question",
+    "description": "Use the declared agent and available tools.",
+    "strategy": "strategies/answer.json",
+    "execution": {"workspace": "none"},
+    "completion": {"checks": []}
+  }]
+}
+```
+
+There must be 1–32 workflows, distinct bounded lowercase IDs, and a default ID
+that names one of them. Labels are at most 512 characters; descriptions at most
+4,000. Every workflow explicitly supplies execution and completion. Unknown
+fields, capabilities and invalid references fail validation.
+
+An agent strategy retains the existing data shape, with a local agent ID:
+
+```json
+{
+  "version": 1, "id": "answer", "kind": "agent",
+  "agent": "helper", "delegation": "declared", "session": "agent"
+}
+```
+
+`delegation` is `none` or `declared`; the strategy compatibility field `session`
+is currently `agent`. Actual agent residency follows its compiled `session`
+setting. Graph strategies retain `nodes`, `output` and `limits`; every node names
+a local agent ID, explicit dependencies and input mappings, and either a literal
+`template` or an inventoried Markdown `templateFile`. Graphs have at most 64
+nodes, must be acyclic, and every node must contribute to the output. Existing
+parallelism and wall-time limits apply. Compilation resolves local IDs to the
+selected bundled or installed namespace; cross-package IDs are rejected.
+
+`execution.workspace` is `none` or `required`. Required execution uses the
+owner-selected workspace and its pinned binding; it does not choose a filesystem
+root or grant commands. Ordinary conversation workflows need no command runtime.
+An application workflow may declare this completion contract:
+
+```json
+{
+  "checks": [{
+    "capability": "workspace.artifact",
+    "options": {"requireFresh": true, "requireInteraction": true}
+  }]
+}
+```
+
+This is the only supported check capability in this version. Package manifests
+explicitly supply both boolean options and must require a workspace when using
+it. The trusted desk adapter evaluates artifact evidence; package text cannot
+supply a checker function, choose an arbitrary RPC operation or manufacture a
+receipt. Completion never grants workspace tools or overrides owner policy.
+Checks are bounded to 16 and repeated capabilities are rejected. A selected
+agent with legacy verification enabled must retain an artifact check; any graph
+participant requiring legacy verification requires a workspace as well.
+
+`compileAgentPackage` continues returning `AgentSpec[]`.
+`compilePackageWorkflows(pkg, {specs})` returns `null` for a folder without a
+manifest, otherwise frozen `{default, workflows}`. Each compiled workflow carries
+its resolved output `agent`, `strategy`, `strategyHash`, `strategyFiles`,
+`execution`, `completion` and output-agent `package` identity alongside authored
+ID/label/description. Workflow IDs remain local to the installation. Imported installations retain
+the direct selected-lead workflow and expose declared workflows as additional
+options; the manifest default never silently replaces the owner's lead choice.
+Definition
+hashes use the same resolved strategy representation as runtime admission;
+resource hashes include the workflow manifest, strategies and templates.
+
+The shipped workbench references this contract with rows such as
+`{"id":"coding","package":"starter","workflow":"coding"}`. The first ID
+preserves the UI selection; the latter two fields select the shipped package and
+its authored workflow. The complete starter folder contains a conversation,
+a parallel graph and an application workflow; legacy global strategy files are
+retained only for compatibility. None of these declarations runs a task during
+import or activation.
 
 ## Models and effective authority
 
@@ -186,15 +279,20 @@ The new default starts its own agent session; the workbench marks a session
 boundary while retaining earlier conversation text for review. Reload restores
 records without replaying interrupted processes or approvals.
 
-Unified definitions do not yet make entire workflows portable. These remain
-pending: package-local executable strategies and completion-check references;
-explicit imported execution bindings; browser source/visual editing, replacement,
-removal and backup export; optional script execution descriptors; and a broker
-that keeps credentials outside agent workers. Existing role graphs still resolve
-published desk strategies/templates, imported workflows remain general-purpose,
-and coding verification still uses the existing workspace acceptance adapter.
+Packages can now carry their strategy, template, execution requirement and
+completion contract together. Older folders without a manifest retain a single
+selected-lead workflow. Legacy published desk strategies remain readable for
+compatibility; new bundled UI rows reference package workflows. Existing
+`require_verification: true` remains a legacy request for workspace artifact
+verification and cannot be bypassed by an explicit package workflow.
+
+Browser source/visual editing, replacement, removal and backup export remain
+pending, as do optional script execution descriptors and a broker that keeps
+credentials outside agent workers. Package completion declarations name trusted
+desk checks; they do not include executable checker implementations.
 
 Implementation: `src/core/agent-package.js`, `src/core/package-spec.js`,
+`src/core/package-workflows.js`, `src/core/completion.js`,
 `src/core/models.js`, `src/runtime/desk-packages.js`,
 `src/runtime/agent-installations.js`, `src/runtime/hub.js` and
 `src/runtime/agent.worker.js`. Focused fixtures cover renamed roles/services,

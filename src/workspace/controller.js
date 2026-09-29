@@ -6,6 +6,7 @@ import { DEFAULT_PROMPT, snapshot } from '../core/prompt.js'
 import { boundModelAvailable, resolve as resolveModel } from '../core/models.js'
 import { openaiBase, anthropicBase } from '../core/inference.js'
 import { hasModelRelay } from '../core/model-relay.js'
+import { normalizeCompletion, LEGACY_ARTIFACT_COMPLETION } from '../core/completion.js'
 import { createWorkspaceBinding, assertWorkspaceBinding, assertWorkspacePort, assertExecutionPort, createArtifactManifest, assertArtifactManifest, createBoundRunSnapshot } from './contracts.js'
 
 const active = status => ['thinking', 'calling', 'waiting', 'compacting', 'running', 'starting', 'cancelling', 'verifying'].includes(status)
@@ -23,14 +24,20 @@ const requestEvidence = value => {
 }
 const installedWorkflow = item => Object.freeze({
   id: `package-${item.id}`, label: item.label, description: item.error || item.description || `Installed from ${item.packageId}`,
-  agent: item.agentPath, workspace: false, disabled: item.status === 'disabled', unavailableReason: item.error || '',
+  agent: item.agentPath, workspace: item.leadRequireVerification === true, disabled: item.status === 'disabled', unavailableReason: item.error || '',
+  ...(item.leadRequireVerification ? { execution: { workspace: 'required' }, completion: LEGACY_ARTIFACT_COMPLETION } : {}),
   leadModel: item.leadModel || '', modelBindings: Object.freeze({ ...item.modelBindings }),
-  package: Object.freeze({ installationId: item.id, packageId: item.packageId, revisionDigest: item.revisionDigest, agentId: item.leadAgentId }),
+  package: Object.freeze({ namespace: 'installed', installationId: item.id, packageId: item.packageId, revisionDigest: item.revisionDigest, agentId: item.leadAgentId }),
 })
+const packageWorkflow = (workflow, id, leadModel = '') => Object.freeze({ ...workflow, id, leadModel, workspace: workflow.execution.workspace === 'required', completion: normalizeCompletion(workflow.completion) })
 function workflowsFrom(configuration) {
   if (!Array.isArray(configuration.workflows) || configuration.workflows.length > 32) throw new Error('workbench.json must declare its workflows; no agent is selected implicitly')
   const seen = new Set()
   return configuration.workflows.map(row => {
+    if (row?.package !== undefined || row?.workflow !== undefined) {
+      if (Object.keys(row).some(key => !['id', 'package', 'workflow'].includes(key)) || !/^[a-z][a-z0-9-]{0,63}$/.test(row.id ?? '') || seen.has(row.id) || !/^[a-z0-9][a-z0-9_-]{0,127}$/.test(row.package ?? '') || !/^[a-z][a-z0-9_-]{0,63}$/.test(row.workflow ?? '')) throw new Error('Invalid package workflow reference')
+      seen.add(row.id); return Object.freeze({ id: row.id, packageRef: row.package, workflowRef: row.workflow })
+    }
     if (!row || typeof row.id !== 'string' || !/^[a-z][a-z0-9-]{0,63}$/.test(row.id) || seen.has(row.id) || typeof row.label !== 'string' || !row.label.trim() || typeof row.description !== 'string' || typeof row.agent !== 'string' || !/^[a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_-]+)*$/.test(row.agent) || typeof row.workspace !== 'boolean') throw new Error('Invalid workbench workflow')
     if (row.strategy !== undefined && (typeof row.strategy !== 'string' || !/^strategies\/[A-Za-z0-9_/-]+\.json$/.test(row.strategy))) throw new Error('Invalid workflow strategy reference')
     seen.add(row.id); return Object.freeze({ ...(row.strategy ? { strategyRef: row.strategy } : {}), id: row.id, label: row.label, description: row.description, agent: row.agent, workspace: row.workspace })
@@ -42,7 +49,7 @@ const saveSetting = (key, value) => { try { localStorage.setItem(key, JSON.strin
 export function createWorkbenchController({ onChange, basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? '', workspace: workspaceOverride, createExecution: executionFactory, createCompanion = options => new LocalExecution(options), createHub: hubFactory, inspectArtifact: inspectOverride } = {}) {
   const listeners = new Set(onChange ? [onChange] : []); const running = new Map(); const terminalListeners = new Map(); const terminals = new Set()
   const base = `${basePath.replace(/\/$/, '')}/`
-  let state = { ready: false, error: '', project: { name: 'Untitled workspace', id: 'default' }, goal: '', goalRevision: 0, files: [], messages: [], run: null, task: null, sessionBoundary: null, runtime: { target: 'browser', status: 'idle', phase: 'Not started', capabilities: [] }, companion: { status: 'disconnected', url: 'https://127.0.0.1:7717' }, model: { status: 'unconfigured', id: '', baseUrl: '' }, commands: [], artifacts: [], agents: [], agentDefinitions: [], agentPackages: [], packageInstalling: false, workflows: [], selectedWorkflowId: '', toolPolicy: DEFAULT_TOOL_POLICY, plans: [], approvals: [], activity: [] }
+  let state = { ready: false, configurationReady: false, error: '', project: { name: 'Untitled workspace', id: 'default' }, goal: '', goalRevision: 0, files: [], messages: [], run: null, task: null, sessionBoundary: null, runtime: { target: 'browser', status: 'idle', phase: 'Not started', capabilities: [] }, companion: { status: 'disconnected', url: 'https://127.0.0.1:7717' }, model: { status: 'unconfigured', id: '', baseUrl: '' }, commands: [], artifacts: [], agents: [], agentDefinitions: [], agentPackages: [], packageInstalling: false, workflows: [], selectedWorkflowId: '', toolPolicy: DEFAULT_TOOL_POLICY, plans: [], approvals: [], activity: [] }
   let hub; let local; let executor; let browser; let started; let disposed = false; let activeRun; let projectRevision = 0; let taskStartRevision = 0; let currentArtifact; let unsubscribe; let runtimeBoot; let taskArtifactId; let watcher; let watched = ''; let acceptance = { requireArtifact: true, requireInteraction: true }
   let uiLoaded = false; let persistTimer; let savingUI = Promise.resolve()
   let binding; let workspaceLocation = null; let locationLoaded = false; let legacyNative = false; let modelProfiles = []; let modelEpoch = 0; let modelCheck; let launchEpoch = 0; const runBindings = new Map()
@@ -289,7 +296,7 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
   }
   const refreshPackages = preferred => {
     const agentPackages = hub?.packages?.list() ?? []
-    const workflows = Object.freeze([...configuredWorkflows, ...agentPackages.map(installedWorkflow)])
+    const workflows = Object.freeze([...configuredWorkflows, ...agentPackages.flatMap(item => [installedWorkflow(item), ...(item.status === 'ready' ? item.workflows ?? [] : []).map(workflow => packageWorkflow(workflow, `package-${item.id}:workflow:${workflow.id}`, hub.specs?.get(workflow.agent)?.inference.model))])])
     const selectedWorkflowId = preferred && workflows.some(item => item.id === preferred) ? preferred : state.selectedWorkflowId
     notify({ agentPackages, workflows, selectedWorkflowId, sessionBoundary: sessionBoundaryFor(workflows, selectedWorkflowId) })
   }
@@ -344,7 +351,7 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
         notify({ model: { ...state.model, status: available ? 'configured' : 'failed', checkedAt: null, check: null, probe: null, errorCode: available ? null : connected ? 'MODEL_RELAY_DENIED' : 'MODEL_RELAY_UNAVAILABLE', error: available ? '' : connected ? 'The companion does not grant model relay access.' : message.state.error || 'The model relay is unavailable.' } })
       }
     }
-    if (message.type === 'boot' && message.stage === 'ready' && !state.pageLifecycle) { refreshPackages(); refreshDefinitions(); notify({ ready: true }) }
+    if (message.type === 'boot' && message.stage === 'ready' && !state.pageLifecycle) { refreshPackages(); refreshDefinitions() }
     if (message.type === 'ready' || message.type === 'agents') { refreshPackages(); refreshDefinitions() }
     if (message.type === 'lock' && message.state === 'follower') notify({ error: 'Another tab owns the agent runtime. Close it to work here.' })
     if (message.type === 'todo') notify({ plans: [...state.plans.filter(plan => plan.runId !== message.run), { runId: message.run, agent: hub.runs.get(message.run)?.agent ?? 'Agent', items: message.items }] })
@@ -407,12 +414,12 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
         if (!isolation.ready) notify({ runtime: { ...state.runtime, isolation: false, detail: isolation.reason } })
         const configuration = await fetch(`${base}workbench.json`).then(response => response.ok ? response.json() : {}).catch(() => ({})); acceptance = configuration.acceptance ?? acceptance
         const workflows = workflowsFrom(configuration)
-        configuredWorkflows = workflows
+        configuredWorkflows = workflows.filter(row => !row.packageRef)
         // Installed workflows are restored by the Hub below. Do not replace their
         // saved selection with a bundled agent while that restoration is pending.
         const selectedWorkflowId = typeof savedUI?.selectedWorkflowId === 'string' ? savedUI.selectedWorkflowId : workflows.find(row => row.id === configuration.defaultWorkflow)?.id ?? workflows[0]?.id ?? ''
         const toolPolicy = normalizeToolPolicy(savedUI && Object.hasOwn(savedUI, 'toolPolicy') ? savedUI.toolPolicy : Object.hasOwn(configuration, 'toolPolicy') ? configuration.toolPolicy : DEFAULT_TOOL_POLICY)
-        notify({ workflows: Object.freeze(workflows), selectedWorkflowId, toolPolicy, sessionBoundary: sessionBoundaryFor(workflows, selectedWorkflowId) })
+        notify({ workflows: Object.freeze(configuredWorkflows), selectedWorkflowId, toolPolicy, sessionBoundary: sessionBoundaryFor(configuredWorkflows, selectedWorkflowId) })
         const executionNotices = Object.fromEntries(['browser', 'local'].flatMap(target => {
           const notice = configuration.executionNotices?.[target]
           return typeof notice?.title === 'string' && notice.title.trim() && typeof notice?.body === 'string' && notice.body.trim()
@@ -442,13 +449,34 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
           'workspace.write': forRun(args => controller.saveFile({ ...args, expect: args.expect ?? args.expectedRevision })),
           'workspace.run': forRun((args, run) => controller.runCommand(args.command, { actor: run?.agent, runId: run?.id })),
           'workspace.build': forRun((_, run) => controller.buildPreview({ actor: run?.agent, runId: run?.id })),
-          'workspace.check': forRun(args => controller.checkArtifact(args)),
+          'workspace.check': forRun((args, run) => controller.checkArtifact(args, { requireInteraction: run.context?.workflow?.completion?.checks.find(check => check.capability === 'workspace.artifact')?.options.requireInteraction ?? acceptance.requireInteraction })),
           'workspace.acceptance': forRun(async () => {
             const sourceFingerprint = await fingerprint()
             const receipt = currentArtifact?.checks
             return { ok: !running.size && (acceptance.requireArtifact === false && projectRevision === taskStartRevision || Boolean(currentArtifact?.verified && !currentArtifact.stale && currentArtifact.id !== taskArtifactId && currentArtifact.revision === projectRevision && currentArtifact.sourceFingerprint === sourceFingerprint && receipt?.artifactId === currentArtifact.id && receipt?.revision === currentArtifact.revision && receipt?.buildId === currentArtifact.buildId)), reason: 'This application task needs a new build and passing interaction assertions against its unchanged source files.' }
           }),
           'workspace.environment': forRun(() => ({ target: state.runtime.target, status: state.runtime.status, binding, capabilities: state.runtime.capabilities, toolchain: executor?.describeCapabilities().toolchain, template: state.template, files: state.files.map(row => row.path), revision: projectRevision, artifact: currentArtifact ? { id: currentArtifact.id, revision: currentArtifact.revision, verified: currentArtifact.verified } : null })),
+        }
+        hub.completionAdapters = {
+          'workspace.artifact': forRun(async (options, run) => {
+            const artifact = currentArtifact
+            const receipt = artifact?.checks
+            const rejected = reason => ({ ok: false, reason })
+            if (running.size || !artifact?.verified || artifact.stale || artifact.revision !== projectRevision || !receipt?.ok) return rejected('Build the current saved source and run passing artifact assertions before completing.')
+            assertArtifactManifest(artifact.manifest, { binding: run.context.binding, sourceRevision: projectRevision, sourceFingerprint: artifact.sourceFingerprint })
+            if (receipt.artifactId !== artifact.id || receipt.revision !== artifact.revision || receipt.buildId !== artifact.buildId) return rejected('Artifact assertions belong to a different build or source revision.')
+            if (options.requireFresh) {
+              const command = state.commands.find(row => row.id === artifact.manifest.build.commandId)
+              const producer = hub.runs.get(command?.runId)
+              if (!run.context.completionBaseline || artifact.id === run.context.completionBaseline.artifactId || !producer || producer.trace !== run.trace) return rejected('This task needs its own new build; an earlier or unrelated task’s artifact is not completion evidence.')
+            }
+            const { validateAssertions } = await import('./artifacts.js')
+            validateAssertions(receipt.assertions, { requireInteraction: options.requireInteraction })
+            const sourceFingerprint = await fingerprint()
+            assertBound(run.context.binding)
+            if (running.size || currentArtifact !== artifact || artifact.revision !== projectRevision || sourceFingerprint !== artifact.sourceFingerprint) return rejected('Source files or the artifact changed during completion checks.')
+            return { ok: true, reason: 'The pinned artifact checks passed.', evidence: { artifactId: artifact.id, buildId: artifact.buildId, revision: artifact.revision, sourceFingerprint, runtime: run.context.binding, checks: receipt } }
+          }),
         }
         unsubscribe = hub.subscribe(onHub); await hub.start()
         if (disposed) { hub.stop(); return }
@@ -458,6 +486,11 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
         requirePageActive()
         for (const summary of summaries) cachedSummaryMap.set(summary.id, summary)
         const resolvedWorkflows = await Promise.all(workflows.map(async row => {
+          if (row.packageRef) {
+            const matches = (hub.packageWorkflows ?? []).filter(workflow => workflow.package?.namespace === 'bundled' && workflow.package.installationId === row.packageRef && workflow.id === row.workflowRef)
+            if (matches.length !== 1) throw new Error(`Workflow ${row.id} requires one available package workflow ${row.packageRef}/${row.workflowRef}`)
+            return packageWorkflow(matches[0], row.id, hub.specs?.get(matches[0].agent)?.inference.model)
+          }
           if (!row.strategyRef) return row
           const loaded = await hub.loadStrategy(row.strategyRef)
           const outputAgent = loaded.definition.kind === 'agent' ? loaded.definition.agent : loaded.definition.nodes.find(node => node.id === loaded.definition.output)?.agent
@@ -470,7 +503,7 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
         if (hub.bridgeState.status === 'answering') local = new LocalExecution({ url: hub.bridgeState.url, token: hub.bridgeState.token })
         await controller.setModel({ baseUrl: state.model.baseUrl, model: state.model.id, apiKey: hub.settings.get().catalogue.models?.workbench?.api_key ?? '' })
         requirePageActive()
-        refreshDefinitions(); refreshAgents(); notify({ ready: true })
+        refreshDefinitions(); refreshAgents(); notify({ ready: true, configurationReady: true })
         watcher = setInterval(async () => {
           if (disposed || watching || !files.backend || running.size || state.runtime.status !== 'ready') return
           watching = true
@@ -588,7 +621,9 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
       const workflow = state.workflows.find(row => row.id === state.selectedWorkflowId)
       if (!workflow) throw new Error('Select an available workflow before starting a task')
       if (workflow.disabled) throw new Error(workflow.unavailableReason || 'The selected agent folder is unavailable')
-      if (workflow.package && !hub.packages?.list().some(item => item.id === workflow.package.installationId && item.status === 'ready' && item.revisionDigest === workflow.package.revisionDigest && item.agentPath === workflow.agent)) throw new Error('The selected agent installation changed or is unavailable. Select its current definition before running.')
+      if (workflow.package?.namespace !== 'bundled' && workflow.package && !hub.packages?.list().some(item => item.id === workflow.package.installationId && item.status === 'ready' && item.revisionDigest === workflow.package.revisionDigest && (item.agentPath === workflow.agent || item.workflows?.some(row => row.agent === workflow.agent && row.strategyHash === workflow.strategyHash)))) throw new Error('The selected agent installation changed or is unavailable. Select its current definition before running.')
+      if (workflow.package && hub.specs && hub.specs.get(workflow.agent)?.package?.revisionDigest !== workflow.package.revisionDigest) throw new Error('The selected package revision changed. Reload its workflows before starting.')
+      for (const check of workflow.completion?.checks ?? []) if (typeof hub.completionAdapters?.[check.capability] !== 'function') throw new Error(`Completion capability is unavailable: ${check.capability}`)
       if (workflow.workspace) requireWritable({ allowReconciledSetup: active(state.run?.status) })
       if (active(state.run?.status)) {
         if (workflow.strategy?.kind === 'graph') throw new Error('Role inputs are fixed for this run. Stop the workflow to change the goal.')
@@ -607,7 +642,7 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
       try {
         selectedModelTransport(workflow)
         const { strategy, strategyHash, strategyFiles, ...runtimeWorkflow } = workflow
-        let context = snapshot({ workflow: runtimeWorkflow, toolPolicy: policy, savedGoal: { text: state.goal, revision: state.goalRevision } })
+        let context = snapshot({ workflow: runtimeWorkflow, completionBaseline: { artifactId: currentArtifact?.id ?? null, sourceRevision: projectRevision }, toolPolicy: policy, savedGoal: { text: state.goal, revision: state.goalRevision } })
         if (workflow.workspace) {
           await controller.startRuntime(); requireWritable(); assertBound()
           if (launch !== launchEpoch) return null
@@ -617,7 +652,7 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
           context = snapshot({ ...bound, ...context })
         }
         if (!strategy && !hub.startRun) throw new Error('The runtime cannot dispatch the selected agent explicitly')
-        const run = strategy ? await hub.startStrategy(strategy, text, { context, definitionHash: strategyHash, admissionGuard: () => launch === launchEpoch && !disposed, ...(workflow.workspace ? { verifyCompletion: run => hub.externalOps['workspace.acceptance']({}, run) } : {}) }) : hub.startRun(workflow.agent, text, { context })
+        const run = strategy ? await hub.startStrategy(strategy, text, { context, definitionHash: strategyHash, admissionGuard: () => launch === launchEpoch && !disposed, ...(strategy.kind === 'graph' && !workflow.completion && workflow.workspace ? { verifyCompletion: run => hub.externalOps['workspace.acceptance']({}, run) } : {}) }) : hub.startRun(workflow.agent, text, { context })
         if (launch !== launchEpoch || disposed) { if (run && typeof run !== 'string' && !run.ended) hub.abort(run); return null }
         activeRun = typeof run === 'string' ? run : run.id
         if (workflow.workspace) runBindings.set(activeRun, createBoundRunSnapshot({ runId: activeRun, ...context }))
@@ -863,11 +898,11 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
       const provenance = createArtifactManifest({ id: artifact.id, sourceRevision: revision, sourceFingerprint, runtime: result.binding, build: { id: artifact.buildId, commandId: result.id, exitCode: 0, sourceRevision: revision, runtimeId: result.binding.runtimeId }, resources: [...new Set(['index.html', ...artifact.resources])] })
       currentArtifact = { ...artifact, manifest: provenance, sourceFingerprint, status: 'ready', verified: false }; notify({ artifacts: [...state.artifacts, currentArtifact], activeArtifactId: artifact.id }); return { id: artifact.id, revision, status: 'ready', manifest: provenance, message: 'Built and packaged. Use workspace_check to run interaction assertions before claiming verification.' }
     },
-    async checkArtifact({ assertions = [] } = {}) {
+    async checkArtifact({ assertions = [] } = {}, { requireInteraction = acceptance.requireInteraction } = {}) {
       requireResponsive()
       if (!currentArtifact || currentArtifact.revision !== projectRevision || running.size) return { ok: false, reason: 'Finish running commands and build the current source revision first' }
       const { inspectArtifact, validateAssertions } = await import('./artifacts.js')
-      let plan; try { plan = validateAssertions(assertions, { requireInteraction: acceptance.requireInteraction }) } catch (error) { return { ok: false, reason: error.message } }
+      let plan; try { plan = validateAssertions(assertions, { requireInteraction }) } catch (error) { return { ok: false, reason: error.message } }
       const artifact = currentArtifact; const revision = projectRevision
       assertArtifactManifest(artifact.manifest, { binding: assertBound(), sourceRevision: revision, sourceFingerprint: artifact.sourceFingerprint })
       const checks = await (inspectOverride ?? inspectArtifact)(artifact, plan)

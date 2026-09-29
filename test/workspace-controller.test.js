@@ -1848,7 +1848,7 @@ test('folder preview has no execution effect; installation selects and pins its 
   const runId = await controller.sendGoal('Tell me about this pond')
   const run = hub.runs.get(runId)
   expect(run.agent).toBe(importedGuide.agentPath)
-  expect(run.context.workflow.package).toEqual({ installationId: importedGuide.id, packageId: importedGuide.packageId, revisionDigest: importedGuide.revisionDigest, agentId: importedGuide.leadAgentId })
+  expect(run.context.workflow.package).toEqual({ namespace: 'installed', installationId: importedGuide.id, packageId: importedGuide.packageId, revisionDigest: importedGuide.revisionDigest, agentId: importedGuide.leadAgentId })
   expect(Object.isFrozen(run.context.workflow.package)).toBe(true)
   expect(run.context.binding).toBeUndefined()
   expect(executions).toBe(0)
@@ -2111,4 +2111,104 @@ test('historical exports include only commands in the selected trace and artifac
   const general = await controller.exportRunEvidence('imported-conversation')
   expect(general.commands).toEqual([]); expect(general.artifacts).toEqual([]); expect(general.run).toBeNull()
   expect(hub.asks).toHaveLength(2)
+})
+
+const declaredArtifactCheck = { checks: [{ capability: 'workspace.artifact', options: { requireFresh: true, requireInteraction: true } }] }
+function declaredWorkflow(namespace = 'installed', workspace = 'required') {
+  const installationId = namespace === 'installed' ? importedGuide.id : 'starter'
+  const agent = `${namespace}/${installationId}/pond-guide`
+  return { id: 'build', label: 'Declared deliverable', description: 'Folder-authored workflow', agent,
+    strategy: { version: 1, id: 'deliverable', kind: 'agent', agent, delegation: 'declared', session: 'agent' },
+    strategyHash: 'sha256:declared-strategy', strategyFiles: { 'workflows.json': 'manifest-sha' },
+    execution: { workspace }, completion: workspace === 'required' ? structuredClone(declaredArtifactCheck) : { checks: [] },
+    package: { namespace, installationId, packageId: importedGuide.packageId, revisionDigest: importedGuide.revisionDigest, agentId: 'pond-guide' } }
+}
+function declaredStrategyFixture(hub) {
+  hub.startStrategy = async (definition, query, options) => {
+    expect(options.verifyCompletion).toBeUndefined() // Runtime owns the pinned checks, including single-agent strategies.
+    const run = hub.startRun(definition.agent, query, options); run.trace = run.id; return run
+  }
+}
+
+test('installed folder workflows keep the direct lead and bind only declared workspace runs', async () => {
+  const workflow = declaredWorkflow()
+  const installed = [{ ...importedGuide, workflows: [workflow] }]
+  const { controller, hub, browser } = await startedFixture({ configureHub(hub) { packageFixtureHub(hub, installed); declaredStrategyFixture(hub) } })
+  expect(controller.getSnapshot().workflows.find(row => row.id === `package-${importedGuide.id}`).workspace).toBe(false)
+  expect(controller.getSnapshot().runtime.status).toBe('idle')
+  await controller.setWorkflow(`package-${importedGuide.id}:workflow:build`)
+  expect(controller.getSnapshot().runtime.status).toBe('idle')
+  const runId = await controller.sendGoal('Produce the reviewed deliverable')
+  const run = hub.runs.get(runId)
+  expect(run.context.binding.target).toBe('browser')
+  expect(run.context.workflow.completion).toEqual(declaredArtifactCheck)
+  expect(run.context.completionBaseline.artifactId).toBeNull()
+  expect(Object.isFrozen(run.context.workflow.completion.checks[0].options)).toBe(true)
+  installed[0].workflows[0].completion.checks[0].options.requireInteraction = false
+  expect(run.context.workflow.completion.checks[0].options.requireInteraction).toBe(true)
+  expect(browser.jobs).toHaveLength(0)
+})
+
+test('shipped package references retain UI IDs and ordinary conversations never start execution', async () => {
+  const workflow = declaredWorkflow('bundled', 'none')
+  let starts = 0
+  const { controller, hub } = await startedFixture({
+    workbenchConfig: { workflows: [{ id: 'assistant', package: 'starter', workflow: 'build' }], defaultWorkflow: 'assistant' },
+    createExecution: async () => { starts++; throw new Error('Unexpected runtime startup') },
+    configureHub(hub) { hub.packageWorkflows = [workflow]; declaredStrategyFixture(hub) },
+  })
+  expect(controller.getSnapshot().configurationReady).toBe(true)
+  expect(controller.getSnapshot().selectedWorkflowId).toBe('assistant')
+  const runId = await controller.sendGoal('Answer using the folder instructions')
+  expect(hub.runs.get(runId).context.binding).toBeUndefined()
+  expect(hub.runs.get(runId).context.workflow.strategyHash).toBeUndefined()
+  expect(hub.runs.get(runId).context.workflow.package.namespace).toBe('bundled')
+  expect(starts).toBe(0)
+})
+
+test('missing completion adapter blocks imported workflow before runtime or model admission', async () => {
+  let starts = 0
+  const { controller, hub } = await startedFixture({ createExecution: async () => { starts++; throw new Error('No startup') }, configureHub(hub) { packageFixtureHub(hub, [{ ...importedGuide, workflows: [declaredWorkflow()] }]); declaredStrategyFixture(hub) } })
+  await controller.setWorkflow(`package-${importedGuide.id}:workflow:build`)
+  delete hub.completionAdapters['workspace.artifact']
+  await expect(controller.sendGoal('Must not execute')).rejects.toThrow('Completion capability is unavailable')
+  expect(starts).toBe(0); expect(hub.runs.size).toBe(0)
+})
+
+test('declared artifact check requires matching source, interaction and same-task build provenance', async () => {
+  const { controller, hub } = await startedFixture({
+    configureHub(hub) { packageFixtureHub(hub, [{ ...importedGuide, workflows: [declaredWorkflow()] }]); declaredStrategyFixture(hub) },
+    inspectArtifact: async (artifact, assertions) => ({ ok: true, assertions, artifactId: artifact.id, revision: artifact.revision, buildId: artifact.buildId }),
+  })
+  await controller.setWorkflow(`package-${importedGuide.id}:workflow:build`)
+  const run = hub.runs.get(await controller.sendGoal('Create an interactive result'))
+  const check = () => hub.completionAdapters['workspace.artifact'](run.context.workflow.completion.checks[0].options, run)
+  expect((await check()).ok).toBe(false)
+  await controller.buildPreview() // An owner build is not this agent's fresh build.
+  await controller.checkArtifact({ assertions })
+  expect((await check()).reason).toContain('unrelated task')
+  await controller.buildPreview({ runId: run.id, actor: run.agent })
+  await controller.checkArtifact({ assertions: [{ action: 'assertText', selector: 'output', value: '1' }] }, { requireInteraction: false })
+  await expect(check()).rejects.toThrow('interaction')
+  await controller.checkArtifact({ assertions })
+  const receipt = await check()
+  expect(receipt.ok).toBe(true)
+  expect(receipt.evidence.runtime).toEqual(run.context.binding)
+  await controller.createFile('new-source.js', 'changed after checks')
+  expect((await check()).ok).toBe(false)
+})
+
+
+test('authored workflow IDs cannot collide with another installed direct lead', async () => {
+  const first = { ...importedGuide, id: 'foo', agentPath: 'installed/foo/pond-guide', workflows: [declaredWorkflow()] }
+  first.workflows[0].id = 'bar'
+  const second = { ...importedGuide, id: 'foo-bar', agentPath: 'installed/foo-bar/pond-guide', leadRequireVerification: true }
+  const { controller } = await startedFixture({ configureHub(hub) { packageFixtureHub(hub, [first, second]) } })
+  const rows = controller.getSnapshot().workflows
+  expect(new Set(rows.map(row => row.id)).size).toBe(rows.length)
+  expect(rows.find(row => row.id === 'package-foo:workflow:bar').strategy).toBeTruthy()
+  const legacy = rows.find(row => row.id === 'package-foo-bar')
+  expect(legacy.agent).toBe(second.agentPath)
+  expect(legacy.execution).toEqual({ workspace: 'required' })
+  expect(legacy.workspace).toBe(true)
 })

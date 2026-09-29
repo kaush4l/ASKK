@@ -2,6 +2,14 @@
 
 Evidence checkpoint: 2026-09-29. Published source `91612b9` adds server-enforced model relay scope, durable downgrade protection, worker revocation, a downloadable bundled Mac companion and Goal/Evidence team presentation. Actual Pages Chrome completed a model reply and an approved tool turn through the packaged relay, restored pairing and a draft after reload, and downloaded the matching archive. Native execution and Browser Linux remained Not started. Current native Safari, physical iPhone, VoiceOver and Browser Linux Next-build acceptance remain pending. These are engineering-preview results, not production readiness or one-shot reliability.
 
+## Portable workflow candidate
+
+The current source lets each agent folder declare `workflows.json`, package-local strategies and prompt templates, workspace requirements, and named completion checks. Bundled workflows now use the same compiler as imported folders. The trusted `workspace.artifact` adapter checks the current bound revision, task-owned fresh build and retained interaction evidence; a model response cannot supply or replace its checker. Other domain-specific check adapters remain unimplemented.
+
+Final regression: **747 passed, 1 skipped, 0 failed, 5505 assertions**, 67 files, 20.48 seconds. The final export is **828,713,685 bytes / 192 files**, hash `c5f86b39531b1a30195d22962574772659c9da0697c70530d4f82c4f32763eb1`. The runtime image is unchanged. Settings now wait for complete configuration restoration before seeding editable connection fields; tests cover early opening and preservation of user edits. Loading no longer exposes unresolved workflow labels.
+
+Actual local Chrome started the package-defined planner and critic in separate workers, then admitted synthesis after both finished. The selected Local Bun target remained Not started and no companion was connected. Browser folder-upload acceptance was interrupted and is not claimed; install/restore and completion behavior have contract and real-worker tests. Published acceptance for this candidate is recorded separately after deployment.
+
 ## Source, build, and published site
 
 | Checkpoint | Recorded result | Scope |
@@ -18,7 +26,7 @@ The server allows only explicit model bases and inference routes for the model g
 
 Goal/Evidence presentation now reveals details progressively. Selected-task cards retain their slots through terminal states; pending decisions remain reachable when their cards are outside the first six. The [synthetic Chrome component receipt](evidence/live-team-density-chrome.json) records stable card/button geometry and focus through completion at 1200px, with inert terminal Stop. Separate 320px checks record no horizontal overflow and exact approval-heading focus. This is actual UI with fixture records, not real parallel inference or a physical-phone test. The real Pages run separately proved its own decision-to-tool-result sequence.
 
-Observed first-load issue: opening Settings before initial model restoration finishes can show an empty Model ID. Closing and reopening Settings shows the restored selection. This timing case remains to be fixed and retested. Current native Safari recovery/model checks, physical iPhone, VoiceOver, fresh TLS trust, and Browser Linux application builds remain separate acceptance gates.
+Observed first-load issue: opening Settings before initial model restoration finishes can show an empty Model ID. Closing and reopening Settings shows the restored selection. The portable workflow candidate fixes this timing case with hydration regression coverage; delayed first-load browser acceptance remains pending. Current native Safari recovery/model checks, physical iPhone, VoiceOver, fresh TLS trust, and Browser Linux application builds remain separate acceptance gates.
 
 ### Unified folder runtime and navigation recovery
 

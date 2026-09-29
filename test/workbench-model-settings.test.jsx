@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { parseFragment } from 'parse5'
-import { Settings, Welcome } from '../src/workbench/Workbench.jsx'
+import { Settings, Welcome, restoreModelSettingsDraft } from '../src/workbench/Workbench.jsx'
 import Dashboard from '../src/workbench/Dashboard.jsx'
 import { modelStatusLabel, modelDraftChanged, canCheckModel, modelCheckCancelled, modelRelayAvailable } from '../src/workbench/model-ui.js'
 
@@ -14,6 +14,66 @@ const text = node => node.nodeName === '#text' ? node.value : (node.childNodes |
 const attr = (node, name) => node.attrs?.find(item => item.name === name)?.value
 const button = (tree, name) => all(tree, node => node.tagName === 'button' && text(node) === name)[0]
 const disabled = node => attr(node, 'disabled') !== undefined
+
+test('opening model settings during restoration cannot expose stale save or check controls', () => {
+  // Even a partial profile notification is not the final saved configuration.
+  const tree = render(stateFor({ id: 'temporary-shipped-model', via: 'bridge' }, { ready: false }))
+  for (const label of ['Save model', 'List models', 'Test reply']) expect(disabled(button(tree, label))).toBe(true)
+  expect(all(tree, node => node.tagName === 'input' || node.tagName === 'select').every(disabled)).toBe(true)
+  expect(text(tree)).toContain('Restoring saved model settings')
+  expect(all(tree, node => node.tagName === 'input' && attr(node, 'value') === 'temporary-shipped-model')).toHaveLength(0)
+  const ready = render(stateFor({ id: 'restored-owner-model' }))
+  expect(disabled(button(ready, 'Save model'))).toBe(false)
+  expect(disabled(button(ready, 'List models'))).toBe(false)
+  expect(all(ready, node => node.tagName === 'input' && attr(node, 'value') === 'restored-owner-model')).toHaveLength(1)
+})
+
+test('one initialization boundary replaces the startup placeholder with the complete restored profile', () => {
+  let current = restoreModelSettingsDraft(null, stateFor({}, { ready: false }))
+  expect(current).toMatchObject({ initialized: false, model: '', via: 'direct', key: '' })
+  expect(restoreModelSettingsDraft(current, stateFor({ id: 'intermediate' }, { ready: false }))).toBe(current)
+  const restored = stateFor({ id: 'restored-model', baseUrl: 'https://model.example/v1', via: 'bridge', apiKey: 'fixture-never-copy-saved-key' }, { companion: { url: 'https://relay.example:7717' } })
+  current = restoreModelSettingsDraft(current, restored)
+  expect(current).toEqual({ initialized: true, model: 'restored-model', baseUrl: 'https://model.example/v1', via: 'bridge', key: '', bridgeUrl: 'https://relay.example:7717', editedFields: [] })
+  expect(canCheckModel({ draft: current, saved: restored.model })).toBe(true)
+  expect(restoreModelSettingsDraft(current, restored)).toBe(current)
+})
+
+test('worker boot-ready does not admit model actions before final controller configuration is restored', () => {
+  const partial = stateFor({ id: 'pre-final-config' }, { ready: true, configurationReady: false })
+  const tree = render(partial)
+  for (const label of ['Save model', 'List models', 'Test reply']) expect(disabled(button(tree, label))).toBe(true)
+  const pending = restoreModelSettingsDraft(null, partial)
+  expect(pending).toMatchObject({ initialized: false, model: '' })
+  const final = stateFor({ id: 'final-owner-model', via: 'bridge' }, { ready: true, configurationReady: true })
+  expect(restoreModelSettingsDraft(pending, final)).toMatchObject({ initialized: true, model: 'final-owner-model', via: 'bridge' })
+  expect(disabled(button(render(final), 'Save model'))).toBe(false)
+})
+
+test('companion edits made on the execution tab during opening survive model restoration', () => {
+  const pending = restoreModelSettingsDraft(null, stateFor({}, { ready: false }))
+  const edited = { ...pending, bridgeUrl: 'https://owner-relay.example', editedFields: ['bridgeUrl'] }
+  const restored = restoreModelSettingsDraft(edited, stateFor({ id: 'restored-model', via: 'bridge' }))
+  expect(restored).toMatchObject({ initialized: true, model: 'restored-model', via: 'bridge', bridgeUrl: 'https://owner-relay.example' })
+  expect(edited.initialized).toBe(false)
+})
+
+test('probe updates and saved route changes preserve every edited field after initialization', () => {
+  const initialized = restoreModelSettingsDraft(null, stateFor())
+  const edited = { ...initialized, model: 'draft-model', baseUrl: 'https://draft.example/v1', via: 'bridge', bridgeUrl: 'https://draft-relay.example', key: 'unsaved-fixture-key' }
+  for (const update of [
+    stateFor({ status: 'checking', check: { kind: 'reply' } }),
+    stateFor({ status: 'verified', probe: { text: 'Reply received' } }),
+    stateFor({ id: 'other-saved-model', via: 'bridge', baseUrl: 'https://saved.example/v1' }),
+    stateFor({}, { ready: false }),
+    stateFor(),
+  ]) {
+    expect(restoreModelSettingsDraft(edited, update)).toBe(edited)
+    expect(canCheckModel({ draft: edited, saved: update.model })).toBe(false)
+  }
+  // Closing/reopening is a new form and intentionally loads the current profile.
+  expect(restoreModelSettingsDraft(null, stateFor({ id: 'other-saved-model', via: 'bridge' }))).toMatchObject({ model: 'other-saved-model', via: 'bridge', key: '' })
+})
 
 test('model checks require the saved draft and idle task, independent of successful discovery', () => {
   expect(canCheckModel({ draft, saved })).toBe(true)

@@ -43,14 +43,17 @@ export async function startHubStrategy(hub, value, query, { context = null, defi
   if (!admissionGuard() || hub.disposed) throw new Error('Strategy admission was cancelled')
   const policy = normalizeToolPolicy(context?.toolPolicy)
   if (definition.kind === 'agent') {
+    if (verifyCompletion) throw new Error('Agent strategies do not accept a verifyCompletion callback; declare workflow.completion checks and bind the named completion adapter instead')
     const restricted = { disabledTools: [], approvalRisks: [], allowDelegation: true, ...policy }
     if (definition.delegation === 'none') restricted.allowDelegation = false
     return hub.startRun(definition.agent, query, { context: snapshot({ ...context, toolPolicy: restricted }), strategyDefinition: definition, strategyDefinitionHash: actualHash })
   }
   if (policy?.allowDelegation === false) throw new Error('This configured role workflow requires Allow delegation. Select a single-agent workflow or enable delegation before starting.')
   if (hub.disposed) throw new Error('The agent runtime has stopped')
+  if (verifyCompletion && context?.workflow?.completion?.checks?.length) throw new Error('Declared workflow completion checks cannot be replaced by a verifyCompletion callback; bind the named completion adapter instead')
   const output = definition.nodes.find(node => node.id === definition.output)
   const run = hub.createRun(output.agent, query, { kind: 'strategy', context, strategyDefinition: definition, strategyDefinitionHash: actualHash })
+  if (run.completion.checks.length && !verifyCompletion) verifyCompletion = current => hub.verifyCompletion(current)
   run.slot = { ...run.slot, status: 'starting', maxSteps: definition.nodes.length, steps: 0 }
   const project = state => {
     if (run.ended) return

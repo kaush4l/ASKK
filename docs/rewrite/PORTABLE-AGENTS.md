@@ -21,8 +21,10 @@ build and browser evidence is recorded separately.
 4. Check the requested tool groups you want to allow. All begin unchecked. Each
    role receives only the intersection of its requests and these grants. Existing
    desk denials and approval requirements still apply.
-5. Select **Install agent**. The installed lead becomes the selected workflow.
-   Enter a goal and start it. Inspect its recorded prompts and actual tool results.
+5. Select **Install agent**. The direct workflow for your chosen lead becomes
+   selected. Declared package workflows appear as additional options; their
+   manifest default never overrides your lead selection. Enter a goal and start
+   it. Inspect its recorded prompts and actual tool results.
 
 Try the [`examples/pond-team`](../../examples/pond-team) folder. Select **Pond
 observer** as lead, map its default model to `workbench`, and approve `todo`.
@@ -71,6 +73,60 @@ Shared parent instructions are not inherited implicitly. Authored source remains
 unchanged and SHA-256 checked. Credentials and transport settings belong in the
 desk, never in a package.
 
+## Portable workflows
+
+A root definition can add `workflows: workflows.json`. The manifest declares a
+default and 1–32 workflows. Each workflow names a package-local strategy JSON
+file, an explicit workspace requirement and trusted completion checks:
+
+```json
+{
+  "version": 1,
+  "default": "conversation",
+  "workflows": [{
+    "id": "conversation",
+    "label": "Talk with the team",
+    "description": "Answer with the configured roles.",
+    "strategy": "strategies/conversation.json",
+    "execution": {"workspace": "none"},
+    "completion": {"checks": []}
+  }]
+}
+```
+
+An agent strategy uses a local role ID, for example
+`{"version":1,"id":"conversation","kind":"agent","agent":"helper","delegation":"declared","session":"agent"}`.
+Graph strategies use the existing explicit nodes/dependencies/input mappings and
+package-local role IDs. Markdown template paths stay inside the package. No
+package may choose another installation's agents or load a remote strategy.
+
+For workspace work, set `execution.workspace` to `required`. A completion check
+can require host-observed application evidence:
+
+```json
+{
+  "checks": [{
+    "capability": "workspace.artifact",
+    "options": {"requireFresh": true, "requireInteraction": true}
+  }]
+}
+```
+
+Both options are explicit booleans. This check requires a workspace and uses the
+desk's existing artifact adapter. It does not grant tools or execute a script.
+The selected workspace, model/tool bindings and owner policy remain desk
+choices. Unknown capabilities, missing resources and conflicting legacy
+verification requests fail validation. Folders without `workflows` keep their
+existing selected-lead behavior and storage representation.
+
+The [`public/packages/starter`](../../public/packages/starter) folder is a complete
+portable example with conversation, parallel-review graph and application
+workflows, including their strategy and prompt files. Importing a copy creates
+a distinct installed identity; its model aliases and tool requests still need
+desk bindings. The [`examples/pond-team`](../../examples/pond-team) folder remains
+a minimal no-manifest example. See [the full contract](UNIFIED-AGENT-PACKAGES.md#package-workflow-contract)
+for schema bounds and compatibility rules.
+
 ## Current limits
 
 The importer accepts at most 256 source files, 8 MiB per file, 32 MiB per folder,
@@ -88,8 +144,7 @@ Bundled definitions now use `bundled/<desk-id>/<role-id>`; owner installations u
 `installed/<installation-id>/<role-id>`. Old bundled session/history keys are
 preserved for review and are not silently copied into the new identities.
 
-In-browser source editing, replacement/upgrades, removal, backup export,
-package-local strategies/checks, and explicit package-defined execution bindings
+In-browser source editing, replacement/upgrades, removal and backup export
 remain pending. The credential-isolating broker is also pending: package files
 cannot contain credentials, but existing workers still receive configured
 transport data. Application tools remain trusted desk capabilities. A package

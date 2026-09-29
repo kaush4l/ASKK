@@ -9,7 +9,7 @@ import Modal from './Modal.jsx'
 import ArtifactPreview from './ArtifactPreview.jsx'
 import ToolCard from './ToolCard.jsx'
 import BindingReview from './BindingReview.jsx'
-import Dashboard, { SessionBoundaryNotice } from './Dashboard.jsx'
+import Dashboard, { SessionBoundaryNotice, WorkflowRequirements } from './Dashboard.jsx'
 import CompanionSetup from './CompanionSetup.jsx'
 import AgentInspector from './AgentInspector.jsx'
 import RunInspector from './RunInspector.jsx'
@@ -706,6 +706,7 @@ export default function Workbench() {
         </div>
         <div className="composer-wrap">{state.goal && <button className="current-plan-link" onClick={() => { setModalValue(state.goal); setModal({ type: 'goal', revision: state.goalRevision }) }}><Icon name="chat" size={14}/><span><strong>Conversation goal</strong><small>{state.goal}</small></span><Icon name="right" size={12}/></button>}{currentPlan?.items?.length > 0 && <button className="current-plan-link" onClick={showAgents}><Icon name="changes" size={14}/><span><strong>Task plan · {currentPlan.items.filter(item => item.status === 'done').length}/{currentPlan.items.length}</strong><small>{currentPlan.items.find(item => item.status === 'doing')?.text || 'View recorded steps and progress'}</small></span><Icon name="right" size={12}/></button>}{needsWorkspace && state.runtime.status === 'unresponsive' && <div className="inline-error" role="status"><Icon name="warning" size={14}/><span><strong>Environment response delayed.</strong> Outstanding actions may still complete. New work is paused; processes and terminals are preserved.</span></div>}{state.error && <div className="inline-error"><Icon name="warning" size={14}/><span>{state.error}</span></div>}
           <SessionBoundaryNotice boundary={state.sessionBoundary}/>
+          <WorkflowRequirements workflow={selectedWorkflow} runtime={state.runtime} onOpenSettings={section => openSettings(section)}/>
           {state.packageInstalling && <p className="composer-hint" role="status">Installing the reviewed agent definition. Your goal remains editable; sending and workflow changes resume when it finishes.</p>}{state.ready && state.selectedWorkflowId && !selectedWorkflow && <p className="composer-hint" role="status">The saved workflow is unavailable. Choose a workflow explicitly; your goal has been kept.</p>}{selectedWorkflow?.package && <p className="composer-hint">Agent model: {selectedWorkflow.leadModel || 'Binding unavailable'} · Model settings configure the desk default.</p>}{selectedWorkflow?.disabled && <p className="composer-hint" role="status">{selectedWorkflow.unavailableReason || 'This imported workflow is unavailable. Its saved definition has been preserved.'}</p>}{state.model.status === 'checking' && <p className="composer-hint" role="status">Model check in progress. Finish or cancel it in Model settings before starting a task.</p>}{graphRunning && <p className="composer-hint" role="status">Role inputs are fixed for this run. Stop the workflow to change the goal.</p>}<form className="composer" onSubmit={send}><textarea ref={composer} id="conversation-input" value={goal} onChange={event => setGoal(event.target.value)} placeholder={graphRunning ? 'Draft a goal for the next run…' : running ? 'Steer this task…' : 'What would you like to accomplish?'} rows={3} aria-label="Your goal" onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); send() } }}/><div className="composer-actions"><button type="button" className="model-picker" onClick={() => openSettings('model')}><Icon name="spark" size={13}/><span>{state.model.id || state.model.model || 'Connect a model'}</span><Icon name="down" size={12}/></button>{running ? <IconButton icon="stop" label="Stop current task" className="stop-button" onClick={() => action('stopRun')}/> : null}<button type="submit" className="send-button" aria-label={state.packageInstalling ? 'Agent installation in progress' : state.model.status === 'checking' ? 'Model check in progress' : graphRunning ? 'Run in progress' : running ? 'Send note' : 'Send goal'} disabled={state.packageInstalling || !selectedWorkflow || selectedWorkflow.disabled || state.model.status === 'checking' || graphRunning || !goal.trim() || !controller || !state.ready || !running && needsWorkspace && state.runtime.status === 'unresponsive'}><Icon name="arrow" size={18}/></button></div></form>
           <div className="composer-foot"><span><Icon name="changes" size={12}/> {state.agents.length ? `${state.agents.length} agents` : 'Your agents, your tools'}</span><span>Shift ↵ for a new line</span></div>
         </div>
@@ -770,14 +771,39 @@ export function Welcome({ state, onModel, onRuntime, onCreate, onCompose }) {
   return <div className="getting-started"><div className="workspace-watermark"><Icon name="code" size={48}/></div><div className="welcome-heading"><span className="eyebrow">A LITTLE SPACE. ENDLESS POSSIBILITIES.</span><h2>Your next idea<br/>starts here<span>.</span></h2><p>A real workspace for the things you imagine.<br/>{' '}Files, a terminal, and a live preview—right beside your conversation.</p></div><div className="setup-list"><div className="setup-item complete"><span className="setup-number"><Icon name="check" size={14}/></span><div><strong>Make yourself at home</strong><p>{state.runtime.target === 'local' ? 'Your workspace is set to use Local Bun.' : 'Your project lives in this browser.'}</p></div><span className="setup-state">{state.ready ? 'Ready' : 'Opening…'}</span></div><button className={`setup-item ${modelVerified ? 'complete' : ''}`} onClick={onModel}><span className="setup-number">{modelVerified ? <Icon name="check" size={14}/> : '2'}</span><div><strong>{hasModel ? modelStatusLabel(state.model) : 'Bring your favorite model'}</strong><p>{hasModel ? state.model.id || state.model.model : 'Connect a local or hosted model to get going.'}</p></div><Icon name="right" size={15}/></button><button className={`setup-item ${runtimeReady ? 'complete' : ''}`} onClick={onRuntime}><span className="setup-number">{runtimeReady ? <Icon name="check" size={14}/> : '3'}</span><div><strong>{runtimeReady ? 'Your environment is ready' : 'Choose where things run'}</strong><p>{runtimeReady ? `${state.runtime.target === 'local' ? 'Local Bun' : 'Browser Linux'} · ready for commands` : 'Browser Linux, or your own machine with Bun.'}</p></div><Icon name="right" size={15}/></button></div><div className="welcome-links"><button onClick={onCompose}><Icon name="chat" size={15}/>Start with a goal</button><span/><button onClick={onCreate}><Icon name="plus" size={15}/>Create a file</button></div><div className="workspace-footnote"><span className="tiny-spark">✳</span>Built around you. Powered by your agents.</div></div>
 }
 
+/** Seed only after controller restoration, then keep the owner's local draft. */
+export function restoreModelSettingsDraft(current, state) {
+  const ready = state.configurationReady ?? state.ready
+  if (current?.initialized || current && !ready) return current
+  const saved = ready ? state.model : {}
+  const draft = {
+    initialized: ready === true,
+    baseUrl: saved?.baseUrl || 'http://127.0.0.1:8873/v1',
+    model: saved?.id || saved?.model || '',
+    via: saved?.via === 'bridge' ? 'bridge' : 'direct',
+    key: '',
+    bridgeUrl: ready && state.companion?.url || 'https://127.0.0.1:7717',
+    editedFields: current?.editedFields ?? [],
+  }
+  // Execution settings shares the companion URL and can be visited while booting.
+  for (const field of draft.editedFields) draft[field] = current[field]
+  return draft
+}
+
 export function Settings({ state, initialTab, theme, setTheme, perform, onClose, onError }) {
   const [tab, setTab] = useState(initialTab || 'model')
-  const [baseUrl, setBaseUrl] = useState(state.model.baseUrl || 'http://127.0.0.1:8873/v1')
-  const [model, setModel] = useState(state.model.id || state.model.model || '')
-  const [key, setKey] = useState('')
-  const [modelVia, setModelVia] = useState(state.model.via === 'bridge' ? 'bridge' : 'direct')
-  useEffect(() => setModelVia(state.model.via === 'bridge' ? 'bridge' : 'direct'), [state.model.via])
-  const [bridgeUrl, setBridgeUrl] = useState(state.companion.url || 'https://127.0.0.1:7717')
+  const [storedDraft, setDraft] = useState(() => restoreModelSettingsDraft(null, state))
+  const currentDraft = restoreModelSettingsDraft(storedDraft, state)
+  // Adjust before commit: an effect would briefly enable save/check with the
+  // pre-restoration values. Later probe/config notifications must not reseed edits.
+  if (currentDraft !== storedDraft) setDraft(currentDraft)
+  const { baseUrl, model, key, via: modelVia, bridgeUrl } = currentDraft
+  const changeDraft = (field, value) => setDraft(previous => ({ ...previous, [field]: value, editedFields: previous.editedFields.includes(field) ? previous.editedFields : [...previous.editedFields, field] }))
+  const setBaseUrl = value => changeDraft('baseUrl', value)
+  const setModel = value => changeDraft('model', value)
+  const setKey = value => changeDraft('key', value)
+  const setModelVia = value => changeDraft('via', value)
+  const setBridgeUrl = value => changeDraft('bridgeUrl', value)
   const [token, setToken] = useState('')
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
@@ -790,15 +816,16 @@ export function Settings({ state, initialTab, theme, setTheme, perform, onClose,
   useEffect(() => setPageOrigin(window.location.origin), [])
   async function run(label, fn) { setBusy(label); setError(''); setSuccess(''); try { await fn(); setSuccess(`${label} complete.`) } catch (error) { setError(error.message) } finally { setBusy('') } }
   const checking = state.model.status === 'checking'
+  const modelHydrated = (state.configurationReady ?? state.ready) === true && currentDraft.initialized
   const agentActive = activeStatus(state.run?.status) || activeStatus(state.task?.status)
   const draft = { baseUrl, model, key, via: modelVia }
   const modelDirty = modelDraftChanged(draft, state.model)
-  const checkAllowed = canCheckModel({ draft, saved: state.model, busy: !!busy, active: agentActive })
+  const checkAllowed = modelHydrated && canCheckModel({ draft, saved: state.model, busy: !!busy, active: agentActive })
   const modelRelayAvailable = relayCanModel(state.companion)
   const modelPairingBound = state.runtime.target === 'local' || state.runtime.networkRelay
-  const modelLocked = !!busy || checking || agentActive
+  const modelLocked = !modelHydrated || !!busy || checking || agentActive
   async function modelOperation(label, fn) {
-    if (modelAction.current) return
+    if (!modelHydrated || modelAction.current) return
     modelAction.current = true; setBusy(label); setError(''); setSuccess('')
     try { await fn() }
     catch (error) { if (modelCheckCancelled(error)) setSuccess('Connection check cancelled.'); else setError(error.message) }
@@ -816,6 +843,7 @@ export function Settings({ state, initialTab, theme, setTheme, perform, onClose,
   return <Modal title="Make it yours" onClose={onClose} focusInput={tab === 'model'}><div className="settings-tabs">{['model','runtime','appearance'].map(item => <button key={item} className={tab === item ? 'active' : ''} onClick={() => { setTab(item); setError(''); setSuccess('') }}>{item === 'model' ? 'Model' : item === 'runtime' ? 'Execution' : 'Appearance'}</button>)}</div>
     {tab === 'model' && <form className="settings-form model-settings" onSubmit={event => { event.preventDefault(); if (modelLocked) return; modelOperation('Saving model…', async () => { await perform('setModel', { baseUrl, model, via: modelVia, ...(key ? { apiKey: key } : {}) }); setKey(''); setSuccess('Model settings saved. Choose a check below.'); }) }}>
       <p className="modal-description">Choose the endpoint your agents use. Model access and command execution are configured separately.</p>
+      {!modelHydrated && <p className="form-help" role="status">Restoring saved model settings. Saving, pairing and connection checks become available when the desk finishes opening.</p>}
       <label>Model connection<select className="form-input" value={modelVia} onChange={event => setModelVia(event.target.value)} disabled={modelLocked}><option value="direct">Direct from this browser</option><option value="bridge">Through HTTPS companion</option></select></label>
       <label>API base URL<input className="form-input" type="url" required disabled={modelLocked} value={baseUrl} onChange={event => setBaseUrl(event.target.value)} placeholder="https://api.example.com/v1"/></label>
       <label>Model ID<input className="form-input" required disabled={modelLocked} value={model} onChange={event => setModel(event.target.value)} placeholder="Model name from your provider"/></label>
@@ -832,7 +860,7 @@ export function Settings({ state, initialTab, theme, setTheme, perform, onClose,
         {modelPairingBound && <p className="form-help">{state.runtime.target === 'local' ? 'Local Bun is selected. Change its companion in Execution settings to preserve the workspace binding.' : 'The guest network relay is selected. Change its companion in Execution settings to preserve that connection.'} An already paired model relay can still list models and test replies here.</p>}
       </section>}
       <div className="model-check-actions"><button className="button primary" disabled={modelLocked}>{busy === 'Saving model…' ? busy : 'Save model'}</button><button type="button" className="button subtle" disabled={!checkAllowed} onClick={() => checkModel('listing')}>List models</button><button type="button" className="button subtle" disabled={!checkAllowed} onClick={() => checkModel('reply')}>Test reply</button>{checking && <button type="button" className="button subtle" onClick={() => { Promise.resolve().then(() => perform('cancelModelCheck')).catch(error => setError(error.message)) }}>Cancel check</button>}</div>
-      <p className="form-help">{agentActive ? 'Model checks are unavailable while an agent task is active.' : modelDirty ? 'Save model changes before running either check.' : 'List models checks discovery only. Test reply sends a short generation request and may incur provider usage; it works even when listing is unsupported.'}</p>
+      <p className="form-help">{!modelHydrated ? 'Waiting for the restored model configuration.' : agentActive ? 'Model checks are unavailable while an agent task is active.' : modelDirty ? 'Save model changes before running either check.' : 'List models checks discovery only. Test reply sends a short generation request and may incur provider usage; it works even when listing is unsupported.'}</p>
       <section className={`model-check-result ${state.model.status === 'failed' ? 'error' : ''}`} aria-label="Model check result" aria-live="polite" aria-busy={checking}>
         <strong>{modelStatusLabel(state.model)}</strong>
         {checking && <p>{state.model.check?.kind === 'reply' ? 'Waiting for a complete streamed reply…' : 'Requesting the model list…'}</p>}

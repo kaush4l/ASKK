@@ -222,7 +222,7 @@ async function build(message) {
     contractVersion: spec.engine.contractVersion,
     promptTemplate: spec.engine.promptTemplate,
     outputReserve: spec.engine.outputReserve,
-    verifyCompletion: spec.engine.requireVerification ? () => request('workspace.acceptance') : null,
+    verifyCompletion: null,
     tools: fullTools,
     context: contexts(spec.context, notes),
     history: message.history ?? [],
@@ -261,10 +261,11 @@ async function build(message) {
   })
 }
 
-async function run(query, context, service) {
+async function run(query, context, service, completionRequired) {
   runToolPolicy = normalizeToolPolicy(context?.toolPolicy)
   serviceMode = service?.kind ?? null
   controller = new AbortController()
+  engine.verifyCompletion = completionRequired ? () => request('run.verifyCompletion') : null
   engine.ctx.runContext = snapshot(context ?? null)
   engine.tools = serviceMode === 'compaction' ? [] : fullTools.filter(item => toolSelected(item, runToolPolicy))
   try {
@@ -286,7 +287,7 @@ self.onmessage = async ({ data }) => {
         await build(data)
         break
       case 'invoke':
-        await run(data.query, data.context, data.service)
+        await run(data.query, data.context, data.service, data.completionRequired)
         break
       case 'nudge':
         engine?.nudge(data.text)

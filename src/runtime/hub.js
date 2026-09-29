@@ -27,6 +27,7 @@ import { read } from '../core/markdown.js'
 import { merge, resolve } from '../core/models.js'
 import { DEFAULT_POLICY } from '../core/permissions.js'
 import { snapshot } from '../core/prompt.js'
+import { normalizeCompletion, LEGACY_ARTIFACT_COMPLETION, evaluateCompletion } from '../core/completion.js'
 import { loadStrategy, startHubStrategy, strategyChildState } from './strategy-hub.js'
 import { openStore } from './store.js'
 import { AgentInstallations, installationDecision, installedModelAvailable } from './agent-installations.js'
@@ -357,6 +358,7 @@ export class Hub {
       this.specs = staged.specs
       this.failed = staged.failed
       this.defaultAgent = shipped.defaultAgent
+      this.packageWorkflows = snapshot(shipped.workflows ?? [])
       this.shippedPackages = shipped.packages
       this.packages.items = installations.items
       this.publish({ type: 'packages', installations: this.packages.list() })
@@ -520,6 +522,12 @@ export class Hub {
     const inherited = up?.context ?? context
     const contextSnapshot = snapshot(up?.kind === 'strategy' ? { ...inherited, toolPolicy: { disabledTools: [], approvalRisks: [], ...normalizeToolPolicy(inherited?.toolPolicy), allowDelegation: false } } : inherited)
     normalizeToolPolicy(contextSnapshot?.toolPolicy)
+    // Root workflow requirements never leak into every delegated role. Legacy
+    // per-agent verification remains explicit until its package is migrated.
+    const declaredCompletion = !parent && contextSnapshot?.workflow?.completion
+    const completion = normalizeCompletion(declaredCompletion || (spec?.engine.requireVerification ? LEGACY_ARTIFACT_COMPLETION : { checks: [] }))
+    if (declaredCompletion && spec?.engine.requireVerification && !completion.checks.some(check => check.capability === 'workspace.artifact')) throw new Error('The selected workflow cannot remove its agent’s required completion check')
+    this.assertCompletionAvailable({ completion, legacyCompletion: !declaredCompletion && spec?.engine.requireVerification === true })
     const id = `r${Date.now().toString(36)}${(this.nextRun++).toString(36)}`
     const run = {
       id,
@@ -544,6 +552,9 @@ export class Hub {
       originalQuery: resume?.originalQuery ?? resume?.query ?? query,
       todo: resume ? snapshot((Array.isArray(resume.todo) ? resume.todo : []).slice(0, 50)) : [],
       context: contextSnapshot,
+      completion,
+      legacyCompletion: !declaredCompletion && spec?.engine.requireVerification === true,
+      completionReceipts: [],
       call,
       turns: [],
       prompts: [],
@@ -622,7 +633,7 @@ export class Hub {
     thread.busy = true
     thread.run = run.id
     run.thread = thread
-    thread.worker.postMessage({ type: 'invoke', query: run.query, context: run.context, service: run.service })
+    thread.worker.postMessage({ type: 'invoke', query: run.query, context: run.context, service: run.service, completionRequired: run.completion.checks.length > 0 })
   }
 
   onThreadMessage(thread, message) {
@@ -866,7 +877,7 @@ export class Hub {
   }
 
   describe(run) {
-    return { id: run.id, trace: run.trace, taskId: run.taskId ?? run.id, resumedFrom: run.resumedFrom ?? null, resumeAttempt: run.resumeAttempt ?? 0, originalQuery: run.originalQuery ?? run.query, agent: run.agent, package: run.package ?? null, services: run.services ?? {}, serviceHashes: run.serviceHashes ?? {}, service: run.service ?? null, parent: run.parent, depth: run.depth, kind: run.kind, stageId: run.stageId ?? null, strategyDefinition: run.strategyDefinition ?? null, strategyDefinitionHash: run.strategyDefinitionHash ?? null, strategyState: run.strategyState ?? null, query: run.query, context: run.context, call: run.call, children: [...run.children], slot: run.slot, at: run.at }
+    return { id: run.id, trace: run.trace, taskId: run.taskId ?? run.id, resumedFrom: run.resumedFrom ?? null, resumeAttempt: run.resumeAttempt ?? 0, originalQuery: run.originalQuery ?? run.query, agent: run.agent, package: run.package ?? null, services: run.services ?? {}, serviceHashes: run.serviceHashes ?? {}, service: run.service ?? null, parent: run.parent, depth: run.depth, kind: run.kind, stageId: run.stageId ?? null, strategyDefinition: run.strategyDefinition ?? null, strategyDefinitionHash: run.strategyDefinitionHash ?? null, strategyState: run.strategyState ?? null, query: run.query, context: run.context, completion: run.completion, completionReceipts: run.completionReceipts, call: run.call, children: [...run.children], slot: run.slot, at: run.at }
   }
 
   // ─── what the page may send to a run ───────────────────────────────────────
@@ -923,6 +934,30 @@ export class Hub {
 
   // ─── requests from threads ─────────────────────────────────────────────────
 
+  assertCompletionAvailable(run) {
+    for (const check of run.completion.checks) {
+      if (Object.hasOwn(this.completionAdapters ?? {}, check.capability) && typeof this.completionAdapters[check.capability] === 'function') continue
+      if (run.legacyCompletion && check.capability === 'workspace.artifact' && Object.hasOwn(this.externalOps, 'workspace.acceptance') && typeof this.externalOps['workspace.acceptance'] === 'function') continue
+      throw new Error(`Completion capability is unavailable: ${check.capability}`)
+    }
+  }
+
+  async verifyCompletion(run) {
+    const assertActive = () => { if (!run || run.ended || run.cancelRequested || this.disposed) throw new Error('Completion check was cancelled or its run ended') }
+    assertActive()
+    const adapters = Object.fromEntries(Object.entries(this.completionAdapters ?? {}).map(([name, handler]) => [name, options => handler(options, run)]))
+    // Narrow compatibility for trusted low-level clients; package workflows
+    // must bind the named adapter and never choose an arbitrary RPC operation.
+    if (run.legacyCompletion && !adapters['workspace.artifact'] && Object.hasOwn(this.externalOps, 'workspace.acceptance') && typeof this.externalOps['workspace.acceptance'] === 'function') adapters['workspace.artifact'] = () => this.externalOps['workspace.acceptance']({}, run)
+    const receipt = await evaluateCompletion(run.completion, adapters, { assertActive })
+    assertActive()
+    const recorded = snapshot({ ...receipt, runId: run.id, at: Date.now() })
+    run.completionReceipts.push(recorded)
+    this.persist(run)
+    this.publish({ type: 'verification', run: run.id, receipt: recorded })
+    return { ...receipt, evidence: recorded }
+  }
+
   async handle(thread, run, { id, op, args }) {
     try {
       const handler = this.externalOps[op] ?? this.ops[op]
@@ -964,6 +999,7 @@ export class Hub {
   }
 
   ops = {
+    async 'run.verifyCompletion'(_args, run) { return this.verifyCompletion(run) },
     async call({ agent, query, call, infrastructure }, run) {
       if (!run) throw new Error('no run is active on this thread')
       if (infrastructure !== undefined) throw new Error('Infrastructure calls require the configured service channel')
