@@ -1,0 +1,74 @@
+{
+  "source": "4a1727b5",
+  "deployment": "5b10e1210c3bc5c923bc73652a189b77e7477503",
+  "workflow": "https://github.com/kaush4l/ASKK/actions/runs/36600429486",
+  "workflowConclusion": "success",
+  "tests": {
+    "fullSuite": {
+      "passed": 1084,
+      "skipped": 1,
+      "failed": 0,
+      "assertions": 8284,
+      "files": 107
+    }
+  },
+  "export": {
+    "version": 1,
+    "basePath": "/ASKK",
+    "totalBytes": 905106141,
+    "fileCount": 220,
+    "runtimeId": "c2w-node24-38d093f4a38002db",
+    "artifactHash": "9731dc265e8c79df419fff2d2edcaabf43b98028dcf1a052cca0cfc8a62c3116"
+  },
+  "checks": [
+    {
+      "path": "index.html",
+      "status": 200,
+      "sha256": "7fc3b2271f074013bcb5d24451fb745baf677ff7b18121e0ddc7cd1f67011b9e",
+      "matches": true
+    },
+    {
+      "path": "_next/static/css/3589633f587f5de3.css",
+      "status": 200,
+      "sha256": "38b6940f62e1c45654bc429fab3b3df45f78692a91f013fc4ccb500bc17a1710",
+      "matches": true
+    },
+    {
+      "path": "_next/static/chunks/app/page-89d2064e7d4a6368.js",
+      "status": 200,
+      "sha256": "d3866cbc7acb39d54018c1041a65d707076d330c3e85cea1c8400b1d8e2c685c",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/core/write-observations.js",
+      "status": 200,
+      "sha256": "c55be100be9425e40ca5b9751b6845dc32c21081edc988338b5503911cbc1c55",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/builtin/workspace.js",
+      "status": 200,
+      "sha256": "7871f310db8d1d6e218a3fd919f0f3dad429a59ff2c4577b0b88ec62ac78b6ef",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/runtime/agent.worker.js",
+      "status": 200,
+      "sha256": "78a58b8e68221ec2f2caffddd77ff6a8c8016ecd52402a4cfb7efce24557faf2",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/workspace/controller.js",
+      "status": 200,
+      "sha256": "42f4e56a2d1c342072dcba1692e344114d523e437db34084371f7d8643654500",
+      "matches": true
+    },
+    {
+      "path": "packages/starter/agents/builder/agent.md",
+      "status": 200,
+      "sha256": "36a8f455d58221b3d079807650972b892e1c27acb82478b9cb43bec2f89135ea",
+      "matches": true
+    }
+  ],
+  "scope": "Hosted byte checks, full automated suite, answer rendering and controller persistence tests. Incomplete summaries are qualified without rewriting model text. Omit48 model diagnostic failed overall with broken test import. No live visual, Safari, iPhone, VoiceOver, or Browser Linux acceptance."
+}
