@@ -1,0 +1,72 @@
+{
+  "source": "9bd2e8cf",
+  "deployment": "6ae1e6a781c1a50f379874c8133062ab004f6026",
+  "workflow": "https://github.com/kaush4l/ASKK/actions/runs/36592806558",
+  "workflowConclusion": "success",
+  "tests": {
+    "passed": 1053,
+    "skipped": 1,
+    "failed": 0,
+    "assertions": 7971,
+    "files": 104
+  },
+  "export": {
+    "version": 1,
+    "basePath": "/ASKK",
+    "totalBytes": 905091608,
+    "fileCount": 219,
+    "runtimeId": "c2w-node24-38d093f4a38002db",
+    "artifactHash": "64c80d6a306bc9ba3e5255654e58f4c91077b66d24d6608c3cdf032ed54bcb56"
+  },
+  "checks": [
+    {
+      "path": "index.html",
+      "status": 200,
+      "sha256": "4f4b8f99b80b046cf6c3e930d98a22acff10f3e5d522a4f7e52b4c9ed44cd26c",
+      "matches": true
+    },
+    {
+      "path": "_next/static/chunks/app/page-afc731f0878ec78c.js",
+      "status": 200,
+      "sha256": "32fd03ac0207782b56e1784a2a4a5ee43513df010e217bf1b2b68ae97a435f83",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/core/engine.js",
+      "status": 200,
+      "sha256": "1abf81268a8e3a24bd400304cc25ef2257a5c180324f79a1cb0fcdb51efd67cd",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/core/folder.js",
+      "status": 200,
+      "sha256": "02e218a921dfabdb64ba8dc51d371ba6d35da6d91011debb9649ba50f412538c",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/core/agent-package.js",
+      "status": 200,
+      "sha256": "cd9a90e35fb0354b2c5240b7e59f08cc9522f3bb48fbb42598ff14b72789fd23",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/core/package-spec.js",
+      "status": 200,
+      "sha256": "162c3851f180543212d1c40da4dd6265187dd6cc5a3450435e65a943b91212e3",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/runtime/agent.worker.js",
+      "status": 200,
+      "sha256": "65cd3b7a4cf2f1610ca47e0aa192e0d2fff8378932bf9dccfbe52f85990c4d95",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/runtime/hub.js",
+      "status": 200,
+      "sha256": "5a7de470e36b0dff1cc85f39fe9d1ba0402b2b32b422c4dff833c5937517b888",
+      "matches": true
+    }
+  ],
+  "scope": "Configuration option remains opt-in; no bundled agent enables it. Exact hosted bytes, automated protocol and production-worker tests. No live-model comparison, Safari, iPhone or Browser Linux acceptance."
+}
