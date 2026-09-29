@@ -20,24 +20,39 @@ successful merely because its worker is no longer active. A pending owner
 decision is associated by exact run identity, never by a shared name or tool.
 Stopping remains a distinct state while the outcome is pending.
 
-Cards expose three separate actions:
+**Goal** keeps the team compact; **Evidence** expands run details. These modes
+change presentation, not prompts, tools or execution. A per-card disclosure can
+override the mode, and that choice survives mode changes. Blue active states and
+amber decisions also carry readable text and icons. Generating a reply is not
+presented as access to private reasoning.
+
+Cards expose separate actions:
 
 - Open the card to inspect that exact recorded run.
 - Open **Instructions** to inspect its agent definition. The run inspector's
   historical prompts remain the evidence of what an earlier request contained.
 - Use **Stop run** on a live instance to request cancellation. The button does not
   itself establish that work has stopped.
+- Use **Review** to focus the heading for that exact pending approval. This never
+  activates Approve. An attention list also exposes decisions and problems on
+  cards outside the initially visible set.
 
-The live list begins with eight cards and recent history with six. **Show more**
+The current list begins with six cards and recent history with six. **Show more**
 reveals additional records explicitly. Card activity excerpts contain at most
 280 UTF-16 code units plus an ellipsis, without splitting a surrogate pair; the
 full recorded task is available through inspection. The excerpt is bounded in
 the DOM, not merely hidden by a visual line clamp.
 
-Live cards retain creation order as tool activity and status text change. An
-actual terminal state can move a card into recent history. There is no streaming
-layout animation. Keyboard buttons, readable state labels, a single-column
-narrow layout and reduced-motion styles support direct navigation.
+Current cards include selected-task instances, including completed ones, plus
+other live runs. They retain creation order as tool activity and status changes;
+selected-task completion does not move a card into history. Unrelated terminal
+runs appear in collapsed Recent history. A visible Stop control remains in place
+on completion as a guarded, `aria-disabled` **Run ended** control, preserving its
+DOM node and focus. There is no streaming layout animation. Keyboard buttons,
+readable state labels, a single-column narrow layout and reduced-motion styles
+support direct navigation. The [Chrome fixture receipt](evidence/live-team-density-chrome.json)
+records the tested geometry, focus and narrow layout; the [Pages receipt](evidence/scoped-relay-pages-chrome.json)
+records a real model/tool approval sequence separately.
 
 ## Relationships are evidence, not a chat animation
 

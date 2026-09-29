@@ -1,0 +1,131 @@
+{
+  "recordedAt": "2026-09-29",
+  "sourceRevision": "cf6b594555c0fb73a9ef349663ca39b46e3faa27",
+  "release": {
+    "id": "cf6b594-darwin-arm64",
+    "label": "Apple Silicon Mac",
+    "target": "darwin-arm64",
+    "file": "downloads/askk-companion-darwin-arm64-cf6b594.tar.gz",
+    "bytes": 25402830,
+    "sha256": "bedd9a24bf3bb5cf6380e774971f34b87eb3966f48eda9eb6219e782cb55416a",
+    "sourceRevision": "cf6b594555c0fb73a9ef349663ca39b46e3faa27",
+    "runtime": "Bun 1.4.2",
+    "signed": false,
+    "status": "developer-preview",
+    "instructions": "https://github.com/kaush4l/ASKK/blob/cf6b594555c0fb73a9ef349663ca39b46e3faa27/scripts/companion/README.md#start-explicitly"
+  },
+  "manifest": {
+    "schema": 1,
+    "name": "askk-local-companion",
+    "target": "darwin-arm64",
+    "runtime": {
+      "target": "darwin-arm64",
+      "version": "1.4.2",
+      "revision": "744846f844374847c902b5e7fd59b4342a51ef99",
+      "sha256": "35d20dd0263e5c950194434b925454fdfa9ba6e4467da960410fa05b08a7a5b5",
+      "upstream": "https://github.com/oven-sh/bun/tree/bun-v1.4.2",
+      "license": "https://github.com/oven-sh/bun/blob/bun-v1.4.2/LICENSE.md",
+      "pinOrigin": "Installed Darwin ARM64 Bun executable, measured 2026-09-28; not an independently authenticated release download"
+    },
+    "sourceRevision": "cf6b594555c0fb73a9ef349663ca39b46e3faa27",
+    "files": [
+      {
+        "path": "host/companion.js",
+        "mode": 420,
+        "size": 26260,
+        "sha256": "5a767c47f0147c13689b0a1f6c0b02ce74b2da4f37fdd3eadd16ebdf585d344f"
+      },
+      {
+        "path": "scripts/companion/launch.js",
+        "mode": 420,
+        "size": 4817,
+        "sha256": "70a7446bbf3d5bc48186254791866735d33a6466574ef6d83a51acbafac7cf9b"
+      },
+      {
+        "path": "scripts/companion/options.js",
+        "mode": 420,
+        "size": 4735,
+        "sha256": "25182a43ccd649f940bc07b932fbdb3f8bcf8f3f021fbb2708c39337d6807bbd"
+      },
+      {
+        "path": "scripts/companion/package.js",
+        "mode": 420,
+        "size": 5509,
+        "sha256": "7c91494302daa14cbe6d77a050fdfe0ff5074f3cb9cab5bb307db019babbc853"
+      },
+      {
+        "path": "scripts/companion/runtime-pin.json",
+        "mode": 420,
+        "size": 459,
+        "sha256": "ab6259aaa031cbd71578f7164b9b9c879f60f55ac9de8c95ac61cf02e9d23ed9"
+      },
+      {
+        "path": "licenses/BUN-LICENSE.md",
+        "mode": 420,
+        "size": 5613,
+        "sha256": "b9caf52728691b4057e371232c221a132883198be2f3d2ddf92c90404c984b1a"
+      },
+      {
+        "path": "README.md",
+        "mode": 420,
+        "size": 11519,
+        "sha256": "1b2bd44a13cd856a69243bfe8fda116d060eb9abc592a8100ef95749ac05c5c9"
+      },
+      {
+        "path": "askk-companion",
+        "mode": 493,
+        "size": 342,
+        "sha256": "f59e781267af2c8ea9c1e64d363a0c72dd33dcd539c856621df59def879eee3d"
+      },
+      {
+        "path": "bin/bun",
+        "mode": 493,
+        "size": 139,
+        "sha256": "79ded42c8ead54748766c67070fe8d9f7c3bb7876bb0e8f16ea3db0c4aba9a96"
+      },
+      {
+        "path": "bunfig.toml",
+        "mode": 420,
+        "size": 81,
+        "sha256": "9c0914ce67e33c18fbca030ee7a969e6ec416ae45b84979b083d8680c6c4bfbd"
+      },
+      {
+        "path": "runtime/bun",
+        "mode": 493,
+        "size": 61884464,
+        "sha256": "35d20dd0263e5c950194434b925454fdfa9ba6e4467da960410fa05b08a7a5b5"
+      }
+    ],
+    "policy": {
+      "capabilities": "explicit-at-launch",
+      "tls": "external-owner-trusted-certificate",
+      "runtimeSelection": "explicit-in-workbench",
+      "packageFormat": "directory",
+      "signed": false
+    }
+  },
+  "checks": {
+    "manifestVerifiedAfterRelocation": true,
+    "archiveExtractedAndManifestReverified": true,
+    "payloadFileCount": 11,
+    "payloadBytes": 61943938,
+    "helpWithSystemOnlyPATH": true,
+    "bundledRuntimeUsed": true,
+    "actualPackagedLaunch": true,
+    "grants": [
+      "model-relay"
+    ],
+    "allowedModelBases": [
+      "http://127.0.0.1:8873/v1"
+    ],
+    "publishedBrowserDownloadBytesMatch": true
+  },
+  "browserReceipt": "scoped-relay-pages-chrome.json",
+  "limitations": [
+    "Apple Silicon macOS only; unsigned and unnotarized developer preview.",
+    "Bun pin is measured installed runtime, not independently authenticated publisher release.",
+    "Existing browser-trusted certificate was supplied; no fresh trust or installer acceptance.",
+    "No model weights, browser automation binary or arbitrary project toolchain is bundled.",
+    "Native commands, filesystem and terminal were not granted in this release browser check."
+  ]
+}

@@ -229,12 +229,14 @@ browser automation and browser-contained builds each require their own proof.
 This order improves modularity and deployment ease while preserving already
 working package, runtime, execution and evidence code.
 
-## Follow-through in the current working tree
+## Follow-through and published checkpoint
 
-The requested minimal scope slice is now implemented in `host/companion.js`,
-the package launcher/options and the browser model adapter. It uses the exact
-descriptor and route contract above. The remaining manifest, credential broker,
-native Apple adapter and distribution options are proposals.
+The requested minimal scope slice is published in source `91612b9`, with host
+payload source `cf6b594`. It uses the descriptor and route contract above, with
+durable protocol pinning before activation, fail-closed downgrade detection and
+revocation propagated to active workers. The remaining capability manifest,
+credential broker, native Apple adapter and additional distribution options are
+proposals.
 
 Focused verification passed **50 tests / 438 assertions** across
 `test/companion.test.js`, `test/companion-package.test.js` and
@@ -242,6 +244,14 @@ Focused verification passed **50 tests / 438 assertions** across
 both model routes, 15 non-followed redirects, real incremental stream cancellation,
 launcher propagation, independent grants and a real browser-style worker using
 the scoped endpoint. These are disposable HTTP/server/worker fixtures, not a
-Safari/iPhone acceptance or live-model result. No existing relay was restarted;
-no token, certificate or live model was used. A new release package must be built
-from the final committed source and receive its own hash and acceptance record.
+Safari/iPhone acceptance or live-model result. That initial fixture run used no
+token, certificate or live model and restarted no existing relay.
+
+The subsequent [package receipt](evidence/companion-scoped-package.json) records
+the committed, relocated archive with bundled Bun and its published hash. The
+[actual Pages Chrome check](evidence/scoped-relay-pages-chrome.json) then paired
+that package using existing trusted TLS, completed real model replies and an
+approved task-plan tool call with only `model-relay`, restored pairing/draft, and
+downloaded the matching archive. The final suite passed 709 tests with one CLI
+skip. Native Safari/iPhone, fresh TLS onboarding and signed distribution remain
+unverified; the current archive is explicitly an unsigned developer preview.

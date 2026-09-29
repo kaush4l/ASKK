@@ -1,0 +1,109 @@
+{
+  "at": "2026-09-29T07:15:27.270Z",
+  "files": [
+    {
+      "bytes": 40614,
+      "path": "index.html",
+      "sha256": "946505dd269844320d1346b5c33a8f23665acff7b80e639a5984acf2a15ea4e3",
+      "status": 200,
+      "matchesExport": true
+    },
+    {
+      "bytes": 640,
+      "path": "companion-release.json",
+      "sha256": "1aacbbe3a0a89ca489b50cc127c774a9af243bd2b97212ddd4b155a67b39fa95",
+      "status": 200,
+      "matchesExport": true
+    },
+    {
+      "bytes": 111393,
+      "path": "runtime/modules/runtime/hub.js",
+      "sha256": "6d907da9cb43ba58c72beec40de59833e52668c2f507a928de5812218a55d91d",
+      "status": 200,
+      "matchesExport": true
+    },
+    {
+      "bytes": 14383,
+      "path": "runtime/modules/runtime/agent.worker.js",
+      "sha256": "1c97526090c60e45d10fb20fef09508818cde19f5969ff753ef1805c7560be30",
+      "status": 200,
+      "matchesExport": true
+    },
+    {
+      "bytes": 1829,
+      "path": "runtime/modules/core/model-relay.js",
+      "sha256": "604f7ff98fe3c1358e0852d05e5f2fe1036275cd1003b1ada4bb4ee2bce30a70",
+      "status": 200,
+      "matchesExport": true
+    },
+    {
+      "bytes": 264801,
+      "path": "_next/static/chunks/app/page-88580c0d6dd018fd.js",
+      "sha256": "da18c88ff538b99424eea98bdba2b9684205760ab74b214f14743bff7016c6c3",
+      "status": 200,
+      "matchesExport": true
+    }
+  ],
+  "guestFrames": 0,
+  "isolated": true,
+  "serviceWorker": "https://kaush4l.github.io/ASKK/coi-serviceworker.js",
+  "url": "https://kaush4l.github.io/ASKK/",
+  "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36",
+  "sourceCommit": "91612b9",
+  "deploymentCommit": "f3ff9545e0061ce008619a69a7097bce50d53e10",
+  "deploymentAction": "https://github.com/kaush4l/ASKK/actions/runs/36535105820",
+  "build": {
+    "version": 1,
+    "basePath": "/ASKK",
+    "totalBytes": 828680127,
+    "fileCount": 186,
+    "runtimeId": "c2w-node24-38d093f4a38002db",
+    "artifactHash": "35b706e21c1f00b9539cfae660f663d37a1a7c939621d51fef31780bc3834b7c"
+  },
+  "checks": {
+    "relayURL": "https://127.0.0.1:7718",
+    "relaySource": "cf6b594555c0fb73a9ef349663ca39b46e3faa27",
+    "capabilities": [
+      "model-relay"
+    ],
+    "modelEndpoints": [
+      "http://127.0.0.1:8873/v1"
+    ],
+    "firstReplySecondsDisplayed": 1.2,
+    "run": "rmumcaaph1",
+    "runStatus": "Completed",
+    "result": "The plan is empty.",
+    "toolCalls": 1,
+    "historicalPrompts": 2,
+    "providerRequests": 2,
+    "providerCompletions": 2,
+    "approvalState": "Needs your decision",
+    "approvalReviewFocus": "H3 Todo read, exact approval 1",
+    "approvedOnce": true,
+    "readApprovalPolicyRestored": true,
+    "reloadDraftPreserved": "Scoped companion checkpoint \u2014 keep this draft.",
+    "replyAfterReloadSecondsDisplayed": 1.4,
+    "reloadedResult": "Connected.",
+    "guestStarted": false,
+    "nativeExecutionStarted": false,
+    "pairingRestoredAfterNormalReload": true,
+    "pairingObservation": "Connected companion and same scoped relay route were visible after reload; fresh Test reply completed."
+  },
+  "download": {
+    "via": "Actual published UI download link, completed Chrome download event",
+    "file": "askk-companion-darwin-arm64-cf6b594.tar.gz",
+    "bytes": 25402830,
+    "sha256": "bedd9a24bf3bb5cf6380e774971f34b87eb3966f48eda9eb6219e782cb55416a",
+    "matchesPublishedMetadata": true,
+    "matchesVerifiedRelocatedPackageArchive": true
+  },
+  "limitations": [
+    "Chrome desktop only; current native Safari, physical iPhone and VoiceOver acceptance remain pending.",
+    "The companion uses existing trusted TLS. This is not a fresh certificate trust or signed installer proof.",
+    "Large archive hashing through CDP exceeded its command deadline; the actual completed browser download was hashed on disk instead.",
+    "Reply times are individual UI observations, not isolated latency benchmarks.",
+    "No browser-contained application build or one-shot generation was attempted.",
+    "Opening Settings before initial model restoration finishes can show an empty Model ID; reopening shows the restored value. This timing issue remains pending."
+  ],
+  "deploymentConclusion": "success"
+}

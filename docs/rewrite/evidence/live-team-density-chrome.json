@@ -1,0 +1,355 @@
+{
+  "recordedAt": "2026-09-29",
+  "sourceCommit": "91612b9",
+  "url": "http://127.0.0.1:5216/",
+  "scope": "Actual AgentTeam and Dashboard React components with synthetic run/approval records; no model, worker or host action.",
+  "sourceFiles": [
+    {
+      "path": "src/workbench/AgentTeam.jsx",
+      "sha256": "4ae113f184dcb5c417e38775f1d08e25a1f0126e3f5a0fc443a7549abb13b6a7"
+    },
+    {
+      "path": "src/workbench/Dashboard.jsx",
+      "sha256": "f5956f21c9e14ed19303d1aa997ca998a50cdde3d910dbf66e5dc8f1fcabc7dd"
+    },
+    {
+      "path": "src/workbench/agent-team.css",
+      "sha256": "655ab1fe3227c0d4ef4dfacba806c4fe796c7f1c62530b45d744c169677caa1f"
+    }
+  ],
+  "fixtureSourceSHA256": "467eab080f49216b98c585e90030ab7863d1fb9bf906fbc2339a96499499858f",
+  "desktopTeamCompletion": {
+    "surface": "team",
+    "before": {
+      "focus": "Stop Pond observer run observer-00000003",
+      "stop": {
+        "top": 409.28125,
+        "left": 1012,
+        "width": 88,
+        "height": 44
+      },
+      "cards": [
+        {
+          "id": "lead-00000001",
+          "top": 62.09375,
+          "left": 87,
+          "width": 335.328125,
+          "height": 248
+        },
+        {
+          "id": "observer-00000002",
+          "top": 62.09375,
+          "left": 432.328125,
+          "width": 335.3359375,
+          "height": 248
+        },
+        {
+          "id": "observer-00000003",
+          "top": 62.09375,
+          "left": 777.6640625,
+          "width": 335.3359375,
+          "height": 392.1875
+        },
+        {
+          "id": "observer-00000004",
+          "top": 464.28125,
+          "left": 87,
+          "width": 335.328125,
+          "height": 248
+        },
+        {
+          "id": "observer-00000005",
+          "top": 464.28125,
+          "left": 432.328125,
+          "width": 335.3359375,
+          "height": 248
+        },
+        {
+          "id": "observer-00000006",
+          "top": 464.28125,
+          "left": 777.6640625,
+          "width": 335.3359375,
+          "height": 248
+        },
+        {
+          "id": "earlier-0",
+          "top": 855.28125,
+          "left": 87,
+          "width": 335.328125,
+          "height": 248
+        },
+        {
+          "id": "earlier-1",
+          "top": 855.28125,
+          "left": 432.328125,
+          "width": 335.3359375,
+          "height": 248
+        },
+        {
+          "id": "earlier-2",
+          "top": 855.28125,
+          "left": 777.6640625,
+          "width": 335.3359375,
+          "height": 248
+        },
+        {
+          "id": "earlier-3",
+          "top": 1113.28125,
+          "left": 87,
+          "width": 335.328125,
+          "height": 248
+        },
+        {
+          "id": "earlier-4",
+          "top": 1113.28125,
+          "left": 432.328125,
+          "width": 335.3359375,
+          "height": 248
+        },
+        {
+          "id": "earlier-5",
+          "top": 1113.28125,
+          "left": 777.6640625,
+          "width": 335.3359375,
+          "height": 248
+        }
+      ]
+    },
+    "streaming": {
+      "focus": "Stop Pond observer run observer-00000003",
+      "stop": {
+        "top": 409.28125,
+        "left": 1012,
+        "width": 88,
+        "height": 44
+      },
+      "cards": [
+        {
+          "id": "lead-00000001",
+          "top": 62.09375,
+          "left": 87,
+          "width": 335.328125,
+          "height": 248
+        },
+        {
+          "id": "observer-00000002",
+          "top": 62.09375,
+          "left": 432.328125,
+          "width": 335.3359375,
+          "height": 248
+        },
+        {
+          "id": "observer-00000003",
+          "top": 62.09375,
+          "left": 777.6640625,
+          "width": 335.3359375,
+          "height": 392.1875
+        },
+        {
+          "id": "observer-00000004",
+          "top": 464.28125,
+          "left": 87,
+          "width": 335.328125,
+          "height": 248
+        },
+        {
+          "id": "observer-00000005",
+          "top": 464.28125,
+          "left": 432.328125,
+          "width": 335.3359375,
+          "height": 248
+        },
+        {
+          "id": "observer-00000006",
+          "top": 464.28125,
+          "left": 777.6640625,
+          "width": 335.3359375,
+          "height": 248
+        },
+        {
+          "id": "earlier-0",
+          "top": 855.28125,
+          "left": 87,
+          "width": 335.328125,
+          "height": 248
+        },
+        {
+          "id": "earlier-1",
+          "top": 855.28125,
+          "left": 432.328125,
+          "width": 335.3359375,
+          "height": 248
+        },
+        {
+          "id": "earlier-2",
+          "top": 855.28125,
+          "left": 777.6640625,
+          "width": 335.3359375,
+          "height": 248
+        },
+        {
+          "id": "earlier-3",
+          "top": 1113.28125,
+          "left": 87,
+          "width": 335.328125,
+          "height": 248
+        },
+        {
+          "id": "earlier-4",
+          "top": 1113.28125,
+          "left": 432.328125,
+          "width": 335.3359375,
+          "height": 248
+        },
+        {
+          "id": "earlier-5",
+          "top": 1113.28125,
+          "left": 777.6640625,
+          "width": 335.3359375,
+          "height": 248
+        }
+      ]
+    },
+    "completed": {
+      "focus": "Run ended for Pond observer run observer-00000003",
+      "stop": {
+        "top": 409.28125,
+        "left": 1012,
+        "width": 88,
+        "height": 44
+      },
+      "cards": [
+        {
+          "id": "lead-00000001",
+          "top": 62.09375,
+          "left": 87,
+          "width": 335.328125,
+          "height": 248
+        },
+        {
+          "id": "observer-00000002",
+          "top": 62.09375,
+          "left": 432.328125,
+          "width": 335.3359375,
+          "height": 248
+        },
+        {
+          "id": "observer-00000003",
+          "top": 62.09375,
+          "left": 777.6640625,
+          "width": 335.3359375,
+          "height": 392.1875
+        },
+        {
+          "id": "observer-00000004",
+          "top": 464.28125,
+          "left": 87,
+          "width": 335.328125,
+          "height": 248
+        },
+        {
+          "id": "observer-00000005",
+          "top": 464.28125,
+          "left": 432.328125,
+          "width": 335.3359375,
+          "height": 248
+        },
+        {
+          "id": "observer-00000006",
+          "top": 464.28125,
+          "left": 777.6640625,
+          "width": 335.3359375,
+          "height": 248
+        },
+        {
+          "id": "earlier-0",
+          "top": 855.28125,
+          "left": 87,
+          "width": 335.328125,
+          "height": 248
+        },
+        {
+          "id": "earlier-1",
+          "top": 855.28125,
+          "left": 432.328125,
+          "width": 335.3359375,
+          "height": 248
+        },
+        {
+          "id": "earlier-2",
+          "top": 855.28125,
+          "left": 777.6640625,
+          "width": 335.3359375,
+          "height": 248
+        },
+        {
+          "id": "earlier-3",
+          "top": 1113.28125,
+          "left": 87,
+          "width": 335.328125,
+          "height": 248
+        },
+        {
+          "id": "earlier-4",
+          "top": 1113.28125,
+          "left": 432.328125,
+          "width": 335.3359375,
+          "height": 248
+        },
+        {
+          "id": "earlier-5",
+          "top": 1113.28125,
+          "left": 777.6640625,
+          "width": 335.3359375,
+          "height": 248
+        }
+      ]
+    },
+    "sameControl": true,
+    "retainedFocus": true,
+    "stableStopGeometry": true,
+    "stableCardGeometry": true,
+    "terminalStopBlocked": true,
+    "ariaDisabled": "true",
+    "viewport": {
+      "width": 1200,
+      "documentWidth": 1200,
+      "fixtureWidth": 1050
+    },
+    "reducedMotion": false
+  },
+  "narrowTeam": {
+    "method": "Read-only browser DOM measurements and screenshot after setting browser viewport to 320 by 640.",
+    "viewportWidth": 320,
+    "documentWidth": 320,
+    "teamWidth": 296,
+    "cardWidth": 296,
+    "columns": 1,
+    "modeControlHeight": 44,
+    "screenshot": "live-team-density-phone.png"
+  },
+  "hiddenApprovalReview": {
+    "run": "observer-00000007",
+    "focusedHeading": "decision-hidden \u00b7 workspace_read",
+    "tag": "H2",
+    "approved": false
+  },
+  "narrowDashboardApproval": {
+    "url": "http://127.0.0.1:5216/?surface=dashboard",
+    "measurement": {
+      "documentWidth": 320,
+      "focus": "Workspace read",
+      "id": "_r_0_-approval-decision-first",
+      "tag": "H3",
+      "width": 320
+    },
+    "approved": false
+  },
+  "limitations": [
+    "Desktop completion stability was measured at 1200px; 320px checks cover layout and approval focus, not streaming stability.",
+    "Synthetic records do not establish real parallel model inference or collaboration.",
+    "No native Safari, physical phone or VoiceOver test in this check.",
+    "Reduced-motion media preference was false; no new browser reduced-motion acceptance claim.",
+    "Component fixture source hashes bind this check to recorded component bytes, not an end-to-end Pages acceptance."
+  ]
+}
