@@ -1433,6 +1433,7 @@ function strategyFixtureHub(hub) {
     expect(options.definitionHash).toBe('sha256:fixture')
     expect(options.admissionGuard()).toBe(true)
     const run = hub.startRun('assistant', query, options); run.kind = 'strategy'; run.slot.status = 'running'
+    hub.emit({ type: 'run', run })
     hub.emit({ type: 'strategy', run: run.id, task: { id: run.id, status: 'running', nodes: [{ nodeId: 'answer', runId: 'child', status: 'running' }], definition } })
     hub.emit({ type: 'status', run: run.id, slot: run.slot })
     return run
@@ -1484,4 +1485,20 @@ test('persisted role state restores interrupted without replaying roles', async 
   expect(second.controller.getSnapshot().task.status).toBe('interrupted')
   expect(second.controller.getSnapshot().task.nodes[0].status).toBe('interrupted')
   expect(second.hub.runs.size).toBe(0)
+})
+
+
+test('late coordinator state from a stopped admission cannot replace a newer visible task', async () => {
+  const { controller, hub } = await startedFixture({ workbenchConfig: roleWorkflow, configureHub: strategyFixtureHub })
+  const old = await controller.sendGoal('First graph')
+  hub.abort = run => { run.ended = true; run.slot.status = 'cancelled'; hub.emit({ type: 'status', run: run.id, slot: run.slot }) }
+  controller.stopRun()
+  const current = await controller.sendGoal('Second graph')
+  const before = controller.getSnapshot()
+  hub.emit({ type: 'strategy', run: old, task: { id: old, status: 'cancelled', nodes: [] } })
+  hub.emit({ type: 'status', run: old, slot: { status: 'cancelled' } })
+  hub.emit({ type: 'answer', run: old, text: 'Late old answer', ok: false })
+  expect(controller.getSnapshot().task.id).toBe(current)
+  expect(controller.getSnapshot().run).toEqual(before.run)
+  expect(controller.getSnapshot().messages).toEqual(before.messages)
 })
