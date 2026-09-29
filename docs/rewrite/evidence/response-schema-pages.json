@@ -1,0 +1,66 @@
+{
+  "source": "944bd725",
+  "deployment": "02b0a38dfcdbed2fab472fd097a22f8e111d29c2",
+  "workflow": "https://github.com/kaush4l/ASKK/actions/runs/36562531590",
+  "workflowConclusion": "success",
+  "checks": [
+    {
+      "path": "index.html",
+      "status": 200,
+      "sha256": "e45cbf4215a1669c595ff54db8b9fb8cc35b9060c7c1e5d1953cc04881c5c0b5",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/core/agent-prompt.js",
+      "status": 200,
+      "sha256": "743ef58a987b0349e6354e10c82b1713eeac54c2a21f168845be7717120d4c4a",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/core/responses.js",
+      "status": 200,
+      "sha256": "ed8d3ebb34ce0be01cfc0347b40586befce044e60a957a4ce976f9b892b812d3",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/core/inference.js",
+      "status": 200,
+      "sha256": "a283834fc7749dadea612dba1e9b06dfa32c1e260ce3aa27eee1778f33702e5e",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/runtime/model-broker.js",
+      "status": 200,
+      "sha256": "a70426fe6a38a2ef425c692e1a0ded818cc08b19de1c0c20656f08a4a173c586",
+      "matches": true
+    },
+    {
+      "path": "_next/static/chunks/app/page-60c27cb5f3214f2e.js",
+      "status": 200,
+      "sha256": "4ef0ecd5601c1e23ab318fb988c57f2aeed3ad35dc3d881ead442f8104fd1988",
+      "matches": true
+    }
+  ],
+  "scope": "Hosted HTTP asset verification only. Optional schema requests are disabled by default. Three real local Qwen3 trials parsed without repairs but failed task checks. No hosted inference, Safari, iPhone or Browser Linux acceptance.",
+  "tests": {
+    "passed": 890,
+    "skipped": 1,
+    "failed": 0,
+    "assertions": 6577,
+    "files": 87,
+    "finalAffectedTests": {
+      "passed": 48,
+      "failed": 0,
+      "assertions": 257,
+      "files": 3
+    }
+  },
+  "export": {
+    "version": 1,
+    "basePath": "/ASKK",
+    "totalBytes": 854216278,
+    "fileCount": 211,
+    "runtimeId": "c2w-node24-38d093f4a38002db",
+    "artifactHash": "81092e39607be67ce08e0b8a71f060b60fb870a9784c85b70634af1cba4c9e41"
+  }
+}
