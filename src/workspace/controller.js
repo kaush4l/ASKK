@@ -12,6 +12,12 @@ const LEGACY_WORKFLOW = Object.freeze({ id: 'coding', label: 'Build an app', des
 const DEFAULT_TOOL_POLICY = normalizeToolPolicy({ disabledTools: [], approvalRisks: [], allowDelegation: true })
 const canRelayModels = value => (value?.capabilities ?? value?.health?.capabilities ?? []).some(capability => ['model-relay', 'fetch'].includes(capability))
 const companionIdentity = value => JSON.stringify([value?.status, value?.url, value?.runtimeId, value?.generation, value?.root, [...(value?.capabilities ?? [])].sort()])
+const installedWorkflow = item => Object.freeze({
+  id: `package-${item.id}`, label: item.label, description: item.error || item.description || `Installed from ${item.packageId}`,
+  agent: item.agentPath, workspace: false, disabled: item.status === 'disabled', unavailableReason: item.error || '',
+  leadModel: item.leadModel || '', modelBindings: Object.freeze({ ...item.modelBindings }),
+  package: Object.freeze({ installationId: item.id, packageId: item.packageId, revisionDigest: item.revisionDigest, agentId: item.leadAgentId }),
+})
 function workflowsFrom(configuration) {
   if (configuration.workflows === undefined) return [LEGACY_WORKFLOW]
   if (!Array.isArray(configuration.workflows) || !configuration.workflows.length || configuration.workflows.length > 32) throw new Error('Invalid workbench workflows')
@@ -28,10 +34,11 @@ const saveSetting = (key, value) => { try { localStorage.setItem(key, JSON.strin
 export function createWorkbenchController({ onChange, basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? '', workspace: workspaceOverride, createExecution: executionFactory, createCompanion = options => new LocalExecution(options), createHub: hubFactory, inspectArtifact: inspectOverride } = {}) {
   const listeners = new Set(onChange ? [onChange] : []); const running = new Map(); const terminalListeners = new Map(); const terminals = new Set()
   const base = `${basePath.replace(/\/$/, '')}/`
-  let state = { ready: false, error: '', project: { name: 'Untitled workspace', id: 'default' }, goal: '', goalRevision: 0, files: [], messages: [], run: null, task: null, runtime: { target: 'browser', status: 'idle', phase: 'Not started', capabilities: [] }, companion: { status: 'disconnected', url: 'https://127.0.0.1:7717' }, model: { status: 'unconfigured', id: '', baseUrl: '' }, commands: [], artifacts: [], agents: [], agentDefinitions: [], workflows: [], selectedWorkflowId: 'assistant', toolPolicy: DEFAULT_TOOL_POLICY, plans: [], approvals: [], activity: [] }
+  let state = { ready: false, error: '', project: { name: 'Untitled workspace', id: 'default' }, goal: '', goalRevision: 0, files: [], messages: [], run: null, task: null, runtime: { target: 'browser', status: 'idle', phase: 'Not started', capabilities: [] }, companion: { status: 'disconnected', url: 'https://127.0.0.1:7717' }, model: { status: 'unconfigured', id: '', baseUrl: '' }, commands: [], artifacts: [], agents: [], agentDefinitions: [], agentPackages: [], packageInstalling: false, workflows: [], selectedWorkflowId: 'assistant', toolPolicy: DEFAULT_TOOL_POLICY, plans: [], approvals: [], activity: [] }
   let hub; let local; let executor; let browser; let started; let disposed = false; let activeRun; let projectRevision = 0; let taskStartRevision = 0; let currentArtifact; let unsubscribe; let runtimeBoot; let taskArtifactId; let watcher; let watched = ''; let acceptance = { requireArtifact: true, requireInteraction: true }
   let uiLoaded = false; let persistTimer; let savingUI = Promise.resolve()
   let binding; let workspaceLocation = null; let locationLoaded = false; let legacyNative = false; let modelProfiles = []; let modelEpoch = 0; let modelCheck; let launchEpoch = 0; const runBindings = new Map()
+  let configuredWorkflows = []; let packageInstalling = false; let packageInstallEpoch = 0
   const executionEpochs = { browser: 0, local: 0 }; const executionErrors = {}
   const executionHealth = { browser: 'responsive', local: 'responsive' }; const healthVersions = { browser: 0, local: 0 }; const healthWaiters = new Set()
   let runtimeEstablished = false; let recovering; let watching = false
@@ -54,6 +61,7 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
     modelCheck = null
   }
   const checkModel = async kind => {
+    if (packageInstalling) throw new Error('Wait for agent installation to finish before testing its model')
     if (active(state.run?.status)) throw new Error('Finish or stop active work before testing its model')
     if (connecting) throw new Error('Wait for the companion connection change to finish')
     if (modelCheck) throw new Error('Cancel or finish the current model check first')
@@ -82,7 +90,7 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
   if (workspaceOverride) files.onCommit = committed
   const commandUpdate = (key, patch) => notify({ commands: state.commands.map(command => command.id === key ? { ...command, ...patch } : command) })
   let fileMutations = 0; let openingTerminals = 0
-  const requireIdle = () => { if (active(state.run?.status) || running.size || fileMutations || openingTerminals || runtimeBoot) throw new Error('Finish or stop active work before changing its execution environment') }
+  const requireIdle = () => { if (packageInstalling) throw new Error('Wait for agent installation to finish'); if (active(state.run?.status) || running.size || fileMutations || openingTerminals || runtimeBoot) throw new Error('Finish or stop active work before changing its execution environment') }
   let transferring = false; let connecting = false; let connectingEndpoint = null
   const requireWritable = ({ allowReconciledSetup = false } = {}) => { if (!allowReconciledSetup) requireResponsive(); if (transferring) throw new Error('Wait for the workspace snapshot transfer to finish'); if (connecting) throw new Error('Wait for the companion connection change to finish') }
   const mutateFiles = async callback => { requireWritable(); fileMutations++; try { return await callback() } finally { fileMutations-- } }
@@ -258,8 +266,16 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
 
   const refreshDefinitions = () => notify({ agentDefinitions: hub?.manifest({ toolPolicy: state.toolPolicy }) ?? [] })
   const refreshAgents = () => notify({ agents: [...(hub?.runs.values() ?? [])].filter(run => run.kind !== 'strategy').map(run => ({ id: run.id, kind: run.kind, taskId: run.taskId, stageId: run.stageId, result: run.result, error: run.slot?.error, path: run.agent, agent: run.agent, name: state.agentDefinitions.find(row => row.path === run.agent)?.name ?? run.agent, current: run.slot?.current ?? '', maxSteps: run.slot?.maxSteps, steps: run.slot?.steps ?? 0, parent: run.parent ?? null, status: run.slot?.status ?? 'starting', description: run.query, at: run.at })) })
+  const refreshPackages = preferred => {
+    const agentPackages = hub?.packages?.list() ?? []
+    const workflows = Object.freeze([...configuredWorkflows, ...agentPackages.map(installedWorkflow)])
+    const selectedWorkflowId = preferred && workflows.some(item => item.id === preferred) ? preferred : state.selectedWorkflowId
+    notify({ agentPackages, workflows, selectedWorkflowId })
+  }
 
   function onHub(message) {
+    if (message.type === 'packages') { refreshPackages(); refreshDefinitions() }
+    if (message.type === 'settings') { refreshPackages(); refreshDefinitions() }
     if (message.type === 'run' && !message.run.parent && !activeRun && state.run?.status === 'starting') activeRun = message.run.id
     if (message.type === 'strategy' && message.run === activeRun) notify({ task: message.task })
     if (message.type === 'persistence-error') notify({ error: message.error })
@@ -279,8 +295,8 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
         notify({ model: { ...state.model, status: available ? 'configured' : 'failed', checkedAt: null, check: null, probe: null, errorCode: available ? null : connected ? 'MODEL_RELAY_DENIED' : 'MODEL_RELAY_UNAVAILABLE', error: available ? '' : connected ? 'The companion does not grant model relay access.' : message.state.error || 'The model relay is unavailable.' } })
       }
     }
-    if (message.type === 'boot' && message.stage === 'ready') { refreshDefinitions(); notify({ ready: true }) }
-    if (message.type === 'ready' || message.type === 'agents') refreshDefinitions()
+    if (message.type === 'boot' && message.stage === 'ready') { refreshPackages(); refreshDefinitions(); notify({ ready: true }) }
+    if (message.type === 'ready' || message.type === 'agents') { refreshPackages(); refreshDefinitions() }
     if (message.type === 'lock' && message.state === 'follower') notify({ error: 'Another tab owns the agent runtime. Close it to work here.' })
     if (message.type === 'todo') notify({ plans: [...state.plans.filter(plan => plan.runId !== message.run), { runId: message.run, agent: hub.runs.get(message.run)?.agent ?? 'Agent', items: message.items }] })
     if (message.type === 'status') {
@@ -342,7 +358,10 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
         if (!isolation.ready) notify({ runtime: { ...state.runtime, isolation: false, detail: isolation.reason } })
         const configuration = await fetch(`${base}workbench.json`).then(response => response.ok ? response.json() : {}).catch(() => ({})); acceptance = configuration.acceptance ?? acceptance
         const workflows = workflowsFrom(configuration)
-        const selectedWorkflowId = workflows.find(row => row.id === savedUI?.selectedWorkflowId)?.id ?? workflows.find(row => row.id === (configuration.defaultWorkflow ?? 'assistant'))?.id ?? workflows[0].id
+        configuredWorkflows = workflows
+        // Installed workflows are restored by the Hub below. Do not replace their
+        // saved selection with a bundled agent while that restoration is pending.
+        const selectedWorkflowId = typeof savedUI?.selectedWorkflowId === 'string' ? savedUI.selectedWorkflowId : workflows.find(row => row.id === (configuration.defaultWorkflow ?? 'assistant'))?.id ?? workflows[0].id
         const toolPolicy = normalizeToolPolicy(savedUI && Object.hasOwn(savedUI, 'toolPolicy') ? savedUI.toolPolicy : Object.hasOwn(configuration, 'toolPolicy') ? configuration.toolPolicy : DEFAULT_TOOL_POLICY)
         notify({ workflows: Object.freeze(workflows), selectedWorkflowId, toolPolicy })
         const executionNotices = Object.fromEntries(['browser', 'local'].flatMap(target => {
@@ -386,7 +405,8 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
           if (outputAgent !== row.agent) throw new Error(`Workflow ${row.id} must name its strategy output agent`)
           return Object.freeze({ ...row, strategy: loaded.definition, strategyHash: loaded.definitionHash, strategyFiles: loaded.files })
         }))
-        notify({ workflows: Object.freeze(resolvedWorkflows) })
+        configuredWorkflows = resolvedWorkflows
+        refreshPackages(savedUI?.selectedWorkflowId)
         if (hub.bridgeState.status === 'answering') local = new LocalExecution({ url: hub.bridgeState.url, token: hub.bridgeState.token })
         await controller.setModel({ baseUrl: state.model.baseUrl, model: state.model.id, apiKey: hub.settings.get().catalogue.models?.workbench?.api_key ?? '' })
         refreshDefinitions(); refreshAgents(); notify({ ready: true })
@@ -406,7 +426,7 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
       })().catch(error => { report(error); throw error })
       return started
     },
-    stop() { invalidateModelCheck(); persistUI(); disposed = true; clearInterval(watcher); clearTimeout(persistTimer); unsubscribe?.(); hub?.stop(); settleHealthWaiters(new Error('The workspace was closed before the operation could be reconciled')); for (const abort of running.values()) abort.abort(); for (const port of new Set([browser, local, executor].filter(Boolean))) { try { Promise.resolve(port.dispose()).catch(error => { state = { ...state, error: `Environment shutdown could not be confirmed: ${error.message}` } }) } catch (error) { state = { ...state, error: `Environment shutdown could not be confirmed: ${error.message}` } } } for (const artifact of state.artifacts) URL.revokeObjectURL(artifact.url); listeners.clear() },
+    stop() { invalidateModelCheck(); packageInstallEpoch++; persistUI(); disposed = true; clearInterval(watcher); clearTimeout(persistTimer); unsubscribe?.(); hub?.stop(); settleHealthWaiters(new Error('The workspace was closed before the operation could be reconciled')); for (const abort of running.values()) abort.abort(); for (const port of new Set([browser, local, executor].filter(Boolean))) { try { Promise.resolve(port.dispose()).catch(error => { state = { ...state, error: `Environment shutdown could not be confirmed: ${error.message}` } }) } catch (error) { state = { ...state, error: `Environment shutdown could not be confirmed: ${error.message}` } } } for (const artifact of state.artifacts) URL.revokeObjectURL(artifact.url); listeners.clear() },
     readFile: path => { requireResponsive(); return files.read(path) },
     saveFile: args => mutateFiles(() => files.save(args)),
     createFile: (path, content = '') => mutateFiles(() => files.save({ path, content, expect: 0 })),
@@ -449,6 +469,30 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
       const toolPolicy = normalizeToolPolicy({ ...state.toolPolicy, ...patch })
       notify({ toolPolicy }); refreshDefinitions(); await persistUI({ strict: true }); return toolPolicy
     },
+    async previewAgentPackage(records) {
+      await controller.start(); requireIdle()
+      if (disposed) throw new Error('The agent desk was closed')
+      if (modelCheck || connecting || transferring) throw new Error('Finish the connection check or workspace transfer before importing an agent')
+      if (!hub.packages) throw new Error('This runtime does not support agent folder installation')
+      return hub.packages.preview(records)
+    },
+    async installAgentPackage(stageId, bindings) {
+      await controller.start(); requireIdle()
+      if (disposed) throw new Error('The agent desk was closed')
+      if (modelCheck || connecting || transferring) throw new Error('Finish the connection check or workspace transfer before installing an agent')
+      if (!hub.packages) throw new Error('This runtime does not support agent folder installation')
+      const epoch = ++packageInstallEpoch
+      packageInstalling = true; notify({ packageInstalling: true })
+      try {
+        const admissionGuard = () => !disposed && epoch === packageInstallEpoch && !active(state.run?.status) && !connecting && !transferring && !modelCheck
+        const result = await hub.packages.install(stageId, { ...bindings, admissionGuard })
+        if (!admissionGuard()) throw new Error('The agent desk stopped while installation was finishing. Reopen it to inspect saved installations.')
+        refreshPackages(`package-${result.id}`); refreshDefinitions(); refreshAgents()
+        await persistUI({ strict: true })
+        if (result.status === 'disabled') throw new Error(`Agent folder saved, but unavailable: ${result.error || 'check its model and tool bindings'}`)
+        return result
+      } finally { packageInstalling = false; notify({ packageInstalling: false }) }
+    },
     async getAgentDetails(path) {
       await controller.start()
       const definition = hub.manifest({ toolPolicy: state.toolPolicy }).find(row => row.path === path)
@@ -465,7 +509,7 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
         if (!prompt?.snapshot?.messages) continue
         latestPrompt = { messages: prompt.snapshot.messages, budget: prompt.snapshot.budget, attemptId: prompt.attemptId, step: prompt.step }; break
       }
-      return snapshot({ path, name: definition.name, description: definition.description,
+      return snapshot({ path, name: definition.name, description: definition.description, package: spec?.package ?? definition.package ?? null,
         soul: spec?.soul ?? composition.soul ?? '', instructions: spec?.body ?? composition.instructions ?? '',
         promptTemplate: spec?.engine.promptTemplate ?? composition.promptTemplate ?? DEFAULT_PROMPT,
         context: spec?.context ?? definition.context ?? [], responseFormat: spec?.engine.responseFormat ?? composition.responseFormat ?? 'json',
@@ -477,7 +521,11 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
       await controller.start()
       if (modelCheck) throw new Error('Cancel or finish the current model check before starting a task')
       if (connecting) throw new Error('Wait for the companion connection change to finish')
-      const workflow = state.workflows.find(row => row.id === state.selectedWorkflowId) ?? LEGACY_WORKFLOW
+      if (packageInstalling) throw new Error('Wait for agent installation to finish before starting a task')
+      const workflow = state.workflows.find(row => row.id === state.selectedWorkflowId)
+      if (!workflow) throw new Error('Select an available workflow before starting a task')
+      if (workflow.disabled) throw new Error(workflow.unavailableReason || 'The selected agent folder is unavailable')
+      if (workflow.package && !hub.packages?.list().some(item => item.id === workflow.package.installationId && item.status === 'ready' && item.revisionDigest === workflow.package.revisionDigest && item.agentPath === workflow.agent)) throw new Error('The selected agent installation changed or is unavailable. Select its current definition before running.')
       if (workflow.workspace) requireWritable({ allowReconciledSetup: active(state.run?.status) })
       if (active(state.run?.status)) {
         if (workflow.strategy?.kind === 'graph') throw new Error('Role inputs are fixed for this run. Stop the workflow to change the goal.')
@@ -492,8 +540,12 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
       const launch = ++launchEpoch; activeRun = null
       notify({ error: '', task: null, messages: [...state.messages, { id: id('message'), role: 'user', content: text, at: Date.now() }], run: { status: 'starting', agent: workflow.agent } })
       try {
-        const endpoint = new URL(state.model.baseUrl)
-        if (!['https:', 'http:'].includes(endpoint.protocol) || endpoint.username || endpoint.password || endpoint.search || endpoint.hash || !state.model.id.trim()) throw new Error('The model requires a credential-free HTTP(S) endpoint and a model name')
+        // Installed definitions bind named profiles of their own. The Hub checks
+        // those bindings at admission; a different workbench profile is not theirs.
+        if (!workflow.package) {
+          const endpoint = new URL(state.model.baseUrl)
+          if (!['https:', 'http:'].includes(endpoint.protocol) || endpoint.username || endpoint.password || endpoint.search || endpoint.hash || !state.model.id.trim()) throw new Error('The model requires a credential-free HTTP(S) endpoint and a model name')
+        }
         const { strategy, strategyHash, strategyFiles, ...runtimeWorkflow } = workflow
         let context = snapshot({ workflow: runtimeWorkflow, toolPolicy: policy, savedGoal: { text: state.goal, revision: state.goalRevision } })
         if (workflow.workspace) {
@@ -504,7 +556,8 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
           const { runId, ...bound } = createBoundRunSnapshot({ runId: id('handoff'), binding, sourceRevision: projectRevision, sourceFingerprint, modelTransport: { kind: state.model.via ?? 'direct', provider: hub.settings.get().catalogue.models?.workbench?.provider ?? 'openai', model: state.model.id, endpoint: state.model.baseUrl } })
           context = snapshot({ ...bound, ...context })
         }
-        const run = strategy ? await hub.startStrategy(strategy, text, { context, definitionHash: strategyHash, admissionGuard: () => launch === launchEpoch && !disposed, ...(workflow.workspace ? { verifyCompletion: run => hub.externalOps['workspace.acceptance']({}, run) } : {}) }) : hub.startRun ? hub.startRun(workflow.agent, text, { context }) : hub.ask(text, { context })
+        if (!strategy && !hub.startRun) throw new Error('The runtime cannot dispatch the selected agent explicitly')
+        const run = strategy ? await hub.startStrategy(strategy, text, { context, definitionHash: strategyHash, admissionGuard: () => launch === launchEpoch && !disposed, ...(workflow.workspace ? { verifyCompletion: run => hub.externalOps['workspace.acceptance']({}, run) } : {}) }) : hub.startRun(workflow.agent, text, { context })
         if (launch !== launchEpoch || disposed) { if (run && typeof run !== 'string' && !run.ended) hub.abort(run); return null }
         activeRun = typeof run === 'string' ? run : run.id
         if (workflow.workspace) runBindings.set(activeRun, createBoundRunSnapshot({ runId: activeRun, ...context }))
@@ -522,6 +575,7 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
     },
     approve: (approvalId, approved, always = false) => hub.answerApproval(approvalId, { approved, always }),
     async setModel({ baseUrl, model, apiKey, via }) {
+      if (packageInstalling) throw new Error('Wait for agent installation to finish before changing its model binding')
       if (active(state.run?.status)) throw new Error('Finish or stop active work before changing its model')
       invalidateModelCheck()
       if (state.model.status === 'checking') notify({ model: { ...state.model, status: 'configured', check: null, checkedAt: null, probe: null } })
@@ -531,7 +585,9 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
       const previousKey = previous.base_url === baseUrl ? previous.api_key : ''
       const relay = hub?.bridge.state()
       const profile = { ...configured, ...(sameModel ? previous : {}), base_url: baseUrl, model, api_key: apiKey ?? previousKey ?? '', via: via ?? state.model.via ?? (relay?.status === 'answering' && canRelayModels(relay) ? 'bridge' : 'direct') }
-      if (hub?.store) await hub.settings.set({ catalogue: { default: 'workbench', models: { workbench: profile } }, dreaming: false })
+      const savedCatalogue = hub?.settings.get().saved ?? {}
+      if (hub?.store) await hub.settings.set({ catalogue: { ...savedCatalogue, default: 'workbench', models: { ...savedCatalogue.models, workbench: profile } }, dreaming: false })
+      refreshPackages(); refreshDefinitions()
       notify({ model: { status: 'configured', id: model, baseUrl, via: profile.via } }); saveSetting('askk:workbench-settings', { model: { id: model, baseUrl, via: profile.via } })
     },
     async pairModelRelay({ url, token }) {

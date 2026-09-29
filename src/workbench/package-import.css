@@ -1,0 +1,38 @@
+.package-import { min-width: 0; }
+.package-file-pickers { display: flex; flex-direction: column; gap: 14px; padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.package-file-pickers label { display: block; min-width: 0; font-size: 12px; }
+.package-file-pickers label > span { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; }
+.package-file-pickers input { display: block; width: 100%; min-height: 38px; font-size: 11px; }
+.package-file-pickers input::file-selector-button { min-height: 38px; padding: 7px 10px; margin-right: 8px; border: 1px solid var(--line-strong); border-radius: 5px; background: var(--raised); color: var(--text); cursor: pointer; }
+.package-import > .form-help { margin-top: 10px; }
+.package-import-status { margin-block: 12px; min-height: 18px; color: var(--secondary); font-size: 11px; line-height: 1.7; }
+.package-import-error { display: flex; align-items: flex-start; gap: 8px; margin-block: 12px; padding: 11px; color: var(--red); background: var(--red-soft); border-radius: 6px; font-size: 12px; line-height: 1.65; overflow-wrap: anywhere; }
+.package-import-error svg { flex-shrink: 0; margin-top: 2px; }
+.package-review { min-width: 0; display: flex; flex-direction: column; gap: 18px; margin-top: 18px; padding-top: 17px; border-top: 1px solid var(--line); }
+.package-identity { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.package-identity > div { min-width: 0; }.package-identity > svg { color: var(--accent); flex-shrink: 0; }
+.package-identity h3 { margin-top: 8px; font-size: 18px; font-weight: 600; overflow-wrap: anywhere; }
+.package-identity p { color: var(--secondary); font-size: 11px; margin-top: 5px; }
+.package-field { display: block; min-width: 0; font-size: 12px; }
+.package-agent-list { border-block: 1px solid var(--line); }
+.package-agent-list details + details { border-top: 1px solid var(--line); }
+.package-agent-list summary, .package-inventory summary { cursor: pointer; font-size: 12px; padding-block: 11px; overflow-wrap: anywhere; }
+.package-agent-list summary span, .package-inventory summary > span { color: var(--muted); font-size: 10px; margin-left: 8px; }
+.package-agent-list p, .package-agent-list dl { font-size: 11px; color: var(--secondary); line-height: 1.65; padding-bottom: 10px; overflow-wrap: anywhere; }
+.package-agent-list dl > div { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 8px; margin-bottom: 5px; }
+.package-agent-list dd { margin: 0; }.package-agent-list dt { color: var(--muted); }
+.package-bindings, .package-tool-grants { border: 0; padding: 0; margin: 0; min-width: 0; }
+.package-bindings legend, .package-tool-grants legend { font-size: 12px; font-weight: 600; margin-bottom: 7px; }
+.package-bindings > p, .package-tool-grants > p { color: var(--secondary); font-size: 11px; line-height: 1.65; margin-bottom: 11px; }
+.package-bindings > label + label { margin-top: 12px; }
+.package-tool-grants > label { display: flex; align-items: center; gap: 10px; min-height: 44px; border-bottom: 1px solid var(--line); padding: 8px 0; }
+.package-tool-grants input { width: 16px; height: 16px; accent-color: var(--accent); }
+.package-tool-grants label > span { min-width: 0; }.package-tool-grants strong { display: block; font-size: 12px; overflow-wrap: anywhere; }
+.package-tool-grants small { display: block; font-size: 10px; color: var(--muted); margin-top: 3px; }
+.package-inventory ul { list-style: none; margin: 0; padding: 0; max-height: 180px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; }
+.package-inventory li { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 7px 9px; font: 10px/1.6 var(--mono); }.package-inventory li > span { min-width: 0; overflow-wrap: anywhere; }.package-inventory small { flex-shrink: 0; color: var(--muted); font: inherit; }
+.package-revision { margin-top: 9px; font: 9px/1.6 var(--mono); color: var(--muted); overflow-wrap: anywhere; }
+.package-notes { color: var(--secondary); font-size: 11px; line-height: 1.7; overflow-wrap: anywhere; }.package-notes p + p { margin-top: 7px; }
+.package-install-action { display: flex; flex-direction: column; align-items: stretch; gap: 8px; }.package-install-action .button, .package-close .button { min-height: 44px; }.package-install-action > span { color: var(--muted); font-size: 11px; line-height: 1.65; }
+.package-close { display: flex; justify-content: flex-end; margin-top: 14px; }
+@media (pointer: coarse) { .package-file-pickers input, .package-file-pickers input::file-selector-button { min-height: 44px; }.package-agent-list summary, .package-inventory summary { min-height: 44px; } }

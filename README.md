@@ -7,6 +7,7 @@ The UI is a Next.js static export written in JavaScript/JSX. Agents run in Web W
 A local Qwen model completed a native task-board verification with 37 passing check steps, after eight repeated failures and targeted owner steering over roughly 24 minutes. This proves a guided recovery on an existing application, not one-shot reliability. The [published Chrome workbench](https://kaush4l.github.io/ASKK/) has passed shell, worker, draft-reload, missing-chunk, and trusted HTTPS model-relay connection checks; general assistant inference also passes in hosted Chrome using the local Qwen endpoint. The current connection release passes model listing and a complete reply in hosted Safari through the trusted HTTPS model-only relay. Browser-guest application builds remain a separate gate.
 
 - [Folder-defined agent desk plan](docs/rewrite/AGENT-DESK-PLAN.md)
+- [Import and run your own agent folder](docs/rewrite/PORTABLE-AGENTS.md)
 - [Current architecture and seven contracts](docs/rewrite/ARCHITECTURE.md)
 - [Configured parallel roles and completion contracts](docs/rewrite/CONFIGURED-STRATEGIES.md)
 - [Measured status and remaining gates](docs/rewrite/IMPLEMENTATION-STATUS.md)
@@ -93,7 +94,7 @@ require_verification: true
 Read the current files, implement the requested result, and verify it.
 ```
 
-A portable package validator now accepts declarative folder records, preserves authored source, validates local agent references and prompt paths, and generates a complete SHA-256 lock. Folder installation, visual/source editing and replacement of the bundled catalogue are still pending; imported executable tools are not enabled by this foundation. See the [agent desk plan](docs/rewrite/AGENT-DESK-PLAN.md).
+The dashboard also accepts browser-local agent folders without rebuilding the application. **Import agent** validates the source, lets you select any included lead, binds saved model profiles, and asks which requested tool groups to grant. A successful durable save activates a separate installation; reload revalidates it without replaying tasks. See the [portable agent guide and example](docs/rewrite/PORTABLE-AGENTS.md). Visual/source editing, upgrades, removal, backup export, and replacement of the bundled catalogue remain pending. Imported executable tools are not enabled.
 
 The main and coder agents use compact version 2 JSON. Calls within a stage may run concurrently; stages run in order. Policy decides whether tools run, are denied, or need approval. Exact structured prompt attempts and redacted provider requests are recorded separately.
 

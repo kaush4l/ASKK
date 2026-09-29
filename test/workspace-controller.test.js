@@ -580,6 +580,18 @@ test('model changes scope credentials to the endpoint and provider options to th
   expect(selected().api_key).toBe('')
 })
 
+test('editing the desk default model preserves profiles bound to installed agents', async () => {
+  const specialist = { provider: 'openai', model: 'specialist-model', base_url: 'https://specialist.invalid/v1' }
+  let saved = { default: 'specialist', models: { specialist } }
+  const { controller } = await startedFixture({ configureHub: hub => {
+    hub.settings = { get: () => ({ catalogue: saved, saved }), set: async patch => { saved = patch.catalogue ?? saved } }
+  } })
+  expect(saved.models.specialist).toEqual(specialist)
+  await controller.setModel({ model: 'updated-default', baseUrl: 'https://default.invalid/v1' })
+  expect(saved.models.specialist).toEqual(specialist)
+  expect(saved.models.workbench.model).toBe('updated-default')
+})
+
 test('companion pairing reserves the workspace before its first asynchronous probe', async () => {
   const probe = deferred()
   const { controller, hub, browser } = await startedFixture({ createCompanion: options => ({ ...options, prepare: () => probe.promise, dispose() {} }) })
@@ -1655,4 +1667,98 @@ test('late coordinator state from a stopped admission cannot replace a newer vis
   expect(controller.getSnapshot().task.id).toBe(current)
   expect(controller.getSnapshot().run).toEqual(before.run)
   expect(controller.getSnapshot().messages).toEqual(before.messages)
+})
+
+const importedGuide = {
+  id: 'fixture-installation', packageId: 'example.pond', packageVersion: '1.0.0', revisionDigest: 'sha256:fixture-package',
+  leadAgentId: 'pond-guide', agentPath: 'installed/fixture-installation/pond-guide', label: 'Pond guide', description: 'An owner-defined guide',
+  status: 'ready', createdAt: 1, agents: [{ id: 'pond-guide', name: 'Pond guide' }],
+}
+function packageFixtureHub(hub, installed = []) {
+  hub.packages = {
+    list: () => structuredClone(installed),
+    preview: async records => ({ stageId: 'staged-guide', files: records.map(row => ({ path: row.path, bytes: row.content.length })), entryAgentId: 'pond-guide', modelAliases: ['$default'] }),
+    install: async (stageId, bindings) => {
+      expect(stageId).toBe('staged-guide')
+      expect(bindings.admissionGuard()).toBe(true)
+      installed.push(structuredClone(importedGuide))
+      hub.emit({ type: 'packages' })
+      return installed.at(-1)
+    },
+  }
+}
+
+test('folder preview has no execution effect; installation selects and pins its exact lead', async () => {
+  let executions = 0
+  const { controller, hub, files } = await startedFixture({ workbenchConfig: generalWorkflows, configureHub: packageFixtureHub, createExecution: async () => { executions++; throw new Error('Import must not start execution') } })
+  const preview = await controller.previewAgentPackage([{ path: 'agent.md', content: 'fixture authored bytes' }])
+  expect(preview.stageId).toBe('staged-guide')
+  expect(controller.getSnapshot().agentPackages).toEqual([])
+  expect(hub.asks).toEqual([])
+  await controller.installAgentPackage(preview.stageId, { leadAgentId: 'pond-guide', models: { $default: 'workbench' }, tools: [] })
+  expect(controller.getSnapshot().selectedWorkflowId).toBe('package-fixture-installation')
+  expect((await files.store.get('settings', 'workbench-state')).value.selectedWorkflowId).toBe('package-fixture-installation')
+  const runId = await controller.sendGoal('Tell me about this pond')
+  const run = hub.runs.get(runId)
+  expect(run.agent).toBe(importedGuide.agentPath)
+  expect(run.context.workflow.package).toEqual({ installationId: importedGuide.id, packageId: importedGuide.packageId, revisionDigest: importedGuide.revisionDigest, agentId: importedGuide.leadAgentId })
+  expect(Object.isFrozen(run.context.workflow.package)).toBe(true)
+  expect(run.context.binding).toBeUndefined()
+  expect(executions).toBe(0)
+})
+
+test('restored installation selection survives loading the bundled workflow catalogue', async () => {
+  const first = await startedFixture({ workbenchConfig: generalWorkflows, configureHub: packageFixtureHub })
+  await first.controller.installAgentPackage('staged-guide', { leadAgentId: 'pond-guide', models: { $default: 'workbench' }, tools: [] })
+  first.controller.stop(); controllers.delete(first.controller)
+  await new Promise(resolve => setTimeout(resolve, 0))
+  const second = await startedFixture({ sharedStore: first.files.store, workbenchConfig: generalWorkflows, configureHub: hub => packageFixtureHub(hub, [importedGuide]) })
+  expect(second.controller.getSnapshot().selectedWorkflowId).toBe('package-fixture-installation')
+  expect(second.hub.asks).toEqual([])
+  const run = second.hub.runs.get(await second.controller.sendGoal('A new task after reload'))
+  expect(run.agent).toBe(importedGuide.agentPath)
+})
+
+test('disabled or superseded installed definitions never fall back to the bundled lead', async () => {
+  const installed = [{ ...importedGuide, status: 'disabled', error: 'Bound model profile was removed' }]
+  const { controller, hub } = await startedFixture({ workbenchConfig: generalWorkflows, configureHub: hub => packageFixtureHub(hub, installed) })
+  await controller.setWorkflow('package-fixture-installation')
+  await expect(controller.sendGoal('Run anyway')).rejects.toThrow('Bound model profile was removed')
+  expect(hub.asks).toEqual([])
+  installed[0] = { ...importedGuide }; hub.emit({ type: 'packages' })
+  installed[0] = { ...importedGuide, revisionDigest: 'sha256:changed-without-projection' }
+  await expect(controller.sendGoal('Use an obsolete revision')).rejects.toThrow('changed or is unavailable')
+  expect(hub.asks).toEqual([])
+  installed.length = 0; hub.emit({ type: 'packages' })
+  await expect(controller.sendGoal('Use a missing workflow')).rejects.toThrow('Select an available workflow')
+  expect(hub.asks).toEqual([])
+})
+
+test('pending installation blocks new tasks and binding changes; shutdown invalidates admission', async () => {
+  const entered = deferred(); const release = deferred(); let guard
+  const { controller, hub } = await startedFixture({ workbenchConfig: generalWorkflows, configureHub(hub) {
+    packageFixtureHub(hub)
+    hub.packages.install = async (_, bindings) => { guard = bindings.admissionGuard; entered.resolve(); await release.promise; if (!guard()) throw new Error('Installation admission stopped'); return importedGuide }
+  } })
+  const installation = controller.installAgentPackage('staged-guide', { leadAgentId: 'pond-guide', models: { $default: 'workbench' }, tools: [] })
+  await entered.promise
+  expect(controller.getSnapshot().packageInstalling).toBe(true)
+  await expect(controller.sendGoal('Do not race installation')).rejects.toThrow('installation')
+  await expect(controller.setModel({ baseUrl: 'https://new.invalid/v1', model: 'new' })).rejects.toThrow('installation')
+  await expect(controller.setWorkflow('coding')).rejects.toThrow('installation')
+  await expect(controller.probeModel()).rejects.toThrow('installation')
+  controller.stop(); controllers.delete(controller)
+  expect(guard()).toBe(false)
+  release.resolve()
+  await expect(installation).rejects.toThrow('admission stopped')
+  expect(hub.asks).toEqual([])
+})
+
+test('failed installation leaves selection intact and does not claim a durable package', async () => {
+  const { controller } = await startedFixture({ workbenchConfig: generalWorkflows, configureHub(hub) {
+    packageFixtureHub(hub)
+    hub.packages.install = async () => { throw Object.assign(new Error('Quota exceeded while saving agent folder'), { name: 'QuotaExceededError' }) }
+  } })
+  await expect(controller.installAgentPackage('staged-guide', {})).rejects.toThrow('Quota exceeded')
+  expect(controller.getSnapshot()).toMatchObject({ selectedWorkflowId: 'assistant', packageInstalling: false, agentPackages: [] })
 })
