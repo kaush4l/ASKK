@@ -1,0 +1,64 @@
+{
+  "date": "2026-09-29T08:05:10.411Z",
+  "origin": "https://kaush4l.github.io/ASKK/",
+  "source": "7da7423",
+  "deployment": "c0fafc8c4f597ec887c64a59bc99b9cbceaeca87",
+  "artifactHash": "cf5a9ea2a868e1c8404d831383968c31c3849a51606daf0b70d4e5dfde508498",
+  "checks": {
+    "browserDraftCreated": true,
+    "draftRestoredAfterReload": true,
+    "savedSourceReviewed": true,
+    "installedAsNewAgent": true,
+    "realModelReply": true
+  },
+  "team": "AGENTS AT WORK\nYour live team\nNo active runs\n\nActual runs, current activity and recorded outcomes.\n1 instance belongs to the selected task.\n\nGoal\nEvidence\nNo runs need attention\nSelected task & active runs\n1 of 1\nRC\nReading companion\nCompleted\nGive one practical rule for choosing my next book. Use fewer than 30 words.\n#ume4tnb1\nSelected task\nRun details & actions\nRecent runs\n16 recorded",
+  "answer": "Latest answer\nAgent\n\nPick a book whose topic you already enjoy; skip trends. This maximizes finish rate.",
+  "connections": "Connections\nBrowser harness\nLoaded\n\nAgent loops and bundled tools run in your browser.\n\nDesk default model\nModel configured\n\nQwen3.8-27B-Uncensored-oQ4e-fp16-mtp\nThrough HTTPS companion\n\nConfigure model\nOptional companion\nConnected\n\n1 advertised capabilities. Permissions are scoped to this connection.\n\nManage connection\nHost fetch relay\nUnavailable\nBrowser control\nUnavailable\nCommand execution\nNot started\n\nWeb research needs an available fetch tool or relay. Model access alone does not enable host commands or browser control.\n\nHow this task runs\nOwner controls\nAgent loop\nSingle agent\nKeep the task with the selected agent.\nAllow delegation\nLet available peer agents take part.\nAsk before\nRead\nNetwork\nWrite\nExecute\nAvailable tools\n0/0\n\nThese controls apply to the next task. Runtime permissions can still require approval or deny an action.",
+  "limitations": [
+    "Chrome only",
+    "No physical iPhone, Safari or Browser Linux build acceptance",
+    "No tool call was requested in this hosted smoke"
+  ],
+  "servedFiles": [
+    {
+      "path": "index.html",
+      "sha256": "6d331f3b059eca4ae3c21955ccceaf28c5486e97e8e6f5510f2f96436fe431f0",
+      "matches": true
+    },
+    {
+      "path": "package-templates/basic.json",
+      "sha256": "31d91f074a99ab72e30abf2f4d7f234798216833bf463bdc151a1361c1d95c32",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/core/package-template.js",
+      "sha256": "5214aa6e2fd460fc5ee021971513cee2c80c9d1e85df1d9b6a49bab43ba5898f",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/runtime/package-drafts.js",
+      "sha256": "ab81313990516f9d176420a3f6fe76735a4639221afb164843503cac8805645e",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/runtime/hub.js",
+      "sha256": "c237deb72d2e05a31f6396eb00c8ad8d1c3d76cf9d9df8e73b3650f8641d98d1",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/workspace/controller.js",
+      "sha256": "ff30f607b4140fc9f0d752b5f160993169826011934849ce9ee1564e7e3e3aaf",
+      "matches": true
+    },
+    {
+      "path": "_next/static/chunks/app/page-722a58df735526f9.js",
+      "sha256": "d343c22bfbe1df348641ea43fbd1f2999336d292262b366dade3d443ab6a9a35",
+      "matches": true
+    },
+    {
+      "path": "_next/static/chunks/505.76ba5a418facce03.js",
+      "sha256": "05199e9bb090f3b594b27899e63a00cddd8b5d6270bd40724918769e5257604a",
+      "matches": true
+    }
+  ]
+}
