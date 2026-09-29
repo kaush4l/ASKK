@@ -1,0 +1,254 @@
+{
+  "resumedAt": "2026-09-29T00:24:42.802Z",
+  "tabs": {
+    "selected": "Getting started",
+    "focused": "Getting started",
+    "tabStops": 1
+  },
+  "terminalError": {
+    "text": "PRESERVED OUTPUT\u00a0[Controlled lost socket: outcome unknown]\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]",
+    "inputs": [],
+    "errors": []
+  },
+  "nativeExit": {
+    "text": "BEFORE GUEST EXIT\u00a0[Terminal exited with code 0]\u00a0[Terminal exited with code 7]\u00a0\u00a0\u00a0\u00a0\u00a0",
+    "inputs": 0
+  },
+  "guestExit": {
+    "text": "BEFORE GUEST EXIT\u00a0[Terminal exited with code 0]\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0BEFORE GUEST EXIT\n\n[Terminal exited with code 0]\n",
+    "inputs": 0,
+    "errors": []
+  },
+  "phone": [
+    {
+      "width": 390,
+      "height": 844,
+      "coarse": true,
+      "scrollWidth": 390,
+      "buttons": [
+        {
+          "label": "commands",
+          "width": 78.25,
+          "height": 44,
+          "left": 55,
+          "right": 133.25,
+          "font": "12px"
+        },
+        {
+          "label": "terminal",
+          "width": 78.25,
+          "height": 44,
+          "left": 137.25,
+          "right": 215.5,
+          "font": "12px"
+        },
+        {
+          "label": "problems",
+          "width": 78.25,
+          "height": 44,
+          "left": 219.5,
+          "right": 297.75,
+          "font": "12px"
+        },
+        {
+          "label": "output",
+          "width": 78.25,
+          "height": 44,
+          "left": 301.75,
+          "right": 380,
+          "font": "12px"
+        },
+        {
+          "label": "Interrupt terminal (Ctrl+C)",
+          "width": 81.2890625,
+          "height": 44,
+          "left": 210.7109375,
+          "right": 292,
+          "font": "12px"
+        },
+        {
+          "label": "Close terminal session",
+          "width": 44,
+          "height": 44,
+          "left": 292,
+          "right": 336,
+          "font": "13px"
+        },
+        {
+          "label": "Close terminal panel",
+          "width": 44,
+          "height": 44,
+          "left": 336,
+          "right": 380,
+          "font": "13px"
+        }
+      ]
+    },
+    {
+      "width": 320,
+      "height": 400,
+      "coarse": true,
+      "scrollWidth": 320,
+      "buttons": [
+        {
+          "label": "commands",
+          "width": 60.75,
+          "height": 44,
+          "left": 55,
+          "right": 115.75,
+          "font": "12px"
+        },
+        {
+          "label": "terminal",
+          "width": 60.75,
+          "height": 44,
+          "left": 119.75,
+          "right": 180.5,
+          "font": "12px"
+        },
+        {
+          "label": "problems",
+          "width": 60.75,
+          "height": 44,
+          "left": 184.5,
+          "right": 245.25,
+          "font": "12px"
+        },
+        {
+          "label": "output",
+          "width": 60.75,
+          "height": 44,
+          "left": 249.25,
+          "right": 310,
+          "font": "12px"
+        },
+        {
+          "label": "Interrupt terminal (Ctrl+C)",
+          "width": 81.2890625,
+          "height": 44,
+          "left": 140.7109375,
+          "right": 222,
+          "font": "12px"
+        },
+        {
+          "label": "Close terminal session",
+          "width": 44,
+          "height": 44,
+          "left": 222,
+          "right": 266,
+          "font": "13px"
+        },
+        {
+          "label": "Close terminal panel",
+          "width": 44,
+          "height": 44,
+          "left": 266,
+          "right": 310,
+          "font": "13px"
+        }
+      ]
+    }
+  ],
+  "conversation": {
+    "width": 320,
+    "height": 400,
+    "coarse": true,
+    "scrollWidth": 320,
+    "notice": {
+      "top": 198,
+      "bottom": 261,
+      "height": 63
+    },
+    "composer": {
+      "top": 270,
+      "bottom": 392,
+      "height": 122
+    },
+    "input": {
+      "top": 271,
+      "bottom": 331,
+      "height": 60
+    },
+    "goal": "Preserve this goal while the environment responds"
+  },
+  "completedAt": "2026-09-29T00:26:24.688Z",
+  "fixtureErrors": [],
+  "version": 1,
+  "scope": "Actual Workbench/Modal/CodeMirror/xterm components with a synthetic controller/backend on disposable QA origin",
+  "origin": "http://127.0.0.1:5209",
+  "sourceCommit": "64b60de",
+  "initialStartedAt": "2026-09-29T00:11:28.336Z",
+  "resumedControlAt": "2026-09-29T00:24:22.691Z",
+  "interruption": "Turn was explicitly interrupted after palette result; no tool blocker occurred. Owned fixture remained open during the gap. Root runtime boot later overlapped resumed functional UI checks; not a performance benchmark.",
+  "palette": {
+    "count": 30,
+    "activeId": "palette-option-29",
+    "label": "item-28.js",
+    "inputFocused": true,
+    "visible": true,
+    "scrollTop": 863,
+    "result": "End then ArrowDown retained visible item28; Enter opened item28; search-button focus restored; Follow paused."
+  },
+  "checks": [
+    {
+      "name": "Palette selection stays within30 visible results and scrolls selected row into view",
+      "passed": true
+    },
+    {
+      "name": "Palette Enter opens displayed result and restores launch-button focus",
+      "passed": true
+    },
+    {
+      "name": "Editor End/Home move selection and focus with one tab stop",
+      "passed": true
+    },
+    {
+      "name": "Main-surface End activates Workspace",
+      "passed": true
+    },
+    {
+      "name": "Controlled terminal error retains prior output and ignores native locator key x",
+      "passed": true
+    },
+    {
+      "name": "Guest terminal.exit displays code0 with prior output retained and ignores native locator key x",
+      "passed": true
+    },
+    {
+      "name": "Native exit format displays code7 in the retained terminal",
+      "passed": true
+    },
+    {
+      "name": "390x844 and320x400 coarse-pointer emulation use12px tab labels and44px toolbar targets without horizontal overflow",
+      "passed": true
+    },
+    {
+      "name": "320x400 coarse-pointer delayed notice and goal composer fit; goal text retained",
+      "passed": true
+    }
+  ],
+  "limits": [
+    "Synthetic backend/state inputs; no guest, native process, model, or real transport used by this fixture.",
+    "Native-format exit7 was injected after guest-format exit0 into the same component; this proves rendering compatibility, not independent native-process lifecycle or independent native-exit input disabling.",
+    "Error and guest-exit native locator key x produced zero terminalInput calls; native keyboard Ctrl+C was not tested in this receipt.",
+    "Coarse-pointer mode was verified with matchMedia(pointer:coarse) in tab-local Chrome emulation; this is not a physical touchscreen or Safari/VoiceOver result.",
+    "Remaining broad two-group, overflow-tab and divider-shrink browser cases were not repeated in this bounded check; helper tests cover exclusion/reveal/bounds and prior group acceptance remains separate.",
+    "One initial fixture evaluation had a quoting SyntaxError before injection; corrected once using encoded text. It was a QA expression error, not an application error.",
+    "An immediate native-exit sample read before asynchronous xterm accessibility rendering completed; final retained DOM then showed both code0 and code7. No parser latency claim.",
+    "Terminal error excerpt includes xterm measurement text from the parent textContent; the preserved output and error lines are directly observed."
+  ],
+  "sourceHashes": {
+    "src/workbench/Workbench.jsx": "b820c3e7ddf544dbb151b2e11a55a46ffb8dc2af8ba3986d44e7774d2fc676b7",
+    "src/workbench/workbench.css": "48aee67bccafe7b42ee5c39e790d1281823decf627546e4fd3d7898e63c5400e",
+    "src/workbench/keyboard-navigation.js": "3e65fed6d600e421f88b8231ec2700840d7559f8894656c0d9b6b9efd4f412a1",
+    "src/workbench/Terminal.jsx": "31c9ac906b0602637bb87621e2ad1803eddd8d351a992adf623a3762b4d9a431",
+    "test/workbench-keyboard.test.js": "2f6f1fcd6e2ef145ad778eb851623da6009587c8282ef68cd2371ed5a742ad96"
+  },
+  "cleanup": {
+    "ownedTabClosed": true,
+    "closedAt": "2026-09-29T00:26:24.771Z",
+    "touchEmulationDisabled": true,
+    "tabLocalViewportCleared": true,
+    "fixtureServerStopped": true
+  }
+}

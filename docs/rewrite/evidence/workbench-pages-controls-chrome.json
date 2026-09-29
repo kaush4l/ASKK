@@ -1,0 +1,88 @@
+{
+  "version": 1,
+  "scope": "Actual GitHub Pages Chrome delivery and workbench restoration; no guest or inference started in this hosted tab",
+  "expected": {
+    "source": "64b60de",
+    "deploymentCommit": "6eee2d5",
+    "files": [
+      {
+        "path": "index.html",
+        "bytes": 30457,
+        "sha256": "45af7678b8b205bc4cda57ec9d0739f1712a2ab4d033cae5d6dcfadc9b251eb6"
+      },
+      {
+        "path": "runtime/modules/execution/local.js",
+        "bytes": 8108,
+        "sha256": "582bd2a81bcd509103bade7da729e5c278d0891defe002e513710097a027b4f6"
+      },
+      {
+        "path": "runtime/modules/workspace/controller.js",
+        "bytes": 57000,
+        "sha256": "1773ee2a508e4572c926a4a7f16b369bf13c83e1a0c57ab8590f2af50b0c4d61"
+      }
+    ],
+    "pageChunk": "/ASKK/_next/static/chunks/app/page-105cfa2912066b77.js",
+    "deployment": {
+      "version": 1,
+      "basePath": "/ASKK",
+      "totalBytes": 802923108,
+      "fileCount": 134,
+      "runtimeId": "c2w-node24-38d093f4a38002db",
+      "artifactHash": "861361333c09386a376ed7fc91573c54b1f1634bbbefeddaf51a48f36adb0414"
+    }
+  },
+  "delivery": {
+    "at": "2026-09-29T00:29:05.521Z",
+    "files": [
+      {
+        "bytes": 30457,
+        "path": "index.html",
+        "sha256": "45af7678b8b205bc4cda57ec9d0739f1712a2ab4d033cae5d6dcfadc9b251eb6",
+        "status": 200
+      },
+      {
+        "bytes": 8108,
+        "path": "runtime/modules/execution/local.js",
+        "sha256": "582bd2a81bcd509103bade7da729e5c278d0891defe002e513710097a027b4f6",
+        "status": 200
+      },
+      {
+        "bytes": 57000,
+        "path": "runtime/modules/workspace/controller.js",
+        "sha256": "1773ee2a508e4572c926a4a7f16b369bf13c83e1a0c57ab8590f2af50b0c4d61",
+        "status": 200
+      }
+    ],
+    "isolated": true,
+    "worker": "https://kaush4l.github.io/ASKK/coi-serviceworker.js"
+  },
+  "afterNormalReload": {
+    "agents": "6 agents\nShift ↵ for a new line",
+    "at": "2026-09-29T00:31:01.163Z",
+    "footer": "Browser Linux · Not started\nChanges saved locally\nModel configured",
+    "goal": "Browser Linux checkpoint — keep this draft through startup.",
+    "guestFrames": 0,
+    "isolated": true,
+    "pageChunk": "https://kaush4l.github.io/ASKK/_next/static/chunks/app/page-105cfa2912066b77.js",
+    "url": "https://kaush4l.github.io/ASKK/",
+    "viewport": {
+      "height": 863,
+      "width": 1200
+    },
+    "worker": "https://kaush4l.github.io/ASKK/coi-serviceworker.js"
+  },
+  "checks": {
+    "sourceBytesMatch": true,
+    "draftRetained": true,
+    "newPageChunkLoaded": true,
+    "isolated": true,
+    "guestNotStarted": true
+  },
+  "screenshot": "workbench-pages-controls-chrome.jpg",
+  "limits": [
+    "Normal URLs and default fetch options were used with the active isolation service worker; no cache or storage clearing.",
+    "One normal reload retained six agents, the configured model and goal draft.",
+    "This is not a Browser Linux boot, model inference, native package pairing, Safari or VoiceOver proof.",
+    "A separate private guest diagnostic on another loopback origin was booting/restoring concurrently."
+  ]
+}
