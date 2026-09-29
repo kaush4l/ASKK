@@ -40,27 +40,18 @@
   "workflows": [
     {
       "id": "assistant",
-      "label": "General assistant",
-      "description": "Research, plan, reason, and coordinate agents without starting a workspace runtime.",
-      "agent": "bundled/starter/assistant",
-      "workspace": false,
-      "strategy": "strategies/conversation.json"
+      "package": "starter",
+      "workflow": "assistant"
     },
     {
       "id": "parallel-review",
-      "label": "Compare perspectives",
-      "description": "Run an approach and critique in parallel, then combine their findings.",
-      "agent": "bundled/starter/synthesizer",
-      "workspace": false,
-      "strategy": "strategies/parallel-review.json"
+      "package": "starter",
+      "workflow": "parallel-review"
     },
     {
       "id": "coding",
-      "label": "Build an app",
-      "description": "Create files, run commands, and verify an application in the selected workspace.",
-      "agent": "bundled/starter/main",
-      "workspace": true,
-      "strategy": "strategies/coding.json"
+      "package": "starter",
+      "workflow": "coding"
     }
   ],
   "toolPolicy": {

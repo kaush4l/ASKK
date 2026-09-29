@@ -2,6 +2,7 @@
 package_id: "org.askk.starter"
 package_version: "1.0.0"
 id: "assistant"
+workflows: "workflows.json"
 name: "assistant"
 remembers: true
 description: "Researches, plans, reasons, and coordinates work using explicitly available tools."

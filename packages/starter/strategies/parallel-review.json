@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "id": "parallel-review",
+  "kind": "graph",
+  "label": "Compare perspectives",
+  "description": "An approach and an independent critique run in parallel, then a third role combines their results.",
+  "nodes": [
+    {
+      "id": "approach",
+      "agent": "planner",
+      "dependsOn": [],
+      "templateFile": "prompts/strategies/goal.md",
+      "inputs": {
+        "goal": {
+          "from": "goal",
+          "maxChars": 12000
+        }
+      }
+    },
+    {
+      "id": "risks",
+      "agent": "critic",
+      "dependsOn": [],
+      "templateFile": "prompts/strategies/goal.md",
+      "inputs": {
+        "goal": {
+          "from": "goal",
+          "maxChars": 12000
+        }
+      }
+    },
+    {
+      "id": "synthesis",
+      "agent": "synthesizer",
+      "dependsOn": [
+        "approach",
+        "risks"
+      ],
+      "templateFile": "prompts/strategies/synthesis.md",
+      "inputs": {
+        "goal": {
+          "from": "goal",
+          "maxChars": 12000
+        },
+        "approach": {
+          "from": "node",
+          "node": "approach",
+          "maxChars": 12000
+        },
+        "risks": {
+          "from": "node",
+          "node": "risks",
+          "maxChars": 12000
+        }
+      }
+    }
+  ],
+  "output": "synthesis",
+  "limits": {
+    "maxParallel": 2,
+    "maxWallMs": 900000
+  }
+}

@@ -1,6 +1,6 @@
 /** Shipped declarative folders use the same validator and compiler as owner imports. */
 import { importAgentPackage, PACKAGE_LIMITS } from '../core/agent-package.js'
-import { compileAgentPackage } from '../core/package-spec.js'
+import { compileAgentPackage, compilePackageWorkflows } from '../core/package-spec.js'
 import { versioned } from '../core/folder.js'
 import { snapshot } from '../core/prompt.js'
 
@@ -92,7 +92,7 @@ async function loadCandidate({ base, index, fetch: fetcher = fetch, catalogue, s
     if (files.some(path => !safePublishedPath(path))) fail(`${entry.path} contains an unsafe published file path`)
     return { ...entry, files }
   })
-  const specs = [], packages = []; let total = 0
+  const specs = [], packages = [], workflows = []; let total = 0
   for (const entry of entries) {
     signal.throwIfAborted()
     const prefix = `${entry.path}/`
@@ -107,10 +107,12 @@ async function loadCandidate({ base, index, fetch: fetcher = fetch, catalogue, s
     }
     const pkg = await importAgentPackage(records)
     const compiled = await compileAgentPackage(pkg, { installationId: entry.id, namespace: 'bundled', bindings: { models: entry.models, tools: entry.tools }, catalogue, index })
+    const resolvedWorkflows = await compilePackageWorkflows(pkg, { specs: compiled })
     signal.throwIfAborted()
     specs.push(...compiled)
-    packages.push(snapshot({ id: entry.id, namespace: 'bundled', path: entry.path, packageId: pkg.data.packageId, packageVersion: pkg.data.packageVersion, revisionDigest: pkg.data.revisionDigest, agents: compiled.map(spec => spec.path) }))
+    workflows.push(...resolvedWorkflows?.workflows ?? [])
+    packages.push(snapshot({ id: entry.id, namespace: 'bundled', path: entry.path, packageId: pkg.data.packageId, packageVersion: pkg.data.packageVersion, revisionDigest: pkg.data.revisionDigest, agents: compiled.map(spec => spec.path), defaultWorkflow: resolvedWorkflows?.default ?? null }))
   }
   if (!specs.some(spec => spec.path === configuration.defaultAgent)) fail('defaultAgent must name an available agent in a configured shipped package')
-  return snapshot({ defaultAgent: configuration.defaultAgent, specs, packages })
+  return snapshot({ defaultAgent: configuration.defaultAgent, specs, packages, workflows })
 }
