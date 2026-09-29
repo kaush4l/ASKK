@@ -233,7 +233,8 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
   const refreshAgents = () => notify({ agents: [...(hub?.runs.values() ?? [])].filter(run => run.kind !== 'strategy').map(run => ({ id: run.id, kind: run.kind, taskId: run.taskId, stageId: run.stageId, result: run.result, error: run.slot?.error, path: run.agent, agent: run.agent, name: state.agentDefinitions.find(row => row.path === run.agent)?.name ?? run.agent, current: run.slot?.current ?? '', maxSteps: run.slot?.maxSteps, steps: run.slot?.steps ?? 0, parent: run.parent ?? null, status: run.slot?.status ?? 'starting', description: run.query, at: run.at })) })
 
   function onHub(message) {
-    if (message.type === 'strategy') notify({ task: message.task })
+    if (message.type === 'run' && !message.run.parent && !activeRun && state.run?.status === 'starting') activeRun = message.run.id
+    if (message.type === 'strategy' && message.run === activeRun) notify({ task: message.task })
     if (message.type === 'persistence-error') notify({ error: message.error })
     if (message.type === 'bridge') {
       refreshDefinitions()
@@ -255,10 +256,10 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
     if (message.type === 'todo') notify({ plans: [...state.plans.filter(plan => plan.runId !== message.run), { runId: message.run, agent: hub.runs.get(message.run)?.agent ?? 'Agent', items: message.items }] })
     if (message.type === 'status') {
       const run = hub.runs.get(message.run)
-      if (!run?.parent) notify({ run: { ...message.slot, status: message.slot.status, step: message.slot.steps, agent: run?.agent ?? 'main' } })
+      if (!run?.parent && message.run === activeRun) notify({ run: { ...message.slot, status: message.slot.status, step: message.slot.steps, agent: run?.agent ?? 'main' } })
       refreshAgents()
     }
-    if (message.type === 'answer' && !hub.runs.get(message.run)?.parent) {
+    if (message.type === 'answer' && message.run === activeRun && !hub.runs.get(message.run)?.parent) {
       notify({ messages: [...state.messages, { id: id('message'), role: 'assistant', content: message.text, at: Date.now(), runId: message.run }], run: { ...(state.run ?? {}), status: message.ok ? (hub.runs.get(message.run)?.context?.workflow?.workspace !== false && currentArtifact?.verified && !currentArtifact.stale ? 'verified' : 'done') : (hub.runs.get(message.run)?.slot.status ?? 'failed') } })
     }
     if (message.type === 'approval' || message.type === 'approved') notify({ approvals: [...hub.approvals.values()].map(({ settle, ...approval }) => approval) })
