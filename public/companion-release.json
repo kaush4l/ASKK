@@ -2,17 +2,17 @@
   "version": 1,
   "releases": [
     {
-      "id": "cf6b594-darwin-arm64",
+      "id": "df88791-darwin-arm64",
       "label": "Apple Silicon Mac",
       "target": "darwin-arm64",
-      "file": "downloads/askk-companion-darwin-arm64-cf6b594.tar.gz",
-      "bytes": 25402830,
-      "sha256": "bedd9a24bf3bb5cf6380e774971f34b87eb3966f48eda9eb6219e782cb55416a",
-      "sourceRevision": "cf6b594555c0fb73a9ef349663ca39b46e3faa27",
+      "file": "downloads/askk-companion-darwin-arm64-df88791.tar.gz",
+      "bytes": 25371133,
+      "sha256": "d391daf9e9ab524e30b11da89f4c3997a68ff355b604c2a2c3f87937597dfabd",
+      "sourceRevision": "df88791ac668185871da814d7bbe02642775790e",
       "runtime": "Bun 1.4.2",
       "signed": false,
       "status": "developer-preview",
-      "instructions": "https://github.com/kaush4l/ASKK/blob/cf6b594555c0fb73a9ef349663ca39b46e3faa27/scripts/companion/README.md#start-explicitly"
+      "instructions": "https://github.com/kaush4l/ASKK/blob/df88791/scripts/companion/README.md#start-explicitly"
     }
   ]
 }

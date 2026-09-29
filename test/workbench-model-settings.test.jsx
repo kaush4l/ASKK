@@ -1,3 +1,4 @@
+import companionDistribution from '../public/companion-release.json'
 import { expect, test } from 'bun:test'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { parseFragment } from 'parse5'
@@ -146,7 +147,7 @@ test('inline relay onboarding advertises only model-relay and never equates cert
   expect(all(tree, node => node.tagName === 'form')).toHaveLength(1)
   expect(disabled(button(tree, 'Pair model relay'))).toBe(true)
   expect(all(tree, node => node.tagName === 'input' && attr(node, 'type') === 'password').every(node => attr(node, 'value') === '')).toBe(true)
-  expect(all(tree, node => node.tagName === 'a').map(node => attr(node, 'href'))).toContain('https://github.com/kaush4l/ASKK/blob/cf6b594555c0fb73a9ef349663ca39b46e3faa27/scripts/companion/README.md#start-explicitly')
+  for (const release of companionDistribution.releases) expect(all(tree, node => node.tagName === 'a').map(node => attr(node, 'href'))).toContain(release.instructions)
 })
 
 test('an existing native binding blocks inline re-pairing while allowing checks through its granted relay', () => {

@@ -1,0 +1,112 @@
+{
+  "date": "2026-09-29",
+  "source": "df88791",
+  "package": {
+    "id": "df88791-darwin-arm64",
+    "label": "Apple Silicon Mac",
+    "target": "darwin-arm64",
+    "file": "downloads/askk-companion-darwin-arm64-df88791.tar.gz",
+    "bytes": 25371133,
+    "sha256": "d391daf9e9ab524e30b11da89f4c3997a68ff355b604c2a2c3f87937597dfabd",
+    "sourceRevision": "df88791ac668185871da814d7bbe02642775790e",
+    "runtime": "Bun 1.4.2",
+    "signed": false,
+    "status": "developer-preview",
+    "instructions": "https://github.com/kaush4l/ASKK/blob/df88791/scripts/companion/README.md#start-explicitly"
+  },
+  "nativeAcceptance": {
+    "ok": true,
+    "startedAt": "2026-09-29T08:33:12.885Z",
+    "finishedAt": "2026-09-29T08:33:18.630Z",
+    "checks": [
+      {
+        "name": "relocated package manifest verified",
+        "ok": true,
+        "files": 12,
+        "bytes": 61951264
+      },
+      {
+        "name": "clean-PATH launcher help",
+        "ok": true
+      },
+      {
+        "name": "TLS relay-only authority and origin rejection",
+        "ok": true,
+        "capabilities": [
+          "model-relay",
+          "network-relay"
+        ]
+      },
+      {
+        "name": "relay shutdown and pairing cleanup",
+        "ok": true
+      },
+      {
+        "name": "native Unicode file acknowledgement and stale CAS refusal",
+        "ok": true,
+        "revision": "68d40982398d1ba653fe40f4574c496091ef78c6984a7a5b290feab018cf8fa8"
+      },
+      {
+        "name": "job uses packaged Bun with no Node/npm on PATH",
+        "ok": true,
+        "runtimeVersion": "1.4.2",
+        "code": 0
+      },
+      {
+        "name": "streamed actual nonzero exit",
+        "ok": true,
+        "code": 7
+      },
+      {
+        "name": "PTY input resize and packaged runtime",
+        "ok": true,
+        "rows": 37,
+        "cols": 103
+      },
+      {
+        "name": "process group cancellation has actual exit",
+        "ok": true,
+        "exit": {
+          "type": "exit",
+          "code": -1,
+          "signal": "SIGTERM",
+          "cancelled": true,
+          "timedOut": false,
+          "jobId": "c307e70e-e6f7-4877-867b-699d5a99df91",
+          "runtimeId": "local-bun:4660ec9c-c132-4536-9239-5c6636506f0a",
+          "sequence": 3
+        }
+      },
+      {
+        "name": "actual Next App Router webpack static export",
+        "ok": true,
+        "milliseconds": 2426.1394999999998,
+        "outputSHA256": "d58736bc3b55b3574e76ab7bcacec1ec646b9ad4f90ad5e3387442bb453fe64a",
+        "next": "16.3.6"
+      },
+      {
+        "name": "native shutdown and pairing cleanup",
+        "ok": true
+      }
+    ],
+    "nextBuildMilliseconds": 2426.1394999999998,
+    "receiptSHA256": "89535a262798e113932b15e0e89e61c7d64d1c4c453842c13000caa6a609d802"
+  },
+  "chrome": {
+    "origin": "http://127.0.0.1:5194",
+    "companion": "https://127.0.0.1:7719",
+    "checks": [
+      "Authenticated manifest displayed; only model-relay granted",
+      "Complete real local-model reply received in 1.1 seconds",
+      "Pairing and manifest restored after reload",
+      "Browser Linux stayed Not started; host execution not granted",
+      "390px viewport document/client widths both 390px"
+    ],
+    "limits": [
+      "Chrome responsive viewport is not physical iPhone",
+      "Native Safari and VoiceOver not checked",
+      "Browser Linux application builds remain unverified",
+      "Settings opened before Execution pairing retain their old model-form draft until close/reopen; unsaved route is labeled"
+    ]
+  }
+}
