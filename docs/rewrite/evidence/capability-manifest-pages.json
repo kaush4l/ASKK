@@ -1,0 +1,89 @@
+{
+  "date": "2026-09-29",
+  "url": "https://kaush4l.github.io/ASKK/",
+  "source": "62ba2ed",
+  "implementationSource": "df88791",
+  "deployment": "5f0c821f96c7ef6684ebbe53df26df6354a08976",
+  "pagesRun": "https://github.com/kaush4l/ASKK/actions/runs/36543830710",
+  "artifact": {
+    "version": 1,
+    "basePath": "/ASKK",
+    "totalBytes": 854165351,
+    "fileCount": 201,
+    "runtimeId": "c2w-node24-38d093f4a38002db",
+    "artifactHash": "3e362ae9e1519cd963401fe884afdccbde0d9ece8db390e4ec72235b2b66f343"
+  },
+  "servedHashes": [
+    {
+      "path": "index.html",
+      "sha256": "2bc8022afdfbbd7a0c745e18df03ce65a9110805de4e5d9d54cb8efae53e1c29",
+      "matchesExport": true
+    },
+    {
+      "path": "companion-release.json",
+      "sha256": "5d532404bd7495ea6ecfb9e1a8109b8b83cb7abd20d0fb01726d9f522a381745",
+      "matchesExport": true
+    },
+    {
+      "path": "runtime/modules/core/companion-manifest.js",
+      "sha256": "7942834d7545e58732a1fae97f4eff213b2b6dafc285d6b110f261b7e0672c71",
+      "matchesExport": true
+    },
+    {
+      "path": "runtime/modules/runtime/hub.js",
+      "sha256": "9b8eba43d0d22c0dab62ff0af7e3619fc1f2dbf26004643ecc92d1d87710dda9",
+      "matchesExport": true
+    },
+    {
+      "path": "runtime/modules/execution/local.js",
+      "sha256": "438ab1945ce56ff4e6ce020ef7aee265d56cf36ad3427af7c7f583e83a0fad1c",
+      "matchesExport": true
+    },
+    {
+      "path": "downloads/askk-companion-darwin-arm64-df88791.tar.gz",
+      "sha256": "d391daf9e9ab524e30b11da89f4c3997a68ff355b604c2a2c3f87937597dfabd",
+      "matchesExport": true
+    }
+  ],
+  "chrome": {
+    "companion": "https://127.0.0.1:7720",
+    "packagedPayload": "df88791, relocated package used for native acceptance",
+    "grant": [
+      "model-relay"
+    ],
+    "reply": "Connected.",
+    "elapsedSeconds": 1.1,
+    "observedAt": "2026-09-29 04:42:45 America/New_York"
+  },
+  "safari": {
+    "surface": "Native Safari, existing hosted ASKK tab",
+    "companion": "https://127.0.0.1:7720",
+    "modelAPI": "http://127.0.0.1:8873/v1",
+    "checks": [
+      "Reload loaded new Agent studio and capability UI, preserving existing goal draft",
+      "Paired the exact packaged relay with existing trusted TLS certificate",
+      "Test reply displayed Reply verified and Connected."
+    ],
+    "elapsedSeconds": 1.2,
+    "observedAt": "2026-09-29 04:41:16 America/New_York",
+    "interventions": [
+      "Native AX setValue changed the focused input instead of intended input; unsaved edits discarded, then explicit focus and paste used",
+      "No certificate warnings bypassed or trust settings changed"
+    ]
+  },
+  "regression": {
+    "passed": 794,
+    "skipped": 1,
+    "failed": 0,
+    "assertions": 5783,
+    "files": 74,
+    "seconds": 20.05
+  },
+  "limits": [
+    "Model checks are individual observations, not latency benchmarks",
+    "No physical iPhone or VoiceOver acceptance",
+    "No Safari Browser Linux build or navigation-recovery acceptance",
+    "Credentials remain in trusted workers; broker isolation pending",
+    "Manifest reports unchecked dependencies, not completed tool probes"
+  ]
+}
