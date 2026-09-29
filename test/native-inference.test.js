@@ -125,3 +125,27 @@ test('cancellation after a buffered fragment never emits a completed native prop
   expect(out.map(delta => delta.kind)).toEqual(['tool_fragment'])
   expect(requests).toHaveLength(1)
 })
+
+test('only fully completed invalid candidates expose repair metadata', async () => {
+  for (const [fragments, finish, done, repairable] of [
+    [[fragment('[')], 'tool_calls', true, true],
+    [[fragment('[]')], 'tool_calls', true, true],
+    [[fragment('{}', { function: { name: 'unknown', arguments: '{}' } })], 'tool_calls', true, true],
+    [[fragment('[')], 'tool_calls', false, false],
+    [[fragment('[')], 'length', true, false],
+    [[fragment('[')], 'stop', true, false],
+    [[fragment('[')], null, true, false],
+    [[fragment('['), fragment('{}', { index: 1, id: 'call_2' })], 'tool_calls', true, false],
+    [[fragment('{}', { function: { name: 'read_file', arguments: {} } })], 'tool_calls', true, false],
+    [[fragment('{}', { id: '' })], 'tool_calls', true, false],
+  ]) {
+    const { llm, requests } = fixture([event({ content: 'Raw accompanying text', tool_calls: fragments }, finish)], { done })
+    let failure
+    try { await collect(llm.stream([], { nativeTools: descriptors() })) } catch (error) { failure = error }
+    expect(Boolean(failure.metadata?.rejectedNativeReply)).toBe(repairable)
+    if (repairable) {
+      expect(failure.metadata).toMatchObject({ transportComplete: true, finishReason: 'tool_calls', rejectedNativeReply: { text: 'Raw accompanying text', call: { function: fragments[0].function } } })
+    }
+    expect(requests).toHaveLength(1)
+  }
+})

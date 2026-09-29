@@ -11,8 +11,7 @@ import { Hub } from '../../src/runtime/hub.js'
 import { LocalExecution } from '../../src/execution/local.js'
 import { createCompanion } from '../../host/companion.js'
 import { listing } from '../listing.js'
-import { createEvaluationWorkspace, ranDeclaredTests, bunTestReport } from './workspace-evidence.js'
-const INDEPENDENT_CHECK_TIMEOUT_SECONDS = 10
+import { createEvaluationWorkspace, ranDeclaredTests, bunTestReport, evaluationTimeoutSeconds } from './workspace-evidence.js'
 
 // Expected failures belong inside assertions: the assertion succeeds only when
 // the child rejects input. These are task configuration, not engine behavior.
@@ -86,7 +85,8 @@ export function evaluationSampling(value = { temperature: 0 }) {
   return { temperature: 0, ...value }
 }
 
-export async function evaluateProjectLoop({ baseUrl, model, directory, caseName = 'script', timeoutMs = 240000, contextLength = 32768, jsonOutput = false, enableThinking = false, maxOutputTokens = 2048, contractVersion, structuredOutput = false, historyFormat, sampling, responseProtocol, instructions, completion }) {
+export async function evaluateProjectLoop({ baseUrl, model, directory, caseName = 'script', timeoutMs = 240000, commandTimeoutSeconds = 30, checkTimeoutSeconds = 10, contextLength = 32768, jsonOutput = false, enableThinking = false, maxOutputTokens = 2048, contractVersion, structuredOutput = false, historyFormat, sampling, responseProtocol, instructions, completion }) {
+  evaluationTimeoutSeconds(commandTimeoutSeconds); evaluationTimeoutSeconds(checkTimeoutSeconds)
   if (responseProtocol !== undefined && !['envelope', 'native'].includes(responseProtocol)) throw new Error('Unsupported responseProtocol')
   if (responseProtocol === 'native' && (contractVersion !== 3 || historyFormat !== 'messages')) throw new Error('Native evaluation requires contractVersion 3 and historyFormat messages')
   if (instructions !== undefined && (typeof instructions !== 'string' || !instructions.trim() || instructions.length > 32000)) throw new Error('Evaluation instructions must be nonempty text of at most 32000 characters')
@@ -140,7 +140,7 @@ export async function evaluateProjectLoop({ baseUrl, model, directory, caseName 
     await execution.prepare()
     const executionEnvironment = { ...execution.describeCapabilities(), archiveRoot: project }
     await writeFile(join(root, 'execution-environment.json'), JSON.stringify(executionEnvironment, null, 2))
-    workspace = createEvaluationWorkspace(execution)
+    workspace = createEvaluationWorkspace(execution, { commandTimeoutSeconds })
     const commands = workspace.commands
     for (const [path, content] of Object.entries(definition.seed ?? {})) await execution.write({ path, content, expectedRevision: 0 })
     hub = new Hub({ base: `${pathToFileURL(site).href}/`, storeName: `project-eval-${crypto.randomUUID()}` })
@@ -174,7 +174,7 @@ export async function evaluateProjectLoop({ baseUrl, model, directory, caseName 
     for (const [index, args] of definition.checks.entries()) {
       let output = ''
       let stderr = ''
-      const result = await execution.startJob({ program: process.execPath, args, timeout: INDEPENDENT_CHECK_TIMEOUT_SECONDS, onOutput: event => {
+      const result = await execution.startJob({ program: process.execPath, args, timeout: checkTimeoutSeconds, onOutput: event => {
         const text = event.data ?? event.text ?? ''
         if (event.stream === 'stderr') stderr += text
         else output += text
@@ -195,7 +195,7 @@ export async function evaluateProjectLoop({ baseUrl, model, directory, caseName 
           continue
         }
         let output = ''
-        const result = await execution.startJob({ program: process.execPath, args, timeout: INDEPENDENT_CHECK_TIMEOUT_SECONDS, onOutput: event => { output += event.data ?? event.text ?? '' } })
+        const result = await execution.startJob({ program: process.execPath, args, timeout: checkTimeoutSeconds, onOutput: event => { output += event.data ?? event.text ?? '' } })
         const report = args[0] === 'test' ? bunTestReport(await readFile(reportPath, 'utf8').catch(() => '')) : null
         checks.push({ name: args[0] === 'run' ? 'independent package test script' : 'independent Bun test discovery', args, code: result.code, signal: result.signal, output, report, passed: result.code === 0 && !result.signal && !result.cancelled && !result.timedOut && (report === null || report.passed) })
       }
@@ -203,7 +203,7 @@ export async function evaluateProjectLoop({ baseUrl, model, directory, caseName 
     if (caseName === 'repair') checks.push({ name: 'observed failure-driven repair cycle', ...repairCycle(run.toolEvents, commands, deliveredRevision) })
     const checkedRevision = await workspace.revision()
     checks.push({ name: 'independent checks retained the delivered source', deliveredRevision, checkedRevision, passed: deliveredRevision === checkedRevision })
-    const evidence = { version: 2, evaluatorHashes, instructionsOverride: instructions ?? null, deliveredRevision, checkedRevision, completion: run.completion, completionReceipts: run.completionReceipts ?? [], caseName, model, baseUrl, contextLength, sampling: resolvedSampling, responseProtocol: hub.specs.get('bundled/starter/builder')?.engine.responseProtocol ?? 'envelope', jsonOutput, structuredOutput, historyFormat: hub.specs.get('bundled/starter/builder')?.engine.historyFormat ?? 'transcript', enableThinking, maxOutputTokens, contractVersion: hub.specs.get('bundled/starter/builder')?.engine.contractVersion, responses, turns: run.turns, events: run.log, runtime: 'Local Bun (not Browser Linux)', startedAt, elapsedMs: Date.now() - startedAt, result: run.result, status: run.slot.status, passed: run.slot.status === 'done' && checks.every(row => row.passed), agentCompleted: run.slot.status === 'done', independentChecksPassed: checks.every(row => row.passed), checks, commands, prompts: run.prompts, requests: run.requests, completions: run.completions, tools: run.toolEvents, files: await execution.list(), metrics: { promptCount: run.prompts.length, repairs: run.log.filter(row => row.kind === 'repair').length, toolCalls: run.toolEvents.filter(row => row.kind === 'call').length, inputTokensEstimated: run.prompts.map(row => row.snapshot?.budget?.inputTokens) } }
+    const evidence = { version: 2, executionTimeouts: { agentSeconds: commandTimeoutSeconds, independentSeconds: checkTimeoutSeconds }, evaluatorHashes, instructionsOverride: instructions ?? null, deliveredRevision, checkedRevision, completion: run.completion, completionReceipts: run.completionReceipts ?? [], replyRejections: run.replyRejections ?? [], caseName, model, baseUrl, contextLength, sampling: resolvedSampling, responseProtocol: hub.specs.get('bundled/starter/builder')?.engine.responseProtocol ?? 'envelope', jsonOutput, structuredOutput, historyFormat: hub.specs.get('bundled/starter/builder')?.engine.historyFormat ?? 'transcript', enableThinking, maxOutputTokens, contractVersion: hub.specs.get('bundled/starter/builder')?.engine.contractVersion, responses, turns: run.turns, events: run.log, runtime: 'Local Bun (not Browser Linux)', startedAt, elapsedMs: Date.now() - startedAt, result: run.result, status: run.slot.status, passed: run.slot.status === 'done' && checks.every(row => row.passed), agentCompleted: run.slot.status === 'done', independentChecksPassed: checks.every(row => row.passed), checks, commands, prompts: run.prompts, requests: run.requests, completions: run.completions, tools: run.toolEvents, files: await execution.list(), metrics: { promptCount: run.prompts.length, repairs: run.log.filter(row => row.kind === 'repair').length, toolCalls: run.toolEvents.filter(row => row.kind === 'call').length, inputTokensEstimated: run.prompts.map(row => row.snapshot?.budget?.inputTokens) } }
     evidence.executionEnvironment = executionEnvironment
     evidence.agentOperationsSettledAt = settledAt
     await writeFile(join(root, 'evidence.json'), JSON.stringify(evidence, null, 2))
@@ -234,5 +234,5 @@ if (import.meta.main) {
   const option = name => { const index = process.argv.indexOf(name); return index < 0 ? undefined : process.argv[index + 1] }
   const model = option('--model'), baseUrl = option('--base-url'), directory = option('--directory')
   if (!model || !baseUrl || !directory) throw new Error('Provide --model, --base-url and a new --directory path; optional --case script|project|repair.')
-  console.log(JSON.stringify(await evaluateProjectLoop({ model, baseUrl, directory, completion: option('--completion') ? JSON.parse(await readFile(option('--completion'), 'utf8')) : undefined, instructions: option('--instructions') ? await readFile(option('--instructions'), 'utf8') : undefined, sampling: option('--sampling') ? JSON.parse(await readFile(option('--sampling'), 'utf8')) : undefined, caseName: option('--case') ?? 'script', contextLength: Number(option('--context-length') ?? 32768), jsonOutput: process.argv.includes('--json-output'), structuredOutput: process.argv.includes('--structured-output'), historyFormat: option('--history-format'), responseProtocol: option('--response-protocol'), enableThinking: process.argv.includes('--thinking'), maxOutputTokens: Number(option('--max-output-tokens') ?? 2048), contractVersion: option('--contract-version') === undefined ? undefined : Number(option('--contract-version')) }), null, 2))
+  console.log(JSON.stringify(await evaluateProjectLoop({ model, baseUrl, directory, commandTimeoutSeconds: Number(option('--command-timeout') ?? 30), checkTimeoutSeconds: Number(option('--check-timeout') ?? 10), completion: option('--completion') ? JSON.parse(await readFile(option('--completion'), 'utf8')) : undefined, instructions: option('--instructions') ? await readFile(option('--instructions'), 'utf8') : undefined, sampling: option('--sampling') ? JSON.parse(await readFile(option('--sampling'), 'utf8')) : undefined, caseName: option('--case') ?? 'script', contextLength: Number(option('--context-length') ?? 32768), jsonOutput: process.argv.includes('--json-output'), structuredOutput: process.argv.includes('--structured-output'), historyFormat: option('--history-format'), responseProtocol: option('--response-protocol'), enableThinking: process.argv.includes('--thinking'), maxOutputTokens: Number(option('--max-output-tokens') ?? 2048), contractVersion: option('--contract-version') === undefined ? undefined : Number(option('--contract-version')) }), null, 2))
 }

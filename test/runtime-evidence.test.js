@@ -142,3 +142,26 @@ test('older trace records with missing completion metadata count unknown attempt
   await hub.store.put('runs', { id: 'legacy-scripted', trace: 'legacy', at: 2, log: [{ kind: 'completion', value: '' }] })
   expect((await hub.traces.export('legacy')).usage).toEqual({ attempts: 3, reportedAttempts: 0, unknownAttempts: 3, reportedTokens: {}, tokenCoverage: {} })
 })
+
+test('exact rejected proposals survive log truncation, eviction, storage and read-only trace export', async () => {
+  const hub = new Hub(); hub.store = await openStore(`rejections-${crypto.randomUUID()}`)
+  const run = { id: 'rejected-run', trace: 'rejected-trace', agent: 'main', children: [], spans: [], log: [], turns: [], prompts: [], toolEvents: [], at: 1, slot: { status: 'failed' } }
+  hub.runs.set(run.id, run)
+  const candidate = 'malformed-native-proposal'.repeat(300)
+  const event = { kind: 'repair', value: 'Correction requested', candidate, faults: ['Invalid JSON arguments'], attemptId: 'rejected-run:1:1', step: 1 }
+  hub.record(run, event)
+  event.faults[0] = 'mutated'
+  for (let i = 0; i < 401; i++) hub.record(run, { kind: 'status', value: 'Later activity' })
+  await hub.persist(run)
+  expect(run.log).toHaveLength(400)
+  expect(run.log.some(row => row.kind === 'repair')).toBe(false)
+  const reader = new Hub(); reader.store = hub.store
+  const restored = await reader.runsApi.get(run.id)
+  expect(restored.replyRejections[0]).toMatchObject({ candidate, faults: ['Invalid JSON arguments'], attemptId: event.attemptId })
+  expect(Object.isFrozen(restored.replyRejections)).toBe(true)
+  expect(Object.isFrozen(restored.replyRejections[0].faults)).toBe(true)
+  expect(restored.toolEvents).toEqual([])
+  const trace = await reader.traces.export(run.trace)
+  expect(trace.runs[0].replyRejections).toEqual(restored.replyRejections)
+  expect(reader.runs.size).toBe(0)
+})

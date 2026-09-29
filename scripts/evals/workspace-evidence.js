@@ -1,8 +1,12 @@
 import { selectRequiredCommands, requiredCommandReason } from '../../src/core/command-checks.js'
 import { normalizeCompletion } from '../../src/core/completion.js'
-const AGENT_COMMAND_TIMEOUT_SECONDS = 30
+export function evaluationTimeoutSeconds(value) {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0 || value > 1800) throw new Error('Evaluation command timeout must be a number above zero and at most 1800 seconds')
+  return value
+}
 /** Real execution receipts for evaluations; no model text can create completion evidence. */
-export function createEvaluationWorkspace(execution) {
+export function createEvaluationWorkspace(execution, { commandTimeoutSeconds = 30 } = {}) {
+  evaluationTimeoutSeconds(commandTimeoutSeconds)
   const commands = []
   const bound = execution.describeCapabilities()
   let running = 0, writing = 0, epoch = 0, stopped = false, drainPromise
@@ -69,7 +73,7 @@ export function createEvaluationWorkspace(execution) {
         assertOpen()
         receipt.stage = 'running'
         jobs.set(id, { exited: false })
-        const result = await execution.startJob({ id, program: '/bin/sh', args: ['-c', command], timeout: AGENT_COMMAND_TIMEOUT_SECONDS, onOutput: event => { output += event.data ?? event.text ?? '' } })
+        const result = await execution.startJob({ id, program: '/bin/sh', args: ['-c', command], timeout: commandTimeoutSeconds, onOutput: event => { output += event.data ?? event.text ?? '' } })
         if (result.runtimeId !== bound.runtimeId) throw new Error('Command receipt came from a different execution runtime')
         if (!Number.isInteger(result.code)) throw new Error('Command exit receipt has no exit code')
         jobs.get(id).exited = true

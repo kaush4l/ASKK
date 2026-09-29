@@ -171,3 +171,27 @@ test('resolved check arguments remain separate from the proposal and do not impl
   expect(html).toContain('No completion verification receipts were recorded.')
   expect(html).not.toContain('· Passed')
 })
+
+test('rejected proposals have bounded newest-first disclosures without becoming tool activity', () => {
+  const replyRejections = Array.from({ length: 15 }, (_, index) => ({ kind: index === 14 ? 'rejected' : 'repair', attemptId: `original-attempt-${index}`, candidate: 'private-rejected-payload', faults: ['private-diagnostic'] }))
+  const html = renderToStaticMarkup(<RunInspector details={{ ...base, toolEvents: [], replyRejections }} onClose={() => {}}/>)
+  expect(html).toContain('Rejected model replies')
+  expect(html).toContain('rejected before execution')
+  expect(html).toContain('Repair limit reached')
+  expect(html).toContain('Correction requested')
+  expect(html).toContain('Show more rejected replies')
+  expect(html).toContain('No tool calls were recorded')
+  expect(html.indexOf('original-attempt-14')).toBeLessThan(html.indexOf('original-attempt-13'))
+  expect(html).not.toContain('original-attempt-2 ·')
+  expect(html).not.toContain('private-rejected-payload')
+  expect(html).not.toContain('private-diagnostic')
+  expect(html).not.toContain('Exact rejected proposal not recorded')
+  expect(html).not.toContain('tool-card')
+})
+
+test('legacy rejection logs explicitly lack an exact proposal and do not substitute truncated values', () => {
+  const html = renderToStaticMarkup(<RunInspector details={{ ...base, log: [{ kind: 'rejected', value: 'truncated-secret-proposal' }] }} onClose={() => {}}/>)
+  expect(html).toContain('Exact rejected proposal not recorded.')
+  expect(html).toContain('Attempt not recorded')
+  expect(html).not.toContain('truncated-secret-proposal')
+})

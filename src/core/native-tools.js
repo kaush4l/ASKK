@@ -54,10 +54,13 @@ export function nativeToolAccumulator(tools, fail) {
     finish() {
       const call = calls.values().next().value
       if (!call) return null
-      if (!ID.test(call.id) || !NAME.test(call.function.name) || !names.has(call.function.name)) fail('Native tool call has a missing ID or unknown function name')
+      if (!ID.test(call.id) || !NAME.test(call.function.name)) fail('Native tool call has a missing ID or invalid function name')
+      // Only a structurally complete proposal can be corrected by another model request.
+      const reject = message => fail(message, { rejectedNativeCall: structuredClone(call) })
+      if (!names.has(call.function.name)) reject('Native tool call has an unknown function name')
       let args
-      try { args = JSON.parse(call.function.arguments) } catch { fail('Native tool arguments must be valid JSON') }
-      if (!args || typeof args !== 'object' || Array.isArray(args)) fail('Native tool arguments must be a JSON object')
+      try { args = JSON.parse(call.function.arguments) } catch { reject('Native tool arguments must be valid JSON') }
+      if (!args || typeof args !== 'object' || Array.isArray(args)) reject('Native tool arguments must be a JSON object')
       return call
     },
   }

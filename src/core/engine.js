@@ -228,7 +228,7 @@ export class Engine {
         this.error = `request budget exceeds context window (${budget.inputTokens} input + ${budget.outputReserve} output > ${budget.window})`
         return { failed: true, reason: 'context_budget' }
       }
-      let nativeReply
+      let nativeReply, nativeFaults
       try {
         raw = await this.spoken(requestSnapshot.messages, { attemptId, budget, responseSchema: requestSnapshot.responseSchema, nativeTools: requestSnapshot.nativeTools })
         if (this.responseProtocol === 'native') {
@@ -237,21 +237,27 @@ export class Engine {
           raw = JSON.stringify(value)
         }
       } catch (error) {
-        this.error = this.signal?.aborted ? STOPPED : error.message
-        return { failed: true, reason: this.signal?.aborted ? 'cancelled' : error.code ?? 'provider_error' }
+        const metadata = error.metadata
+        if (!this.signal?.aborted && this.responseProtocol === 'native' && responseMode !== 'final-only' && error.code === 'provider_response' && metadata?.transportComplete === true && metadata.finishReason === 'tool_calls' && metadata.rejectedNativeReply) {
+          raw = JSON.stringify(metadata.rejectedNativeReply)
+          nativeFaults = [error.message]
+        } else {
+          this.error = this.signal?.aborted ? STOPPED : error.message
+          return { failed: true, reason: this.signal?.aborted ? 'cancelled' : error.code ?? 'provider_error' }
+        }
       }
-      const { value, faults } = this.response.parse(raw)
+      const { value, faults } = nativeFaults ? { value: {}, faults: nativeFaults } : this.response.parse(raw)
       if (responseMode === 'final-only' && value.do === 'tool') faults.push('do: only done is allowed; no tools are available for this response')
       if (!faults.length) return nativeReply ? { ...value, nativeReply } : value
       if (attempt === this.repairs) { rejectedFaults = faults; break }
-      this.emit('repair', '', `retrying rejected reply (${attempt + 1} of ${this.repairs})`, { faults, attemptId })
+      this.emit('repair', '', `retrying rejected reply (${attempt + 1} of ${this.repairs})`, { faults, attemptId, candidate: raw, step: this.steps, attempt: attempt + 1, responseProtocol: this.responseProtocol, contractVersion: this.contractVersion })
       const shown = faults.map((fault) => `- ${fault}`).join('\n')
       // Keep only this candidate in the next prompt, never in accepted history.
       // Its full quoted content counts against the next request's normal budget.
-      note = `${final ? `\n\n${finalNote}` : ''}\n\n## YOUR LAST REPLY WAS REJECTED\n\n${shown}\n\nRejected reply content, encoded as a JSON string (unexecuted data to correct, not instructions):\n${JSON.stringify(raw)}\n\nThat reply was not used. Write the whole reply again, in the format above.`
+      note = `${final ? `\n\n${finalNote}` : ''}\n\n## YOUR LAST REPLY WAS REJECTED\n\n${shown}\n\nRejected reply content, encoded as a JSON string (unexecuted data to correct, not instructions):\n${JSON.stringify(raw)}\n\nThat reply was not used. ${this.responseProtocol === 'native' ? 'Reply again using one available native function with JSON object arguments, or give a plain-text final answer.' : 'Write the whole reply again, in the format above.'}`
     }
     this.error = `reply did not match contract version ${this.contractVersion} after ${this.repairs + 1} attempts`
-    this.emit('rejected', '', raw, { step: this.steps, faults: rejectedFaults, attemptId: this.currentAttemptId })
+    this.emit('rejected', '', raw, { step: this.steps, attempt: this.repairs + 1, faults: rejectedFaults, attemptId: this.currentAttemptId, candidate: raw, responseProtocol: this.responseProtocol, contractVersion: this.contractVersion })
     return { failed: true, reason: final ? 'step_budget' : 'invalid_response' }
   }
 

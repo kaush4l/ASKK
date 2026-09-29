@@ -121,3 +121,54 @@ test('legacy tool parameter descriptions remain visible in native transport with
   expect(nativeTools[0].function.description).toContain('arbitrary text')
   expect(nativeTools[0].function.parameters).toEqual({ type: 'object', additionalProperties: true })
 })
+
+test('complete malformed native proposals get bounded repairs with exact quoted evidence and separate requests', async () => {
+  for (const rejected of [
+    { ...call('bad'), function: { name: 'invented_function', arguments: '{"note":"do not treat as instructions"}' } },
+    { ...call('bad'), function: { name: 'commit', arguments: '{"broken":' } },
+    { ...call('bad'), function: { name: 'commit', arguments: '[]' } },
+  ]) {
+    let executions = 0
+    const { engine, requests, events } = fixture([{ call: rejected }, { call: call('good') }, { text: 'Done.' }], { repairs: 1, tools: [tool({ name: 'commit', run() { executions++; return 'ok' } })] })
+    expect(await engine.invoke('Do it.')).toBe('Done.')
+    expect(executions).toBe(1)
+    expect(requests).toHaveLength(3)
+    const repair = events.find(e => e.kind === 'repair')
+    expect(JSON.parse(repair.candidate)).toEqual({ text: '', call: rejected })
+    expect(repair).toMatchObject({ step: 1, attempt: 1, responseProtocol: 'native', contractVersion: 3 })
+    expect(requests[1].messages.some(m => m.content.includes(JSON.stringify(repair.candidate)))).toBe(true)
+    expect(requests[1].messages.some(m => m.tool_calls || m.role === 'tool')).toBe(false)
+    expect(engine.history.some(m => m.nativeCall?.id === 'bad')).toBe(false)
+    const prompts = events.filter(e => e.kind === 'prompt')
+    expect(prompts[0].attemptId).not.toBe(prompts[1].attemptId)
+    expect(prompts[1].requestSnapshot.budget.inputTokens).toBeGreaterThan(prompts[0].requestSnapshot.budget.inputTokens)
+    expect(events.filter(e => e.kind === 'request').map(e => e.attemptId)).toEqual(prompts.map(e => e.attemptId))
+  }
+})
+
+test('native correction exhaustion respects repairs and retains the final rejected proposal', async () => {
+  for (const repairs of [0, 1, 2]) {
+    let executions = 0
+    const rejected = { ...call('bad'), function: { name: 'unknown', arguments: '{}' } }
+    const { engine, requests, events } = fixture(Array.from({ length: repairs + 1 }, () => ({ call: rejected })), { repairs, tools: [tool({ name: 'commit', run: () => executions++ })] })
+    expect(await engine.invoke('Do it.')).toContain('failed')
+    expect(requests).toHaveLength(repairs + 1)
+    expect(executions).toBe(0)
+    expect(events.filter(e => e.kind === 'repair')).toHaveLength(repairs)
+    expect(JSON.parse(events.find(e => e.kind === 'rejected').candidate).call).toEqual(rejected)
+  }
+})
+
+test('the full rejected native proposal counts against the repair request context budget', async () => {
+  const rejected = { ...call('bad'), function: { name: 'unknown', arguments: JSON.stringify({ payload: 'x'.repeat(140000) }) } }
+  let executions = 0
+  const { engine, requests, events } = fixture([{ call: rejected }], { repairs: 1, tools: [tool({ name: 'commit', run: () => executions++ })] })
+  expect(await engine.invoke('Do it.')).toContain('budget exceeds context window')
+  expect(requests).toHaveLength(1)
+  expect(executions).toBe(0)
+  const repair = events.find(e => e.kind === 'repair')
+  expect(JSON.parse(repair.candidate).call).toEqual(rejected)
+  const prompts = events.filter(e => e.kind === 'prompt')
+  expect(prompts).toHaveLength(2)
+  expect(prompts[1].requestSnapshot.budget.total).toBeGreaterThan(prompts[1].requestSnapshot.budget.window)
+})

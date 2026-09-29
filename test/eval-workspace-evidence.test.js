@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { createEvaluationWorkspace, ranDeclaredTests } from '../scripts/evals/workspace-evidence.js'
+import { createEvaluationWorkspace, ranDeclaredTests, evaluationTimeoutSeconds } from '../scripts/evals/workspace-evidence.js'
 const owner = { id: 'run', trace: 'task' }
 function fixture() {
   let revision = 'a', runtimeId = 'runtime'
@@ -27,6 +27,10 @@ test('agent command timeout is forwarded in LocalExecution seconds', async () =>
   f.execution.startJob = async options => { timeout = options.timeout; return { code: 0, runtimeId: 'runtime' } }
   await f.workspace.run('check', owner)
   expect(timeout).toBe(30)
+  const bounded = createEvaluationWorkspace(f.execution, { commandTimeoutSeconds: 2 })
+  await bounded.run('check', owner)
+  expect(timeout).toBe(2)
+  for (const value of [0, -1, Infinity, NaN, '2', null, 1801]) expect(() => evaluationTimeoutSeconds(value)).toThrow('timeout')
 })
 test('later source mutation or write-and-revert invalidates successful commands', async () => {
   const f = fixture(); await f.workspace.run('check', owner)

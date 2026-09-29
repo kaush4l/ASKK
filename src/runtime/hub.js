@@ -93,7 +93,8 @@ const lastOpen = (spans, kind) => {
 
 // The archive owner appends internally. Public run/trace views must not expose
 // that mutable collection; records read from storage also need frozen entries.
-const evidenceView = record => record && ({ ...record, toolEvents: Object.freeze((record.toolEvents ?? []).map(event => Object.isFrozen(event) ? event : snapshot(event))) })
+const replyRejectionsOf = record => record.replyRejections ?? (record.log ?? []).filter(event => ['repair', 'rejected'].includes(event.kind))
+const evidenceView = record => record && ({ ...record, replyRejections: Object.freeze(replyRejectionsOf(record).map(event => Object.isFrozen(event) ? event : snapshot(event))), toolEvents: Object.freeze((record.toolEvents ?? []).map(event => Object.isFrozen(event) ? event : snapshot(event))) })
 
 const boundedEvidence = async (work, timeoutMs = EVIDENCE_TIMEOUT_MS) => {
   const budget = Math.max(1, Math.min(60000, Number(timeoutMs) || EVIDENCE_TIMEOUT_MS))
@@ -612,6 +613,7 @@ export class Hub {
       prompts: [],
       requests: [],
       completions: [],
+      replyRejections: [],
       toolEvents: [],
       spans: [],
       log: [],
@@ -739,6 +741,8 @@ export class Hub {
   record(run, event) {
     const at = Date.now()
     const spans = run.spans
+    // Rejected proposals are unexecuted model evidence, never tool activity.
+    if (['repair', 'rejected'].includes(event.kind)) (run.replyRejections ??= []).push(snapshot({ ...event, at }))
     // Model-facing observations may be projected. Keep the exact paired calls
     // and results independently of the bounded UI log and later compaction.
     if (event.kind === 'call' || event.kind === 'observation') {
@@ -878,7 +882,7 @@ export class Hub {
   }
 
   runRecord(run) {
-    return { ...this.describe(run), turns: run.turns, prompts: run.prompts, requests: run.requests ?? [], completions: run.completions ?? [], toolEventStorage: TOOL_EVENT_STORAGE, toolEventCount: run.toolEvents?.length ?? 0, spans: run.spans, log: run.log, result: run.result ?? '', todo: run.todo ?? [] }
+    return { ...this.describe(run), turns: run.turns, prompts: run.prompts, requests: run.requests ?? [], completions: run.completions ?? [], replyRejections: replyRejectionsOf(run), toolEventStorage: TOOL_EVENT_STORAGE, toolEventCount: run.toolEvents?.length ?? 0, spans: run.spans, log: run.log, result: run.result ?? '', todo: run.todo ?? [] }
   }
 
   writeRunRecord(record) {
@@ -1692,7 +1696,7 @@ export class Hub {
 
   run(id) {
     const run = this.runs.get(id)
-    return run ? evidenceView({ ...this.describe(run), turns: run.turns, prompts: run.prompts, requests: run.requests ?? [], completions: run.completions ?? [], toolEvents: run.toolEvents ?? [], spans: run.spans, log: run.log, result: run.result ?? '', todo: run.todo ?? [] }) : null
+    return run ? evidenceView({ ...this.describe(run), turns: run.turns, prompts: run.prompts, requests: run.requests ?? [], completions: run.completions ?? [], replyRejections: replyRejectionsOf(run), toolEvents: run.toolEvents ?? [], spans: run.spans, log: run.log, result: run.result ?? '', todo: run.todo ?? [] }) : null
   }
 
   runsApi = {

@@ -1848,6 +1848,7 @@ test('run inspection freezes current approvals and completion evidence without s
   const { controller, hub } = await startedFixture()
   hub.run = id => hub.runs.get(id) ?? null
   const run = { id: 'inspected', agent: 'assistant', slot: { status: 'waiting' }, toolEvents: [{ kind: 'call', callId: 'call-one', name: 'read', args: { path: 'before' } }], completion: { checks: [{ capability: 'workspace.command' }] }, completionReceipts: [{ ok: false, checks: [{ evidence: { reason: 'before' } }] }] }
+  run.replyRejections = [{ kind: 'repair', candidate: 'exact proposal', faults: ['before'], attemptId: 'original-attempt' }]
   const approval = { id: 1, run: run.id, callId: 'call-one', args: { path: 'before' }, settle() { throw new Error('Inspection must not settle an approval') } }
   hub.runs.set(run.id, run)
   hub.approvals.set(1, approval)
@@ -1857,6 +1858,10 @@ test('run inspection freezes current approvals and completion evidence without s
   expect(details.capturedAt).toBeGreaterThanOrEqual(before)
   expect(details.capturedAt).toBeLessThanOrEqual(Date.now())
   expect(details.approvals).toEqual([{ id: 1, run: run.id, callId: 'call-one', args: { path: 'before' } }])
+  expect(details.replyRejections).toEqual(run.replyRejections)
+  expect(Object.isFrozen(details.replyRejections[0].faults)).toBe(true)
+  run.replyRejections[0].faults[0] = 'after'
+  expect(details.replyRejections[0].faults[0]).toBe('before')
   expect(details.completion).toEqual(run.completion)
   expect(details.completionReceipts).toEqual(run.completionReceipts)
   expect(Object.isFrozen(details.approvals[0].args)).toBe(true)

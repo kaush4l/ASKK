@@ -19,6 +19,20 @@ function Records({ title, records, label, empty }) {
   return <section className="run-record-section"><h3>{title} <span>{records.length}</span></h3>{records.length ? <>{records.slice(0, limit).map((record, index) => <Record key={index} title={label(record, index)} value={record}/>)}{records.length > limit && <button type="button" className="button subtle small" onClick={() => setLimit(previous => previous + 12)}>Show more {title.toLowerCase()}</button>}</> : <p>{empty}</p>}</section>
 }
 
+function ReplyRejections({ records }) {
+  const [limit, setLimit] = useState(12)
+  if (!records.length) return null
+  const newestFirst = records.map((record, index) => ({ record, number: index + 1 })).reverse()
+  return <section className="run-record-section"><h3>Rejected model replies <span>{records.length}</span></h3>
+    <p>These proposals were rejected before execution. Requesting a correction does not establish that a later reply was accepted.</p>
+    {newestFirst.slice(0, limit).map(({ record, number }) => <div key={number}>
+      <Record title={`Reply ${number}${record.attemptId ? ` · Attempt ${record.attemptId}` : ' · Attempt not recorded'} · ${record.kind === 'repair' ? 'Correction requested' : 'Repair limit reached'}`} value={record}/>
+      {typeof record.candidate !== 'string' && <p>Exact rejected proposal not recorded.</p>}
+    </div>)}
+    {records.length > limit && <button type="button" className="button subtle small" onClick={() => setLimit(previous => previous + 12)}>Show more rejected replies</button>}
+  </section>
+}
+
 const checkOutcome = ok => ok === true ? 'Passed' : ok === false ? 'Did not pass' : 'Outcome not recorded'
 function CompletionEvidence({ completion, receipts }) {
   const [limit, setLimit] = useState(12)
@@ -67,6 +81,7 @@ export default function RunInspector({ details, onClose, onRefresh, onInspectRun
       {runError && <><h3>Recorded error</h3><pre>{textOf(runError)}</pre></>}
       <h3>Recorded result</h3><pre>{details.result == null ? 'No result was recorded.' : textOf(details.result)}</pre>
       <CompletionEvidence completion={details.completion} receipts={details.completionReceipts}/>
+      <ReplyRejections records={details.replyRejections ?? (details.log ?? []).filter(event => ['repair', 'rejected'].includes(event.kind))}/>
       <section className="run-record-section"><h3>Tool activity <span>{tools.length}</span></h3>
         <p>Results pair only with their recorded call identities. A parent link identifies a run relationship, not a message delivery acknowledgement.</p>
         {tools.length ? tools.slice(0, toolLimit).map((tool, index) => <div className="run-recorded-tool" key={`${tool.id}:${index}`}>{renderTool ? renderTool(tool, { approvals: details.approvals, recorded: true }) : <ToolCard tool={tool} approvals={details.approvals} recorded/>}<Record title="Exact tool records" value={tool.raw}/></div>) : <p>No tool calls were recorded for this instance.</p>}
