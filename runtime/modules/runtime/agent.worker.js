@@ -1,3 +1,4 @@
+import { loopBudgetValue } from '../core/loop-budget.js'
 /**
  * One agent's thread.
  *
@@ -221,10 +222,10 @@ async function build(message) {
     tools: fullTools,
     context: contexts(spec.context, notes),
     history: message.history ?? [],
-    maxSteps: spec.engine.maxSteps ?? 10,
-    repairs: spec.engine.repairs ?? 2,
+    maxSteps: loopBudgetValue('maxSteps', spec.engine.maxSteps),
+    repairs: loopBudgetValue('repairs', spec.engine.repairs),
     compactAt: spec.engine.compactAt ?? 0.9,
-    keep: spec.engine.keep ?? 4,
+    keep: loopBudgetValue('keep', spec.engine.keep),
     summarise: message.services?.compaction ? (text) => {
       if (serviceMode) throw new Error('Runtime services cannot start nested compaction')
       return request('service.compact', { query: text })

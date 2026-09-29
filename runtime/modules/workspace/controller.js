@@ -1,3 +1,4 @@
+import { loopBudgetValue } from '../core/loop-budget.js'
 import { normalizeToolActivity } from '../core/tool-activity.js'
 import { ProjectFiles } from './files.js'
 import { LocalExecution } from '../execution/local.js'
@@ -682,7 +683,7 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
         promptTemplate: spec?.engine.promptTemplate ?? composition.promptTemplate ?? DEFAULT_PROMPT,
         context: spec?.context ?? definition.context ?? [], responseFormat: spec?.engine.responseFormat ?? composition.responseFormat ?? 'json',
         contractVersion: spec?.engine.contractVersion ?? composition.contractVersion ?? 1,
-        maxSteps: spec?.engine.maxSteps ?? composition.maxSteps ?? 10, tools: definition.tools ?? [], latestPrompt })
+        maxSteps: loopBudgetValue('maxSteps', spec?.engine.maxSteps ?? composition.maxSteps), tools: definition.tools ?? [], latestPrompt })
     },
     async sendGoal(text) {
       if (!text.trim()) return

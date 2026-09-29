@@ -1,3 +1,4 @@
+import { loopBudgetValue } from '../core/loop-budget.js'
 import { ModelBroker } from './model-broker.js'
 import { readCompanionManifest } from '../core/companion-manifest.js'
 /**
@@ -626,7 +627,7 @@ export class Hub {
       status: 'idle',
       goal: query,
       steps: 0,
-      maxSteps: spec?.engine.maxSteps ?? 10,
+      maxSteps: loopBudgetValue('maxSteps', spec?.engine.maxSteps),
       seconds: 0,
       startedAt: run.at,
       calls: 0,
@@ -1761,10 +1762,10 @@ export class Hub {
           responseFormat: spec.engine.responseFormat ?? 'toon',
           observationFormat: spec.engine.observationFormat ?? 'legacy',
           contractVersion: spec.engine.contractVersion,
-          maxSteps: spec.engine.maxSteps ?? 10,
-          repairs: spec.engine.repairs ?? 2,
+          maxSteps: loopBudgetValue('maxSteps', spec.engine.maxSteps),
+          repairs: loopBudgetValue('repairs', spec.engine.repairs),
           compactAt: spec.engine.compactAt ?? 0.9,
-          keep: spec.engine.keep ?? 4,
+          keep: loopBudgetValue('keep', spec.engine.keep),
           requireVerification: Boolean(spec.engine.requireVerification),
           context: snapshot(spec.context ?? []),
           // The compiler resolves the exact configured template bytes.

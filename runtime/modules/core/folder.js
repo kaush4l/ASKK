@@ -1,3 +1,4 @@
+import { validateLoopBudget } from './loop-budget.js'
 /**
  * Reading agent folders — the one utility that turns files into an AgentSpec.
  *
@@ -141,6 +142,7 @@ export async function readSpec(path, { index, load }) {
     else if (key in ENGINE) engine[ENGINE[key]] = value
     else if (!WIRING.includes(key)) notes.push(`unknown key "${key}" ignored`)
   }
+  validateLoopBudget(engine, { prefix: `${path}.` })
   if (engine.contractVersion != null && ![1, 2].includes(engine.contractVersion)) throw new Error(`unsupported contract_version: ${engine.contractVersion}`)
   if (engine.observationFormat != null && !['legacy', 'compact'].includes(engine.observationFormat)) throw new Error(`unsupported observation_format: ${engine.observationFormat}`)
   if (engine.contractVersion === 2) {
