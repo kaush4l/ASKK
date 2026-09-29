@@ -5,17 +5,43 @@ import { inference } from '../src/core/inference.js'
 import { resolve } from '../src/core/models.js'
 import { Engine } from '../src/core/engine.js'
 import { tool } from '../src/core/tools.js'
+import { providerToolInput, validateToolInput } from '../src/core/tool-input.js'
+import { workspace_write } from '../src/builtin/workspace.js'
 
 const tools = [tool({ name: 'echo', parameters: { text: 'string' }, run: args => args.text })]
 const done = { do: 'done', act: 'Checked.' }
 const stream = value => new Response(`data: ${JSON.stringify({ choices: [{ delta: { content: JSON.stringify(value) }, finish_reason: null }] })}\n\ndata: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }] })}\n\ndata: [DONE]\n\n`, { headers: { 'content-type': 'text/event-stream' } })
+
+test('each tool name retains its local input contract, optional fields and first-wins resolution', () => {
+  const schema = { type: 'object', required: ['rows'], properties: { rows: { type: 'array', minItems: 1, items: { type: 'object', properties: { label: { type: 'string', minLength: 1 } }, required: ['label'] } }, optional: { type: ['integer', 'null'] } }, additionalProperties: false }
+  const typed = tool({ name: 'typed', inputSchema: schema, run() {} })
+  const providerOnly = tool({ name: 'remote', providerInputSchema: { $ref: '#/$defs/remote', $defs: { remote: { type: 'object' } } }, run() {} })
+  for (const shape of [SingleReAct, CompactReAct]) {
+    const root = responseModel(shape, 'json').schema({ tools: [typed, providerOnly, tool(workspace_write, { name: 'commit' }), { ...typed, inputSchema: { type: 'object', properties: {}, additionalProperties: false } }] })
+    const act = root.anyOf[0].properties.act, calls = (shape.version === 3 ? act : act.items.items).anyOf
+    expect(calls.map(call => call.properties.name.const)).toEqual(['typed', 'remote', 'commit'])
+    const args = calls[0].properties.args
+    expect(args.required).toEqual(['rows'])
+    expect(args.properties.optional).toEqual({ type: ['integer', 'null'] })
+    expect(args.properties.rows.items.additionalProperties).toBe(true)
+    expect(calls[1].properties.args).toEqual({ type: 'object', additionalProperties: true })
+    expect(calls[2].properties.args.required).toContain('expect')
+    expect(validateToolInput(args, { rows: [{ label: 'ok', extra: 'allowed' }] })).toEqual([])
+    expect(validateToolInput(args, { rows: [] }).length).toBeGreaterThan(0)
+    args.properties.rows.items.properties.label.minLength = 10
+    expect(typed.inputSchema.properties.rows.items.properties.label.minLength).toBe(1)
+  }
+  expect(schema.properties.rows.items.additionalProperties).toBeUndefined()
+  expect(() => providerToolInput({ type: 'object', $ref: '#/elsewhere' })).toThrow('not supported')
+  expect(() => providerToolInput({ type: 'object', additionalProperties: { type: 'string' } })).toThrow('must be boolean')
+})
 
 test('schema follows contract and available tools, including final-only decisions', () => {
   for (const shape of [CompactReAct, SingleReAct]) {
     const response = responseModel(shape, 'json'), schema = response.schema({ tools })
     const act = schema.anyOf[0].properties.act
     const call = shape.version === 3 ? act : act.items.items
-    expect(call.properties.name.enum).toEqual(['echo'])
+    expect(call.properties.name.const).toBe('echo')
     expect(call.properties.args).toEqual({ type: 'object', additionalProperties: true }) // Explicit for converters that default to false; argument validation remains local.
     expect(call.additionalProperties).toBe(false)
     expect(response.schema({ tools, finalOnly: true })).toEqual(schema.anyOf[1])
@@ -70,4 +96,15 @@ test('unsupported configurations fail without transport and schema requests neve
   let body
   await inference({}, { fetch: async (_, init) => { body = JSON.parse(init.body); return stream(done) } }).invoke([], { responseSchema })
   expect(body.response_format).toBeUndefined()
+})
+
+test('a provider ignoring required arguments cannot bypass the local adapter validator', async () => {
+  let executed = 0, requests = 0
+  const item = tool({ name: 'commit', inputSchema: { type: 'object', properties: { expect: { type: 'integer' } }, required: ['expect'], additionalProperties: false }, run: () => { executed++; return 'changed' } })
+  const llm = inference({ provider: 'openai', structuredOutput: 'json_schema', contextLength: 8192, maxOutputTokens: 512 }, { fetch: async () => stream(++requests === 1 ? { do: 'tool', act: { name: 'commit', args: {} } } : done) })
+  const engine = new Engine({ contractVersion: 3, tools: [item], llm: async () => llm })
+  const events = []; engine.listen(event => events.push(event))
+  await engine.invoke('work')
+  expect(executed).toBe(0)
+  expect(events.find(event => event.kind === 'observation')).toMatchObject({ ok: false, value: 'commit failed: Invalid tool arguments: args.expect is required' })
 })

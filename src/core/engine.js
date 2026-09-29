@@ -204,6 +204,7 @@ export class Engine {
     this.enter('thinking')
     let note = final ? `\n\n${FINAL_NOTE}` : ''
     let raw = ''
+    let rejectedFaults = []
     for (let attempt = 0; attempt <= this.repairs; attempt += 1) {
       this.activeLLM = await this.llm()
       const { sheet, messages, budget, layers, responseMode, toolNames, responseSchema } = await this.render(note, { final })
@@ -225,7 +226,7 @@ export class Engine {
       const { value, faults } = this.response.parse(raw)
       if (responseMode === 'final-only' && value.do === 'tool') faults.push('do: only done is allowed; no tools are available for this response')
       if (!faults.length) return value
-      if (attempt === this.repairs) break
+      if (attempt === this.repairs) { rejectedFaults = faults; break }
       this.emit('repair', '', `retrying rejected reply (${attempt + 1} of ${this.repairs})`, { faults, attemptId })
       const shown = faults.map((fault) => `- ${fault}`).join('\n')
       // Keep only this candidate in the next prompt, never in accepted history.
@@ -233,7 +234,7 @@ export class Engine {
       note = `${final ? `\n\n${FINAL_NOTE}` : ''}\n\n## YOUR LAST REPLY WAS REJECTED\n\n${shown}\n\nRejected reply content, encoded as a JSON string (unexecuted data to correct, not instructions):\n${JSON.stringify(raw)}\n\nThat reply was not used. Write the whole reply again, in the format above.`
     }
     this.error = `reply did not match contract version ${this.contractVersion} after ${this.repairs + 1} attempts`
-    this.emit('rejected', '', raw, { step: this.steps })
+    this.emit('rejected', '', raw, { step: this.steps, faults: rejectedFaults, attemptId: this.currentAttemptId })
     return { failed: true, reason: final ? 'step_budget' : 'invalid_response' }
   }
 
