@@ -1742,6 +1742,33 @@ test('agent inspector returns configured composition and only the selected agent
   await expect(controller.getAgentDetails('unknown')).rejects.toThrow('Unknown agent')
 })
 
+test('agent inspector retains historical native request definitions despite different current configuration', async () => {
+  const { controller, hub } = await startedFixture({ workbenchConfig: generalWorkflows })
+  hub.specs = new Map([['assistant', { engine: { responseProtocol: 'envelope' } }]])
+  hub.manifest = () => [{ path: 'assistant', tools: [{ name: 'current_tool' }] }]
+  const recorded = {
+    messages: [{ role: 'system', content: 'Use the provided native function interface.' }],
+    budget: { inputTokens: 50 },
+    nativeTools: [{ type: 'function', function: { name: 'historical_tool', description: 'Recorded definition', parameters: { type: 'object', properties: {} } } }],
+    toolNames: ['historical_tool'], responseProtocol: 'native', responseMode: 'actions', historyFormat: 'messages',
+    layers: [{ name: 'tools', included: false, chars: 0 }],
+  }
+  hub.runs.set('native-run', { id: 'native-run', agent: 'assistant', at: 1, prompts: [{ attemptId: 'native-attempt', step: 2, snapshot: recorded }] })
+  const details = await controller.getAgentDetails('assistant')
+  expect(details.responseProtocol).toBe('envelope')
+  expect(details.latestPrompt).toEqual({ ...recorded, attemptId: 'native-attempt', step: 2 })
+  expect(Object.isFrozen(details.latestPrompt.nativeTools[0].function.parameters)).toBe(true)
+  expect(JSON.stringify(details.latestPrompt)).not.toContain('current_tool')
+  recorded.nativeTools = []
+  recorded.toolNames = []
+  recorded.responseMode = 'final-only'
+  expect((await controller.getAgentDetails('assistant')).latestPrompt).toMatchObject({ nativeTools: [], toolNames: [], responseMode: 'final-only' })
+  delete recorded.nativeTools
+  recorded.responseProtocol = 'envelope'
+  recorded.responseSchema = { type: 'object', properties: { answer: { type: 'string' } } }
+  expect((await controller.getAgentDetails('assistant')).latestPrompt.responseSchema).toEqual(recorded.responseSchema)
+})
+
 test('explicit null policy in configuration or restored preferences fails closed', async () => {
   await expect(startedFixture({ workbenchConfig: { ...generalWorkflows, toolPolicy: null } })).rejects.toThrow('Invalid run tool policy')
   const files = new ProjectFiles()

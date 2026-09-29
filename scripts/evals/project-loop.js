@@ -1,7 +1,8 @@
 /** Opt-in real-model evaluation. Agents use the production folder, worker, desk broker,
  * workspace adapters and real Local Bun commands. Independent checks never use LLM judgments. */
 import { createHash } from 'node:crypto'
-import { cp, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { normalizeCompletion } from '../../src/core/completion.js'
@@ -107,12 +108,17 @@ export async function evaluateProjectLoop({ baseUrl, model, directory, caseName 
   await mkdir(join(site, 'agents'))
   await writeFile(join(site, 'models.json'), JSON.stringify({ default: 'evaluation', models: { evaluation: { provider: 'openai', model, base_url: baseUrl, context_length: contextLength, max_output_tokens: maxOutputTokens, temperature, ...(structuredOutput ? { structured_output: 'json_schema' } : {}), request_params: { ...samplingParams, chat_template_kwargs: { enable_thinking: enableThinking }, ...(jsonOutput ? { response_format: { type: 'json_object' } } : {}) } } } }))
   await writeFile(join(site, 'agents/index.json'), JSON.stringify(await listing(site)))
-  const companion = await createCompanion({ root: project, port: 0, capabilities: ['fs', 'exec'] })
-  const execution = new LocalExecution({ url: companion.url, token: companion.token })
-  let hub, timer, unsubscribe
+  // Bun searches ancestor directories for package scripts. Execute outside the
+  // evidence/repository tree, including agent commands, not just withheld checks.
+  const executionRoot = await mkdtemp(join(tmpdir(), 'askk-project-loop-'))
+  let companion, execution, hub, timer, unsubscribe
   let workspace; const responses = [], attempts = new Map(); const startedAt = Date.now()
   try {
+    companion = await createCompanion({ root: executionRoot, port: 0, capabilities: ['fs', 'exec'] })
+    execution = new LocalExecution({ url: companion.url, token: companion.token })
     await execution.prepare()
+    const executionEnvironment = { ...execution.describeCapabilities(), archiveRoot: project }
+    await writeFile(join(root, 'execution-environment.json'), JSON.stringify(executionEnvironment, null, 2))
     workspace = createEvaluationWorkspace(execution)
     const commands = workspace.commands
     for (const [path, content] of Object.entries(definition.seed ?? {})) await execution.write({ path, content, expectedRevision: 0 })
@@ -168,9 +174,22 @@ export async function evaluateProjectLoop({ baseUrl, model, directory, caseName 
     const checkedRevision = await workspace.revision()
     checks.push({ name: 'independent checks retained the delivered source', deliveredRevision, checkedRevision, passed: deliveredRevision === checkedRevision })
     const evidence = { version: 2, evaluatorHashes, instructionsOverride: instructions ?? null, deliveredRevision, checkedRevision, completion: run.completion, completionReceipts: run.completionReceipts ?? [], caseName, model, baseUrl, contextLength, sampling: resolvedSampling, responseProtocol: hub.specs.get('bundled/starter/builder')?.engine.responseProtocol ?? 'envelope', jsonOutput, structuredOutput, historyFormat: hub.specs.get('bundled/starter/builder')?.engine.historyFormat ?? 'transcript', enableThinking, maxOutputTokens, contractVersion: hub.specs.get('bundled/starter/builder')?.engine.contractVersion, responses, turns: run.turns, events: run.log, runtime: 'Local Bun (not Browser Linux)', startedAt, elapsedMs: Date.now() - startedAt, result: run.result, status: run.slot.status, passed: run.slot.status === 'done' && checks.every(row => row.passed), agentCompleted: run.slot.status === 'done', independentChecksPassed: checks.every(row => row.passed), checks, commands, prompts: run.prompts, requests: run.requests, completions: run.completions, tools: run.toolEvents, files: await execution.list(), metrics: { promptCount: run.prompts.length, repairs: run.log.filter(row => row.kind === 'repair').length, toolCalls: run.toolEvents.filter(row => row.kind === 'call').length, inputTokensEstimated: run.prompts.map(row => row.snapshot?.budget?.inputTokens) } }
+    evidence.executionEnvironment = executionEnvironment
     await writeFile(join(root, 'evidence.json'), JSON.stringify(evidence, null, 2))
     return { caseName, passed: evidence.passed, status: evidence.status, checks, elapsedMs: evidence.elapsedMs, metrics: evidence.metrics, evidence: join(root, 'evidence.json') }
-  } finally { clearTimeout(timer); unsubscribe?.(); hub?.stop(); await execution.dispose(); await companion.close() }
+  } finally {
+    clearTimeout(timer); unsubscribe?.()
+    // Stop writers before archiving; each cleanup must run even if another fails.
+    try {
+      try { hub?.stop() } finally {
+        try { await execution?.dispose() } finally { await companion?.close() }
+      }
+    } finally {
+      // If archival fails, retain the source at the recorded execution root.
+      await cp(executionRoot, project, { recursive: true })
+      await rm(executionRoot, { recursive: true, force: true })
+    }
+  }
 }
 if (import.meta.main) {
   if (!process.argv.includes('--run')) throw new Error('Explicit --run required; this evaluation lets the model write files and execute commands in its new project directory.')

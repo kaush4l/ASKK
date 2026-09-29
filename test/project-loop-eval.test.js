@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import { evaluateProjectLoop, repairCycle, evaluationSampling } from '../scripts/evals/project-loop.js'
-import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, writeFile, readFile, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -34,20 +34,24 @@ test('a rejected proposal, cancelled command or ambiguous call is not a reproduc
   }
 })
 
-test('an absent project manifest never runs an ancestor package test script', async () => {
+test('agent commands without a manifest cannot run the archive ancestor test script', async () => {
   const root = await mkdtemp(join(tmpdir(), 'askk-eval-ancestor-'))
   const requests = []
   const sampling = { temperature: 0.6, top_p: 0.95, top_k: 20, min_p: 0, seed: 42 }
   const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: async request => {
     requests.push(await request.json())
+    const call = requests.length === 1 ? { id: 'write', name: 'workspace_write', args: { path: 'retained.txt', content: 'saved by the agent', expect: 0 } }
+      : requests.length === 2 ? { id: 'test', name: 'workspace_run', args: { command: 'bun run test' } }
+      : requests.length === 3 ? { id: 'pwd', name: 'workspace_run', args: { command: 'pwd' } } : null
+    const delta = call ? { tool_calls: [{ index: 0, id: call.id, type: 'function', function: { name: call.name, arguments: JSON.stringify(call.args) } }] } : { content: 'The project test failed.' }
     return new Response(
-    `data: ${JSON.stringify({ choices: [{ delta: { content: 'invalid response' }, finish_reason: null }] })}\n\ndata: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }] })}\n\ndata: [DONE]\n\n`,
+    `data: ${JSON.stringify({ choices: [{ delta, finish_reason: call ? 'tool_calls' : 'stop' }] })}\n\ndata: [DONE]\n\n`,
     { headers: { 'content-type': 'text/event-stream' } },
   ) } })
   try {
     const marker = join(root, 'ancestor-ran')
     await writeFile(join(root, 'package.json'), JSON.stringify({ scripts: { test: `touch '${marker}'` } }))
-    const result = await evaluateProjectLoop({ baseUrl: `http://127.0.0.1:${server.port}/v1`, model: 'fixture', directory: join(root, 'attempt'), caseName: 'project', sampling })
+    const result = await evaluateProjectLoop({ baseUrl: `http://127.0.0.1:${server.port}/v1`, model: 'fixture', directory: join(root, 'attempt'), caseName: 'project', sampling, responseProtocol: 'native', contractVersion: 3, historyFormat: 'messages' })
     const evidence = JSON.parse(await readFile(result.evidence, 'utf8'))
     const checks = evidence.checks.filter(check => ['independent package test script', 'independent Bun test discovery'].includes(check.name))
     expect(evidence.sampling).toEqual(sampling)
@@ -55,12 +59,44 @@ test('an absent project manifest never runs an ancestor package test script', as
     for (const request of requests) for (const [key, value] of Object.entries(sampling)) expect(request[key]).toBe(value)
     expect(result.passed).toBe(false)
     expect(checks).toHaveLength(2)
+    expect(evidence.commands.map(command => command.command)).toEqual(['bun run test', 'pwd'])
+    expect(evidence.commands[0].code).not.toBe(0)
+    const environment = evidence.executionEnvironment
+    for (const key of ['token', 'url', 'authorization', 'headers']) expect(environment).not.toHaveProperty(key)
+    expect(evidence.commands[0].runtimeId).toBe(environment.runtimeId)
+    expect(evidence.commands[1].output.trim()).toBe(environment.root)
+    expect(environment.root.startsWith(root + '/')).toBe(false)
+    expect(environment.archiveRoot).toBe(join(root, 'attempt/project'))
+    expect(JSON.parse(await readFile(join(root, 'attempt/execution-environment.json'), 'utf8'))).toEqual(environment)
+    expect(await stat(environment.root).catch(error => error.code)).toBe('ENOENT')
+    expect(await readFile(join(root, 'attempt/project/retained.txt'), 'utf8')).toBe('saved by the agent')
+    expect(await Bun.file(join(root, 'attempt/project/package.json')).exists()).toBe(false)
     expect(await Bun.file(marker).exists()).toBe(false)
     for (const check of checks) {
       expect(check.passed).toBe(false)
       expect(check.reason).toContain('command not started')
       expect(check.output).toBeUndefined()
     }
+  } finally { server.stop(true); await rm(root, { recursive: true, force: true }) }
+}, 15000)
+
+test('a cancelled agent command archives saved source and removes its execution root', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'askk-eval-cancel-'))
+  let requests = 0
+  const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: async request => {
+    await request.json()
+    const call = ++requests === 1
+      ? { id: 'write', name: 'workspace_write', args: { path: 'retained.txt', content: 'saved before cancellation', expect: 0 } }
+      : { id: 'sleep', name: 'workspace_run', args: { command: 'sleep 30' } }
+    return new Response(`data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [{ index: 0, id: call.id, type: 'function', function: { name: call.name, arguments: JSON.stringify(call.args) } }] }, finish_reason: 'tool_calls' }] })}\n\ndata: [DONE]\n\n`, { headers: { 'content-type': 'text/event-stream' } })
+  } })
+  try {
+    const result = await evaluateProjectLoop({ baseUrl: `http://127.0.0.1:${server.port}/v1`, model: 'fixture', directory: join(root, 'attempt'), timeoutMs: 1000, responseProtocol: 'native', contractVersion: 3, historyFormat: 'messages' })
+    const evidence = JSON.parse(await readFile(result.evidence, 'utf8'))
+    expect(result.passed).toBe(false)
+    expect(evidence.tools.some(event => event.kind === 'call' && event.name === 'workspace_run')).toBe(true)
+    expect(await readFile(join(root, 'attempt/project/retained.txt'), 'utf8')).toBe('saved before cancellation')
+    expect(await stat(evidence.executionEnvironment.root).catch(error => error.code)).toBe('ENOENT')
   } finally { server.stop(true); await rm(root, { recursive: true, force: true }) }
 }, 15000)
 
