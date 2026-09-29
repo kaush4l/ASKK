@@ -1,0 +1,66 @@
+{
+  "source": "83cac1c9",
+  "deployment": "9fb6444528a0a5f78c3be7c81d74b8d1f7271436",
+  "workflow": "https://github.com/kaush4l/ASKK/actions/runs/36563901024",
+  "workflowConclusion": "success",
+  "checks": [
+    {
+      "path": "index.html",
+      "status": 200,
+      "sha256": "eb0a5a22faf72ef865bfa7efe300f059e0fe70cd96aca3d0df3343162b7c488c",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/core/prompt.js",
+      "status": 200,
+      "sha256": "8190aa38bb02755fea09068809e44f88b9cc37de5bd814e89b70a420796740aa",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/core/agent-prompt.js",
+      "status": 200,
+      "sha256": "8b17468bbd7c5e26cf7a40ce588508f3394d511e25d903182d5bec3a3d45d285",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/core/engine.js",
+      "status": 200,
+      "sha256": "0b0385c5a215592aa2f0c5f148c81a8f53bd94ed4d45f8312b81c799fb7da2b7",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/core/responses.js",
+      "status": 200,
+      "sha256": "dacefc476429104874bf7f831dbd8dcc35b21636524ad293beb876cead4e9067",
+      "matches": true
+    },
+    {
+      "path": "_next/static/chunks/app/page-02b26ffa4ec95b40.js",
+      "status": 200,
+      "sha256": "5edbed6e76393d02b8eef75694de70856976290ff68c77e196900784614111ef",
+      "matches": true
+    }
+  ],
+  "scope": "HTTP asset verification only. Existing agent history defaults unchanged. Four local small-model trials failed, including roles with/without provider schema and explicit open-argument control. No hosted inference or Safari/iPhone/Browser Linux acceptance.",
+  "tests": {
+    "passed": 895,
+    "skipped": 1,
+    "failed": 0,
+    "assertions": 6607,
+    "files": 88,
+    "finalAffectedTests": {
+      "passed": 18,
+      "failed": 0,
+      "assertions": 373,
+      "files": 4
+    }
+  },
+  "export": {
+    "version": 1,
+    "basePath": "/ASKK",
+    "totalBytes": 854221027,
+    "fileCount": 211,
+    "runtimeId": "c2w-node24-38d093f4a38002db",
+    "artifactHash": "f8dc3973783fdf69d001f6bda2634bb55513fe1041eccc812ff8ad7af56d78b3"
+  }
+}
