@@ -1,0 +1,65 @@
+{
+  "source": "4cbce25a",
+  "deployment": "e7f130ff71df6a9b2d8a14bf6081d7430a02a681",
+  "workflow": "https://github.com/kaush4l/ASKK/actions/runs/36588852610",
+  "workflowConclusion": "success",
+  "export": {
+    "version": 1,
+    "basePath": "/ASKK",
+    "totalBytes": 905087147,
+    "fileCount": 219,
+    "runtimeId": "c2w-node24-38d093f4a38002db",
+    "artifactHash": "863895c9425be008cb294f72328cce5c9461501c4b0a858c35f6275f669ed2b4"
+  },
+  "checks": [
+    {
+      "path": "index.html",
+      "status": 200,
+      "sha256": "f2d6dd23e886db1e2e3b65466803c9d054a259461dd1276e5c83de17c6832036",
+      "matches": true
+    },
+    {
+      "path": "_next/static/chunks/app/page-f3a92d22b8458b1c.js",
+      "status": 200,
+      "sha256": "59b2cbdc64630bfdef99394777b31cbde51f4b38c3bc99bcfe8f85036c002630",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/core/engine.js",
+      "status": 200,
+      "sha256": "f942825ba03f40535f464c254ce1609bd45b3aa082e9f0825d4d391a99c1787a",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/core/inference.js",
+      "status": 200,
+      "sha256": "353380c5fbacdf781f35a02e45aacb696704e1f39853deb72e9d84e0c9ed6a2e",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/core/native-tools.js",
+      "status": 200,
+      "sha256": "9208bc766d52ef60e4ef3a2f8b85f0a9a68aad66c5ee58b846eceff650f01bdc",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/runtime/hub.js",
+      "status": 200,
+      "sha256": "02f618536ff7140ca624b1436791a362a786ad6bac9f251e4998a44fdb1b935c",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/workspace/controller.js",
+      "status": 200,
+      "sha256": "1f97ca9a36d3c74ca72fd17bb4d766d90a27381c7f082fb01b10cd0ed5378b4d",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/execution/toolchain.js",
+      "status": 200,
+      "sha256": "9df498a505db37a35b337ff535e4b699d808dfd9a4d25d25c2946870b8b96aeb",
+      "matches": true
+    }
+  ],
+  "scope": "Hosted exact byte checks. Automated component/persistence and production-worker repair fixtures. No new live browser interaction, Safari, iPhone, VoiceOver or Browser Linux acceptance."
+}

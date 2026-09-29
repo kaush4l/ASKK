@@ -1,6 +1,8 @@
 # Implementation status
 
-Latest publication: source **`ba063773`** (implementation **`cfe5ccd2`**), deployment **`d1453e9d`**, [successful Pages workflow](https://github.com/kaush4l/ASKK/actions/runs/36587697777). [Hosted evidence](evidence/process-context-pages.json) confirms nine page, UI, runtime, catalog and download files match the tested export. Export: **905,083,645 bytes / 219 files**.
+Latest publication: source **`4cbce25a`**, deployment **`e7f130ff`**, [successful Pages workflow](https://github.com/kaush4l/ASKK/actions/runs/36588852610). [Hosted evidence](evidence/native-repair-pages.json) confirms eight page, UI and runtime files match the tested export. Export: **905,087,147 bytes / 219 files**.
+
+Historical publication: source **`ba063773`** (implementation **`cfe5ccd2`**), deployment **`d1453e9d`**, [successful Pages workflow](https://github.com/kaush4l/ASKK/actions/runs/36587697777). [Hosted evidence](evidence/process-context-pages.json) confirms nine page, UI, runtime, catalog and download files match the tested export. Export: **905,083,645 bytes / 219 files**.
 
 Historical publication: source **`8a3c14bb`**, deployment **`b1673398`**, [successful Pages workflow](https://github.com/kaush4l/ASKK/actions/runs/36586201655). [Hosted evidence](evidence/scaffold-reference-pages.json) confirms six page, UI and runtime files match the tested export. Export: **879,673,619 bytes / 217 files**.
 
@@ -9,6 +11,21 @@ Historical publication: source **`df09f5e1`**, deployment **`b47a859b`**, [succe
 Historical publication: source **`b9ae8ecc`**, deployment **`830fcc8a`**, [successful Pages workflow](https://github.com/kaush4l/ASKK/actions/runs/36581450992). [Hosted evidence](evidence/expected-checks-pages.json) confirms the page, workbench chunk, completion module and agent index match the tested export. Export: **879,666,452 bytes / 216 files**.
 
 Historical publication: source **`e7e19081`**, deployment **`d02543f1`**, [successful Pages workflow](https://github.com/kaush4l/ASKK/actions/runs/36578773412). [Hosted evidence](evidence/model-discovery-pages.json) confirms the page, workbench chunk, runtime context, workspace controller and agent index match the tested export. Export: **879,666,446 bytes / 216 files**.
+
+## Native proposal repair and project trials
+
+Final validation: **1,028 passed, 1 skipped, 0 failed**, 7,741 assertions across 100 files; static export and hosted-byte checks passed.
+
+Completed, structurally valid single-call native streams can now use the configured repair budget for unknown functions or invalid JSON-object arguments. Each correction has its own prompt/provider-request/usage records; the entire rejected proposal counts toward the next context budget and never enters accepted tool history. Partial/malformed streams, missing or invalid call identities, multiple calls, truncation, cancellation and transport errors stay terminal for this path. Existing completion metadata identity is preserved. A production-worker fixture proves a rejected invented function can be corrected before real commands and unchanged independent checks.
+
+Exact rejected proposals persist separately as `replyRejections`, outside the bounded log and tool counts, and survive restore/export. Inspector disclosures show newest rejections first and mark missing legacy proposals explicitly. [Chrome interaction evidence](evidence/native-repair-browser.json) checks 390 × 844, twelve initial rows, expansion of a thirteenth, raw proposal disclosure, no horizontal overflow, Escape and restored focus. This is a synthetic local component fixture, not hosted inference or Safari/iPhone/VoiceOver acceptance.
+
+[Real-model records](evidence/native-repair-models.json) retain both trials and exact source hashes:
+
+- **Scaffold passed:** Qwen3 4B created a working manifest, module and two discoverable tests. All configured receipts, withheld behavior and unchanged-source checks passed. It needed seventeen requests and nine tool calls; seven premature completion attempts were refused.
+- **Repair failed acceptance:** delivered behavior and tests passed, but the agent skipped reading the existing test and reproducing its failure before editing. The independent sequence check failed. Agent status `done` is retained separately from evaluator `passed: false`. It used fifteen requests and five tool calls, with nine premature completion attempts.
+
+Both used the shipped builder instructions and two-second command/check limits, a change from earlier trials' 30/10 seconds. Assertions were not weakened. The scaffold preceded a metadata-identity restoration (the only source-hash difference); repair used final code. Neither real-model trial needed malformed-native repair, so the scaffold pass is not attributed to that mechanism. These are single-seed diagnostics, not reliability, causal or speed evidence. Model and fixture processes exited; user model endpoints were untouched. Next priorities are observable pending requirements and configurable process-workflow evidence, while preserving independent rejection of incomplete work.
 
 ## Execution context and original-group cleanup
 

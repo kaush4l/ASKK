@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "scope": "Interactive local fixture using production RunInspector and exported CSS in desktop Chrome at 390x844. Synthetic records; no tools executed. Not Safari, iPhone hardware, VoiceOver or hosted-model acceptance.",
+  "fixture": ".cache/native-repair-inspector-entry.jsx",
+  "screenshot": "native-repair-inspector-390.png",
+  "checks": {
+    "initialRejectedRows": 12,
+    "totalRecords": 13,
+    "newestFirst": true,
+    "latestProposalExpanded": true,
+    "showMoreRevealedOldest": true,
+    "toolActivityCount": 0,
+    "dialogClientWidth": 374,
+    "dialogScrollWidth": 374,
+    "escapeClosedDialog": true,
+    "focusRestoredTo": "Inspect rejected replies"
+  },
+  "cleanup": {
+    "viewportReset": true,
+    "fixtureTabClosed": true,
+    "fixtureServerStopped": true
+  }
+}

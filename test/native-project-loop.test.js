@@ -43,7 +43,7 @@ test('native provider proposals cross the production worker and guarded dispatch
   } finally { server.stop(true); await rm(root, { recursive: true, force: true }) }
 }, 20000)
 
-test('native required-check references execute exact configured commands through the production worker', async () => {
+for (const rejectedFirst of [false, true]) test(`native required-check references execute exact commands through the worker${rejectedFirst ? ' after a completed proposal repair' : ''}`, async () => {
   const root = await mkdtemp(join(tmpdir(), 'askk-native-ref-'))
   const requests = []
   const completion = JSON.parse(await readFile(join(import.meta.dir, '../docs/rewrite/evidence/script-prefix-required-checks.json'), 'utf8'))
@@ -51,8 +51,8 @@ test('native required-check references execute exact configured commands through
   const source = 'const values=process.argv.slice(2).map(Number);if(values.some(n=>!Number.isFinite(n)))process.exit(1);console.log(values.reduce((a,b)=>a+b,0));\n'
   const server = Bun.serve({ port: 0, hostname: '127.0.0.1', async fetch(request) {
     requests.push(await request.json())
-    const step = requests.length
-    const call = step === 1 ? { name: 'workspace_write', args: { path: 'total.js', content: source, expect: 0 } }
+    const step = requests.length - Number(rejectedFirst)
+    const call = step === 0 ? { name: 'invented_tool', args: { note: 'unexecuted proposal' } } : step === 1 ? { name: 'workspace_write', args: { path: 'total.js', content: source, expect: 0 } }
       : step <= commands.length + 1 ? { name: 'workspace_run', args: { requiredCheck: step - 2 } } : null
     const delta = call ? { tool_calls: [{ index: 0, id: `ref-${step}`, type: 'function', function: { name: call.name, arguments: JSON.stringify(call.args) } }] } : { content: 'Configured checks completed.' }
     return new Response(`data: ${JSON.stringify({ choices: [{ delta, finish_reason: call ? 'tool_calls' : 'stop' }] })}\n\ndata: [DONE]\n\n`, { headers: { 'content-type': 'text/event-stream' } })
@@ -61,6 +61,15 @@ test('native required-check references execute exact configured commands through
     const result = await evaluateProjectLoop({ baseUrl: `http://127.0.0.1:${server.port}/v1`, model: 'native-fixture', directory: join(root, 'attempt'), completion, responseProtocol: 'native', contractVersion: 3, historyFormat: 'messages' })
     const e = JSON.parse(await readFile(result.evidence, 'utf8'))
     expect(result.passed).toBe(true)
+    expect(e.replyRejections).toHaveLength(Number(rejectedFirst))
+    if (rejectedFirst) {
+      expect(JSON.parse(e.replyRejections[0].candidate).call.function.name).toBe('invented_tool')
+      expect(e.replyRejections[0]).toMatchObject({ responseProtocol: 'native', step: 1, attempt: 1 })
+      expect(requests[1].messages.some(m => m.content?.includes('YOUR LAST REPLY WAS REJECTED'))).toBe(true)
+      expect(requests[1].messages.some(m => m.tool_calls || m.role === 'tool')).toBe(false)
+      expect(e.tools.some(t => t.name === 'invented_tool')).toBe(false)
+      expect(e.prompts[0].attemptId).not.toBe(e.prompts[1].attemptId)
+    }
     expect(e.commands.map(c => c.command)).toEqual(commands)
     expect(e.commands.every(c => c.code === 0 && c.sourceUnchanged)).toBe(true)
     const calls = e.tools.filter(t => t.kind === 'call' && t.name === 'workspace_run')
