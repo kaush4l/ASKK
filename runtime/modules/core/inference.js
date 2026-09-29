@@ -2,7 +2,8 @@
  * LLM inference — one shape, several providers.
  *
  *     const llm = inference({provider: 'openai', model, baseUrl}, {fetch})
- *     for await (const delta of llm.stream(messages, {signal})) ...   // {text, kind: 'text'|'reasoning'}
+ *     for await (const delta of llm.stream(messages, {signal})) ...   // text/reasoning deltas
+ *     stream(messages, {nativeTools}) also emits unexecuted tool_fragment and completed tool_call
  *     await llm.models()                                              // [{id, contextLength}]
  *
  * Port of the skeleton's `core/inference.py`. Providers implement `deltas()` and never think
@@ -27,6 +28,7 @@
 
 import { snapshot } from './prompt.js'
 import { schemaResponseFormat } from './responses.js'
+import { validateNativeTools, nativeToolAccumulator } from './native-tools.js'
 
 import { modelRelayIssue } from './model-relay.js'
 
@@ -66,68 +68,74 @@ export function inference(settings = {}, { fetch: fetcher = globalThis.fetch?.bi
     retries: Math.max(1, Math.min(5, Number(settings.retries) || 3)),
     retryDelay: settings.retryDelay ?? 1000,
 
-    async *stream(messages, { signal, onRequest, onFinish, maxOutputTokens, strictCompletion = false, responseSchema } = {}) {
-      if (signal?.aborted) throw new InferenceError('Model request cancelled.', 'aborted')
-      if (settings.requestParams != null && (typeof settings.requestParams !== 'object' || Array.isArray(settings.requestParams))) throw new InferenceError('request_params must be an object', 'configuration')
-      if (settings.structuredOutput !== undefined && (settings.structuredOutput !== 'json_schema' || (settings.provider ?? 'openai') !== 'openai')) throw new InferenceError('structured_output json_schema requires an OpenAI-compatible endpoint', 'configuration')
-      if (settings.structuredOutput && Object.hasOwn(settings.requestParams ?? {}, 'response_format')) throw new InferenceError('structured_output conflicts with request_params.response_format', 'configuration')
-      if (settings.structuredOutput && !responseSchema) throw new InferenceError('The agent did not supply a response schema for this request', 'configuration')
-      let last
-      const frozenMessages = snapshot(messages)
-      // Scripted cursors intentionally remain stateful; provider configuration does not.
-      const requestSettings = settings.provider === 'scripted' ? settings : { ...settings, ...(settings.structuredOutput ? { requestParams: { ...settings.requestParams, response_format: schemaResponseFormat(snapshot(responseSchema)) } } : {}), headers: { ...settings.headers }, ...(maxOutputTokens != null ? { maxOutputTokens } : {}) }
-      for (let attempt = 0; attempt < self.retries; attempt += 1) {
-        let spoken = false
-        // Character counts are UTF-16 string lengths, never estimates of token usage.
-        // Retain no reasoning and at most 512 characters of response content.
-        let reasoningChars = 0
-        let contentChars = 0
-        let contentSuffix = ''
-        let completion = null
-        const recordCompletion = (metadata) => {
-          const truncated = ['length', 'max_tokens', 'missing'].includes(metadata.finishReason)
-          completion = snapshot({ ...metadata, diagnostics: { reasoningChars, contentChars, ...(truncated ? { contentSuffix } : {}) } })
-          onFinish?.(completion)
-        }
-        try {
-          const trackedFetch = async (url, init) => {
-            onRequest?.(snapshot({ provider: settings.provider ?? 'openai', transportAttempt: attempt + 1, url: redactedURL(url), method: init.method, headers: redactedHeaders(init.headers), body: JSON.parse(init.body) }))
-            return send(url, init)
+    stream(messages, { signal, onRequest, onFinish, maxOutputTokens, strictCompletion = false, responseSchema, nativeTools } = {}) {
+      // Capture descriptors before the lazy iterator starts, including nested parameter schemas.
+      nativeTools = nativeTools === undefined ? undefined : snapshot(nativeTools)
+      return (async function* () {
+        if (nativeTools !== undefined) validateNativeTools(nativeTools, settings, (message, code) => { throw new InferenceError(message, code) })
+        if (signal?.aborted) throw new InferenceError('Model request cancelled.', 'aborted')
+        if (settings.requestParams != null && (typeof settings.requestParams !== 'object' || Array.isArray(settings.requestParams))) throw new InferenceError('request_params must be an object', 'configuration')
+        if (settings.structuredOutput !== undefined && (settings.structuredOutput !== 'json_schema' || (settings.provider ?? 'openai') !== 'openai')) throw new InferenceError('structured_output json_schema requires an OpenAI-compatible endpoint', 'configuration')
+        if (settings.structuredOutput && Object.hasOwn(settings.requestParams ?? {}, 'response_format')) throw new InferenceError('structured_output conflicts with request_params.response_format', 'configuration')
+        if (settings.structuredOutput && !responseSchema) throw new InferenceError('The agent did not supply a response schema for this request', 'configuration')
+        let last
+        const frozenMessages = snapshot(messages)
+        // Scripted cursors intentionally remain stateful; provider configuration does not.
+        const requestSettings = settings.provider === 'scripted' ? settings : { ...settings, ...(settings.structuredOutput ? { requestParams: { ...settings.requestParams, response_format: schemaResponseFormat(snapshot(responseSchema)) } } : {}), headers: { ...settings.headers }, ...(maxOutputTokens != null ? { maxOutputTokens } : {}) }
+        for (let attempt = 0; attempt < self.retries; attempt += 1) {
+          let spoken = false
+          // Character counts are UTF-16 string lengths, never estimates of token usage.
+          // Retain no reasoning and at most 512 characters of response content.
+          let reasoningChars = 0
+          let contentChars = 0
+          let contentSuffix = ''
+          let completion = null
+          const recordCompletion = (metadata) => {
+            const truncated = ['length', 'max_tokens', 'missing'].includes(metadata.finishReason)
+            completion = snapshot({ ...metadata, diagnostics: { reasoningChars, contentChars, ...(truncated ? { contentSuffix } : {}) } })
+            onFinish?.(completion)
           }
-          const trackedRun = run && (async (body, options) => {
-            onRequest?.(snapshot({ provider: 'cli', transportAttempt: attempt + 1, body }))
-            return run(body, options)
-          })
-          for await (const delta of provider.deltas(requestSettings, frozenMessages, { fetch: trackedFetch, run: trackedRun, signal, onFinish: recordCompletion, strictCompletion })) {
-            spoken = true
-            if (delta.kind === 'reasoning') reasoningChars += delta.text.length
-            else if (delta.kind === 'text') {
-              contentChars += delta.text.length
-              contentSuffix = (contentSuffix + delta.text).slice(-512)
+          try {
+            const trackedFetch = async (url, init) => {
+              onRequest?.(snapshot({ provider: settings.provider ?? 'openai', transportAttempt: attempt + 1, url: redactedURL(url), method: init.method, headers: redactedHeaders(init.headers), body: JSON.parse(init.body) }))
+              return send(url, init)
             }
-            yield delta
-          }
-          return
-        } catch (error) {
-          if (signal?.aborted) throw new InferenceError('Model request cancelled.', 'aborted')
-          const transientHTTP = error.code === 'provider_http' && (error.metadata?.status === 429 || error.metadata?.status >= 500)
-          if (error instanceof InferenceError && !transientHTTP) {
-            if (!completion && error.code === 'truncated') recordCompletion({ finishReason: 'missing', usage: null })
-            if (completion) error.metadata = completion
-            throw error
-          }
-          last = unreadable(error, settings, { pageURL, bridgeURL })
-          if (spoken) {
-            if (!completion) recordCompletion({ finishReason: 'missing', usage: null })
-            throw new InferenceError(`${self.model} stopped mid-reply: ${error.message}`, 'truncated', completion)
-          }
-          if (attempt + 1 < self.retries) {
-            onRetry?.(attempt + 1, error)
-            await sleep(self.retryDelay * 2 ** attempt, signal)
+            const trackedRun = run && (async (body, options) => {
+              onRequest?.(snapshot({ provider: 'cli', transportAttempt: attempt + 1, body }))
+              return run(body, options)
+            })
+            for await (const delta of provider.deltas(requestSettings, frozenMessages, { fetch: trackedFetch, run: trackedRun, signal, onFinish: recordCompletion, strictCompletion, nativeTools })) {
+              if (signal?.aborted) throw new InferenceError('Model request cancelled.', 'aborted')
+              spoken = true
+              if (delta.kind === 'reasoning') reasoningChars += delta.text.length
+              else if (delta.kind === 'text') {
+                contentChars += delta.text.length
+                contentSuffix = (contentSuffix + delta.text).slice(-512)
+              }
+              yield delta
+            }
+            return
+          } catch (error) {
+            if (signal?.aborted) throw new InferenceError('Model request cancelled.', 'aborted')
+            const transientHTTP = error.code === 'provider_http' && (error.metadata?.status === 429 || error.metadata?.status >= 500)
+            if (error instanceof InferenceError && !transientHTTP) {
+              if (!completion && (error.code === 'truncated' || (nativeTools !== undefined && spoken))) recordCompletion({ finishReason: 'missing', usage: null })
+              if (completion) error.metadata = completion
+              throw error
+            }
+            last = unreadable(error, settings, { pageURL, bridgeURL })
+            if (spoken) {
+              if (!completion) recordCompletion({ finishReason: 'missing', usage: null })
+              throw new InferenceError(`${self.model} stopped mid-reply: ${error.message}`, 'truncated', completion)
+            }
+            if (attempt + 1 < self.retries) {
+              onRetry?.(attempt + 1, error)
+              await sleep(self.retryDelay * 2 ** attempt, signal)
+            }
           }
         }
-      }
-      throw new InferenceError(`${self.model || settings.provider} did not answer after ${self.retries} tries: ${last?.message ?? last}`, last?.code ?? 'provider_error', last?.metadata)
+        throw new InferenceError(`${self.model || settings.provider} did not answer after ${self.retries} tries: ${last?.message ?? last}`, last?.code ?? 'provider_error', last?.metadata)
+      })()
     },
 
     async invoke(messages, options) {
@@ -189,7 +197,7 @@ export function tokens(text) {
 const CONTEXT_KEYS = ['context_length', 'max_context_length', 'max_model_len', 'context_window', 'loaded_context_length']
 
 const openai = {
-  async *deltas(settings, messages, { fetch, signal, onFinish, strictCompletion }) {
+  async *deltas(settings, messages, { fetch, signal, onFinish, strictCompletion, nativeTools }) {
     const base = openaiBase(settings)
     const headers = { 'content-type': 'application/json', ...extraHeaders(settings) }
     if (settings.apiKey) headers.authorization = `Bearer ${settings.apiKey}`
@@ -198,6 +206,9 @@ const openai = {
     const reserved = ['model', 'messages', 'stream', 'stream_options', 'max_tokens', 'max_completion_tokens', 'temperature']
     if (reserved.some(key => Object.hasOwn(extras, key))) throw new InferenceError('request_params cannot override model, messages, streaming or configured token/temperature limits', 'configuration')
     const body = { ...extras, model: settings.model, messages, stream: true, stream_options: { include_usage: true } }
+    const native = nativeTools !== undefined
+    const calls = native ? nativeToolAccumulator(nativeTools, message => { throw new InferenceError(message, 'provider_response') }) : null
+    if (nativeTools?.length) Object.assign(body, { tools: nativeTools, parallel_tool_calls: false, tool_choice: 'auto' })
     if (settings.temperature != null) body.temperature = Number(settings.temperature)
     if (settings.maxOutputTokens != null) body.max_tokens = Number(settings.maxOutputTokens)
     const response = await fetch(`${base}/chat/completions`, { method: 'POST', headers, body: JSON.stringify(body), signal })
@@ -208,15 +219,31 @@ const openai = {
     for await (const data of sse(response.body, { signal })) {
       if (data === '[DONE]') { ended = true; break }
       const event = json(data)
+      if (native && (!event || typeof event !== 'object' || Array.isArray(event))) throw new InferenceError('Invalid native streaming event', 'provider_response')
       if (event?.error) throw new Error(event.error.message ?? JSON.stringify(event.error))
       if (event?.usage) usage = event.usage
       if (event?.choices?.[0]?.finish_reason) finishReason = event.choices[0].finish_reason
       const delta = event?.choices?.[0]?.delta ?? {}
+      if (native && delta.tool_calls !== undefined) {
+        if (!Array.isArray(delta.tool_calls)) throw new InferenceError('Native tool_calls must be an array', 'provider_response')
+        for (const fragment of delta.tool_calls) {
+          yield { kind: 'tool_fragment', fragment: snapshot(fragment) }
+          calls.add(fragment)
+        }
+      }
       const reasoning = delta.reasoning_content ?? delta.reasoning
       if (reasoning) yield { text: String(reasoning), kind: 'reasoning' }
       if (delta.content) yield { text: String(delta.content), kind: 'text' }
     }
-    complete({ finishReason: strictCompletion && (!ended || !finishReason) ? 'missing' : finishReason ?? (ended ? 'stop' : 'missing'), usage }, onFinish)
+    if (native) {
+      const metadata = { finishReason: !ended || !finishReason ? 'missing' : finishReason, usage }
+      if (metadata.finishReason !== 'tool_calls') complete(metadata, onFinish)
+      else onFinish?.(snapshot(metadata))
+      if (calls.size && metadata.finishReason !== 'tool_calls') throw new InferenceError('Native tool calls require tool_calls finish reason', 'provider_response')
+      if (!calls.size && metadata.finishReason !== 'stop') throw new InferenceError('Native final text requires stop finish reason', 'provider_response')
+      const call = calls.finish()
+      if (call) yield { kind: 'tool_call', call }
+    } else complete({ finishReason: strictCompletion && (!ended || !finishReason) ? 'missing' : finishReason ?? (ended ? 'stop' : 'missing'), usage }, onFinish)
   },
   async models(settings, { fetch, signal }) {
     const base = openaiBase(settings)

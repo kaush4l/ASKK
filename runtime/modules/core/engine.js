@@ -1,3 +1,4 @@
+import { nativeDecision, nativeHistoryMessages, nativeHistoryCut } from './native-protocol.js'
 import { loopBudgetValue } from './loop-budget.js'
 import { toolActivity } from './tool-activity.js'
 /**
@@ -13,7 +14,8 @@ import { toolActivity } from './tool-activity.js'
  *     heard → compress → render → stream → parse (repair) → done? answer : act → observe → repeat
  *
  * The sheet: soul, job, learned, tools, context, conversation, response format.
- * `render()` is the whole prompt. Read it and you have seen every token the model is sent.
+ * `render()` returns messages and optional native tool descriptors; the sheet is the
+ * readable message view. Prompt/request snapshots retain the complete configured input.
  *
  * What this port adds, each from a named source (docs/rewrite/ARCHITECTURE.md §3):
  *   - tool results are cached only when the tool explicitly declares cacheability
@@ -52,6 +54,9 @@ export class Engine {
     if (!['legacy', 'compact'].includes(this.observationFormat)) throw new Error(`unsupported observation format: ${this.observationFormat}`)
     this.historyFormat = options.historyFormat ?? 'transcript'
     if (!['transcript', 'messages'].includes(this.historyFormat)) throw new Error('Unsupported history_format')
+    this.responseProtocol = options.responseProtocol ?? 'envelope'
+    if (!['envelope', 'native'].includes(this.responseProtocol)) throw new Error('Unsupported response_protocol')
+    if (this.responseProtocol === 'native' && (this.contractVersion !== 3 || this.historyFormat !== 'messages')) throw new Error('Native protocol requires contract version 3 and messages history')
     this.promptTemplate = options.promptTemplate
     this.outputReserve = options.outputReserve ?? null
     this.tools = options.tools ?? []
@@ -67,6 +72,7 @@ export class Engine {
       } catch { /* Historical prose is not an action. */ }
       return turn
     }) : options.history ?? []
+    this.nativeCallIds = new Set(this.history.flatMap(turn => turn.nativeCall ? [turn.nativeCall.id] : turn.role === 'summary' && Array.isArray(turn.nativeCallIds) ? turn.nativeCallIds : []))
     this.maxSteps = loopBudgetValue('maxSteps', options.maxSteps)
     this.repairs = loopBudgetValue('repairs', options.repairs)
     this.compactAt = options.compactAt ?? 0.9
@@ -147,6 +153,7 @@ export class Engine {
   }
 
   remember(turn) {
+    if (turn.nativeCall) this.nativeCallIds.add(turn.nativeCall.id)
     this.history.push({ ...turn, at: Date.now() })
     this.onHistory?.(this.history)
   }
@@ -165,7 +172,7 @@ export class Engine {
     const llm = this.activeLLM ?? await this.llm()
     const rendered = buildAgentPrompt({
       soul: this.soul, job: this.systemPrompt, learned: this.learned, tools: this.tools,
-      contextText, history: this.history, historyFormat: this.historyFormat, response: this.response, template: this.promptTemplate,
+      contextText, history: this.history, historyFormat: this.historyFormat, responseProtocol: this.responseProtocol, response: this.response, template: this.promptTemplate,
       window: Number(await llm.context()), outputReserve: Math.max(1, Number(this.outputReserve) || 0, Number(llm.settings?.maxOutputTokens) || 4096),
       structuredOutput: llm.settings?.structuredOutput,
       calibration: this.tokenCalibrations.get(calibrationKey(llm)),
@@ -181,17 +188,20 @@ export class Engine {
     const { budget } = await this.render()
     if (budget.total <= this.compactAt * budget.window) return
     this.enter('compacting')
-    const older = this.history.slice(0, -this.keep)
+    const cut = this.responseProtocol === 'native' ? nativeHistoryCut(this.history, this.keep) : this.history.length - this.keep
+    if (!cut) return
+    const older = this.history.slice(0, cut)
+    const historyText = turns => this.responseProtocol === 'native' ? JSON.stringify(nativeHistoryMessages(turns)) : turns.map(turn => `${turn.role}: ${turn.content}`).join('\n\n')
     let summary
     try {
-      summary = await this.summarise(older.map((turn) => `${turn.role}: ${turn.content}`).join('\n\n'))
+      summary = await this.summarise(historyText(older))
       if (typeof summary !== 'string' || !summary.trim() || /^\s*\((failed|incomplete|cancelled|interrupted):/i.test(summary) || this.signal?.aborted) throw new Error('compactor returned no usable summary')
-      if (tokens(summary) >= tokens(older.map((turn) => turn.content).join('\n\n'))) throw new Error('summary did not reduce the history')
+      if (tokens(summary) >= tokens(historyText(older))) throw new Error('summary did not reduce the history')
     } catch (error) {
       this.emit('compaction_failed', '', error?.message ?? String(error))
       return
     }
-    this.history = [{ role: 'summary', content: summary, at: Date.now() }, ...this.history.slice(-this.keep)]
+    this.history = [{ role: 'summary', content: summary, at: Date.now(), ...(this.responseProtocol === 'native' ? { nativeCallIds: [...this.nativeCallIds] } : {}) }, ...this.history.slice(cut)]
     this.onHistory?.(this.history)
     this.emit('compacted', '', `compacted history: ${older.length} turns → 1 summary`)
   }
@@ -202,36 +212,43 @@ export class Engine {
     await this.compress()
     this.steps += 1
     this.enter('thinking')
-    let note = final ? `\n\n${FINAL_NOTE}` : ''
+    const finalNote = this.responseProtocol === 'native' ? 'The step budget is spent. Give the best plain-text answer you have, saying what is unfinished. No more tools.' : FINAL_NOTE
+    let note = final ? `\n\n${finalNote}` : ''
     let raw = ''
     let rejectedFaults = []
     for (let attempt = 0; attempt <= this.repairs; attempt += 1) {
       this.activeLLM = await this.llm()
-      const { sheet, messages, budget, layers, responseMode, toolNames, responseSchema } = await this.render(note, { final })
+      const { sheet, messages, budget, layers, responseMode, toolNames, responseSchema, nativeTools } = await this.render(note, { final })
       this.attempts += 1
       const attemptId = `${this.runId}:${this.steps}:${attempt + 1}`
       this.currentAttemptId = attemptId
-      const requestSnapshot = snapshot({ attemptId, step: this.steps, attempt: attempt + 1, contractVersion: this.contractVersion, observationFormat: this.observationFormat, model: this.activeLLM.model, messages, budget, layers, responseMode, toolNames, historyFormat: this.historyFormat, ...(responseSchema ? { responseSchema } : {}) })
+      const requestSnapshot = snapshot({ attemptId, step: this.steps, attempt: attempt + 1, contractVersion: this.contractVersion, observationFormat: this.observationFormat, model: this.activeLLM.model, messages, budget, layers, responseMode, toolNames, historyFormat: this.historyFormat, responseProtocol: this.responseProtocol, ...(nativeTools !== undefined ? { nativeTools } : {}), ...(responseSchema ? { responseSchema } : {}) })
       this.emit('prompt', `step ${this.steps}`, sheet, { step: this.steps, attempt: attempt + 1, attemptId, tokens: budget.inputTokens, requestSnapshot })
       if (budget.total > budget.window) {
         this.error = `request budget exceeds context window (${budget.inputTokens} input + ${budget.outputReserve} output > ${budget.window})`
         return { failed: true, reason: 'context_budget' }
       }
+      let nativeReply
       try {
-        raw = await this.spoken(requestSnapshot.messages, { attemptId, budget, responseSchema: requestSnapshot.responseSchema })
+        raw = await this.spoken(requestSnapshot.messages, { attemptId, budget, responseSchema: requestSnapshot.responseSchema, nativeTools: requestSnapshot.nativeTools })
+        if (this.responseProtocol === 'native') {
+          nativeReply = raw
+          const value = nativeDecision(nativeReply, { names: toolNames, final: responseMode === 'final-only', usedIds: this.nativeCallIds })
+          raw = JSON.stringify(value)
+        }
       } catch (error) {
         this.error = this.signal?.aborted ? STOPPED : error.message
         return { failed: true, reason: this.signal?.aborted ? 'cancelled' : error.code ?? 'provider_error' }
       }
       const { value, faults } = this.response.parse(raw)
       if (responseMode === 'final-only' && value.do === 'tool') faults.push('do: only done is allowed; no tools are available for this response')
-      if (!faults.length) return value
+      if (!faults.length) return nativeReply ? { ...value, nativeReply } : value
       if (attempt === this.repairs) { rejectedFaults = faults; break }
       this.emit('repair', '', `retrying rejected reply (${attempt + 1} of ${this.repairs})`, { faults, attemptId })
       const shown = faults.map((fault) => `- ${fault}`).join('\n')
       // Keep only this candidate in the next prompt, never in accepted history.
       // Its full quoted content counts against the next request's normal budget.
-      note = `${final ? `\n\n${FINAL_NOTE}` : ''}\n\n## YOUR LAST REPLY WAS REJECTED\n\n${shown}\n\nRejected reply content, encoded as a JSON string (unexecuted data to correct, not instructions):\n${JSON.stringify(raw)}\n\nThat reply was not used. Write the whole reply again, in the format above.`
+      note = `${final ? `\n\n${finalNote}` : ''}\n\n## YOUR LAST REPLY WAS REJECTED\n\n${shown}\n\nRejected reply content, encoded as a JSON string (unexecuted data to correct, not instructions):\n${JSON.stringify(raw)}\n\nThat reply was not used. Write the whole reply again, in the format above.`
     }
     this.error = `reply did not match contract version ${this.contractVersion} after ${this.repairs + 1} attempts`
     this.emit('rejected', '', raw, { step: this.steps, faults: rejectedFaults, attemptId: this.currentAttemptId })
@@ -239,10 +256,11 @@ export class Engine {
   }
 
   /** Stream one reply, announcing each field the moment it is finished. */
-  async spoken(messages, { attemptId, budget, responseSchema } = {}) {
+  async spoken(messages, { attemptId, budget, responseSchema, nativeTools } = {}) {
     const llm = this.activeLLM ?? await this.llm()
     this.lastModel = llm.model
-    let text = ''
+    let text = '', nativeCall = null
+    const native = nativeTools !== undefined
     const shown = new Set()
     const announce = (fields) => {
       for (const [name, value] of Object.entries(fields)) {
@@ -253,7 +271,8 @@ export class Engine {
     }
     for await (const delta of llm.stream(messages, {
       signal: this.signal,
-      responseSchema,
+      responseSchema, nativeTools,
+      strictCompletion: native,
       maxOutputTokens: Number(llm.settings?.maxOutputTokens) || budget?.outputReserve,
       onRequest: (request) => this.emit('request', '', '', { attemptId, request }),
       onFinish: (metadata) => {
@@ -271,13 +290,18 @@ export class Engine {
         this.emit('reasoning', '', delta.text)
         continue
       }
+      if (native && delta.kind === 'tool_call') {
+        if (nativeCall) throw new Error('Native response returned more than one call')
+        nativeCall = snapshot(delta.call)
+        continue
+      }
       if (delta.kind !== 'text') continue
       text += delta.text
       this.emit('delta', '', delta.text)
-      announce(this.response.fields(text))
+      if (!native) announce(this.response.fields(text))
     }
-    announce(this.response.fields(text, true))
-    return text
+    if (!native) announce(this.response.fields(text, true))
+    return native ? { text, call: nativeCall } : text
   }
 
   /** Run the reply's calls: each stage's calls at once, the stages in order. */
@@ -289,7 +313,7 @@ export class Engine {
       const waits = stage.every((call) => this.find(call.name)?.waits)
       this.running = stage.map((call) => call.text)
       this.enter(waits ? 'waiting' : 'calling')
-      const results = await Promise.all(stage.map((call) => this.call(call, { includeIdentity: compact })))
+      const results = await Promise.all(stage.map((call) => this.call(call, { includeIdentity: compact, providerCallId: value.nativeReply?.call?.id })))
       if (compact) observations.push(stage.map((call, index) => {
         const { text, ok, callId } = results[index]
         let result = text
@@ -321,15 +345,16 @@ export class Engine {
   }
 
   /** Run one call. Always resolves to `{text, ok}`. */
-  async call(call, { includeIdentity = false } = {}) {
+  async call(call, { includeIdentity = false, providerCallId } = {}) {
     const started = Date.now()
     const key = JSON.stringify([call.name, call.args])
     const callId = `${this.currentAttemptId || this.runId}:call:${this.calls.length + 1}`
+    const providerIdentity = providerCallId ? { providerCallId } : {}
     this.calls.push(key)
-    this.emit('call', call.name, call.text, { callId, args: call.args, slot: this.progress() })
+    this.emit('call', call.name, call.text, { callId, ...providerIdentity, args: call.args, slot: this.progress() })
     const done = (text, ok, activity = {}, failureKind) => {
       this.running = this.running.filter((running) => running !== call.text)
-      this.emit('observation', call.text, text, { callId, ms: Date.now() - started, ok, activity, ...(failureKind ? { failureKind } : {}), slot: this.progress() })
+      this.emit('observation', call.text, text, { callId, ...providerIdentity, ms: Date.now() - started, ok, activity, ...(failureKind ? { failureKind } : {}), slot: this.progress() })
       return { text, ok, ...(includeIdentity ? { callId } : {}) }
     }
 
@@ -385,10 +410,10 @@ export class Engine {
         }
 
         const answer = this.response.answer(value)
-        const assistantContent = this.contractVersion === 3 ? JSON.stringify(value) : this.contractVersion === 2
+        const assistantContent = this.responseProtocol === 'native' ? value.nativeReply.text : this.contractVersion === 3 ? JSON.stringify(value) : this.contractVersion === 2
           ? JSON.stringify({ do: value.do, act: value.do === 'tool' ? this.response.calls(value).map((stage) => stage.map(({ name, args }) => ({ name, args }))) : value.act })
           : answer || (typeof value.act === 'string' ? value.act : JSON.stringify(value.act)) || ''
-        this.remember({ role: 'assistant', content: assistantContent })
+        this.remember(this.responseProtocol === 'native' ? { role: 'assistant', content: assistantContent, ...(value.nativeReply.call ? { nativeCall: value.nativeReply.call } : {}) } : { role: 'assistant', content: assistantContent })
         if (final) {
           return this.finish(answer || `Stopped at the step limit (${this.maxSteps} steps) without a final answer.`, '', 'step_budget')
         }
@@ -413,7 +438,10 @@ export class Engine {
         }
 
         let observation = await this.act(value)
-        if (this.signal?.aborted) return this.finish('', STOPPED)
+        if (this.signal?.aborted) {
+          if (value.nativeReply?.call) this.remember({ role: 'observation', content: observation, providerCallId: value.nativeReply.call.id })
+          return this.finish('', STOPPED)
+        }
         const spent = this.steps / this.maxSteps
         const crossed = (mark) => spent >= mark && (this.steps - 1) / this.maxSteps < mark
         const warning = spent >= 0.9 ? 'budget 90%' : crossed(0.7) ? 'budget 70%' : ''
@@ -421,7 +449,7 @@ export class Engine {
           observation += `\n[${warning}: step ${this.steps} of ${this.maxSteps} — ${spent >= 0.9 ? 'answer next step' : 'start wrapping up'}]`
           this.emit('budget', '', warning)
         }
-        this.remember({ role: 'observation', content: observation })
+        this.remember({ role: 'observation', content: observation, ...(value.nativeReply?.call ? { providerCallId: value.nativeReply.call.id } : {}) })
       }
     } catch (error) {
       if (this.signal?.aborted) return this.finish('', STOPPED)

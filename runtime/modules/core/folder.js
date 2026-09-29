@@ -30,7 +30,7 @@ const INFERENCE = {
   via: 'via',
 }
 const ENGINE = {
-  response_format: 'responseFormat',
+  response_format: 'responseFormat', response_protocol: 'responseProtocol',
   observation_format: 'observationFormat', history_format: 'historyFormat',
   contract_version: 'contractVersion',
   prompt_template: 'promptTemplate',
@@ -143,6 +143,9 @@ export async function readSpec(path, { index, load }) {
     else if (key in ENGINE) engine[ENGINE[key]] = value
     else if (!WIRING.includes(key)) notes.push(`unknown key "${key}" ignored`)
   }
+  if (engine.responseProtocol === undefined) engine.responseProtocol = 'envelope'
+  if (!['envelope', 'native'].includes(engine.responseProtocol)) throw new Error('Unsupported response_protocol')
+  if (engine.responseProtocol === 'native' && (engine.contractVersion !== 3 || engine.historyFormat !== 'messages')) throw new Error('response_protocol native requires contract_version: 3 and history_format: messages')
   validateLoopBudget(engine, { prefix: `${path}.` })
   if (engine.contractVersion != null && ![1, 2, 3].includes(engine.contractVersion)) throw new Error(`unsupported contract_version: ${engine.contractVersion}`)
   if (engine.observationFormat != null && !['legacy', 'compact'].includes(engine.observationFormat)) throw new Error(`unsupported observation_format: ${engine.observationFormat}`)
