@@ -1,8 +1,28 @@
 # ASKK: portable agents and an observable agent desk
 
-Status: implementation plan requested by the owner on 2026-09-28 (America/New_York). Audited against source `bacca9d`; published application source `602bead`. This document changes no application behavior and makes no new browser acceptance claim.
+Status: implementation plan requested by the owner on 2026-09-28 (America/New_York), re-audited on 2026-09-29 against source `82c7c73`. That source is published as deployment `a7e04f0`. This planning revision changes no application behavior. [Implementation status](IMPLEMENTATION-STATUS.md) records the bounded browser checks separately.
 
 Updated during planning to reflect the revised goal: a customizable browser desk that bridges code and visual operation without overwhelming configuration or a growing feature monolith. The later extension sections describe architectural compatibility; they are not a requirement to ship every domain in the next increment.
+
+## Current position and next increment
+
+**Certain:** folder import, explicit model/tool binding, selection of an included lead, browser workers, and a dashboard of actual run instances are implemented. Hosted Chrome and Safari have completed imported-agent tool turns through the trusted HTTPS model relay. The new team/inspector release passed 631 tests, with one opt-in CLI skip. Its normal Pages reload restored separate run records in both browsers. These checks do not establish that all agent behavior is configuration-driven.
+
+The remaining architectural split is between bundled definitions and imported packages. The lead's instructions already live in Markdown; removing the residual name-based lifecycle and coding assumptions is the next implementation priority. New dashboard animation or another demonstration agent would not close that gap.
+
+| Priority | Concrete change | Acceptance |
+| --- | --- | --- |
+| 1. One compiler | Route shipped and imported folders through `PackageSource → validated package → AgentSpec`. Keep trusted executable tool implementations in a separate desk registry. | An identical folder behaves the same when shipped or imported; adding it to the deployed desk requires no rebuild. |
+| 2. Explicit lifecycle | Replace `main`, `compactor`, `dreamer` and writer-implies-residency branches with configured lead, session and optional service references. Distinguish agent-session identity from each run. | Rename every definition, including lead and summarizer; scheduling, history and compaction behavior remain unchanged. |
+| 3. Portable workflows and checks | Resolve strategies and templates within the verified package. Replace coding fallbacks, imported `workspace:false`, and unconditional `workspace.acceptance` with declared execution requirements and named check adapters. | An imported coding lead can explicitly bind execution; an imported research lead runs without a guest. Neither acquires authority from its declaration. |
+| 4. Scoped broker | Bind model, individual tools, resources, memory and delegation at the desk; enforce requests there. Move credentials out of agent workers. | Forged calls, undeclared delegates, cross-installation memory and revoked grants fail; parallel child workers remain independently cancellable. |
+| 5. Editable packages | Add browser folder creation, shared visual/source editing, immutable revision upgrades, removal and backup export over the existing installer. | Invalid drafts remain recoverable; running instances keep their pinned revision; reload and quota failure never report a save that did not commit. |
+| 6. Recorded collaboration | Add delegation/message dispatch, delivery, consumption, reply and cancellation records. Extend prompt records with inclusion sources and budgets. | A lead delegates two instances, receives their evidence, requests a bounded repair and concludes against configured checks. Every shown communication has a record. |
+| 7. The agent desk | Place conversation beside the team and a selected-run inspector; progressively expose customization and domain viewers. Subscribe to committed effects and sequenced records. | Keyboard, focus, draft, narrow-screen and reduced-motion checks pass during concurrent tool activity. No prompt text is needed to tell the UI to update. |
+
+Priorities 1–3 establish the shared contracts before parallel code changes. After those stabilize, use separate tracks for package editing, broker/coordination, and desk UX/results, with integration and browser acceptance owned centrally. Existing engine, worker, editor, command and artifact modules stay in use.
+
+The first integrated proof is a newly imported, renamed package on the existing Pages deployment: connect Qwen through the HTTPS relay in Safari, choose any included lead, delegate two distinguishable runs, approve one exact tool call, inspect prompt and communication records, and reload/export retained evidence. No Linux boot is required for this general-agent proof. The browser-built task board remains a separate required coding gate.
 
 ## Product contract
 
@@ -34,13 +54,14 @@ Use a small browser application core plus lazily loaded capability and viewer mo
 
 ## Findings to address
 
-- `src/core/folder.js` discovers published folders, but assumes a global listing, global prompt paths, path identities and top-level peers. It lacks an owner import/install lifecycle.
-- `src/runtime/hub.js` special-cases `main`, `compactor` and `dreamer`. Sessions use path identity. These choices prevent interchangeable agent packages.
+- `src/core/folder.js` still compiles bundled definitions differently from `src/core/package-spec.js`. The owner import/install lifecycle now exists in `src/runtime/agent-installations.js`; bundled global resources, implicit nested delegates and imported package-local references still need one contract.
+- `src/runtime/hub.js` still special-cases `main`, `compactor` and `dreamer` for bundled agents. Imported agents have explicit session policy. Unify these paths instead of treating a filename as a role.
 - `src/runtime/agent.worker.js` imports adjacent JavaScript before tool wrappers apply. A worker currently receives model/host configuration. This is trusted application code, not a safe boundary for arbitrary imported extensions.
 - Hub operations need uniform authorization independent of worker-side wrappers, including delegation targets and memory scopes.
-- `Dashboard.jsx` collapses multiple runs of one definition into a representative status. Current graph edges describe dependencies, not actual communications.
-- `board.tell` lacks durable source/target run delivery receipts. Run inspection omits full persisted tool events.
-- Model testing lists models; it does not verify inference. Pairing and same-endpoint grant changes can leave misleading route/readiness state.
+- `src/runtime/strategy-hub.js` resolves published global strategy/template paths. Imported folders cannot yet supply an executable role graph. The general controller still has a coding/main fallback and marks imported workflows `workspace:false`.
+- `AgentTeam.jsx` now displays distinct runs, and `RunInspector.jsx` reads retained prompts, guidance, tool events and provider attempts. Its inspection is a manual snapshot, not an incremental live subscription. Configured dependency and parent links do not prove a communication occurred.
+- `board.tell` still lacks durable source/target run delivery and consumption receipts. A received note is retained evidence, but is not a full acknowledgement protocol.
+- Model listing and bounded inference checks are now separate and actual HTTPS relay inference is demonstrated. Fresh-profile Safari trust/pairing, denied permissions, comprehensive transport failures and distribution remain acceptance work.
 - Browser Linux full Next builds and current Safari acceptance remain unresolved. General agent work must not depend on guest startup.
 
 ## Seven layers retained
@@ -58,6 +79,8 @@ Use a small browser application core plus lazily loaded capability and viewer mo
 ## 1. Restore the Safari model path first
 
 The reported HTTPS Pages to HTTP loopback failure is consistent with [WebKit's loopback mixed-content issue](https://bugs.webkit.org/show_bug.cgi?id=171934). The error alone cannot distinguish mixed content, CORS, connectivity or an unreadable authentication response.
+
+The route below has now completed actual Pages inference and imported-agent tool turns using existing trusted certificates. It is not a new-user certificate-installation proof. [Chrome's Local Network Access policy](https://developer.chrome.com/blog/local-network-access) adds a separate permission step for local services; successful TLS and CORS alone are not an all-browser connection guarantee. [Apple documents certificate trust as an explicit system setting](https://support.apple.com/guide/keychain-access/change-the-trust-settings-of-a-certificate-kyca11871/mac).
 
 Provide **Connect local model** inside Model settings, with inline HTTPS companion pairing. Display the actual route:
 
@@ -152,7 +175,7 @@ Retain the approved layout constraints: conversation 400px at 1440px and 360px a
 
 Use the Pokémon reference for recognizable characters and legible discrete states. No wandering sprites, invented emotions or animated typing. Use approximately 120–160ms transitions only when helpful, allow immediate input throughout, and remove movement for reduced motion. Streaming cannot reorder agents or move layout. Batch/coalesce screen updates while retaining the complete evidence stream; virtualize large lists.
 
-The lesson drawn from [Cyanogen's theme template](https://github.com/LineageOS/android_packages_themes_Template) is replaceable, packaged customization with explicit structure. OnePlus's own [design description](https://www.oneplus.com/at/press/press-release/oxygenos-14-empowers-oneplus-devices-with-upgraded-fast-and-smooth-experience) emphasizes resource scheduling and responsive interactions and also includes animation. Our interpretation is immediate feedback and low interruption, not an unsupported claim that removing every animation explains speed.
+The lesson drawn from the [historical Cyanogen theme template](https://github.com/LineageOS/android_packages_themes_Template/blob/cm-13.0/README.md) is replaceable, packaged customization with explicit structure. This is a design analogy, not a claim about current LineageOS theme-engine support. OnePlus's own [design description](https://www.oneplus.com/at/press/press-release/oxygenos-14-empowers-oneplus-devices-with-upgraded-fast-and-smooth-experience) emphasizes resource scheduling and responsive interactions and also includes animation. Our interpretation is immediate feedback and low interruption, not an unsupported claim that removing every animation explains speed.
 
 **Gate:** distinguish two runs of one agent; trace every message edge to a receipt; approve only the selected call; retain focus/draft during tool streams; complete keyboard-only and VoiceOver paths; verify reduced motion, 320×400 and 390×844 screens, including the software keyboard. Target visible input feedback under 100ms and p75 interaction latency below 200ms on named test hardware; report measurements rather than claiming them in advance.
 
@@ -166,10 +189,10 @@ First general-purpose proof uses a research/report workflow with a real lead and
 
 ## Delivery order and ownership
 
-1. Fix and verify Safari transport/connection UX using the existing application. This unblocks owner testing immediately.
-2. Define PackageSource, AgentRef/RunBinding, capability RPC and communication event schemas together. Add executable contract fixtures before parallel integration.
-3. Parallel tracks: package import/storage; broker/lead coordination; desk UI/evidence; adapters/completion checks. UI depends on shared fixtures, not an invented second event model.
-4. Migrate bundled agents through the same package path as user imports. Remove name exceptions and coding defaults from the general controller. Preserve old runs read-only and migrate memories explicitly without overwriting them.
-5. Run the gates above in Chrome and Safari, then publish the exact tested export to GitHub Pages with existing `/ASKK` isolation and integrity checks. Preserve deployment history and existing local work.
+1. Preserve the now-working trusted HTTPS model route, folder installation and team inspector; complete fresh-user Safari connection checks alongside the architectural work.
+2. Unify bundled/imported package compilation, explicit session/service roles, portable strategies, execution requirements and completion check references. Preserve old evidence read-only and migrate memories explicitly without overwriting them.
+3. Freeze the shared package revision, run binding, capability RPC and communication event schemas with executable contract fixtures.
+4. Parallel tracks: package creation/editing/storage; broker/lead coordination; desk UI/evidence; adapters/checks. The UI uses shared records rather than an invented second event model. A research/report adapter establishes the first noncoding proof; media follows through the same job/artifact contract.
+5. Run the integrated gate above in Chrome and Safari, retain failures and interventions, then publish the exact tested export to GitHub Pages with existing `/ASKK` isolation and integrity checks. Preserve deployment history and existing local work. Measure repeated fresh goals before claiming one-shot reliability.
 
 Completion of this milestone means: import a new agent folder in Safari, bind the local model through HTTPS, choose any configured lead, watch distinguishable parallel agents and real communications, approve an action, inspect exact inputs/results, and reload without losing acknowledged state. It does not mean arbitrary workflow support, one-shot reliability, always-on browser execution or Browser Linux build readiness has been proven.

@@ -1,0 +1,40 @@
+{
+  "at": "2026-09-29T05:48:47Z",
+  "origin": "https://kaush4l.github.io/ASKK/",
+  "sourceCommit": "82c7c73",
+  "deploymentCommit": "a7e04f06576b5f606876a7589eee23c5db9a8493",
+  "scope": "Native Safari accessibility/UI check after one normal reload of the existing Pages tab. No new model generation; existing certificate trust was reused. Safari resource hashes were not independently captured.",
+  "checks": {
+    "normalReloadLoaded": true,
+    "selectedLead": "Pond observer",
+    "activeRuns": 0,
+    "recentRunCount": 5,
+    "restoredRun": "rmum846bp1",
+    "trace": "rmum846bp1",
+    "recordedResult": "Yes, the current task plan is empty.",
+    "toolActivities": 1,
+    "toolLabel": "Read task plan",
+    "toolStatus": "Completed",
+    "historicalPrompts": 3,
+    "providerRequests": 3,
+    "providerCompletions": 3,
+    "modelRoute": "Through HTTPS companion",
+    "companionState": "Connected",
+    "companionAdvertisedCapabilities": 1,
+    "commandExecution": "Not started",
+    "browserLinux": "Not started"
+  },
+  "exportAttempt": {
+    "control": "Export this trace",
+    "observed": "Safari displayed its download-permission prompt for a blob URL on the Pages origin.",
+    "downloadedFileVerified": false,
+    "reason": "No completed download was observed; no permission change was made by the agent.",
+    "priorOutputActionRetested": false
+  },
+  "limitations": [
+    "This check does not prove the saved JSON contents in Safari or the default Output export action.",
+    "A fresh-profile trust setup and Safari delegation remain unverified.",
+    "No Safari guest, artifact, VoiceOver or performance acceptance.",
+    "No full native-window screenshot is published, to avoid including unrelated user tabs."
+  ]
+}

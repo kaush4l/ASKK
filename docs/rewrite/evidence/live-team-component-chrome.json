@@ -1,0 +1,102 @@
+{
+  "scope": "Real React components with synthetic runs; no model, worker, or runtime execution",
+  "beforeGeometry": [
+    {
+      "id": "lead",
+      "top": 220.4453125,
+      "height": 246.7890625
+    },
+    {
+      "id": "observer-one",
+      "top": 220.4453125,
+      "height": 246.7890625
+    },
+    {
+      "id": "observer-two",
+      "top": 477.234375,
+      "height": 246.7890625
+    }
+  ],
+  "afterActivityGeometry": [
+    {
+      "id": "lead",
+      "top": 220.4453125,
+      "height": 246.7890625
+    },
+    {
+      "id": "observer-one",
+      "top": 220.4453125,
+      "height": 246.7890625
+    },
+    {
+      "id": "observer-two",
+      "top": 477.234375,
+      "height": 246.7890625
+    }
+  ],
+  "focusRestored": "Inspect Pond observer run observer-two",
+  "initialRecentLimit": 6,
+  "expandedRecentCount": 9,
+  "narrow390": {
+    "dialog": {
+      "height": 759.59375,
+      "left": 8,
+      "right": 382,
+      "width": 374
+    },
+    "documentWidth": 390,
+    "focus": "Close dialog",
+    "viewport": 390
+  },
+  "narrow320": {
+    "animations": [
+      "none",
+      "none",
+      "none",
+      "none",
+      "none",
+      "none",
+      "none",
+      "none",
+      "none",
+      "none",
+      "none",
+      "none"
+    ],
+    "dialog": {
+      "height": 360,
+      "left": 8,
+      "right": 312,
+      "width": 304
+    },
+    "documentWidth": 320,
+    "reduced": true,
+    "viewport": 320
+  },
+  "actions": {
+    "actions": [
+      {
+        "name": "inspect",
+        "id": "observer-two"
+      },
+      {
+        "name": "refresh",
+        "id": "observer-two"
+      },
+      {
+        "name": "export",
+        "id": "observer-two"
+      },
+      {
+        "name": "inspect",
+        "id": "observer-two"
+      }
+    ],
+    "errors": []
+  },
+  "limitations": [
+    "Fixture bundle predates the final coordinator-lookup and activity-excerpt changes; this is not a final-byte browser acceptance record.",
+    "No model, worker, approval broker or command executed.",
+    "Viewport emulation is not physical-device or software-keyboard acceptance."
+  ]
+}

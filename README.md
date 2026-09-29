@@ -8,13 +8,14 @@ A local Qwen model completed a native task-board verification with 37 passing ch
 
 - [Folder-defined agent desk plan](docs/rewrite/AGENT-DESK-PLAN.md)
 - [Import and run your own agent folder](docs/rewrite/PORTABLE-AGENTS.md)
+- [Live team and recorded runs](docs/rewrite/LIVE-TEAM.md)
 - [Current architecture and seven contracts](docs/rewrite/ARCHITECTURE.md)
 - [Configured parallel roles and completion contracts](docs/rewrite/CONFIGURED-STRATEGIES.md)
 - [Measured status and remaining gates](docs/rewrite/IMPLEMENTATION-STATUS.md)
 - [Remote behavior reconciliation](docs/rewrite/REMOTE-RECONCILIATION.md)
 - [Browser Linux build/provenance](scripts/browser-linux/README.md)
 
-Published folder-agent release: source **`d27b2cc`**, deployment **`58299fd`** ([successful deployment](https://github.com/kaush4l/ASKK/actions/runs/36524438807)). The full suite passed **594 tests with 1 optional skip**, followed by **115 passing affected tests** after the final display-name change. All six audited served files matched the export. An initial Pages dynamic import failed; a second normal reload succeeded without clearing caches. After Safari reload, the lead, answer and tool card returned, but Output's **Export run evidence** action did not export the restored run. See [measured status](docs/rewrite/IMPLEMENTATION-STATUS.md) for receipts and scope.
+Published live-team release: source **`82c7c73`**, deployment **`a7e04f0`** ([successful deployment](https://github.com/kaush4l/ASKK/actions/runs/36527541082)). The final suite passed **631 tests with 1 optional skip**. All four audited served resources matched the tested export. Normal Chrome and Safari reloads restored run records and historical inspection without restarting work; Chrome showed the lead and its child separately. The restored-run export fix passed automated tests and an actual local Chrome download; Safari reached its download-permission prompt, but a saved file was not verified. See [measured status](docs/rewrite/IMPLEMENTATION-STATUS.md) for receipts, prior failures and scope.
 
 ## Try the dashboard
 
@@ -24,7 +25,7 @@ Open [ASKK on GitHub Pages](https://kaush4l.github.io/ASKK/). The dashboard is t
 2. Choose **General assistant** for research, planning, or questions. This starts browser agent workers without downloading or booting Browser Linux. Web fetch is subject to CORS; search requires a companion that explicitly advertises `fetch`. Browser control is unavailable unless an actual tool and its required capability are supplied.
 3. Choose **Compare perspectives** to run an approach and independent critique in parallel, followed by synthesis. Role cards link to actual results and exact historical prompts. This reasoning workflow needs no command environment. Graph inputs stay fixed during a run; stop to change the goal. For General assistant, choose **Single agent** or **Allow delegation**, enable the tools you want, and select which effect classes require approval. These choices are pinned for the next task and inherited by its subagents. Existing denials still apply. The internal context compactor is runtime infrastructure, not task delegation.
 4. Use **Import agent** to choose an `agent.md` folder or standalone definition. Review the included roles, select any lead, bind its model aliases and explicitly grant supported tool groups. Install saves the definition in this browser; it does not start a task. Try [Pond observer](docs/rewrite/PORTABLE-AGENTS.md) for a real task-plan read without a command environment.
-5. Inspect agents, pending approvals, and tool inputs/results as work runs. **View instructions** separates soul/agent instructions, dynamic context and tool descriptions, and the most recently recorded prompt. A recorded prompt describes that historical request, not a preview of a future request.
+5. **Your live team** shows separate run instances, including repeated uses of the same agent. Open a card for its recorded task, result, tools, guidance and exact historical prompts/provider attempts; use **Refresh snapshot** for newer records or **Export this trace** for retained evidence. **Agent library** holds configured definitions and instructions. A historical prompt is evidence of a past request, and a parent link is not a message-delivery acknowledgement.
 6. Choose **Build an app** for the coding workflow. Its file commits update the editor; command and artifact cards open their corresponding surfaces. Browser Linux remains experimental. Select Local Bun explicitly for native execution; model pairing alone never selects it.
 
 The published build is an engineering preview. General browser-control tooling, reliable browser-contained Next builds, broader Safari workbench/artifact and VoiceOver acceptance, and unattended one-shot application generation remain incomplete. See the measured status for the exact tested build and receipts. The optional [Apple Silicon Bun directory package](scripts/companion/README.md) has separate native acceptance; it is not a signed installer.
@@ -97,7 +98,7 @@ require_verification: true
 Read the current files, implement the requested result, and verify it.
 ```
 
-The dashboard also accepts browser-local agent folders without rebuilding the application. **Import agent** validates the source, lets you select any included lead, binds saved model profiles, and asks which requested tool groups to grant. A successful durable save activates a separate installation; reload revalidates it without replaying tasks. See the [portable agent guide and example](docs/rewrite/PORTABLE-AGENTS.md). Visual/source editing, upgrades, removal, backup export, migration of the bundled catalogue, and a per-instance team map remain pending. Imported executable tools are not enabled.
+The dashboard also accepts browser-local agent folders without rebuilding the application. **Import agent** validates the source, lets you select any included lead, binds saved model profiles, and asks which requested tool groups to grant. A successful durable save activates a separate installation; reload revalidates it without replaying tasks. See the [portable agent guide and example](docs/rewrite/PORTABLE-AGENTS.md). Visual/source editing, upgrades, removal, backup export, and migration of the bundled catalogue remain pending. The team now shows individual runs; recorded communication acknowledgements remain a separate contract. Imported executable tools are not enabled.
 
 The main and coder agents use compact version 2 JSON. Calls within a stage may run concurrently; stages run in order. Policy decides whether tools run, are denied, or need approval. Exact structured prompt attempts and redacted provider requests are recorded separately.
 

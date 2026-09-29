@@ -1,0 +1,21 @@
+{
+  "scope": "Actual local exported workbench: restored imported run inspected and exported using the UI after reload. The controller export was unchanged by the final modal and excerpt changes. Final export was then reloaded and the same run reopened.",
+  "sourceCommit": "82c7c73",
+  "origin": "http://127.0.0.1:5193/ASKK/",
+  "download": {
+    "bytes": 24334,
+    "sha256": "f552d65f6505ca695bd17b1c4297d962dec621d309b1f22e6c0ef670e500ceb5",
+    "trace": "rmum7izi01",
+    "runs": 1,
+    "toolEvents": 2,
+    "providerRequests": 2,
+    "commands": 0,
+    "artifacts": 0,
+    "workspaceBinding": null
+  },
+  "limitations": [
+    "The browser download-event waiter timed out despite the file being successfully written; file bytes and contents were checked separately.",
+    "No fresh model generation or execution in this check.",
+    "The raw download remains local; only its hash, size and bounded structural facts are published."
+  ]
+}

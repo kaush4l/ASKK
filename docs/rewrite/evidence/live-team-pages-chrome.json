@@ -1,0 +1,84 @@
+{
+  "at": "2026-09-29T05:48:47.739Z",
+  "draft": [
+    "Safari relay checkpoint \u2014 keep this draft.",
+    "Safari relay checkpoint \u2014 keep this draft."
+  ],
+  "guestFrames": 0,
+  "heading": "Your live team",
+  "isolated": true,
+  "resources": [
+    {
+      "bytes": 39811,
+      "path": "index.html",
+      "sha256": "5c6fbf68832ffcdd5f213ad40c43fb6794585252e6e05f0e773ec8e03a797677",
+      "status": 200,
+      "matchesTestedExport": true
+    },
+    {
+      "bytes": 100253,
+      "path": "runtime/modules/runtime/hub.js",
+      "sha256": "f65a632396a0e8138d766a73dfc2273ca72fe324acd0097a29edd1c91e25186e",
+      "status": 200,
+      "matchesTestedExport": true
+    },
+    {
+      "bytes": 79198,
+      "path": "runtime/modules/workspace/controller.js",
+      "sha256": "7ee2f3098179c2f75e1a1d81408dc6b29cecc2bbf9540e9d1f265f68066214aa",
+      "status": 200,
+      "matchesTestedExport": true
+    },
+    {
+      "bytes": 253805,
+      "path": "_next/static/chunks/app/page-e8b4b19ca378d4e1.js",
+      "sha256": "e6bdbd777f4e3de07c6fc1234f83adb6ce33293a2370dc5f3bbd78d06e0752a4",
+      "status": 200,
+      "matchesTestedExport": true
+    }
+  ],
+  "runButtons": [
+    "Inspect Pond observer run rmum80sur4",
+    "Inspect parent Pond guide run rmum80pg23",
+    "Inspect Pond guide run rmum80pg23",
+    "Inspect Pond guide run rmum7ytol2",
+    "Inspect Pond guide run rmum7xc671",
+    "Inspect assistant run rmum6ldj41",
+    "Inspect assistant run rmum41soy2"
+  ],
+  "serviceWorker": "https://kaush4l.github.io/ASKK/coi-serviceworker.js",
+  "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36",
+  "sourceCommit": "82c7c73",
+  "deploymentCommit": "a7e04f06576b5f606876a7589eee23c5db9a8493",
+  "deploymentRun": "https://github.com/kaush4l/ASKK/actions/runs/36527541082",
+  "build": {
+    "version": 1,
+    "basePath": "/ASKK",
+    "totalBytes": 803186134,
+    "fileCount": 152,
+    "runtimeId": "c2w-node24-38d093f4a38002db",
+    "artifactHash": "5e8a3e8f8d251cd256bc2215a7c1909eecb1d844f34f6c162d4257f5e4c12c94"
+  },
+  "scope": "Normal reload and inspection of retained imported-agent records on actual Pages; no new model generation or execution in this check.",
+  "checks": {
+    "normalReloadLoaded": true,
+    "draftPreserved": true,
+    "separateLeadAndChildCards": true,
+    "restoredRun": "rmum80sur4",
+    "trace": "rmum80pg23",
+    "recordedResult": "Ready",
+    "historicalPrompts": 1,
+    "providerRequests": 1,
+    "providerCompletions": 1,
+    "parentLink": "rmum80pg23",
+    "closeRestoredFocus": "Inspect Pond observer run rmum80sur4",
+    "commandExecution": "Not started",
+    "modelRoute": "Through HTTPS companion",
+    "companionAdvertisedCapabilities": 1
+  },
+  "limitations": [
+    "No new inference in this release check. Prior imported lead/delegate receipts apply to their recorded attempts.",
+    "No Browser Linux build, Safari guest, artifact or VoiceOver acceptance.",
+    "No fresh-profile local-network permission or certificate trust setup check."
+  ]
+}
