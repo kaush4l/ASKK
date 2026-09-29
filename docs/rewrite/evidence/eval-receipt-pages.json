@@ -1,0 +1,43 @@
+{
+  "source": "42dc068",
+  "deployment": "2c39a9d350898873eff28296184c849429241fb1",
+  "workflow": "https://github.com/kaush4l/ASKK/actions/runs/36560804305",
+  "workflowConclusion": "success",
+  "checks": [
+    {
+      "path": "index.html",
+      "status": 200,
+      "sha256": "202925c5bf9302be21e0d4644a643c944f320f60b660f7006dab8977a14ce0c5",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/workspace/controller.js",
+      "status": 200,
+      "sha256": "cee0f5663e0fcde759bf347b17f34df327ef4a5389551d0c11f9915259b665d4",
+      "matches": true
+    },
+    {
+      "path": "_next/static/chunks/app/page-27754c516e7d4aa9.js",
+      "status": 200,
+      "sha256": "421a8a9abd4433e074500fb58028f0cd19a635f1a08002015aebe30f7c117c0c",
+      "matches": true
+    }
+  ],
+  "scope": "Hosted HTTP asset verification only; no new Safari, iPhone, hosted inference, packaged companion or Browser Linux acceptance. Two local small-model script smoke passes are recorded separately; scaffold and repair remain unproven.",
+  "tests": {
+    "passed": 884,
+    "skipped": 1,
+    "failed": 0,
+    "assertions": 6533,
+    "files": 86,
+    "finalControllerTests": 132
+  },
+  "export": {
+    "version": 1,
+    "basePath": "/ASKK",
+    "totalBytes": 854209351,
+    "fileCount": 211,
+    "runtimeId": "c2w-node24-38d093f4a38002db",
+    "artifactHash": "59e0c14716e6d08fd41eb8115223083328676686f7624ea22fcd735455b817b7"
+  }
+}
