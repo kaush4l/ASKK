@@ -1,5 +1,5 @@
 {
-  "build": "268f4d790d",
+  "build": "591a1d42a6",
   "files": {
     "agents/assistant/agent.md": "6eb458313e",
     "agents/coder/agent.md": "3afbea3eaa",
@@ -57,8 +57,9 @@
     "browser-linux/vendor/pty.js": "050ae04dc1",
     "browser-linux/vendor/xterm-pty.LICENSE": "039528e966",
     "coi-serviceworker.js": "606eb2678b",
-    "companion-release.json": "f4504ad665",
+    "companion-release.json": "f1e72a3231",
     "desk.json": "1f09489d63",
+    "downloads/askk-companion-darwin-arm64-0692db0.tar.gz": "c559c00e3b",
     "downloads/askk-companion-darwin-arm64-cf6b594.tar.gz": "ba2be62984",
     "downloads/askk-companion-darwin-arm64-df88791.tar.gz": "c5b2d38659",
     "models.json": "2c7b7e2627",
