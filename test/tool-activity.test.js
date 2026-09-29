@@ -11,7 +11,7 @@ async function execute(spec, receipt, args = {}) {
 }
 
 test('tool-owned receipt projection works independently of the callable name', async () => {
-  const written = await execute(workspace_write, { ok: true, rev: 'r2' }, { path: 'src/app.js', content: 'fixture' })
+  const written = await execute(workspace_write, { ok: true, rev: 'r2' }, { path: 'src/app.js', content: 'fixture', expect: 0 })
   expect(written.result.ok).toBe(true)
   expect(written.activity).toEqual({ path: 'src/app.js' })
   const command = await execute(workspace_run, { id: 'command-1', code: 0 }, { command: 'fixture' })
@@ -25,7 +25,7 @@ test('invalid workspace receipts and failed writes cannot claim effects', async 
   const invalid = await execute(workspace_run, { id: 'forged' }, { command: 'fixture' })
   expect(invalid.result.ok).toBe(false)
   expect(invalid.activity).toEqual({})
-  const conflict = await execute(workspace_write, { conflict: true, rev: 'r3' }, { path: 'app.js', content: 'fixture' })
+  const conflict = await execute(workspace_write, { conflict: true, rev: 'r3' }, { path: 'app.js', content: 'fixture', expect: 0 })
   expect(conflict.result.ok).toBe(false)
   expect(conflict.activity).toEqual({})
 })

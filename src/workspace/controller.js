@@ -465,7 +465,13 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
           'workspace.goal': (args, run) => run?.context?.workflow?.workspace === false ? { text: state.goal, revision: state.goalRevision } : forRun(() => ({ text: state.goal, revision: state.goalRevision }))(args, run),
           'workspace.list': forRun(() => files.list()),
           'workspace.read': forRun(({ path }) => files.read(path)),
-          'workspace.write': forRun(args => controller.saveFile({ ...args, expect: args.expect ?? args.expectedRevision })),
+          'workspace.write': forRun(args => {
+            const supplied = ['expect', 'expectedRevision'].filter(key => Object.hasOwn(args, key))
+            const valid = value => typeof value === 'string' ? Boolean(value.trim()) : Number.isSafeInteger(value) && value >= 0
+            if (!supplied.length || supplied.some(key => !valid(args[key]))) throw new Error('workspace.write requires an explicit non-empty revision string or nonnegative integer in expect (or expectedRevision); read the file first, or use 0 to create it.')
+            if (supplied.length === 2 && String(args.expect) !== String(args.expectedRevision)) throw new Error('workspace.write received conflicting expect and expectedRevision values')
+            return controller.saveFile({ ...args, expect: args[supplied[0]] })
+          }),
           'workspace.run': forRun((args, run) => controller.runCommand(args.command, { actor: run?.agent, runId: run?.id })),
           'workspace.build': forRun((_, run) => controller.buildPreview({ actor: run?.agent, runId: run?.id })),
           'workspace.check': forRun((args, run) => controller.checkArtifact(args, { requireInteraction: run.context?.workflow?.completion?.checks.find(check => check.capability === 'workspace.artifact')?.options.requireInteraction ?? acceptance.requireInteraction })),

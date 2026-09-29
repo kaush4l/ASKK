@@ -336,7 +336,7 @@ test('command failures, cancellation, missing exits and write conflicts cannot r
     expect((await engine.call({ name: 'workspace_run', args: { command: 'fixture' }, text: 'workspace_run({command:"fixture"})' })).ok).toBe(false)
   }
   const { engine } = setup([], { tools: [tool(workspace_write, { name: 'workspace_write' })], ctx: { request: async () => ({ conflict: true, revision: 'newer', current: { content: 'owner draft' } }) } })
-  expect((await engine.call({ name: 'workspace_write', args: { path: 'fixture.js', content: 'fixture' }, text: 'workspace_write({path:"fixture.js",content:"fixture"})' })).ok).toBe(false)
+  expect((await engine.call({ name: 'workspace_write', args: { path: 'fixture.js', content: 'fixture', expect: 0 }, text: 'workspace_write({path:"fixture.js",content:"fixture"})' })).ok).toBe(false)
 })
 
 test('successful workspace check and actual zero exit preserve their exact receipt', async () => {
@@ -363,9 +363,9 @@ test('write and build tools reject malformed acknowledgements while retaining re
   ]) {
     let receipt
     const { engine } = setup([], { tools: [tool(spec, { name })], ctx: { request: async () => receipt } })
-    for (receipt of invalid) expect((await engine.call({ name, args: name === 'workspace_write' ? { path: 'fixture.js', content: 'fixture' } : {}, text: `${name}({})` })).ok).toBe(false)
+    for (receipt of invalid) expect((await engine.call({ name, args: name === 'workspace_write' ? { path: 'fixture.js', content: 'fixture', expect: 0 } : {}, text: `${name}({})` })).ok).toBe(false)
     receipt = valid
-    const result = await engine.call({ name, args: name === 'workspace_write' ? { path: 'fixture.js', content: 'fixture' } : {}, text: `${name}({})` })
+    const result = await engine.call({ name, args: name === 'workspace_write' ? { path: 'fixture.js', content: 'fixture', expect: 0 } : {}, text: `${name}({})` })
     expect(result.ok).toBe(true)
     expect(JSON.parse(result.text)).toEqual(valid)
   }

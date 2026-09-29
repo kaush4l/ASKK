@@ -569,6 +569,34 @@ test('workspace Hub operations reject missing or stale run bindings before any e
   expect((await request('workspace.read', { path: 'app/page.jsx' }, bound)).content).toBe(source['app/page.jsx'])
 })
 
+test('agent writes require explicit revisions and preserve newer owner content', async () => {
+  const { controller, hub, browser } = await startedFixture()
+  await controller.startRuntime()
+  const run = { id: 'bound', context: { binding: controller.getSnapshot().runtime.binding } }
+  const write = args => Promise.resolve().then(() => hub.externalOps['workspace.write'](args, run))
+  const original = await controller.readFile('app/page.jsx')
+  const serial = browser.serial
+  for (const revision of [{}, { expect: null }, { expect: undefined }, { expect: '' }, { expect: ' ' }, { expect: -1 }, { expect: 1.5 }, { expect: {} }, { expectedRevision: null }, { expect: null, expectedRevision: original.rev }, { expect: original.rev, expectedRevision: 'other' }]) {
+    await expect(write({ path: 'app/page.jsx', content: 'blind overwrite', ...revision })).rejects.toThrow(/revision|conflicting/)
+    await expect(write({ path: 'new.txt', content: 'blind create', ...revision })).rejects.toThrow(/revision|conflicting/)
+  }
+  expect(browser.serial).toBe(serial)
+  expect(await browser.read('new.txt')).toBeNull()
+  expect((await browser.read('app/page.jsx')).content).toBe(original.content)
+  expect(await write({ path: 'new.txt', content: 'created', expect: 0 })).toMatchObject({ ok: true })
+  expect(await write({ path: 'app/page.jsx', content: 'agent edit', expect: original.rev })).toMatchObject({ ok: true })
+  const read = await controller.readFile('app/page.jsx')
+  browser.externalWrite('app/page.jsx', 'new owner content')
+  expect(await write({ path: 'app/page.jsx', content: 'stale overwrite', expect: read.rev })).toMatchObject({ conflict: true })
+  expect((await browser.read('app/page.jsx')).content).toBe('new owner content')
+  expect(await write({ path: 'app/page.jsx', content: 'create over owner', expect: 0 })).toMatchObject({ conflict: true })
+  const fresh = await controller.readFile('app/page.jsx')
+  expect(await write({ path: 'app/page.jsx', content: 'resolved edit', expectedRevision: fresh.rev })).toMatchObject({ ok: true })
+  expect((await browser.read('app/page.jsx')).content).toBe('resolved edit')
+  // Direct editor saves retain their existing inferred-revision behavior.
+  expect(await controller.saveFile({ path: 'app/page.jsx', content: 'editor save' })).toMatchObject({ ok: true })
+})
+
 test('invalid model transport is rejected before a live Hub run can be dispatched', async () => {
   const { controller, hub, browser } = await startedFixture()
   await controller.setModel({ model: 'fixture-model', baseUrl: 'https://model.invalid/v1?fixture=not-a-secret' })

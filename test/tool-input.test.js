@@ -88,3 +88,18 @@ test('workspace schema rejects unknown inputs before invoking its external opera
   expect(result.text).toContain('args.force is not an accepted parameter')
   expect(requests).toBe(0)
 })
+
+test('workspace writes require a revision before invoking the external operation', async () => {
+  const received = []
+  const item = tool(workspace_write, { name: 'write' })
+  const ctx = { request: (_, args) => { received.push(args); return { ok: true, rev: 'r1' } } }
+  for (const revision of [{}, { expect: null }, { expect: undefined }, { expect: {} }, { expect: 1.5 }]) {
+    expect((await runToolResult(item, { path: 'app.js', content: 'text', ...revision }, ctx)).ok).toBe(false)
+  }
+  expect(received).toHaveLength(0)
+  for (const expectRevision of [0, 'r1']) {
+    expect((await runToolResult(item, { path: 'app.js', content: 'text', expect: expectRevision }, ctx)).ok).toBe(true)
+  }
+  expect(received.map(args => args.expect)).toEqual([0, 'r1'])
+  expect(item.parameters.expect).not.toContain('optional')
+})
