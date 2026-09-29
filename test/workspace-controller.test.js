@@ -4,6 +4,7 @@ import { ProjectFiles } from '../src/workspace/files.js'
 import { openStore } from '../src/runtime/store.js'
 import { inference } from '../src/core/inference.js'
 import { resolve } from '../src/core/models.js'
+import { Hub } from '../src/runtime/hub.js'
 
 const controllers = new Set()
 const cleanups = []
@@ -159,7 +160,7 @@ async function startedFixture({ restoredBridge = false, modelProfile = {}, workb
     ask(query, options) { const id = `run-${++serial}`; this.asks.push({ id, query, ...options }); this.runs.set(id, { id, agent: 'main', context: options.context, children: [], slot: { status: 'idle' } }); return id },
     startRun(agent, query, options) { const id = this.ask(query, options); const run = this.runs.get(id); run.agent = agent; return run },
     runsApi: { get: async id => hub.runs.get(id) },
-    traces: { export: async id => ({ trace: id, runs: [] }) },
+    traces: { export: async id => ({ trace: id, runs: [...hub.runs.values()].filter(run => (run.trace ?? run.id) === id) }) },
   }
   const row = await fixture({ createHub: () => hub, createCompanion, createExecution, inspectArtifact })
   if (sharedStore) row.files.store = sharedStore
@@ -1612,14 +1613,14 @@ test('configured role workflow dispatches without Linux, freezes context and rej
   const id = await controller.sendGoal('Review this idea')
   expect(executions).toBe(0)
   expect(controller.getSnapshot().task).toMatchObject({ id, status: 'running', definition: roleDefinition })
-  expect(controller.getSnapshot().agents).toEqual([])
+  expect(controller.getSnapshot().agents).toEqual([expect.objectContaining({ id, kind: 'strategy' })])
   expect(hub.runs.get(id).context.workflow.strategy).toBeUndefined()
   expect(hub.runs.get(id).context.workflow.strategyHash).toBeUndefined()
   expect(Object.isFrozen(hub.runs.get(id).context)).toBe(true)
   await expect(controller.sendGoal('Change a role input')).rejects.toThrow('Role inputs are fixed')
   hub.runs.set('child', { id: 'child', kind: 'strategy-role', taskId: id, stageId: 'answer', parent: id, agent: 'assistant', query: 'Role input', slot: { status: 'done' }, result: 'Role output', prompts: [{ snapshot: { messages: [{ role: 'user', content: 'Role input' }] } }], requests: [{ authorization: 'secret' }] })
   hub.emit({ type: 'status', run: 'child', slot: { status: 'done' } })
-  expect(controller.getSnapshot().agents).toEqual([expect.objectContaining({ id: 'child', kind: 'strategy-role', stageId: 'answer', result: 'Role output' })])
+  expect(controller.getSnapshot().agents).toEqual([expect.objectContaining({ id, kind: 'strategy' }), expect.objectContaining({ id: 'child', kind: 'strategy-role', stageId: 'answer', result: 'Role output' })])
   const inspected = await controller.getRunDetails('child')
   expect(inspected.result).toBe('Role output')
   expect(inspected.prompts[0].snapshot.messages[0].content).toBe('Role input')
@@ -1761,4 +1762,192 @@ test('failed installation leaves selection intact and does not claim a durable p
   } })
   await expect(controller.installAgentPackage('staged-guide', {})).rejects.toThrow('Quota exceeded')
   expect(controller.getSnapshot()).toMatchObject({ selectedWorkflowId: 'assistant', packageInstalling: false, agentPackages: [] })
+})
+
+// Use the actual retained trace reader; only model/execution dispatch is controlled.
+function retainedEvidenceHub(hub) {
+  const archive = new Hub({ base: 'https://workbench.invalid/' })
+  archive.store = hub.store; archive.runs = hub.runs
+  hub.runsApi.get = archive.runsApi.get
+  hub.runsApi.summaries = archive.runsApi.summaries
+  hub.traces.export = archive.traces.export
+}
+
+test('team restoration retains lightweight strategy and imported summaries, interrupts old work, and lets live instances override history', async () => {
+  let summaries = 0; let receipts = 0; let executions = 0
+  const root = { id: 'retained-team', trace: 'retained-team', taskId: 'retained-team', kind: 'strategy', agent: 'coordinator', query: 'Recorded team goal', result: 'Recorded result', slot: { status: 'done' }, at: 1 }
+  const child = { id: 'retained-role', trace: root.id, taskId: root.id, parent: root.id, stageId: 'observe', kind: 'strategy-role', agent: 'installed/pond/observer', query: 'Recorded observation input', result: 'Observed pond', slot: { status: 'done', steps: 2 }, at: 2, toolEventStorage: 'separate-v1', toolEventCount: 100 }
+  const oldActive = { id: 'interrupted-instance', trace: 'interrupted-instance', agent: 'assistant', slot: { status: 'thinking' }, at: 3 }
+  const replaced = { id: 'live-instance', trace: 'live-instance', agent: 'assistant', result: 'Stale stored result', slot: { status: 'done' }, at: 4 }
+  const { controller, hub } = await startedFixture({ workbenchConfig: generalWorkflows, createExecution: async () => { executions++; throw new Error('Summary restoration cannot start execution') }, configureHub(hub) {
+    const archive = new Hub({ base: 'https://workbench.invalid/' })
+    archive.store = hub.store; archive.runs = hub.runs
+    hub.store.readToolEvents = async () => { receipts++; throw new Error('Roster cannot hydrate tool history') }
+    hub.runsApi.get = async () => { receipts++; throw new Error('Roster cannot request full run details') }
+    hub.runsApi.summaries = () => { summaries++; return archive.runsApi.summaries() }
+    const start = hub.start.bind(hub)
+    hub.start = async () => {
+      for (const record of [root, child, oldActive, replaced]) await hub.store.put('runs', record)
+      await archive.markInterrupted()
+      // A live run can arrive after the persisted snapshot was loaded.
+      hub.runs.set(replaced.id, { ...replaced, result: '', ended: false, slot: { status: 'idle', current: 'Awaiting its worker' } })
+      await start()
+    }
+  } })
+  const initial = controller.getSnapshot().agents
+  expect(initial).toHaveLength(4)
+  expect(initial.find(row => row.id === root.id)).toMatchObject({ kind: 'strategy', description: root.query, result: root.result, status: 'done' })
+  expect(initial.find(row => row.id === child.id)).toMatchObject({ trace: root.id, taskId: root.id, parent: root.id, stageId: child.stageId, path: child.agent, description: child.query, result: child.result, steps: 2 })
+  expect(initial.find(row => row.id === oldActive.id)).toMatchObject({ status: 'interrupted' })
+  expect(initial.find(row => row.id === replaced.id)).toMatchObject({ status: 'queued', result: '', current: 'Awaiting its worker' })
+  const live = hub.runs.get(replaced.id)
+  live.slot = { status: 'thinking', steps: 1 }; hub.emit({ type: 'status', run: live.id, slot: live.slot })
+  expect(controller.getSnapshot().agents.find(row => row.id === live.id)).toMatchObject({ status: 'thinking', steps: 1 })
+  expect(controller.getSnapshot().agents.find(row => row.id === child.id).result).toBe(child.result)
+  const fresh = { id: 'new-queued-child', parent: live.id, trace: live.id, agent: 'assistant', ended: false, slot: { status: 'idle' } }
+  hub.runs.set(fresh.id, fresh); hub.emit({ type: 'run', run: fresh })
+  expect(controller.getSnapshot().agents.find(row => row.id === fresh.id)).toMatchObject({ status: 'queued', parent: live.id })
+  expect(summaries).toBe(1); expect(receipts).toBe(0); expect(executions).toBe(0); expect(hub.asks).toEqual([])
+  expect(hub.runs.has(root.id)).toBe(false); expect(hub.runs.has(child.id)).toBe(false)
+})
+
+async function retainCompletedFixture(fixture, runId, extra = {}) {
+  const run = fixture.hub.runs.get(runId)
+  const record = {
+    ...run, id: runId, trace: runId, taskId: runId, parent: null, query: 'Recorded owner question', at: 1,
+    slot: { run: runId, status: 'done' }, result: 'Recorded pond answer',
+    prompts: [{ attemptId: 'step1', snapshot: { messages: [{ role: 'user', content: 'Exact recorded prompt' }] } }],
+    requests: [{ attemptId: 'step1', request: { provider: 'openai', body: { model: 'fixture', messages: [{ role: 'user', content: 'Exact recorded prompt' }] }, headers: { authorization: '[redacted]' } } }],
+    completions: [{ attemptId: 'step1', requestIndex: 0, finishReason: 'stop' }],
+    turns: [], toolEventStorage: 'separate-v1', toolEventCount: 2, ...extra,
+  }
+  const events = [
+    { sequence: 1, kind: 'call', callId: 'pond-plan', name: 'todo_set', args: { items: ['Observe the pond'] }, value: 'todo_set', at: 2 },
+    { sequence: 2, kind: 'observation', callId: 'pond-plan', name: 'todo_set', ok: true, value: 'Recorded pond plan saved', at: 3 },
+  ]
+  await fixture.files.store.put('runs', record)
+  for (const event of events) await fixture.files.store.appendToolEvent(runId, event)
+  fixture.hub.runs.set(runId, { ...record, toolEvents: events })
+  for (const event of events) fixture.hub.emit({ type: 'event', run: runId, ...event })
+  fixture.hub.emit({ type: 'status', run: runId, slot: record.slot })
+  fixture.hub.emit({ type: 'answer', run: runId, text: record.result, ok: true })
+  fixture.controller.stop(); controllers.delete(fixture.controller)
+  await new Promise(resolve => setTimeout(resolve, 0))
+  return { record, events }
+}
+
+test('general and imported completed runs export retained evidence after reload without restoring control authority', async () => {
+  for (const imported of [false, true]) {
+    let executions = 0
+    const configure = hub => { if (imported) packageFixtureHub(hub, [importedGuide]) }
+    const first = await startedFixture({ workbenchConfig: generalWorkflows, configureHub: configure })
+    if (imported) await first.controller.setWorkflow(`package-${importedGuide.id}`)
+    const runId = await first.controller.sendGoal('Describe the pond')
+    const identity = imported ? { installationId: importedGuide.id, packageId: importedGuide.packageId, revisionDigest: importedGuide.revisionDigest, agentId: importedGuide.leadAgentId } : null
+    const { events } = await retainCompletedFixture(first, runId, { package: identity })
+    const second = await startedFixture({ sharedStore: first.files.store, workbenchConfig: generalWorkflows, configureHub(hub) { configure(hub); retainedEvidenceHub(hub) }, createExecution: async () => { executions++; throw new Error('Export cannot start execution') } })
+    const before = second.controller.getSnapshot()
+    expect(before.run).toMatchObject({ run: runId, status: 'done' })
+    expect(before.messages.some(row => row.tools?.some(tool => tool.status === 'done'))).toBe(true)
+    expect(second.hub.runs.size).toBe(0)
+    const evidence = await second.controller.exportRunEvidence()
+    expect(evidence.run).toBeNull()
+    expect(evidence.trace.trace).toBe(runId)
+    expect(evidence.trace.runs[0]).toMatchObject({ id: runId, package: identity, toolEvents: events, toolEventPersistence: 'committed' })
+    expect(evidence.trace.runs[0].requests[0].request.body.messages[0].content).toBe('Exact recorded prompt')
+    expect(second.hub.asks).toEqual([]); expect(executions).toBe(0)
+    second.hub.emit({ type: 'answer', run: runId, text: 'Old run must not regain control', ok: true })
+    expect(second.controller.getSnapshot().messages).toEqual(before.messages)
+    second.controller.stop(); controllers.delete(second.controller)
+  }
+})
+
+test('reloaded workspace evidence reconstructs only its original recorded binding and source revision', async () => {
+  const first = await startedFixture()
+  const runId = await first.controller.sendGoal('Build an original workspace task')
+  const original = structuredClone(first.hub.runs.get(runId).context)
+  await retainCompletedFixture(first, runId)
+  let executions = 0
+  const second = await startedFixture({ sharedStore: first.files.store, configureHub: retainedEvidenceHub, createExecution: async () => { executions++; throw new Error('Export cannot reconnect execution') } })
+  expect(second.controller.getSnapshot().runtime.binding).toBeUndefined()
+  expect(second.controller.getSnapshot().runtime.status).toBe('idle')
+  const evidence = await second.controller.exportRunEvidence()
+  expect(evidence.run).toMatchObject({ runId, binding: original.binding, sourceRevision: original.sourceRevision, sourceFingerprint: original.sourceFingerprint, modelTransport: original.modelTransport })
+  expect(Object.isFrozen(evidence.run.binding)).toBe(true)
+  expect(executions).toBe(0); expect(second.hub.runs.size).toBe(0)
+})
+
+test('visible restored conversation cannot produce a successful export when retained evidence is missing or incomplete', async () => {
+  const first = await startedFixture({ workbenchConfig: generalWorkflows })
+  const runId = await first.controller.sendGoal('Retain this question')
+  const { record } = await retainCompletedFixture(first, runId)
+  const second = await startedFixture({ sharedStore: first.files.store, workbenchConfig: generalWorkflows, configureHub: retainedEvidenceHub })
+  await second.files.store.delete('runs', runId)
+  await expect(second.controller.exportRunEvidence()).rejects.toMatchObject({ code: 'RUN_EVIDENCE_MISSING' })
+  await second.files.store.put('runs', record)
+  const exporter = second.hub.traces.export
+  second.hub.traces.export = async () => ({ trace: runId, runs: [] }) // Evicted after record lookup.
+  await expect(second.controller.exportRunEvidence()).rejects.toMatchObject({ code: 'RUN_EVIDENCE_MISSING' })
+  second.hub.traces.export = exporter
+  await second.files.store.clear('toolEvents')
+  await expect(second.controller.exportRunEvidence()).rejects.toThrow('tool evidence')
+  expect(second.hub.asks).toEqual([])
+  await expect(second.controller.exportRunEvidence('')).rejects.toThrow('recorded run ID')
+})
+
+test('explicit child export selects its recorded root trace and instance inspector preserves exact recorded work', async () => {
+  const { controller, hub, files } = await startedFixture({ workbenchConfig: generalWorkflows, configureHub: retainedEvidenceHub })
+  const identity = { installationId: 'one', revisionDigest: 'sha256:immutable', agentId: 'observer' }
+  const body = { messages: [{ role: 'user', content: 'Preserve this source' }], schema: { authorization: 'literal user schema field', token: 'literal body token' } }
+  const requests = [{ attemptId: 'attempt-one', authorization: 'legacy-top-secret', token: 'legacy-token-secret', request: { method: 'POST', headers: { authorization: 'legacy-header-secret' }, body } }]
+  const toolEvents = [{ sequence: 1, kind: 'call', callId: 'exact-call', args: { text: 'hello' } }, { sequence: 2, kind: 'observation', callId: 'exact-call', ok: true, value: 'nothing delivered' }]
+  const completions = [{ attemptId: 'attempt-one', finishReason: 'stop', requestIndex: 0 }]
+  const turns = [{ role: 'user', content: 'ordinary question' }, { role: 'user', note: true, content: 'Recorded guidance', at: 2 }]
+  const parent = { id: 'retained-root', trace: 'retained-root', taskId: 'task-one', agent: 'coordinator', parent: null, children: ['retained-child'], slot: { status: 'done' }, at: 1 }
+  const child = { id: 'retained-child', trace: parent.trace, taskId: parent.taskId, parent: parent.id, stageId: 'observe', agent: 'installed/one/observer', package: identity, query: 'Exact role input', result: 'Exact role output', slot: { status: 'done' }, at: 2, requests, completions, toolEvents, turns, prompts: [] }
+  await files.store.put('runs', parent); await files.store.put('runs', child)
+  const evidence = await controller.exportRunEvidence(child.id)
+  expect(evidence.trace.trace).toBe(parent.trace)
+  expect(evidence.trace.runs.map(run => run.id).sort()).toEqual([child.id, parent.id].sort())
+  expect(evidence.run).toBeNull()
+  const details = await controller.getRunDetails(child.id)
+  expect(details).toMatchObject({ trace: parent.trace, parent: parent.id, taskId: parent.taskId, stageId: 'observe', package: identity, query: child.query, result: child.result, toolEvents, completions, notes: [turns[1]] })
+  expect(details.requests[0].request.body).toEqual(body)
+  expect(details.requests[0].authorization).toBe('[redacted]')
+  expect(details.requests[0].token).toBe('[redacted]')
+  expect(details.requests[0].request.headers.authorization).toBe('[redacted]')
+  expect(JSON.stringify(details.requests)).not.toContain('legacy-')
+  expect(Object.isFrozen(details.toolEvents[0])).toBe(true)
+  expect(Object.isFrozen(details.requests[0].request.body)).toBe(true)
+  expect(child.requests[0].authorization).toBe('legacy-top-secret')
+  hub.runs.set(child.id, child); hub.emit({ type: 'status', run: child.id, slot: child.slot })
+  expect(controller.getSnapshot().agents[0]).toMatchObject({ id: child.id, trace: parent.trace, taskId: parent.taskId, stageId: 'observe' })
+  expect(hub.asks).toEqual([])
+})
+
+test('historical exports include only commands in the selected trace and artifacts linked to those commands', async () => {
+  const { controller, hub } = await startedFixture()
+  const oldId = await controller.sendGoal('Original application task')
+  const old = hub.runs.get(oldId); old.trace = oldId
+  const childId = 'original-builder'
+  hub.runs.set(childId, { id: childId, trace: oldId, parent: oldId, agent: 'coder', context: old.context, children: [], slot: { status: 'done' } })
+  const oldBuild = await controller.buildPreview({ actor: 'coder', runId: childId })
+  const oldCommand = await controller.runCommand('inspect original build', { runId: oldId })
+  hub.emit({ type: 'status', run: oldId, slot: { run: oldId, status: 'done' } })
+  const newerId = await controller.sendGoal('Newer unrelated application task')
+  hub.runs.get(newerId).trace = newerId
+  const newerBuild = await controller.buildPreview({ runId: newerId })
+  const manualBuild = await controller.buildPreview() // No task-owned command.
+  expect(controller.getSnapshot().artifacts).toHaveLength(3)
+  const evidence = await controller.exportRunEvidence(oldId)
+  expect(evidence.commands.map(command => command.id).sort()).toEqual([oldBuild.manifest.build.commandId, oldCommand.id].sort())
+  expect(evidence.commands.every(command => [oldId, childId].includes(command.runId))).toBe(true)
+  expect(evidence.artifacts.map(artifact => artifact.id)).toEqual([oldBuild.id])
+  expect(evidence.artifacts[0].manifest.build.commandId).toBe(oldBuild.manifest.build.commandId)
+  expect(evidence.artifacts.some(artifact => [newerBuild.id, manualBuild.id].includes(artifact.id))).toBe(false)
+  expect(evidence.artifacts[0].html).toBeUndefined()
+  hub.runs.set('imported-conversation', { id: 'imported-conversation', trace: 'imported-conversation', agent: 'installed/pond/observer', context: { workflow: { workspace: false } }, children: [], slot: { status: 'done' } })
+  const general = await controller.exportRunEvidence('imported-conversation')
+  expect(general.commands).toEqual([]); expect(general.artifacts).toEqual([]); expect(general.run).toBeNull()
+  expect(hub.asks).toHaveLength(2)
 })

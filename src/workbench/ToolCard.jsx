@@ -6,7 +6,7 @@ const titles = {
   workspace_run: 'Run command', workspace_build: 'Build application', workspace_check: 'Check application',
   workspace_delete: 'Delete file', workspace_rename: 'Rename file', todo_write: 'Update task plan', todo_read: 'Read task plan',
 }
-const labels = { running: 'Running', awaiting_approval: 'Awaiting approval', done: 'Completed', completed: 'Completed', success: 'Completed', failed: 'Failed', error: 'Failed', interrupted: 'Interrupted', cancelled: 'Stopped' }
+const labels = { running: 'Running', awaiting_approval: 'Awaiting approval', done: 'Completed', completed: 'Completed', success: 'Completed', failed: 'Failed', error: 'Failed', interrupted: 'Interrupted', cancelled: 'Stopped', unresolved: 'Outcome not recorded' }
 const stringify = value => typeof value === 'string' ? value : value == null ? '' : JSON.stringify(value, null, 2)
 
 /** Presentation only: an approval never replaces the recorded tool outcome. */
@@ -23,7 +23,8 @@ export default function ToolCard({ tool, approvals, fileAvailable, commandAvaila
   const status = labels[presentation] || presentation || 'Pending'
   const failed = ['failed', 'error'].includes(tool.status)
   const context = tool.path || tool.command || tool.agent
-  const result = stringify(tool.summary)
+  const result = tool.hasResult && tool.summary === null ? 'null' : stringify(tool.summary)
+  const hasResult = tool.hasResult ?? Boolean(result)
   const args = stringify(tool.args)
   const complete = ['done', 'completed', 'success'].includes(tool.status)
   const pending = ['running', 'waiting', 'awaiting_approval'].includes(presentation)
@@ -37,7 +38,7 @@ export default function ToolCard({ tool, approvals, fileAvailable, commandAvaila
     <div className="tool-details">
       {args && args !== '{}' && <><h4>Input</h4><pre>{args}</pre></>}
       {presentation === 'awaiting_approval' && <p className="tool-approval-note">This call is waiting for your decision. It has not been approved.</p>}
-      <h4>{pending ? 'Current call' : result ? 'Recorded result' : 'Result'}</h4><pre>{result || (pending ? 'Waiting for the tool to return…' : 'No result was recorded.')}</pre>
+      <h4>{pending ? 'Current call' : hasResult ? 'Recorded result' : 'Result'}</h4><pre>{hasResult ? result || '(empty string)' : pending ? 'Waiting for the tool to return…' : 'No result was recorded.'}</pre>
     </div>
     {(fileAvailable || commandAvailable || artifactAvailable) && <div className="tool-links">
       {fileAvailable && <button type="button" onClick={onFile}><Icon name="files" size={12}/>Open file</button>}

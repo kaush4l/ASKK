@@ -220,3 +220,16 @@
 
 .dashboard-agent-model { margin: 12px 0; font-size: 12px; line-height: 1.65; color: var(--secondary); overflow-wrap: anywhere; }
 .dashboard-agent-model strong { color: var(--text); font-weight: 500; }.dashboard-agent-model span { display: block; color: var(--muted); font-size: 11px; }
+
+/* Definitions stay distinct from the per-run team view. */
+.dashboard-library { border-top: 1px solid var(--line); padding-top: 6px; }
+.dashboard-library > summary { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 8px 0; cursor: pointer; list-style: none; }
+.dashboard-library > summary::-webkit-details-marker { display: none; }
+.dashboard-library > summary > span:first-child { flex: 1; min-width: 0; }
+.dashboard-library strong { font-size: 13px; font-weight: 600; }
+.dashboard-library small { display: block; font-size: 11px; color: var(--muted); margin-top: 3px; }
+.dashboard-library > summary > span:nth-child(2) { font-size: 11px; color: var(--muted); }
+.dashboard-library > summary > svg { color: var(--muted); flex-shrink: 0; }
+.dashboard-library[open] > summary { margin-bottom: 10px; }
+.dashboard-library[open] > summary > svg { transform: rotate(180deg); }
+.dashboard-library > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }

@@ -12,6 +12,13 @@ const LEGACY_WORKFLOW = Object.freeze({ id: 'coding', label: 'Build an app', des
 const DEFAULT_TOOL_POLICY = normalizeToolPolicy({ disabledTools: [], approvalRisks: [], allowDelegation: true })
 const canRelayModels = value => (value?.capabilities ?? value?.health?.capabilities ?? []).some(capability => ['model-relay', 'fetch'].includes(capability))
 const companionIdentity = value => JSON.stringify([value?.status, value?.url, value?.runtimeId, value?.generation, value?.root, [...(value?.capabilities ?? [])].sort()])
+// Provider bodies are recorded inputs, including user-authored schemas/code.
+// Only transport metadata is scrubbed; legitimate body keys remain byte-faithful.
+const requestEvidence = value => {
+  if (Array.isArray(value)) return value.map(requestEvidence)
+  if (!value || typeof value !== 'object') return value
+  return Object.fromEntries(Object.entries(value).map(([key, part]) => [key, key === 'body' ? part : /authorization|api[-_]?key|access[-_]?token|refresh[-_]?token|password|secret|cookie|^token$/i.test(key) ? '[redacted]' : requestEvidence(part)]))
+}
 const installedWorkflow = item => Object.freeze({
   id: `package-${item.id}`, label: item.label, description: item.error || item.description || `Installed from ${item.packageId}`,
   agent: item.agentPath, workspace: false, disabled: item.status === 'disabled', unavailableReason: item.error || '',
@@ -39,6 +46,7 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
   let uiLoaded = false; let persistTimer; let savingUI = Promise.resolve()
   let binding; let workspaceLocation = null; let locationLoaded = false; let legacyNative = false; let modelProfiles = []; let modelEpoch = 0; let modelCheck; let launchEpoch = 0; const runBindings = new Map()
   let configuredWorkflows = []; let packageInstalling = false; let packageInstallEpoch = 0
+  const cachedSummaryMap = new Map()
   const executionEpochs = { browser: 0, local: 0 }; const executionErrors = {}
   const executionHealth = { browser: 'responsive', local: 'responsive' }; const healthVersions = { browser: 0, local: 0 }; const healthWaiters = new Set()
   let runtimeEstablished = false; let recovering; let watching = false
@@ -265,7 +273,11 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
   }
 
   const refreshDefinitions = () => notify({ agentDefinitions: hub?.manifest({ toolPolicy: state.toolPolicy }) ?? [] })
-  const refreshAgents = () => notify({ agents: [...(hub?.runs.values() ?? [])].filter(run => run.kind !== 'strategy').map(run => ({ id: run.id, kind: run.kind, taskId: run.taskId, stageId: run.stageId, result: run.result, error: run.slot?.error, path: run.agent, agent: run.agent, name: state.agentDefinitions.find(row => row.path === run.agent)?.name ?? run.agent, current: run.slot?.current ?? '', maxSteps: run.slot?.maxSteps, steps: run.slot?.steps ?? 0, parent: run.parent ?? null, status: run.slot?.status ?? 'starting', description: run.query, at: run.at })) })
+  const refreshAgents = () => {
+    const instances = new Map(cachedSummaryMap)
+    for (const run of hub?.runs.values() ?? []) instances.set(run.id, run)
+    notify({ agents: [...instances.values()].map(run => ({ id: run.id, trace: run.trace ?? run.id, kind: run.kind, taskId: run.taskId, stageId: run.stageId, result: run.result, error: run.slot?.error, path: run.agent, agent: run.agent, name: state.agentDefinitions.find(row => row.path === run.agent)?.name ?? run.agent, current: run.slot?.current ?? '', maxSteps: run.slot?.maxSteps, steps: run.slot?.steps ?? 0, parent: run.parent ?? null, status: hub?.runs.get(run.id)?.ended === false && run.slot?.status === 'idle' ? 'queued' : run.slot?.status ?? 'starting', description: run.query, at: run.at })) })
+  }
   const refreshPackages = preferred => {
     const agentPackages = hub?.packages?.list() ?? []
     const workflows = Object.freeze([...configuredWorkflows, ...agentPackages.map(installedWorkflow)])
@@ -277,6 +289,7 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
     if (message.type === 'packages') { refreshPackages(); refreshDefinitions() }
     if (message.type === 'settings') { refreshPackages(); refreshDefinitions() }
     if (message.type === 'run' && !message.run.parent && !activeRun && state.run?.status === 'starting') activeRun = message.run.id
+    if (message.type === 'run') refreshAgents()
     if (message.type === 'strategy' && message.run === activeRun) notify({ task: message.task })
     if (message.type === 'persistence-error') notify({ error: message.error })
     if (message.type === 'bridge') {
@@ -398,6 +411,9 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
         }
         unsubscribe = hub.subscribe(onHub); await hub.start()
         if (disposed) { hub.stop(); return }
+        const summaries = await hub.runsApi?.summaries?.() ?? []
+        if (disposed) { hub.stop(); return }
+        for (const summary of summaries) cachedSummaryMap.set(summary.id, summary)
         const resolvedWorkflows = await Promise.all(workflows.map(async row => {
           if (!row.strategyRef) return row
           const loaded = await hub.loadStrategy(row.strategyRef)
@@ -697,11 +713,29 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
     async getRunDetails(runId) {
       const run = await hub.runsApi.get(runId)
       if (!run) throw new Error('This run is no longer available')
-      return { id: run.id, agent: run.agent, query: run.query, slot: run.slot, result: run.result, error: run.slot?.error, prompts: run.prompts ?? [] }
+      return snapshot({ id: run.id, trace: run.trace ?? run.id, parent: run.parent ?? null, taskId: run.taskId ?? run.id, stageId: run.stageId ?? null, package: run.package ?? null, agent: run.agent, query: run.query, slot: run.slot, result: run.result, error: run.slot?.error, prompts: run.prompts ?? [], toolEvents: run.toolEvents ?? [], requests: requestEvidence(run.requests ?? []), completions: run.completions ?? [], notes: (run.turns ?? []).filter(turn => turn.note === true) })
     },
-    async exportRunEvidence() {
-      if (!activeRun) throw new Error('Start a task to record model requests and execution receipts')
-      return { version: 1, project: state.project, run: runBindings.get(activeRun), trace: await hub.traces.export(activeRun), commands: state.commands, artifacts: state.artifacts.map(({ html, url, nonce, ...record }) => record) }
+    async exportRunEvidence(requestedRunId) {
+      // Reloaded history is inspectable without restoring control authority over
+      // an old worker, command or execution environment.
+      if (requestedRunId !== undefined && (typeof requestedRunId !== 'string' || !requestedRunId.trim())) throw new TypeError('Select a recorded run ID to export')
+      const runId = requestedRunId ?? activeRun ?? state.run?.run ?? state.task?.id
+      if (!runId) throw new Error('Start a task to record model requests and execution receipts')
+      const missing = () => Object.assign(new Error('Saved evidence for this task is no longer retained. The visible conversation is not a substitute for its recorded trace.'), { code: 'RUN_EVIDENCE_MISSING' })
+      const view = snapshot({ project: state.project, commands: state.commands, artifacts: state.artifacts.map(({ html, url, nonce, ...record }) => record) })
+      const selected = await hub.runsApi.get(runId)
+      if (!selected) throw missing()
+      const trace = await hub.traces.export(selected.trace ?? selected.id)
+      const recorded = trace.runs?.find(run => run.id === selected.id)
+      if (!recorded) throw missing()
+      const bound = recorded.context?.binding ? createBoundRunSnapshot({ ...recorded.context, runId: recorded.id }) : runBindings.get(recorded.id) ?? null
+      const traceIds = new Set(trace.runs.map(run => run.id))
+      const commands = view.commands.filter(command => traceIds.has(command.runId))
+      const commandIds = new Set(commands.map(command => command.id))
+      // A matching workspace/revision or the currently visible preview is not
+      // task provenance. Only its recorded build-command link associates it.
+      const artifacts = view.artifacts.filter(artifact => commandIds.has(artifact.manifest?.build?.commandId))
+      return { version: 1, project: view.project, run: bound, trace, commands, artifacts }
     },
     async setExecutionTarget(target, { transfer = false } = {}) {
       requireWritable(); requireIdle()

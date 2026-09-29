@@ -128,7 +128,10 @@ test('identical display names remain separate when an authoritative installed-ag
   const cards = all(tree, node => node.tagName === 'article' && attr(node, 'class')?.includes('dashboard-agent'))
   expect(text(cards[0])).toContain('Available')
   expect(text(cards[0])).not.toContain('Thinking')
-  expect(text(cards[1])).toContain('Thinking')
+  expect(text(cards[1])).toContain('Available')
+  expect(text(cards[1])).not.toContain('Thinking')
+  expect(text(tree)).toContain('Thinking')
+  expect(text(tree)).toContain('Agent library')
 })
 
 test('disabled imported selection remains visible, preserves the goal, and never advertises the default-model proof as its own', () => {

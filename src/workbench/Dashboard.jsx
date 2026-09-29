@@ -5,10 +5,11 @@ import Icon from './Icons.jsx'
 import Markdown from './Markdown.jsx'
 import ToolCard, { toolPresentationStatus } from './ToolCard.jsx'
 import StrategyProgress from './StrategyProgress.jsx'
+import AgentTeam from './AgentTeam.jsx'
 import { modelStatusLabel, modelRelayAvailable } from './model-ui.js'
 import './dashboard.css'
 
-const active = status => ['starting', 'running', 'thinking', 'calling', 'waiting', 'compacting', 'cancelling', 'verifying'].includes(status)
+const active = status => ['queued', 'starting', 'running', 'thinking', 'calling', 'waiting', 'compacting', 'cancelling', 'verifying'].includes(status)
 const riskNames = { read: 'Read', net: 'Network', write: 'Write', exec: 'Execute' }
 const actionOf = tool => tool?.effectiveAction ?? tool?.action
 const riskOf = tool => riskNames[tool?.risk] ? tool.risk : tool?.tier === 'agent' ? 'read' : 'write'
@@ -57,7 +58,6 @@ export default function Dashboard({ state = {}, goal = '', onGoalChange, onSubmi
   const allTools = new Map(definitions.flatMap(agent => (agent.tools || []).map(tool => [tool.name, tool])))
   const activity = (state.messages || []).flatMap(message => (message.tools || []).map(tool => ({ ...tool, at: message.at }))).slice(-6).reverse()
   const answer = [...(state.messages || [])].reverse().find(message => message.role === 'assistant' && textOf(message.content).trim())
-  const activeRuns = runs.filter(run => active(statusOf(run)))
   const advertisedBrowser = ['browser', 'browser-control'].some(cap => capabilities.has(cap)) && tools.some(tool => toolEnabled(tool) && /^(browser[._]|host_browser)/.test(tool.name))
   const fetchAvailable = capabilities.has('fetch')
   const delayed = runtime.status === 'unresponsive' && workflow?.workspace
@@ -65,7 +65,6 @@ export default function Dashboard({ state = {}, goal = '', onGoalChange, onSubmi
   const setPolicy = patch => onToolPolicyChange?.(patch)
   const submit = event => { event.preventDefault(); if (canSubmit) onSubmit?.() }
   const matches = matchesAgentDefinition
-  const unmatched = runs.filter(run => !definitions.some(definition => matches(definition, run)))
   const notice = workflow?.workspace ? state.executionNotices?.[runtime.target] : null
 
   return <main className="agent-dashboard" aria-label="Agent dashboard">
@@ -96,20 +95,23 @@ export default function Dashboard({ state = {}, goal = '', onGoalChange, onSubmi
 
           {approvals.length > 0 && <section className="dashboard-approvals" aria-label="Actions awaiting your approval"><div className="dashboard-section-heading"><h2>Your decision is needed</h2><span>{approvals.length} pending</span></div>{approvals.map(approval => <article key={approval.id} className="dashboard-approval"><div className="dashboard-approval-title"><Icon name="warning" size={16}/><h3>{titleOf(approval.tool || approval.call)}</h3><span>{riskNames[approval.risk] || 'Action'}</span></div><p>{approval.agent} · {approval.reason || 'This action requires your approval.'}</p><details><summary>Review exact input</summary><pre>{textOf(approval.args)}</pre></details><div className="dashboard-approval-actions"><button type="button" onClick={() => onApprove?.(approval.id, false)}>Deny</button><button type="button" onClick={() => onApprove?.(approval.id, true)}>Approve once</button></div></article>)}</section>}
 
+          <AgentTeam runs={state.agents || []} definitions={definitions} approvals={approvals} activeRunId={state.run?.run || task?.id} onInspectRun={onInspectRun} onInspectAgent={onInspectAgent} onStopAgent={onStopAgent}/>
+
           <StrategyProgress task={task} definition={graph} agents={definitions} onInspectRun={onInspectRun}/>
 
           {answer && <section className="dashboard-answer" aria-label="Latest agent answer"><div className="dashboard-section-heading"><h2>Latest answer</h2><span>{answer.agent || 'Agent'}</span></div><Markdown text={textOf(answer.content)}/></section>}
 
-          <section className="dashboard-team" aria-label="Agents"><div className="dashboard-section-heading"><h2>Your agents</h2><span>{activeRuns.length ? `${activeRuns.length} active` : `${definitions.length} configured`}</span></div><div className="dashboard-agent-grid">
-            {definitions.map(definition => {
-              const actual = runs.filter(run => matches(definition, run))
-              const latest = actual.find(run => active(statusOf(run))) || actual.at(-1)
-              const status = definition.broken || definition.error ? 'failed' : latest ? statusOf(latest) : 'idle'
-              return <article className={`dashboard-agent ${active(status) ? 'is-active' : ''}`} key={definition.path}><div className="dashboard-agent-title"><span className="dashboard-agent-avatar"><Icon name={definition.path === workflow?.agent ? 'spark' : 'agents'} size={18}/></span><div><h3>{definition.name || definition.path}</h3><Status status={status}/></div></div><p>{definition.description || definition.path}</p><div className="dashboard-agent-footer"><span>{definition.tools?.length || 0} tools{definition.peers?.length ? ` · ${definition.peers.length} peers` : ''}</span><button type="button" className="dashboard-inline" onClick={() => onInspectAgent?.(definition.path)}>View instructions<Icon name="right" size={12}/></button></div>{actual.filter(run => active(statusOf(run))).map(run => <div className="dashboard-agent-run" key={run.id}><span>{run.description || run.query || labelOf(statusOf(run))}</span><button type="button" aria-label={`Stop ${definition.name || definition.path} task`} onClick={() => onStopAgent?.(run.id)}><Icon name="stop" size={12}/>Stop</button></div>)}</article>
-            })}
-            {unmatched.map(run => <article className="dashboard-agent" key={run.id || run.name}><div className="dashboard-agent-title"><span className="dashboard-agent-avatar"><Icon name="agents" size={18}/></span><div><h3>{run.agent || run.name || 'Agent'}</h3><Status status={statusOf(run)}/></div></div><p>{run.description || run.query || 'Recorded agent task'}</p>{active(statusOf(run)) && <button type="button" className="dashboard-inline" onClick={() => onStopAgent?.(run.id)}><Icon name="stop" size={12}/>Stop task</button>}</article>)}
-            {!definitions.length && !unmatched.length && <p className="dashboard-empty">{state.ready ? 'No agent definitions are available.' : 'Reading agent definitions…'}</p>}
-          </div></section>
+          <details className="dashboard-library">
+            <summary><span><strong>Agent library</strong><small>Definitions and instructions</small></span><span>{definitions.length} configured</span><Icon name="down" size={14}/></summary>
+            <div className="dashboard-agent-grid">
+              {definitions.map(definition => <article className="dashboard-agent" key={definition.path}>
+                <div className="dashboard-agent-title"><span className="dashboard-agent-avatar"><Icon name={definition.path === workflow?.agent ? 'spark' : 'agents'} size={18}/></span><div><h3>{definition.name || definition.path}</h3><Status status={definition.broken || definition.error ? 'failed' : 'idle'}/></div></div>
+                <p>{definition.description || definition.path}</p>
+                <div className="dashboard-agent-footer"><span>{definition.tools?.length || 0} tools{definition.peers?.length ? ` · ${definition.peers.length} peers` : ''}</span><button type="button" className="dashboard-inline" onClick={() => onInspectAgent?.(definition.path)}>View instructions<Icon name="right" size={12}/></button></div>
+              </article>)}
+              {!definitions.length && <p className="dashboard-empty">{state.ready ? 'No agent definitions are available.' : 'Reading agent definitions…'}</p>}
+            </div>
+          </details>
 
           <section className="dashboard-activity" aria-label="Recent tool activity"><div className="dashboard-section-heading"><h2>Work in motion</h2><span>Latest {activity.length || 'actions'}</span></div>{activity.length ? activity.map((tool, index) => {
             const run = runs.find(row => row.id === tool.runId)

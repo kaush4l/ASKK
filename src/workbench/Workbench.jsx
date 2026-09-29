@@ -11,6 +11,8 @@ import ToolCard from './ToolCard.jsx'
 import BindingReview from './BindingReview.jsx'
 import Dashboard from './Dashboard.jsx'
 import AgentInspector from './AgentInspector.jsx'
+import RunInspector from './RunInspector.jsx'
+export { default as RunInspector } from './RunInspector.jsx'
 import { modelStatusLabel, modelDraftChanged, canCheckModel, modelCheckCancelled, modelRelayAvailable as relayCanModel } from './model-ui.js'
 import PhoneWorkspaceTabs from './PhoneWorkspaceTabs.jsx'
 import DiffView from './DiffView.jsx'
@@ -18,6 +20,7 @@ import { createEditorGroup, openEditorTab, closeEditorTab, pinEditorTab, createE
 import { acknowledgeSavedDraft, draftForConflict, saveAllDrafts } from './save-all.js'
 import { reconcileMissingDocuments, readEditorDocument } from './external-files.js'
 import { selectionIndex, navigationIndex, navigateTabList, revealListItem } from './keyboard-navigation.js'
+import { createModalNavigation } from './modal-navigation.js'
 
 const Editor = dynamic(() => import('./Editor.jsx'), { ssr: false, loading: () => <div className="surface-loading">Opening editor…</div> })
 const Terminal = dynamic(() => import('./Terminal.jsx'), { ssr: false, loading: () => <div className="surface-loading">Opening terminal…</div> })
@@ -52,21 +55,6 @@ function useController() {
 function StatusDot({ status }) { return <span className={`status-dot ${['ready', 'connected', 'done', 'completed', 'listed', 'verified'].includes(status) ? 'ready' : activeStatus(status) || status === 'checking' ? 'busy' : ['failed', 'error', 'disconnected', 'unresponsive'].includes(status) ? 'error' : ''}`}/> }
 function ExecutionNotice({ notice }) { return notice ? <aside className="execution-notice" role="note" aria-label={notice.title}><strong>{notice.title}</strong><p>{notice.body}</p></aside> : null }
 
-export function RunInspector({ details, onClose }) {
-  const prompts = details.prompts || []
-  const error = details.error || details.slot?.error
-  return <Modal wide title={`${details.agent || 'Agent'} · Recorded run`} onClose={onClose}>
-    <p className="modal-description">This snapshot was read when you opened it. Prompts are the exact historical records for this run; current settings may differ.</p>
-    <div className="agent-inspector">
-      <h3>Status · {runLabel(details.slot?.status)}</h3><p className="mono">{details.id}</p>
-      <h3>Goal</h3><pre>{textOf(details.query) || 'No goal was recorded.'}</pre>
-      {error && <><h3>Recorded error</h3><pre>{textOf(error)}</pre></>}
-      <h3>Recorded result</h3><pre>{details.result == null ? 'No result was recorded.' : textOf(details.result)}</pre>
-      <h3>Historical prompt records</h3>
-      {prompts.length ? prompts.map((prompt, index) => <details key={index}><summary>Request {index + 1}{prompt.step != null ? ` · Step ${prompt.step}` : ''}{prompt.attempt != null ? ` · Attempt ${prompt.attempt}` : ''}</summary><pre>{textOf(prompt)}</pre></details>) : <p>No prompt records are available for this run.</p>}
-    </div>
-  </Modal>
-}
 
 function ResizeHandle({ onResize, label, vertical = false, className = '', value, min, max }) {
   return <div role="separator" tabIndex={0} aria-label={label} aria-orientation={vertical ? 'horizontal' : 'vertical'} aria-valuenow={value} aria-valuemin={min} aria-valuemax={max} className={`resize-handle ${vertical ? 'horizontal' : ''} ${className}`}
@@ -136,7 +124,11 @@ export default function Workbench() {
   const [follow, setFollow] = useState(true)
   const [theme, setTheme] = useState('system')
   const [resolvedTheme, setResolvedTheme] = useState('dark')
-  const [modal, setModal] = useState(null)
+  const [modal, commitModal] = useState(null)
+  const modalNavigation = useRef(null)
+  modalNavigation.current ||= createModalNavigation(commitModal)
+  const setModal = useCallback(value => modalNavigation.current.show(value), [])
+  useEffect(() => () => modalNavigation.current.invalidate(), [])
   const [modalValue, setModalValue] = useState('')
   const [modalError, setModalError] = useState('')
   const [busy, setBusy] = useState('')
@@ -567,12 +559,24 @@ export default function Workbench() {
   function openSettings(tab = 'model') { setModalError(''); setModal({ type: 'settings', tab }) }
   function showCreate() { setModalValue(''); setModalError(''); setModal({ type: 'create' }) }
   async function inspectAgent(path) {
-    try { const details = await perform('getAgentDetails', path); setModal({ type: 'agent', details }) }
+    try { await modalNavigation.current.read(async () => ({ type: 'agent', details: await perform('getAgentDetails', path) })) }
     catch (error) { setToast(error.message) }
   }
+  async function loadRun(runId) {
+    return modalNavigation.current.read(async () => {
+      const details = await perform('getRunDetails', runId)
+      return { type: 'run', details: { ...details, name: state.agentDefinitions?.find(agent => agent.path === details.agent)?.name } }
+    })
+  }
   async function inspectRun(runId) {
-    try { const details = await perform('getRunDetails', runId); setModal({ type: 'run', details }) }
+    try { await loadRun(runId) }
     catch (error) { setToast(error.message) }
+  }
+  async function exportRunEvidence(runId) {
+    const evidence = await perform('exportRunEvidence', runId)
+    const url = URL.createObjectURL(new Blob([JSON.stringify(evidence, null, 2)], { type: 'application/json' }))
+    const link = document.createElement('a'); link.href = url; link.download = 'askk-run-evidence.json'; link.click()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
   function openTool(tool) {
     if (tool.path && state.files.some(file => file.path === tool.path)) return openFile(tool.path)
@@ -727,7 +731,7 @@ export default function Workbench() {
               {panelTab === 'commands' ? <>{state.commands.length > 0 && <div className="command-session-row"><select aria-label="Command session" value={currentCommand?.id || ''} onChange={event => setSelectedCommand(event.target.value)}>{state.commands.map(item => <option key={item.id} value={item.id}>{item.command} · {item.status}{item.exitCode != null ? ` (${item.exitCode})` : ''}</option>)}</select><span>{currentCommand?.cwd || 'project'}</span></div>}{currentCommand ? <Terminal controller={controller} sessionId={currentCommand.id} output={currentCommand.output || [currentCommand.stdout,currentCommand.stderr].filter(Boolean).join('\n')} outputLength={currentCommand.outputLength} theme={resolvedTheme}/> : <div className="command-empty"><Icon name="terminal" size={20}/><span>Run a command in your selected environment.</span></div>}<form className="command-input" onSubmit={event => { event.preventDefault(); if (state.runtime.status === 'unresponsive') return; if (command.trim()) { const value = command; setCommand(''); action('runCommand', value) } }}><span>❯</span><input aria-label="Shell command" placeholder="Enter a command…" value={command} onChange={event => setCommand(event.target.value)}/><button type="submit" className="text-button" disabled={!command.trim() || state.runtime.status === 'unresponsive'}>Run <Icon name="play" size={11}/></button></form></>
               : panelTab === 'terminal' ? terminalId ? <Terminal controller={controller} sessionId={terminalId} interactive theme={resolvedTheme} onError={setToast}/> : <div className="command-empty terminal-empty"><Icon name="terminal" size={22}/><p>Open an interactive terminal in {state.runtime.target === 'local' ? 'Local Bun' : 'Browser Linux'}.</p><button className="button subtle small" onClick={async () => { try { const terminal = await perform('openTerminal', { cols: 80, rows: 24 }); setTerminalId(terminal.id) } catch (error) { setToast(error.message) } }}>Open terminal</button></div>
               : panelTab === 'problems' ? <div className="problems-list" aria-label="Reported problems">{state.error && <div className="problem-item"><Icon name="warning" size={15}/><div><strong>Workspace needs attention</strong><p>{state.error}</p><button className="text-button" onClick={() => setPanelTab('output')}>View output <Icon name="right" size={11}/></button></div></div>}{[...failedCommands].reverse().map(item => <button className="problem-item" key={item.id} onClick={() => showCommand(item.id)}><Icon name="warning" size={15}/><span><strong>{item.command || 'Command failed'}</strong><small>{item.error ? textOf(item.error) : item.exitCode != null ? `Exited with code ${item.exitCode}` : 'Command failed'} · View command output</small></span><Icon name="right" size={12}/></button>)}{!problemCount && <div className="command-empty"><Icon name="check" size={18}/><span>No reported problems.</span></div>}</div>
-              : <div className="runtime-output"><button className="button subtle small" disabled={!state.run} onClick={async () => { try { const evidence = await perform('exportRunEvidence'); const url = URL.createObjectURL(new Blob([JSON.stringify(evidence, null, 2)], { type: 'application/json' })); const link = document.createElement('a'); link.href = url; link.download = 'askk-run-evidence.json'; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000) } catch (error) { setToast(error.message) } }}>Export run evidence</button><strong>{state.runtime.phase || state.runtime.status}</strong><pre>{textOf(state.runtime.detail || state.runtime.error || 'Runtime diagnostics will appear here when execution starts.')}</pre>{runtimeConsole && <><strong>Recent environment output</strong><pre aria-label="Environment console">{runtimeConsole}</pre></>}</div>}
+              : <div className="runtime-output"><button className="button subtle small" disabled={!state.run} onClick={async () => { try { await exportRunEvidence() } catch (error) { setToast(error.message) } }}>Export run evidence</button><strong>{state.runtime.phase || state.runtime.status}</strong><pre>{textOf(state.runtime.detail || state.runtime.error || 'Runtime diagnostics will appear here when execution starts.')}</pre>{runtimeConsole && <><strong>Recent environment output</strong><pre aria-label="Environment console">{runtimeConsole}</pre></>}</div>}
             </section></>}
           </div>
         </div>
@@ -745,7 +749,7 @@ export default function Workbench() {
     {modal?.type === 'goal' && <Modal title="Conversation goal" onClose={() => setModal(null)}><p className="modal-description">Keep a goal in context across messages and agent runs. Saving updates the next prompt; the composer remains available for individual requests.</p><label className="field-label" htmlFor="saved-goal">Saved goal</label><textarea id="saved-goal" className="form-input" rows={6} maxLength={12000} value={modalValue} onChange={event => setModalValue(event.target.value)}/><div className="modal-footer"><button className="button subtle" onClick={() => setModal(null)}>Cancel</button><button className="button subtle" disabled={!!busy || !state.goal} onClick={async () => { try { await perform('setConversationGoal', '', modal.revision); setModal(null) } catch (error) { setToast(error.message) } }}>Clear goal</button><button className="button primary" disabled={!!busy || modalValue.trim() === state.goal} onClick={async () => { try { await perform('setConversationGoal', modalValue, modal.revision); setModal(null) } catch (error) { setToast(error.message) } }}>Save goal</button></div></Modal>}
     {modal?.type === 'agent' && <AgentInspector details={modal.details} onClose={() => setModal(null)}/>}
     {modal?.type === 'packageImport' && <PackageImport perform={perform} disabled={packageImportDisabled} onClose={() => setModal(null)} onInstalled={installed => { setModal(null); setToast(`${installed?.packageId || 'Agent'} installed. Its workflow is selected.`); setDashboardOpen(true) }}/>}
-    {modal?.type === 'run' && <RunInspector details={modal.details} onClose={() => setModal(null)}/>}
+    {modal?.type === 'run' && <RunInspector details={modal.details} onClose={() => setModal(null)} onRefresh={() => loadRun(modal.details.id)} onInspectRun={loadRun} onExport={() => exportRunEvidence(modal.details.id)}/>}
     {modal?.type === 'tool' && <Modal wide title="Recorded tool action" onClose={() => setModal(null)}><ToolCard tool={state.messages.flatMap(message => message.tools || []).find(tool => tool.id === modal.tool.id && tool.runId === modal.tool.runId) || modal.tool} approvals={state.approvals}/></Modal>}
     {modal?.type === 'settings' && <Settings state={state} initialTab={modal.tab} theme={theme} setTheme={setTheme} perform={perform} onClose={() => setModal(null)} onError={setToast}/>}
     {(modal?.type === 'create' || modal?.type === 'rename') && <Modal title={modal.type === 'create' ? 'Create a file' : 'Rename file'} onClose={() => setModal(null)}><form onSubmit={submitFileAction}><label className="field-label" htmlFor="file-path">Path relative to your project</label><input id="file-path" className="form-input" autoFocus placeholder="src/app.js" value={modalValue} onChange={event => setModalValue(event.target.value)}/>{modalError && <p className="form-error">{modalError}</p>}<div className="modal-footer"><button type="button" className="button subtle" onClick={() => setModal(null)}>Cancel</button><button className="button primary" disabled={!!busy}>{modal.type === 'create' ? 'Create file' : 'Rename'}</button></div></form></Modal>}

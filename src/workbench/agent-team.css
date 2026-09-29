@@ -1,0 +1,54 @@
+/* Fixed card geometry: streamed activity changes text, never position or motion. */
+.agent-team { min-width: 0; }
+.agent-team-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.agent-team-heading > div { min-width: 0; }
+.agent-team-eyebrow { color: var(--muted); font-size: 9px; letter-spacing: 1.1px; font-weight: 600; }
+.agent-team-heading h2 { margin: 7px 0 0; font-size: 20px; letter-spacing: -.6px; font-weight: 550; }
+.agent-team-count { color: var(--secondary); font-size: 11px; flex-shrink: 0; }
+.agent-team-description { font-size: 12px; line-height: 1.65; color: var(--secondary); margin: 11px 0 20px; }
+.agent-team-description > span { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; }
+.agent-team-group + .agent-team-group { margin-top: 24px; }
+.agent-team-group-heading { display: flex; align-items: center; gap: 9px; margin-bottom: 10px; }
+.agent-team-group-heading h3 { font-size: 12px; font-weight: 600; }
+.agent-team-group-heading > span { font: 10px var(--mono); color: var(--muted); }
+.agent-team-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; list-style: none; padding: 0; margin: 0; }
+.agent-instance { min-width: 0; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 11px; background: var(--chat); overflow: hidden; }
+.agent-instance.tone-live { border-color: color-mix(in srgb, var(--accent) 44%, var(--line)); }
+.agent-instance-open { display: grid; grid-template-columns: 34px minmax(0, 1fr) 14px; column-gap: 10px; row-gap: 12px; align-items: center; text-align: left; width: 100%; min-width: 0; padding: 14px 14px 8px; border: 0; background: transparent; }
+.agent-instance-open:hover:not(:disabled) { background: var(--hover); }
+.agent-instance-open:disabled { opacity: 1; cursor: default; }
+.agent-instance-avatar { position: relative; width: 34px; height: 34px; display: grid; place-items: center; border: 1px solid var(--line-strong); border-radius: 10px; color: var(--secondary); background: var(--surface); font: 600 12px var(--mono); }
+.agent-instance-avatar > i { position: absolute; right: -3px; bottom: -3px; width: 10px; height: 10px; border: 2px solid var(--chat); border-radius: 50%; background: var(--muted); }
+.tone-live .agent-instance-avatar { color: var(--accent); background: var(--accent-soft); border-color: transparent; }
+.tone-live .agent-instance-avatar > i, .tone-live .agent-instance-status > i { background: var(--accent); }
+.tone-complete .agent-instance-avatar > i, .tone-complete .agent-instance-status > i { background: var(--green); }
+.tone-problem .agent-instance-avatar > i, .tone-problem .agent-instance-status > i { background: var(--red); }
+.agent-instance-identity { min-width: 0; }
+.agent-instance-identity > strong { display: block; font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-instance-status { display: flex; align-items: center; gap: 5px; font-size: 11px; line-height: 1.5; color: var(--secondary); min-height: 17px; }
+.agent-instance-status > i { width: 4px; height: 4px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
+.agent-instance-chevron { color: var(--muted); }
+.agent-instance-task { grid-column: 1 / -1; font-size: 12px; line-height: 1.65; height: 3.3em; color: var(--secondary); overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; }
+.agent-instance-id { grid-column: 1 / -1; display: block; font: 10px/1.6 var(--mono); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-instance-relation { display: flex; align-items: center; gap: 6px; min-height: 34px; padding: 0 14px; font-size: 10px; color: var(--muted); }
+.agent-instance-relation > svg { flex-shrink: 0; }
+.agent-instance-relation > span { min-width: 0; overflow-wrap: anywhere; }
+.agent-instance-relation button { display: inline; color: var(--secondary); font: inherit; text-decoration: underline; text-underline-offset: 3px; padding: 4px 0; }
+.agent-instance-missing { font-style: italic; }
+.agent-instance-tags { min-height: 26px; display: flex; align-items: start; flex-wrap: wrap; gap: 5px; padding: 3px 14px 7px; }
+.agent-instance-tags > span { padding: 3px 5px; border-radius: 4px; font-size: 9px; line-height: 1.3; background: var(--hover); color: var(--secondary); }
+.agent-instance-tags > .agent-instance-approval { background: var(--accent-soft); color: var(--accent); }
+.agent-instance-actions { margin-top: auto; display: flex; justify-content: space-between; gap: 10px; padding: 0 14px; border-top: 1px solid var(--line); min-height: 44px; }
+.agent-instance-actions > button { display: inline-flex; align-items: center; gap: 4px; min-height: 44px; font-size: 11px; color: var(--secondary); padding: 6px 0; }
+.agent-instance-actions > .agent-instance-stop { color: var(--red); margin-left: auto; }
+.agent-instance-actions > button:hover:not(:disabled), .agent-instance-relation button:hover { color: var(--accent); }
+.agent-team-more { display: inline-flex; justify-content: center; align-items: center; gap: 7px; min-height: 44px; width: 100%; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); margin-top: 10px; font-size: 12px; color: var(--secondary); }
+.agent-team-more:hover { background: var(--hover); }
+.agent-team-empty { display: flex; align-items: start; gap: 12px; padding: 19px; border: 1px dashed var(--line-strong); border-radius: 10px; color: var(--secondary); }
+.agent-team-empty > span { padding: 8px; border-radius: 8px; color: var(--accent); background: var(--accent-soft); }
+.agent-team-empty strong { display: block; font-size: 12px; font-weight: 500; margin-top: 3px; }
+.agent-team-empty p { font-size: 11px; line-height: 1.65; margin-top: 4px; color: var(--muted); }
+.agent-team button:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+@media (max-width: 560px) { .agent-team-grid { grid-template-columns: minmax(0, 1fr); }.agent-team-heading { align-items: end; }.agent-team-eyebrow { font-size: 8px; letter-spacing: .7px; }.agent-team-heading h2 { font-size: 19px; }.agent-team-count { font-size: 10px; } }
+@media (pointer: coarse) { .agent-instance-relation button { min-height: 44px; }.agent-instance-actions > button { font-size: 12px; } }
+@media (prefers-reduced-motion: reduce) { .agent-team *, .agent-team *::before, .agent-team *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
