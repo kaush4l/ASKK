@@ -1,0 +1,80 @@
+{
+  "source": "713b7351",
+  "deployment": "444d73440e3ba7ccf38c644de6bb354be49e6938",
+  "workflow": "https://github.com/kaush4l/ASKK/actions/runs/36601471038",
+  "workflowConclusion": "success",
+  "tests": {
+    "fullSuite": {
+      "passed": 1087,
+      "skipped": 1,
+      "failed": 0,
+      "assertions": 8297,
+      "files": 107
+    },
+    "finalGuidance": {
+      "passed": 24,
+      "failed": 0,
+      "assertions": 154,
+      "files": 3
+    }
+  },
+  "export": {
+    "version": 1,
+    "basePath": "/ASKK",
+    "totalBytes": 905107227,
+    "fileCount": 220,
+    "runtimeId": "c2w-node24-38d093f4a38002db",
+    "artifactHash": "1d163cf4eda2f9493703cc05f31dac722cf32a1fe309c0015db6a5daeaacc764"
+  },
+  "checks": [
+    {
+      "path": "index.html",
+      "status": 200,
+      "sha256": "d43bd4e527ed4150cf1e08effc2567baefb97cb47582561bc89cf21d663151c0",
+      "matches": true
+    },
+    {
+      "path": "_next/static/css/3589633f587f5de3.css",
+      "status": 200,
+      "sha256": "38b6940f62e1c45654bc429fab3b3df45f78692a91f013fc4ccb500bc17a1710",
+      "matches": true
+    },
+    {
+      "path": "_next/static/chunks/app/page-148f7caab0ad7464.js",
+      "status": 200,
+      "sha256": "f638c148c774cc799aafd53d0f2fde658b15ad9ec1085a5b32bae5154b6d7a00",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/core/write-observations.js",
+      "status": 200,
+      "sha256": "c7efc8b39f8fc24c7fc6d57989dc00dd25b8eaaf7b1fe1586e42bacb66682786",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/builtin/workspace.js",
+      "status": 200,
+      "sha256": "d6a1506c6f957a1d9bf719344c8faaa5fb1b2336f8ba5e4ef1c885d63a737b50",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/runtime/agent.worker.js",
+      "status": 200,
+      "sha256": "78a58b8e68221ec2f2caffddd77ff6a8c8016ecd52402a4cfb7efce24557faf2",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/workspace/controller.js",
+      "status": 200,
+      "sha256": "42f4e56a2d1c342072dcba1692e344114d523e437db34084371f7d8643654500",
+      "matches": true
+    },
+    {
+      "path": "packages/starter/agents/builder/agent.md",
+      "status": 200,
+      "sha256": "36a8f455d58221b3d079807650972b892e1c27acb82478b9cb43bec2f89135ea",
+      "matches": true
+    }
+  ],
+  "scope": "Hosted byte checks, full automated suite before wording adjustment, and focused tests for final conditional guidance. Actual 4B scaffold passed with 48 steps/omit history, but no unchanged-content branch was exercised. Default remains 24/retain. No general reliability, Safari, iPhone, VoiceOver, or Browser Linux acceptance."
+}
