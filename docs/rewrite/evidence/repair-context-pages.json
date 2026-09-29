@@ -1,0 +1,34 @@
+{
+  "source": "22803b1",
+  "deployment": "90afc9bc1ccd3536cb3aba97910993b3a9855e0b",
+  "workflow": "https://github.com/kaush4l/ASKK/actions/runs/36556170125",
+  "checks": [
+    {
+      "path": "index.html",
+      "status": 200,
+      "sha256": "128e6fa50ce42cfee94e2b7d883f784a768cf9598e2809faebd3416749a8b5ee",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/core/engine.js",
+      "status": 200,
+      "sha256": "520a168d642adad48b00877b62e8340524f90f547f048b2cfa1536aa66c5c3a8",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/core/responses.js",
+      "status": 200,
+      "sha256": "217a822c5779e1c5648e4538abc454dfa3eb961ca734890145c9c46a1c03183a",
+      "matches": true
+    }
+  ],
+  "scope": "HTTP asset verification only; no new hosted model, Chrome, Safari, or Browser Linux execution is claimed.",
+  "export": {
+    "version": 1,
+    "basePath": "/ASKK",
+    "totalBytes": 854203799,
+    "fileCount": 210,
+    "runtimeId": "c2w-node24-38d093f4a38002db",
+    "artifactHash": "28d1c34d9aae171226bd8e9677ca2fe5d4b85d860d96f30aa11c494d1a3faafc"
+  }
+}
