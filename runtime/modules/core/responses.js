@@ -185,7 +185,7 @@ export function responseModel(shape = ReAct, format = 'toon') {
       const object = properties => ({ type: 'object', properties, required: Object.keys(properties), additionalProperties: false })
       const done = object({ do: { const: 'done' }, act: { type: 'string', minLength: 1 } })
       if (finalOnly || !tools.length) return done
-      const call = object({ name: { type: 'string', enum: [...new Set(tools.map(tool => tool.name))] }, args: { type: 'object' } })
+      const call = object({ name: { type: 'string', enum: [...new Set(tools.map(tool => tool.name))] }, args: { type: 'object', additionalProperties: true } })
       const array = items => ({ type: 'array', minItems: 1, items })
       return { anyOf: [object({ do: { const: 'tool' }, act: shape.version === 3 ? call : array(array(call)) }), done] }
     },

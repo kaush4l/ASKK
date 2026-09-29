@@ -50,6 +50,8 @@ export class Engine {
     this.response = responseModel(options.shape ?? (this.contractVersion === 3 ? SingleReAct : this.contractVersion === 2 ? CompactReAct : ReAct), options.responseFormat ?? (this.contractVersion >= 2 ? 'json' : 'toon'))
     this.observationFormat = options.observationFormat ?? 'legacy'
     if (!['legacy', 'compact'].includes(this.observationFormat)) throw new Error(`unsupported observation format: ${this.observationFormat}`)
+    this.historyFormat = options.historyFormat ?? 'transcript'
+    if (!['transcript', 'messages'].includes(this.historyFormat)) throw new Error('Unsupported history_format')
     this.promptTemplate = options.promptTemplate
     this.outputReserve = options.outputReserve ?? null
     this.tools = options.tools ?? []
@@ -155,7 +157,7 @@ export class Engine {
 
   /**
    * The whole prompt sheet, in the skeleton's order: soul, job, tools, context, conversation,
-   * response format. Sent as two messages, the part that does not change between steps first,
+   * response format. The configured history format preserves a transcript or distinct messages,
    * so providers that cache a prefix can reuse it.
    */
   async render(note = '', { final = false } = {}) {
@@ -163,7 +165,7 @@ export class Engine {
     const llm = this.activeLLM ?? await this.llm()
     const rendered = buildAgentPrompt({
       soul: this.soul, job: this.systemPrompt, learned: this.learned, tools: this.tools,
-      contextText, history: this.history, response: this.response, template: this.promptTemplate,
+      contextText, history: this.history, historyFormat: this.historyFormat, response: this.response, template: this.promptTemplate,
       window: Number(await llm.context()), outputReserve: Math.max(1, Number(this.outputReserve) || 0, Number(llm.settings?.maxOutputTokens) || 4096),
       structuredOutput: llm.settings?.structuredOutput,
       calibration: this.tokenCalibrations.get(calibrationKey(llm)),
@@ -208,7 +210,7 @@ export class Engine {
       this.attempts += 1
       const attemptId = `${this.runId}:${this.steps}:${attempt + 1}`
       this.currentAttemptId = attemptId
-      const requestSnapshot = snapshot({ attemptId, step: this.steps, attempt: attempt + 1, contractVersion: this.contractVersion, observationFormat: this.observationFormat, model: this.activeLLM.model, messages, budget, layers, responseMode, toolNames, ...(responseSchema ? { responseSchema } : {}) })
+      const requestSnapshot = snapshot({ attemptId, step: this.steps, attempt: attempt + 1, contractVersion: this.contractVersion, observationFormat: this.observationFormat, model: this.activeLLM.model, messages, budget, layers, responseMode, toolNames, historyFormat: this.historyFormat, ...(responseSchema ? { responseSchema } : {}) })
       this.emit('prompt', `step ${this.steps}`, sheet, { step: this.steps, attempt: attempt + 1, attemptId, tokens: budget.inputTokens, requestSnapshot })
       if (budget.total > budget.window) {
         this.error = `request budget exceeds context window (${budget.inputTokens} input + ${budget.outputReserve} output > ${budget.window})`

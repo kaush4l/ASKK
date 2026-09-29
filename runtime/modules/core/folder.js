@@ -1,3 +1,4 @@
+import { assertMessageHistoryTemplate } from './prompt.js'
 import { validateLoopBudget } from './loop-budget.js'
 /**
  * Reading agent folders — the one utility that turns files into an AgentSpec.
@@ -30,7 +31,7 @@ const INFERENCE = {
 }
 const ENGINE = {
   response_format: 'responseFormat',
-  observation_format: 'observationFormat',
+  observation_format: 'observationFormat', history_format: 'historyFormat',
   contract_version: 'contractVersion',
   prompt_template: 'promptTemplate',
   output_reserve: 'outputReserve',
@@ -158,6 +159,9 @@ export async function readSpec(path, { index, load }) {
     if (split < 0) throw new Error(`prompt template ${file} requires a <!-- user --> separator`)
     engine.promptTemplate = { system: template.slice(0, split), user: template.slice(split + separator.length) }
   }
+
+  if (engine.historyFormat !== undefined && !['transcript', 'messages'].includes(engine.historyFormat)) throw new Error('Unsupported history_format')
+  if (engine.historyFormat === 'messages') assertMessageHistoryTemplate(engine.promptTemplate)
 
   const ownSoul = index.files?.[`agents/${path}/soul.md`] != null
   const soulFrom = ownSoul ? `agents/${path}/soul.md` : index.files?.['agents/soul.md'] != null ? 'agents/soul.md' : ''

@@ -1761,6 +1761,7 @@ export class Hub {
           session: spec.engine.session,
           responseFormat: spec.engine.responseFormat ?? 'toon',
           observationFormat: spec.engine.observationFormat ?? 'legacy',
+          historyFormat: spec.engine.historyFormat ?? 'transcript',
           contractVersion: spec.engine.contractVersion,
           maxSteps: loopBudgetValue('maxSteps', spec.engine.maxSteps),
           repairs: loopBudgetValue('repairs', spec.engine.repairs),
