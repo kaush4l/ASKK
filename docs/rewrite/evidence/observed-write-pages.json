@@ -1,0 +1,72 @@
+{
+  "source": "54d4100a",
+  "deployment": "0027c3a645f9d4642c89a30d26447f8a9370ebdb",
+  "workflow": "https://github.com/kaush4l/ASKK/actions/runs/36596113922",
+  "workflowConclusion": "success",
+  "tests": {
+    "fullSuite": {
+      "passed": 1069,
+      "skipped": 1,
+      "failed": 0,
+      "assertions": 8130,
+      "files": 106
+    },
+    "additionalControllerRegression": {
+      "passed": 149,
+      "failed": 0
+    }
+  },
+  "export": {
+    "version": 1,
+    "basePath": "/ASKK",
+    "totalBytes": 905102135,
+    "fileCount": 220,
+    "runtimeId": "c2w-node24-38d093f4a38002db",
+    "artifactHash": "9b6999ad4ea62b48390b622ee222b76722575780a657e945a0210c3d5401b805"
+  },
+  "checks": [
+    {
+      "path": "index.html",
+      "status": 200,
+      "sha256": "9add58f10f1d303ef89459051aa78a176bc11681617635ed46ea9c9e93dfb29f",
+      "matches": true
+    },
+    {
+      "path": "_next/static/chunks/app/page-3e10b6514c1cf796.js",
+      "status": 200,
+      "sha256": "7d9e9a827cb039ced2f182f30cf1a4ea6b7c8d334fa4864620404154b2dbbffc",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/core/write-observations.js",
+      "status": 200,
+      "sha256": "05c00df94c683064cc0943aeeea236e0d994b15e12eba55d649977ce20c4b7bd",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/builtin/workspace.js",
+      "status": 200,
+      "sha256": "f67b08ed348ce449659652c9122ad24ccea5bb8a438c2225ce12895661f82a7a",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/runtime/agent.worker.js",
+      "status": 200,
+      "sha256": "78a58b8e68221ec2f2caffddd77ff6a8c8016ecd52402a4cfb7efce24557faf2",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/workspace/controller.js",
+      "status": 200,
+      "sha256": "97b1a20d4de5d6a5f81e1e991a60a9dc3849f1c134d63a8da0ee0630faa27547",
+      "matches": true
+    },
+    {
+      "path": "packages/starter/agents/builder/agent.md",
+      "status": 200,
+      "sha256": "2f14f166dab5b016acb0d4239324a775e51dda732aac023c1114d649dde3a97b",
+      "matches": true
+    }
+  ],
+  "scope": "Exact hosted bytes and automated contract/worker/controller tests. 4B scaffold diagnostic failed before attempting an observed edit; no model adoption claim. No Safari, iPhone, VoiceOver or Browser Linux acceptance."
+}

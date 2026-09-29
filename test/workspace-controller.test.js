@@ -2682,3 +2682,21 @@ test('observed reads reject executor identity changes while the file read is pen
   pause.release()
   await expect(read).rejects.toThrow('runtimeId')
 })
+
+test('observed agent writes use the controller durable commit and preserve owner conflicts', async () => {
+  const { createWriteObservations } = await import('../src/core/write-observations.js')
+  const { controller, hub } = await startedFixture()
+  await controller.runCommand('prepare fixture workspace')
+  await controller.createFile('observed.txt', 'original')
+  const run = { context: { binding: controller.getSnapshot().runtime.binding } }
+  const observations = createWriteObservations()
+  observations.accept('observed.txt', await hub.externalOps['workspace.read']({ path: 'observed.txt' }, run))
+  const first = observations.resolve({ path: 'observed.txt', content: 'agent edit', observed: true })
+  expect((await hub.externalOps['workspace.write'](first, run)).ok).toBe(true)
+  expect((await controller.readFile('observed.txt')).content).toBe('agent edit')
+  observations.accept('observed.txt', await hub.externalOps['workspace.read']({ path: 'observed.txt' }, run))
+  const stale = observations.resolve({ path: 'observed.txt', content: 'stale overwrite', observed: true })
+  await controller.saveFile({ path: 'observed.txt', content: 'owner edit', expect: stale.expect })
+  expect((await hub.externalOps['workspace.write'](stale, run)).conflict).toBe(true)
+  expect((await controller.readFile('observed.txt')).content).toBe('owner edit')
+})
