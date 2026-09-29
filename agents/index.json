@@ -1,5 +1,5 @@
 {
-  "build": "589b4ffbf7",
+  "build": "d74ae7edfd",
   "files": {
     "agents/assistant/agent.md": "6eb458313e",
     "agents/coder/agent.md": "3afbea3eaa",
@@ -111,7 +111,7 @@
     "runtime/modules/builtin/skill.js": "99ccaf44a9",
     "runtime/modules/builtin/todo.js": "e9da4fc366",
     "runtime/modules/builtin/web.js": "5e776fbf1e",
-    "runtime/modules/builtin/workspace.js": "13477815f3",
+    "runtime/modules/builtin/workspace.js": "2d99906b88",
     "runtime/modules/core/agent-package.js": "f92ead62ca",
     "runtime/modules/core/agent-prompt.js": "12dbd90419",
     "runtime/modules/core/builtin-registry.js": "6ed80d1426",
@@ -121,7 +121,7 @@
     "runtime/modules/core/companion-manifest.js": "2e0137eefc",
     "runtime/modules/core/completion-evidence.js": "f021d5061b",
     "runtime/modules/core/completion.js": "79f501b2e9",
-    "runtime/modules/core/context.js": "c99a439c35",
+    "runtime/modules/core/context.js": "97147bd612",
     "runtime/modules/core/draft-backup.js": "ae0630bd19",
     "runtime/modules/core/engine.js": "4266fd7355",
     "runtime/modules/core/folder.js": "10fe6af765",

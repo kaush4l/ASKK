@@ -12,6 +12,8 @@
  * it, it is a tool. If it is simply true and cheap to state, it is context.
  */
 
+import { normalizeCompletion } from './completion.js'
+
 export const CONTEXTS = {
   /** The date and time, as the machine running the agent sees them. */
   time: (settings = {}) => ({
@@ -100,7 +102,18 @@ export const CONTEXTS = {
       if (!environment) return ''
       const limit = Number.isSafeInteger(settings.fileLimit) && settings.fileLimit >= 0 ? settings.fileLimit : 100
       const current = Array.isArray(environment.files) ? { ...environment, files: environment.files.slice(0, limit), fileCount: environment.files.length, filesOmitted: Math.max(0, environment.files.length - limit) } : environment
-      return `Workspace environment:\n${JSON.stringify({ run: engine.ctx.runContext ?? null, current })}`
+      const referenceCompletion = engine.ctx.completion ?? { checks: [] }
+      let run = engine.ctx.runContext ?? null
+      const overallTaskCompletion = run?.workflow?.completion
+      if (run?.workflow) {
+        const { completion, ...workflow } = run.workflow
+        run = { ...run, workflow }
+      }
+      let matchesReferences = false
+      try { matchesReferences = JSON.stringify(normalizeCompletion(overallTaskCompletion)) === JSON.stringify(referenceCompletion) }
+      catch { /* Malformed inherited requirements remain context data, never reference authority. */ }
+      const inherited = overallTaskCompletion && !matchesReferences ? { overallTaskCompletion } : {}
+      return `Workspace environment:\n${JSON.stringify({ run, referenceCompletion, ...inherited, current })}\nFor workspace_run requiredCheck, use only the workspace.commands list in referenceCompletion. No such list means no references are available to this run.${inherited.overallTaskCompletion ? " overallTaskCompletion describes inherited overall task requirements, not this run's reference availability." : ''}`
     },
   }),
 
