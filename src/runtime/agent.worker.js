@@ -215,6 +215,7 @@ async function build(message) {
     llm,
     responseFormat: spec.engine.responseFormat ?? 'toon',
     observationFormat: spec.engine.observationFormat,
+    historyFormat: spec.engine.historyFormat,
     contractVersion: spec.engine.contractVersion,
     promptTemplate: spec.engine.promptTemplate,
     outputReserve: spec.engine.outputReserve,

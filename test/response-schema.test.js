@@ -16,7 +16,7 @@ test('schema follows contract and available tools, including final-only decision
     const act = schema.anyOf[0].properties.act
     const call = shape.version === 3 ? act : act.items.items
     expect(call.properties.name.enum).toEqual(['echo'])
-    expect(call.properties.args).toEqual({ type: 'object' }) // Argument validation remains local.
+    expect(call.properties.args).toEqual({ type: 'object', additionalProperties: true }) // Explicit for converters that default to false; argument validation remains local.
     expect(call.additionalProperties).toBe(false)
     expect(response.schema({ tools, finalOnly: true })).toEqual(schema.anyOf[1])
     expect(response.schema()).toEqual(schema.anyOf[1])

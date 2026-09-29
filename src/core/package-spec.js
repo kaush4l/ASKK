@@ -9,7 +9,7 @@ import { IMPORTABLE_TOOL_GROUPS } from './builtin-registry.js'
 import { boundModelAvailable } from './models.js'
 
 const ENGINE = {
-  observation_format: 'observationFormat', output_reserve: 'outputReserve',
+  observation_format: 'observationFormat', history_format: 'historyFormat', output_reserve: 'outputReserve',
   require_verification: 'requireVerification', max_steps: 'maxSteps', repairs: 'repairs',
   compact_at: 'compactAt', keep: 'keep', remembers: 'remembers',
 }
