@@ -1,0 +1,777 @@
+{
+  "version": 1,
+  "date": "2026-09-29",
+  "model": "Qwen3-1.7B-Q8_0",
+  "provenance": "qwen3-small-model-diagnostic.json",
+  "runtime": "llama-server 6940 c5023daf6 --jinja, server context32768; engine request window8192; Local Bun native evaluation, not an OS sandbox or browser acceptance",
+  "runs": [
+    {
+      "attempt": "qwen3-thinking-script-01",
+      "caseName": "script",
+      "status": "failed",
+      "passed": false,
+      "result": "(failed: provider did not complete the reply (length))",
+      "elapsedMs": 15039,
+      "enableThinking": true,
+      "jsonOutput": true,
+      "contextLength": 8192,
+      "maxOutputTokens": 2048,
+      "checks": [
+        {
+          "args": [
+            "total.js",
+            "19",
+            "-7",
+            "0.5"
+          ],
+          "code": 1,
+          "output": "",
+          "passed": false
+        },
+        {
+          "args": [
+            "total.js"
+          ],
+          "code": 1,
+          "output": "",
+          "passed": false
+        },
+        {
+          "args": [
+            "total.js",
+            "invalid"
+          ],
+          "code": 1,
+          "output": "",
+          "passed": true
+        }
+      ],
+      "commands": [],
+      "metrics": {
+        "promptCount": 2,
+        "repairs": 1,
+        "toolCalls": 0,
+        "inputTokensEstimated": [
+          1238,
+          1287
+        ]
+      },
+      "finishes": [
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 116,
+            "prompt_tokens": 1017,
+            "total_tokens": 1133
+          },
+          "reasoningChars": 0,
+          "contentChars": 383
+        },
+        {
+          "finishReason": "length",
+          "usage": {
+            "completion_tokens": 2048,
+            "prompt_tokens": 1062,
+            "total_tokens": 3110
+          },
+          "reasoningChars": 0,
+          "contentChars": 6469
+        }
+      ],
+      "files": [],
+      "rawSha256": "7a5bad1107950fdcb4482a62e25d1a87b6096717031f00f4ca6263c6c23a5134"
+    },
+    {
+      "attempt": "qwen3-thinking-script-02",
+      "caseName": "script",
+      "status": "done",
+      "passed": true,
+      "result": "The verified result.",
+      "elapsedMs": 33821,
+      "enableThinking": true,
+      "jsonOutput": false,
+      "contextLength": 8192,
+      "maxOutputTokens": 2048,
+      "checks": [
+        {
+          "args": [
+            "total.js",
+            "19",
+            "-7",
+            "0.5"
+          ],
+          "code": 0,
+          "output": "12.5",
+          "passed": true
+        },
+        {
+          "args": [
+            "total.js"
+          ],
+          "code": 0,
+          "output": "0",
+          "passed": true
+        },
+        {
+          "args": [
+            "total.js",
+            "invalid"
+          ],
+          "code": 1,
+          "output": "",
+          "passed": true
+        }
+      ],
+      "commands": [
+        {
+          "code": 127,
+          "output": "/bin/sh: total.js: command not found\n"
+        },
+        {
+          "code": 127,
+          "output": "/bin/sh: total.js: command not found\n"
+        },
+        {
+          "code": 0,
+          "output": "6\n"
+        }
+      ],
+      "metrics": {
+        "promptCount": 6,
+        "repairs": 0,
+        "toolCalls": 5,
+        "inputTokensEstimated": [
+          1238,
+          1459,
+          1679,
+          1838,
+          2038,
+          2307
+        ]
+      },
+      "finishes": [
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 1041,
+            "prompt_tokens": 1017,
+            "total_tokens": 2058
+          },
+          "reasoningChars": 3851,
+          "contentChars": 395
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 464,
+            "prompt_tokens": 1263,
+            "total_tokens": 1727
+          },
+          "reasoningChars": 1591,
+          "contentChars": 408
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 1219,
+            "prompt_tokens": 1608,
+            "total_tokens": 2827
+          },
+          "reasoningChars": 5270,
+          "contentChars": 84
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 1261,
+            "prompt_tokens": 1875,
+            "total_tokens": 3136
+          },
+          "reasoningChars": 5986,
+          "contentChars": 84
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 651,
+            "prompt_tokens": 2144,
+            "total_tokens": 2795
+          },
+          "reasoningChars": 2935,
+          "contentChars": 92
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 495,
+            "prompt_tokens": 2408,
+            "total_tokens": 2903
+          },
+          "reasoningChars": 2116,
+          "contentChars": 42
+        }
+      ],
+      "files": [
+        {
+          "path": "total.js",
+          "rev": "41227acdf05dae4d8160447728afcb38e339c405f4a9811469cc1156cd18f5c7",
+          "revision": "41227acdf05dae4d8160447728afcb38e339c405f4a9811469cc1156cd18f5c7",
+          "size": 291,
+          "editable": true
+        }
+      ],
+      "rawSha256": "37a32b4c8cfb5f7a05d37daeacb80a7aa9eb7a41b001a7af81532dc76467e2dc"
+    },
+    {
+      "attempt": "qwen3-no-thinking-script-02",
+      "caseName": "script",
+      "status": "failed",
+      "passed": false,
+      "result": "(failed: reply did not match contract version 2 after 3 attempts)",
+      "elapsedMs": 8225,
+      "enableThinking": false,
+      "jsonOutput": false,
+      "contextLength": 8192,
+      "maxOutputTokens": 2048,
+      "checks": [
+        {
+          "args": [
+            "total.js",
+            "19",
+            "-7",
+            "0.5"
+          ],
+          "code": 1,
+          "output": "",
+          "passed": false
+        },
+        {
+          "args": [
+            "total.js"
+          ],
+          "code": 1,
+          "output": "",
+          "passed": false
+        },
+        {
+          "args": [
+            "total.js",
+            "invalid"
+          ],
+          "code": 1,
+          "output": "",
+          "passed": true
+        }
+      ],
+      "commands": [],
+      "metrics": {
+        "promptCount": 12,
+        "repairs": 6,
+        "toolCalls": 5,
+        "inputTokensEstimated": [
+          1238,
+          1356,
+          1398,
+          1428,
+          1470,
+          1499,
+          1541,
+          1571,
+          1613,
+          1642,
+          1684,
+          1684
+        ]
+      },
+      "finishes": [
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 24,
+            "prompt_tokens": 1021,
+            "total_tokens": 1045
+          },
+          "reasoningChars": 0,
+          "contentChars": 76
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 128,
+            "prompt_tokens": 1155,
+            "total_tokens": 1283
+          },
+          "reasoningChars": 0,
+          "contentChars": 403
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 24,
+            "prompt_tokens": 1193,
+            "total_tokens": 1217
+          },
+          "reasoningChars": 0,
+          "contentChars": 76
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 108,
+            "prompt_tokens": 1256,
+            "total_tokens": 1364
+          },
+          "reasoningChars": 0,
+          "contentChars": 369
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 24,
+            "prompt_tokens": 1294,
+            "total_tokens": 1318
+          },
+          "reasoningChars": 0,
+          "contentChars": 76
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 128,
+            "prompt_tokens": 1357,
+            "total_tokens": 1485
+          },
+          "reasoningChars": 0,
+          "contentChars": 403
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 24,
+            "prompt_tokens": 1395,
+            "total_tokens": 1419
+          },
+          "reasoningChars": 0,
+          "contentChars": 76
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 280,
+            "prompt_tokens": 1458,
+            "total_tokens": 1738
+          },
+          "reasoningChars": 0,
+          "contentChars": 673
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 24,
+            "prompt_tokens": 1496,
+            "total_tokens": 1520
+          },
+          "reasoningChars": 0,
+          "contentChars": 76
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 95,
+            "prompt_tokens": 1559,
+            "total_tokens": 1654
+          },
+          "reasoningChars": 0,
+          "contentChars": 237
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 164,
+            "prompt_tokens": 1597,
+            "total_tokens": 1761
+          },
+          "reasoningChars": 0,
+          "contentChars": 496
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 164,
+            "prompt_tokens": 1597,
+            "total_tokens": 1761
+          },
+          "reasoningChars": 0,
+          "contentChars": 496
+        }
+      ],
+      "files": [],
+      "rawSha256": "babc15b43ce78636c30f53a74b17308e6b97de779858406510396f53ca3c594f"
+    },
+    {
+      "attempt": "qwen3-thinking-project-01",
+      "caseName": "project",
+      "status": "failed",
+      "passed": false,
+      "result": "(failed: reply did not match contract version 2 after 3 attempts)",
+      "elapsedMs": 14273,
+      "enableThinking": true,
+      "jsonOutput": false,
+      "contextLength": 8192,
+      "maxOutputTokens": 2048,
+      "checks": [
+        {
+          "args": [
+            "-e",
+            "import {total} from './src/total.js'; if(total([19,-7,0.5])!==12.5||total([])!==0)process.exit(2); for(const v of [['x'],[NaN],[Infinity]]){let failed=false;try{total(v)}catch{failed=true}if(!failed)process.exit(3)} console.log('withheld passed')"
+          ],
+          "code": 1,
+          "output": "",
+          "passed": false
+        },
+        {
+          "name": "declared and executed test suite",
+          "passed": false
+        }
+      ],
+      "commands": [],
+      "metrics": {
+        "promptCount": 3,
+        "repairs": 2,
+        "toolCalls": 0,
+        "inputTokensEstimated": [
+          1235,
+          1278,
+          1278
+        ]
+      },
+      "finishes": [
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 618,
+            "prompt_tokens": 1016,
+            "total_tokens": 1634
+          },
+          "reasoningChars": 890,
+          "contentChars": 1138
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 823,
+            "prompt_tokens": 1054,
+            "total_tokens": 1877
+          },
+          "reasoningChars": 1690,
+          "contentChars": 1271
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 823,
+            "prompt_tokens": 1054,
+            "total_tokens": 1877
+          },
+          "reasoningChars": 1690,
+          "contentChars": 1271
+        }
+      ],
+      "files": [],
+      "rawSha256": "8bfb18eab91e413ce2cf420fe1f6ebb65d79c52efe32a7b6059aec025d0620e9"
+    },
+    {
+      "attempt": "qwen3-thinking-project-02",
+      "caseName": "project",
+      "status": "failed",
+      "passed": false,
+      "result": "(failed: reply did not match contract version 2 after 3 attempts)",
+      "elapsedMs": 11538,
+      "enableThinking": true,
+      "jsonOutput": false,
+      "contextLength": 8192,
+      "maxOutputTokens": 2048,
+      "checks": [
+        {
+          "args": [
+            "-e",
+            "import {total} from './src/total.js'; if(total([19,-7,0.5])!==12.5||total([])!==0)process.exit(2); for(const v of [['x'],[NaN],[Infinity]]){let failed=false;try{total(v)}catch{failed=true}if(!failed)process.exit(3)} console.log('withheld passed')"
+          ],
+          "code": 1,
+          "output": "",
+          "passed": false
+        },
+        {
+          "name": "declared and executed test suite",
+          "passed": false
+        }
+      ],
+      "commands": [],
+      "metrics": {
+        "promptCount": 3,
+        "repairs": 2,
+        "toolCalls": 0,
+        "inputTokensEstimated": [
+          1235,
+          1279,
+          1279
+        ]
+      },
+      "finishes": [
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 618,
+            "prompt_tokens": 1016,
+            "total_tokens": 1634
+          },
+          "reasoningChars": 890,
+          "contentChars": 1138
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 615,
+            "prompt_tokens": 1055,
+            "total_tokens": 1670
+          },
+          "reasoningChars": 1732,
+          "contentChars": 726
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 630,
+            "prompt_tokens": 1055,
+            "total_tokens": 1685
+          },
+          "reasoningChars": 1732,
+          "contentChars": 785
+        }
+      ],
+      "files": [],
+      "rawSha256": "d0a3a714b31248fd6ff777318ebf788a406ef5cb2a13353591b58650343cccfc"
+    },
+    {
+      "attempt": "qwen3-thinking-project-03",
+      "caseName": "project",
+      "status": "failed",
+      "passed": false,
+      "result": "(failed: reply did not match contract version 2 after 3 attempts)",
+      "elapsedMs": 14518,
+      "enableThinking": true,
+      "jsonOutput": false,
+      "contextLength": 8192,
+      "maxOutputTokens": 2048,
+      "checks": [
+        {
+          "args": [
+            "-e",
+            "import {total} from './src/total.js'; if(total([19,-7,0.5])!==12.5||total([])!==0)process.exit(2); for(const v of [['x'],[NaN],[Infinity]]){let failed=false;try{total(v)}catch{failed=true}if(!failed)process.exit(3)} console.log('withheld passed')"
+          ],
+          "code": 1,
+          "output": "",
+          "passed": false
+        },
+        {
+          "name": "declared and executed test suite",
+          "passed": false
+        }
+      ],
+      "commands": [],
+      "metrics": {
+        "promptCount": 3,
+        "repairs": 2,
+        "toolCalls": 0,
+        "inputTokensEstimated": [
+          1235,
+          1691,
+          1742
+        ]
+      },
+      "finishes": [
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 618,
+            "prompt_tokens": 1016,
+            "total_tokens": 1634
+          },
+          "reasoningChars": 890,
+          "contentChars": 1138
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 774,
+            "prompt_tokens": 1549,
+            "total_tokens": 2323
+          },
+          "reasoningChars": 1451,
+          "contentChars": 1188
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 832,
+            "prompt_tokens": 1569,
+            "total_tokens": 2401
+          },
+          "reasoningChars": 1894,
+          "contentChars": 1145
+        }
+      ],
+      "files": [],
+      "rawSha256": "49940e5d32f556ec18661f61f39741e70a4d30e65029f2619e91198d54d414d5"
+    },
+    {
+      "attempt": "qwen3-thinking-repair-01",
+      "caseName": "repair",
+      "status": "failed",
+      "passed": false,
+      "result": "(failed: reply did not match contract version 2 after 3 attempts)",
+      "elapsedMs": 35272,
+      "enableThinking": true,
+      "jsonOutput": false,
+      "contextLength": 8192,
+      "maxOutputTokens": 2048,
+      "checks": [
+        {
+          "args": [
+            "-e",
+            "import {total} from './src/total.js';if(total([19,-7,0.5])!==12.5||total([])!==0)process.exit(2);for(const v of [['x'],[NaN],[Infinity]]){let failed=false;try{total(v)}catch{failed=true}if(!failed)process.exit(3)}console.log('withheld passed')"
+          ],
+          "code": 2,
+          "output": "",
+          "passed": false
+        },
+        {
+          "name": "observed failure-driven repair cycle",
+          "passed": false,
+          "reason": "No ordered failed command → acknowledged edit → new successful command was observed."
+        }
+      ],
+      "commands": [
+        {
+          "code": 1,
+          "output": "\nnode:internal/modules/run_main:123\n    triggerUncaughtException(\n    ^\nError [ERR_MODULE_NOT_FOUND]: Cannot find package 'node_modules' imported from /Users/kaush/Downloads/Dev/ASKK/.cache/project-loop/qwen3-thinking-repair-01/project/\n    at Object.getPackageJSONURL (node:internal/modules/package_json_reader:314:9)\n    at packageResolve (node:internal/modules/esm/resolve:768:81)\n    at moduleResolve (node:internal/modules/esm/resolve:855:18)\n    at defaultResolve (node:internal/modules/esm/resolve:985:11)\n    at nextResolve (node:internal/modules/esm/hooks:748:28)\n    at Hooks.resolve (node:internal/modules/esm/hooks:240:30)\n    at ModuleLoader.resolve (node:internal/modules/esm/loader:722:35)\n    at ModuleLoader.getModuleJobForImport (node:internal/modules/esm/loader:320:38)\n    at onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:680:36)\n    at TracingChannel.tracePromise (node:diagnostics_channel:350:14) {\n  code: 'ERR_MODULE_NOT_FOUND'\n}\n\nNode.js v22.22.3\n"
+        },
+        {
+          "code": 1,
+          "output": "\nnode:internal/modules/run_main:123\n    triggerUncaughtException(\n    ^\nError [ERR_MODULE_NOT_FOUND]: Cannot find package 'node_modules' imported from /Users/kaush/Downloads/Dev/ASKK/.cache/project-loop/qwen3-thinking-repair-01/project/\n    at Object.getPackageJSONURL (node:internal/modules/package_json_reader:314:9)\n    at packageResolve (node:internal/modules/esm/resolve:768:81)\n    at moduleResolve (node:internal/modules/esm/resolve:855:18)\n    at defaultResolve (node:internal/modules/esm/resolve:985:11)\n    at nextResolve (node:internal/modules/esm/hooks:748:28)\n    at Hooks.resolve (node:internal/modules/esm/hooks:240:30)\n    at ModuleLoader.resolve (node:internal/modules/esm/loader:722:35)\n    at ModuleLoader.getModuleJobForImport (node:internal/modules/esm/loader:320:38)\n    at onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:680:36)\n    at TracingChannel.tracePromise (node:diagnostics_channel:350:14) {\n  code: 'ERR_MODULE_NOT_FOUND'\n}\n\nNode.js v22.22.3\n"
+        }
+      ],
+      "metrics": {
+        "promptCount": 6,
+        "repairs": 3,
+        "toolCalls": 4,
+        "inputTokensEstimated": [
+          1241,
+          1423,
+          1831,
+          2425,
+          3019,
+          2958
+        ]
+      },
+      "finishes": [
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 656,
+            "prompt_tokens": 1022,
+            "total_tokens": 1678
+          },
+          "reasoningChars": 2600,
+          "contentChars": 304
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 674,
+            "prompt_tokens": 1171,
+            "total_tokens": 1845
+          },
+          "reasoningChars": 2646,
+          "contentChars": 381
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 695,
+            "prompt_tokens": 1871,
+            "total_tokens": 2566
+          },
+          "reasoningChars": 2777,
+          "contentChars": 239
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 1445,
+            "prompt_tokens": 2687,
+            "total_tokens": 4132
+          },
+          "reasoningChars": 5240,
+          "contentChars": 760
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 704,
+            "prompt_tokens": 2989,
+            "total_tokens": 3693
+          },
+          "reasoningChars": 2193,
+          "contentChars": 575
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 1069,
+            "prompt_tokens": 2945,
+            "total_tokens": 4014
+          },
+          "reasoningChars": 3881,
+          "contentChars": 576
+        }
+      ],
+      "files": [
+        {
+          "path": "package.json",
+          "rev": "e944b1bb83626b810f17c2e6922d1ede2be5709736182b700a2b8ec2e907dfc4",
+          "revision": "e944b1bb83626b810f17c2e6922d1ede2be5709736182b700a2b8ec2e907dfc4",
+          "size": 48,
+          "editable": true
+        },
+        {
+          "path": "src/total.js",
+          "rev": "b1e53c5e7884a6c95289b4d5bd86eaa7fb36828d83fd2747e97a5ea902504909",
+          "revision": "b1e53c5e7884a6c95289b4d5bd86eaa7fb36828d83fd2747e97a5ea902504909",
+          "size": 43,
+          "editable": true
+        },
+        {
+          "path": "total.test.js",
+          "rev": "e2f331b06a6ce47e4034303403855d757498224accceb74bfeec20659b2ab6af",
+          "revision": "e2f331b06a6ce47e4034303403855d757498224accceb74bfeec20659b2ab6af",
+          "size": 121,
+          "editable": true
+        }
+      ],
+      "rawSha256": "a700a4a40a09adaeb8c73f73050360cdcd3616e62a5478061153c5f663415527"
+    }
+  ],
+  "probe": {
+    "scope": "Read-only extra one-action-per-turn instruction; no tools executed; not adopted",
+    "content": "{\"do\":\"tool\",\"act\":[[{\"name\":\"workspace_write\",\"args\":{\"path\":\"package.json\",\"content\":\"{\\n  \\\"name\\\": \\\"\\\",\\\"\\n  \\\"version\\\": \\\"1.0.0\\\",\\n  \\\"scripts\\\": {\\n    \\\"test\\\": \\\"bun test\\\",\\n    \\\"start\\\": \\\"bun run\\\"\\n  },\\n  \\\"dependencies\\\": {}\\\"\\n},expect:\"0\"}],[{\"name\":\"workspace_write\",\"args\":{\"path\":\"src/total.js\",\"content\":\"function total(values) {\\n  if (!Array.isArray(values)) {\\n    throw new Error('Expected an array');\\n  }\\n  let sum = 0;\\n  for (const value of values) {\\n    if (typeof value !== 'number' || isNaN(value) || !isFinite(value)) {\\n      throw new Error('All values must be finite numbers');\\n    }\\n    sum += value;\\n  }\\n  return sum;\\n}\\nexport default total;\"},\"expect\":\"0\"}]]",
+    "reasoningChars": 2643,
+    "usage": {
+      "completion_tokens": 802,
+      "prompt_tokens": 1053,
+      "total_tokens": 1855
+    }
+  },
+  "conclusion": "One script smoke pass with thinking on and provider JSON mode off. The model itself ran only a positive example; independent evaluator checks established numeric/empty/invalid behavior. Script control, scaffold and existing-project repair failures retained. Parser diagnostics and rejected-response context preserve strictness but did not establish project success. No universal reliability or browser execution claim.",
+  "cleanup": "Temporary model server stopped; user server8873 unchanged."
+}
