@@ -49,6 +49,11 @@
       "workflow": "parallel-review"
     },
     {
+      "id": "project",
+      "package": "starter",
+      "workflow": "project"
+    },
+    {
       "id": "coding",
       "package": "starter",
       "workflow": "coding"

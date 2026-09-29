@@ -1,3 +1,5 @@
+import { validateToolInput, schemaParameters } from './tool-input.js'
+import { snapshot } from './prompt.js'
 /**
  * Tools — anything callable that can describe itself to a model.
  *
@@ -24,7 +26,8 @@ export function tool(spec, defaults = {}) {
   return {
     name,
     description: String(spec.description ?? '').trim(),
-    parameters: { ...(spec.parameters ?? {}) },
+    parameters: spec.inputSchema ? schemaParameters(spec.inputSchema) : { ...(spec.parameters ?? {}) },
+    inputSchema: spec.inputSchema ? snapshot(spec.inputSchema) : null,
     requires: [...(spec.requires ?? [])],
     risk: spec.risk ?? defaults.risk ?? '',
     repeatable: spec.repeatable !== false,
@@ -32,6 +35,7 @@ export function tool(spec, defaults = {}) {
     cacheable: spec.cacheable === true && !spec.writes,
     writes: Boolean(spec.writes),
     projectObservation: typeof spec.projectObservation === 'function' ? spec.projectObservation : null,
+    projectActivity: typeof spec.projectActivity === 'function' ? spec.projectActivity : null,
     run,
     tier: defaults.tier ?? spec.tier ?? 'built-in',
     source: defaults.source ?? spec.source ?? '',
@@ -95,6 +99,8 @@ export function toolbox(tiers, { has = () => true } = {}) {
 /** Status comes from execution, never from text that the tool happens to return. */
 export async function runToolResult(item, args, ctx) {
   try {
+    const faults = validateToolInput(item.inputSchema, args ?? {})
+    if (faults.length) throw new TypeError(`Invalid tool arguments: ${faults.join('; ')}`)
     const result = await item.run(args ?? {}, ctx)
     const text = result == null || result === '' ? '(no output)' : typeof result === 'string' ? result : JSON.stringify(result, null, 2)
     return { text, ok: true }

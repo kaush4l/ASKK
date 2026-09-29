@@ -55,6 +55,7 @@ function request(op, args = {}) {
 
 /** The desk owns connection configuration; this thread receives only a scoped model handle. */
 async function llm() {
+  if (engine) engine.tools = availableTools()
   if (modelHandle) await request('model.close', { handle: modelHandle })
   const descriptor = await request('model.open')
   modelHandle = descriptor.handle
@@ -254,6 +255,10 @@ async function build(message) {
   })
 }
 
+function availableTools() {
+  return serviceMode === 'compaction' ? [] : fullTools.filter(item => toolSelected(item, runToolPolicy) && installationDecision(item, {}, { policy, agent: spec.path, toolPolicy: runToolPolicy }, spec.permissions).action !== 'deny')
+}
+
 async function run(query, context, service, completionRequired, runId) {
   activeRunId = runId
   modelHandle = null
@@ -262,7 +267,7 @@ async function run(query, context, service, completionRequired, runId) {
   controller = new AbortController()
   engine.verifyCompletion = completionRequired ? () => request('run.verifyCompletion') : null
   engine.ctx.runContext = snapshot(context ?? null)
-  engine.tools = serviceMode === 'compaction' ? [] : fullTools.filter(item => toolSelected(item, runToolPolicy))
+  engine.tools = availableTools()
   try {
     const text = await engine.invoke(query, { signal: controller.signal })
     post({ type: 'answer', text, ok: engine.status === 'done', slot: engine.progress() })
