@@ -7,7 +7,7 @@
   "nodes": [
     {
       "id": "approach",
-      "agent": "planner",
+      "agent": "bundled/starter/planner",
       "dependsOn": [],
       "templateFile": "prompts/strategies/goal.md",
       "inputs": {
@@ -19,7 +19,7 @@
     },
     {
       "id": "risks",
-      "agent": "critic",
+      "agent": "bundled/starter/critic",
       "dependsOn": [],
       "templateFile": "prompts/strategies/goal.md",
       "inputs": {
@@ -31,7 +31,7 @@
     },
     {
       "id": "synthesis",
-      "agent": "synthesizer",
+      "agent": "bundled/starter/synthesizer",
       "dependsOn": [
         "approach",
         "risks"

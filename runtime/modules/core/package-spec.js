@@ -6,6 +6,7 @@
  */
 import { commonToolFiles } from './folder.js'
 import { IMPORTABLE_TOOL_GROUPS } from './builtin-registry.js'
+import { boundModelAvailable } from './models.js'
 
 const ENGINE = {
   observation_format: 'observationFormat', output_reserve: 'outputReserve',
@@ -39,10 +40,11 @@ function requestedGroups(agent) {
  * -> frozen AgentSpec[]. No provider secrets, executable package tools or global
  * resources enter the result. All package aliases require explicit desk binding.
  */
-export async function compileAgentPackage(pkg, { installationId, bindings, catalogue, index = { files: {} } } = {}) {
+export async function compileAgentPackage(pkg, { installationId, namespace = 'installed', bindings, catalogue, index = { files: {} } } = {}) {
   const data = pkg?.data, source = pkg?.source
   if (!plain(data) || !Object.isFrozen(data) || data.schemaVersion !== 1 || !Array.isArray(data.agents) || !data.agents.length || !plain(data.lock) || !Array.isArray(data.lock.files) || typeof source?.read !== 'function' || typeof source?.list !== 'function') fail('PACKAGE_COMPILE_SOURCE', 'pass a validated import or restore result, not stored JSON')
   if (typeof installationId !== 'string' || !/^[a-z0-9][a-z0-9_-]{0,127}$/.test(installationId)) fail('PACKAGE_COMPILE_ID', 'installationId must be a bounded lowercase desk ID without path separators')
+  if (!['installed', 'bundled'].includes(namespace)) fail('PACKAGE_COMPILE_ID', 'namespace must be installed or bundled')
   if (!plain(bindings) || Object.keys(bindings).some(key => !['models', 'tools'].includes(key)) || !plain(bindings.models) || !Array.isArray(bindings.tools) || bindings.tools.length > 1024 || bindings.tools.some(group => typeof group !== 'string' || !group) || new Set(bindings.tools).size !== bindings.tools.length) fail('PACKAGE_COMPILE_BINDING', 'bindings must contain explicit model mappings and distinct approved tool groups')
   if (!plain(catalogue?.models)) fail('PACKAGE_COMPILE_MODEL', 'the desk model catalogue is unavailable')
   // Capture all caller-owned decisions before any source read/hash can yield.
@@ -60,12 +62,12 @@ export async function compileAgentPackage(pkg, { installationId, bindings, catal
   for (const alias of Object.keys(models)) if (!modelAliases.has(alias)) fail('PACKAGE_COMPILE_BINDING', `model binding "${alias}" was not requested by this package`)
   for (const alias of modelAliases) {
     const deskAlias = models[alias]
-    if (!Object.hasOwn(models, alias) || typeof deskAlias !== 'string' || !deskAlias || !Object.hasOwn(catalogue.models, deskAlias) || !plain(catalogue.models[deskAlias])) fail('PACKAGE_COMPILE_MODEL', `bind requested model alias "${alias}" to an existing desk model profile; raw model IDs are not a fallback`)
+    if (!Object.hasOwn(models, alias) || !boundModelAvailable(catalogue, deskAlias)) fail('PACKAGE_COMPILE_MODEL', `bind requested model alias "${alias}" to an existing desk model profile or a valid $default; raw model IDs are not a fallback`)
   }
 
   const inventory = new Map(data.lock.files.map(row => [row.path, row]))
   const agents = new Map(data.agents.map(agent => [agent.id, agent]))
-  const paths = new Map(data.agents.map(agent => [agent.id, `installed/${installationId}/${agent.id}`]))
+  const paths = new Map(data.agents.map(agent => [agent.id, `${namespace}/${installationId}/${agent.id}`]))
   const resources = new Map()
   const read = path => {
     if (!resources.has(path)) resources.set(path, (async () => {
@@ -99,14 +101,15 @@ export async function compileAgentPackage(pkg, { installationId, bindings, catal
     const soulFrom = Object.hasOwn(packageResources, `${directory}soul.md`) ? `${directory}soul.md` : ''
     const skills = Array.isArray(settings.skills) ? settings.skills.map(path => path.normalize('NFC')) : settings.skills === true ? agent.references.filter(path => path.startsWith(`${directory}skills/`) && path.endsWith('.md')) : []
     const delegates = Object.entries(agent.delegates).map(([name, id]) => ({ path: paths.get(id), name, description: agents.get(id).settings.description ?? '' }))
-    const packageIdentity = { installationId, packageId: data.packageId, packageVersion: data.packageVersion, revisionDigest: data.revisionDigest, agentId: agent.id }
+    const services = Object.fromEntries(Object.entries(settings.services ?? {}).map(([name, id]) => [name, paths.get(id)]))
+    const packageIdentity = { namespace, installationId, packageId: data.packageId, packageVersion: data.packageVersion, revisionDigest: data.revisionDigest, agentId: agent.id }
     const hash = `sha256:${await digest(encoder.encode(canonical({ package: packageIdentity, inference, grants, commonTools: Object.fromEntries(Object.entries(commonTools).map(([name, file]) => [name, { file, hash: commonHashes[file] }])) })))}`
     specs.push({
       path: paths.get(agent.id), name: settings.name ?? agent.id, description: settings.description ?? '',
       body: agent.body, soul: soulFrom ? packageResources[soulFrom] : '', soulFrom,
       learned: packageResources[`${directory}learned.md`] ?? '', permissions: clone(settings.permissions ?? {}),
       inference, engine, context: clone(settings.context ?? []),
-      peers: [...new Set(delegates.map(item => item.path))], delegates, owned: [],
+      peers: [...new Set(delegates.map(item => item.path))], delegates, services, owned: [],
       grants, skills: grants.includes('skill') && skills.length > 0,
       private: settings.private ?? false, localTools: [], commonTools, hash, notes: [...agent.notes],
       package: packageIdentity, packageResources,

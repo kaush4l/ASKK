@@ -3,12 +3,13 @@ import { LocalExecution } from '../execution/local.js'
 import { prepareIsolation } from './isolation.js'
 import { normalizeToolPolicy } from '../runtime/tool-policy.js'
 import { DEFAULT_PROMPT, snapshot } from '../core/prompt.js'
+import { boundModelAvailable, resolve as resolveModel } from '../core/models.js'
+import { openaiBase, anthropicBase } from '../core/inference.js'
 import { createWorkspaceBinding, assertWorkspaceBinding, assertWorkspacePort, assertExecutionPort, createArtifactManifest, assertArtifactManifest, createBoundRunSnapshot } from './contracts.js'
 
 const active = status => ['thinking', 'calling', 'waiting', 'compacting', 'running', 'starting', 'cancelling', 'verifying'].includes(status)
 const id = prefix => `${prefix}-${crypto.randomUUID()}`
 const readSaved = key => { try { return JSON.parse(localStorage.getItem(key) ?? 'null') } catch { return null } }
-const LEGACY_WORKFLOW = Object.freeze({ id: 'coding', label: 'Build an app', description: 'Create and verify an application in the selected workspace.', agent: 'main', workspace: true })
 const DEFAULT_TOOL_POLICY = normalizeToolPolicy({ disabledTools: [], approvalRisks: [], allowDelegation: true })
 const canRelayModels = value => (value?.capabilities ?? value?.health?.capabilities ?? []).some(capability => ['model-relay', 'fetch'].includes(capability))
 const companionIdentity = value => JSON.stringify([value?.status, value?.url, value?.runtimeId, value?.generation, value?.root, [...(value?.capabilities ?? [])].sort()])
@@ -26,8 +27,7 @@ const installedWorkflow = item => Object.freeze({
   package: Object.freeze({ installationId: item.id, packageId: item.packageId, revisionDigest: item.revisionDigest, agentId: item.leadAgentId }),
 })
 function workflowsFrom(configuration) {
-  if (configuration.workflows === undefined) return [LEGACY_WORKFLOW]
-  if (!Array.isArray(configuration.workflows) || !configuration.workflows.length || configuration.workflows.length > 32) throw new Error('Invalid workbench workflows')
+  if (!Array.isArray(configuration.workflows) || configuration.workflows.length > 32) throw new Error('workbench.json must declare its workflows; no agent is selected implicitly')
   const seen = new Set()
   return configuration.workflows.map(row => {
     if (!row || typeof row.id !== 'string' || !/^[a-z][a-z0-9-]{0,63}$/.test(row.id) || seen.has(row.id) || typeof row.label !== 'string' || !row.label.trim() || typeof row.description !== 'string' || typeof row.agent !== 'string' || !/^[a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_-]+)*$/.test(row.agent) || typeof row.workspace !== 'boolean') throw new Error('Invalid workbench workflow')
@@ -41,7 +41,7 @@ const saveSetting = (key, value) => { try { localStorage.setItem(key, JSON.strin
 export function createWorkbenchController({ onChange, basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? '', workspace: workspaceOverride, createExecution: executionFactory, createCompanion = options => new LocalExecution(options), createHub: hubFactory, inspectArtifact: inspectOverride } = {}) {
   const listeners = new Set(onChange ? [onChange] : []); const running = new Map(); const terminalListeners = new Map(); const terminals = new Set()
   const base = `${basePath.replace(/\/$/, '')}/`
-  let state = { ready: false, error: '', project: { name: 'Untitled workspace', id: 'default' }, goal: '', goalRevision: 0, files: [], messages: [], run: null, task: null, runtime: { target: 'browser', status: 'idle', phase: 'Not started', capabilities: [] }, companion: { status: 'disconnected', url: 'https://127.0.0.1:7717' }, model: { status: 'unconfigured', id: '', baseUrl: '' }, commands: [], artifacts: [], agents: [], agentDefinitions: [], agentPackages: [], packageInstalling: false, workflows: [], selectedWorkflowId: 'assistant', toolPolicy: DEFAULT_TOOL_POLICY, plans: [], approvals: [], activity: [] }
+  let state = { ready: false, error: '', project: { name: 'Untitled workspace', id: 'default' }, goal: '', goalRevision: 0, files: [], messages: [], run: null, task: null, sessionBoundary: null, runtime: { target: 'browser', status: 'idle', phase: 'Not started', capabilities: [] }, companion: { status: 'disconnected', url: 'https://127.0.0.1:7717' }, model: { status: 'unconfigured', id: '', baseUrl: '' }, commands: [], artifacts: [], agents: [], agentDefinitions: [], agentPackages: [], packageInstalling: false, workflows: [], selectedWorkflowId: '', toolPolicy: DEFAULT_TOOL_POLICY, plans: [], approvals: [], activity: [] }
   let hub; let local; let executor; let browser; let started; let disposed = false; let activeRun; let projectRevision = 0; let taskStartRevision = 0; let currentArtifact; let unsubscribe; let runtimeBoot; let taskArtifactId; let watcher; let watched = ''; let acceptance = { requireArtifact: true, requireInteraction: true }
   let uiLoaded = false; let persistTimer; let savingUI = Promise.resolve()
   let binding; let workspaceLocation = null; let locationLoaded = false; let legacyNative = false; let modelProfiles = []; let modelEpoch = 0; let modelCheck; let launchEpoch = 0; const runBindings = new Map()
@@ -278,11 +278,36 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
     for (const run of hub?.runs.values() ?? []) instances.set(run.id, run)
     notify({ agents: [...instances.values()].map(run => ({ id: run.id, trace: run.trace ?? run.id, kind: run.kind, taskId: run.taskId, stageId: run.stageId, result: run.result, error: run.slot?.error, path: run.agent, agent: run.agent, name: state.agentDefinitions.find(row => row.path === run.agent)?.name ?? run.agent, current: run.slot?.current ?? '', maxSteps: run.slot?.maxSteps, steps: run.slot?.steps ?? 0, parent: run.parent ?? null, status: hub?.runs.get(run.id)?.ended === false && run.slot?.status === 'idle' ? 'queued' : run.slot?.status ?? 'starting', description: run.query, at: run.at })) })
   }
+  const sessionBoundaryFor = (workflows = state.workflows, selectedId = state.selectedWorkflowId) => {
+    const selected = workflows.find(row => row.id === selectedId)
+    const previousAgent = state.run?.agent
+    return previousAgent && selected && previousAgent !== selected.agent
+      ? snapshot({ previousAgent, agent: selected.agent, label: selected.label }) : null
+  }
   const refreshPackages = preferred => {
     const agentPackages = hub?.packages?.list() ?? []
     const workflows = Object.freeze([...configuredWorkflows, ...agentPackages.map(installedWorkflow)])
     const selectedWorkflowId = preferred && workflows.some(item => item.id === preferred) ? preferred : state.selectedWorkflowId
-    notify({ agentPackages, workflows, selectedWorkflowId })
+    notify({ agentPackages, workflows, selectedWorkflowId, sessionBoundary: sessionBoundaryFor(workflows, selectedWorkflowId) })
+  }
+  const selectedModelTransport = workflow => {
+    const catalogue = hub.catalogue?.() ?? hub.settings.get().catalogue
+    const spec = hub.specs?.get(workflow.agent)
+    if (hub.specs && !spec) throw new Error('The selected agent definition is unavailable. Select a current workflow before starting a task.')
+    // The real Hub always supplies compiled specs. A manifest-only integration
+    // can supply its alias; the workbench alias is the legacy fixture boundary.
+    const alias = spec?.inference?.model ?? workflow.leadModel ?? hub.manifest?.().find(row => row.path === workflow.agent)?.alias ?? 'workbench'
+    if (spec?.package && !boundModelAvailable(catalogue, alias)) throw new Error(`The selected agent's bound model profile is no longer configured: ${alias}`)
+    const settings = resolveModel(spec?.inference ?? { model: alias }, catalogue)
+    const provider = settings.provider ?? 'openai'
+    const model = provider === 'cli' || provider === 'scripted' ? settings.model || settings.alias || 'default' : settings.model
+    if (typeof model !== 'string' || !model.trim()) throw new Error('The selected agent model requires a model name')
+    if (provider === 'cli') return { kind: 'cli', provider, model }
+    const value = provider === 'openai' ? openaiBase(settings) : provider === 'anthropic' ? anthropicBase(settings) : settings.baseUrl
+    if (provider === 'scripted' && !value) return { kind: 'direct', provider, model }
+    const endpoint = new URL(value)
+    if (!['https:', 'http:'].includes(endpoint.protocol) || endpoint.username || endpoint.password || endpoint.search || endpoint.hash) throw new Error('The model requires a credential-free HTTP(S) endpoint without query or fragment')
+    return { kind: settings.via === 'bridge' ? 'bridge' : 'direct', provider, model, endpoint: endpoint.href }
   }
 
   function onHub(message) {
@@ -314,7 +339,7 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
     if (message.type === 'todo') notify({ plans: [...state.plans.filter(plan => plan.runId !== message.run), { runId: message.run, agent: hub.runs.get(message.run)?.agent ?? 'Agent', items: message.items }] })
     if (message.type === 'status') {
       const run = hub.runs.get(message.run)
-      if (!run?.parent && message.run === activeRun) notify({ run: { ...message.slot, status: message.slot.status, step: message.slot.steps, agent: run?.agent ?? 'main' } })
+      if (!run?.parent && message.run === activeRun) notify({ run: { ...message.slot, status: message.slot.status, step: message.slot.steps, agent: run?.agent ?? state.run?.agent ?? '' } })
       refreshAgents()
     }
     if (message.type === 'answer' && message.run === activeRun && !hub.runs.get(message.run)?.parent) {
@@ -374,9 +399,9 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
         configuredWorkflows = workflows
         // Installed workflows are restored by the Hub below. Do not replace their
         // saved selection with a bundled agent while that restoration is pending.
-        const selectedWorkflowId = typeof savedUI?.selectedWorkflowId === 'string' ? savedUI.selectedWorkflowId : workflows.find(row => row.id === (configuration.defaultWorkflow ?? 'assistant'))?.id ?? workflows[0].id
+        const selectedWorkflowId = typeof savedUI?.selectedWorkflowId === 'string' ? savedUI.selectedWorkflowId : workflows.find(row => row.id === configuration.defaultWorkflow)?.id ?? workflows[0]?.id ?? ''
         const toolPolicy = normalizeToolPolicy(savedUI && Object.hasOwn(savedUI, 'toolPolicy') ? savedUI.toolPolicy : Object.hasOwn(configuration, 'toolPolicy') ? configuration.toolPolicy : DEFAULT_TOOL_POLICY)
-        notify({ workflows: Object.freeze(workflows), selectedWorkflowId, toolPolicy })
+        notify({ workflows: Object.freeze(workflows), selectedWorkflowId, toolPolicy, sessionBoundary: sessionBoundaryFor(workflows, selectedWorkflowId) })
         const executionNotices = Object.fromEntries(['browser', 'local'].flatMap(target => {
           const notice = configuration.executionNotices?.[target]
           return typeof notice?.title === 'string' && notice.title.trim() && typeof notice?.body === 'string' && notice.body.trim()
@@ -476,7 +501,7 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
       await controller.start(); requireIdle()
       if (connecting || transferring) throw new Error('Wait for the environment connection change to finish')
       if (!state.workflows.some(row => row.id === workflowId)) throw new Error('Unknown workflow')
-      notify({ selectedWorkflowId: workflowId }); await persistUI({ strict: true })
+      notify({ selectedWorkflowId: workflowId, sessionBoundary: sessionBoundaryFor(state.workflows, workflowId) }); await persistUI({ strict: true })
     },
     async setToolPolicy(patch) {
       await controller.start(); requireIdle()
@@ -552,16 +577,13 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
       }
       if (workflow.workspace && (connecting || transferring)) throw new Error('Wait for the environment connection change to finish')
       const policy = normalizeToolPolicy(state.toolPolicy)
+      const sessionBoundary = sessionBoundaryFor()
       taskStartRevision = projectRevision; taskArtifactId = currentArtifact?.id
       const launch = ++launchEpoch; activeRun = null
-      notify({ error: '', task: null, messages: [...state.messages, { id: id('message'), role: 'user', content: text, at: Date.now() }], run: { status: 'starting', agent: workflow.agent } })
+      const boundaryMessages = sessionBoundary ? [{ id: id('message'), kind: 'session-boundary', role: 'system', agent: 'Desk', content: `Agent session changed to ${sessionBoundary.label}. Earlier conversation text remains saved for review and is not automatically transferred.`, at: Date.now() }] : []
+      notify({ error: '', task: null, sessionBoundary: null, messages: [...state.messages, ...boundaryMessages, { id: id('message'), role: 'user', content: text, at: Date.now() }], run: { status: 'starting', agent: workflow.agent } })
       try {
-        // Installed definitions bind named profiles of their own. The Hub checks
-        // those bindings at admission; a different workbench profile is not theirs.
-        if (!workflow.package) {
-          const endpoint = new URL(state.model.baseUrl)
-          if (!['https:', 'http:'].includes(endpoint.protocol) || endpoint.username || endpoint.password || endpoint.search || endpoint.hash || !state.model.id.trim()) throw new Error('The model requires a credential-free HTTP(S) endpoint and a model name')
-        }
+        selectedModelTransport(workflow)
         const { strategy, strategyHash, strategyFiles, ...runtimeWorkflow } = workflow
         let context = snapshot({ workflow: runtimeWorkflow, toolPolicy: policy, savedGoal: { text: state.goal, revision: state.goalRevision } })
         if (workflow.workspace) {
@@ -569,7 +591,7 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
           if (launch !== launchEpoch) return null
           const sourceFingerprint = await fingerprint()
           if (launch !== launchEpoch) return null
-          const { runId, ...bound } = createBoundRunSnapshot({ runId: id('handoff'), binding, sourceRevision: projectRevision, sourceFingerprint, modelTransport: { kind: state.model.via ?? 'direct', provider: hub.settings.get().catalogue.models?.workbench?.provider ?? 'openai', model: state.model.id, endpoint: state.model.baseUrl } })
+          const { runId, ...bound } = createBoundRunSnapshot({ runId: id('handoff'), binding, sourceRevision: projectRevision, sourceFingerprint, modelTransport: selectedModelTransport(workflow) })
           context = snapshot({ ...bound, ...context })
         }
         if (!strategy && !hub.startRun) throw new Error('The runtime cannot dispatch the selected agent explicitly')

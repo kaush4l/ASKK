@@ -59,9 +59,19 @@ export function entry(raw = {}) {
  */
 const OWNER_ONLY = ['command', 'args', 'cli']
 
+/** Explicit package bindings never fall back from an absent alias to a raw model ID. */
+export function boundModelAvailable(catalogue, binding) {
+  const alias = binding === '$default' ? catalogue?.default : binding
+  const models = catalogue?.models
+  const value = models?.[alias]
+  return typeof alias === 'string' && Boolean(alias) && alias !== '$default' && Object.hasOwn(models ?? {}, alias) && Boolean(value && typeof value === 'object' && !Array.isArray(value) && [Object.prototype, null].includes(Object.getPrototypeOf(value)))
+}
+
 /** Turn an agent's inference settings into the settings its provider needs. */
 export function resolve(settings = {}, catalogue = { models: {} }) {
-  const { model: named = catalogue.default, ...own } = entry(settings)
+  const { model: requested = catalogue.default, ...own } = entry(settings)
+  if (requested === '$default' && !boundModelAvailable(catalogue, requested)) throw new Error('The desk default model profile is missing or invalid; configure a valid model before running.')
+  const named = requested === '$default' ? catalogue.default : requested
   for (const key of OWNER_ONLY) delete own[key]
   if (own.provider === 'cli') delete own.provider
   const listed = named ? catalogue.models?.[named] : null

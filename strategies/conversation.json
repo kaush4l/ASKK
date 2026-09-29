@@ -3,7 +3,7 @@
   "id": "conversation",
   "kind": "agent",
   "label": "General assistant",
-  "agent": "assistant",
+  "agent": "bundled/starter/assistant",
   "delegation": "declared",
   "session": "agent"
 }

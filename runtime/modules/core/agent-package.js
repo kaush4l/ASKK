@@ -12,7 +12,7 @@ const CEILINGS = { maxFiles: 4096, maxFileBytes: 128 * 1024 * 1024, maxExpandedB
 const ID = /^[a-z][a-z0-9_-]{0,63}$/
 const PACKAGE_ID = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/
 const VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/
-const KNOWN = new Set(['package_id', 'package_version', 'id', 'name', 'description', 'agents', 'tools', 'context', 'skills', 'private', 'permissions', 'model', 'temperature', 'max_output_tokens', 'context_length', 'response_format', 'observation_format', 'contract_version', 'prompt_template', 'output_reserve', 'require_verification', 'max_steps', 'repairs', 'compact_at', 'keep', 'remembers', 'session'])
+const KNOWN = new Set(['package_id', 'package_version', 'id', 'name', 'description', 'agents', 'services', 'tools', 'context', 'skills', 'private', 'permissions', 'model', 'temperature', 'max_output_tokens', 'context_length', 'response_format', 'observation_format', 'contract_version', 'prompt_template', 'output_reserve', 'require_verification', 'max_steps', 'repairs', 'compact_at', 'keep', 'remembers', 'session'])
 const UNSUPPORTED_CONFIG = /^(?:api[_-]?key|access[_-]?token|refresh[_-]?token|token|secret|password|credentials?|authorization|headers|private[_-]?key|provider|base[_-]?url|via)$/i
 const SCRIPT = /\.(?:[cm]?js|jsx|tsx?|wasm|sh|bash|zsh|py|pyc|exe|dll|dylib|so)$/i
 const SECRET_FILE = /(?:^|\/)(?:\.env(?:\..*)?|\.npmrc|\.netrc|id_rsa|id_ed25519)$|\.(?:pem|key|p12|pfx)$/i
@@ -211,6 +211,31 @@ function validateSettings(settings, path, root) {
   if (settings.context !== undefined && !plain(settings.context)) stringList(settings.context, `${path}.context`)
   if (settings.skills !== undefined && typeof settings.skills !== 'boolean') stringList(settings.skills, `${path}.skills`)
   if (settings.permissions !== undefined && (!plain(settings.permissions) || Object.values(settings.permissions).some(value => !['allow', 'ask', 'deny'].includes(value)))) fail('PACKAGE_SCHEMA', `${path}.permissions must contain allow, ask or deny requests`)
+  if (settings.services !== undefined && (!plain(settings.services) || Object.entries(settings.services).some(([name, id]) => !['compaction', 'retrospective'].includes(name) || typeof id !== 'string' || !ID.test(id)))) fail('PACKAGE_SCHEMA', `${path}.services must map compaction or retrospective to package-local agent IDs`)
+}
+
+/** Infrastructure is explicit package composition, never inferred from a filename. */
+function validateServices(agents) {
+  const byId = new Map(agents.map(agent => [agent.id, agent]))
+  for (const agent of agents) for (const [name, id] of Object.entries(agent.settings.services ?? {})) {
+    const target = byId.get(id)
+    if (!target || id === agent.id) fail('PACKAGE_REFERENCE', `${agent.path} has a missing or self-referencing ${name} service: ${id}`)
+  }
+  const visiting = new Set(), visited = new Set()
+  function visit(agent) {
+    if (visiting.has(agent.id)) fail('PACKAGE_REFERENCE', `cyclic agent service references include ${agent.id}`)
+    if (visited.has(agent.id)) return
+    visiting.add(agent.id)
+    for (const id of Object.values(agent.settings.services ?? {})) visit(byId.get(id))
+    visiting.delete(agent.id); visited.add(agent.id)
+  }
+  agents.forEach(visit)
+  for (const agent of agents) {
+    const target = byId.get(agent.settings.services?.compaction)
+    if (!target) continue
+    const settings = target.settings
+    if (settings.tools?.length || Object.keys(target.delegates).length || Object.keys(settings.services ?? {}).length || settings.skills === true || settings.skills?.length || settings.require_verification === true) fail('PACKAGE_REFERENCE', `compaction service ${target.id} must request no tools, delegates, services, skills or verification`)
+  }
 }
 
 /** Input paths are relative to the selected folder root, not prefixed by its UI name. */
@@ -280,6 +305,7 @@ export async function importAgentPackage(records, { limits: requestedLimits } = 
     }
     agent.references.sort()
   }
+  validateServices(agents)
   const inventory = []
   for (const path of paths) if (path !== PACKAGE_LOCK) inventory.push({ path, bytes: bytesByPath.get(path).length, sha256: await sha256(bytesByPath.get(path)) })
   const identity = { schemaVersion: 1, packageId, packageVersion, entryAgentId: root.id, files: inventory }

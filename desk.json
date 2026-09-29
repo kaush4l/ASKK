@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "defaultAgent": "bundled/starter/assistant",
+  "packages": [
+    {
+      "id": "starter",
+      "path": "packages/starter",
+      "models": {
+        "$default": "$default"
+      },
+      "tools": [
+        "web",
+        "board",
+        "memory",
+        "todo",
+        "workspace",
+        "host",
+        "files",
+        "skill",
+        "reflection"
+      ]
+    }
+  ]
+}

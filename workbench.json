@@ -42,7 +42,7 @@
       "id": "assistant",
       "label": "General assistant",
       "description": "Research, plan, reason, and coordinate agents without starting a workspace runtime.",
-      "agent": "assistant",
+      "agent": "bundled/starter/assistant",
       "workspace": false,
       "strategy": "strategies/conversation.json"
     },
@@ -50,7 +50,7 @@
       "id": "parallel-review",
       "label": "Compare perspectives",
       "description": "Run an approach and critique in parallel, then combine their findings.",
-      "agent": "synthesizer",
+      "agent": "bundled/starter/synthesizer",
       "workspace": false,
       "strategy": "strategies/parallel-review.json"
     },
@@ -58,7 +58,7 @@
       "id": "coding",
       "label": "Build an app",
       "description": "Create files, run commands, and verify an application in the selected workspace.",
-      "agent": "main",
+      "agent": "bundled/starter/main",
       "workspace": true,
       "strategy": "strategies/coding.json"
     }

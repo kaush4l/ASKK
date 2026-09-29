@@ -34,6 +34,7 @@ let engine = null
 let spec = null
 let catalogue = { models: {} }
 let policy = {}
+let serviceMode = null
 let host = null
 let controller = null
 let fullTools = []
@@ -97,7 +98,8 @@ function guarded(item) {
   return {
     ...item,
     run: async (args, ctx) => {
-      const verdict = installationDecision(item, args, { policy, agent: spec.path, toolPolicy: runToolPolicy }, spec.package ? spec.permissions : null)
+      if (serviceMode === 'compaction') throw new Error('Compaction cannot execute tools')
+      const verdict = installationDecision(item, args, { policy, agent: spec.path, toolPolicy: runToolPolicy }, spec.permissions)
       const missing = item.requires.filter(need => !hasToolRequirement(need, host))
       if (missing.length) throw new Error(`tool unavailable: requires ${missing.join(', ')}`)
       if (verdict.action === 'deny') throw new Error(`refused by policy: ${verdict.reason}`)
@@ -109,7 +111,7 @@ function guarded(item) {
         if (!answer.approved) throw new Error(`the owner refused this call${answer.note ? `: ${answer.note}` : '.'} Do not retry it unchanged.`)
       }
       if (ctx.signal?.aborted) throw new Error('stopped by the owner')
-      const latest = installationDecision(item, args, { policy, agent: spec.path, toolPolicy: runToolPolicy }, spec.package ? spec.permissions : null)
+      const latest = installationDecision(item, args, { policy, agent: spec.path, toolPolicy: runToolPolicy }, spec.permissions)
       if (latest.action === 'deny') throw new Error(`refused by policy: ${latest.reason}`)
       return run(args, ctx)
     },
@@ -227,7 +229,10 @@ async function build(message) {
     repairs: spec.engine.repairs ?? 2,
     compactAt: spec.engine.compactAt ?? 0.9,
     keep: spec.engine.keep ?? 4,
-    summarise: message.compactor ? (text) => request('call', { agent: message.compactor, query: text, call: 'compactor(history)', infrastructure: 'compaction' }) : null,
+    summarise: message.services?.compaction ? (text) => {
+      if (serviceMode) throw new Error('Runtime services cannot start nested compaction')
+      return request('service.compact', { query: text })
+    } : null,
     ctx,
     onHistory: (turns) => post({ type: 'history', turns }),
   })
@@ -242,7 +247,7 @@ async function build(message) {
   })
 
   const describe = item => {
-    const verdict = installationDecision(item, {}, { policy, agent: spec.path }, spec.package ? spec.permissions : null)
+    const verdict = installationDecision(item, {}, { policy, agent: spec.path }, spec.permissions)
     const missing = item.requires.filter(need => !hasToolRequirement(need, host))
     return { name: item.name, tier: item.tier, source: item.source, description: item.description, parameters: item.parameters, risk: verdict.risk, effectiveAction: verdict.action, actionReason: verdict.reason, requires: item.requires, missing, available: missing.length === 0, writes: item.writes, cacheable: item.cacheable }
   }
@@ -255,17 +260,19 @@ async function build(message) {
   })
 }
 
-async function run(query, context) {
+async function run(query, context, service) {
   runToolPolicy = normalizeToolPolicy(context?.toolPolicy)
+  serviceMode = service?.kind ?? null
   controller = new AbortController()
   engine.ctx.runContext = snapshot(context ?? null)
-  engine.tools = fullTools.filter(item => toolSelected(item, runToolPolicy))
+  engine.tools = serviceMode === 'compaction' ? [] : fullTools.filter(item => toolSelected(item, runToolPolicy))
   try {
     const text = await engine.invoke(query, { signal: controller.signal })
     post({ type: 'answer', text, ok: engine.status === 'done', slot: engine.progress() })
   } finally {
     controller = null
     runToolPolicy = null
+    serviceMode = null
     engine.tools = fullTools
     engine.ctx.runContext = null
   }
@@ -278,7 +285,7 @@ self.onmessage = async ({ data }) => {
         await build(data)
         break
       case 'invoke':
-        await run(data.query, data.context)
+        await run(data.query, data.context, data.service)
         break
       case 'nudge':
         engine?.nudge(data.text)

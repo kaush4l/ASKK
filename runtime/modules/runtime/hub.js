@@ -4,10 +4,10 @@
  *     const hub = new Hub({ base: document.baseURI })
  *     hub.subscribe((message) => render(message))
  *     await hub.start()
- *     const run = hub.ask('hello')                    // main's next run
+ *     const run = hub.ask('hello')                    // configured default agent
  *
- * One Web Worker per agent thread (runtime/agent.worker.js). Resident threads (main, agents
- * that remember, agents that write) live as long as the page; any other agent called as a tool
+ * One Web Worker per agent thread (runtime/agent.worker.js). Explicit agent sessions
+ * live as long as the page; any task-session agent called as a tool
  * gets a fresh thread per call, so parallel calls never share history. Every run is on the
  * roster with a status slot posted by its loop, so the page reads progress without asking.
  *
@@ -19,16 +19,17 @@
  * dreaming, tracing).
  */
 
-import { agentHash, agentPaths, headPaths, loader, loadIndex, readSpec, skillFiles } from '../core/folder.js'
+import { loader, loadIndex, skillFiles } from '../core/folder.js'
 import { assertModelRelay, inference, InferenceError, redactedURL } from '../core/inference.js'
 import { describeTool, mcp } from '../core/mcp.js'
 import { read } from '../core/markdown.js'
 import { merge, resolve } from '../core/models.js'
-import { DEFAULT_POLICY, withAgentRules } from '../core/permissions.js'
+import { DEFAULT_POLICY } from '../core/permissions.js'
 import { snapshot } from '../core/prompt.js'
 import { loadStrategy, startHubStrategy, strategyChildState } from './strategy-hub.js'
 import { openStore } from './store.js'
 import { AgentInstallations, installationDecision, installedModelAvailable } from './agent-installations.js'
+import { loadDeskPackages } from './desk-packages.js'
 import { hasToolRequirement, normalizeToolPolicy, scopedToolDecision, toolSelected } from './tool-policy.js'
 
 const LIMITS = { depth: 3, outstanding: 3 }
@@ -37,7 +38,6 @@ const TICK_MS = 20000
 const READY_TIMEOUT = 10000
 const DREAM_AFTER = 20000
 const ACTIVE = new Set(['thinking', 'calling', 'waiting', 'compacting', 'starting', 'running', 'cancelling', 'verifying'])
-const WRITERS = new Set(['host', 'files', 'workspace'])
 const HOSTED = new Set(['host', 'web', 'mcp'])
 const TOOL_EVENT_STORAGE = 'separate-v1'
 const EVIDENCE_TIMEOUT_MS = 15000
@@ -152,6 +152,8 @@ export class Hub {
     this.approvals = new Map() // id → approval
     this.index = { files: {} }
     this.specs = new Map() // path → spec
+    this.defaultAgent = null
+    this.shippedPackages = []
     this.failed = new Map() // path → error
     this.readyInfo = new Map() // path → {tools, notes, shadowed, unavailable}
     this.changed = new Map() // path → files changed at the last reload
@@ -303,25 +305,32 @@ export class Hub {
   }
 
   async readFolders() {
-    this.index = await loadIndex(this.base, this.fetch)
-    const load = loader(this.base, this.index, this.fetch)
+    const index = await loadIndex(this.base, this.fetch)
+    const load = loader(this.base, index, this.fetch)
+    let fileCatalogue
     try {
-      this.fileCatalogue = JSON.parse(await load('models.json'))
+      fileCatalogue = JSON.parse(await load('models.json'))
     } catch {
-      this.fileCatalogue = {}
+      fileCatalogue = {}
     }
-    this.specs.clear()
-    this.failed.clear()
-    await Promise.all(
-      agentPaths(this.index).map(async (path) => {
-        try {
-          this.specs.set(path, await readSpec(path, { index: this.index, load }))
-        } catch (error) {
-          this.failed.set(path, String(error?.message ?? error))
-        }
-      }),
-    )
-    await this.packages.restore()
+    const shipped = await loadDeskPackages({ base: this.base, index, fetch: this.fetch, catalogue: merge(fileCatalogue, this.saved.catalogue) })
+    await this.packages.ordered(async () => {
+      // Restore into an isolated candidate catalogue. Neither a corrupt package
+      // nor a failed storage read can expose half of a new desk to dispatch.
+      const staged = { index, specs: new Map(shipped.specs.map(spec => [spec.path, spec])), failed: new Map(), readyInfo: new Map(), store: this.store, catalogue: () => merge(fileCatalogue, this.saved.catalogue), publish() {} }
+      const installations = new AgentInstallations(staged)
+      await installations.restore()
+      if (this.disposed) throw new Error('The runtime stopped during package restoration')
+      for (const [path, previous] of this.specs) if (staged.specs.get(path)?.hash !== previous.hash) this.readyInfo.delete(path)
+      this.index = index
+      this.fileCatalogue = fileCatalogue
+      this.specs = staged.specs
+      this.failed = staged.failed
+      this.defaultAgent = shipped.defaultAgent
+      this.shippedPackages = shipped.packages
+      this.packages.items = installations.items
+      this.publish({ type: 'packages', installations: this.packages.list() })
+    })
   }
 
   catalogue() {
@@ -329,12 +338,16 @@ export class Hub {
   }
 
   isResident(spec) {
-    if (spec.package) return spec.engine.session === 'agent'
-    return spec.path === 'main' || Boolean(spec.engine.remembers) || spec.grants.some((grant) => WRITERS.has(grant))
+    return spec.engine.session === 'agent'
   }
 
-  policyFor(spec) {
-    return spec.package ? this.saved.policy ?? DEFAULT_POLICY : withAgentRules(this.saved.policy, spec.path, spec.permissions)
+  policyFor() {
+    return this.saved.policy ?? DEFAULT_POLICY
+  }
+
+  defaultAgentPath() {
+    if (!this.defaultAgent || !this.specs.has(this.defaultAgent)) throw new Error('The desk default agent is not configured or is unavailable.')
+    return this.defaultAgent
   }
 
   /** Start every resident thread; probe every other agent once so its tools and notes are known. */
@@ -354,11 +367,10 @@ export class Hub {
 
   /** Everything a worker needs to build its engine. */
   async initMessage(spec) {
-    const agents = spec.package ? spec.delegates : [...spec.peers, ...spec.owned]
+    const agents = spec.delegates ?? [...spec.peers, ...spec.owned]
       .map((path) => this.specs.get(path))
       .filter(Boolean)
       .map((peer) => ({ path: peer.path, name: peer.name, description: peer.description }))
-    const heads = new Set(headPaths(this.index))
     return {
       type: 'init',
       spec,
@@ -370,7 +382,7 @@ export class Hub {
       agents,
       learned: await this.learnedFor(spec),
       mcp: spec.grants.includes('mcp') ? this.mcpTools() : [],
-      compactor: !spec.package && heads.has('compactor') && !['compactor', 'dreamer'].includes(spec.path) ? 'compactor' : null,
+      services: spec.services ?? {},
     }
   }
 
@@ -450,6 +462,12 @@ export class Hub {
 
   async restart(thread, why = 'restarted') {
     this.retire(thread)
+    const spec = this.specs.get(thread.path)
+    if (!spec || !this.isResident(spec)) {
+      for (const run of thread.queue) if (!run.ended) this.end(run, '(interrupted: the agent session changed; start a new attempt)', false, 'The agent session changed before this queued invocation began', { status: 'interrupted' })
+      this.publish({ type: 'restarted', agent: thread.path, why, at: Date.now() })
+      return null
+    }
     const fresh = await this.thread(thread.path)
     fresh.queue.push(...thread.queue)
     this.publish({ type: 'restarted', agent: thread.path, why, at: Date.now() })
@@ -459,13 +477,13 @@ export class Hub {
 
   // ─── runs ──────────────────────────────────────────────────────────────────
 
-  /** Ask main something. Returns the new run's id. */
+  /** Ask the configured desk default. Returns the new run's id. */
   ask(query, options) {
-    return this.startRun('main', query, options).id
+    return this.startRun(this.defaultAgentPath(), query, options).id
   }
 
   /** Allocate one observable run before dispatch; strategy roots own no model worker. */
-  createRun(path, query, { parent = null, call = '', kind = 'task', context = null, resume = null, stageId = null, strategyDefinition = null, strategyDefinitionHash = null } = {}) {
+  createRun(path, query, { parent = null, call = '', kind = 'task', context = null, resume = null, stageId = null, strategyDefinition = null, strategyDefinitionHash = null, service = null } = {}) {
     const spec = this.specs.get(path)
     const up = parent ? this.runs.get(parent) : null
     const inherited = up?.context ?? context
@@ -477,6 +495,10 @@ export class Hub {
       trace: up?.trace ?? id,
       agent: path,
       package: spec?.package ? snapshot({ ...spec.package, specHash: spec.hash, modelAlias: spec.inference.model, toolGroups: spec.grants }) : null,
+      services: snapshot(spec?.services ?? {}),
+      serviceHashes: snapshot(Object.fromEntries(Object.entries(spec?.services ?? {}).map(([kind, target]) => [kind, this.specs.get(target)?.hash ?? null]))),
+      delegates: snapshot(spec?.delegates ?? [...(spec?.peers ?? []), ...(spec?.owned ?? [])].map(path => ({ path }))),
+      service: service ? snapshot(service) : null,
       parent,
       depth: up ? up.depth + 1 : 0,
       kind,
@@ -569,7 +591,7 @@ export class Hub {
     thread.busy = true
     thread.run = run.id
     run.thread = thread
-    thread.worker.postMessage({ type: 'invoke', query: run.query, context: run.context })
+    thread.worker.postMessage({ type: 'invoke', query: run.query, context: run.context, service: run.service })
   }
 
   onThreadMessage(thread, message) {
@@ -810,7 +832,7 @@ export class Hub {
   }
 
   describe(run) {
-    return { id: run.id, trace: run.trace, taskId: run.taskId ?? run.id, resumedFrom: run.resumedFrom ?? null, resumeAttempt: run.resumeAttempt ?? 0, originalQuery: run.originalQuery ?? run.query, agent: run.agent, package: run.package ?? null, parent: run.parent, depth: run.depth, kind: run.kind, stageId: run.stageId ?? null, strategyDefinition: run.strategyDefinition ?? null, strategyDefinitionHash: run.strategyDefinitionHash ?? null, strategyState: run.strategyState ?? null, query: run.query, context: run.context, call: run.call, children: [...run.children], slot: run.slot, at: run.at }
+    return { id: run.id, trace: run.trace, taskId: run.taskId ?? run.id, resumedFrom: run.resumedFrom ?? null, resumeAttempt: run.resumeAttempt ?? 0, originalQuery: run.originalQuery ?? run.query, agent: run.agent, package: run.package ?? null, services: run.services ?? {}, serviceHashes: run.serviceHashes ?? {}, service: run.service ?? null, parent: run.parent, depth: run.depth, kind: run.kind, stageId: run.stageId ?? null, strategyDefinition: run.strategyDefinition ?? null, strategyDefinitionHash: run.strategyDefinitionHash ?? null, strategyState: run.strategyState ?? null, query: run.query, context: run.context, call: run.call, children: [...run.children], slot: run.slot, at: run.at }
   }
 
   // ─── what the page may send to a run ───────────────────────────────────────
@@ -833,6 +855,7 @@ export class Hub {
   }
 
   abort(run) {
+    run.cancelRequested = true
     if (run.cancelStrategy && !run.ended) { run.cancelStrategy(); return }
     for (const child of run.children) {
       const below = this.runs.get(child)
@@ -877,26 +900,55 @@ export class Hub {
     }
   }
 
+  /** Runtime infrastructure uses pinned service references, never model-selected targets. */
+  serviceSpec(run, kind) {
+    const path = run?.services?.[kind]
+    if (!path || run.service) throw new Error(`No ${kind} service is configured for this run`)
+    const spec = this.specs.get(path)
+    if (!spec || !run.serviceHashes?.[kind] || spec.hash !== run.serviceHashes[kind]) throw new Error(`The configured ${kind} service changed or is unavailable`)
+    const source = run.package
+    if (source && (!spec.package || spec.package.namespace !== source.namespace || spec.package.installationId !== source.installationId || spec.package.revisionDigest !== source.revisionDigest)) throw new Error('A service must belong to its source package revision')
+    return spec
+  }
+
+  admitChild(run, agent) {
+    if (!run || run.ended || run.cancelRequested || this.disposed) throw new Error('No active run can admit a child')
+    if (run.depth + 1 > LIMITS.depth) throw new Error(`calls may nest ${LIMITS.depth} deep; ${agent} would be deeper`)
+    for (let up = run; up; up = up.parent ? this.runs.get(up.parent) : null) {
+      if (up.agent === agent) throw new Error(`${agent} is already working on this chain; calling it again would loop`)
+    }
+    const active = run.children.filter(child => !this.runs.get(child)?.ended).length
+    if (active >= LIMITS.outstanding) throw new Error(`${run.agent} already has ${active} agents working; wait for one to answer`)
+  }
+
+  memoryScope(run) {
+    if (!run?.package) return 'shared'
+    // Installed keys retain their existing persisted identity. Bundled package
+    // namespaces must never collide with an owner's installation of the same ID.
+    const prefix = run.package.namespace === 'bundled' ? 'package-task:bundled' : 'package-task'
+    return `${prefix}:${run.package.installationId}:${run.service?.kind === 'retrospective' ? run.service.sourceTrace : run.trace}`
+  }
+
   ops = {
     async call({ agent, query, call, infrastructure }, run) {
       if (!run) throw new Error('no run is active on this thread')
-      const caller = this.specs.get(run.agent)
-      if (caller?.package && !caller.delegates.some(delegate => delegate.path === agent)) throw new Error('Installed agents may call only their declared package-local delegates.')
+      if (infrastructure !== undefined) throw new Error('Infrastructure calls require the configured service channel')
+      if (!run.delegates.some(delegate => delegate.path === agent)) throw new Error('Agents may call only their declared package-local delegates.')
       const toolPolicy = normalizeToolPolicy(run.context?.toolPolicy)
-      const internalCompaction = infrastructure === 'compaction' && agent === 'compactor' && call === 'compactor(history)'
-      if (toolPolicy?.allowDelegation === false && !internalCompaction) throw new Error('delegation is disabled for this run')
-      if (run.depth + 1 > LIMITS.depth) throw new Error(`calls may nest ${LIMITS.depth} deep; ${agent} would be deeper`)
-      for (let up = run; up; up = up.parent ? this.runs.get(up.parent) : null) {
-        if (up.agent === agent) throw new Error(`${agent} is already working on this chain; calling it again would loop`)
-      }
-      const active = run.children.filter((child) => !this.runs.get(child)?.ended).length
-      if (active >= LIMITS.outstanding) throw new Error(`${run.agent} already has ${active} agents working; wait for one to answer`)
-      const kind = agent === 'compactor' ? 'compact' : run.kind === 'dream' ? 'dream' : 'task'
-      const child = this.startRun(agent, query, { parent: run.id, call: call ?? `${agent}(…)`, kind })
+      if (toolPolicy?.allowDelegation === false || run.service) throw new Error('delegation is disabled for this run')
+      this.admitChild(run, agent)
+      const child = this.startRun(agent, query, { parent: run.id, call: call ?? `${agent}(…)`, kind: 'task' })
+      return child.answer
+    },
+
+    async 'service.compact'(args, run) {
+      if (!args || Object.keys(args).some(key => key !== 'query') || typeof args.query !== 'string' || args.query.length > 1000000) throw new Error('Compaction accepts only bounded historical text')
+      const spec = this.serviceSpec(run, 'compaction')
+      this.admitChild(run, spec.path)
+      if (spec.grants.length || spec.localTools.length || Object.keys(spec.commonTools).length || (spec.delegates ?? []).length || spec.peers.length || spec.owned.length || spec.skills || spec.engine.requireVerification || Object.keys(spec.services ?? {}).length) throw new Error('Compaction requires a tool-free agent without delegates or nested services')
+      const child = this.startRun(spec.path, args.query, { parent: run.id, call: 'service.compact', kind: 'compact', fresh: true, service: { kind: 'compaction', sourceRunId: run.id, sourceTrace: run.trace } })
       const answer = await child.answer
-      // Terminal text is also returned for failed and incomplete runs. It is evidence for
-      // ordinary callers, but must never replace conversation history as a valid summary.
-      if (kind === 'compact' && child.slot.status !== 'done') throw new Error(`Compactor ${child.id} ended with ${child.slot.status}; no summary was accepted.`)
+      if (run.ended || child.slot.status !== 'done') throw new Error(`Compaction ${child.id} ended with ${child.slot.status}; no summary was accepted.`)
       return answer
     },
 
@@ -928,7 +980,7 @@ export class Hub {
     },
 
     async 'memory.save'({ text, scope }, run) {
-      const shared = run.package ? `package-task:${run.package.installationId}:${run.trace}` : 'shared'
+      const shared = this.memoryScope(run)
       const entry = { agent: scope === 'shared' ? shared : run.agent, text: String(text).trim(), source: run.kind === 'dream' ? 'dream' : run.id, at: Date.now() }
       entry.id = await this.store.put('memory', entry)
       this.publish({ type: 'memory' })
@@ -936,7 +988,7 @@ export class Hub {
     },
     async 'memory.list'(_, run) {
       const all = await this.store.all('memory')
-      const shared = run?.package ? `package-task:${run.package.installationId}:${run.trace}` : 'shared'
+      const shared = this.memoryScope(run)
       return all.filter((entry) => entry.agent === shared || entry.agent === run?.agent).map(entry => run?.package && entry.agent === shared ? { ...entry, agent: 'shared' } : entry).sort((a, b) => b.at - a.at)
     },
     async 'memory.search'({ query }, run) {
@@ -947,7 +999,7 @@ export class Hub {
     async 'memory.forget'({ id }, run) {
       if (run?.package) {
         const entry = await this.store.get('memory', id)
-        if (!entry || ![run.agent, `package-task:${run.package.installationId}:${run.trace}`].includes(entry.agent)) throw new Error('Installed agents may forget only their own memories or this task’s shared memories.')
+        if (!entry || ![run.agent, this.memoryScope(run)].includes(entry.agent)) throw new Error('Installed agents may forget only their own memories or this task’s shared memories.')
       }
       await this.store.delete('memory', id)
       this.publish({ type: 'memory' })
@@ -1098,7 +1150,10 @@ export class Hub {
     async 'dream.propose'({ agent, text, why }, run) {
       if (!this.specs.has(agent)) throw new Error(`no agent at agents/${agent}; propose for one of: ${[...this.specs.keys()].join(', ')}`)
       const root = run ? this.rootOf(run) : null
-      const proposal = { agent, text: String(text).trim(), why: String(why ?? ''), trace: root?.reviewing ?? root?.trace ?? '', dream: root?.id ?? '', status: 'pending', at: Date.now() }
+      if (root?.service?.kind !== 'retrospective' || !root.service.allowedTargets.includes(agent)) throw new Error('Proposals require a configured retrospective and a source-task agent target')
+      const targetHash = root.service.targetHashes?.[agent]
+      if (!targetHash || this.specs.get(agent).hash !== targetHash) throw new Error('The proposal target changed after this retrospective started')
+      const proposal = { agent, targetHash, text: String(text).trim(), why: String(why ?? ''), trace: root.service.sourceTrace, dream: root.id, status: 'pending', at: Date.now() }
       proposal.id = await this.store.put('dreams', proposal)
       this.publish({ type: 'dreams' })
       return { id: proposal.id }
@@ -1251,36 +1306,33 @@ export class Hub {
       board.released = true
       this.publish({ type: 'board', trace: run.trace, entries: board.entries, released: true })
     }
-    if (!run.package && run.kind === 'task' && this.saved.dreaming && this.specs.has('dreamer')) {
+    if (!this.disposed && !run.cancelRequested && !['cancelled', 'interrupted'].includes(run.slot.status) && run.kind === 'task' && !run.service && run.services?.retrospective && this.saved.dreaming) {
       clearTimeout(this.dreamTimer)
-      this.dreamTimer = setTimeout(() => this.dream(run.trace), DREAM_AFTER)
+      this.dreamTimer = setTimeout(() => this.dream(run.trace).catch(error => this.publish({ type: 'service-error', run: run.id, service: 'retrospective', error: error.message })), DREAM_AFTER)
     }
   }
 
   /** Review a finished task: save what stays true, propose prompt changes for the owner. */
   async dream(trace) {
-    if ([...this.runs.values()].some((run) => !run.ended)) return null
-    const runs = [...this.runs.values()].filter((run) => run.trace === trace)
-    if (!runs.length) return null
+    if (this.disposed || [...this.runs.values()].some(run => !run.ended)) return null
+    // Deliberately consult only live completed records: restoring history never
+    // schedules work, and a changed service cannot be adopted by an older task.
+    const source = [...this.runs.values()].find(run => run.trace === trace && !run.parent && !run.service && run.kind === 'task' && run.ended)
+    if (!source?.services?.retrospective) return null
+    const serviceSpec = this.serviceSpec(source, 'retrospective')
+    const runs = [...this.runs.values()].filter(run => run.trace === trace && !run.service && (!source.package || run.package?.namespace === source.package.namespace && run.package?.installationId === source.package.installationId && run.package?.revisionDigest === source.package.revisionDigest))
+    const allowedTargets = [...new Set(runs.map(run => run.agent))].filter(path => path !== serviceSpec.path && this.specs.has(path))
+    const targetHashes = Object.fromEntries(allowedTargets.map(path => [path, runs.find(run => run.agent === path)?.package?.specHash ?? this.specs.get(path).hash]))
     const learned = await this.store.all('learned')
-    const lines = runs.map((run) => {
+    const records = runs.map((run) => {
       const calls = run.spans.filter((span) => span.kind === 'call')
-      const failed = calls.filter((span) => span.ok === false).map((span) => span.name)
-      return [
-        `## ${run.agent} (${run.slot.status}, ${run.slot.steps} steps, ${Math.round(run.slot.seconds)}s, repeated calls ${run.slot.repeats})`,
-        `task: ${run.query.slice(0, 600)}`,
-        `calls: ${calls.map((span) => span.name).join(' | ').slice(0, 1500) || 'none'}`,
-        failed.length ? `failed calls: ${failed.join(' | ').slice(0, 800)}` : '',
-        run.slot.error ? `error: ${run.slot.error}` : '',
-        `answer: ${String(run.result ?? '').slice(0, 800)}`,
-      ]
-        .filter(Boolean)
-        .join('\n')
+      return { id: run.id, agent: run.agent, status: run.slot.status, steps: run.slot.steps, repeatedCalls: run.slot.repeats, query: String(run.query).slice(0, 600), calls: calls.slice(-50).map(call => ({ name: call.name, ok: call.ok })), error: run.slot.error || '', result: String(run.result ?? '').slice(0, 800) }
     })
-    const already = learned.map((row) => `- ${row.agent}: ${row.text.replace(/\n/g, ' ').slice(0, 400)}`).join('\n') || '(nothing yet)'
-    const agents = [...this.specs.keys()].filter((path) => !['dreamer', 'compactor'].includes(path)).join(', ')
-    const query = `A task just finished. Review it.\n\nAgents you may propose for: ${agents}\n\n${lines.join('\n\n')}\n\n## Already learned\n\n${already}`
-    const dreaming = this.startRun('dreamer', query, { kind: 'dream' })
+    const query = JSON.stringify({ sourceRunId: source.id, sourceTrace: trace, proposalTargets: allowedTargets, runs: records, learned: learned.filter(row => allowedTargets.includes(row.agent)).map(row => ({ agent: row.agent, text: String(row.text).slice(0, 400) })) })
+    if (this.disposed || [...this.runs.values()].some(run => !run.ended)) return null
+    this.serviceSpec(source, 'retrospective')
+    const toolPolicy = { disabledTools: [], approvalRisks: [], ...normalizeToolPolicy(source.context?.toolPolicy), allowDelegation: false }
+    const dreaming = this.startRun(serviceSpec.path, query, { kind: 'dream', fresh: true, context: snapshot({ ...source.context, toolPolicy }), service: { kind: 'retrospective', sourceRunId: source.id, sourceTrace: trace, allowedTargets, targetHashes } })
     dreaming.reviewing = trace
     this.lastDream = { run: dreaming.id, trace, at: Date.now() }
     this.publish({ type: 'dreams' })
@@ -1484,11 +1536,11 @@ export class Hub {
     },
   }
 
-  async session(agent = 'main') {
+  async session(agent = this.defaultAgentPath()) {
     return (await this.store.get('sessions', agent))?.turns ?? []
   }
 
-  async clearSession(agent = 'main') {
+  async clearSession(agent = this.defaultAgentPath()) {
     await this.store.delete('sessions', agent)
     const thread = this.threads.get(agent)
     if (thread && !thread.busy) await this.restart(thread, 'the conversation was cleared')
@@ -1503,7 +1555,7 @@ export class Hub {
       const model = missingModel ? { alias: spec.inference.model, model: '' } : resolve(spec.inference, catalogue)
       const policy = this.policyFor(spec)
       const describe = item => {
-        const verdict = installationDecision(item, {}, { policy, agent: spec.path, toolPolicy }, spec.package ? spec.permissions : null)
+        const verdict = installationDecision(item, {}, { policy, agent: spec.path, toolPolicy }, spec.permissions)
         const missing = (item.requires ?? []).filter(need => !hasToolRequirement(need, this.hostInfo()))
         // Old unavailable entries cannot become available until a fresh worker has
         // actually loaded them; revoked requirements take effect immediately.
@@ -1512,6 +1564,7 @@ export class Hub {
       return {
         path: spec.path,
         package: spec.package ?? null,
+        services: spec.services ?? {},
         name: spec.name,
         description: spec.description,
         model: model.model ?? '',
@@ -1524,6 +1577,7 @@ export class Hub {
         context: spec.context,
         composition: {
           loop: 'react',
+          session: spec.engine.session,
           responseFormat: spec.engine.responseFormat ?? 'toon',
           observationFormat: spec.engine.observationFormat ?? 'legacy',
           contractVersion: spec.engine.contractVersion,
@@ -1533,7 +1587,7 @@ export class Hub {
           keep: spec.engine.keep ?? 4,
           requireVerification: Boolean(spec.engine.requireVerification),
           context: snapshot(spec.context ?? []),
-          // readSpec resolves the published template; no source path survives that load.
+          // The compiler resolves the exact configured template bytes.
           promptTemplate: spec.engine.promptTemplate ? snapshot(spec.engine.promptTemplate) : null,
           instructions: spec.body,
           soul: spec.soul,
@@ -1566,7 +1620,7 @@ export class Hub {
         result.added.push(path)
         continue
       }
-      if (this.specs.get(path).package ? oldSpecs.get(path).hash === this.specs.get(path).hash : agentHash(before, path) === agentHash(this.index, path)) continue
+      if (oldSpecs.get(path).hash === this.specs.get(path).hash) continue
       const prefix = `agents/${path}/`
       const files = [...new Set([...Object.keys(before.files), ...Object.keys(this.index.files)])]
         .filter((file) => (file.startsWith(prefix) && !file.slice(prefix.length).includes('/')) || file === 'agents/soul.md')
@@ -1581,7 +1635,8 @@ export class Hub {
     const touched = new Set([...result.changed.map((change) => change.path), ...result.added])
     for (const thread of [...this.threads.values()]) {
       if (result.removed.includes(thread.path)) {
-        if (!thread.busy) this.retire(thread)
+        if (!thread.busy) await this.restart(thread, 'the agent definition was removed')
+        else thread.stale = true
         continue
       }
       if (!touched.has(thread.path)) continue
@@ -1607,7 +1662,7 @@ export class Hub {
   // ─── settings, models, approvals, memory, dreams, learned, traces, data ────
 
   settings = {
-    get: () => ({ catalogue: this.catalogue(), saved: this.saved.catalogue, file: this.fileCatalogue, policy: this.saved.policy, dreaming: this.saved.dreaming, durable: this.store?.durable ?? false }),
+    get: () => ({ defaultAgent: this.defaultAgent, catalogue: this.catalogue(), saved: this.saved.catalogue, file: this.fileCatalogue, policy: this.saved.policy, dreaming: this.saved.dreaming, durable: this.store?.durable ?? false }),
     set: (patch) => this.setSettings(patch),
   }
 
@@ -1759,15 +1814,18 @@ export class Hub {
       const latest = [...this.runs.values()].filter((run) => !run.parent && run.kind === 'task').sort((a, b) => b.at - a.at)[0]
       return latest ? this.dream(latest.trace) : null
     },
-    accept: async (id, text) => {
+    accept: (id, text) => this.packages.ordered(async () => {
       const proposal = await this.store.get('dreams', id)
       if (!proposal) return false
+      const validate = () => { if (!proposal.targetHash || this.specs.get(proposal.agent)?.hash !== proposal.targetHash) throw new Error('The recorded proposal target is unavailable or changed; review it against the current agent before creating a new proposal.') }
+      validate()
       const line = String(text ?? proposal.text).trim()
       const current = await this.learned.get(proposal.agent)
+      validate()
       await this.store.put('dreams', { ...proposal, text: line, status: 'accepted', decided: Date.now() })
       await this.learned.set(proposal.agent, [current, `- ${line}`].filter(Boolean).join('\n'))
       return true
-    },
+    }),
     reject: async (id) => {
       const proposal = await this.store.get('dreams', id)
       if (proposal) await this.store.put('dreams', { ...proposal, status: 'rejected', decided: Date.now() })
