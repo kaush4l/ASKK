@@ -1,0 +1,857 @@
+{
+  "version": 1,
+  "date": "2026-09-29",
+  "source": "b0562b4",
+  "model": "Qwen3-1.7B-Q8_0",
+  "provenance": "qwen3-small-model-diagnostic.json",
+  "runtime": "llama-server 6940 c5023daf6 --jinja, server context32768; Local Bun native evaluation, not OS sandbox or browser acceptance",
+  "scope": "All three full-loop trials failed independent task checks. Version 3 remains opt-in; shipped builder and default version 2 unchanged. Evaluator command completion is not the production controller freshness gate.",
+  "runs": [
+    {
+      "attempt": "qwen3-single-project-01",
+      "caseName": "project",
+      "status": "failed",
+      "passed": false,
+      "result": "(failed: reply did not match contract version 3 after 3 attempts)",
+      "elapsedMs": 112052,
+      "contractVersion": 3,
+      "contextLength": 8192,
+      "maxOutputTokens": 2048,
+      "enableThinking": true,
+      "jsonOutput": false,
+      "metrics": {
+        "promptCount": 24,
+        "repairs": 4,
+        "toolCalls": 15,
+        "inputTokensEstimated": [
+          1222,
+          1433,
+          1596,
+          1760,
+          1989,
+          2235,
+          2490,
+          2412,
+          2643,
+          2938,
+          4158,
+          3328,
+          3527,
+          3687,
+          3887,
+          4110,
+          4401,
+          4625,
+          4832,
+          5080,
+          5342,
+          5576,
+          5879,
+          5843
+        ]
+      },
+      "checks": [
+        {
+          "args": [
+            "-e",
+            "import {total} from './src/total.js'; if(total([19,-7,0.5])!==12.5||total([])!==0)process.exit(2); for(const v of [['x'],[NaN],[Infinity]]){let failed=false;try{total(v)}catch{failed=true}if(!failed)process.exit(3)} console.log('withheld passed')"
+          ],
+          "code": 1,
+          "output": "",
+          "passed": false
+        },
+        {
+          "name": "declared and executed test suite",
+          "passed": false
+        }
+      ],
+      "commandExits": [
+        {
+          "code": 1,
+          "cancelled": false
+        },
+        {
+          "code": 1,
+          "cancelled": false
+        },
+        {
+          "code": 1,
+          "cancelled": false
+        },
+        {
+          "code": 1,
+          "cancelled": false
+        },
+        {
+          "code": 1,
+          "cancelled": false
+        },
+        {
+          "code": 1,
+          "cancelled": false
+        },
+        {
+          "code": 1,
+          "cancelled": false
+        },
+        {
+          "code": 1,
+          "cancelled": false
+        },
+        {
+          "code": 1,
+          "cancelled": false
+        },
+        {
+          "code": 1,
+          "cancelled": false
+        },
+        {
+          "code": 1,
+          "cancelled": false
+        },
+        {
+          "code": 1,
+          "cancelled": false
+        },
+        {
+          "code": 1,
+          "cancelled": false
+        },
+        {
+          "code": 1,
+          "cancelled": false
+        },
+        {
+          "code": 1,
+          "cancelled": false
+        }
+      ],
+      "files": [],
+      "validResponseCount": 19,
+      "responseCount": 24,
+      "finishes": [
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 547,
+            "prompt_tokens": 999,
+            "total_tokens": 1546
+          },
+          "diagnostics": {
+            "reasoningChars": 2221,
+            "contentChars": 104
+          }
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 958,
+            "prompt_tokens": 1300,
+            "total_tokens": 2258
+          },
+          "diagnostics": {
+            "reasoningChars": 4083,
+            "contentChars": 105
+          }
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 1165,
+            "prompt_tokens": 1560,
+            "total_tokens": 2725
+          },
+          "diagnostics": {
+            "reasoningChars": 5070,
+            "contentChars": 105
+          }
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 572,
+            "prompt_tokens": 1820,
+            "total_tokens": 2392
+          },
+          "diagnostics": {
+            "reasoningChars": 2408,
+            "contentChars": 104
+          }
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 970,
+            "prompt_tokens": 2086,
+            "total_tokens": 3056
+          },
+          "diagnostics": {
+            "reasoningChars": 4193,
+            "contentChars": 289
+          }
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 1026,
+            "prompt_tokens": 2198,
+            "total_tokens": 3224
+          },
+          "diagnostics": {
+            "reasoningChars": 3843,
+            "contentChars": 439
+          }
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 778,
+            "prompt_tokens": 2446,
+            "total_tokens": 3224
+          },
+          "diagnostics": {
+            "reasoningChars": 3078,
+            "contentChars": 104
+          }
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 489,
+            "prompt_tokens": 2462,
+            "total_tokens": 2951
+          },
+          "diagnostics": {
+            "reasoningChars": 1928,
+            "contentChars": 104
+          }
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 535,
+            "prompt_tokens": 2726,
+            "total_tokens": 3261
+          },
+          "diagnostics": {
+            "reasoningChars": 2241,
+            "contentChars": 100
+          }
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 1473,
+            "prompt_tokens": 3010,
+            "total_tokens": 4483
+          },
+          "diagnostics": {
+            "reasoningChars": 1376,
+            "contentChars": 2704
+          }
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 615,
+            "prompt_tokens": 4288,
+            "total_tokens": 4903
+          },
+          "diagnostics": {
+            "reasoningChars": 2514,
+            "contentChars": 100
+          }
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 917,
+            "prompt_tokens": 3289,
+            "total_tokens": 4206
+          },
+          "diagnostics": {
+            "reasoningChars": 3742,
+            "contentChars": 104
+          }
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 613,
+            "prompt_tokens": 3556,
+            "total_tokens": 4169
+          },
+          "diagnostics": {
+            "reasoningChars": 2654,
+            "contentChars": 172
+          }
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 742,
+            "prompt_tokens": 3645,
+            "total_tokens": 4387
+          },
+          "diagnostics": {
+            "reasoningChars": 3089,
+            "contentChars": 104
+          }
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 763,
+            "prompt_tokens": 3909,
+            "total_tokens": 4672
+          },
+          "diagnostics": {
+            "reasoningChars": 3322,
+            "contentChars": 104
+          }
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 398,
+            "prompt_tokens": 4171,
+            "total_tokens": 4569
+          },
+          "diagnostics": {
+            "reasoningChars": 1610,
+            "contentChars": 100
+          }
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 634,
+            "prompt_tokens": 4455,
+            "total_tokens": 5089
+          },
+          "diagnostics": {
+            "reasoningChars": 2613,
+            "contentChars": 280
+          }
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 941,
+            "prompt_tokens": 4565,
+            "total_tokens": 5506
+          },
+          "diagnostics": {
+            "reasoningChars": 3964,
+            "contentChars": 104
+          }
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 575,
+            "prompt_tokens": 4829,
+            "total_tokens": 5404
+          },
+          "diagnostics": {
+            "reasoningChars": 2502,
+            "contentChars": 100
+          }
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 477,
+            "prompt_tokens": 5133,
+            "total_tokens": 5610
+          },
+          "diagnostics": {
+            "reasoningChars": 2185,
+            "contentChars": 104
+          }
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 356,
+            "prompt_tokens": 5399,
+            "total_tokens": 5755
+          },
+          "diagnostics": {
+            "reasoningChars": 1333,
+            "contentChars": 289
+          }
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 154,
+            "prompt_tokens": 5511,
+            "total_tokens": 5665
+          },
+          "diagnostics": {
+            "reasoningChars": 0,
+            "contentChars": 434
+          }
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 152,
+            "prompt_tokens": 5732,
+            "total_tokens": 5884
+          },
+          "diagnostics": {
+            "reasoningChars": 62,
+            "contentChars": 361
+          }
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 135,
+            "prompt_tokens": 5712,
+            "total_tokens": 5847
+          },
+          "diagnostics": {
+            "reasoningChars": 0,
+            "contentChars": 360
+          }
+        }
+      ],
+      "rawEvidenceSha256": "e50ada5ca0c7b583cbb88da8dd57746c2e083624f5a1bf1a869fc63a1dc716ff"
+    },
+    {
+      "attempt": "qwen3-single-repair-01",
+      "caseName": "repair",
+      "status": "failed",
+      "passed": false,
+      "result": "(failed: provider did not complete the reply (length))",
+      "elapsedMs": 93577,
+      "contractVersion": 3,
+      "contextLength": 8192,
+      "maxOutputTokens": 2048,
+      "enableThinking": true,
+      "jsonOutput": false,
+      "metrics": {
+        "promptCount": 9,
+        "repairs": 4,
+        "toolCalls": 3,
+        "inputTokensEstimated": [
+          1229,
+          1641,
+          1838,
+          1856,
+          1716,
+          1907,
+          1917,
+          2082,
+          2503
+        ]
+      },
+      "checks": [
+        {
+          "args": [
+            "-e",
+            "import {total} from './src/total.js';if(total([19,-7,0.5])!==12.5||total([])!==0)process.exit(2);for(const v of [['x'],[NaN],[Infinity]]){let failed=false;try{total(v)}catch{failed=true}if(!failed)process.exit(3)}console.log('withheld passed')"
+          ],
+          "code": 2,
+          "output": "",
+          "passed": false
+        },
+        {
+          "name": "observed failure-driven repair cycle",
+          "passed": false,
+          "reason": "No ordered failed command → acknowledged edit → new successful command was observed."
+        }
+      ],
+      "commandExits": [
+        {
+          "code": 1,
+          "cancelled": false
+        },
+        {
+          "code": 1,
+          "cancelled": false
+        },
+        {
+          "code": 1,
+          "cancelled": false
+        }
+      ],
+      "files": [
+        {
+          "path": "package.json",
+          "rev": "e944b1bb83626b810f17c2e6922d1ede2be5709736182b700a2b8ec2e907dfc4",
+          "revision": "e944b1bb83626b810f17c2e6922d1ede2be5709736182b700a2b8ec2e907dfc4",
+          "size": 48,
+          "editable": true
+        },
+        {
+          "path": "src/total.js",
+          "rev": "b1e53c5e7884a6c95289b4d5bd86eaa7fb36828d83fd2747e97a5ea902504909",
+          "revision": "b1e53c5e7884a6c95289b4d5bd86eaa7fb36828d83fd2747e97a5ea902504909",
+          "size": 43,
+          "editable": true
+        },
+        {
+          "path": "total.test.js",
+          "rev": "e2f331b06a6ce47e4034303403855d757498224accceb74bfeec20659b2ab6af",
+          "revision": "e2f331b06a6ce47e4034303403855d757498224accceb74bfeec20659b2ab6af",
+          "size": 121,
+          "editable": true
+        }
+      ],
+      "validResponseCount": 4,
+      "responseCount": 9,
+      "finishes": [
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 946,
+            "prompt_tokens": 1005,
+            "total_tokens": 1951
+          },
+          "diagnostics": {
+            "reasoningChars": 4110,
+            "contentChars": 84
+          }
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 1812,
+            "prompt_tokens": 1553,
+            "total_tokens": 3365
+          },
+          "diagnostics": {
+            "reasoningChars": 7439,
+            "contentChars": 405
+          }
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 1626,
+            "prompt_tokens": 1747,
+            "total_tokens": 3373
+          },
+          "diagnostics": {
+            "reasoningChars": 6346,
+            "contentChars": 421
+          }
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 912,
+            "prompt_tokens": 1755,
+            "total_tokens": 2667
+          },
+          "diagnostics": {
+            "reasoningChars": 3965,
+            "contentChars": 42
+          }
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 1138,
+            "prompt_tokens": 1613,
+            "total_tokens": 2751
+          },
+          "diagnostics": {
+            "reasoningChars": 4476,
+            "contentChars": 381
+          }
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 913,
+            "prompt_tokens": 1800,
+            "total_tokens": 2713
+          },
+          "diagnostics": {
+            "reasoningChars": 3520,
+            "contentChars": 391
+          }
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 1070,
+            "prompt_tokens": 1800,
+            "total_tokens": 2870
+          },
+          "diagnostics": {
+            "reasoningChars": 4744,
+            "contentChars": 84
+          }
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 1680,
+            "prompt_tokens": 2128,
+            "total_tokens": 3808
+          },
+          "diagnostics": {
+            "reasoningChars": 7421,
+            "contentChars": 84
+          }
+        },
+        {
+          "finishReason": "length",
+          "usage": {
+            "completion_tokens": 2048,
+            "prompt_tokens": 2641,
+            "total_tokens": 4689
+          },
+          "diagnostics": {
+            "reasoningChars": 9533,
+            "contentChars": 17,
+            "contentSuffix": "{\"do\":\"done\",\"act"
+          }
+        }
+      ],
+      "rawEvidenceSha256": "0379d6173aabcad8528a53e1d2bbf8e017fc7a9237469a0770658b7563df6841"
+    },
+    {
+      "attempt": "qwen3-single-script-01",
+      "caseName": "script",
+      "status": "failed",
+      "passed": false,
+      "result": "(failed: provider did not complete the reply (length))",
+      "elapsedMs": 96780,
+      "contractVersion": 3,
+      "contextLength": 8192,
+      "maxOutputTokens": 2048,
+      "enableThinking": true,
+      "jsonOutput": false,
+      "metrics": {
+        "promptCount": 12,
+        "repairs": 2,
+        "toolCalls": 6,
+        "inputTokensEstimated": [
+          1225,
+          1391,
+          1417,
+          1486,
+          1643,
+          1801,
+          2009,
+          2135,
+          2605,
+          3048,
+          3562,
+          3831
+        ]
+      },
+      "checks": [
+        {
+          "args": [
+            "total.js",
+            "19",
+            "-7",
+            "0.5"
+          ],
+          "code": 1,
+          "output": "",
+          "passed": false
+        },
+        {
+          "args": [
+            "total.js"
+          ],
+          "code": 1,
+          "output": "",
+          "passed": false
+        },
+        {
+          "args": [
+            "total.js",
+            "invalid"
+          ],
+          "code": 1,
+          "output": "",
+          "passed": true
+        }
+      ],
+      "commandExits": [
+        {
+          "code": 127,
+          "cancelled": false
+        },
+        {
+          "code": 127,
+          "cancelled": false
+        },
+        {
+          "code": 1,
+          "cancelled": false
+        }
+      ],
+      "files": [
+        {
+          "path": "total.js",
+          "rev": "9a864fce98e60e8ee459df3fcb6c063706267714e783822fc6aa67a233e6d82b",
+          "revision": "9a864fce98e60e8ee459df3fcb6c063706267714e783822fc6aa67a233e6d82b",
+          "size": 269,
+          "editable": true
+        }
+      ],
+      "validResponseCount": 9,
+      "responseCount": 12,
+      "finishes": [
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 736,
+            "prompt_tokens": 1000,
+            "total_tokens": 1736
+          },
+          "diagnostics": {
+            "reasoningChars": 2814,
+            "contentChars": 280
+          }
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 1843,
+            "prompt_tokens": 1149,
+            "total_tokens": 2992
+          },
+          "diagnostics": {
+            "reasoningChars": 6573,
+            "contentChars": 368
+          }
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 714,
+            "prompt_tokens": 1189,
+            "total_tokens": 1903
+          },
+          "diagnostics": {
+            "reasoningChars": 2550,
+            "contentChars": 378
+          }
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 1595,
+            "prompt_tokens": 1374,
+            "total_tokens": 2969
+          },
+          "diagnostics": {
+            "reasoningChars": 7046,
+            "contentChars": 78
+          }
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 1702,
+            "prompt_tokens": 1635,
+            "total_tokens": 3337
+          },
+          "diagnostics": {
+            "reasoningChars": 7789,
+            "contentChars": 78
+          }
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 1924,
+            "prompt_tokens": 1896,
+            "total_tokens": 3820
+          },
+          "diagnostics": {
+            "reasoningChars": 8668,
+            "contentChars": 170
+          }
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 990,
+            "prompt_tokens": 1984,
+            "total_tokens": 2974
+          },
+          "diagnostics": {
+            "reasoningChars": 4219,
+            "contentChars": 217
+          }
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 393,
+            "prompt_tokens": 2083,
+            "total_tokens": 2476
+          },
+          "diagnostics": {
+            "reasoningChars": 1637,
+            "contentChars": 83
+          }
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 1188,
+            "prompt_tokens": 2709,
+            "total_tokens": 3897
+          },
+          "diagnostics": {
+            "reasoningChars": 4126,
+            "contentChars": 377
+          }
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 464,
+            "prompt_tokens": 3207,
+            "total_tokens": 3671
+          },
+          "diagnostics": {
+            "reasoningChars": 1531,
+            "contentChars": 377
+          }
+        },
+        {
+          "finishReason": "stop",
+          "usage": {
+            "completion_tokens": 351,
+            "prompt_tokens": 3705,
+            "total_tokens": 4056
+          },
+          "diagnostics": {
+            "reasoningChars": 1252,
+            "contentChars": 161
+          }
+        },
+        {
+          "finishReason": "length",
+          "usage": {
+            "completion_tokens": 2048,
+            "prompt_tokens": 3792,
+            "total_tokens": 5840
+          },
+          "diagnostics": {
+            "reasoningChars": 8720,
+            "contentChars": 14,
+            "contentSuffix": "{\"do\":\"tool\",\""
+          }
+        }
+      ],
+      "rawEvidenceSha256": "28f72463d31f477fc67e981b860058c4a2a2e4c62cb9113c3e4c3c0a108cf68f"
+    }
+  ]
+}
