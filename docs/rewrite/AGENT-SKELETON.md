@@ -78,3 +78,9 @@ A separate native-tools replay used the same configured workspace schemas with n
 ## Agent write revisions
 
 The `workspace_write` schema now requires `expect`, rather than merely asking for it in prose. The desk's agent-facing `workspace.write` operation separately rejects omitted, invalid or contradictory revision arguments before calling the file service. New files use `0`; existing files use the observed revision. A stale revision returns a conflict and preserves newer owner content. Direct editor saves retain their existing behavior. This guarantee applies to this write tool; executable shell commands can mutate files independently.
+
+## Second small-model diagnostic
+
+[Official Qwen3 1.7B Q8_0 results](evidence/qwen3-small-model-diagnostic.json) retain the failed production JSON loop alongside separate native-tool probes. The production loop proposed missing-revision writes, which the new schema rejected; no command executed. A native-tool proposal with thinking enabled produced a script that independently passed positive/negative, empty and invalid CLI inputs. That source check was performed by the evaluator, not by the model's own command loop. Native mode without thinking produced well-formed calls but unsuitable source.
+
+Protocol and thinking mode changed together in the promising probe. Before adding another engine protocol, test thinking enabled in the existing production JSON loop. Neither the single candidate pass nor this second model supersedes the retained 1.5B failures or establishes small-model reliability. Both downloaded models remain in ignored local cache; neither is bundled into Pages.

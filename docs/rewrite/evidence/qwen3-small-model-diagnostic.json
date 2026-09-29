@@ -1,0 +1,197 @@
+{
+  "version": 1,
+  "date": "2026-09-29",
+  "model": {
+    "repository": "Qwen/Qwen3-1.7B-GGUF",
+    "revision": "90862c4b9d2787eaed51d12237eafdfe7c5f6077",
+    "file": "Qwen3-1.7B-Q8_0.gguf",
+    "bytes": 1834426016,
+    "sha256": "061b54daade076b5d3362dac252678d17da8c68f07560be70818cace6590cb1a",
+    "source": "https://huggingface.co/Qwen/Qwen3-1.7B-GGUF"
+  },
+  "runtime": "llama-server 6940 c5023daf6 --jinja; temporary 8874 process stopped",
+  "productionLoop": {
+    "attempt": "qwen3-script-01",
+    "status": "failed",
+    "passed": false,
+    "result": "(failed: request budget exceeds context window (6372 input + 2048 output > 8192))",
+    "contextLength": 8192,
+    "jsonOutput": true,
+    "thinkingEnabled": false,
+    "elapsedMs": 16169,
+    "metrics": {
+      "promptCount": 19,
+      "repairs": 1,
+      "toolCalls": 50,
+      "inputTokensEstimated": [
+        1238,
+        1356,
+        1405,
+        1428,
+        1499,
+        1571,
+        1918,
+        2266,
+        2658,
+        3096,
+        3534,
+        3971,
+        4408,
+        4846,
+        5282,
+        5719,
+        5838,
+        5940,
+        6372
+      ]
+    },
+    "commands": 0,
+    "files": [],
+    "checks": [
+      {
+        "args": [
+          "total.js",
+          "19",
+          "-7",
+          "0.5"
+        ],
+        "code": 1,
+        "output": "",
+        "passed": false
+      },
+      {
+        "args": [
+          "total.js"
+        ],
+        "code": 1,
+        "output": "",
+        "passed": false
+      },
+      {
+        "args": [
+          "total.js",
+          "invalid"
+        ],
+        "code": 1,
+        "output": "",
+        "passed": true
+      }
+    ],
+    "rawSha256": "a8d467645d886fbc849fa41c62522ad3e62cb774011a3fc85e362e8d886e7c88"
+  },
+  "nativeDiagnostics": [
+    {
+      "name": "native-qwen3-01",
+      "scope": "Native tools, native tool history, catalogue moved to API tool schemas; read-only diagnostic, no tools executed. Server restarted with --jinja.",
+      "thinkingEnabled": true,
+      "status": 200,
+      "finishReason": "tool_calls",
+      "content": null,
+      "toolCalls": [
+        {
+          "type": "function",
+          "function": {
+            "name": "workspace_write",
+            "arguments": "{\"path\":\"total.js\",\"content\":\"const args = process.argv.slice(2);\\nlet sum = 0;\\n\\nfor (const arg of args) {\\n  if (!isNaN(Number(arg))) {\\n    sum += Number(arg);\\n  } else {\\n    process.exit(1);\\n  }\\n}\\n\\nconsole.log(sum);\",\"expect\":0}"
+          },
+          "id": "vPG9oXUb3G5FSZJ91UncxAXlbOJwGFUq"
+        }
+      ],
+      "reasoningChars": 7899,
+      "usage": {
+        "completion_tokens": 1899,
+        "prompt_tokens": 1187,
+        "total_tokens": 3086
+      },
+      "elapsedMs": 16673,
+      "rawSha256": "df91974fca0730a5898620b46b237bcdd2a476f8a97261d0d41eb1180d7b2ce1"
+    },
+    {
+      "name": "native-qwen3-02",
+      "scope": "First-action native-tool diagnostic with thinking disabled; no tools executed.",
+      "thinkingEnabled": false,
+      "status": 200,
+      "finishReason": "tool_calls",
+      "content": null,
+      "toolCalls": [
+        {
+          "type": "function",
+          "function": {
+            "name": "workspace_read",
+            "arguments": "{\"path\":\"total.js\"}"
+          },
+          "id": "1wJIAYnHsKscZvwVNKGZvCAkYSiyH9ip"
+        }
+      ],
+      "reasoningChars": 0,
+      "usage": {
+        "completion_tokens": 22,
+        "prompt_tokens": 1191,
+        "total_tokens": 1213
+      },
+      "elapsedMs": 397,
+      "rawSha256": "5cfc3d2f4bcd1cd1423d8a240fcc41157e366e9a4dfc418fb4b1a08ff3f691a4"
+    },
+    {
+      "name": "native-qwen3-03",
+      "scope": "Follow-up after read of absent file in empty evaluator workspace; no writes or commands executed.",
+      "thinkingEnabled": false,
+      "status": 200,
+      "finishReason": "tool_calls",
+      "content": null,
+      "toolCalls": [
+        {
+          "type": "function",
+          "function": {
+            "name": "workspace_write",
+            "arguments": "{\"path\":\"total.js\",\"content\":\"const { command, args } = require(\\\"@bunjs/cli\\\");\\n\\nif (command === \\\"total\\\") {\\n  if (args.length === 0) {\\n    console.log(0);\\n  } else {\\n    const sum = args.reduce((acc, val) => acc + parseInt(val, 10), 0);\\n    console.log(sum);\\n  }\\n} else {\\n  process.exit(1);\\n}\",\"expect\":0}"
+          },
+          "id": "pceIcdgJi7bZMNgzPgYh9BQxCUgljXpW"
+        }
+      ],
+      "reasoningChars": 0,
+      "usage": {
+        "completion_tokens": 125,
+        "prompt_tokens": 1226,
+        "total_tokens": 1351
+      },
+      "elapsedMs": 926,
+      "rawSha256": "5f3f817378d24a59f1e81c2b9f8395f25053af3bf0f5c03e47fd781cfd9c6f4e"
+    }
+  ],
+  "candidateCheck": {
+    "scope": "Independent execution of one proposed source file; harness-owned diagnostic, not a model-driven tool loop or command receipt.",
+    "checks": [
+      {
+        "input": [
+          "19",
+          "-7",
+          "0.5"
+        ],
+        "code": 0,
+        "output": "12.5\n",
+        "error": "",
+        "passed": true
+      },
+      {
+        "input": [],
+        "code": 0,
+        "output": "0\n",
+        "error": "",
+        "passed": true
+      },
+      {
+        "input": [
+          "invalid"
+        ],
+        "code": 1,
+        "output": "",
+        "error": "",
+        "passed": true
+      }
+    ],
+    "passed": true
+  },
+  "conclusion": "Production JSON loop failed. One native-tool proposal with thinking enabled produced source that passed independent CLI checks. No successful model-driven native loop has been demonstrated. Protocol and thinking differ, so neither cause is isolated. Next test should enable thinking in the existing production JSON loop before introducing a new protocol.",
+  "weights": "Verified local ignored cache only; not bundled with the site."
+}
