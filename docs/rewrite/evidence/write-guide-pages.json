@@ -1,0 +1,67 @@
+{
+  "source": "7b2c6e0b",
+  "deployment": "d83356499f0e82c8e9b6de4753e1444efe07eecd",
+  "workflow": "https://github.com/kaush4l/ASKK/actions/runs/36598193937",
+  "workflowConclusion": "success",
+  "tests": {
+    "promptAndPackages": {
+      "passed": 65,
+      "failed": 0,
+      "assertions": 515,
+      "files": 5
+    }
+  },
+  "export": {
+    "version": 1,
+    "basePath": "/ASKK",
+    "totalBytes": 905103481,
+    "fileCount": 220,
+    "runtimeId": "c2w-node24-38d093f4a38002db",
+    "artifactHash": "40bc65e4eb48660a3fc3b6ff33a68a3b345b57e3dd8649052ae7f2080cd51506"
+  },
+  "checks": [
+    {
+      "path": "index.html",
+      "status": 200,
+      "sha256": "c3059606b7c3d952aa5fc11712b254dce1d180bf73905edae6f49a171f90be25",
+      "matches": true
+    },
+    {
+      "path": "_next/static/chunks/app/page-15f5d50a24b16243.js",
+      "status": 200,
+      "sha256": "a9746b1f3cdeee8f099b98ed5e6567bde80189a3e1dcd23d85a5f9171f6f7dde",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/core/write-observations.js",
+      "status": 200,
+      "sha256": "858b30fe0f0781bcc66ab9462aa76ae6526a81e4975b2eb11df1efdbe60ed65b",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/builtin/workspace.js",
+      "status": 200,
+      "sha256": "7871f310db8d1d6e218a3fd919f0f3dad429a59ff2c4577b0b88ec62ac78b6ef",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/runtime/agent.worker.js",
+      "status": 200,
+      "sha256": "78a58b8e68221ec2f2caffddd77ff6a8c8016ecd52402a4cfb7efce24557faf2",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/workspace/controller.js",
+      "status": 200,
+      "sha256": "97b1a20d4de5d6a5f81e1e991a60a9dc3849f1c134d63a8da0ee0630faa27547",
+      "matches": true
+    },
+    {
+      "path": "packages/starter/agents/builder/agent.md",
+      "status": 200,
+      "sha256": "36a8f455d58221b3d079807650972b892e1c27acb82478b9cb43bec2f89135ea",
+      "matches": true
+    }
+  ],
+  "scope": "Hosted byte checks and prompt/package automated tests. Only builder instructions changed. The 4B diagnostic still failed scaffolding: package and working source committed, tests absent. No general reliability, Safari, iPhone, VoiceOver, or Browser Linux acceptance."
+}
