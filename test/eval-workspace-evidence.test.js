@@ -148,3 +148,68 @@ test('Bun report requires executed non-skipped tests, independently of exit code
     }
   } finally { await rm(root, { recursive: true, force: true }) }
 })
+
+function deferred() {
+  let resolve, reject
+  const promise = new Promise((yes, no) => { resolve = yes; reject = no })
+  return { promise, resolve, reject }
+}
+
+test('stop gates writes and commands, including a command awaiting its input revision', async () => {
+  const f = fixture(), snapshot = deferred()
+  let launches = 0
+  f.execution.snapshot = () => snapshot.promise
+  f.execution.startJob = async () => { launches++; return { code: 0, runtimeId: 'runtime' } }
+  const command = f.workspace.run('too late', owner)
+  f.workspace.stop()
+  const drain = f.workspace.drain()
+  expect(f.workspace.drain()).toBe(drain)
+  await expect(f.workspace.write({})).rejects.toThrow('stopped')
+  await expect(f.workspace.run('also late', owner)).rejects.toThrow('stopped')
+  snapshot.resolve({ revision: 'a' })
+  await expect(command).rejects.toThrow('stopped')
+  await drain
+  expect(launches).toBe(0)
+})
+
+test('drain waits for admitted writes and exit receipts, retrying cancellation after a late started event', async () => {
+  const f = fixture(), launched = deferred(), exit = deferred(), write = deferred()
+  let cancellations = 0, drained = false, id
+  f.execution.write = () => write.promise
+  f.execution.startJob = options => { id = options.id; launched.resolve(); return exit.promise }
+  f.execution.cancelJob = async () => { cancellations++; return { ok: cancellations > 1 } }
+  const command = f.workspace.run('delayed launch', owner)
+  await launched.promise
+  const writing = f.workspace.write({})
+  f.workspace.stop()
+  const drain = f.workspace.drain().then(() => { drained = true })
+  await Promise.resolve()
+  expect(cancellations).toBe(1)
+  f.workspace.onEvent({ type: 'started', jobId: id, runtimeId: 'runtime' })
+  await Promise.resolve()
+  expect(cancellations).toBe(2)
+  expect(drained).toBe(false)
+  exit.resolve({ code: -1, runtimeId: 'runtime', cancelled: true })
+  await command
+  expect(drained).toBe(false)
+  write.resolve({ ok: true })
+  await writing
+  await drain
+  expect(f.workspace.commands[0]).toMatchObject({ stage: 'complete', cancelled: true, code: -1 })
+  await expect(f.workspace.check({}, owner)).resolves.toMatchObject({ ok: false })
+})
+
+test('drain fails closed when a launched command loses its exit receipt or cancellation fails', async () => {
+  for (const loseReceipt of [true, false]) {
+    const f = fixture(), launched = deferred(), exit = deferred()
+    f.execution.startJob = () => { launched.resolve(); return exit.promise }
+    f.execution.cancelJob = async () => { if (!loseReceipt) throw new Error('cancel disconnected'); return { ok: false } }
+    const command = f.workspace.run('unknown shutdown', owner).catch(() => {})
+    await launched.promise
+    f.workspace.stop()
+    if (loseReceipt) exit.reject(new Error('stream disconnected'))
+    else exit.resolve({ code: 0, runtimeId: 'runtime' })
+    await command
+    await expect(f.workspace.drain()).rejects.toMatchObject({ code: 'EVALUATION_SHUTDOWN_UNCONFIRMED' })
+  }
+})

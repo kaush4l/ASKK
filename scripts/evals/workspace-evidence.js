@@ -5,7 +5,25 @@ const AGENT_COMMAND_TIMEOUT_SECONDS = 30
 export function createEvaluationWorkspace(execution) {
   const commands = []
   const bound = execution.describeCapabilities()
-  let running = 0, writing = 0, epoch = 0
+  let running = 0, writing = 0, epoch = 0, stopped = false, drainPromise
+  const pending = new Set(), jobs = new Map(), cancellationErrors = []
+  const assertOpen = () => { if (stopped) throw new Error('Evaluation workspace is stopped') }
+  const track = promise => {
+    pending.add(promise)
+    promise.then(() => pending.delete(promise), () => pending.delete(promise))
+    return promise
+  }
+  const cancel = id => {
+    const job = jobs.get(id)
+    if (!job || job.exited) return
+    // Retain the command stream: cancelling its fetch would discard its exit receipt.
+    track(Promise.resolve().then(() => execution.cancelJob(id)).catch(error => { cancellationErrors.push(error) }))
+  }
+  const stop = () => {
+    if (stopped) return
+    stopped = true
+    for (const id of jobs.keys()) cancel(id)
+  }
   const assertRuntime = () => {
     const current = execution.describeCapabilities()
     if (!bound.runtimeId || current.runtimeId !== bound.runtimeId || current.root !== bound.root) throw new Error('Evaluation execution binding changed')
@@ -17,14 +35,29 @@ export function createEvaluationWorkspace(execution) {
     if (typeof snapshot.revision !== 'string' || !snapshot.revision) throw new Error('Workspace snapshot has no revision')
     return snapshot.revision
   }
-  return {
-    commands, revision,
+  const workspace = {
+    commands, revision, stop,
+    onEvent(event) {
+      // A stop can race the request before the companion has registered its job.
+      if (stopped && event.type === 'started' && event.runtimeId === bound.runtimeId) cancel(event.jobId)
+    },
+    drain() {
+      stop()
+      return drainPromise ??= (async () => {
+        while (pending.size) await Promise.allSettled([...pending])
+        const errors = [...cancellationErrors]
+        for (const [id, job] of jobs) if (!job.exited) errors.push(new Error(`Command ${id} has no confirmed exit receipt`))
+        if (errors.length) throw Object.assign(new AggregateError(errors, 'Evaluation command shutdown could not be confirmed'), { code: 'EVALUATION_SHUTDOWN_UNCONFIRMED' })
+      })()
+    },
     async write(args) {
+      assertOpen()
       writing++; epoch++
       try { assertRuntime(); return await execution.write(args) }
       finally { writing--; epoch++ }
     },
     async run(command, run) {
+      assertOpen()
       const id = crypto.randomUUID(), inputEpoch = epoch
       let output = ''
       running++
@@ -33,9 +66,13 @@ export function createEvaluationWorkspace(execution) {
       try {
         receipt.inputRevision = await revision()
         if (writing || epoch !== inputEpoch) throw new Error('Source changed while preparing the command; run it again')
+        assertOpen()
         receipt.stage = 'running'
+        jobs.set(id, { exited: false })
         const result = await execution.startJob({ id, program: '/bin/sh', args: ['-c', command], timeout: AGENT_COMMAND_TIMEOUT_SECONDS, onOutput: event => { output += event.data ?? event.text ?? '' } })
         if (result.runtimeId !== bound.runtimeId) throw new Error('Command receipt came from a different execution runtime')
+        if (!Number.isInteger(result.code)) throw new Error('Command exit receipt has no exit code')
+        jobs.get(id).exited = true
         const completedRevision = await revision()
         Object.assign(receipt, result, { id, output, completedRevision, completedEpoch: epoch, finishedAt: Date.now(), sourceUnchanged: !writing && epoch === inputEpoch && receipt.inputRevision === completedRevision, stage: 'complete' })
         return { ...receipt }
@@ -47,6 +84,7 @@ export function createEvaluationWorkspace(execution) {
     async checkRequired(options, run) {
       const required = normalizeCompletion({ checks: [{ capability: 'workspace.commands', options }] }).checks[0].options.commands
       const reject = reason => ({ ok: false, reason })
+      if (stopped) return reject('Evaluation workspace is stopped.')
       if (running || writing) return reject('Wait for commands and writes to finish before checking required commands.')
       const owns = row => row.trace === (run.trace ?? run.id)
       const selected = selectRequiredCommands(commands, required, owns)
@@ -55,20 +93,26 @@ export function createEvaluationWorkspace(execution) {
       }
       const before = epoch, currentRevision = await revision()
       const latest = selectRequiredCommands(commands, required, owns)
-      if (running || writing || before !== epoch || selected.some((command, index) => latest[index]?.id !== command.id || !command.sourceUnchanged || command.completedEpoch !== epoch || command.completedRevision !== currentRevision)) return reject('Required commands must all pass against the current saved source; rerun them after edits.')
+      if (stopped || running || writing || before !== epoch || selected.some((command, index) => latest[index]?.id !== command.id || !command.sourceUnchanged || command.completedEpoch !== epoch || command.completedRevision !== currentRevision)) return reject('Required commands must all pass against the current saved source; rerun them after edits.')
       return { ok: true, reason: 'All configured command receipts passed; this proves only their assertions.', evidence: { sourceRevision: currentRevision, commands: selected.map(command => ({ commandId: command.id, command: command.command, exitCode: command.code, runtimeId: command.runtimeId, sourceRevision: command.completedRevision })) } }
     },
     async check({ requireFresh = true } = {}, run) {
       const reject = reason => ({ ok: false, reason })
+      if (stopped) return reject('Evaluation workspace is stopped.')
       if (running || writing) return reject('Wait for commands and writes to finish before completing.')
       const command = commands.findLast(row => row.trace === (run.trace ?? run.id))
       if (!command || command.stage !== 'complete' || command.code !== 0 || command.cancelled || command.timedOut) return reject('This task needs a completed command with a recorded zero exit code.')
       const before = epoch, currentRevision = await revision()
-      if (running || writing || before !== epoch || commands.findLast(row => row.trace === (run.trace ?? run.id)) !== command) return reject('The workspace changed during completion checks; run the checks again.')
+      if (stopped || running || writing || before !== epoch || commands.findLast(row => row.trace === (run.trace ?? run.id)) !== command) return reject('The workspace changed during completion checks; run the checks again.')
       if (requireFresh && (!command.sourceUnchanged || command.completedEpoch !== epoch || command.completedRevision !== currentRevision)) return reject('Run the checks again against the current saved files; the source changed during or after the previous command.')
       return { ok: true, commandId: command.id, sourceRevision: currentRevision, reason: 'A task-owned command exited zero against this source snapshot. Functional correctness requires the independent checks.', evidence: { commandId: command.id, command: command.command, runId: command.runId, trace: command.trace, runtimeId: bound.runtimeId, inputRevision: command.inputRevision, completedRevision: command.completedRevision, completedEpoch: epoch, finishedAt: Date.now(), sourceUnchanged: command.sourceUnchanged, matchesAtCompletion: command.completedRevision === currentRevision && command.completedEpoch === epoch } }
     },
   }
+  for (const name of ['write', 'run']) {
+    const operation = workspace[name]
+    workspace[name] = (...args) => track(operation(...args))
+  }
+  return workspace
 }
 
 /** Benchmark's explicit declared-script invocation; never parse arbitrary shell prose as evidence. */

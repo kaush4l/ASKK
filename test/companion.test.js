@@ -196,6 +196,18 @@ describe('Bun companion contracts', () => {
     expect((await local.startJob({ program: '/bin/sh', args: ['-c', 'exit 0'] })).code).toBe(0)
   }, { capabilities: ['exec'] }))
 
+  test('cancellation acknowledges actual child exit after its termination handler finishes', async () => fixture(async ({ root, local }) => {
+    let started = false, pid
+    local.onEvent = event => { if (event.type === 'started') pid = event.pid }
+    const source = 'process.on("SIGTERM",()=>setTimeout(()=>{require("node:fs").writeFileSync("shutdown-finished","yes");process.exit(0)},120));console.log("ready");setInterval(()=>{},1000)'
+    const pending = local.startJob({ id: 'slow-shutdown', program: process.execPath, args: ['-e', source], onOutput: () => { started = true } })
+    await until(() => started)
+    expect((await local.cancelJob('slow-shutdown')).ok).toBe(true)
+    expect(await readFile(join(root, 'shutdown-finished'), 'utf8')).toBe('yes')
+    expect(() => process.kill(pid, 0)).toThrow()
+    expect(await pending).toMatchObject({ cancelled: true, code: 0 })
+  }, { capabilities: ['exec'] }))
+
   test('a rejected duplicate command identity never cancels the original command', async () => fixture(async ({ companion, local }) => {
     let started = false
     const pending = local.startJob({ id: 'owned-job', program: '/bin/sh', args: ['-c', 'echo started; sleep 0.15; exit 0'], onOutput: () => { started = true } })

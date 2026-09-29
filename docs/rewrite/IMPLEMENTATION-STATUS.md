@@ -1,6 +1,14 @@
 # Implementation status
 
-Latest publication: UI source **`694eec17`**, deployment **`3ea0aa42`**, [successful Pages workflow](https://github.com/kaush4l/ASKK/actions/runs/36572547684). [Hosted evidence](evidence/recorded-input-pages.json) confirms three files match the tested export. Evaluator-only deadline corrections follow this publication; no web rebuild is required for those scripts.
+## Confirmed cancellation before independent verification
+
+The evaluation workspace now stops admitting writes and commands, retains command streams while cancelling, retries cancellation when a late job-start receipt arrives, and drains admitted work before independent checks. Missing exit receipts fail the evaluation lifecycle explicitly. The companion cancellation endpoint waits for child/stdio closure and rejects command launches after shutdown starts. Cleanup archives only after acknowledged companion shutdown; failed archival retains the temporary source.
+
+The command panel distinguishes **Outcome unknown · exit unconfirmed** from a recorded exit followed by **workspace sync failed**, with bounded error detail. This is command evidence, not a claim that arbitrary detached native descendants are contained.
+
+Validation: **963 passed, 1 skipped, 0 failed**, 7,158 assertions across 95 files. The full evaluator cancellation fixture proves actual cancelled exit receipts precede independent commands and termination-handler writes reach the archive. Unit tests cover stopped admission, pending writes, late starts and lost receipts. Small-model task reliability, live Safari/iPhone interaction and Browser Linux acceptance remain unproven.
+
+Historical publication: UI source **`694eec17`**, deployment **`3ea0aa42`**, [successful Pages workflow](https://github.com/kaush4l/ASKK/actions/runs/36572547684). [Hosted evidence](evidence/recorded-input-pages.json) confirms three files match the tested export. Evaluator-only deadline corrections follow this publication; no web rebuild is required for those scripts.
 
 ## Recorded model input and trustworthy local trials
 
@@ -8,7 +16,7 @@ The definition inspector now preserves recorded native tool definitions, tool na
 
 [Minimal-prompt diagnostics](evidence/qwen3-minimal-diagnostics.json) uncovered two evaluation defects rather than improved model reliability. The initial run invoked an ancestor harness test script before creating a project manifest. The evaluator now runs commands outside the repository in a fresh OS temporary root, records actual runtime identity, and archives source before cleanup. The isolated rerun authored a recursive test script; its agent and independent-check process groups were manually terminated after discovering milliseconds supplied to a seconds API. Corrected deadlines are 30 seconds for agent jobs and 10 seconds for independent checks. Both attempts failed, and neither is used as a clean prompt-quality comparison. Candidate instructions remain experimental.
 
-The deployed UI passed **954 tests, 1 skipped, 0 failed**; after evaluator deadline fixes, the full suite passed **956 tests, 1 skipped, 0 failed**, 7,109 assertions across 94 files. A real fractional-second timeout regression confirms a shell's delayed descendant cannot write after termination. Other regressions cover ancestor-script isolation, no injected project manifest, archived source, credential-free environment metadata, cleanup and retained temporary source on archive failure by implementation ordering. Cancellation while a command is active and its ordering relative to independent checks still require a dedicated audit; the existing cancellation fixture tests archival, not that overlap. No live browser inspector, Safari, iPhone or Browser Linux acceptance is claimed. Export: **854,255,140 bytes / 215 files**.
+The deployed UI passed **954 tests, 1 skipped, 0 failed**; after evaluator deadline fixes, the full suite passed **956 tests, 1 skipped, 0 failed**, 7,109 assertions across 94 files. A real fractional-second timeout regression confirms a shell's delayed descendant cannot write after termination. Other regressions cover ancestor-script isolation, no injected project manifest, archived source, credential-free environment metadata, cleanup and retained temporary source on archive failure by implementation ordering. That release did not yet prove cancellation ordering; the newer audit below addresses this gap. No live browser inspector, Safari, iPhone or Browser Linux acceptance is claimed. Export: **854,255,140 bytes / 215 files**.
 
 Historical publication: source **`3104ca55`**, deployment **`3b0d3f0c`**, [successful Pages workflow](https://github.com/kaush4l/ASKK/actions/runs/36571553209). [Hosted evidence](evidence/required-command-pages.json) confirms seven files match the tested export. Required command receipts and scoped live completion labels are published; task reliability and browser execution gates remain open.
 

@@ -90,22 +90,38 @@ test('agent commands without a manifest cannot run the archive ancestor test scr
 
 test('a cancelled agent command archives saved source and removes its execution root', async () => {
   const root = await mkdtemp(join(tmpdir(), 'askk-eval-cancel-'))
-  let requests = 0
+  let requests = 0, exitReceipt, independentStarts = 0
+  const startJob = LocalExecution.prototype.startJob
+  const jobSpy = spyOn(LocalExecution.prototype, 'startJob').mockImplementation(async function (options) {
+    if (options.program === process.execPath) {
+      independentStarts++
+      expect(exitReceipt?.cancelled).toBe(true)
+      expect(Number.isInteger(exitReceipt?.code)).toBe(true)
+    }
+    const result = await startJob.call(this, options)
+    if (options.program === '/bin/sh') exitReceipt = result
+    return result
+  })
   const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: async request => {
     await request.json()
     const call = ++requests === 1
       ? { id: 'write', name: 'workspace_write', args: { path: 'retained.txt', content: 'saved before cancellation', expect: 0 } }
-      : { id: 'sleep', name: 'workspace_run', args: { command: 'sleep 30' } }
+      : { id: 'sleep', name: 'workspace_run', args: { command: "trap 'printf settled > stopped.txt; exit 143' TERM; sleep 30 & wait" } }
     return new Response(`data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [{ index: 0, id: call.id, type: 'function', function: { name: call.name, arguments: JSON.stringify(call.args) } }] }, finish_reason: 'tool_calls' }] })}\n\ndata: [DONE]\n\n`, { headers: { 'content-type': 'text/event-stream' } })
   } })
   try {
     const result = await evaluateProjectLoop({ baseUrl: `http://127.0.0.1:${server.port}/v1`, model: 'fixture', directory: join(root, 'attempt'), timeoutMs: 1000, responseProtocol: 'native', contractVersion: 3, historyFormat: 'messages' })
     const evidence = JSON.parse(await readFile(result.evidence, 'utf8'))
     expect(result.passed).toBe(false)
+    expect(independentStarts).toBeGreaterThan(0)
+    expect(evidence.commands[0].cancelled).toBe(true)
+    expect(evidence.commands[0].stage).toBe('complete')
+    expect(evidence.agentOperationsSettledAt).toBeGreaterThanOrEqual(evidence.commands[0].finishedAt)
+    expect(await readFile(join(root, 'attempt/project/stopped.txt'), 'utf8')).toBe('settled')
     expect(evidence.tools.some(event => event.kind === 'call' && event.name === 'workspace_run')).toBe(true)
     expect(await readFile(join(root, 'attempt/project/retained.txt'), 'utf8')).toBe('saved before cancellation')
     expect(await stat(evidence.executionEnvironment.root).catch(error => error.code)).toBe('ENOENT')
-  } finally { server.stop(true); await rm(root, { recursive: true, force: true }) }
+  } finally { jobSpy.mockRestore(); server.stop(true); await rm(root, { recursive: true, force: true }) }
 }, 15000)
 
 test('evaluation sampling is explicit, validated, detached and defaults remain stable', () => {

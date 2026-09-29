@@ -110,6 +110,7 @@ export async function createCompanion(options = {}) {
     const seconds = Number(body.timeout ?? 600)
     if (!Number.isFinite(seconds) || seconds <= 0) throw failure('Command timeout must be a positive number of seconds')
     return inside(body.cwd ?? '.').then(cwd => {
+      if (closing) throw failure('The companion is closing', 503)
       const id = String(body.id ?? crypto.randomUUID()); if (jobs.has(id)) throw failure('Command identity is already in use', 409)
       const child = spawn(body.program, body.args ?? [], { cwd, detached: true, env: childEnv, stdio: ['ignore', 'pipe', 'pipe'] })
       const job = { id, child, pid: child.pid, exited: false, cancelled: false }; jobs.set(id, job)
@@ -155,7 +156,7 @@ export async function createCompanion(options = {}) {
       if (body.runtimeId && body.runtimeId !== runtimeId) throw failure('The execution environment restarted or changed. Reconnect and explicitly bind this workspace before continuing.', 409, 'RUNTIME_CHANGED')
       if (path === '/whoami') return respond({ ...identity, capabilityManifest })
       if (path === '/jobs/run') { server.timeout(request, 0); const response = await command(body, request); for (const [key, value] of Object.entries(headers)) response.headers.set(key, value); return response }
-      if (path === '/jobs/cancel') { requireCapability('exec'); const job = jobs.get(body.id); if (job) kill(job); return respond({ ok: Boolean(job) }) }
+      if (path === '/jobs/cancel') { requireCapability('exec'); const job = jobs.get(body.id); if (job) { kill(job); await job.closed } return respond({ ok: Boolean(job) }) }
       if (path.startsWith('/workspace/')) {
         requireCapability('fs')
         if (path === '/workspace/list') return respond({ files: await list(body.path ?? '') })

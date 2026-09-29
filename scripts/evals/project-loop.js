@@ -116,7 +116,7 @@ export async function evaluateProjectLoop({ baseUrl, model, directory, caseName 
   let workspace; const responses = [], attempts = new Map(); const startedAt = Date.now()
   try {
     companion = await createCompanion({ root: executionRoot, port: 0, capabilities: ['fs', 'exec'] })
-    execution = new LocalExecution({ url: companion.url, token: companion.token })
+    execution = new LocalExecution({ url: companion.url, token: companion.token, onEvent: event => workspace?.onEvent(event) })
     await execution.prepare()
     const executionEnvironment = { ...execution.describeCapabilities(), archiveRoot: project }
     await writeFile(join(root, 'execution-environment.json'), JSON.stringify(executionEnvironment, null, 2))
@@ -142,9 +142,12 @@ export async function evaluateProjectLoop({ baseUrl, model, directory, caseName 
     await hub.start()
     await hub.settings.set({ policy: { defaults: { read: 'allow', net: 'deny', write: 'allow', exec: 'allow' } } })
     const run = hub.startRun('bundled/starter/builder', definition.goal, { context: { workflow: { completion: completionContract } } })
-    timer = setTimeout(() => hub.abort(run), timeoutMs)
+    timer = setTimeout(() => { workspace.stop(); hub.abort(run) }, timeoutMs)
     await run.answer
     clearTimeout(timer)
+    workspace.stop()
+    await workspace.drain()
+    const settledAt = Date.now()
     const checks = []
     const deliveredRevision = await workspace.revision()
     for (const [index, args] of definition.checks.entries()) {
@@ -176,19 +179,27 @@ export async function evaluateProjectLoop({ baseUrl, model, directory, caseName 
     checks.push({ name: 'independent checks retained the delivered source', deliveredRevision, checkedRevision, passed: deliveredRevision === checkedRevision })
     const evidence = { version: 2, evaluatorHashes, instructionsOverride: instructions ?? null, deliveredRevision, checkedRevision, completion: run.completion, completionReceipts: run.completionReceipts ?? [], caseName, model, baseUrl, contextLength, sampling: resolvedSampling, responseProtocol: hub.specs.get('bundled/starter/builder')?.engine.responseProtocol ?? 'envelope', jsonOutput, structuredOutput, historyFormat: hub.specs.get('bundled/starter/builder')?.engine.historyFormat ?? 'transcript', enableThinking, maxOutputTokens, contractVersion: hub.specs.get('bundled/starter/builder')?.engine.contractVersion, responses, turns: run.turns, events: run.log, runtime: 'Local Bun (not Browser Linux)', startedAt, elapsedMs: Date.now() - startedAt, result: run.result, status: run.slot.status, passed: run.slot.status === 'done' && checks.every(row => row.passed), agentCompleted: run.slot.status === 'done', independentChecksPassed: checks.every(row => row.passed), checks, commands, prompts: run.prompts, requests: run.requests, completions: run.completions, tools: run.toolEvents, files: await execution.list(), metrics: { promptCount: run.prompts.length, repairs: run.log.filter(row => row.kind === 'repair').length, toolCalls: run.toolEvents.filter(row => row.kind === 'call').length, inputTokensEstimated: run.prompts.map(row => row.snapshot?.budget?.inputTokens) } }
     evidence.executionEnvironment = executionEnvironment
+    evidence.agentOperationsSettledAt = settledAt
     await writeFile(join(root, 'evidence.json'), JSON.stringify(evidence, null, 2))
     return { caseName, passed: evidence.passed, status: evidence.status, checks, elapsedMs: evidence.elapsedMs, metrics: evidence.metrics, evidence: join(root, 'evidence.json') }
+  } catch (error) {
+    await writeFile(join(root, 'lifecycle-error.json'), JSON.stringify({ error: error.message, code: error.code ?? null, commands: workspace?.commands ?? [], executionRoot }, null, 2))
+    throw error
   } finally {
     clearTimeout(timer); unsubscribe?.()
-    // Stop writers before archiving; each cleanup must run even if another fails.
+    let shutdownConfirmed = !companion
     try {
-      try { hub?.stop() } finally {
-        try { await execution?.dispose() } finally { await companion?.close() }
+      try { workspace?.stop(); await workspace?.drain() } finally {
+        try { hub?.stop() } finally {
+          try { await execution?.dispose() } finally { await companion?.close(); shutdownConfirmed = true }
+        }
       }
     } finally {
-      // If archival fails, retain the source at the recorded execution root.
-      await cp(executionRoot, project, { recursive: true })
-      await rm(executionRoot, { recursive: true, force: true })
+      // Unknown shutdown or failed archival retains temporary source for recovery.
+      if (shutdownConfirmed) {
+        await cp(executionRoot, project, { recursive: true })
+        await rm(executionRoot, { recursive: true, force: true })
+      }
     }
   }
 }
