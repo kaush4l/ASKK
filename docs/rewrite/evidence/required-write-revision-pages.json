@@ -1,0 +1,34 @@
+{
+  "source": "e0fc826",
+  "deployment": "eb5b45275d211698d9fcda60155317a8c0b93a18",
+  "workflow": "https://github.com/kaush4l/ASKK/actions/runs/36554062821",
+  "checks": [
+    {
+      "path": "index.html",
+      "status": 200,
+      "sha256": "17c840add1125be06748d7796ad880e80d4442ca66b6e385a7875dc9e6cd274c",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/builtin/workspace.js",
+      "status": 200,
+      "sha256": "2f980084a195b3868dda98dc8ff0158b31030f96322fe140aa9597c5520e743a",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/workspace/controller.js",
+      "status": 200,
+      "sha256": "3ae628347bde3ce7445b17b7442545b24141955854f6d9639816a0bf858471ce",
+      "matches": true
+    }
+  ],
+  "scope": "HTTP asset verification only; revision refusal/conflict behaviors tested at tool and controller boundaries, not as a new hosted model or guest run.",
+  "export": {
+    "version": 1,
+    "basePath": "/ASKK",
+    "totalBytes": 854202771,
+    "fileCount": 210,
+    "runtimeId": "c2w-node24-38d093f4a38002db",
+    "artifactHash": "701a2bf6195334cdb9892d075b628527fd1ffdd40730af554238fd963f9754a4"
+  }
+}
