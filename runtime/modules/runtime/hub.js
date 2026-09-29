@@ -30,7 +30,7 @@ import { read } from '../core/markdown.js'
 import { merge, resolve } from '../core/models.js'
 import { DEFAULT_POLICY } from '../core/permissions.js'
 import { snapshot } from '../core/prompt.js'
-import { normalizeCompletion, LEGACY_ARTIFACT_COMPLETION, evaluateCompletion } from '../core/completion.js'
+import { normalizeCompletion, LEGACY_ARTIFACT_COMPLETION, evaluateCompletion, inspectPendingCommands } from '../core/completion.js'
 import { loadStrategy, startHubStrategy, strategyChildState } from './strategy-hub.js'
 import { openStore } from './store.js'
 import { AgentInstallations, installationDecision, installedModelAvailable } from './agent-installations.js'
@@ -1017,6 +1017,13 @@ export class Hub {
     return { ...receipt, evidence: recorded }
   }
 
+  async pendingCommands(run) {
+    const assertActive = () => { if (!run || run.ended || run.cancelRequested || this.disposed) throw new Error('Completion inspection was cancelled or its run ended') }
+    assertActive()
+    const adapters = Object.fromEntries(Object.entries(this.completionAdapters ?? {}).map(([name, handler]) => [name, options => handler(options, run)]))
+    return inspectPendingCommands(run.completion, adapters, { assertActive })
+  }
+
   async handle(thread, run, { id, op, args, runId }) {
     try {
       if (op.startsWith('model.')) {
@@ -1064,6 +1071,7 @@ export class Hub {
 
   ops = {
     async 'run.verifyCompletion'(_args, run) { return this.verifyCompletion(run) },
+    async 'run.pendingCommands'(_args, run) { return this.pendingCommands(run) },
     async call({ agent, query, call, infrastructure }, run) {
       if (!run) throw new Error('no run is active on this thread')
       if (infrastructure !== undefined) throw new Error('Infrastructure calls require the configured service channel')

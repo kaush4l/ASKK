@@ -103,6 +103,9 @@ export const CONTEXTS = {
       const limit = Number.isSafeInteger(settings.fileLimit) && settings.fileLimit >= 0 ? settings.fileLimit : 100
       const current = Array.isArray(environment.files) ? { ...environment, files: environment.files.slice(0, limit), fileCount: environment.files.length, filesOmitted: Math.max(0, environment.files.length - limit) } : environment
       const referenceCompletion = engine.ctx.completion ?? { checks: [] }
+      const hasRequiredCommands = referenceCompletion.checks.some(check => check.capability === 'workspace.commands')
+      const pending = hasRequiredCommands ? await engine.ctx.request('run.pendingCommands') : []
+      const pendingRequiredChecks = Array.isArray(pending) ? pending : null
       let run = engine.ctx.runContext ?? null
       const overallTaskCompletion = run?.workflow?.completion
       if (run?.workflow) {
@@ -113,7 +116,7 @@ export const CONTEXTS = {
       try { matchesReferences = JSON.stringify(normalizeCompletion(overallTaskCompletion)) === JSON.stringify(referenceCompletion) }
       catch { /* Malformed inherited requirements remain context data, never reference authority. */ }
       const inherited = overallTaskCompletion && !matchesReferences ? { overallTaskCompletion } : {}
-      return `Workspace environment:\n${JSON.stringify({ run, referenceCompletion, ...inherited, current })}\nFor workspace_run requiredCheck, use only the workspace.commands list in referenceCompletion. No such list means no references are available to this run.${inherited.overallTaskCompletion ? " overallTaskCompletion describes inherited overall task requirements, not this run's reference availability." : ''}`
+      return `Workspace environment:\n${JSON.stringify({ run, referenceCompletion, pendingRequiredChecks, ...inherited, current })}\nFor workspace_run requiredCheck, use only the workspace.commands list in referenceCompletion. No such list means no references are available to this run. pendingRequiredChecks lists outstanding command receipts at inspection time, using original reference indexes; null means inspection unavailable. An empty list does not establish completion. Final independent completion checks still apply.${inherited.overallTaskCompletion ? " overallTaskCompletion describes inherited overall task requirements, not this run's reference availability." : ''}`
     },
   }),
 

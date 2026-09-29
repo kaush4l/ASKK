@@ -35,6 +35,27 @@ export function normalizeCompletion(value) {
 
 export const LEGACY_ARTIFACT_COMPLETION = normalizeCompletion({ checks: [{ capability: 'workspace.artifact' }] })
 
+/** Advisory next-step context, never a persisted completion receipt. */
+export async function inspectPendingCommands(value, adapters = {}, { assertActive = () => {} } = {}) {
+  const check = normalizeCompletion(value).checks.find(check => check.capability === 'workspace.commands')
+  const handler = Object.hasOwn(adapters, 'workspace.commands') ? adapters['workspace.commands'] : null
+  const pending = []
+  assertActive()
+  for (const [requiredCheck, command] of (check?.options.commands ?? []).entries()) {
+    assertActive()
+    let result
+    try {
+      result = typeof handler === 'function'
+        ? await handler(Object.freeze({ commands: Object.freeze([command]), requireFresh: true }))
+        : { ok: false, reason: 'Completion capability is unavailable: workspace.commands' }
+    } catch (error) { result = { ok: false, reason: String(error?.message ?? error) } }
+    assertActive()
+    if (!plain(result) || result.ok !== true) pending.push({ requiredCheck, reason: String(result?.reason || 'A current successful command receipt is required.').slice(0, 1200) })
+  }
+  assertActive()
+  return snapshot(pending)
+}
+
 /** Capture requirements before awaiting adapters; cancellation cannot become success. */
 export async function evaluateCompletion(value, adapters = {}, { assertActive = () => {} } = {}) {
   const completion = normalizeCompletion(value)

@@ -1,5 +1,5 @@
 {
-  "build": "cf52dc63f3",
+  "build": "f8dac4cd87",
   "files": {
     "agents/assistant/agent.md": "6eb458313e",
     "agents/coder/agent.md": "3afbea3eaa",
@@ -121,8 +121,8 @@
     "runtime/modules/core/command-reference.js": "d787c6f53e",
     "runtime/modules/core/companion-manifest.js": "2e0137eefc",
     "runtime/modules/core/completion-evidence.js": "f021d5061b",
-    "runtime/modules/core/completion.js": "79f501b2e9",
-    "runtime/modules/core/context.js": "97147bd612",
+    "runtime/modules/core/completion.js": "171dbf3f80",
+    "runtime/modules/core/context.js": "2a9631fd05",
     "runtime/modules/core/draft-backup.js": "ae0630bd19",
     "runtime/modules/core/engine.js": "0ccb826495",
     "runtime/modules/core/folder.js": "10fe6af765",
@@ -151,7 +151,7 @@
     "runtime/modules/runtime/agent-installations.js": "2d0d21ba75",
     "runtime/modules/runtime/agent.worker.js": "04c7cd1d45",
     "runtime/modules/runtime/desk-packages.js": "01cd9a23de",
-    "runtime/modules/runtime/hub.js": "99ab0c8d92",
+    "runtime/modules/runtime/hub.js": "419229d467",
     "runtime/modules/runtime/model-broker.js": "3353c97226",
     "runtime/modules/runtime/package-drafts.js": "dd42f09db4",
     "runtime/modules/runtime/package-source.js": "f3823af503",
