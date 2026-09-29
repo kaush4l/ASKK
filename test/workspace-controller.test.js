@@ -2700,3 +2700,22 @@ test('observed agent writes use the controller durable commit and preserve owner
   expect((await hub.externalOps['workspace.write'](stale, run)).conflict).toBe(true)
   expect((await controller.readFile('observed.txt')).content).toBe('owner edit')
 })
+
+test('observed absence uses durable create and preserves an intervening owner creation', async () => {
+  const { createWriteObservations } = await import('../src/core/write-observations.js')
+  const { controller, hub } = await startedFixture()
+  await controller.runCommand('prepare fixture workspace')
+  const run = { context: { binding: controller.getSnapshot().runtime.binding } }
+  const observations = createWriteObservations()
+  for (const ownerCreates of [false, true]) {
+    const path = ownerCreates ? 'owner-created.txt' : 'agent-created.txt'
+    const read = await hub.externalOps['workspace.read']({ path }, run)
+    expect(read).toMatchObject({ found: false, content: null, rev: 0 })
+    observations.accept(path, read)
+    const proposal = observations.resolve({ path, content: 'agent content', observed: true })
+    if (ownerCreates) await controller.createFile(path, 'owner content')
+    const result = await hub.externalOps['workspace.write'](proposal, run)
+    expect(Boolean(result.conflict)).toBe(ownerCreates)
+    expect((await controller.readFile(path)).content).toBe(ownerCreates ? 'owner content' : 'agent content')
+  }
+})

@@ -99,3 +99,34 @@ test('write errors revoke references without retrying', async () => {
   await expect(adapter.write(resolved, run)).rejects.toThrow()
   expect(calls).toBe(1)
 })
+
+test('an explicit absence observation can create but cannot overwrite an intervening creation', async () => {
+  for (const intervening of [false, true]) {
+    let file = null
+    const adapter = createObservedWorkspace({ identity: () => 'runtime', read: async () => file, write: async args => {
+      if (args.expect !== (file?.rev ?? 0)) return { conflict: true, rev: file.rev, current: file }
+      file = { content: args.content, rev: 'created' }; return { ...file, ok: true }
+    } })
+    const run = {}, ledger = createWriteObservations()
+    const read = await adapter.read({ path: 'a.js' }, run)
+    expect(read).toMatchObject({ found: false, content: null, rev: 0 })
+    ledger.accept('a.js', read)
+    const resolved = ledger.resolve(proposal())
+    expect(resolved.expect).toBe(0)
+    if (intervening) file = { content: 'owner content', rev: 'owner' }
+    const result = await adapter.write(resolved, run)
+    expect(file.content).toBe(intervening ? 'owner content' : 'new')
+    expect(Boolean(result.conflict)).toBe(intervening)
+    if (intervening) await expect(adapter.write(resolved, run)).rejects.toThrow()
+  }
+})
+
+test('undefined, failed, and contradictory reads cannot mint absence observations', async () => {
+  for (const value of [undefined, false, { ok: false }, { content: 'text', rev: 1, found: false }, { content: null, rev: 0, found: false }]) {
+    const adapter = createObservedWorkspace({ identity: () => 'runtime', read: async () => value, write: () => { throw Error('unexpected write') } })
+    const result = await adapter.read({ path: 'a.js' }, {}).catch(() => null)
+    expect(result?.writeObservation).toBeUndefined()
+  }
+  const ledger = createWriteObservations()
+  for (const value of [{ ...receipt(), found: false }, { ...receipt(), found: false, content: null }, { ...receipt('zero', 'a.js', 0), found: false, content: '' }]) expect(() => ledger.accept('a.js', value)).toThrow()
+})

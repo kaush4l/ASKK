@@ -10,7 +10,8 @@ export function createWriteObservations() {
   return {
     accept(path, receipt) {
       const reference = receipt?.writeObservation
-      if (!pathValid(path) || !plain(receipt) || receipt.ok === false || receipt.conflict || typeof receipt.content !== 'string' || !revision(receipt.rev) || !plain(reference) || typeof reference.id !== 'string' || !reference.id.trim() || reference.path !== path || reference.revision !== receipt.rev) fail('expected a successful explicit read with matching path and revision')
+      const validContent = receipt?.found === false ? receipt.content === null && receipt.rev === 0 : typeof receipt?.content === 'string' && (receipt.found === undefined || receipt.found === true)
+      if (!pathValid(path) || !plain(receipt) || receipt.ok === false || receipt.conflict || !validContent || !revision(receipt.rev) || !plain(reference) || typeof reference.id !== 'string' || !reference.id.trim() || reference.path !== path || reference.revision !== receipt.rev) fail('expected a successful explicit read with matching path and revision')
       const previous = records.get(reference.id)
       if (previous && (previous.path !== path || previous.revision !== receipt.rev)) fail('observation identity cannot be reassigned')
       const record = Object.freeze({ id: reference.id, path, revision: receipt.rev })
@@ -58,9 +59,11 @@ export function createObservedWorkspace({ read, write, identity }) {
       try {
         const receipt = await read(args, run)
         scope(run)
-        if (!receipt || receipt.ok === false || receipt.conflict || typeof receipt.content !== 'string') { state.observations.invalidate(args.path); return receipt }
-        const rev = receipt.rev ?? receipt.revision
-        const result = { ...receipt, rev, writeObservation: Object.freeze({ id: crypto.randomUUID(), path: args.path, revision: rev }) }
+        const absent = receipt === null
+        if (!absent && (!receipt || receipt.ok === false || receipt.conflict || typeof receipt.content !== 'string')) { state.observations.invalidate(args.path); return receipt }
+        if (!absent && receipt.found !== undefined && receipt.found !== true) fail('contradictory file presence in read receipt')
+        const rev = absent ? 0 : receipt.rev ?? receipt.revision
+        const result = { ...(absent ? { path: args.path, found: false, content: null } : { ...receipt, found: true }), rev, writeObservation: Object.freeze({ id: crypto.randomUUID(), path: args.path, revision: rev }) }
         state.observations.accept(args.path, result)
         return result
       } catch (error) { state.observations.invalidate(args.path); throw error }
