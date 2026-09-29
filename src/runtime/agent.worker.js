@@ -217,6 +217,7 @@ async function build(message) {
     responseFormat: spec.engine.responseFormat ?? 'toon',
     observationFormat: spec.engine.observationFormat,
     historyFormat: spec.engine.historyFormat,
+    rejectedCompletionHistory: spec.engine.rejectedCompletionHistory,
     responseProtocol: spec.engine.responseProtocol,
     contractVersion: spec.engine.contractVersion,
     promptTemplate: spec.engine.promptTemplate,
@@ -270,7 +271,7 @@ async function run(query, context, service, completionRequired, runId, completio
   runToolPolicy = normalizeToolPolicy(context?.toolPolicy)
   serviceMode = service?.kind ?? null
   controller = new AbortController()
-  engine.verifyCompletion = completionRequired ? () => request('run.verifyCompletion') : null
+  engine.verifyCompletion = completionRequired ? ({ candidate }) => request('run.verifyCompletion', { candidate }) : null
   engine.ctx.runContext = snapshot(context ?? null)
   engine.ctx.completion = snapshot(completion ?? { checks: [] })
   engine.tools = availableTools()

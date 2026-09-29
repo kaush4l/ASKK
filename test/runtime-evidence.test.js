@@ -36,7 +36,7 @@ const sse = (text, finishReason = 'stop', usage = null) => new Response([
   'data: [DONE]\n\n',
 ].join(''), { headers: { 'content-type': 'text/event-stream' } })
 
-async function fixture(answer) {
+async function fixture(answer, completionHistory = 'retain') {
   const row = {}; fixtures.push(row)
   let requests = 0
   row.server = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: request => {
@@ -47,7 +47,7 @@ async function fixture(answer) {
   // Guest images and served copies of runtime modules are irrelevant to this real-worker fixture.
   await cp(join(import.meta.dir, '../public'), row.site, { recursive: true, filter: path => !['browser-linux', 'runtime'].includes(path.split('/').at(-1)) })
   await mkdir(join(row.site, 'agents/main'), { recursive: true })
-  await writeFile(join(row.site, 'agents/main/agent.md'), '---\nname: main\ncontract_version: 2\nresponse_format: json\nmax_steps: 4\ncontext: []\ntools: []\nagents: []\n---\nUse the fixture tool when needed and report the result.')
+  await writeFile(join(row.site, 'agents/main/agent.md'), '---\nrejected_completion_history: ' + completionHistory + '\nname: main\ncontract_version: 2\nresponse_format: json\nmax_steps: 4\ncontext: []\ntools: []\nagents: []\n---\nUse the fixture tool when needed and report the result.')
   await writeFile(join(row.site, 'agents/main/tools.js'), 'export const fixture_wait = { description: "Wait for the fixture", parameters: {}, risk: "read", run: (_, ctx) => ctx.request("fixture.wait") }\n')
   await writeFile(join(row.site, 'models.json'), JSON.stringify({ default: 'fixture', models: { fixture: { provider: 'openai', model: 'evidence-fixture', base_url: `http://127.0.0.1:${row.server.port}/v1`, context_length: 16384, max_output_tokens: 256 } } }))
   await writeFile(join(row.site, 'agents/index.json'), JSON.stringify(await listing(row.site)))
@@ -164,4 +164,45 @@ test('exact rejected proposals survive log truncation, eviction, storage and rea
   const trace = await reader.traces.export(run.trace)
   expect(trace.runs[0].replyRejections).toEqual(restored.replyRejections)
   expect(reader.runs.size).toBe(0)
+})
+
+
+test('omitted completion proposals retain exact durable receipts outside model history', async () => {
+  const rejected = 'Unsupported completion claim '.repeat(250)
+  const { hub } = await fixture(number => sse(JSON.stringify({ do: 'done', act: number === 1 ? rejected : 'Accepted result' })), 'omit')
+  let checks = 0
+  hub.completionAdapters = { 'workspace.commands': () => ({ ok: ++checks > 1, reason: 'Fixture evidence only' }) }
+  const run = hub.startRun('main', 'Inspect completion history', { context: { workflow: { completion: { checks: [{ capability: 'workspace.commands', options: { commands: ['fixture check'] } }] } } } })
+  expect(await run.answer).toBe('Accepted result')
+  const stored = await storedUntil(hub, run.id, row => row.completionReceipts?.length === 2)
+  const proposal = stored.completionReceipts[0].proposal
+  expect(JSON.parse(proposal.content).act).toBe(rejected)
+  expect(proposal.attemptId).toBe(run.prompts[0].attemptId)
+  expect(run.prompts[1].sheet).not.toContain(rejected)
+  expect(run.prompts[1].sheet).toContain('Completion was rejected')
+  expect(run.turns.some(turn => turn.content.includes(rejected))).toBe(false)
+  const exported = await hub.traces.export(run.trace)
+  expect(exported.runs[0].completionReceipts[0].proposal).toEqual(proposal)
+  expect(exported.runs[0].completionProposals[0].value).toBe(proposal.content)
+  expect(exported.runs[0].completionProposals[0].historyPolicy).toBe('omit')
+})
+
+
+test('completion proposal survives cancellation during verification without claiming a receipt', async () => {
+  const entered = deferred(), release = deferred()
+  const claim = 'Unverified completion '.repeat(250)
+  const row = await fixture(() => sse(JSON.stringify({ do: 'done', act: claim })), 'omit')
+  row.release = () => release.resolve({ ok: true })
+  row.hub.completionAdapters = { 'workspace.commands': async () => { entered.resolve(); return release.promise } }
+  const run = row.hub.startRun('main', 'Wait for evidence', { context: { workflow: { completion: { checks: [{ capability: 'workspace.commands', options: { commands: ['fixture check'] } }] } } } })
+  await entered.promise
+  const waiting = await storedUntil(row.hub, run.id, record => record.completionProposals?.length === 1)
+  expect(JSON.parse(waiting.completionProposals[0].value).act).toBe(claim)
+  expect(waiting.completionReceipts).toEqual([])
+  row.hub.abort(run)
+  release.resolve({ ok: true })
+  await run.answer
+  const stored = await storedUntil(row.hub, run.id, record => record.completionProposals?.length === 1)
+  expect(JSON.parse(stored.completionProposals[0].value).act).toBe(claim)
+  expect(stored.completionReceipts).toEqual([])
 })
