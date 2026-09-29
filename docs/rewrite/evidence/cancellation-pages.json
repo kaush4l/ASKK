@@ -1,0 +1,41 @@
+{
+  "source": "6a233adb",
+  "deployment": "4e18038247aa18e9762f3f10d958fb80f4af2c0a",
+  "workflow": "https://github.com/kaush4l/ASKK/actions/runs/36574172339",
+  "workflowConclusion": "success",
+  "checks": [
+    {
+      "path": "index.html",
+      "status": 200,
+      "sha256": "62ef06b34cd7630436c6b1e05da2c9cf8add4236b38b6a7fcd76b4623a3ebbaf",
+      "matches": true
+    },
+    {
+      "path": "_next/static/chunks/app/page-f149fdeb46c9e94d.js",
+      "status": 200,
+      "sha256": "ecd435f78f861862bc9a8ed5657476c23a76e7e8a9e04dbde457a6dd8bec1ab8",
+      "matches": true
+    },
+    {
+      "path": "companion-release.json",
+      "status": 200,
+      "sha256": "6051917ceeaf632e3cc3f0f2307288db158046eecaaa01d7a52c9ab17b2a1a25",
+      "matches": true
+    },
+    {
+      "path": "downloads/askk-companion-darwin-arm64-0692db0.tar.gz",
+      "status": 200,
+      "sha256": "fa0366f40a4b0bec4206b3472024a7a7b5e9d94ce8e2b7d866ad8e67d8c5df1d",
+      "matches": true
+    }
+  ],
+  "packageCheck": {
+    "sourceRevision": "0692db0c26c15c7f820f2454645f73a66ad42909",
+    "runtime": "1.4.2",
+    "passed": true,
+    "code": -1,
+    "cancelled": true,
+    "scope": "Packaged source cancellation through LocalExecution, running with bundled Bun. No browser or signing acceptance."
+  },
+  "scope": "Hosted byte verification and packaged-source cancellation smoke test. No fresh live browser, Safari/iPhone or Browser Linux acceptance."
+}

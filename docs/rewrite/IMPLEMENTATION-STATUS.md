@@ -1,5 +1,7 @@
 # Implementation status
 
+Latest publication: source **`6a233adb`**, deployment **`4e180382`**, [successful Pages workflow](https://github.com/kaush4l/ASKK/actions/runs/36574172339). [Hosted evidence](evidence/cancellation-pages.json) confirms the page, workbench chunk, companion release catalog and downloadable archive match the tested export. Export: **879,660,945 bytes / 216 files**. The refreshed Apple Silicon package includes source `0692db0c` and bundled Bun 1.4.2; its packaged-source cancellation smoke check passed. It remains unsigned and requires an externally trusted TLS certificate; no new Safari/iPhone acceptance is claimed.
+
 ## Confirmed cancellation before independent verification
 
 The evaluation workspace now stops admitting writes and commands, retains command streams while cancelling, retries cancellation when a late job-start receipt arrives, and drains admitted work before independent checks. Missing exit receipts fail the evaluation lifecycle explicitly. The companion cancellation endpoint waits for child/stdio closure and rejects command launches after shutdown starts. Cleanup archives only after acknowledged companion shutdown; failed archival retains the temporary source.
