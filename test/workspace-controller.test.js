@@ -1773,6 +1773,73 @@ test('configured role workflow dispatches without Linux, freezes context and rej
   expect(JSON.stringify(inspected)).not.toContain('secret')
 })
 
+test('run inspection freezes current approvals and completion evidence without sharing live state', async () => {
+  const { controller, hub } = await startedFixture()
+  hub.run = id => hub.runs.get(id) ?? null
+  const run = { id: 'inspected', agent: 'assistant', slot: { status: 'waiting' }, toolEvents: [{ kind: 'call', callId: 'call-one', name: 'read', args: { path: 'before' } }], completion: { checks: [{ capability: 'workspace.command' }] }, completionReceipts: [{ ok: false, checks: [{ evidence: { reason: 'before' } }] }] }
+  const approval = { id: 1, run: run.id, callId: 'call-one', args: { path: 'before' }, settle() { throw new Error('Inspection must not settle an approval') } }
+  hub.runs.set(run.id, run)
+  hub.approvals.set(1, approval)
+  hub.approvals.set(2, { id: 2, run: 'another-run', callId: 'call-one' })
+  const before = Date.now()
+  const details = await controller.getRunDetails(run.id)
+  expect(details.capturedAt).toBeGreaterThanOrEqual(before)
+  expect(details.capturedAt).toBeLessThanOrEqual(Date.now())
+  expect(details.approvals).toEqual([{ id: 1, run: run.id, callId: 'call-one', args: { path: 'before' } }])
+  expect(details.completion).toEqual(run.completion)
+  expect(details.completionReceipts).toEqual(run.completionReceipts)
+  expect(Object.isFrozen(details.approvals[0].args)).toBe(true)
+  expect(Object.isFrozen(details.completion.checks[0])).toBe(true)
+  expect(Object.isFrozen(details.completionReceipts[0].checks[0].evidence)).toBe(true)
+  expect(Object.isFrozen(approval.args)).toBe(false)
+  approval.args.path = 'after'
+  run.toolEvents[0].args.path = 'after'
+  run.completionReceipts[0].checks[0].evidence.reason = 'after'
+  hub.approvals.delete(1)
+  expect(details.approvals[0].args.path).toBe('before')
+  expect(details.toolEvents[0].args.path).toBe('before')
+  expect(details.completionReceipts[0].checks[0].evidence.reason).toBe('before')
+  expect((await controller.getRunDetails(run.id)).approvals).toEqual([])
+})
+
+test('run inspection refreshes live outcomes after asynchronous history loading', async () => {
+  const { controller, hub } = await startedFixture()
+  hub.run = id => hub.runs.get(id) ?? null
+  const run = { id: 'racing-inspection', agent: 'assistant', slot: { status: 'waiting' }, toolEvents: [{ kind: 'call', callId: 'call-one', name: 'read' }] }
+  hub.runs.set(run.id, run)
+  hub.approvals.set(1, { id: 1, run: run.id, callId: 'call-one', settle() {} })
+  const entered = deferred(), release = deferred()
+  hub.runsApi.get = async id => {
+    const stale = structuredClone(hub.runs.get(id))
+    entered.resolve(); await release.promise
+    return stale
+  }
+  const reading = controller.getRunDetails(run.id)
+  await entered.promise
+  hub.approvals.delete(1)
+  run.slot.status = 'done'
+  run.result = 'finished while loading'
+  run.toolEvents.push({ kind: 'observation', callId: 'call-one', name: 'read', ok: true, value: 'fresh receipt' })
+  release.resolve()
+  const details = await reading
+  expect(details.slot.status).toBe('done')
+  expect(details.result).toBe('finished while loading')
+  expect(details.toolEvents[1].value).toBe('fresh receipt')
+  expect(details.approvals).toEqual([])
+})
+
+test('persisted run inspection does not attach pending approvals without a live run', async () => {
+  const { controller, hub } = await startedFixture()
+  const persisted = { id: 'persisted-only', agent: 'assistant', slot: { status: 'waiting' }, toolEvents: [{ kind: 'call', callId: 'call-one', name: 'read' }] }
+  hub.run = () => null
+  hub.runsApi.get = async () => persisted
+  hub.approvals.set(1, { id: 1, run: persisted.id, callId: 'call-one', settle() {} })
+  const details = await controller.getRunDetails(persisted.id)
+  expect(details.toolEvents).toEqual(persisted.toolEvents)
+  expect(details.approvals).toEqual([])
+  expect(Object.isFrozen(details.approvals)).toBe(true)
+})
+
 test('stop during asynchronous strategy admission invalidates the launch guard', async () => {
   const entered = deferred(); const release = deferred(); let guard
   const { controller, hub } = await startedFixture({ workbenchConfig: roleWorkflow, configureHub(hub) {

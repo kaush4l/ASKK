@@ -20,6 +20,24 @@ test('instance inspector shows actual tool result and identity with snapshot con
   expect(html).not.toContain('chain of thought')
 })
 
+test('inspector pending approvals use captured exact identities and snapshot wording', () => {
+  const details = { ...base, slot: { status: 'calling' }, result: null, toolEvents: [base.toolEvents[0]], approvals: [{ run: base.id, callId: 'read-one' }] }
+  const render = patch => renderToStaticMarkup(<RunInspector details={{ ...details, ...patch }} onClose={() => {}}/>)
+  const html = render({})
+  expect(html).toContain('Awaiting approval')
+  expect(html).toContain('Approval was pending when this snapshot was captured.')
+  expect(html).toContain('No tool result was recorded in this snapshot.')
+  expect(html).not.toContain('Waiting for the tool to return')
+  expect(html).not.toContain('waiting for your decision')
+  expect(html).not.toContain('Current call')
+  const noApproval = render({ approvals: [] })
+  expect(noApproval).toContain('Outcome pending')
+  expect(noApproval).not.toContain('Awaiting approval')
+  for (const toolEvents of [base.toolEvents, [base.toolEvents[0], { ...base.toolEvents[1], ok: false }]]) {
+    expect(render({ toolEvents })).not.toContain('Awaiting approval')
+  }
+})
+
 test('prompt, request, guidance and raw records do not mount their potentially large payload before expansion', () => {
   const details = { ...base, notes: [{ content: 'private-guidance-body' }], prompts: [{ snapshot: { messages: [{ content: 'large-prompt-body' }] } }], requests: [{ body: { messages: [{ content: 'large-request-body' }] } }], completions: [{ value: 'completion-body' }], package: { revisionDigest: 'package-body' } }
   const html = renderToStaticMarkup(<RunInspector details={details} onClose={() => {}}/>)

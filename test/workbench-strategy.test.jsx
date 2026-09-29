@@ -24,6 +24,16 @@ test('approval labels require exact run and call identities, preserving original
   expect(tool.status).toBe('running')
   expect(toolPresentationStatus({ ...tool, status: 'failed' }, approvals)).toBe('failed')
 })
+test('approval labels reject missing identities, legacy call text and malformed entries', () => {
+  const tool = { id: 'call', runId: 'run', status: 'running' }
+  for (const approvals of [null, {}, [null], [{ run: 'run', call: 'call' }], [{ run: 'run', callId: '' }], [{ callId: 'call' }]]) {
+    expect(toolPresentationStatus(tool, approvals)).toBe('running')
+  }
+  expect(toolPresentationStatus({ status: 'running' }, [{}])).toBe('running')
+  for (const status of ['done', 'failed', 'unresolved', 'interrupted', 'cancelled']) {
+    expect(toolPresentationStatus({ ...tool, status }, [{ run: 'run', callId: 'call' }])).toBe(status)
+  }
+})
 test('dashboard retains an editable graph draft while steering is disabled during verification', () => {
   const html = renderToStaticMarkup(<Dashboard goal="next goal" state={{ ready: true, selectedWorkflowId: 'review', workflows: [{ id: 'review', label: 'Review', agent: 'synthesizer', workspace: false, strategy: definition }], task: { status: 'verifying', definition, nodes: [] }, run: { status: 'verifying' }, toolPolicy: { allowDelegation: true } }}/>)
   expect(html).toContain('Role inputs are fixed'); expect(html).toContain('next goal')

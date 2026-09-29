@@ -859,9 +859,14 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
       } finally { connecting = false }
     },
     async getRunDetails(runId) {
-      const run = await hub.runsApi.get(runId)
+      const loaded = await hub.runsApi.get(runId)
+      // Loading history can yield while live work advances. Read the live run
+      // and pending decisions together, then freeze them without another await.
+      const live = hub.run?.(runId)
+      const run = live ?? loaded
       if (!run) throw new Error('This run is no longer available')
-      return snapshot({ id: run.id, trace: run.trace ?? run.id, parent: run.parent ?? null, taskId: run.taskId ?? run.id, stageId: run.stageId ?? null, package: run.package ?? null, agent: run.agent, query: run.query, slot: run.slot, result: run.result, error: run.slot?.error, prompts: run.prompts ?? [], toolEvents: run.toolEvents ?? [], requests: requestEvidence(run.requests ?? []), completions: run.completions ?? [], notes: (run.turns ?? []).filter(turn => turn.note === true) })
+      const approvals = live ? [...hub.approvals.values()].filter(approval => approval.run === run.id).map(({ settle, ...approval }) => approval) : []
+      return snapshot({ id: run.id, capturedAt: Date.now(), approvals, trace: run.trace ?? run.id, parent: run.parent ?? null, taskId: run.taskId ?? run.id, stageId: run.stageId ?? null, package: run.package ?? null, agent: run.agent, query: run.query, slot: run.slot, result: run.result, error: run.slot?.error, completion: run.completion, completionReceipts: run.completionReceipts ?? [], prompts: run.prompts ?? [], toolEvents: run.toolEvents ?? [], requests: requestEvidence(run.requests ?? []), completions: run.completions ?? [], notes: (run.turns ?? []).filter(turn => turn.note === true) })
     },
     async exportRunEvidence(requestedRunId) {
       // Reloaded history is inspectable without restoring control authority over

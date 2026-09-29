@@ -1,7 +1,7 @@
 'use client'
 import { useMemo, useState } from 'react'
 import Modal from './Modal.jsx'
-import ToolCard from './ToolCard.jsx'
+import ToolCard, { toolPresentationStatus } from './ToolCard.jsx'
 import { projectRunTools } from './run-evidence.js'
 import { completionCheckLabel } from './completion-label.js'
 import './run-inspector.css'
@@ -43,6 +43,7 @@ export default function RunInspector({ details, onClose, onRefresh, onInspectRun
   const [action, setAction] = useState('')
   const [error, setError] = useState('')
   const { tools, unpaired } = useMemo(() => projectRunTools(details), [details])
+  const awaitingApproval = tools.some(tool => toolPresentationStatus(tool, details.approvals) === 'awaiting_approval')
   const prompts = details.prompts || []
   const runError = details.error || details.slot?.error
   async function perform(name, callback) {
@@ -59,7 +60,7 @@ export default function RunInspector({ details, onClose, onRefresh, onInspectRun
     </div>
     {error && <p className="run-inspector-error" role="alert">{error}</p>}
     <div className="agent-inspector run-inspector" key={details.id}>
-      <dl className="run-identity"><div><dt>Status</dt><dd>{labelOf(details.slot?.status || details.status)}</dd></div><div><dt>Instance</dt><dd>{details.id}</dd></div>{details.trace && <div><dt>Task trace</dt><dd>{details.trace}</dd></div>}{details.stageId && <div><dt>Configured role</dt><dd>{details.stageId}</dd></div>}{details.parent && <div><dt>Parent run</dt><dd>{onInspectRun ? <button type="button" className="dashboard-inline" onClick={() => perform('parent', () => onInspectRun(details.parent))} disabled={Boolean(action)}>{details.parent}</button> : details.parent}</dd></div>}</dl>
+      <dl className="run-identity"><div><dt>Status</dt><dd>{awaitingApproval ? 'Awaiting approval when captured' : labelOf(details.slot?.status || details.status)}</dd></div><div><dt>Instance</dt><dd>{details.id}</dd></div>{details.trace && <div><dt>Task trace</dt><dd>{details.trace}</dd></div>}{details.stageId && <div><dt>Configured role</dt><dd>{details.stageId}</dd></div>}{details.parent && <div><dt>Parent run</dt><dd>{onInspectRun ? <button type="button" className="dashboard-inline" onClick={() => perform('parent', () => onInspectRun(details.parent))} disabled={Boolean(action)}>{details.parent}</button> : details.parent}</dd></div>}</dl>
       {details.package && <Record title="Pinned agent package" value={details.package}/>}
       <h3>Assigned task</h3><pre>{textOf(details.query) || 'No task was recorded.'}</pre>
       {runError && <><h3>Recorded error</h3><pre>{textOf(runError)}</pre></>}
@@ -67,7 +68,7 @@ export default function RunInspector({ details, onClose, onRefresh, onInspectRun
       <CompletionEvidence completion={details.completion} receipts={details.completionReceipts}/>
       <section className="run-record-section"><h3>Tool activity <span>{tools.length}</span></h3>
         <p>Results pair only with their recorded call identities. A parent link identifies a run relationship, not a message delivery acknowledgement.</p>
-        {tools.length ? tools.slice(0, toolLimit).map((tool, index) => <div className="run-recorded-tool" key={`${tool.id}:${index}`}><ToolCard tool={tool}/><Record title="Exact tool records" value={tool.raw}/></div>) : <p>No tool calls were recorded for this instance.</p>}
+        {tools.length ? tools.slice(0, toolLimit).map((tool, index) => <div className="run-recorded-tool" key={`${tool.id}:${index}`}><ToolCard tool={tool} approvals={details.approvals} recorded/><Record title="Exact tool records" value={tool.raw}/></div>) : <p>No tool calls were recorded for this instance.</p>}
         {tools.length > toolLimit && <button type="button" className="button subtle small" onClick={() => setToolLimit(previous => previous + 12)}>Show more tool calls</button>}
       </section>
       {unpaired.length > 0 && <Records title="Unpaired tool records" records={unpaired} label={(_, index) => `Unpaired record ${index + 1}`} empty=""/>}

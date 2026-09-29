@@ -12,15 +12,16 @@ const stringify = value => typeof value === 'string' ? value : value == null ? '
 /** Presentation only: an approval never replaces the recorded tool outcome. */
 export function toolPresentationStatus(tool, approvals = []) {
   if (!['running', 'waiting'].includes(tool.status)) return tool.status
-  const pending = approvals.some(approval => approval.run === tool.runId && (approval.callId ? approval.callId === tool.id : approval.call === tool.id))
+  const identity = value => typeof value === 'string' && value.length > 0 && value === value.trim() && !/[\u0000-\u001f\u007f]/.test(value)
+  const pending = identity(tool.runId) && identity(tool.id) && Array.isArray(approvals) && approvals.some(approval => approval?.run === tool.runId && identity(approval.callId) && approval.callId === tool.id)
   return pending ? 'awaiting_approval' : tool.status
 }
 
 /** Keep recorded tool data available without making a JSON payload the control's name. */
-export default function ToolCard({ tool, approvals, fileAvailable, commandAvailable, artifactAvailable, onFile, onCommand, onArtifact }) {
+export default function ToolCard({ tool, approvals, recorded = false, fileAvailable, commandAvailable, artifactAvailable, onFile, onCommand, onArtifact }) {
   const title = titles[tool.name] || String(tool.name || 'Tool action').replace(/[_.]/g, ' ').replace(/^\w/, letter => letter.toUpperCase())
   const presentation = toolPresentationStatus(tool, approvals)
-  const status = labels[presentation] || presentation || 'Pending'
+  const status = recorded && ['running', 'waiting'].includes(presentation) ? 'Outcome pending' : labels[presentation] || presentation || 'Pending'
   const failed = ['failed', 'error'].includes(tool.status)
   const context = tool.path || tool.command || tool.agent
   const result = tool.hasResult && tool.summary === null ? 'null' : stringify(tool.summary)
@@ -37,8 +38,8 @@ export default function ToolCard({ tool, approvals, fileAvailable, commandAvaila
     </summary>
     <div className="tool-details">
       {args && args !== '{}' && <><h4>Input</h4><pre>{args}</pre></>}
-      {presentation === 'awaiting_approval' && <p className="tool-approval-note">This call is waiting for your decision. It has not been approved.</p>}
-      <h4>{pending ? 'Current call' : hasResult ? 'Recorded result' : 'Result'}</h4><pre>{hasResult ? result || '(empty string)' : pending ? 'Waiting for the tool to return…' : 'No result was recorded.'}</pre>
+      {presentation === 'awaiting_approval' && <p className="tool-approval-note">{recorded ? 'Approval was pending when this snapshot was captured. Refresh to check for newer records.' : 'This call is waiting for your decision. It has not been approved.'}</p>}
+      <h4>{pending ? recorded ? 'Recorded outcome' : 'Current call' : hasResult ? 'Recorded result' : 'Result'}</h4><pre>{hasResult ? result || '(empty string)' : pending ? recorded ? 'No tool result was recorded in this snapshot.' : presentation === 'awaiting_approval' ? 'Waiting for approval before execution.' : 'Waiting for the tool to return…' : 'No result was recorded.'}</pre>
     </div>
     {(fileAvailable || commandAvailable || artifactAvailable) && <div className="tool-links">
       {fileAvailable && <button type="button" onClick={onFile}><Icon name="files" size={12}/>Open file</button>}

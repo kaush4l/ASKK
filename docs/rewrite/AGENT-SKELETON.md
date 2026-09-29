@@ -46,3 +46,9 @@ Fresh planner and UX contexts split prompt compilation from activity projection;
 Supported tool schemas now advertise nested shapes, enum choices, descriptions and bounds that the validator enforces. Workspace observations decode their own JSON receipts into structured model context; successful writes omit duplicated source content while preserving the complete raw receipt. Conflicts and failed commands retain their diagnostics. Replaying the same six repair-02 receipts reduced their serialized result payload from 2,487 to 1,935 characters; this is not a latency or token benchmark.
 
 MCP schemas are retained separately as `providerInputSchema`: full JSON Schema is shown to the model; validation remains the provider’s responsibility rather than being passed through the limited local validator. Provider-only tool catalogues omit fabricated argument examples. MCP `isError` results now become failed tool observations rather than successful text. Completion configuration and each verification attempt are visible in the run inspector; no configuration or receipt is labeled explicitly, rather than being inferred from the agent's answer or Completed status.
+
+## Inspector snapshot boundary
+
+`getRunDetails` forwards completion configuration and receipts explicitly. After awaiting archived evidence, it rereads a live run and captures its pending approvals synchronously, without another await, then freezes the combined view. Persisted-only records receive no live approval authority. Tool cards match nonempty run and call IDs; rendered call text is never an identity fallback. A captured approval cannot replace a recorded outcome. Snapshot cards say what was pending when captured and require a refresh for newer state.
+
+The earlier renderer change omitted completion fields at the controller boundary. Controller-level regressions now cover that omission, rather than relying solely on rendering synthetic props.

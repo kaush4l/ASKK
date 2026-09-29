@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "date": "2026-09-29",
+  "scope": "Local Chrome exported workbench, actual worker and configured Qwen 27B direct endpoint. No companion or command execution.",
+  "runId": "rmumhhnl41",
+  "observations": [
+    "Enabled read approval in the isolated local test workspace.",
+    "todo_read waited for a decision. Inspector captured matching pending approval.",
+    "Expanded tool displayed snapshot-specific approval wording and no recorded result.",
+    "Approved the single read; refreshed inspection showed Completed and The plan is empty.",
+    "Completion configuration correctly showed no independent checks; no verification receipts were invented."
+  ],
+  "limitations": [
+    "Pending screenshot precedes final run-level badge wording adjustment; exact final wording covered by component tests.",
+    "Live browser run had no independent completion checks. Nonempty completion receipts and async snapshot races are covered by controller tests.",
+    "Not a Safari, physical phone, Browser Linux or small-model proof."
+  ]
+}
