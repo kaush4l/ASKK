@@ -114,6 +114,12 @@ export async function evaluateProjectLoop({ baseUrl, model, directory, caseName 
       checks.push({ name: 'agent ran the declared test script against delivered source', passed: ranDeclaredTests(commands, run, deliveredRevision) })
       const reportPath = join(root, `bun-tests-${crypto.randomUUID()}.xml`)
       for (const args of [['run', 'test'], ['test', '--reporter=junit', `--reporter-outfile=${reportPath}`]]) {
+        // Bun can resolve a missing package script from an ancestor project.
+        // Never let this evaluator run the harness's own tests as project evidence.
+        if (!declared) {
+          checks.push({ name: args[0] === 'run' ? 'independent package test script' : 'independent Bun test discovery', passed: false, reason: 'No test script declared in the delivered project; command not started.' })
+          continue
+        }
         let output = ''
         const result = await execution.startJob({ program: process.execPath, args, timeout: 10000, onOutput: event => { output += event.data ?? event.text ?? '' } })
         const report = args[0] === 'test' ? bunTestReport(await readFile(reportPath, 'utf8').catch(() => '')) : null

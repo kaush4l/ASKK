@@ -1,5 +1,8 @@
 import { expect, test } from 'bun:test'
-import { repairCycle } from '../scripts/evals/project-loop.js'
+import { evaluateProjectLoop, repairCycle } from '../scripts/evals/project-loop.js'
+import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 const trace = () => ({
   events: [
@@ -30,3 +33,26 @@ test('a rejected proposal, cancelled command or ambiguous call is not a reproduc
     expect(repairCycle(fixture.events, fixture.commands).passed).toBe(false)
   }
 })
+
+test('an absent project manifest never runs an ancestor package test script', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'askk-eval-ancestor-'))
+  const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: () => new Response(
+    `data: ${JSON.stringify({ choices: [{ delta: { content: 'invalid response' }, finish_reason: null }] })}\n\ndata: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }] })}\n\ndata: [DONE]\n\n`,
+    { headers: { 'content-type': 'text/event-stream' } },
+  ) })
+  try {
+    const marker = join(root, 'ancestor-ran')
+    await writeFile(join(root, 'package.json'), JSON.stringify({ scripts: { test: `touch '${marker}'` } }))
+    const result = await evaluateProjectLoop({ baseUrl: `http://127.0.0.1:${server.port}/v1`, model: 'fixture', directory: join(root, 'attempt'), caseName: 'project' })
+    const evidence = JSON.parse(await readFile(result.evidence, 'utf8'))
+    const checks = evidence.checks.filter(check => ['independent package test script', 'independent Bun test discovery'].includes(check.name))
+    expect(result.passed).toBe(false)
+    expect(checks).toHaveLength(2)
+    expect(await Bun.file(marker).exists()).toBe(false)
+    for (const check of checks) {
+      expect(check.passed).toBe(false)
+      expect(check.reason).toContain('command not started')
+      expect(check.output).toBeUndefined()
+    }
+  } finally { server.stop(true); await rm(root, { recursive: true, force: true }) }
+}, 15000)
