@@ -10,6 +10,7 @@ const text = node => node.nodeName === '#text' ? node.value : (node.childNodes |
 const attr = (node, name) => node.attrs?.find(item => item.name === name)?.value
 const render = element => parseFragment(renderToStaticMarkup(element))
 const button = (tree, label) => all(tree, node => node.tagName === 'button' && text(node) === label)[0]
+const workflowButtons = tree => all(all(tree, node => attr(node, 'role') === 'group' && attr(node, 'aria-label') === 'Workflow')[0], node => node.tagName === 'button')
 const isDisabled = node => attr(node, 'disabled') !== undefined
 const encoder = new TextEncoder()
 const file = (path, body = 'text', read = () => {}) => ({ name: path.split('/').at(-1), webkitRelativePath: path, size: encoder.encode(body).length, async arrayBuffer() { read(); return encoder.encode(body).buffer } })
@@ -127,10 +128,11 @@ test('identical display names remain separate when an authoritative installed-ag
   const tree = render(<Dashboard state={{ ...state, agentDefinitions: [one, two], agents: [run] }}/>)
   const cards = all(tree, node => node.tagName === 'article' && attr(node, 'class')?.includes('dashboard-agent'))
   expect(text(cards[0])).toContain('Available')
-  expect(text(cards[0])).not.toContain('Thinking')
+  expect(text(cards[0])).not.toContain('Generating reply')
   expect(text(cards[1])).toContain('Available')
-  expect(text(cards[1])).not.toContain('Thinking')
-  expect(text(tree)).toContain('Thinking')
+  expect(text(cards[1])).not.toContain('Generating reply')
+  const instance = all(tree, node => node.tagName === 'li' && attr(node, 'data-run-id') === 'actual')[0]
+  expect(text(instance)).toContain('Generating reply')
   expect(text(tree)).toContain('Agent library')
 })
 
@@ -142,7 +144,7 @@ test('disabled imported selection remains visible, preserves the goal, and never
   expect(text(tree)).toContain('Connection checks below apply to the desk default profile.')
   expect(isDisabled(button(tree, 'Start task'))).toBe(true)
   expect(all(tree, node => node.tagName === 'textarea').map(text)).toEqual(['Keep my goal'])
-  const selected = all(tree, node => node.tagName === 'button' && attr(node, 'aria-pressed') === 'true')
+  const selected = workflowButtons(tree).filter(node => attr(node, 'aria-pressed') === 'true')
   expect(selected).toHaveLength(1)
   expect(isDisabled(selected[0])).toBe(true)
 })
@@ -160,7 +162,7 @@ test('a missing saved workflow explains the unavailable selection and keeps Star
   const tree = render(<Dashboard state={{ ...state, selectedWorkflowId: 'removed-package' }} goal="Keep my original goal"/>)
   expect(text(tree)).toContain('The saved workflow is unavailable. Choose a workflow explicitly; your goal has been kept.')
   expect(isDisabled(button(tree, 'Start task'))).toBe(true)
-  expect(all(tree, node => node.tagName === 'button' && attr(node, 'aria-pressed') === 'true')).toHaveLength(0)
+  expect(workflowButtons(tree).filter(node => attr(node, 'aria-pressed') === 'true')).toHaveLength(0)
   expect(all(tree, node => node.tagName === 'textarea').map(text)).toEqual(['Keep my original goal'])
 })
 
@@ -186,7 +188,8 @@ test('installing state survives a closed dialog and locks dashboard task, workfl
   const tree = render(<Dashboard state={{ ...state, packageInstalling: true }} goal="Keep this draft" onImportAgent={() => {}}/>)
   expect(isDisabled(button(tree, 'Installing agent…'))).toBe(true)
   expect(isDisabled(button(tree, 'Import agent'))).toBe(true)
-  expect(all(tree, node => node.tagName === 'button' && attr(node, 'aria-pressed') !== undefined).every(isDisabled)).toBe(true)
+  expect(workflowButtons(tree)).toHaveLength(1)
+  expect(workflowButtons(tree).every(isDisabled)).toBe(true)
   expect(all(tree, node => attr(node, 'role') === 'status').map(text).join('')).toContain('Starting tasks, changing workflows and importing another package are paused')
   expect(all(tree, node => node.tagName === 'textarea').map(text)).toEqual(['Keep this draft'])
   expect(all(tree, node => node.tagName === 'textarea').every(node => !isDisabled(node))).toBe(true)

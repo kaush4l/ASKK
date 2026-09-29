@@ -19,7 +19,15 @@ export async function checkDeployment(directory = 'out', { basePath = '/ASKK', r
   if (bytes > 1_000_000_000) throw new Error('Published site exceeds 1 GB')
   const index = await readFile(join(root, 'index.html'), 'utf8')
   if (!index.includes(`${basePath}/_next/`)) throw new Error(`Export does not reference the configured ${basePath} asset prefix`)
-  for (const name of ['.nojekyll', 'coi-serviceworker.js', 'sw.js', 'artifact-preview.html', 'agents/index.json', 'workbench.json', 'runtime/modules/runtime/agent.worker.js']) if (!files.some(file => file.path === name)) throw new Error(`Missing required deployment asset: ${name}`)
+  for (const name of ['.nojekyll', 'coi-serviceworker.js', 'sw.js', 'artifact-preview.html', 'agents/index.json', 'workbench.json', 'companion-release.json', 'runtime/modules/runtime/agent.worker.js']) if (!files.some(file => file.path === name)) throw new Error(`Missing required deployment asset: ${name}`)
+  if (files.some(file => file.path === 'companion-release.json')) {
+    const distribution = JSON.parse(await readFile(join(root, 'companion-release.json'), 'utf8'))
+    if (distribution.version !== 1 || (!Array.isArray(distribution.releases) || !distribution.releases.length)) throw new Error('Unsupported companion distribution manifest')
+    for (const release of distribution.releases) {
+      const archive = files.find(file => file.path === release.file)
+      if (!/^downloads\/[a-z0-9.-]+\.tar\.gz$/.test(release.file) || !archive || archive.sha256 !== release.sha256 || archive.bytes !== release.bytes) throw new Error(`Companion download missing or corrupt: ${release.file}`)
+    }
+  }
   let runtime
   if (requireRuntime) {
     for (const name of ['runtime.html', 'runtime.js', 'assets.js', 'ownership.js', 'idbfs-links.js', 'network-policy.js']) if (!files.some(file => file.path === `browser-linux/${name}`)) throw new Error(`Missing runtime support module: ${name}`)

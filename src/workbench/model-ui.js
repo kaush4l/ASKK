@@ -1,3 +1,5 @@
+import { hasModelRelay } from '../core/model-relay.js'
+
 /** Labels describe recorded checks, never infer generation success from model listing. */
 export function modelStatusLabel(model = {}) {
   if (model.status === 'checking') return model.check?.kind === 'reply' ? 'Testing reply…' : 'Listing models…'
@@ -17,4 +19,4 @@ export function canCheckModel({ draft, saved, busy = false, active = false }) {
 
 export const modelCheckCancelled = error => error?.name === 'AbortError'
 
-export const modelRelayAvailable = companion => companion?.status === 'connected' && (companion.capabilities || []).some(capability => ['model-relay', 'fetch'].includes(capability))
+export const modelRelayAvailable = companion => companion?.status === 'connected' && hasModelRelay(companion)

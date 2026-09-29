@@ -5,14 +5,15 @@ import { normalizeToolPolicy } from '../runtime/tool-policy.js'
 import { DEFAULT_PROMPT, snapshot } from '../core/prompt.js'
 import { boundModelAvailable, resolve as resolveModel } from '../core/models.js'
 import { openaiBase, anthropicBase } from '../core/inference.js'
+import { hasModelRelay } from '../core/model-relay.js'
 import { createWorkspaceBinding, assertWorkspaceBinding, assertWorkspacePort, assertExecutionPort, createArtifactManifest, assertArtifactManifest, createBoundRunSnapshot } from './contracts.js'
 
 const active = status => ['thinking', 'calling', 'waiting', 'compacting', 'running', 'starting', 'cancelling', 'verifying'].includes(status)
 const id = prefix => `${prefix}-${crypto.randomUUID()}`
 const readSaved = key => { try { return JSON.parse(localStorage.getItem(key) ?? 'null') } catch { return null } }
 const DEFAULT_TOOL_POLICY = normalizeToolPolicy({ disabledTools: [], approvalRisks: [], allowDelegation: true })
-const canRelayModels = value => (value?.capabilities ?? value?.health?.capabilities ?? []).some(capability => ['model-relay', 'fetch'].includes(capability))
-const companionIdentity = value => JSON.stringify([value?.status, value?.url, value?.runtimeId, value?.generation, value?.root, [...(value?.capabilities ?? [])].sort()])
+const canRelayModels = value => hasModelRelay(value?.health ?? value)
+const companionIdentity = value => JSON.stringify([value?.status, value?.url, value?.runtimeId, value?.generation, value?.root, [...(value?.capabilities ?? [])].sort(), value?.modelRelay])
 // Provider bodies are recorded inputs, including user-authored schemas/code.
 // Only transport metadata is scrubbed; legitimate body keys remain byte-faithful.
 const requestEvidence = value => {
@@ -330,7 +331,7 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
     if (message.type === 'bridge') {
       refreshDefinitions()
       const connected = message.state.status === 'answering'
-      const nextCompanion = { status: connected ? 'connected' : message.state.status, url: message.state.url, runtimeId: message.state.runtimeId, generation: message.state.generation, capabilities: message.state.capabilities ?? [], root: message.state.root, error: message.state.error }
+      const nextCompanion = { status: connected ? 'connected' : message.state.status, url: message.state.url, runtimeId: message.state.runtimeId, generation: message.state.generation, capabilities: message.state.capabilities ?? [], modelRelay: message.state.modelRelay, root: message.state.root, error: message.state.error }
       const changed = companionIdentity(state.companion) !== companionIdentity(nextCompanion)
       const nativeEndpoints = [binding?.target === 'local' ? executor?.url : null, local?.url, connectingEndpoint].filter(Boolean).map(url => url.replace(/\/$/, ''))
       const lostNative = changed && ['down', 'unpaired'].includes(message.state.status) && nativeEndpoints.length > 0 &&
@@ -732,7 +733,7 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
           }
         }
         local = next
-        notify({ companion: { ...state.companion, status: 'connected', url: endpointOf(next), capabilities: health.capabilities, root: health.root, runtimeId: health.runtimeId } })
+        notify({ companion: { ...state.companion, status: 'connected', url: endpointOf(next), capabilities: health.capabilities, modelRelay: health.modelRelay, root: health.root, runtimeId: health.runtimeId } })
         return health
       } finally { connecting = false; connectingEndpoint = null }
     },

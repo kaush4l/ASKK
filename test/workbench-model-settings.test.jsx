@@ -76,13 +76,17 @@ test('verified reply renders escaped actual text and receipt, with no nested for
 test('inline relay onboarding advertises only model-relay and never equates certificate validity with trust', () => {
   const tree = render(stateFor({ via: 'bridge' }))
   expect(text(tree)).toContain('--capabilities model-relay')
+  expect(text(tree)).toContain('--model-endpoint http://127.0.0.1:8873/v1')
+  expect(text(tree)).toContain('./askk-companion')
+  expect(text(tree)).not.toContain('bun host/companion.js')
+  expect(all(tree, node => node.tagName === 'a' && attr(node, 'download') !== undefined)).toHaveLength(1)
   expect(text(tree)).not.toContain('--capabilities fs')
   expect(text(tree)).toContain('Certificate validity alone does not establish trust.')
   expect(text(tree)).toContain('Browser trust remains unconfirmed until this browser can pair.')
   expect(all(tree, node => node.tagName === 'form')).toHaveLength(1)
   expect(disabled(button(tree, 'Pair model relay'))).toBe(true)
   expect(all(tree, node => node.tagName === 'input' && attr(node, 'type') === 'password').every(node => attr(node, 'value') === '')).toBe(true)
-  expect(all(tree, node => node.tagName === 'a').map(node => attr(node, 'href'))).toContain('https://github.com/kaush4l/ASKK/blob/codex/browser-workbench/scripts/companion/README.md#start-explicitly')
+  expect(all(tree, node => node.tagName === 'a').map(node => attr(node, 'href'))).toContain('https://github.com/kaush4l/ASKK/blob/cf6b594555c0fb73a9ef349663ca39b46e3faa27/scripts/companion/README.md#start-explicitly')
 })
 
 test('an existing native binding blocks inline re-pairing while allowing checks through its granted relay', () => {
@@ -121,4 +125,11 @@ test('closing model settings cannot expose an enabled task submit while its chec
   expect(inputs).toHaveLength(1)
   expect(disabled(inputs[0])).toBe(false)
   expect(text(inputs[0])).toBe('Preserve this draft')
+})
+
+test('scoped relay availability needs an explicit endpoint grant and never falls back to generic fetch', () => {
+  const companion = { status: 'connected', capabilities: ['model-relay', 'fetch'], modelRelay: { version: 1, endpoint: '/model/fetch', status: 'scope-required', endpoints: [] } }
+  expect(modelRelayAvailable(companion)).toBe(false)
+  expect(modelRelayAvailable({ ...companion, modelRelay: { ...companion.modelRelay, status: 'configured', endpoints: ['http://127.0.0.1:8873/v1'] } })).toBe(true)
+  expect(modelRelayAvailable({ ...companion, capabilities: ['fetch'], modelRelay: { ...companion.modelRelay, status: 'configured', endpoints: ['http://127.0.0.1:8873/v1'] } })).toBe(false)
 })

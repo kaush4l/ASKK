@@ -10,6 +10,7 @@ import ArtifactPreview from './ArtifactPreview.jsx'
 import ToolCard from './ToolCard.jsx'
 import BindingReview from './BindingReview.jsx'
 import Dashboard, { SessionBoundaryNotice } from './Dashboard.jsx'
+import CompanionSetup from './CompanionSetup.jsx'
 import AgentInspector from './AgentInspector.jsx'
 import RunInspector from './RunInspector.jsx'
 export { default as RunInspector } from './RunInspector.jsx'
@@ -823,12 +824,8 @@ export function Settings({ state, initialTab, theme, setTheme, perform, onClose,
       <div className="connection-help"><Icon name="laptop" size={16}/><span>{modelVia === 'bridge' ? 'The companion forwards model requests to this API base URL. It does not start Browser Linux or select native execution.' : 'Direct requests require browser access and endpoint CORS. For an HTTP local model in Safari, choose the HTTPS companion route.'}</span></div>
       {modelVia === 'bridge' && <section className="model-relay-setup" aria-label="Connect local model through HTTPS">
         <div className="settings-subheading"><h3>Connect local model</h3><span>{modelRelayAvailable ? 'Relay paired' : 'Pairing required'}</span></div>
-        <p className="form-help">Run a companion with only the <code>model-relay</code> grant. Use a certificate for 127.0.0.1 that your browser already trusts. Certificate validity alone does not establish trust.</p>
-        <details className="model-setup-help"><summary>HTTPS setup and launch command</summary><ol><li>Prepare and trust a loopback certificate through your existing local development setup. This page cannot install or trust certificates.</li><li>From the ASKK checkout, replace the paths below and start the relay. Allow this page's exact origin, without /ASKK.</li><li>Enter its URL and pairing token below. Never paste the token into an agent conversation.</li></ol><pre>{String.raw`bun host/companion.js --root /absolute/project \
-  --capabilities model-relay \
-  --tls-cert /absolute/private/loopback-cert.pem \
-  --tls-key /absolute/private/loopback-key.pem \
-  --allow-origin ${pageOrigin || 'https://kaush4l.github.io'}`}</pre><p className="form-help">Browser trust remains unconfirmed until this browser can pair. Do not bypass certificate warnings. The companion is a developer tool; an automatic trust installer is not included.</p><a href="https://github.com/kaush4l/ASKK/blob/codex/browser-workbench/scripts/companion/README.md#start-explicitly" target="_blank" rel="noreferrer">Packaged companion setup instructions ↗</a></details>
+        <p className="form-help">Run a companion with only the <code>model-relay</code> grant and an explicit <code>--model-endpoint</code>. Use a certificate for 127.0.0.1 that your browser already trusts. Certificate validity alone does not establish trust.</p>
+        <CompanionSetup pageOrigin={pageOrigin}/>
         <label>HTTPS companion URL<input className="form-input" type="url" disabled={modelLocked || modelPairingBound} value={bridgeUrl} onChange={event => setBridgeUrl(event.target.value)} placeholder="https://127.0.0.1:7717"/></label>
         <label>Model relay pairing token<input className="form-input" type="password" autoComplete="off" disabled={modelLocked || modelPairingBound} value={token} onChange={event => setToken(event.target.value)} placeholder="Token from your companion"/></label>
         <button type="button" className="button subtle" disabled={modelLocked || modelPairingBound || !token.trim() || !bridgeUrl.trim()} onClick={() => { if (modelLocked || modelPairingBound) return; modelOperation('Pairing model relay…', async () => { await perform('pairModelRelay', { url: bridgeUrl, token }); setToken(''); setSuccess('Model relay paired. Save any model changes, then test a reply.'); }) }}>Pair model relay</button>

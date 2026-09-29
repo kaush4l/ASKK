@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import { Hub } from './helpers/trusted-fixture-hub.js'
-import { assertModelRelay } from '../src/core/inference.js'
+import { assertModelRelay, modelRelayPath } from '../src/core/inference.js'
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -175,8 +175,8 @@ test('a real agent worker refuses relay inference without a model grant before a
 
 test('relay-only companion distinguishes upstream transport failure from provider HTTP without native grants', async () => {
   const root = await mkdtemp(join(tmpdir(), 'askk-model-transport-'))
-  const companion = await createCompanion({ root, port: 0, capabilities: ['model-relay'] })
   const provider = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: () => new Response('provider auth refused', { status: 401 }) })
+  const companion = await createCompanion({ root, port: 0, capabilities: ['model-relay'], modelEndpoints: [`${provider.url.origin}/v1`] })
   const { hub } = fixture(fetch, { via: 'bridge', base_url: `${provider.url.origin}/v1` })
   hub.bridgeState = { status: 'answering', generation: 1, url: companion.url, token: companion.token, health: { capabilities: ['model-relay'] } }
   try {
@@ -319,4 +319,151 @@ test('late MCP discovery cannot replace newer tools or restore disconnected brid
   release(); await delay(0)
   expect(hub.mcpTools()).toEqual([])
   expect(hub.bridge.state().status).toBe('unpaired')
+})
+
+test('scoped model routing uses authenticated metadata, invalidates proof and refuses legacy downgrade until disconnect', async () => {
+  const scope = endpoints => ({ version: 1, endpoint: '/model/fetch', status: endpoints.length ? 'configured' : 'scope-required', endpoints })
+  let authenticated = { capabilities: ['model-relay', 'fetch'], modelRelay: scope(['https://provider.example/v1']) }
+  const seen = []
+  const { hub, writes } = fixture(async (url, init) => {
+    if (url.endsWith('/health')) return Response.json({ name: 'askk-companion', capabilities: ['model-relay'], modelRelay: { ...scope(['https://untrusted.invalid']), endpoint: '/untrusted' } })
+    if (url.endsWith('/whoami')) return Response.json(authenticated)
+    seen.push({ url, body: JSON.parse(init.body) }); return Response.json({ data: [] })
+  }, { via: 'bridge' })
+  expect(await hub.bridgeCheck('https://companion.example', 'fixture-token', { requireModelRelay: true })).toMatchObject({ status: 'answering', generation: 1, modelRelay: authenticated.modelRelay })
+  expect(writes).toContainEqual({ table: 'settings', key: 'bridge', value: { url: 'https://companion.example', token: 'fixture-token', minimumModelRelayVersion: 1 } })
+  expect(hub.hostInfo().modelRelay).toEqual(authenticated.modelRelay)
+  await hub.models.refresh()
+  expect(seen).toHaveLength(1)
+  expect(seen[0]).toMatchObject({ url: 'https://companion.example/model/fetch', body: { url: 'https://provider.example/v1/models', method: 'GET' } })
+  authenticated = { ...authenticated, modelRelay: scope(['https://other.example/v1']) }
+  expect(await hub.bridgeCheck('https://companion.example', 'fixture-token')).toMatchObject({ generation: 2 })
+  authenticated = { capabilities: ['model-relay'] }
+  expect(await hub.bridgeCheck('https://companion.example', 'fixture-token')).toMatchObject({ generation: 3, status: 'down', errorCode: 'relay_capability', minimumModelRelayVersion: 1 })
+  expect(hub.hostInfo()).toBeNull()
+  expect(await hub.bridge.pair('https://legacy.example', 'another-token')).toMatchObject({ status: 'down', errorCode: 'relay_capability' })
+  await hub.bridge.disconnect()
+  expect(await hub.bridge.pair('https://legacy.example', 'another-token')).toMatchObject({ status: 'answering' })
+  expect(modelRelayPath(hub.hostInfo())).toBe('/fetch')
+})
+
+test('saved scoped contract rejects absent or null descriptors during restoration', async () => {
+  for (const modelRelay of [undefined, null]) {
+    const { hub, writes } = fixture(async () => Response.json({ capabilities: ['model-relay', 'fetch'], ...(modelRelay === null ? { modelRelay: null } : {}) }))
+    expect(await hub.bridgeCheck('https://companion.example', 'saved-token', { minimumModelRelayVersion: 1, restored: true })).toMatchObject({ status: 'down', errorCode: 'relay_capability', minimumModelRelayVersion: 1 })
+    expect(await hub.bridge.check()).toMatchObject({ status: 'down', errorCode: 'relay_capability' })
+    expect(hub.hostInfo()).toBeNull()
+    expect(writes).toHaveLength(0)
+  }
+})
+
+test('legacy pairing upgrades durably before scoped authority is published, including scope-required', async () => {
+  const modelRelay = { version: 1, endpoint: '/model/fetch', status: 'scope-required', endpoints: [] }
+  let authenticated = { capabilities: ['model-relay'] }, saved, release, writing
+  const { hub } = fixture(async () => Response.json(authenticated))
+  await hub.bridgeCheck('https://companion.example', 'saved-token')
+  const gate = new Promise(resolve => { release = resolve }), started = new Promise(resolve => { writing = resolve })
+  hub.store = { async put(_, row) { writing(); await gate; saved = row.value }, async delete() { saved = undefined } }
+  const events = []; hub.subscribe(event => { if (event.type === 'bridge') events.push(event.state) })
+  authenticated = { ...authenticated, modelRelay }
+  const upgrading = hub.bridge.check()
+  await started
+  expect(hub.bridge.state().modelRelay).toBeUndefined()
+  expect(events).toHaveLength(0)
+  release()
+  expect(await upgrading).toMatchObject({ status: 'answering', minimumModelRelayVersion: 1, modelRelay })
+  expect(saved).toEqual({ url: 'https://companion.example', token: 'saved-token', minimumModelRelayVersion: 1 })
+  authenticated = { capabilities: ['model-relay'] }
+  expect(await hub.bridge.check()).toMatchObject({ status: 'down', errorCode: 'relay_capability' })
+})
+
+test('failed or non-durable pin writes never activate scoped pairing', async () => {
+  const modelRelay = { version: 1, endpoint: '/model/fetch', status: 'configured', endpoints: ['https://provider.example/v1'] }
+  for (const durable of [false, true]) {
+    const { hub } = fixture(async () => Response.json({ capabilities: ['model-relay'], modelRelay }))
+    let writes = 0
+    hub.store = { durable, async put() { writes++; throw new Error('fixture storage refused') }, async delete() {} }
+    expect(await hub.bridge.pair('https://companion.example', 'fixture-token', { requireModelRelay: true })).toMatchObject({ status: 'down', errorCode: 'evidence_persistence' })
+    expect(hub.hostInfo()).toBeNull()
+    expect(writes).toBe(durable ? 1 : 0)
+  }
+})
+
+test('disconnect during a scoped pin write cleans up before a newer legacy pairing can persist', async () => {
+  const modelRelay = { version: 1, endpoint: '/model/fetch', status: 'configured', endpoints: ['https://provider.example/v1'] }
+  const { hub } = fixture(async url => Response.json({ capabilities: ['model-relay'], ...(url.includes('scoped.example') ? { modelRelay } : {}) }))
+  let release, writing, saved
+  const gate = new Promise(resolve => { release = resolve }), started = new Promise(resolve => { writing = resolve })
+  hub.store = { async put(_, row) { if (row.value.minimumModelRelayVersion) { writing(); await gate }; saved = row.value }, async delete() { saved = undefined } }
+  const old = hub.bridge.pair('https://scoped.example', 'old-token', { requireModelRelay: true })
+  await started
+  const disconnected = hub.bridge.disconnect()
+  const next = hub.bridge.pair('https://legacy.example', 'new-token')
+  release()
+  expect(await old).toMatchObject({ status: 'down', errorCode: 'configuration' })
+  await disconnected
+  expect(await next).toMatchObject({ status: 'answering' })
+  expect(saved).toEqual({ url: 'https://legacy.example', token: 'new-token' })
+})
+
+test('shutdown on scoped publication removes the new durable candidate', async () => {
+  const modelRelay = { version: 1, endpoint: '/model/fetch', status: 'configured', endpoints: ['https://provider.example/v1'] }
+  const { hub } = fixture(async () => Response.json({ capabilities: ['model-relay'], modelRelay }))
+  let saved
+  hub.store = { async put(_, row) { saved = row.value }, async delete() { saved = undefined } }
+  hub.subscribe(event => { if (event.type === 'bridge') hub.stop() })
+  expect(await hub.bridge.pair('https://scoped.example', 'fixture-token', { requireModelRelay: true })).toMatchObject({ status: 'down', errorCode: 'aborted' })
+  expect(saved).toBeUndefined()
+})
+
+test('a newer check during scoped publication persists its own pin after stale cleanup', async () => {
+  const modelRelay = { version: 1, endpoint: '/model/fetch', status: 'configured', endpoints: ['https://provider.example/v1'] }
+  const { hub } = fixture(async () => Response.json({ capabilities: ['model-relay'], modelRelay }))
+  let saved, newer
+  const operations = []
+  hub.store = { async put(_, row) { operations.push('put'); saved = row.value }, async delete() { operations.push('delete'); saved = undefined } }
+  hub.subscribe(event => { if (event.type === 'bridge' && !newer) newer = hub.bridge.check() })
+  expect(await hub.bridgeCheck('https://scoped.example', 'fixture-token')).toMatchObject({ status: 'down', errorCode: 'configuration' })
+  expect(await newer).toMatchObject({ status: 'answering', minimumModelRelayVersion: 1 })
+  expect(saved).toEqual({ url: 'https://scoped.example', token: 'fixture-token', minimumModelRelayVersion: 1 })
+  expect(operations).toEqual(['put', 'delete', 'put'])
+})
+
+test('a scoped companion never falls back to general fetch when model scope is missing or malformed', async () => {
+  const scope = { version: 1, endpoint: '/model/fetch', status: 'scope-required', endpoints: [] }
+  let calls = 0
+  const { hub } = fixture(async () => { calls++; return reply() }, { via: 'bridge' })
+  hub.bridgeState = { status: 'answering', generation: 1, url: 'https://companion.example', token: 'fixture-token', health: { capabilities: ['fetch', 'model-relay'], modelRelay: scope } }
+  expect(await hub.models.refresh()).toMatchObject({ errorCode: 'relay_scope' })
+  expect(await hub.models.probe()).toMatchObject({ errorCode: 'relay_scope' })
+  expect(() => hub.bridgeFetch('https://provider.example/v1/models')).toThrow('--model-endpoint')
+  expect(calls).toBe(0)
+  for (const modelRelay of [{ ...scope, endpoint: 'https://elsewhere.example' }, { ...scope, version: 99 }, { ...scope, endpoints: ['allowed', {}] }]) expect(() => modelRelayPath({ capabilities: ['model-relay'], modelRelay })).toThrow('contract')
+  expect(() => modelRelayPath({ capabilities: ['fetch'], modelRelay: { ...scope, status: 'configured', endpoints: ['https://provider.example/v1'] } })).toThrow('model-relay')
+})
+
+test('real worker uses the authenticated scoped route even when generic fetch is also granted', async () => {
+  const site = await mkdtemp(join(tmpdir(), 'askk-scoped-worker-')); let hub
+  const requests = []
+  const server = Bun.serve({ hostname: '127.0.0.1', port: 0, async fetch(request) {
+    requests.push({ path: new URL(request.url).pathname, body: await request.json() })
+    return Response.json({ error: 'fixture provider refused' }, { status: 401 })
+  } })
+  try {
+    await mkdir(join(site, 'agents', 'assistant'), { recursive: true })
+    await writeFile(join(site, 'agents', 'assistant', 'agent.md'), '---\nname: assistant\ntools: []\ncontext: []\nmax_steps: 1\n---\nReply briefly.')
+    await writeFile(join(site, 'models.json'), JSON.stringify({ default: 'chosen', models: { chosen: { provider: 'openai', model: 'fixture', base_url: 'https://provider.invalid/v1', via: 'bridge' } } }))
+    await writeFile(join(site, 'agents', 'index.json'), JSON.stringify(await listing(site)))
+    hub = new Hub({ base: `${pathToFileURL(site).href}/`, storeName: `scoped-worker-${crypto.randomUUID()}` })
+    hub.bridgeState = { status: 'answering', generation: 1, url: server.url.origin, token: 'fixture-token', health: { name: 'askk-companion', capabilities: ['model-relay', 'fetch'], modelRelay: { version: 1, endpoint: '/model/fetch', status: 'configured', endpoints: ['https://provider.invalid/v1'] } } }
+    await hub.start()
+    const run = hub.startRun('assistant', 'Fixture request.')
+    await run.answer.catch(() => {})
+    expect(run.slot.status).toBe('failed')
+    expect(requests.length).toBeGreaterThan(0)
+    expect(requests.every(request => request.path === '/model/fetch')).toBe(true)
+    const completions = requests.filter(request => request.body.url.endsWith('/chat/completions'))
+    expect(completions).toHaveLength(1)
+    expect(completions[0]).toMatchObject({ path: '/model/fetch', body: { url: 'https://provider.invalid/v1/chat/completions', method: 'POST', stream: true } })
+  } finally { hub?.stop(); server.stop(true); await rm(site, { recursive: true, force: true }) }
 })
