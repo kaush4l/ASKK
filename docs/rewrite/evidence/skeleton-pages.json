@@ -1,0 +1,60 @@
+{
+  "source": "423cb74",
+  "deployment": "40e128e",
+  "workflow": "https://github.com/kaush4l/ASKK/actions/runs/36548677984",
+  "files": [
+    {
+      "path": "index.html",
+      "sha256": "841b97d513aedbbbe9a75535591a29a993a25d399d77b2ad8eeaf0e7c2e6870e",
+      "matchesExport": true
+    },
+    {
+      "path": "runtime/modules/core/agent-prompt.js",
+      "sha256": "5943b50ba0672b6b9c3746dee6146ab76bb182eb3e55ca5123c11eaf65f90703",
+      "matchesExport": true
+    },
+    {
+      "path": "runtime/modules/core/tool-input.js",
+      "sha256": "df9ff10c87b2bcbb3ea68016e6c1fca1a2cdc32cc9f4fc886d006999c5831e87",
+      "matchesExport": true
+    },
+    {
+      "path": "runtime/modules/core/tool-activity.js",
+      "sha256": "2bc4e831b814cb937b547529a2989a1cfd93990ce5b3293339281fe7dc20bb1d",
+      "matchesExport": true
+    },
+    {
+      "path": "packages/starter/agents/builder/agent.md",
+      "sha256": "ee5fb95b840ea3ebaeb111889620f85572bec4f748fd57df129cd9514434b314",
+      "matchesExport": true
+    },
+    {
+      "path": "workbench.json",
+      "sha256": "3649aa806568dfe5563c11d5ea0464c2e3d8b7a9a138591257dd2bb917e27ec4",
+      "matchesExport": true
+    }
+  ],
+  "date": "2026-09-29",
+  "workflowConclusion": "success",
+  "export": {
+    "version": 1,
+    "basePath": "/ASKK",
+    "totalBytes": 854192146,
+    "fileCount": 209,
+    "runtimeId": "c2w-node24-38d093f4a38002db",
+    "artifactHash": "f53b991c186fd43911d3de3afffa4c21f964aefa8a751668d0b3b549dd5fb8cd"
+  },
+  "chrome": {
+    "observations": [
+      "Existing workspace-owning tab reloaded; new Scripts and projects workflow visible.",
+      "Command completion requirement displayed correctly.",
+      "Goal draft preserved.",
+      "HTTPS model-only relay reconnected; command execution Not started."
+    ],
+    "limits": [
+      "No new inference run on Pages for this release; current engine inference tested in local Chrome.",
+      "Opening a second Pages tab hit the expected ownership lock; closed it and reused the idle existing tab.",
+      "Native Safari refactor regression remains pending."
+    ]
+  }
+}
