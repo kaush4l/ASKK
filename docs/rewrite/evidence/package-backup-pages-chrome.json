@@ -1,0 +1,44 @@
+{
+  "date": "2026-09-29",
+  "url": "https://kaush4l.github.io/ASKK/",
+  "source": "c704be8",
+  "deployment": "b0d5daf00b7f0768c0eb033f0c966e27d566b455",
+  "pagesRun": "https://github.com/kaush4l/ASKK/actions/runs/36542218415",
+  "checks": [
+    "Production dashboard loaded after reload",
+    "Existing Reading companion draft resumed with original source",
+    "New download and restore controls present",
+    "Model-only companion pairing retained; command execution remained Not started"
+  ],
+  "servedHashes": [
+    {
+      "path": "index.html",
+      "sha256": "0d61d8fd75ddf0c110f155be5ff59b01da6d26e8cc287f05090d8b96c7fbb80d",
+      "matchesExport": true
+    },
+    {
+      "path": "runtime/modules/core/draft-backup.js",
+      "sha256": "4a1f3862f7069cee1e4709ca5e963b62a7de8d788b2bb54ebfbdd3d744ea2afc",
+      "matchesExport": true
+    },
+    {
+      "path": "runtime/modules/runtime/package-source.js",
+      "sha256": "4929a76910ca0a3b9cc5b85ade6e42ed6232794cdb1aae31dfe82087ea706b50",
+      "matchesExport": true
+    },
+    {
+      "path": "runtime/modules/runtime/package-drafts.js",
+      "sha256": "e820a38b9007f14c5e1568253d31edab60885de8690800316f212f35f56d3251",
+      "matchesExport": true
+    },
+    {
+      "path": "runtime/modules/workspace/controller.js",
+      "sha256": "9567f47606a56262c6dbba293fa5b5861bb752683d5d8785165e355078acf838",
+      "matchesExport": true
+    }
+  ],
+  "limits": [
+    "Hosted upload round trip not completed; local production export round trip verified separately",
+    "No new inference, Safari/iPhone, VoiceOver or Linux build acceptance in this slice"
+  ]
+}
