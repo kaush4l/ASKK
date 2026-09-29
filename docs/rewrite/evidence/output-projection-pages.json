@@ -1,0 +1,27 @@
+{
+  "source": "c7d48d98",
+  "deployment": "20432e334e69b0537feb98747d8b04f546a821d1",
+  "workflow": "https://github.com/kaush4l/ASKK/actions/runs/36575570211",
+  "workflowConclusion": "success",
+  "checks": [
+    {
+      "path": "index.html",
+      "status": 200,
+      "sha256": "716ac8b6f9ca74c7d57b4c46562f17b9979eaae001b8488d8e41eb402bf084b7",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/builtin/workspace.js",
+      "status": 200,
+      "sha256": "5b40a21aa16813a134a311aa9a084d9ba344fbb4ee438c0047d7768fc56d7c18",
+      "matches": true
+    },
+    {
+      "path": "agents/index.json",
+      "status": 200,
+      "sha256": "aedb0233962c82e4650e2d68a19318e5bf96dbb3bb88f7c73cb00d482de0d4f2",
+      "matches": true
+    }
+  ],
+  "scope": "Hosted byte verification of bounded command model context; no fresh live browser, Safari/iPhone or Browser Linux acceptance."
+}

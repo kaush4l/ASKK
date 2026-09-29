@@ -1,5 +1,7 @@
 # Implementation status
 
+Latest publication: source **`c7d48d98`**, deployment **`20432e33`**, [successful Pages workflow](https://github.com/kaush4l/ASKK/actions/runs/36575570211). [Hosted evidence](evidence/output-projection-pages.json) confirms the page, workspace tool module and agent index match the tested export. Export: **879,662,727 bytes / 216 files**.
+
 ## Bounded command context and clean scaffold trials
 
 The workspace tool now projects long command output into a shared 6,000 retained UTF-16-unit head/tail budget with explicit omission metadata. Full receipts, raw events, exit identity and completion checks remain unchanged. The engine contains no task-specific or agent-specific branch. Compact native history receives the projected result; legacy mode and malformed receipts remain unchanged. This is a model-context bound, not a storage limit or exact token bound.
