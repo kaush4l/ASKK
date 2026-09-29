@@ -28,6 +28,7 @@ import { DEFAULT_POLICY, withAgentRules } from '../core/permissions.js'
 import { snapshot } from '../core/prompt.js'
 import { loadStrategy, startHubStrategy, strategyChildState } from './strategy-hub.js'
 import { openStore } from './store.js'
+import { AgentInstallations, installationDecision, installedModelAvailable } from './agent-installations.js'
 import { hasToolRequirement, normalizeToolPolicy, scopedToolDecision, toolSelected } from './tool-policy.js'
 
 const LIMITS = { depth: 3, outstanding: 3 }
@@ -167,6 +168,7 @@ export class Hub {
     this.disposed = false
     this.allThreads = new Set()
     this.externalOps = {}
+    this.packages = new AgentInstallations(this)
   }
 
   // ─── events ────────────────────────────────────────────────────────────────
@@ -319,6 +321,7 @@ export class Hub {
         }
       }),
     )
+    await this.packages.restore()
   }
 
   catalogue() {
@@ -326,7 +329,12 @@ export class Hub {
   }
 
   isResident(spec) {
+    if (spec.package) return spec.engine.session === 'agent'
     return spec.path === 'main' || Boolean(spec.engine.remembers) || spec.grants.some((grant) => WRITERS.has(grant))
+  }
+
+  policyFor(spec) {
+    return spec.package ? this.saved.policy ?? DEFAULT_POLICY : withAgentRules(this.saved.policy, spec.path, spec.permissions)
   }
 
   /** Start every resident thread; probe every other agent once so its tools and notes are known. */
@@ -346,7 +354,7 @@ export class Hub {
 
   /** Everything a worker needs to build its engine. */
   async initMessage(spec) {
-    const agents = [...spec.peers, ...spec.owned]
+    const agents = spec.package ? spec.delegates : [...spec.peers, ...spec.owned]
       .map((path) => this.specs.get(path))
       .filter(Boolean)
       .map((peer) => ({ path: peer.path, name: peer.name, description: peer.description }))
@@ -355,14 +363,14 @@ export class Hub {
       type: 'init',
       spec,
       catalogue: this.catalogue(),
-      policy: withAgentRules(this.saved.policy, spec.path, spec.permissions),
+      policy: this.policyFor(spec),
       host: this.hostInfo(),
       base: String(this.base),
       index: this.index,
       agents,
       learned: await this.learnedFor(spec),
       mcp: spec.grants.includes('mcp') ? this.mcpTools() : [],
-      compactor: heads.has('compactor') && !['compactor', 'dreamer'].includes(spec.path) ? 'compactor' : null,
+      compactor: !spec.package && heads.has('compactor') && !['compactor', 'dreamer'].includes(spec.path) ? 'compactor' : null,
     }
   }
 
@@ -390,7 +398,7 @@ export class Hub {
     const worker = new Worker(this.workerUrl, { type: 'module', name: spec.path })
     const thread = { key, path: spec.path, spec, worker, resident, busy: false, queue: [], run: null, stale: false }
     this.allThreads.add(thread)
-    let readied
+    let readied; let initialized = false
     thread.ready = new Promise((resolveReady) => (readied = resolveReady))
     const timer = setTimeout(() => {
       thread.dead = `sent no ready after ${READY_TIMEOUT / 1000}s`
@@ -400,11 +408,19 @@ export class Hub {
     }, READY_TIMEOUT)
     worker.onmessage = ({ data }) => {
       if (data.type === 'ready') {
+        initialized = true
         clearTimeout(timer)
         this.readyInfo.set(spec.path, data)
         this.publish({ type: 'ready', agent: spec.path, ...data })
         readied(thread)
         return
+      }
+      if (data.type === 'fatal' && !initialized) {
+        clearTimeout(timer)
+        thread.dead = String(data.message ?? 'The agent worker could not initialize')
+        this.readyInfo.set(spec.path, { error: thread.dead })
+        this.publish({ type: 'ready', agent: spec.path, error: thread.dead })
+        readied(thread)
       }
       this.onThreadMessage(thread, data)
     }
@@ -460,6 +476,7 @@ export class Hub {
       id,
       trace: up?.trace ?? id,
       agent: path,
+      package: spec?.package ? snapshot({ ...spec.package, specHash: spec.hash, modelAlias: spec.inference.model, toolGroups: spec.grants }) : null,
       parent,
       depth: up ? up.depth + 1 : 0,
       kind,
@@ -524,6 +541,7 @@ export class Hub {
   /** Resident agents queue; explicit fresh role invocations never read/write resident history. */
   startRun(path, query, options = {}) {
     const spec = this.specs.get(path)
+    if (spec?.package && !installedModelAvailable(this.catalogue(), spec.inference.model)) throw new Error(`The installed agent’s bound model profile is no longer configured: ${spec.inference.model}`)
     const run = this.createRun(path, query, options)
     const { id } = run
     if (!spec) {
@@ -792,7 +810,7 @@ export class Hub {
   }
 
   describe(run) {
-    return { id: run.id, trace: run.trace, taskId: run.taskId ?? run.id, resumedFrom: run.resumedFrom ?? null, resumeAttempt: run.resumeAttempt ?? 0, originalQuery: run.originalQuery ?? run.query, agent: run.agent, parent: run.parent, depth: run.depth, kind: run.kind, stageId: run.stageId ?? null, strategyDefinition: run.strategyDefinition ?? null, strategyDefinitionHash: run.strategyDefinitionHash ?? null, strategyState: run.strategyState ?? null, query: run.query, context: run.context, call: run.call, children: [...run.children], slot: run.slot, at: run.at }
+    return { id: run.id, trace: run.trace, taskId: run.taskId ?? run.id, resumedFrom: run.resumedFrom ?? null, resumeAttempt: run.resumeAttempt ?? 0, originalQuery: run.originalQuery ?? run.query, agent: run.agent, package: run.package ?? null, parent: run.parent, depth: run.depth, kind: run.kind, stageId: run.stageId ?? null, strategyDefinition: run.strategyDefinition ?? null, strategyDefinitionHash: run.strategyDefinitionHash ?? null, strategyState: run.strategyState ?? null, query: run.query, context: run.context, call: run.call, children: [...run.children], slot: run.slot, at: run.at }
   }
 
   // ─── what the page may send to a run ───────────────────────────────────────
@@ -862,6 +880,8 @@ export class Hub {
   ops = {
     async call({ agent, query, call, infrastructure }, run) {
       if (!run) throw new Error('no run is active on this thread')
+      const caller = this.specs.get(run.agent)
+      if (caller?.package && !caller.delegates.some(delegate => delegate.path === agent)) throw new Error('Installed agents may call only their declared package-local delegates.')
       const toolPolicy = normalizeToolPolicy(run.context?.toolPolicy)
       const internalCompaction = infrastructure === 'compaction' && agent === 'compactor' && call === 'compactor(history)'
       if (toolPolicy?.allowDelegation === false && !internalCompaction) throw new Error('delegation is disabled for this run')
@@ -908,21 +928,27 @@ export class Hub {
     },
 
     async 'memory.save'({ text, scope }, run) {
-      const entry = { agent: scope === 'shared' ? 'shared' : run.agent, text: String(text).trim(), source: run.kind === 'dream' ? 'dream' : run.id, at: Date.now() }
+      const shared = run.package ? `package-task:${run.package.installationId}:${run.trace}` : 'shared'
+      const entry = { agent: scope === 'shared' ? shared : run.agent, text: String(text).trim(), source: run.kind === 'dream' ? 'dream' : run.id, at: Date.now() }
       entry.id = await this.store.put('memory', entry)
       this.publish({ type: 'memory' })
-      return entry
+      return scope === 'shared' && run.package ? { ...entry, agent: 'shared' } : entry
     },
     async 'memory.list'(_, run) {
       const all = await this.store.all('memory')
-      return all.filter((entry) => entry.agent === 'shared' || entry.agent === run?.agent).sort((a, b) => b.at - a.at)
+      const shared = run?.package ? `package-task:${run.package.installationId}:${run.trace}` : 'shared'
+      return all.filter((entry) => entry.agent === shared || entry.agent === run?.agent).map(entry => run?.package && entry.agent === shared ? { ...entry, agent: 'shared' } : entry).sort((a, b) => b.at - a.at)
     },
     async 'memory.search'({ query }, run) {
       const words = String(query ?? '').toLowerCase().split(/\s+/).filter(Boolean)
       const all = await this.ops['memory.list'].call(this, {}, run)
       return all.filter((entry) => words.every((word) => entry.text.toLowerCase().includes(word)))
     },
-    async 'memory.forget'({ id }) {
+    async 'memory.forget'({ id }, run) {
+      if (run?.package) {
+        const entry = await this.store.get('memory', id)
+        if (!entry || ![run.agent, `package-task:${run.package.installationId}:${run.trace}`].includes(entry.agent)) throw new Error('Installed agents may forget only their own memories or this task’s shared memories.')
+      }
       await this.store.delete('memory', id)
       this.publish({ type: 'memory' })
       return true
@@ -945,7 +971,9 @@ export class Hub {
       return { conflict: Boolean(result.conflict), rev: result.rev }
     },
 
-    async 'skill.list'() {
+    async 'skill.list'(_, run) {
+      const installed = this.specs.get(run?.agent)
+      if (installed?.package) return (installed.packageSkills ?? []).map(({ name }) => ({ name, description: 'Package-local skill', source: 'package' }))
       const load = loader(this.base, this.index, this.fetch)
       const published = await Promise.all(
         Object.entries(skillFiles(this.index)).map(async ([name, file]) => {
@@ -957,7 +985,9 @@ export class Hub {
       const saved = (await this.savedSkills()).filter((skill) => !names.has(skill.name))
       return [...published, ...saved.map((skill) => ({ name: skill.name, description: `${skill.description} (saved by ${skill.by})`, source: 'saved' }))]
     },
-    async 'skill.load'({ name }) {
+    async 'skill.load'({ name }, run) {
+      const installed = this.specs.get(run?.agent)
+      if (installed?.package) return (installed.packageSkills ?? []).find(skill => skill.name === name) ?? null
       const file = skillFiles(this.index)[name]
       if (file) return { name, body: read(await loader(this.base, this.index, this.fetch)(file)).body }
       const saved = (await this.savedSkills()).find((skill) => skill.name === name)
@@ -965,6 +995,7 @@ export class Hub {
     },
     /** A skill an agent wrote. It lives in the page's files under skills/, never over a published one. */
     async 'skill.save'({ name, description = '', body = '' }, run) {
+      if (this.specs.get(run?.agent)?.package) throw new Error('Installed package skills are immutable; they cannot publish or overwrite global skills.')
       const slug = String(name ?? '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
       if (!slug) throw new Error('a skill needs a name')
       if (skillFiles(this.index)[slug]) throw new Error(`"${slug}" is a published skill in skills/; choose another name`)
@@ -983,6 +1014,7 @@ export class Hub {
       for (const live of this.runs.values()) if (live.ended) seen.set(live.id, { ...this.describe(live), turns: live.turns, result: live.result ?? '' })
       const hits = []
       for (const record of seen.values()) {
+        if (run?.package && record.agent !== run.agent) continue
         if (record.id === run?.id || record.trace === run?.trace) continue
         if (agent && record.agent !== agent) continue
         const parts = [record.query, record.result, ...(record.turns ?? []).map((turn) => turn.content)].map((part) => String(part ?? ''))
@@ -997,10 +1029,11 @@ export class Hub {
       }
       return hits.sort((a, b) => b.at - a.at).slice(0, Math.min(Number(limit) || 5, 20))
     },
-    async 'sessions.read'({ id }) {
+    async 'sessions.read'({ id }, run) {
       const live = this.runs.get(id)
       const record = live?.ended ? { ...this.describe(live), turns: live.turns, result: live.result } : await this.store.get('runs', String(id))
       if (!record) return null
+      if (run?.package && record.agent !== run.agent) throw new Error('Installed agents may read only their own prior sessions.')
       const steps = (record.turns ?? []).map((turn) => `### ${turn.role}\n${String(turn.content).slice(0, 2000)}`)
       return `run ${record.id} · ${record.agent} · ${new Date(record.at).toISOString()}\n\n## asked\n${record.query}\n\n${steps.join('\n\n')}\n\n## answer\n${record.result ?? ''}`.slice(0, 16000)
     },
@@ -1028,12 +1061,15 @@ export class Hub {
     },
 
     async 'schedule.add'({ agent, query, every_minutes, in_minutes }, run) {
+      if (run?.package) throw new Error('Scheduling is unavailable to installed packages until deferred run authority can be preserved.')
       return this.schedules.add({ agent, query, every: every_minutes, in: in_minutes, by: run?.agent ?? 'owner' })
     },
-    'schedule.list'() {
+    'schedule.list'(_, run) {
+      if (run?.package) throw new Error('Scheduling is unavailable to installed packages.')
       return this.schedules.list()
     },
-    'schedule.cancel'({ id }) {
+    'schedule.cancel'({ id }, run) {
+      if (run?.package) throw new Error('Scheduling is unavailable to installed packages.')
       return this.schedules.cancel(id)
     },
 
@@ -1215,7 +1251,7 @@ export class Hub {
       board.released = true
       this.publish({ type: 'board', trace: run.trace, entries: board.entries, released: true })
     }
-    if (run.kind === 'task' && this.saved.dreaming && this.specs.has('dreamer')) {
+    if (!run.package && run.kind === 'task' && this.saved.dreaming && this.specs.has('dreamer')) {
       clearTimeout(this.dreamTimer)
       this.dreamTimer = setTimeout(() => this.dream(run.trace), DREAM_AFTER)
     }
@@ -1451,10 +1487,11 @@ export class Hub {
     const catalogue = this.catalogue()
     const rows = [...this.specs.values()].map((spec) => {
       const info = this.readyInfo.get(spec.path) ?? {}
-      const model = resolve(spec.inference, catalogue)
-      const policy = withAgentRules(this.saved.policy ?? DEFAULT_POLICY, spec.path, spec.permissions)
+      const missingModel = spec.package && !installedModelAvailable(catalogue, spec.inference.model)
+      const model = missingModel ? { alias: spec.inference.model, model: '' } : resolve(spec.inference, catalogue)
+      const policy = this.policyFor(spec)
       const describe = item => {
-        const verdict = scopedToolDecision(item, {}, { policy, agent: spec.path, toolPolicy })
+        const verdict = installationDecision(item, {}, { policy, agent: spec.path, toolPolicy }, spec.package ? spec.permissions : null)
         const missing = (item.requires ?? []).filter(need => !hasToolRequirement(need, this.hostInfo()))
         // Old unavailable entries cannot become available until a fresh worker has
         // actually loaded them; revoked requirements take effect immediately.
@@ -1462,6 +1499,7 @@ export class Hub {
       }
       return {
         path: spec.path,
+        package: spec.package ?? null,
         name: spec.name,
         description: spec.description,
         model: model.model ?? '',
@@ -1490,12 +1528,12 @@ export class Hub {
         },
         permissions: spec.permissions,
         soulFrom: spec.soulFrom,
-        files: Object.keys(this.index.files).filter((file) => file.startsWith(`agents/${spec.path}/`) && !file.slice(`agents/${spec.path}/`.length).includes('/')),
+        files: spec.package ? Object.keys(spec.packageResources ?? {}) : Object.keys(this.index.files).filter((file) => file.startsWith(`agents/${spec.path}/`) && !file.slice(`agents/${spec.path}/`.length).includes('/')),
         tools: (info.tools ?? []).map(describe),
         shadowed: info.shadowed ?? [],
         unavailable: (info.unavailable ?? []).map(describe),
         notes: [...new Set([...(spec.notes ?? []), ...(info.notes ?? [])])],
-        error: info.error ?? '',
+        error: missingModel ? `Bound model profile is no longer configured: ${spec.inference.model}` : info.error ?? '',
         changed: this.changed.get(spec.path) ?? [],
         stale: [...this.threads.values()].some((thread) => thread.path === spec.path && thread.stale),
       }
@@ -1516,7 +1554,7 @@ export class Hub {
         result.added.push(path)
         continue
       }
-      if (agentHash(before, path) === agentHash(this.index, path)) continue
+      if (this.specs.get(path).package ? oldSpecs.get(path).hash === this.specs.get(path).hash : agentHash(before, path) === agentHash(this.index, path)) continue
       const prefix = `agents/${path}/`
       const files = [...new Set([...Object.keys(before.files), ...Object.keys(this.index.files)])]
         .filter((file) => (file.startsWith(prefix) && !file.slice(prefix.length).includes('/')) || file === 'agents/soul.md')
@@ -1573,7 +1611,7 @@ export class Hub {
 
   broadcastSettings() {
     for (const thread of this.allThreads) {
-      thread.worker.postMessage({ type: 'settings', catalogue: this.catalogue(), policy: withAgentRules(this.saved.policy, thread.path, thread.spec.permissions) })
+      thread.worker.postMessage({ type: 'settings', catalogue: this.catalogue(), policy: this.policyFor(thread.spec) })
     }
   }
 
