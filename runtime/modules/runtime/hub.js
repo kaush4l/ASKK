@@ -775,11 +775,11 @@ export class Hub {
       }
     }
     if (!['delta', 'reasoning', 'prompt', 'field'].includes(event.kind)) {
-      run.log.push({ at, kind: event.kind, name: event.name, value: String(event.value).slice(0, 4000), ms: event.ms, ok: event.ok, step: event.step, ...(event.attemptId ? { attemptId: event.attemptId } : {}), ...(event.kind === 'completion' ? { finishReason: event.finishReason } : {}) })
+      run.log.push({ at, kind: event.kind, name: event.name, value: String(event.value).slice(0, 4000), ms: event.ms, ok: event.ok, step: event.step, ...(event.attemptId ? { attemptId: event.attemptId } : {}), ...(['repair', 'rejected'].includes(event.kind) && Array.isArray(event.faults) ? { faults: snapshot(event.faults) } : {}), ...(event.kind === 'completion' ? { finishReason: event.finishReason } : {}) })
       if (run.log.length > 400) run.log.shift()
     }
     this.publish({ ...event, type: 'event', run: run.id, agent: run.agent, at })
-    if (['prompt', 'request', 'completion', 'call', 'observation', 'repair', 'retry'].includes(event.kind)) this.persist(run)
+    if (['prompt', 'request', 'completion', 'call', 'observation', 'repair', 'rejected', 'retry'].includes(event.kind)) this.persist(run)
   }
 
   end(run, text, ok, error = '', slot = null) {

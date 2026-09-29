@@ -1,4 +1,4 @@
-import { exampleToolInput } from './tool-input.js'
+import { exampleToolInput, providerToolInput } from './tool-input.js'
 /**
  * Structured replies in TOON (`field: value` blocks, cheap, streamable) or JSON (universal).
  *
@@ -185,7 +185,14 @@ export function responseModel(shape = ReAct, format = 'toon') {
       const object = properties => ({ type: 'object', properties, required: Object.keys(properties), additionalProperties: false })
       const done = object({ do: { const: 'done' }, act: { type: 'string', minLength: 1 } })
       if (finalOnly || !tools.length) return done
-      const call = object({ name: { type: 'string', enum: [...new Set(tools.map(tool => tool.name))] }, args: { type: 'object', additionalProperties: true } })
+      // Pair each name with its own local adapter contract. Provider-only schemas
+      // may contain root-relative references; do not relocate or reinterpret them.
+      const names = new Set()
+      const calls = tools.filter(tool => {
+        if (names.has(tool.name)) return false
+        names.add(tool.name); return true
+      }).map(tool => object({ name: { const: tool.name }, args: providerToolInput(tool.inputSchema) }))
+      const call = calls.length === 1 ? calls[0] : { anyOf: calls }
       const array = items => ({ type: 'array', minItems: 1, items })
       return { anyOf: [object({ do: { const: 'tool' }, act: shape.version === 3 ? call : array(array(call)) }), done] }
     },

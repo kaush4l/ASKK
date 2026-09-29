@@ -1,6 +1,25 @@
 /** A deliberately small declarative input contract. Trusted tool adapters own schemas;
  * neither model replies nor agent folders can install validators or executable code. */
 const plain = value => Boolean(value && typeof value === 'object' && !Array.isArray(value) && [Object.prototype, null].includes(Object.getPrototypeOf(value)))
+
+/** Copy the adapter's local contract for an optional provider constraint. Keep
+ * optional fields optional; make permissive object defaults explicit for converters. */
+export function providerToolInput(schema) {
+  if (!schema) return { type: 'object', additionalProperties: true }
+  const copy = structuredClone(schema)
+  const visit = node => {
+    const supported = ['type', 'description', 'enum', 'properties', 'required', 'additionalProperties', 'items', 'minLength', 'maxLength', 'minItems', 'maxItems']
+    for (const key of Object.keys(node)) if (!supported.includes(key)) throw new Error(`Local input schema keyword ${key} is not supported for provider constraints`)
+    if (node.additionalProperties !== undefined && typeof node.additionalProperties !== 'boolean') throw new Error('Local input schema additionalProperties must be boolean for provider constraints')
+    const types = Array.isArray(node.type) ? node.type : [node.type]
+    if (types.includes('object') && node.additionalProperties === undefined) node.additionalProperties = true
+    for (const child of Object.values(node.properties ?? {})) visit(child)
+    if (node.items) visit(node.items)
+  }
+  visit(copy)
+  return copy
+}
+
 export function validateToolInput(schema, value, path = 'args') {
   if (!schema) return [] // Legacy tools keep their adapter-level validation.
   const faults = []
