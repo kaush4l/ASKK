@@ -698,7 +698,11 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
         const record = await hub.runsApi?.get(row.id)
         const prompt = record?.prompts?.at(-1)
         if (!prompt?.snapshot?.messages) continue
-        latestPrompt = { messages: prompt.snapshot.messages, budget: prompt.snapshot.budget, attemptId: prompt.attemptId, step: prompt.step }; break
+        latestPrompt = { messages: prompt.snapshot.messages, budget: prompt.snapshot.budget, attemptId: prompt.attemptId, step: prompt.step }
+        for (const field of ['nativeTools', 'toolNames', 'responseProtocol', 'responseMode', 'responseSchema', 'historyFormat', 'layers']) {
+          if (prompt.snapshot[field] !== undefined) latestPrompt[field] = prompt.snapshot[field]
+        }
+        break
       }
       return snapshot({ path, name: definition.name, description: definition.description, package: spec?.package ?? definition.package ?? null,
         soul: spec?.soul ?? composition.soul ?? '', instructions: spec?.body ?? composition.instructions ?? '',
