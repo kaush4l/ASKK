@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "recordedAt": "2026-09-29T05:22:38Z",
+  "source": "d27b2cc",
+  "deployment": "58299fde5620c4b162a974b70c94449146c4f0cb",
+  "artifactHash": "bd241e0ccae37b5df5359bf32752313d971edc1a6c2b8cadfd4c7bba680a8b3c",
+  "url": "https://kaush4l.github.io/ASKK/",
+  "browser": "Safari 27.2 (22625.2.5.11.1)",
+  "method": "Native macOS Safari UI automation and accessibility observations on the existing Pages tab. This receipt summarizes observed UI states; it is not a raw provider or database export.",
+  "package": {
+    "sourceFolder": "examples/pond-team",
+    "packageId": "examples.pond-team",
+    "packageVersion": "1.0.0",
+    "revisionDigest": "sha256:8a7d60018aa07147c33f20ae4076c6349ddb0a40854c8778acac50dff796bffa",
+    "installationId": "958894ef-f5ba-447d-93ea-35a0f5bf2362",
+    "authoredAgentCount": 2,
+    "selectedLead": "pond_observer",
+    "selectedLeadDisplayName": "Pond observer",
+    "agentPath": "installed/958894ef-f5ba-447d-93ea-35a0f5bf2362/pond_observer",
+    "modelBinding": { "$default": "workbench" },
+    "grantedToolGroups": ["todo"],
+    "nativeFolderPicker": "Selected the example folder and confirmed the three source files. Review displayed two roles and four files including the generated inventory.",
+    "installed": true
+  },
+  "model": {
+    "name": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+    "transport": "Through HTTPS companion",
+    "capabilities": ["model-relay"],
+    "existingCertificateTrustUnchanged": true
+  },
+  "task": {
+    "intent": "Read the current task plan with todo_read and report whether it is empty without writing a plan.",
+    "inputLimitation": "Native text entry was used. The pre-submit accessibility value exposed the main request but ended with 'Do not write '. The exact submitted prompt bytes were not exported, so this receipt does not claim the complete intended wording was sent.",
+    "agentState": "Completed",
+    "answer": "Yes, the current task plan is empty.",
+    "action": "Read task plan",
+    "actionState": "Completed",
+    "actionAgentPath": "installed/958894ef-f5ba-447d-93ea-35a0f5bf2362/pond_observer",
+    "inspection": "Opened Inspect action, expanded the recorded action, and read RECORDED RESULT.",
+    "recordedResult": "the plan is empty"
+  },
+  "execution": {
+    "selectedTarget": "Browser Linux",
+    "visibleState": "Not started",
+    "nativeExecutionGranted": false,
+    "commandOrGuestStartedByThisCheck": false
+  },
+  "reload": {
+    "method": "Normal Command-R reload without clearing caches or storage",
+    "leadRestored": "Pond observer",
+    "answerRestored": "Yes, the current task plan is empty.",
+    "completedActionRestored": true,
+    "draftBeforeAndAfter": "",
+    "visibleTaskReplayObserved": false,
+    "startTaskDisabledWithEmptyDraft": true,
+    "browserLinuxRemainedNotStarted": true
+  },
+  "evidenceExportLimitation": {
+    "action": "After reload, opened Workspace, the bottom Output panel, and Export run evidence.",
+    "result": "Start a task to record model requests and execution receipts",
+    "downloadProduced": false,
+    "interpretation": "The completed dashboard state restores, but the Output export action did not resolve that restored run. No raw Safari provider trace is claimed."
+  },
+  "cleanup": {
+    "temporaryOutputPanelClosed": true,
+    "askkReturnedToDashboard": true,
+    "previousUserTabReselected": true,
+    "userTabsNotClosed": true,
+    "publicScreenshot": "None. A native whole-window capture includes unrelated user tabs and was retained only in ignored local cache."
+  },
+  "limitations": [
+    "This is one tool loop with a non-root role selected as lead, not a Safari delegation test or one-shot quality measure.",
+    "Browser Linux boot, Next builds, artifacts, VoiceOver, mobile Safari, and software-keyboard behavior were not tested.",
+    "Exact provider requests, run identifiers, timing, and stored event counts were not exported from Safari.",
+    "Hosted Chrome separately verifies the published asset hashes; this Safari check does not independently hash delivered bytes."
+  ]
+}

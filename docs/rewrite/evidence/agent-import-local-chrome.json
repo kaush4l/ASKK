@@ -1,0 +1,523 @@
+{
+  "version": 1,
+  "scope": "Local static export: native folder picker, nested lead, real model, approval, todo_read and reload",
+  "initialExportArtifactHash": "5a166f3405f89dd81fa8ce1232dd5e112c3534fdfe08c840e90820a8b82cb9d6",
+  "reloadExportArtifactHash": "bd241e0ccae37b5df5359bf32752313d971edc1a6c2b8cadfd4c7bba680a8b3c",
+  "notes": [
+    "Only dashboard lead-label text changed between run and reload builds.",
+    "Native folder picker used without enabling extension file-URL access.",
+    "Local Bun was previously selected, but no command runtime started; this is a browser worker and direct model proof."
+  ],
+  "approval": "Your decision is needed\n1 pending\nTodo read\nRead\n\ninstalled/73915cf4-b868-4875-9d35-05ddc5dff0a1/pond_observer \u00b7 this run requires approval for read tools\n\nReview exact input\nDeny\nApprove once",
+  "browser": {
+    "at": "2026-09-29T05:00:43.129Z",
+    "guestFrames": 0,
+    "installations": [
+      {
+        "bindings": {
+          "models": {
+            "$default": "workbench"
+          },
+          "tools": [
+            "todo"
+          ]
+        },
+        "createdAt": 1790657939648,
+        "id": "73915cf4-b868-4875-9d35-05ddc5dff0a1",
+        "leadAgentId": "pond_observer",
+        "packageId": "examples.pond-team",
+        "revisionDigest": "sha256:8a7d60018aa07147c33f20ae4076c6349ddb0a40854c8778acac50dff796bffa",
+        "sourcePaths": [
+          "agent.md",
+          "askk.lock.json",
+          "observer/agent.md",
+          "soul.md"
+        ],
+        "version": 1
+      }
+    ],
+    "isolation": true,
+    "runs": [
+      {
+        "agent": "installed/73915cf4-b868-4875-9d35-05ddc5dff0a1/pond_observer",
+        "at": 1790657979192,
+        "call": "",
+        "children": [],
+        "completions": [
+          {
+            "at": 1790657982917,
+            "attemptId": "de477017-82e4-49c1-b77b-c8f3fa7beebe:1:1",
+            "diagnostics": {
+              "contentChars": 54,
+              "reasoningChars": 0
+            },
+            "finishReason": "stop",
+            "kind": "completion",
+            "name": "",
+            "requestIndex": 0,
+            "type": "event",
+            "usage": {
+              "completion_tokens": 20,
+              "generation_duration": 1.31,
+              "generation_tokens_per_second": 15.3,
+              "input_tokens": 393,
+              "output_tokens": 20,
+              "prompt_eval_duration": 2.37,
+              "prompt_tokens": 393,
+              "prompt_tokens_details": {
+                "cached_tokens": 0
+              },
+              "prompt_tokens_per_second": 165.92,
+              "time_to_first_token": 2.37,
+              "time_to_first_visible_token": 2.43,
+              "total_time": 3.68,
+              "total_tokens": 413
+            },
+            "value": ""
+          },
+          {
+            "at": 1790658019160,
+            "attemptId": "de477017-82e4-49c1-b77b-c8f3fa7beebe:2:1",
+            "diagnostics": {
+              "contentChars": 40,
+              "reasoningChars": 0
+            },
+            "finishReason": "stop",
+            "kind": "completion",
+            "name": "",
+            "requestIndex": 1,
+            "type": "event",
+            "usage": {
+              "completion_tokens": 13,
+              "generation_duration": 0.79,
+              "generation_tokens_per_second": 16.37,
+              "input_tokens": 428,
+              "output_tokens": 13,
+              "prompt_eval_duration": 2.46,
+              "prompt_tokens": 428,
+              "prompt_tokens_details": {
+                "cached_tokens": 0
+              },
+              "prompt_tokens_per_second": 174.09,
+              "time_to_first_token": 2.46,
+              "time_to_first_visible_token": 2.51,
+              "total_time": 3.25,
+              "total_tokens": 441
+            },
+            "value": ""
+          }
+        ],
+        "context": {
+          "savedGoal": {
+            "revision": 1,
+            "text": "Build Daylight as an accessible task board with add, edit, delete, completion, filters, and durable preview persistence. Verify the delivered revision."
+          },
+          "toolPolicy": {
+            "allowDelegation": true,
+            "approvalRisks": [
+              "read"
+            ],
+            "disabledTools": []
+          },
+          "workflow": {
+            "agent": "installed/73915cf4-b868-4875-9d35-05ddc5dff0a1/pond_observer",
+            "description": "Checks the current task plan without a command environment.",
+            "disabled": false,
+            "id": "package-73915cf4-b868-4875-9d35-05ddc5dff0a1",
+            "label": "Pond observer",
+            "leadModel": "workbench",
+            "modelBindings": {
+              "$default": "workbench"
+            },
+            "package": {
+              "agentId": "pond_observer",
+              "installationId": "73915cf4-b868-4875-9d35-05ddc5dff0a1",
+              "packageId": "examples.pond-team",
+              "revisionDigest": "sha256:8a7d60018aa07147c33f20ae4076c6349ddb0a40854c8778acac50dff796bffa"
+            },
+            "unavailableReason": "",
+            "workspace": false
+          }
+        },
+        "depth": 0,
+        "id": "rmum7izi01",
+        "kind": "task",
+        "log": [
+          {
+            "at": 1790657979232,
+            "attemptId": "de477017-82e4-49c1-b77b-c8f3fa7beebe:1:1",
+            "kind": "request",
+            "name": "",
+            "value": ""
+          },
+          {
+            "at": 1790657982917,
+            "attemptId": "de477017-82e4-49c1-b77b-c8f3fa7beebe:1:1",
+            "finishReason": "stop",
+            "kind": "completion",
+            "name": "",
+            "value": ""
+          },
+          {
+            "at": 1790657982930,
+            "kind": "call",
+            "name": "todo_read",
+            "value": "todo_read({})"
+          },
+          {
+            "at": 1790657982931,
+            "kind": "approval",
+            "name": "todo_read",
+            "value": "todo_read({})"
+          },
+          {
+            "at": 1790658015896,
+            "kind": "approved",
+            "name": "todo_read",
+            "value": "approved"
+          },
+          {
+            "at": 1790658015897,
+            "kind": "observation",
+            "ms": 32976,
+            "name": "todo_read({})",
+            "ok": true,
+            "value": "the plan is empty"
+          },
+          {
+            "at": 1790658015897,
+            "attemptId": "de477017-82e4-49c1-b77b-c8f3fa7beebe:2:1",
+            "kind": "request",
+            "name": "",
+            "value": ""
+          },
+          {
+            "at": 1790658019160,
+            "attemptId": "de477017-82e4-49c1-b77b-c8f3fa7beebe:2:1",
+            "finishReason": "stop",
+            "kind": "completion",
+            "name": "",
+            "value": ""
+          },
+          {
+            "at": 1790658019161,
+            "kind": "answer",
+            "name": "",
+            "value": "The plan is empty."
+          }
+        ],
+        "originalQuery": "Read the current task plan with todo_read, then tell me whether it is empty. Do not write a plan or invoke other tools.",
+        "package": {
+          "agentId": "pond_observer",
+          "installationId": "73915cf4-b868-4875-9d35-05ddc5dff0a1",
+          "modelAlias": "workbench",
+          "packageId": "examples.pond-team",
+          "packageVersion": "1.0.0",
+          "revisionDigest": "sha256:8a7d60018aa07147c33f20ae4076c6349ddb0a40854c8778acac50dff796bffa",
+          "specHash": "sha256:51b0547ba163ee488600d8edb58c17484bb270865533bc6d60717e985700fcee",
+          "toolGroups": [
+            "todo"
+          ]
+        },
+        "parent": null,
+        "prompts": [
+          {
+            "attempt": 1,
+            "attemptId": "de477017-82e4-49c1-b77b-c8f3fa7beebe:1:1",
+            "sheet": "Check the specific question you are given. If asked about the current plan, call\ntodo_read, then answer briefly using its actual result. Do not invent task items\nor claim a check happened without a tool result. You can also be selected as the\nlead agent directly; no other agent is required for a plan check.\n\n\n\n\n## TOOLS\n\n- todo_read(): Read the current plan for this task.\n- todo_write(items: [{text, status}]): Write the whole plan for this task as a list, replacing the last one. Each item: {text, status}; status is todo, doing, done or dropped. Keep exactly one item doing while you work.\n\n## CONTEXT\n\nThis is step 1 of 6. The full request is estimated at 412 input tokens plus 1024 reserved output tokens of a 32768 token window.\n\n## CONVERSATION\n\nuser: Read the current task plan with todo_read, then tell me whether it is empty. Do not write a plan or invoke other tools.\n\n## RESPONSE FORMAT\n\nContract version 2. Reply with a single JSON object, no markdown fences, with these fields:\n\n- do (text): exactly 'tool' to run tools, or 'done' to reply \u2014 never a tool name, tool names belong in act\n- act (stages or text): With do=\"tool\", a non-empty array of stages; each stage is an array of {\"name\":\"tool_name\",\"args\":{}} calls. Calls within a stage run together; stages run in order. With do=\"done\", a non-empty final answer string.\n\nTool example: {\"do\":\"tool\",\"act\":[[{\"name\":\"todo_read\",\"args\":{}}]]}\nFinal example: {\"do\":\"done\",\"act\":\"The verified result.\"}",
+            "snapshot": {
+              "attempt": 1,
+              "attemptId": "de477017-82e4-49c1-b77b-c8f3fa7beebe:1:1",
+              "budget": {
+                "estimated": true,
+                "inputTokens": 412,
+                "outputReserve": 1024,
+                "total": 1436,
+                "window": 32768
+              },
+              "contractVersion": 2,
+              "messages": [
+                {
+                  "content": "Check the specific question you are given. If asked about the current plan, call\ntodo_read, then answer briefly using its actual result. Do not invent task items\nor claim a check happened without a tool result. You can also be selected as the\nlead agent directly; no other agent is required for a plan check.\n\n\n\n\n## TOOLS\n\n- todo_read(): Read the current plan for this task.\n- todo_write(items: [{text, status}]): Write the whole plan for this task as a list, replacing the last one. Each item: {text, status}; status is todo, doing, done or dropped. Keep exactly one item doing while you work.",
+                  "role": "system"
+                },
+                {
+                  "content": "## CONTEXT\n\nThis is step 1 of 6. The full request is estimated at 412 input tokens plus 1024 reserved output tokens of a 32768 token window.\n\n## CONVERSATION\n\nuser: Read the current task plan with todo_read, then tell me whether it is empty. Do not write a plan or invoke other tools.\n\n## RESPONSE FORMAT\n\nContract version 2. Reply with a single JSON object, no markdown fences, with these fields:\n\n- do (text): exactly 'tool' to run tools, or 'done' to reply \u2014 never a tool name, tool names belong in act\n- act (stages or text): With do=\"tool\", a non-empty array of stages; each stage is an array of {\"name\":\"tool_name\",\"args\":{}} calls. Calls within a stage run together; stages run in order. With do=\"done\", a non-empty final answer string.\n\nTool example: {\"do\":\"tool\",\"act\":[[{\"name\":\"todo_read\",\"args\":{}}]]}\nFinal example: {\"do\":\"done\",\"act\":\"The verified result.\"}",
+                  "role": "user"
+                }
+              ],
+              "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+              "observationFormat": "legacy",
+              "step": 1
+            },
+            "step": 1,
+            "tokens": 412
+          },
+          {
+            "attempt": 1,
+            "attemptId": "de477017-82e4-49c1-b77b-c8f3fa7beebe:2:1",
+            "sheet": "Check the specific question you are given. If asked about the current plan, call\ntodo_read, then answer briefly using its actual result. Do not invent task items\nor claim a check happened without a tool result. You can also be selected as the\nlead agent directly; no other agent is required for a plan check.\n\n\n\n\n## TOOLS\n\n- todo_read(): Read the current plan for this task.\n- todo_write(items: [{text, status}]): Write the whole plan for this task as a list, replacing the last one. Each item: {text, status}; status is todo, doing, done or dropped. Keep exactly one item doing while you work.\n\n## CONTEXT\n\nThis is step 2 of 6. The full request is estimated at 445 input tokens plus 1024 reserved output tokens of a 32768 token window.\n\n## CONVERSATION\n\nuser: Read the current task plan with todo_read, then tell me whether it is empty. Do not write a plan or invoke other tools.\n\nassistant: {\"do\":\"tool\",\"act\":[[{\"name\":\"todo_read\",\"args\":{}}]]}\n\nobservation: todo_read({}) -> the plan is empty\n\n## RESPONSE FORMAT\n\nContract version 2. Reply with a single JSON object, no markdown fences, with these fields:\n\n- do (text): exactly 'tool' to run tools, or 'done' to reply \u2014 never a tool name, tool names belong in act\n- act (stages or text): With do=\"tool\", a non-empty array of stages; each stage is an array of {\"name\":\"tool_name\",\"args\":{}} calls. Calls within a stage run together; stages run in order. With do=\"done\", a non-empty final answer string.\n\nTool example: {\"do\":\"tool\",\"act\":[[{\"name\":\"todo_read\",\"args\":{}}]]}\nFinal example: {\"do\":\"done\",\"act\":\"The verified result.\"}",
+            "snapshot": {
+              "attempt": 1,
+              "attemptId": "de477017-82e4-49c1-b77b-c8f3fa7beebe:2:1",
+              "budget": {
+                "estimated": true,
+                "inputTokens": 445,
+                "outputReserve": 1024,
+                "total": 1469,
+                "window": 32768
+              },
+              "contractVersion": 2,
+              "messages": [
+                {
+                  "content": "Check the specific question you are given. If asked about the current plan, call\ntodo_read, then answer briefly using its actual result. Do not invent task items\nor claim a check happened without a tool result. You can also be selected as the\nlead agent directly; no other agent is required for a plan check.\n\n\n\n\n## TOOLS\n\n- todo_read(): Read the current plan for this task.\n- todo_write(items: [{text, status}]): Write the whole plan for this task as a list, replacing the last one. Each item: {text, status}; status is todo, doing, done or dropped. Keep exactly one item doing while you work.",
+                  "role": "system"
+                },
+                {
+                  "content": "## CONTEXT\n\nThis is step 2 of 6. The full request is estimated at 445 input tokens plus 1024 reserved output tokens of a 32768 token window.\n\n## CONVERSATION\n\nuser: Read the current task plan with todo_read, then tell me whether it is empty. Do not write a plan or invoke other tools.\n\nassistant: {\"do\":\"tool\",\"act\":[[{\"name\":\"todo_read\",\"args\":{}}]]}\n\nobservation: todo_read({}) -> the plan is empty\n\n## RESPONSE FORMAT\n\nContract version 2. Reply with a single JSON object, no markdown fences, with these fields:\n\n- do (text): exactly 'tool' to run tools, or 'done' to reply \u2014 never a tool name, tool names belong in act\n- act (stages or text): With do=\"tool\", a non-empty array of stages; each stage is an array of {\"name\":\"tool_name\",\"args\":{}} calls. Calls within a stage run together; stages run in order. With do=\"done\", a non-empty final answer string.\n\nTool example: {\"do\":\"tool\",\"act\":[[{\"name\":\"todo_read\",\"args\":{}}]]}\nFinal example: {\"do\":\"done\",\"act\":\"The verified result.\"}",
+                  "role": "user"
+                }
+              ],
+              "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+              "observationFormat": "legacy",
+              "step": 2
+            },
+            "step": 2,
+            "tokens": 445
+          }
+        ],
+        "query": "Read the current task plan with todo_read, then tell me whether it is empty. Do not write a plan or invoke other tools.",
+        "requests": [
+          {
+            "at": 1790657979232,
+            "attemptId": "de477017-82e4-49c1-b77b-c8f3fa7beebe:1:1",
+            "kind": "request",
+            "name": "",
+            "request": {
+              "body": {
+                "chat_template_kwargs": {
+                  "enable_thinking": false
+                },
+                "max_tokens": 1024,
+                "messages": [
+                  {
+                    "content": "Check the specific question you are given. If asked about the current plan, call\ntodo_read, then answer briefly using its actual result. Do not invent task items\nor claim a check happened without a tool result. You can also be selected as the\nlead agent directly; no other agent is required for a plan check.\n\n\n\n\n## TOOLS\n\n- todo_read(): Read the current plan for this task.\n- todo_write(items: [{text, status}]): Write the whole plan for this task as a list, replacing the last one. Each item: {text, status}; status is todo, doing, done or dropped. Keep exactly one item doing while you work.",
+                    "role": "system"
+                  },
+                  {
+                    "content": "## CONTEXT\n\nThis is step 1 of 6. The full request is estimated at 412 input tokens plus 1024 reserved output tokens of a 32768 token window.\n\n## CONVERSATION\n\nuser: Read the current task plan with todo_read, then tell me whether it is empty. Do not write a plan or invoke other tools.\n\n## RESPONSE FORMAT\n\nContract version 2. Reply with a single JSON object, no markdown fences, with these fields:\n\n- do (text): exactly 'tool' to run tools, or 'done' to reply \u2014 never a tool name, tool names belong in act\n- act (stages or text): With do=\"tool\", a non-empty array of stages; each stage is an array of {\"name\":\"tool_name\",\"args\":{}} calls. Calls within a stage run together; stages run in order. With do=\"done\", a non-empty final answer string.\n\nTool example: {\"do\":\"tool\",\"act\":[[{\"name\":\"todo_read\",\"args\":{}}]]}\nFinal example: {\"do\":\"done\",\"act\":\"The verified result.\"}",
+                    "role": "user"
+                  }
+                ],
+                "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+                "stream": true,
+                "stream_options": {
+                  "include_usage": true
+                },
+                "temperature": 0
+              },
+              "headers": {
+                "content-type": "application/json"
+              },
+              "method": "POST",
+              "provider": "openai",
+              "transportAttempt": 1,
+              "url": "http://127.0.0.1:8873/v1/chat/completions"
+            },
+            "type": "event",
+            "value": ""
+          },
+          {
+            "at": 1790658015897,
+            "attemptId": "de477017-82e4-49c1-b77b-c8f3fa7beebe:2:1",
+            "kind": "request",
+            "name": "",
+            "request": {
+              "body": {
+                "chat_template_kwargs": {
+                  "enable_thinking": false
+                },
+                "max_tokens": 1024,
+                "messages": [
+                  {
+                    "content": "Check the specific question you are given. If asked about the current plan, call\ntodo_read, then answer briefly using its actual result. Do not invent task items\nor claim a check happened without a tool result. You can also be selected as the\nlead agent directly; no other agent is required for a plan check.\n\n\n\n\n## TOOLS\n\n- todo_read(): Read the current plan for this task.\n- todo_write(items: [{text, status}]): Write the whole plan for this task as a list, replacing the last one. Each item: {text, status}; status is todo, doing, done or dropped. Keep exactly one item doing while you work.",
+                    "role": "system"
+                  },
+                  {
+                    "content": "## CONTEXT\n\nThis is step 2 of 6. The full request is estimated at 445 input tokens plus 1024 reserved output tokens of a 32768 token window.\n\n## CONVERSATION\n\nuser: Read the current task plan with todo_read, then tell me whether it is empty. Do not write a plan or invoke other tools.\n\nassistant: {\"do\":\"tool\",\"act\":[[{\"name\":\"todo_read\",\"args\":{}}]]}\n\nobservation: todo_read({}) -> the plan is empty\n\n## RESPONSE FORMAT\n\nContract version 2. Reply with a single JSON object, no markdown fences, with these fields:\n\n- do (text): exactly 'tool' to run tools, or 'done' to reply \u2014 never a tool name, tool names belong in act\n- act (stages or text): With do=\"tool\", a non-empty array of stages; each stage is an array of {\"name\":\"tool_name\",\"args\":{}} calls. Calls within a stage run together; stages run in order. With do=\"done\", a non-empty final answer string.\n\nTool example: {\"do\":\"tool\",\"act\":[[{\"name\":\"todo_read\",\"args\":{}}]]}\nFinal example: {\"do\":\"done\",\"act\":\"The verified result.\"}",
+                    "role": "user"
+                  }
+                ],
+                "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+                "stream": true,
+                "stream_options": {
+                  "include_usage": true
+                },
+                "temperature": 0
+              },
+              "headers": {
+                "content-type": "application/json"
+              },
+              "method": "POST",
+              "provider": "openai",
+              "transportAttempt": 1,
+              "url": "http://127.0.0.1:8873/v1/chat/completions"
+            },
+            "type": "event",
+            "value": ""
+          }
+        ],
+        "result": "The plan is empty.",
+        "resumeAttempt": 0,
+        "resumedFrom": null,
+        "slot": {
+          "agent": "installed/73915cf4-b868-4875-9d35-05ddc5dff0a1/pond_observer",
+          "attempts": 2,
+          "calls": 1,
+          "current": "",
+          "depth": 0,
+          "error": "",
+          "goal": "Read the current task plan with todo_read, then tell me whether it is empty. Do not write a plan or invoke other tools.",
+          "inputTokens": 445,
+          "maxSteps": 6,
+          "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+          "outputReserve": 1024,
+          "parent": null,
+          "repeats": 0,
+          "run": "rmum7izi01",
+          "seconds": 39.9,
+          "startedAt": 1790657979192,
+          "status": "done",
+          "steps": 2,
+          "terminationReason": "completed",
+          "trace": "rmum7izi01"
+        },
+        "spans": [
+          {
+            "kind": "step",
+            "ms": 3698,
+            "start": 1790657979232,
+            "step": 1,
+            "tokens": 412
+          },
+          {
+            "kind": "approval",
+            "ms": 32965,
+            "name": "todo_read({})",
+            "ok": true,
+            "start": 1790657982931
+          },
+          {
+            "kind": "call",
+            "ms": 32976,
+            "name": "todo_read({})",
+            "ok": true,
+            "start": 1790657982921
+          },
+          {
+            "kind": "step",
+            "ms": 3265,
+            "start": 1790658015897,
+            "step": 2,
+            "tokens": 445
+          }
+        ],
+        "stageId": null,
+        "strategyDefinition": null,
+        "strategyDefinitionHash": null,
+        "strategyState": null,
+        "taskId": "rmum7izi01",
+        "todo": [],
+        "toolEventCount": 2,
+        "toolEventStorage": "separate-v1",
+        "trace": "rmum7izi01",
+        "turns": [
+          {
+            "at": 1790657979227,
+            "content": "Read the current task plan with todo_read, then tell me whether it is empty. Do not write a plan or invoke other tools.",
+            "role": "user"
+          },
+          {
+            "at": 1790657982918,
+            "content": "{\"do\":\"tool\",\"act\":[[{\"name\":\"todo_read\",\"args\":{}}]]}",
+            "role": "assistant"
+          },
+          {
+            "at": 1790658015896,
+            "content": "todo_read({}) -> the plan is empty",
+            "role": "observation"
+          },
+          {
+            "at": 1790658019160,
+            "content": "{\"do\":\"done\",\"act\":\"The plan is empty.\"}",
+            "role": "assistant"
+          }
+        ],
+        "toolEvents": [
+          {
+            "args": {},
+            "at": 1790657982930,
+            "callId": "de477017-82e4-49c1-b77b-c8f3fa7beebe:1:1:call:1",
+            "kind": "call",
+            "name": "todo_read",
+            "sequence": 1,
+            "type": "event",
+            "value": "todo_read({})"
+          },
+          {
+            "at": 1790658015897,
+            "callId": "de477017-82e4-49c1-b77b-c8f3fa7beebe:1:1:call:1",
+            "kind": "observation",
+            "ms": 32976,
+            "name": "todo_read({})",
+            "ok": true,
+            "sequence": 2,
+            "type": "event",
+            "value": "the plan is empty"
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:5193/ASKK/",
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36"
+  },
+  "reload": {
+    "assets": [
+      "http://127.0.0.1:5193/ASKK/_next/static/chunks/app/page-59e492f8b1b82a26.js"
+    ],
+    "at": "2026-09-29T05:02:06.339Z",
+    "draft": "Draft kept while the parallel roles work.",
+    "guestFrames": 0,
+    "isolation": true,
+    "runs": [
+      {
+        "agent": "installed/73915cf4-b868-4875-9d35-05ddc5dff0a1/pond_observer",
+        "id": "rmum7izi01",
+        "status": "done"
+      }
+    ],
+    "selected": [
+      "Pond observer\nChecks the current task plan without a command environment."
+    ]
+  },
+  "source": "d27b2cc",
+  "responsive": {
+    "390x844": {
+      "documentWidth": 390,
+      "dialogWidth": 374,
+      "dialogLeft": 8
+    },
+    "320x400": {
+      "documentWidth": 320,
+      "dialogWidth": 304,
+      "dialogHeight": 360,
+      "dialogTop": 20
+    },
+    "escape": {
+      "openDialogs": 0,
+      "focus": "Import agent",
+      "draftPreserved": true
+    },
+    "limits": "Chrome emulation of the import dialog; not mobile Safari, software keyboard or VoiceOver acceptance."
+  }
+}
