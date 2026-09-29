@@ -1,0 +1,84 @@
+{
+  "source": "f999e271",
+  "deployment": "cc3f2fb73e366d02b9baf750e94279116b8afe57",
+  "workflow": "https://github.com/kaush4l/ASKK/actions/runs/36568678195",
+  "workflowConclusion": "success",
+  "checks": [
+    {
+      "path": "index.html",
+      "status": 200,
+      "sha256": "a3e0d89866950a1bc186111d1eb03a463f3906e57213bd2ef72a578a5cd402d8",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/core/native-protocol.js",
+      "status": 200,
+      "sha256": "0757c0db6e555b7aa00ec4b237e9b177867ddb820bb90d75040370550183fe45",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/core/native-tools.js",
+      "status": 200,
+      "sha256": "5584cf07a64e9f30e95421e57100998c8634b15483b44585a132d9a912375780",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/core/engine.js",
+      "status": 200,
+      "sha256": "6667fd6c43d248f8aa5fac8ff9a604b81c8f886c9e97e6b262c1af843800c803",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/core/inference.js",
+      "status": 200,
+      "sha256": "779afe11d9bcf71402d0b7579d1ca09b995325ff3c4f222f04f571e1a0817495",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/core/agent-prompt.js",
+      "status": 200,
+      "sha256": "88125a125058a0df18764bded3e01b774f7f5452b50905d6b40b433a644ab4d4",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/runtime/agent.worker.js",
+      "status": 200,
+      "sha256": "2f8548bf000fc637be007479702173e7ecc9e74c39febcbf76f0e62d38fbc0c3",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/runtime/model-broker.js",
+      "status": 200,
+      "sha256": "77e9107d87e9bdeb8bbf302489c2a98b2961cd473837f721d8a83c44d13859b3",
+      "matches": true
+    },
+    {
+      "path": "_next/static/chunks/app/page-9c1f99de5a61f57b.js",
+      "status": 200,
+      "sha256": "02340d47fd4d62ad667809e364dbf3f9bdf45be3996791d3fba1e0232e4b7fc3",
+      "matches": true
+    }
+  ],
+  "scope": "HTTP asset verification only. Native provider function calls are agent-folder opt-in; defaults unchanged. Production-worker deterministic fixture creates/runs a real host script with independent checks. Three actual Qwen3 trials: script passed independent checks; scaffold and repair failed. No new live browser interaction, hosted inference, Safari/iPhone or Browser Linux acceptance.",
+  "tests": {
+    "passed": 931,
+    "skipped": 1,
+    "failed": 0,
+    "assertions": 6933,
+    "files": 93,
+    "finalAffectedTests": {
+      "passed": 10,
+      "failed": 0,
+      "assertions": 44,
+      "files": 1
+    }
+  },
+  "export": {
+    "version": 1,
+    "basePath": "/ASKK",
+    "totalBytes": 854240080,
+    "fileCount": 213,
+    "runtimeId": "c2w-node24-38d093f4a38002db",
+    "artifactHash": "520ce65262b558b06d71183bc8a287e9ee6318ac8c1fd2e07ceccf050cc46797"
+  }
+}
