@@ -104,6 +104,46 @@ test('explicit native transfer builds with Bun without a login shell replacing i
   expect(controller.getSnapshot().runtime.target).toBe('local')
 })
 
+test('page restoration disables new admissions and flushes current history without starting an executor', async () => {
+  let executions = 0
+  const { controller, hub, files } = await startedFixture({ workbenchConfig: { workflows: [{ id: 'general', label: 'General', description: '', agent: 'assistant', workspace: false }] }, createExecution: async () => { executions++; throw new Error('No execution during restoration') } })
+  await controller.sendGoal('Keep this exact owner message')
+  const messages = controller.getSnapshot().messages
+  hub.emit({ type: 'stopped', why: 'the tab closed' })
+  hub.emit({ type: 'page-lifecycle', status: 'restoring' })
+  expect(controller.getSnapshot().ready).toBe(false)
+  await expect(controller.sendGoal('Do not replay or append')).rejects.toThrow('page has stopped')
+  await expect(controller.runCommand('no command')).rejects.toThrow('page has stopped')
+  await expect(controller.createFile('unwanted.txt', 'no')).rejects.toThrow('page has stopped')
+  await expect(controller.openTerminal({ cols: 80, rows: 24 })).rejects.toThrow('page has stopped')
+  await expect(controller.probeModel()).rejects.toThrow('page has stopped')
+  await expect(controller.setWorkflow('general')).rejects.toThrow('page has stopped')
+  await expect(controller.setModel({ model: 'new', baseUrl: 'https://invalid.test' })).rejects.toThrow('page has stopped')
+  expect(() => controller.terminalInput('old-terminal', 'new command\n')).toThrow('page has stopped')
+  hub.emit({ type: 'boot', stage: 'ready' })
+  expect(controller.getSnapshot().ready).toBe(false)
+  await hub.options.beforePageReload()
+  expect((await files.store.get('settings', 'workbench-state')).value.messages).toEqual(messages)
+  expect(controller.getSnapshot().messages).toEqual(messages)
+  expect(hub.asks).toHaveLength(1); expect(executions).toBe(0)
+})
+
+test('restored-page checkpoints reject non-durable storage, quota failures, and unfinished workspace checkpoints', async () => {
+  const { controller, hub, files } = await startedFixture()
+  hub.emit({ type: 'stopped', why: 'the tab closed' })
+  files.store.durable = false
+  await expect(hub.options.beforePageReload()).rejects.toThrow('not stored durably')
+  files.store.durable = true
+  const put = files.store.put.bind(files.store)
+  files.store.put = async (name, record) => { if (record.key === 'workbench-state') throw new Error('Quota exhausted'); return put(name, record) }
+  await expect(hub.options.beforePageReload()).rejects.toThrow('Quota exhausted')
+  files.store.put = put
+  files.checkpoint = async () => { throw new Error('Workspace save not confirmed') }
+  await expect(hub.options.beforePageReload()).rejects.toThrow('Workspace save not confirmed')
+  hub.emit({ type: 'page-lifecycle', status: 'blocked', error: 'Keep this page open to copy your work.' })
+  expect(controller.getSnapshot()).toMatchObject({ ready: false, pageLifecycle: 'blocked', error: 'Keep this page open to copy your work.' })
+})
+
 test('command output tracks repeated chunks after the retained tail becomes identical', async () => {
   const { controller, browser } = await fixture()
   const observed = []
@@ -162,7 +202,7 @@ async function startedFixture({ restoredBridge = false, modelProfile = {}, workb
     runsApi: { get: async id => hub.runs.get(id) },
     traces: { export: async id => ({ trace: id, runs: [...hub.runs.values()].filter(run => (run.trace ?? run.id) === id) }) },
   }
-  const row = await fixture({ createHub: () => hub, createCompanion, createExecution, inspectArtifact })
+  const row = await fixture({ createHub: options => { hub.options = options; return hub }, createCompanion, createExecution, inspectArtifact })
   if (sharedStore) row.files.store = sharedStore
   // Keep the real ProjectFiles transaction store supplied by the fixture.
   row.files.start = async () => row.files

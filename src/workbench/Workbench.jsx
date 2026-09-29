@@ -117,9 +117,9 @@ export default function Workbench() {
   const savesInFlight = useRef(new Set())
   const buildInFlight = useRef(false)
   docsRef.current = documents
-  const [goal, setGoal] = useState('')
+  const [goal, commitGoal] = useState('')
   const goalRef = useRef(goal)
-  goalRef.current = goal
+  const setGoal = useCallback(value => { goalRef.current = value; commitGoal(value) }, [])
   const [command, setCommand] = useState('')
   const [follow, setFollow] = useState(true)
   const [theme, setTheme] = useState('system')
@@ -291,7 +291,7 @@ export default function Workbench() {
 
   const preserveDrafts = useCallback(() => {
     try {
-      localStorage.setItem('askk:goal-draft', composer.current?.value ?? goalRef.current)
+      localStorage.setItem('askk:goal-draft', goalRef.current)
       localStorage.setItem('askk:editor-drafts', JSON.stringify(Object.fromEntries(Object.entries(docsRef.current).filter(([, doc]) => doc.content !== doc.baseContent))))
       setDraftStorageError('')
       return true
@@ -306,8 +306,9 @@ export default function Workbench() {
       if (!preserveDrafts()) event.preventDefault?.()
     }
     window.addEventListener('askk:before-isolation', preserve)
+    window.addEventListener('askk:before-page-reload', preserve)
     window.addEventListener('pagehide', preserve)
-    return () => { window.removeEventListener('askk:before-isolation', preserve); window.removeEventListener('pagehide', preserve) }
+    return () => { window.removeEventListener('askk:before-isolation', preserve); window.removeEventListener('askk:before-page-reload', preserve); window.removeEventListener('pagehide', preserve) }
   }, [preserveDrafts])
 
   function changeDocument(path, content) {

@@ -30,6 +30,7 @@ import { loadStrategy, startHubStrategy, strategyChildState } from './strategy-h
 import { openStore } from './store.js'
 import { AgentInstallations, installationDecision, installedModelAvailable } from './agent-installations.js'
 import { loadDeskPackages } from './desk-packages.js'
+import { watchPageLifecycle } from './page-lifecycle.js'
 import { hasToolRequirement, normalizeToolPolicy, scopedToolDecision, toolSelected } from './tool-policy.js'
 
 const LIMITS = { depth: 3, outstanding: 3 }
@@ -132,11 +133,14 @@ function traceUsage(runs) {
 }
 
 export class Hub {
-  constructor({ base = globalThis.document?.baseURI, workerUrl = new URL('./agent.worker.js', import.meta.url), storeName = 'harness', fetch: fetcher } = {}) {
+  constructor({ base = globalThis.document?.baseURI, workerUrl = new URL('./agent.worker.js', import.meta.url), storeName = 'harness', fetch: fetcher, page = globalThis, beforePageReload = async () => {} } = {}) {
     this.base = base
     this.workerUrl = workerUrl
     this.storeName = storeName
     this.fetch = fetcher ?? globalThis.fetch.bind(globalThis)
+    this.page = page
+    this.beforePageReload = beforePageReload
+    this.sessionCheckpoints = new Map()
     this.listeners = new Set()
     this.threads = new Map() // key → resident thread
     this.runs = new Map() // id → run
@@ -195,6 +199,11 @@ export class Hub {
 
   async start() {
     if (this.startPromise) return this.startPromise
+    this.pageLifecycle = watchPageLifecycle({ page: this.page,
+      stop: () => this.stop('the tab closed', { pageTransition: true }),
+      checkpoint: async () => { await this.beforePageReload(); await this.checkpointPageReload() },
+      notify: state => this.publish({ type: 'page-lifecycle', ...state }),
+    })
     this.startPromise = this.startOnce()
     return this.startPromise
   }
@@ -218,20 +227,23 @@ export class Hub {
     const waited = await this.lead()
     if (this.disposed) return this
     const bridge = await loadSettings()
+    if (this.disposed) return this
     await this.markInterrupted()
     if (waited) await this.readFolders()
     if (bridge?.url) await this.bridgeCheck(bridge.url, bridge.token)
     await this.mcpRefresh({ restart: false })
+    if (this.disposed) return this
     this.publish({ type: 'boot', stage: 'threads', done: 0, total: this.specs.size })
     await this.startThreads()
+    if (this.disposed) return this
     this.started = true
     this.publish({ type: 'boot', stage: 'ready', durable: this.store.durable, why: this.store.why, build: this.index.build ?? '' })
     this.poll = setInterval(() => this.bridgeState.url && this.bridgeCheck(this.bridgeState.url, this.bridgeState.token), 30000)
     this.scheduled = (await this.store.get('settings', 'schedules'))?.value ?? { items: [], next: 1 }
+    if (this.disposed) return this
     for (const item of this.scheduled.items) item.next = item.next == null ? Infinity : item.next
     this.tick()
     this.ticker = setInterval(() => this.tick(), TICK_MS)
-    globalThis.addEventListener?.('pagehide', () => this.stop('the tab closed'))
     return this
   }
 
@@ -272,25 +284,42 @@ export class Hub {
     return this.lockState
   }
 
-  stop(why = 'stopped') {
+  stop(why = 'stopped', { pageTransition = false } = {}) {
+    if (!pageTransition) this.pageLifecycle?.dispose()
+    if (this.disposed) return
     this.disposed = true
     this.bridgeCheckSequence++
     this.leadAbort?.abort()
     clearTimeout(this.dreamTimer)
     clearInterval(this.poll)
     clearInterval(this.ticker)
-    for (const run of this.runs.values()) if (!run.ended) {
-      this.abort(run)
+    const interrupted = [...this.runs.values()].filter(run => !run.ended)
+    for (const run of interrupted) {
+      run.cancelRequested = true
       // The page is about to terminate its workers, so their abort replies cannot be relied on.
       const status = why === 'the tab closed' ? 'interrupted' : 'cancelled'
       if (run.strategyState) run.strategyState = snapshot({ ...run.strategyState, status, reason: why, nodes: run.strategyState.nodes.map(node => ['queued', 'running', 'waiting', 'cancelling'].includes(node.status) ? { ...node, status, waiting: null, reason: why } : node) })
       this.end(run, `(${status}: ${why})`, false, why, { status, terminationReason: status })
     }
+    for (const run of interrupted) run.strategyRunner?.cancel()
     for (const thread of this.allThreads) thread.worker.terminate()
     this.allThreads.clear()
     this.threads.clear()
     this.releaseLock?.()
     this.publish({ type: 'stopped', why })
+  }
+
+  /** Confirm retained evidence before replacing a restored, permanently stopped document. */
+  async checkpointPageReload() {
+    if (!this.store?.durable) throw new Error('Agent history is not stored durably.')
+    await this.retentionQueue
+    for (const run of this.runs.values()) {
+      if (this.evictedEvidence.has(run.id)) continue
+      await Promise.allSettled([...(this.runRecordWrites.get(run.id) ?? [])].map(entry => entry.job))
+      await this.flushToolEvents(run.id, run.toolEvents?.length ?? 0)
+      await this.writeRunRecord(this.runRecord(run))
+    }
+    for (const record of this.sessionCheckpoints.values()) await this.store.put('sessions', record)
   }
 
   /** Runs that were active when the page last went away are interrupted, and can be resumed. */
@@ -484,6 +513,7 @@ export class Hub {
 
   /** Allocate one observable run before dispatch; strategy roots own no model worker. */
   createRun(path, query, { parent = null, call = '', kind = 'task', context = null, resume = null, stageId = null, strategyDefinition = null, strategyDefinitionHash = null, service = null } = {}) {
+    if (this.disposed) throw new Error('The agent runtime has stopped')
     const spec = this.specs.get(path)
     const up = parent ? this.runs.get(parent) : null
     const inherited = up?.context ?? context
@@ -595,6 +625,7 @@ export class Hub {
   }
 
   onThreadMessage(thread, message) {
+    if (this.disposed) return
     const run = thread.run ? this.runs.get(thread.run) : null
     switch (message.type) {
       case 'status':
@@ -614,7 +645,9 @@ export class Hub {
             run.turnsFrom = at === -1 ? 0 : at
           }
           run.turns = message.turns.slice(run.turnsFrom)
-          this.store.put('sessions', { agent: thread.path, turns: message.turns }).catch(error => this.publish({ type: 'persistence-error', run: run.id, error: `Conversation could not be saved: ${error.message}` }))
+          const session = { agent: thread.path, turns: message.turns }
+          this.sessionCheckpoints.set(thread.path, session)
+          this.store.put('sessions', session).then(() => { if (this.sessionCheckpoints.get(thread.path) === session) this.sessionCheckpoints.delete(thread.path) }, error => this.publish({ type: 'persistence-error', run: run.id, error: `Conversation could not be saved: ${error.message}` }))
         } else run.turns = message.turns
         this.publish({ type: 'history', run: run.id, agent: run.agent, turns: run.turns, session: thread.resident ? message.turns : null })
         this.persist(run)
@@ -1541,6 +1574,7 @@ export class Hub {
   }
 
   async clearSession(agent = this.defaultAgentPath()) {
+    this.sessionCheckpoints.delete(agent)
     await this.store.delete('sessions', agent)
     const thread = this.threads.get(agent)
     if (thread && !thread.busy) await this.restart(thread, 'the conversation was cleared')

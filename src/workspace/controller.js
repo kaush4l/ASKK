@@ -52,6 +52,7 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
   let runtimeEstablished = false; let recovering; let watching = false
   const delayedMessage = 'The environment is taking longer to respond. Outstanding operations may still complete; their outcomes are unknown. Existing processes and terminals are preserved. New work is paused and no requests will be replayed.'
   const unresponsive = () => Object.assign(new Error(delayedMessage), { code: 'RUNTIME_UNRESPONSIVE' })
+  const requirePageActive = () => { if (disposed || state.pageLifecycle) throw new Error('This page has stopped. Save or copy your work and reload before starting new work.') }
   const requireResponsive = () => { if (state.runtime.status === 'unresponsive' || executor?.describeCapabilities().health === 'unresponsive') throw unresponsive() }
   const assertExecutionAlive = (target, epoch) => { if (executionEpochs[target] !== epoch) throw new Error(executionErrors[target] || 'The execution environment stopped during setup.'); if (executionHealth[target] === 'unresponsive') throw unresponsive() }
   const persistUI = ({ strict = false } = {}) => {
@@ -69,6 +70,7 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
     modelCheck = null
   }
   const checkModel = async kind => {
+    requirePageActive()
     if (packageInstalling) throw new Error('Wait for agent installation to finish before testing its model')
     if (active(state.run?.status)) throw new Error('Finish or stop active work before testing its model')
     if (connecting) throw new Error('Wait for the companion connection change to finish')
@@ -98,9 +100,9 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
   if (workspaceOverride) files.onCommit = committed
   const commandUpdate = (key, patch) => notify({ commands: state.commands.map(command => command.id === key ? { ...command, ...patch } : command) })
   let fileMutations = 0; let openingTerminals = 0
-  const requireIdle = () => { if (packageInstalling) throw new Error('Wait for agent installation to finish'); if (active(state.run?.status) || running.size || fileMutations || openingTerminals || runtimeBoot) throw new Error('Finish or stop active work before changing its execution environment') }
+  const requireIdle = () => { requirePageActive(); if (packageInstalling) throw new Error('Wait for agent installation to finish'); if (active(state.run?.status) || running.size || fileMutations || openingTerminals || runtimeBoot) throw new Error('Finish or stop active work before changing its execution environment') }
   let transferring = false; let connecting = false; let connectingEndpoint = null
-  const requireWritable = ({ allowReconciledSetup = false } = {}) => { if (!allowReconciledSetup) requireResponsive(); if (transferring) throw new Error('Wait for the workspace snapshot transfer to finish'); if (connecting) throw new Error('Wait for the companion connection change to finish') }
+  const requireWritable = ({ allowReconciledSetup = false } = {}) => { requirePageActive(); if (!allowReconciledSetup) requireResponsive(); if (transferring) throw new Error('Wait for the workspace snapshot transfer to finish'); if (connecting) throw new Error('Wait for the companion connection change to finish') }
   const mutateFiles = async callback => { requireWritable(); fileMutations++; try { return await callback() } finally { fileMutations-- } }
   const fingerprint = async () => {
     const manifest = JSON.stringify((await files.list()).map(row => ({ path: row.path, revision: row.rev ?? row.revision, size: row.size })).sort((a, b) => a.path.localeCompare(b.path)))
@@ -311,6 +313,14 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
   }
 
   function onHub(message) {
+    if (message.type === 'stopped' && message.why === 'the tab closed') {
+      launchEpoch++; packageInstallEpoch++; invalidateModelCheck(); clearInterval(watcher)
+      for (const target of ['browser', 'local']) { executionEpochs[target]++; executionErrors[target] = 'The page stopped during execution setup.' }
+      for (const [key, abort] of running) { abort.abort(); requestCancellation(key) }
+      notify({ ready: false, pageLifecycle: 'stopped', error: 'This page left the active tab. Its agent runtime stopped; no task will restart automatically.' })
+      persistUI({ strict: true }).catch(report)
+    }
+    if (message.type === 'page-lifecycle') notify({ ready: false, pageLifecycle: message.status, error: message.status === 'restoring' ? 'Restoring this page with a fresh agent runtime. Confirming saved drafts and history before reloading; no task will restart automatically.' : message.error })
     if (message.type === 'packages') { refreshPackages(); refreshDefinitions() }
     if (message.type === 'settings') { refreshPackages(); refreshDefinitions() }
     if (message.type === 'run' && !message.run.parent && !activeRun && state.run?.status === 'starting') activeRun = message.run.id
@@ -333,7 +343,7 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
         notify({ model: { ...state.model, status: available ? 'configured' : 'failed', checkedAt: null, check: null, probe: null, errorCode: available ? null : connected ? 'MODEL_RELAY_DENIED' : 'MODEL_RELAY_UNAVAILABLE', error: available ? '' : connected ? 'The companion does not grant model relay access.' : message.state.error || 'The model relay is unavailable.' } })
       }
     }
-    if (message.type === 'boot' && message.stage === 'ready') { refreshPackages(); refreshDefinitions(); notify({ ready: true }) }
+    if (message.type === 'boot' && message.stage === 'ready' && !state.pageLifecycle) { refreshPackages(); refreshDefinitions(); notify({ ready: true }) }
     if (message.type === 'ready' || message.type === 'agents') { refreshPackages(); refreshDefinitions() }
     if (message.type === 'lock' && message.state === 'follower') notify({ error: 'Another tab owns the agent runtime. Close it to work here.' })
     if (message.type === 'todo') notify({ plans: [...state.plans.filter(plan => plan.runId !== message.run), { runId: message.run, agent: hub.runs.get(message.run)?.agent ?? 'Agent', items: message.items }] })
@@ -417,7 +427,12 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
         const nativeUrl = new URL(`${base}runtime/modules/runtime/hub.js`, location.origin).href
         const { Hub } = hubFactory ? {} : await import(/* webpackIgnore: true */ nativeUrl)
         if (disposed) return
-        const hubOptions = { base: new URL(base, location.origin).href, storeName: 'askk-agents-v2' }
+        const hubOptions = { base: new URL(base, location.origin).href, storeName: 'askk-agents-v2', beforePageReload: async () => {
+          if (disposed) throw new Error('The workspace was closed during page restoration.')
+          if (!files.store?.durable) throw new Error('Workspace history is not stored durably.')
+          await files.checkpoint()
+          await persistUI({ strict: true })
+        } }
         hub = hubFactory ? await hubFactory(hubOptions) : new Hub(hubOptions)
         hub.externalOps = {
           'workspace.goal': (args, run) => run?.context?.workflow?.workspace === false ? { text: state.goal, revision: state.goalRevision } : forRun(() => ({ text: state.goal, revision: state.goalRevision }))(args, run),
@@ -436,8 +451,10 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
         }
         unsubscribe = hub.subscribe(onHub); await hub.start()
         if (disposed) { hub.stop(); return }
+        requirePageActive()
         const summaries = await hub.runsApi?.summaries?.() ?? []
         if (disposed) { hub.stop(); return }
+        requirePageActive()
         for (const summary of summaries) cachedSummaryMap.set(summary.id, summary)
         const resolvedWorkflows = await Promise.all(workflows.map(async row => {
           if (!row.strategyRef) return row
@@ -447,9 +464,11 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
           return Object.freeze({ ...row, strategy: loaded.definition, strategyHash: loaded.definitionHash, strategyFiles: loaded.files })
         }))
         configuredWorkflows = resolvedWorkflows
+        requirePageActive()
         refreshPackages(savedUI?.selectedWorkflowId)
         if (hub.bridgeState.status === 'answering') local = new LocalExecution({ url: hub.bridgeState.url, token: hub.bridgeState.token })
         await controller.setModel({ baseUrl: state.model.baseUrl, model: state.model.id, apiKey: hub.settings.get().catalogue.models?.workbench?.api_key ?? '' })
+        requirePageActive()
         refreshDefinitions(); refreshAgents(); notify({ ready: true })
         watcher = setInterval(async () => {
           if (disposed || watching || !files.backend || running.size || state.runtime.status !== 'ready') return
@@ -474,6 +493,7 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
     renameFile: (from, to, expect) => mutateFiles(() => files.rename(from, to, expect)),
     deleteFile: (path, expect) => mutateFiles(() => files.remove(path, expect)),
     async setConversationGoal(text, expectedRevision = state.goalRevision) {
+      requirePageActive()
       if (typeof text !== 'string' || text.length > 12000) throw new Error('The conversation goal must be text of at most 12,000 characters')
       if (!files.store?.durable) throw new Error('Browser storage is unavailable. The conversation goal was not saved.')
       const key = `conversation-goal:${state.project.id}`
@@ -560,6 +580,7 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
     async sendGoal(text) {
       if (!text.trim()) return
       await controller.start()
+      requirePageActive()
       if (modelCheck) throw new Error('Cancel or finish the current model check before starting a task')
       if (connecting) throw new Error('Wait for the companion connection change to finish')
       if (packageInstalling) throw new Error('Wait for agent installation to finish before starting a task')
@@ -611,8 +632,9 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
       collect(run); hub.abort(run)
       for (const [key, abort] of running) if (affected.has(state.commands.find(command => command.id === key)?.runId)) { abort.abort(); requestCancellation(key) }
     },
-    approve: (approvalId, approved, always = false) => hub.answerApproval(approvalId, { approved, always }),
+    approve: (approvalId, approved, always = false) => { requirePageActive(); return hub.answerApproval(approvalId, { approved, always }) },
     async setModel({ baseUrl, model, apiKey, via }) {
+      requirePageActive()
       if (packageInstalling) throw new Error('Wait for agent installation to finish before changing its model binding')
       if (active(state.run?.status)) throw new Error('Finish or stop active work before changing its model')
       invalidateModelCheck()
@@ -625,6 +647,7 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
       const profile = { ...configured, ...(sameModel ? previous : {}), base_url: baseUrl, model, api_key: apiKey ?? previousKey ?? '', via: via ?? state.model.via ?? (relay?.status === 'answering' && canRelayModels(relay) ? 'bridge' : 'direct') }
       const savedCatalogue = hub?.settings.get().saved ?? {}
       if (hub?.store) await hub.settings.set({ catalogue: { ...savedCatalogue, default: 'workbench', models: { ...savedCatalogue.models, workbench: profile } }, dreaming: false })
+      requirePageActive()
       refreshPackages(); refreshDefinitions()
       notify({ model: { status: 'configured', id: model, baseUrl, via: profile.via } }); saveSetting('askk:workbench-settings', { model: { id: model, baseUrl, via: profile.via } })
     },
@@ -854,8 +877,8 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
     selectArtifact(artifactId) { notify({ activeArtifactId: artifactId }) },
     refreshPreview() { if (currentArtifact) notify({ artifacts: state.artifacts.map(row => row.id === currentArtifact.id ? { ...row, reload: (row.reload ?? 0) + 1 } : row) }) },
     async openTerminal(size) { requireWritable(); openingTerminals++; try { await controller.startRuntime(); requireWritable(); assertExecutionPort(executor, { binding, requireTerminal: true }); const terminal = await executor.openTerminal(size); terminals.add(terminal.id); return terminal } finally { openingTerminals-- } },
-    terminalInput: (terminalId, data) => { if (data !== '\u0003') requireResponsive(); invalidate(); return executor?.terminalInput(terminalId, data) },
-    resizeTerminal: (terminalId, cols, rows) => executor?.resizeTerminal(terminalId, cols, rows),
+    terminalInput: (terminalId, data) => { requirePageActive(); if (data !== '\u0003') requireResponsive(); invalidate(); return executor?.terminalInput(terminalId, data) },
+    resizeTerminal: (terminalId, cols, rows) => { requirePageActive(); return executor?.resizeTerminal(terminalId, cols, rows) },
     async closeTerminal(terminalId) { if (!terminals.has(terminalId)) return; await executor?.closeTerminal(terminalId); terminals.delete(terminalId) },
     subscribeTerminal(terminalId, listener) { if (executor?.subscribeTerminal) return executor.subscribeTerminal(terminalId, listener); const set = terminalListeners.get(terminalId) ?? new Set(); set.add(listener); terminalListeners.set(terminalId, set); return () => set.delete(listener) },
   }

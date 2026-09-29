@@ -12,7 +12,7 @@ const path = name => `bundled/renamed/${name}`
 const policy = overrides => ({ disabledTools: [], approvalRisks: [], allowDelegation: true, ...overrides })
 const history = () => Array.from({ length: 6 }, (_, index) => ({ role: index % 2 ? 'observation' : 'user', content: `Observed fact ${index}. ${'Keep exact failure evidence. '.repeat(25)}`, at: index }))
 
-async function fixture({ compact = false, script = {}, delay = 0 } = {}) {
+async function fixture({ compact = false, script = {}, delay = 0, page, beforePageReload } = {}) {
   const site = await mkdtemp(join(tmpdir(), 'askk-renamed-lifecycle-')); let hub
   const definitions = {
     captain: `package_id: tests.renamed\npackage_version: 1.0.0\nid: captain\nname: Captain\nsession: agent\ntools: [todo]\nagents: {scribe: writer}\nservices: {compaction: digest, retrospective: reflect}\n${compact ? 'compact_at: 0.001\nkeep: 1\n' : ''}`,
@@ -29,7 +29,7 @@ async function fixture({ compact = false, script = {}, delay = 0 } = {}) {
     await writeFile(join(site, 'models.json'), JSON.stringify({ default: 'fixture', models: { fixture: { provider: 'scripted', model: 'fixture', delay, max_output_tokens: 512, script: { Captain: [done('Captain answered.')], Digest: [done('The prior work remains unverified.')], Writer: [done('Writer answered.')], Reflect: [done('No changes proposed.')], ...script } } } }))
     const relist = async () => writeFile(join(site, 'agents/index.json'), JSON.stringify(await listing(site)))
     await relist()
-    hub = new Hub({ base: `${pathToFileURL(site).href}/`, storeName: `renamed-${crypto.randomUUID()}` })
+    hub = new Hub({ base: `${pathToFileURL(site).href}/`, storeName: `renamed-${crypto.randomUUID()}`, page, beforePageReload })
     await hub.start(); await hub.settings.set({ dreaming: false })
     return { hub, site, records, relist, close: async () => { hub.stop(); await rm(site, { recursive: true, force: true }) } }
   } catch (error) { hub?.stop(); await rm(site, { recursive: true, force: true }); throw error }
@@ -240,3 +240,52 @@ test('failed installed-record read during reload never exposes a partially loade
     expect(run.slot.status).toBe('done'); expect(run.prompts[0].sheet).not.toContain('Changed')
   } finally { await f.close() }
 }, 15000)
+
+test('cached page recovery terminates real workers, saves interrupted evidence, and never replays the task', async () => {
+  const page = new EventTarget(); let reloaded; let reloads = 0
+  const reload = new Promise(resolve => { reloaded = resolve })
+  page.location = { reload() { reloads++; reloaded() } }
+  const f = await fixture({ page, delay: 200 })
+  try {
+    f.hub.store.durable = true
+    const run = f.hub.startRun(path('captain'), 'Do not automatically replay this goal')
+    page.dispatchEvent(new Event('pagehide'))
+    expect(f.hub.disposed).toBe(true); expect(f.hub.allThreads.size).toBe(0)
+    expect(run.slot.status).toBe('interrupted')
+    const event = new Event('pageshow'); Object.defineProperty(event, 'persisted', { value: true }); page.dispatchEvent(event)
+    await reload
+    expect(reloads).toBe(1)
+    expect((await f.hub.store.get('runs', run.id)).slot.status).toBe('interrupted')
+    expect(f.hub.runs.size).toBe(1); expect(f.hub.allThreads.size).toBe(0)
+    expect(() => f.hub.ask('No disposed restart')).toThrow('stopped')
+  } finally { await f.close() }
+}, 15000)
+
+test('a cleared conversation is not restored by the page-reload checkpoint', async () => {
+  const f = await fixture()
+  try {
+    f.hub.store.durable = true
+    const run = f.hub.startRun(path('captain'), 'A conversation to clear'); await run.answer
+    const stale = { agent: path('captain'), turns: [{ role: 'user', content: 'A failed old write' }] }
+    f.hub.sessionCheckpoints.set(stale.agent, stale)
+    await f.hub.clearSession()
+    f.hub.stop('the tab closed')
+    await f.hub.checkpointPageReload()
+    expect(await f.hub.session()).toEqual([])
+    f.hub.onThreadMessage({ resident: true, path: stale.agent, run: run.id }, { type: 'history', turns: stale.turns })
+    expect(await f.hub.session()).toEqual([])
+  } finally { await f.close() }
+}, 15000)
+
+test('page listeners attach before startup awaits and manual stop prevents cached-page reload', async () => {
+  const page = new EventTarget(); let reloads = 0; page.location = { reload() { reloads++ } }
+  const hub = new Hub({ page, base: 'file:///missing/', storeName: `early-page-${crypto.randomUUID()}` })
+  const starting = hub.start()
+  page.dispatchEvent(new Event('pagehide'))
+  await starting
+  expect(hub.disposed).toBe(true); expect(hub.started).toBe(false)
+  hub.stop()
+  const event = new Event('pageshow'); Object.defineProperty(event, 'persisted', { value: true }); page.dispatchEvent(event)
+  await Promise.resolve()
+  expect(reloads).toBe(0); expect(hub.allThreads.size).toBe(0)
+})
