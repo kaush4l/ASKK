@@ -1,0 +1,78 @@
+{
+  "date": "2026-09-29",
+  "source": "5201e77",
+  "deployment": "f909ec3ecbae19d7c634081ccc35671798d0dda6",
+  "workflow": "https://github.com/kaush4l/ASKK/actions/runs/36545852571",
+  "workflowResult": "success",
+  "export": {
+    "version": 1,
+    "basePath": "/ASKK",
+    "totalBytes": 854177249,
+    "fileCount": 202,
+    "runtimeId": "c2w-node24-38d093f4a38002db",
+    "artifactHash": "2cc42a4ee8153ec13fe965b36eca5c2d265efe41d6539aed429769b2d2aded5b"
+  },
+  "hostedHashes": [
+    {
+      "path": "index.html",
+      "sha256": "b5b8b7c2138e57c49d9bd1845724ab146494126e66ebbc1a64fd6ccf89d40367",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/runtime/hub.js",
+      "sha256": "2c423068e0a1dc9a56d613100e67247b25b02e75d268c01abb08bcb3db0ab327",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/runtime/agent.worker.js",
+      "sha256": "b8d13e532dfe205a8276f4f4ba7d416071c53cfe619e85a14c962ab46aef59aa",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/runtime/model-broker.js",
+      "sha256": "eaa3d85b8161513776bbf645b13e7330263d74fad3d63c65d37fc0f4b1551086",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/core/inference.js",
+      "sha256": "58c8e1d514b7b5d025c23ac3a81f9ab820860fc3dcede1c5ef3bb5595a7df9de",
+      "matches": true
+    }
+  ],
+  "tests": {
+    "passed": 806,
+    "skipped": 1,
+    "failed": 0,
+    "assertions": 5846
+  },
+  "localChrome": {
+    "origin": "http://127.0.0.1:5195",
+    "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+    "route": "direct",
+    "companion": "disconnected",
+    "tool": "todo_read",
+    "answer": "The plan is empty.",
+    "execution": "Browser Linux Not started"
+  },
+  "limitations": [
+    "Same-origin workers remain trusted executable code; credential minimization is not a hostile-code sandbox.",
+    "This release does not verify Browser Linux Next builds, physical iPhone, or VoiceOver.",
+    "Native Safari model reply proof applies to prior release; current transport migration requires new Safari run acceptance."
+  ],
+  "hostedChrome": {
+    "url": "https://kaush4l.github.io/ASKK/",
+    "runId": "rmumg1du31",
+    "status": "Completed",
+    "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+    "route": "HTTPS companion https://127.0.0.1:7720",
+    "grants": [
+      "model-relay"
+    ],
+    "tool": "todo_read",
+    "toolStatus": "Completed",
+    "answer": "The plan is empty.",
+    "execution": "Browser Linux Not started",
+    "draftRestored": true,
+    "screenshot": "desk-broker-pages-chrome.png"
+  }
+}
