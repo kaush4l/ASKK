@@ -352,9 +352,9 @@ export class Engine {
     const providerIdentity = providerCallId ? { providerCallId } : {}
     this.calls.push(key)
     this.emit('call', call.name, call.text, { callId, ...providerIdentity, args: call.args, slot: this.progress() })
-    const done = (text, ok, activity = {}, failureKind) => {
+    const done = (text, ok, activity = {}, failureKind, resolvedArgs) => {
       this.running = this.running.filter((running) => running !== call.text)
-      this.emit('observation', call.text, text, { callId, ...providerIdentity, ms: Date.now() - started, ok, activity, ...(failureKind ? { failureKind } : {}), slot: this.progress() })
+      this.emit('observation', call.text, text, { callId, ...providerIdentity, ms: Date.now() - started, ok, activity, ...(resolvedArgs ? { resolvedArgs } : {}), ...(failureKind ? { failureKind } : {}), slot: this.progress() })
       return { text, ok, ...(includeIdentity ? { callId } : {}) }
     }
 
@@ -369,9 +369,9 @@ export class Engine {
     const names = Object.keys(item.parameters ?? {})
     if (this.contractVersion === 1 && 'value' in args && Object.keys(args).length === 1 && names.length && !names.includes('value')) args = { [names[0]]: args.value }
 
-    const { text, ok, failureKind } = await runToolResult(item, args, { ...this.ctx, signal: this.signal, caller: this.path, call: call.text, callId })
+    const { text, ok, failureKind, resolvedArgs } = await runToolResult(item, args, { ...this.ctx, signal: this.signal, caller: this.path, call: call.text, callId })
     if (ok && item.cacheable === true && !item.writes) this.results.set(key, text)
-    return done(text, ok, failureKind ? {} : toolActivity(item, { text, ok }, args), failureKind)
+    return done(text, ok, failureKind ? {} : toolActivity(item, { text, ok }, args), failureKind, resolvedArgs)
   }
 
   /** Open a turn. The goal is new, so everything measured against it starts again. */

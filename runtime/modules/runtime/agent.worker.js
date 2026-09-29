@@ -97,14 +97,15 @@ function guarded(item) {
     ...item,
     run: async (args, ctx) => {
       if (serviceMode === 'compaction') throw new Error('Compaction cannot execute tools')
+      const effectiveCall = item.resolveArguments ? `${item.name}(${JSON.stringify(args)})` : ctx.call
       const verdict = installationDecision(item, args, { policy, agent: spec.path, toolPolicy: runToolPolicy }, spec.permissions)
       const missing = item.requires.filter(need => !hasToolRequirement(need, host))
       if (missing.length) throw new Error(`tool unavailable: requires ${missing.join(', ')}`)
       if (verdict.action === 'deny') throw new Error(`refused by policy: ${verdict.reason}`)
       if (ctx.signal?.aborted) throw new Error('stopped by the owner')
       if (verdict.action === 'ask') {
-        engine?.emit('approval', item.name, ctx.call, { risk: verdict.risk, reason: verdict.reason })
-        const answer = await request('approve', { tool: item.name, call: ctx.call, callId: ctx.callId, risk: verdict.risk, reason: verdict.reason, args })
+        engine?.emit('approval', item.name, effectiveCall, { risk: verdict.risk, reason: verdict.reason })
+        const answer = await request('approve', { tool: item.name, call: effectiveCall, callId: ctx.callId, risk: verdict.risk, reason: verdict.reason, args })
         engine?.emit('approved', item.name, answer.approved ? 'approved' : 'denied', { note: answer.note ?? '' })
         if (!answer.approved) throw new Error(`the owner refused this call${answer.note ? `: ${answer.note}` : '.'} Do not retry it unchanged.`)
       }
@@ -263,7 +264,7 @@ function availableTools() {
   return serviceMode === 'compaction' ? [] : fullTools.filter(item => toolSelected(item, runToolPolicy) && installationDecision(item, {}, { policy, agent: spec.path, toolPolicy: runToolPolicy }, spec.permissions).action !== 'deny')
 }
 
-async function run(query, context, service, completionRequired, runId) {
+async function run(query, context, service, completionRequired, runId, completion) {
   activeRunId = runId
   modelHandle = null
   runToolPolicy = normalizeToolPolicy(context?.toolPolicy)
@@ -271,6 +272,7 @@ async function run(query, context, service, completionRequired, runId) {
   controller = new AbortController()
   engine.verifyCompletion = completionRequired ? () => request('run.verifyCompletion') : null
   engine.ctx.runContext = snapshot(context ?? null)
+  engine.ctx.completion = snapshot(completion ?? { checks: [] })
   engine.tools = availableTools()
   try {
     const text = await engine.invoke(query, { signal: controller.signal })
@@ -283,6 +285,7 @@ async function run(query, context, service, completionRequired, runId) {
     serviceMode = null
     engine.tools = fullTools
     engine.ctx.runContext = null
+    engine.ctx.completion = null
   }
 }
 
@@ -293,7 +296,7 @@ self.onmessage = async ({ data }) => {
         await build(data)
         break
       case 'invoke':
-        await run(data.query, data.context, data.service, data.completionRequired, data.runId)
+        await run(data.query, data.context, data.service, data.completionRequired, data.runId, data.completion)
         break
       case 'nudge':
         engine?.nudge(data.text)

@@ -35,6 +35,7 @@ export function tool(spec, defaults = {}) {
     // Results may depend on files, permissions, time or another agent. Caching is opt-in.
     cacheable: spec.cacheable === true && !spec.writes,
     writes: Boolean(spec.writes),
+    resolveArguments: typeof spec.resolveArguments === 'function' ? spec.resolveArguments : null,
     projectObservation: typeof spec.projectObservation === 'function' ? spec.projectObservation : null,
     projectActivity: typeof spec.projectActivity === 'function' ? spec.projectActivity : null,
     run,
@@ -100,14 +101,28 @@ export function toolbox(tiers, { has = () => true } = {}) {
 
 /** Status comes from execution, never from text that the tool happens to return. */
 export async function runToolResult(item, args, ctx) {
+  let resolvedArgs
   try {
     const faults = validateToolInput(item.inputSchema, args ?? {})
     if (faults.length) return { text: `${item.name} failed: Invalid tool arguments: ${faults.join('; ')}`, ok: false, failureKind: 'invalid_input' }
-    const result = await item.run(args ?? {}, ctx)
+    if (item.resolveArguments) {
+      try {
+        const resolved = item.resolveArguments(snapshot(args ?? {}), ctx)
+        if (resolved && typeof resolved.then === 'function') {
+          Promise.resolve(resolved).catch(() => {})
+          throw new Error('Tool argument resolution must be synchronous')
+        }
+        if (!resolved || typeof resolved !== 'object' || ![Object.prototype, null].includes(Object.getPrototypeOf(resolved))) throw new Error('Tool argument resolution must return a plain object')
+        resolvedArgs = snapshot(resolved)
+      } catch (error) {
+        return { text: `${item.name} failed: Invalid tool arguments: ${error?.message ?? error}`, ok: false, failureKind: 'invalid_input' }
+      }
+    }
+    const result = await item.run(resolvedArgs ?? args ?? {}, ctx)
     const text = result == null || result === '' ? '(no output)' : typeof result === 'string' ? result : JSON.stringify(result, null, 2)
-    return { text, ok: true }
+    return { text, ok: true, ...(resolvedArgs ? { resolvedArgs } : {}) }
   } catch (error) {
-    return { text: `${item.name} failed: ${error?.message ?? error}`, ok: false }
+    return { text: `${item.name} failed: ${error?.message ?? error}`, ok: false, ...(resolvedArgs ? { resolvedArgs } : {}) }
   }
 }
 
