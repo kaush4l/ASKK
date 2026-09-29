@@ -1,6 +1,8 @@
 # Implementation status
 
-Latest publication: source **`8a3c14bb`**, deployment **`b1673398`**, [successful Pages workflow](https://github.com/kaush4l/ASKK/actions/runs/36586201655). [Hosted evidence](evidence/scaffold-reference-pages.json) confirms six page, UI and runtime files match the tested export. Export: **879,673,619 bytes / 217 files**.
+Latest publication: source **`ba063773`** (implementation **`cfe5ccd2`**), deployment **`d1453e9d`**, [successful Pages workflow](https://github.com/kaush4l/ASKK/actions/runs/36587697777). [Hosted evidence](evidence/process-context-pages.json) confirms nine page, UI, runtime, catalog and download files match the tested export. Export: **905,083,645 bytes / 219 files**.
+
+Historical publication: source **`8a3c14bb`**, deployment **`b1673398`**, [successful Pages workflow](https://github.com/kaush4l/ASKK/actions/runs/36586201655). [Hosted evidence](evidence/scaffold-reference-pages.json) confirms six page, UI and runtime files match the tested export. Export: **879,673,619 bytes / 217 files**.
 
 Historical publication: source **`df09f5e1`**, deployment **`b47a859b`**, [successful Pages workflow](https://github.com/kaush4l/ASKK/actions/runs/36584853860). [Hosted evidence](evidence/check-reference-pages.json) confirms 11 page, UI, runtime and index files match the tested export. Export: **879,673,513 bytes / 217 files**.
 
@@ -8,16 +10,24 @@ Historical publication: source **`b9ae8ecc`**, deployment **`830fcc8a`**, [succe
 
 Historical publication: source **`e7e19081`**, deployment **`d02543f1`**, [successful Pages workflow](https://github.com/kaush4l/ASKK/actions/runs/36578773412). [Hosted evidence](evidence/model-discovery-pages.json) confirms the page, workbench chunk, runtime context, workspace controller and agent index match the tested export. Export: **879,666,446 bytes / 216 files**.
 
+## Execution context and original-group cleanup
+
+Execution adapters now describe runtime command semantics through `src/execution/toolchain.js`. Bun's direct test runner is distinguished from a package-script invocation; the browser Node/npm profile describes its own script semantics. Unknown runtimes receive no inferred commands. Facts explicitly carry `executionVerified: false`, arrive through the existing dynamic workspace context, and are refreshed per request. The engine and shipped builder instructions are unchanged. Tests exercise a real temporary Bun project with passing and failing assertions and confirm runtime changes remove old guidance.
+
+The optional companion now cleans the original process group after leader exit or cancellation, waits for stream closure, and preserves the leader's actual exit code. Bounded TERM/KILL cleanup checks handle macOS zombie-group permission behavior using process-table evidence. Failed or unreadable cleanup produces an error without an exit receipt; cancellation and repeated shutdown retain failure. LocalExecution propagates that error instead of accepting a later zero exit. Real-process regressions cover TERM-ignoring descendants with closed stdio on both normal exit and cancellation. Separate terminal lifecycle is unchanged.
+
+Timeout UI uses recorded `timedOut` evidence before generic cancellation while preserving actual exit codes, workspace reconciliation failures and unknown-exit labels. Full validation: **1,020 passed, 1 skipped, 0 failed**, 7,606 assertions across 100 files. Static Pages export succeeded. [Package evidence](evidence/process-context-package.json) records the refreshed Apple Silicon download, exact source and file hashes, and cancellation using its bundled Bun runtime. This does not add signing, trust installation, OS isolation or process/CPU/memory quotas. Descendants leaving the original group remain outside the cleanup receipt. No new real-model or browser acceptance trial was performed; the scaffold failure below still stands.
+
 ## Latest verification and scaffold diagnostic
 
 Verification inspection now displays newest receipts first, labels the latest, and retains original attempt numbers. The existing twelve-receipt initial limit and expansion remain. Regression covers more than twelve attempts with both latest success and latest failure, unchanged recorded data and unchanged run status. Full validation: **1,007 passed, 1 skipped, 0 failed**, 7,536 assertions across 98 files; Pages export built successfully.
 
 [Scaffold reference trial](evidence/scaffold-reference-model.json): the 4B model used the shipped builder prompt, native/messages v3, the same seed-42 sampling profile and [configured project checks](evidence/scaffold-reference-checks.json). It failed acceptance. Its implementation passed withheld function behavior, but package `scripts.test` recursively invoked `bun run test`, no test files were created, and an attempted manifest replacement was rejected because it supplied stale revision zero. The four-minute evaluator deadline cancelled the run after eleven requests and seven tool calls. The independent package check timed out and test discovery failed. No checks were relaxed. Temporary model and trial processes exited; observed recursive test processes were gone. This is a Local Bun diagnostic, not Browser Linux or browser acceptance.
 
-Next work identified by fresh planner review:
+Work identified at that checkpoint (context and original-group lifecycle addressed above; quotas and native repair remain open):
 
 - Supply adapter-owned toolchain command facts through dynamic environment context; keep agent instructions generic.
-- Add and validate host resource containment separately from timeouts. Current process-group cancellation does not bound process growth, memory or CPU; leader closure alone is not proof all descendants have exited.
+- Add and validate host resource containment separately from timeouts. Process-group cancellation does not bound process growth, memory or CPU. At that checkpoint, leader closure alone also did not establish group cleanup.
 - Consider bounded repair only for fully completed malformed native candidates. Partial streams, cancellation and transport errors must remain distinct; malformed actions must never execute.
 
 ## Required-check references

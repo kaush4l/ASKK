@@ -141,5 +141,23 @@
     "Original process group only; descendants that change group/session are outside this cleanup receipt.",
     "No process-count, CPU or memory quota.",
     "No new model scaffold trial; previous failure remains authoritative."
-  ]
+  ],
+  "archiveExtraction": {
+    "verified": true,
+    "sourceRevision": "cfe5ccd2b211d27bcab7594d24a0fe552a457b7a",
+    "files": 13,
+    "check": {
+      "sourceRevision": "cfe5ccd2b211d27bcab7594d24a0fe552a457b7a",
+      "runtime": "1.4.2",
+      "passed": true,
+      "code": -1,
+      "cancelled": true,
+      "cleanup": {
+        "ok": true,
+        "scope": "original-process-group",
+        "verification": "no-live-members"
+      },
+      "scope": "Packaged source cancellation through LocalExecution, running with bundled Bun. No browser or signing acceptance."
+    }
+  }
 }

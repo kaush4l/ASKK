@@ -1,0 +1,72 @@
+{
+  "source": "ba063773",
+  "implementationSource": "cfe5ccd2",
+  "deployment": "d1453e9d21d6e7dea910ed2a8fd562694dfd6751",
+  "workflow": "https://github.com/kaush4l/ASKK/actions/runs/36587697777",
+  "workflowConclusion": "success",
+  "export": {
+    "version": 1,
+    "basePath": "/ASKK",
+    "totalBytes": 905083645,
+    "fileCount": 219,
+    "runtimeId": "c2w-node24-38d093f4a38002db",
+    "artifactHash": "3748417fe84917e9740ffa8cb56bc65c4ec696b1c021a364f52279639834f98a"
+  },
+  "checks": [
+    {
+      "path": "index.html",
+      "status": 200,
+      "sha256": "93f9478af9ac8079cd51ba52af5bbad588636025aedb2ab0fed264cea133702b",
+      "matches": true
+    },
+    {
+      "path": "_next/static/chunks/app/page-f401339fede2b1bf.js",
+      "status": 200,
+      "sha256": "905fdb1c8812344deef7cb667ccae3c4a05d3eb547d1bbbd4a8c23700f2cfdd3",
+      "matches": true
+    },
+    {
+      "path": "_next/static/chunks/855.08fcfeccc6ffc19f.js",
+      "status": 200,
+      "sha256": "1f45ab1c85ed079dd199935141a3a500b6d30fa3e69839fb4f55e16dc557f313",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/execution/toolchain.js",
+      "status": 200,
+      "sha256": "9df498a505db37a35b337ff535e4b699d808dfd9a4d25d25c2946870b8b96aeb",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/execution/local.js",
+      "status": 200,
+      "sha256": "1db653ba7be35cd6b9c5dbaa01819377ae7c51aad1e6aabec4e2abce06b20dc9",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/execution/browser-linux.js",
+      "status": 200,
+      "sha256": "252bdc7cd11634abe78a3bbebaf1175dad61553080a47e1dbdc4212d3ee95c1a",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/workspace/controller.js",
+      "status": 200,
+      "sha256": "777c3d444bdaffd287191aa65110b422f3e13dbb47f633a26b644d49e755f5eb",
+      "matches": true
+    },
+    {
+      "path": "companion-release.json",
+      "status": 200,
+      "sha256": "80a43919b8ef60ab56d83340a4eb239162653f1adbc94f8a7ddd17f7596e9427",
+      "matches": true
+    },
+    {
+      "path": "downloads/askk-companion-darwin-arm64-cfe5ccd.tar.gz",
+      "status": 200,
+      "sha256": "29105c2dee6a42ace3dac238930c6b60fbe30628600bd36b1081f51efffd8646",
+      "matches": true
+    }
+  ],
+  "scope": "Hosted exact byte checks, including downloadable archive. Automated component and process regressions, packaged and extracted companion cancellation checks. No new live browser interaction, Safari, iPhone, VoiceOver, model competence or Browser Linux acceptance."
+}
