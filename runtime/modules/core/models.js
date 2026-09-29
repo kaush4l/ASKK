@@ -8,7 +8,7 @@
  *
  * Port of the skeleton's `core/models.py`. An agent's `model:` may name an alias or a model id.
  * With no `model:` the default alias is used. Anything else the agent sets wins over the
- * catalogue entry. Resolution happens per step in the thread, so changing the default in the
+ * catalogue entry. Resolution happens per step in the desk broker, so changing the default in the
  * page reaches the next step of every agent that did not pin its own — a hot swap.
  */
 

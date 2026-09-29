@@ -21,18 +21,17 @@ import { contexts } from '../core/context.js'
 import { BUILTIN_TOOL_GROUPS } from '../core/builtin-registry.js'
 import { Engine } from '../core/engine.js'
 import { versioned } from '../core/folder.js'
-import { modelRelayPath, inference } from '../core/inference.js'
-import { resolve } from '../core/models.js'
 import { snapshot } from '../core/prompt.js'
 import { fromModule, tool, toolbox } from '../core/tools.js'
 import { hasToolRequirement, normalizeToolPolicy, toolSelected } from './tool-policy.js'
-import { installationDecision, installedModelAvailable } from './agent-installations.js'
+import { installationDecision } from './agent-installations.js'
 
 const BUILTINS = BUILTIN_TOOL_GROUPS
 
 let engine = null
 let spec = null
-let catalogue = { models: {} }
+let activeRunId = null
+let modelHandle = null
 let policy = {}
 let serviceMode = null
 let host = null
@@ -41,56 +40,51 @@ let fullTools = []
 let runToolPolicy = null
 const pending = new Map()
 let nextRequest = 1
-const models = new Map()
+
 
 const post = (message) => self.postMessage(message)
 
 /** Ask the hub for something only it can do. Resolves with the value or rejects with the error. */
 function request(op, args = {}) {
   const id = nextRequest++
-  post({ type: 'request', id, op, args })
-  return new Promise((resolveReply, rejectReply) => pending.set(id, { resolve: resolveReply, reject: rejectReply }))
+  return new Promise((resolveReply, rejectReply) => {
+    pending.set(id, { resolve: resolveReply, reject: rejectReply })
+    post({ type: 'request', id, op, args, runId: activeRunId })
+  })
 }
 
-/** The inference for this step: resolved now, so a model change in the page reaches it. */
+/** The desk owns connection configuration; this thread receives only a scoped model handle. */
 async function llm() {
-  if (spec.package && !installedModelAvailable(catalogue, spec.inference.model)) throw new Error('The installed agent’s bound model profile is no longer configured; bind a configured profile before running it.')
-  const settings = { ...resolve(spec.inference, catalogue), agent: spec.name }
-  const key = JSON.stringify(settings)
-  if (!models.has(key)) {
-    models.set(
-      key,
-      inference(settings, {
-        bridge: host ? bridgeFetch : null,
-        bridgeURL: host?.url,
-        run: host?.capabilities?.includes('cli') ? bridgeRun : null,
-        onRetry: (attempt, error) => engine?.emit('retry', '', `retrying model call (${attempt + 1} of 3): ${error.message}`),
-      }),
-    )
+  if (modelHandle) await request('model.close', { handle: modelHandle })
+  const descriptor = await request('model.open')
+  modelHandle = descriptor.handle
+  return {
+    model: descriptor.model,
+    settings: descriptor.settings,
+    context: async () => descriptor.contextLength,
+    async *stream(messages, { signal, onRequest, onFinish, maxOutputTokens, strictCompletion } = {}) {
+      const handle = descriptor.handle
+      if (signal?.aborted) throw new Error('stopped by the owner')
+      await request('model.start', { handle, messages, maxOutputTokens, strictCompletion })
+      try {
+        while (true) {
+          if (signal?.aborted) throw new Error('stopped by the owner')
+          const batch = await request('model.next', { handle })
+          for (const event of batch.events) {
+            if (signal?.aborted) throw new Error('stopped by the owner')
+            if (event.type === 'request') onRequest?.(event.request)
+            else if (event.type === 'finish') onFinish?.(event.metadata)
+            else if (event.type === 'retry') engine?.emit('retry', '', `retrying model call (${event.attempt + 1} of 3): ${event.error.message}`)
+            else if (event.type === 'delta') yield event.delta
+          }
+          if (batch.error) throw Object.assign(new Error(batch.error.message), { code: batch.error.code, metadata: batch.error.metadata })
+          if (batch.done) return
+        }
+      } finally {
+        if (!signal?.aborted) await request('model.closeStream', { handle })
+      }
+    },
   }
-  return models.get(key)
-}
-
-/** A fetch made from the owner's machine by the host bridge, streamed back. */
-async function bridgeFetch(url, init = {}) {
-  const endpoint = modelRelayPath(host)
-  return fetch(`${host.url}${endpoint}`, {
-    method: 'POST',
-    headers: { authorization: `Bearer ${host.token}`, 'content-type': 'application/json' },
-    body: JSON.stringify({ url: String(url), method: init.method ?? 'GET', headers: init.headers ?? {}, body: init.body ?? null, stream: true }),
-    signal: init.signal,
-  })
-}
-
-/** A model CLI run on the owner's machine by the host bridge; the reply streams as NDJSON. */
-async function bridgeRun(body, { signal } = {}) {
-  if (!host?.capabilities?.includes('cli')) throw new Error('The model CLI companion is no longer available. Reconnect it before starting another task.')
-  return fetch(`${host.url}/run`, {
-    method: 'POST',
-    headers: { authorization: `Bearer ${host.token}`, 'content-type': 'application/json' },
-    body: JSON.stringify(body),
-    signal,
-  })
 }
 
 /** Wrap a tool so every call passes the permission guard first. */
@@ -121,7 +115,6 @@ function guarded(item) {
 
 async function build(message) {
   spec = message.spec
-  catalogue = message.catalogue ?? catalogue
   policy = message.policy ?? {}
   host = message.host ?? null
   const base = message.base
@@ -261,7 +254,9 @@ async function build(message) {
   })
 }
 
-async function run(query, context, service, completionRequired) {
+async function run(query, context, service, completionRequired, runId) {
+  activeRunId = runId
+  modelHandle = null
   runToolPolicy = normalizeToolPolicy(context?.toolPolicy)
   serviceMode = service?.kind ?? null
   controller = new AbortController()
@@ -273,6 +268,8 @@ async function run(query, context, service, completionRequired) {
     post({ type: 'answer', text, ok: engine.status === 'done', slot: engine.progress() })
   } finally {
     controller = null
+    modelHandle = null
+    activeRunId = null
     runToolPolicy = null
     serviceMode = null
     engine.tools = fullTools
@@ -287,7 +284,7 @@ self.onmessage = async ({ data }) => {
         await build(data)
         break
       case 'invoke':
-        await run(data.query, data.context, data.service, data.completionRequired)
+        await run(data.query, data.context, data.service, data.completionRequired, data.runId)
         break
       case 'nudge':
         engine?.nudge(data.text)
@@ -300,24 +297,21 @@ self.onmessage = async ({ data }) => {
       case 'host-revoked':
         if (host) {
           host = null
-          models.clear()
           controller?.abort()
           for (const waiting of pending.values()) waiting.reject(new Error('The companion connection changed; the previous authority was revoked.'))
           pending.clear()
         }
         break
       case 'settings':
-        if (data.catalogue) catalogue = data.catalogue
         if (data.policy) policy = data.policy
         if ('learned' in data && engine) engine.learned = data.learned
-        models.clear()
         break
       case 'reply': {
         const waiting = pending.get(data.id)
         pending.delete(data.id)
         if (!waiting) break
         if (data.ok) waiting.resolve(data.value)
-        else waiting.reject(new Error(data.error ?? 'the hub refused'))
+        else waiting.reject(Object.assign(new Error(data.error ?? 'the hub refused'), { code: data.code, metadata: data.metadata }))
         break
       }
       default:
