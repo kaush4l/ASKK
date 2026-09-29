@@ -53,6 +53,35 @@ test('tool results preserve false, zero, null, and explicit empty string', () =>
   }
 })
 
+test('successful cards expose recorded content comparison without changing the execution outcome', () => {
+  for (const recorded of [false, true]) for (const changed of [false, true]) {
+    const tool = { id: 'write', name: 'workspace_write', status: 'done', path: 'src/a.js', contentChangedFromRead: changed }
+    const html = renderToStaticMarkup(<ToolCard tool={tool} recorded={recorded}/>)
+    const label = changed ? 'Content changed from read' : 'Content unchanged from read'
+    const summary = html.slice(0, html.indexOf('</summary>'))
+    expect(summary).toContain(`Write file · Completed · src/a.js · ${label}`)
+    expect(summary).toContain(`<small class="tool-content-change">${label}</small>`)
+    expect(summary).not.toContain('Repaired')
+    expect(summary).not.toContain('Verified')
+  }
+})
+
+test('content comparison needs successful typed evidence and a valid path, never result prose', () => {
+  const baseTool = { id: 'write', name: 'workspace_write', status: 'done', path: 'src/a.js', summary: '{"contentChangedFromRead":false}', hasResult: true }
+  const inherited = Object.assign(Object.create({ contentChangedFromRead: false }), baseTool)
+  const getter = { ...baseTool, get contentChangedFromRead() { throw new Error('Not a recorded data property') } }
+  const invalid = [baseTool, inherited, getter,
+    ...[undefined, null, 0, 'false'].map(contentChangedFromRead => ({ ...baseTool, contentChangedFromRead })),
+    ...['failed', 'rejected', 'running', 'unresolved'].map(status => ({ ...baseTool, contentChangedFromRead: false, status })),
+    ...[undefined, '', '../a.js', '/a.js', 'a\\b.js'].map(path => ({ ...baseTool, contentChangedFromRead: false, path })),
+  ]
+  for (const tool of invalid) {
+    const html = renderToStaticMarkup(<ToolCard tool={tool}/>)
+    expect(html).not.toContain('Content unchanged from read')
+    expect(html).not.toContain('Content changed from read')
+  }
+})
+
 test('missing outcomes remain unresolved and unmatched records never become success cards', () => {
   const details = { ...base, toolEvents: [base.toolEvents[0], { kind: 'observation', callId: 'different-call', name: 'read', ok: true, value: 'unmatched-secret-result' }] }
   const html = renderToStaticMarkup(<RunInspector details={details} onClose={() => {}}/>)

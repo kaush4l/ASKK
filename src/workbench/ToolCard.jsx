@@ -1,4 +1,5 @@
 import Icon from './Icons.jsx'
+import { normalizeToolActivity } from '../core/tool-activity.js'
 
 const titles = {
   workspace_environment: 'Inspect environment', workspace_list: 'List workspace files',
@@ -29,11 +30,14 @@ export default function ToolCard({ tool, approvals, recorded = false, fileAvaila
   const args = stringify(tool.args)
   const resolvedArgs = stringify(tool.resolvedArgs)
   const complete = ['done', 'completed', 'success'].includes(tool.status)
+  const contentChange = Object.getOwnPropertyDescriptor(tool, 'contentChangedFromRead')?.value
+  const contentChangeLabel = complete && normalizeToolActivity({ path: tool.path }, { ok: true }).path && typeof contentChange === 'boolean'
+    ? contentChange ? 'Content changed from read' : 'Content unchanged from read' : ''
   const pending = ['running', 'waiting', 'awaiting_approval'].includes(presentation)
   return <details className={`tool-card ${presentation || ''}`}>
-    <summary aria-label={`${title} · ${status}${context ? ` · ${context}` : ''}`}>
+    <summary aria-label={`${title} · ${status}${context ? ` · ${context}` : ''}${contentChangeLabel ? ` · ${contentChangeLabel}` : ''}`}>
       <span className="tool-icon"><Icon name={tool.path ? 'files' : tool.command ? 'terminal' : tool.artifactId ? 'globe' : 'bolt'} size={16}/></span>
-      <span className="tool-copy"><strong>{title}</strong><small>{context || tool.name}</small></span>
+      <span className="tool-copy"><strong>{title}</strong><small>{context || tool.name}</small>{contentChangeLabel && <small className="tool-content-change">{contentChangeLabel}</small>}</span>
       <span className={`tool-status ${failed ? 'failed' : ''}`}>{complete ? <Icon name="check" size={12}/> : failed ? <Icon name="warning" size={12}/> : null}{status}</span>
       <Icon name="down" size={12} className="tool-disclosure"/>
     </summary>

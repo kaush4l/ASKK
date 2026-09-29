@@ -71,7 +71,17 @@ test('identical observed content is a successful write but not projected as a re
   expect(projected.contentChangedFromRead).toBe(false)
   expect(projected.guidance).toContain('not evidence of a repair')
   expect(projected.content).toBeUndefined()
-  expect(workspace_write.projectActivity({ ...value, args: { path: 'a.js' } })).toEqual({ path: 'a.js' })
+  expect(workspace_write.projectActivity({ ...value, args: { path: 'a.js' } })).toEqual({ path: 'a.js', contentChangedFromRead: false })
   const changed = workspace_write.projectObservation({ ...value, text: JSON.stringify({ ok: true, rev: 'r2', contentChangedFromRead: true }) })
   expect(changed.guidance).toBeUndefined()
+})
+
+test('content comparison activity is preserved only for a successful linked file outcome', () => {
+  for (const contentChangedFromRead of [true, false]) expect(normalizeToolActivity({ path: 'a.js', contentChangedFromRead }, { ok: true })).toEqual({ path: 'a.js', contentChangedFromRead })
+  for (const value of [null, undefined, 0, 'false']) expect(normalizeToolActivity({ path: 'a.js', contentChangedFromRead: value }, { ok: true })).toEqual({ path: 'a.js' })
+  expect(normalizeToolActivity({ path: '../a.js', contentChangedFromRead: false }, { ok: true })).toEqual({})
+  expect(normalizeToolActivity({ path: 'a.js', contentChangedFromRead: false }, { ok: false })).toEqual({})
+  expect(normalizeToolActivity({ path: 'a.js', get contentChangedFromRead() { throw Error('must not invoke') } }, { ok: true })).toEqual({ path: 'a.js' })
+  const events = [{ kind: 'call', name: 'custom_write', callId: 'c', args: {}, sequence: 1 }, { kind: 'observation', name: 'custom_write({})', callId: 'c', ok: true, value: 'receipt', activity: { path: 'a.js', contentChangedFromRead: false }, sequence: 2 }]
+  expect(projectRunTools({ id: 'r', slot: { status: 'done' }, toolEvents: events }).tools[0]).toMatchObject({ path: 'a.js', contentChangedFromRead: false })
 })

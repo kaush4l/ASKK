@@ -286,6 +286,7 @@
   .tool-copy { flex: 1; min-width: 0; }
   .tool-copy strong { display: block; font-size: 10px; font-weight: 550; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   .tool-copy small { display: block; font: 9px var(--mono); margin-top: 3px; color: var(--muted); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .tool-copy .tool-content-change { white-space: normal; overflow-wrap: anywhere; }
   .tool-status { display: flex; align-items: center; gap: 3px; font-size: 8px; color: var(--muted); white-space: nowrap; }
   .tool-status>svg { color: var(--green); }
   .tool-status.failed, .tool-status.failed>svg { color: var(--red); }
