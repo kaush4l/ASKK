@@ -1676,6 +1676,20 @@ test('definitions remain a catalogue while live parent and child status project 
   ])
 })
 
+test('run roster preserves exact terminal reasons without inferring them from error prose', async () => {
+  const { controller, hub } = await startedFixture({ workbenchConfig: generalWorkflows })
+  hub.runs.set('bounded', { id: 'bounded', agent: 'assistant', slot: { status: 'incomplete', terminationReason: 'step_budget' } })
+  hub.runs.set('legacy', { id: 'legacy', agent: 'assistant', slot: { status: 'failed', error: 'context limit reached' } })
+  hub.emit({ type: 'status', run: 'bounded', slot: hub.runs.get('bounded').slot })
+  expect(controller.getSnapshot().agents).toEqual([
+    expect.objectContaining({ id: 'bounded', status: 'incomplete', terminationReason: 'step_budget' }),
+    expect.objectContaining({ id: 'legacy', status: 'failed', terminationReason: undefined }),
+  ])
+  hub.runs.get('bounded').slot = { status: 'thinking', terminationReason: '' }
+  hub.emit({ type: 'status', run: 'bounded', slot: hub.runs.get('bounded').slot })
+  expect(controller.getSnapshot().agents[0]).toMatchObject({ status: 'thinking', terminationReason: '' })
+})
+
 test('agent inspector returns configured composition and only the selected agent latest exact prompt', async () => {
   const { controller, hub } = await startedFixture({ workbenchConfig: generalWorkflows })
   hub.specs = new Map([['assistant', { soul: 'Shared identity', body: 'Configured instructions', context: ['goal'], engine: { contractVersion: 2, responseFormat: 'json', maxSteps: 24, promptTemplate: { system: '{{job}}', user: '{{conversation}}' } }, inference: { api_key: 'must-not-appear' } }]])

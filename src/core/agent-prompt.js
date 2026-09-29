@@ -19,8 +19,11 @@ function requiredLayout(template) {
   return result
 }
 
-export function buildAgentPrompt({ soul = '', job = '', learned = '', tools = [], contextText = '', history = [], response, template, window, outputReserve, steps = 0, maxSteps = 10, observationFormat = 'legacy', note = '', final = false }) {
+export function buildAgentPrompt({ soul = '', job = '', learned = '', tools = [], contextText = '', history = [], response, template, window, outputReserve, steps = 0, maxSteps = 10, observationFormat = 'legacy', note = '', final = false, calibration = null }) {
   if (!Number.isFinite(window) || window < 1 || !Number.isFinite(outputReserve) || outputReserve < 1) throw new Error('context window and output reserve must be finite positive token counts')
+  if (calibration && (!Number.isFinite(calibration.factor) || calibration.factor < 1)) throw new Error('token calibration factor must be finite and at least one')
+  const factor = calibration?.factor ?? 1
+  const estimate = messages => Math.ceil((tokens(JSON.stringify(messages)) + 16) * factor)
   const available = final ? [] : tools
   const finalOnly = final || available.length === 0
   const catalogue = available.map(instructions).join('\n')
@@ -35,12 +38,12 @@ export function buildAgentPrompt({ soul = '', job = '', learned = '', tools = []
   const layout = requiredLayout(template)
   let rendered = renderPrompt(layout, values), resolved = values
   for (let pass = 0; pass < 3; pass++) {
-    const inputTokens = tokens(JSON.stringify(rendered.messages)) + 16
+    const inputTokens = estimate(rendered.messages)
     const line = `This is step ${steps} of ${maxSteps}. The full request is estimated at ${inputTokens} input tokens plus ${outputReserve} reserved output tokens of a ${window} token window.`
     resolved = { ...values, context: values.context.replace('__HARNESS_BUDGET__', line) }
     rendered = renderPrompt(layout, resolved)
   }
-  const inputTokens = tokens(JSON.stringify(rendered.messages)) + 16
+  const inputTokens = estimate(rendered.messages)
   const slots = new Set([...`${layout.system}\n${layout.user}`.matchAll(/\{\{\s*([a-z]+)\s*\}\}/g)].map(match => match[1]))
-  return { ...rendered, budget: { inputTokens, outputReserve, window, total: inputTokens + outputReserve, estimated: true }, layers: Object.entries(resolved).map(([name, value]) => ({ name, included: slots.has(name) && Boolean(value), chars: slots.has(name) ? String(value).length : 0 })), responseMode: finalOnly ? 'final-only' : 'actions', toolNames: available.map(item => item.name) }
+  return { ...rendered, budget: { inputTokens, baseInputTokens: tokens(JSON.stringify(rendered.messages)) + 16, calibration: calibration ? { ...calibration } : null, outputReserve, window, total: inputTokens + outputReserve, estimated: true }, layers: Object.entries(resolved).map(([name, value]) => ({ name, included: slots.has(name) && Boolean(value), chars: slots.has(name) ? String(value).length : 0 })), responseMode: finalOnly ? 'final-only' : 'actions', toolNames: available.map(item => item.name) }
 }

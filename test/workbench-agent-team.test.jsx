@@ -104,6 +104,25 @@ test('all terminal outcomes remain explicit history and cannot expose a Stop con
   expect(all(tree, node => node.tagName === 'button' && attr(node, 'aria-label') === 'Stop Pond observer run stopping').every(disabled)).toBe(true)
 })
 
+test('terminal cards show recorded stop reasons while unknown and stale reasons keep status fallbacks', () => {
+  const cases = [
+    ['incomplete', 'step_budget', 'Incomplete · Step limit reached'],
+    ['failed', 'context_budget', 'Failed · Context limit reached'],
+    ['failed', 'invalid_response', 'Failed · Invalid model reply'],
+    ['failed', 'provider_error', 'Failed'],
+    ['failed', undefined, 'Failed'],
+    ['incomplete', 'toString', 'Incomplete'],
+    ['thinking', 'context_budget', 'Generating reply'],
+    ['done', 'step_budget', 'Completed'],
+    ['cancelled', 'invalid_response', 'Stopped'],
+  ]
+  for (const [status, terminationReason, expected] of cases) {
+    const tree = render({ runs: [run('selected', { status, terminationReason })], activeRunId: 'selected' })
+    expect(all(tree, node => attr(node, 'class') === 'agent-instance-status').map(text)).toEqual([expected])
+    expect(text(tree)).not.toContain('Status unavailable')
+  }
+})
+
 test('bounded sections reveal the exact hidden count and never add idle catalogue definitions', () => {
   const runs = [...Array.from({ length: 12 }, (_, i) => run(`live-${i}`, { at: i })), ...Array.from({ length: 10 }, (_, i) => run(`past-${i}`, { status: 'done', at: i }))]
   const tree = render({ runs })

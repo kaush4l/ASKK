@@ -4,6 +4,8 @@ Evidence checkpoint: 2026-09-29. Latest published source `1278f5b` fixes the ins
 
 ## Small-model gate: failed, preserved for diagnosis
 
+Latest source adds receipt-calibrated context estimates and dashboard stop-reason labels. **853 passed, 1 skipped, 0 failed** across 81 files; the final 41 affected core tests also passed. Static export: **854,201,592 bytes / 210 files**, hash `f43f73ce58c1d10962fac82ba923701c51f8759e989661a6a6e22b8454b1c5e7`. Calibration remains heuristic and model-specific. [Direct code baseline](evidence/small-model-code-baseline.json) and [calibrated loop](evidence/small-model-calibrated-budget.json) both failed functional checks; the latter stopped before request 15. These are Local Bun diagnostics, not new hosted or Browser Linux acceptance.
+
 [Official Qwen2.5-Coder 1.5B Q4_K_M evaluation](evidence/small-model-first-pass.json) produced no passing script or scaffold. Two unconstrained attempts failed response parsing; JSON-mode attempts repeated conflicting writes; the project attempt exhausted output. One captured-decision replay with role-preserving messages did not improve the action. The existing large-model server was untouched, and the temporary small-model server was stopped. Verified weights remain in ignored local cache, not the site bundle.
 
 Evaluator improvements retain raw replies and explicit context/output settings. Tool-argument descriptions are clearer, but these pending-evaluation changes did not establish small-model success and are ahead of the deployed `1278f5b` release. **21 relevant tests passed** after those changes. The broader goal is not complete.

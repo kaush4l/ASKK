@@ -19,7 +19,7 @@ test('broker freezes credentials on desk and preserves ordered receipts, deltas 
   const settings = { provider: 'openai', model: 'local', contextLength: 4000, apiKey: 'secret-key', headers: { 'x-token': 'private-header' }, maxOutputTokens: 123 }
   const descriptor = await broker.open({ ...id, settings, transport: { fetch: async (url, init) => { seen.push(init); return sse('reply') } } })
   settings.apiKey = 'changed'
-  expect(descriptor).toEqual({ handle: expect.any(String), model: 'local', contextLength: 4000, settings: { maxOutputTokens: 123 } })
+  expect(descriptor).toEqual({ handle: expect.any(String), calibrationKey: expect.any(String), model: 'local', contextLength: 4000, settings: { maxOutputTokens: 123 } })
   for (let index = 0; index < 2; index++) {
     broker.start(descriptor.handle, { ...id, messages })
     const result = await drain(broker, descriptor.handle, id)

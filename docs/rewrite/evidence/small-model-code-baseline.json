@@ -1,0 +1,127 @@
+{
+  "version": 1,
+  "date": "2026-09-29",
+  "model": "Qwen2.5-Coder-1.5B-Instruct-Q4_K_M",
+  "scope": "Single direct code-generation diagnostic; no agent, tools, or iterative repair. Same CLI requirements as the tool-loop fixture. Native Local Bun execution, not Browser Linux or OS sandbox proof.",
+  "request": {
+    "model": "askk-eval-qwen1.5b",
+    "temperature": 0,
+    "max_tokens": 2048,
+    "stream": false,
+    "messages": [
+      {
+        "role": "system",
+        "content": "Return only executable JavaScript source, without Markdown fences or explanation."
+      },
+      {
+        "role": "user",
+        "content": "Write total.js, a dependency-free CLI run with bun total.js followed by numeric arguments. Print their sum as one number and a newline; no arguments prints 0. Reject any nonnumeric argument with a nonzero exit code."
+      }
+    ]
+  },
+  "reply": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "```javascript\nconst Bun = require('bun');\n\nconst args = Bun.args;\nlet sum = 0;\n\nfor (const arg of args) {\n  if (!Number.isFinite(arg)) {\n    Bun.exit(1);\n  }\n  sum += Number(arg);\n}\n\nconsole.log(sum);\n```"
+        }
+      }
+    ],
+    "created": 1790675874,
+    "model": "askk-eval-qwen1.5b",
+    "system_fingerprint": "b6940-c5023daf6",
+    "object": "chat.completion",
+    "usage": {
+      "completion_tokens": 61,
+      "prompt_tokens": 70,
+      "total_tokens": 131
+    },
+    "id": "chatcmpl-fkjQszCokQfWJiExGLlBtl0rPiCx6kBG",
+    "timings": {
+      "cache_n": 0,
+      "prompt_n": 70,
+      "prompt_ms": 72.192,
+      "prompt_per_token_ms": 1.0313142857142856,
+      "prompt_per_second": 969.6365248226952,
+      "predicted_n": 61,
+      "predicted_ms": 277.464,
+      "predicted_per_token_ms": 4.548590163934426,
+      "predicted_per_second": 219.84834068563848
+    }
+  },
+  "elapsedMs": 351,
+  "results": [
+    {
+      "file": "total.js",
+      "transformation": "Exact returned text.",
+      "checks": [
+        {
+          "args": [
+            "19",
+            "-7",
+            "0.5"
+          ],
+          "code": 1,
+          "stdout": "",
+          "passed": false,
+          "error": "Returned Markdown fences are not executable JavaScript."
+        },
+        {
+          "args": [],
+          "code": 1,
+          "stdout": "",
+          "passed": false,
+          "error": "Returned Markdown fences are not executable JavaScript."
+        },
+        {
+          "args": [
+            "invalid"
+          ],
+          "code": 1,
+          "stdout": "",
+          "passed": true,
+          "error": "Returned Markdown fences are not executable JavaScript."
+        }
+      ],
+      "passed": false
+    },
+    {
+      "file": "stripped.js",
+      "transformation": "Removed Markdown fences only; diagnostic, not an accepted production response.",
+      "checks": [
+        {
+          "args": [
+            "19",
+            "-7",
+            "0.5"
+          ],
+          "code": 1,
+          "stdout": "",
+          "passed": false,
+          "error": "Bun.args was undefined; iteration failed."
+        },
+        {
+          "args": [],
+          "code": 1,
+          "stdout": "",
+          "passed": false,
+          "error": "Bun.args was undefined; iteration failed."
+        },
+        {
+          "args": [
+            "invalid"
+          ],
+          "code": 1,
+          "stdout": "",
+          "passed": true,
+          "error": "Bun.args was undefined; iteration failed."
+        }
+      ],
+      "passed": false
+    }
+  ],
+  "conclusion": "Exact output and fence-stripped diagnostic both failed positive and empty inputs. An invalid-input exit alone does not establish correctness. One attempt does not establish a model capability ceiling."
+}

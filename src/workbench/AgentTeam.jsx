@@ -10,6 +10,7 @@ const LABELS = { queued: 'Queued', starting: 'Starting', thinking: 'Generating r
 const TOOL_LABELS = { running: 'Running', waiting: 'Waiting', awaiting_approval: 'Awaiting approval', done: 'Completed', completed: 'Completed', success: 'Completed', failed: 'Failed', error: 'Failed', interrupted: 'Interrupted', cancelled: 'Stopped', unresolved: 'Outcome not recorded' }
 const SUCCESS = new Set(['done', 'completed', 'verified'])
 const PROBLEM = new Set(['failed', 'error', 'incomplete', 'interrupted', 'unresponsive'])
+const STOP_REASONS = new Map([['step_budget', 'Step limit reached'], ['context_budget', 'Context limit reached'], ['invalid_response', 'Invalid model reply']])
 const identityOf = run => run.path || run.agent || ''
 const text = value => typeof value === 'string' ? value : ''
 const timeOf = run => Number.isFinite(run.at) ? run.at : 0
@@ -51,7 +52,8 @@ export function projectAgentTeam({ runs = [], definitions = [], approvals = [], 
     const pending = decisions.length
     const parent = index.get(run.parent)
     const needsDecision = pending > 0 && !['cancelling', 'unresponsive'].includes(run.status)
-    const status = needsDecision ? 'Needs your decision' : LABELS[run.status] || 'Status unavailable'
+    const stopReason = ['failed', 'incomplete'].includes(run.status) ? STOP_REASONS.get(run.terminationReason) : null
+    const status = needsDecision ? 'Needs your decision' : `${LABELS[run.status] || 'Status unavailable'}${stopReason ? ` · ${stopReason}` : ''}`
     const tone = PROBLEM.has(run.status) ? 'problem' : needsDecision ? 'decision' : SUCCESS.has(run.status) ? 'complete' : live ? 'live' : 'neutral'
     const icon = run.status === 'cancelling' ? 'stop' : tone === 'problem' || needsDecision ? 'warning' : tone === 'complete' ? 'check' : run.status === 'calling' ? 'bolt' : null
     return { run, tool: latestTools.get(run.id), toolStatus: latestTools.has(run.id) ? toolPresentationStatus(latestTools.get(run.id), approvals) : null, name: nameOf(run), identity: identityOf(run), definitionAvailable: definitions.some(definition => definition.path === identityOf(run)), live, status, pending, decisions, selected: belongs(run), parentName: parent ? nameOf(parent) : '', parentAvailable: Boolean(parent), parentLabel: parent?.kind === 'strategy' || run.stageId || run.kind === 'strategy-role' ? 'Parent run' : 'Delegated by', tone, icon }

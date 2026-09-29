@@ -1,0 +1,305 @@
+{
+  "version": 1,
+  "date": "2026-09-29",
+  "attempt": "small-script-06",
+  "model": "askk-eval-qwen1.5b",
+  "contextLength": 8192,
+  "jsonOutput": true,
+  "status": "failed",
+  "passed": false,
+  "result": "(failed: request budget exceeds context window (6164 input + 2048 output > 8192))",
+  "elapsedMs": 7928,
+  "checks": [
+    {
+      "args": [
+        "total.js",
+        "19",
+        "-7",
+        "0.5"
+      ],
+      "code": 1,
+      "output": "",
+      "passed": false
+    },
+    {
+      "args": [
+        "total.js"
+      ],
+      "code": 1,
+      "output": "",
+      "passed": false
+    },
+    {
+      "args": [
+        "total.js",
+        "invalid"
+      ],
+      "code": 1,
+      "output": "",
+      "passed": true
+    }
+  ],
+  "metrics": {
+    "promptCount": 15,
+    "repairs": 0,
+    "toolCalls": 13,
+    "inputTokensEstimated": [
+      1240,
+      1464,
+      1549,
+      1782,
+      2052,
+      2472,
+      2888,
+      3301,
+      3712,
+      4121,
+      4532,
+      4939,
+      5349,
+      5755,
+      6164
+    ]
+  },
+  "budgets": [
+    {
+      "attemptId": "7b9c913e-3786-402f-8e68-6ac7c9c042ac:1:1",
+      "budget": {
+        "inputTokens": 1240,
+        "baseInputTokens": 1240,
+        "calibration": null,
+        "outputReserve": 2048,
+        "window": 8192,
+        "total": 3288,
+        "estimated": true
+      },
+      "actual": 1020
+    },
+    {
+      "attemptId": "7b9c913e-3786-402f-8e68-6ac7c9c042ac:2:1",
+      "budget": {
+        "inputTokens": 1464,
+        "baseInputTokens": 1464,
+        "calibration": {
+          "factor": 1,
+          "samples": 1
+        },
+        "outputReserve": 2048,
+        "window": 8192,
+        "total": 3512,
+        "estimated": true
+      },
+      "actual": 1350
+    },
+    {
+      "attemptId": "7b9c913e-3786-402f-8e68-6ac7c9c042ac:3:1",
+      "budget": {
+        "inputTokens": 1549,
+        "baseInputTokens": 1549,
+        "calibration": {
+          "factor": 1,
+          "samples": 2
+        },
+        "outputReserve": 2048,
+        "window": 8192,
+        "total": 3597,
+        "estimated": true
+      },
+      "actual": 1413
+    },
+    {
+      "attemptId": "7b9c913e-3786-402f-8e68-6ac7c9c042ac:4:1",
+      "budget": {
+        "inputTokens": 1782,
+        "baseInputTokens": 1782,
+        "calibration": {
+          "factor": 1,
+          "samples": 3
+        },
+        "outputReserve": 2048,
+        "window": 8192,
+        "total": 3830,
+        "estimated": true
+      },
+      "actual": 1814
+    },
+    {
+      "attemptId": "7b9c913e-3786-402f-8e68-6ac7c9c042ac:5:1",
+      "budget": {
+        "inputTokens": 2052,
+        "baseInputTokens": 2015,
+        "calibration": {
+          "factor": 1.0179573512906845,
+          "samples": 4
+        },
+        "outputReserve": 2048,
+        "window": 8192,
+        "total": 4100,
+        "estimated": true
+      },
+      "actual": 2215
+    },
+    {
+      "attemptId": "7b9c913e-3786-402f-8e68-6ac7c9c042ac:6:1",
+      "budget": {
+        "inputTokens": 2472,
+        "baseInputTokens": 2248,
+        "calibration": {
+          "factor": 1.099255583126551,
+          "samples": 5
+        },
+        "outputReserve": 2048,
+        "window": 8192,
+        "total": 4520,
+        "estimated": true
+      },
+      "actual": 2616
+    },
+    {
+      "attemptId": "7b9c913e-3786-402f-8e68-6ac7c9c042ac:7:1",
+      "budget": {
+        "inputTokens": 2888,
+        "baseInputTokens": 2481,
+        "calibration": {
+          "factor": 1.1637010676156583,
+          "samples": 6
+        },
+        "outputReserve": 2048,
+        "window": 8192,
+        "total": 4936,
+        "estimated": true
+      },
+      "actual": 3017
+    },
+    {
+      "attemptId": "7b9c913e-3786-402f-8e68-6ac7c9c042ac:8:1",
+      "budget": {
+        "inputTokens": 3301,
+        "baseInputTokens": 2714,
+        "calibration": {
+          "factor": 1.2160419185812172,
+          "samples": 7
+        },
+        "outputReserve": 2048,
+        "window": 8192,
+        "total": 5349,
+        "estimated": true
+      },
+      "actual": 3418
+    },
+    {
+      "attemptId": "7b9c913e-3786-402f-8e68-6ac7c9c042ac:9:1",
+      "budget": {
+        "inputTokens": 3712,
+        "baseInputTokens": 2947,
+        "calibration": {
+          "factor": 1.2593957258658806,
+          "samples": 8
+        },
+        "outputReserve": 2048,
+        "window": 8192,
+        "total": 5760,
+        "estimated": true
+      },
+      "actual": 3819
+    },
+    {
+      "attemptId": "7b9c913e-3786-402f-8e68-6ac7c9c042ac:10:1",
+      "budget": {
+        "inputTokens": 4121,
+        "baseInputTokens": 3180,
+        "calibration": {
+          "factor": 1.2958941296233457,
+          "samples": 9
+        },
+        "outputReserve": 2048,
+        "window": 8192,
+        "total": 6169,
+        "estimated": true
+      },
+      "actual": 4221
+    },
+    {
+      "attemptId": "7b9c913e-3786-402f-8e68-6ac7c9c042ac:11:1",
+      "budget": {
+        "inputTokens": 4532,
+        "baseInputTokens": 3414,
+        "calibration": {
+          "factor": 1.3273584905660378,
+          "samples": 10
+        },
+        "outputReserve": 2048,
+        "window": 8192,
+        "total": 6580,
+        "estimated": true
+      },
+      "actual": 4623
+    },
+    {
+      "attemptId": "7b9c913e-3786-402f-8e68-6ac7c9c042ac:12:1",
+      "budget": {
+        "inputTokens": 4939,
+        "baseInputTokens": 3647,
+        "calibration": {
+          "factor": 1.3541300527240774,
+          "samples": 11
+        },
+        "outputReserve": 2048,
+        "window": 8192,
+        "total": 6987,
+        "estimated": true
+      },
+      "actual": 5026
+    },
+    {
+      "attemptId": "7b9c913e-3786-402f-8e68-6ac7c9c042ac:13:1",
+      "budget": {
+        "inputTokens": 5349,
+        "baseInputTokens": 3881,
+        "calibration": {
+          "factor": 1.3781190019193859,
+          "samples": 12
+        },
+        "outputReserve": 2048,
+        "window": 8192,
+        "total": 7397,
+        "estimated": true
+      },
+      "actual": 5429
+    },
+    {
+      "attemptId": "7b9c913e-3786-402f-8e68-6ac7c9c042ac:14:1",
+      "budget": {
+        "inputTokens": 5755,
+        "baseInputTokens": 4114,
+        "calibration": {
+          "factor": 1.3988662715794897,
+          "samples": 13
+        },
+        "outputReserve": 2048,
+        "window": 8192,
+        "total": 7803,
+        "estimated": true
+      },
+      "actual": 5832
+    },
+    {
+      "attemptId": "7b9c913e-3786-402f-8e68-6ac7c9c042ac:15:1",
+      "budget": {
+        "inputTokens": 6164,
+        "baseInputTokens": 4348,
+        "calibration": {
+          "factor": 1.4175984443364122,
+          "samples": 14
+        },
+        "outputReserve": 2048,
+        "window": 8192,
+        "total": 8212,
+        "estimated": true
+      },
+      "actual": null
+    }
+  ],
+  "evidenceSha256": "609052214674d1f413a9087da69a0378fd23ccb09550c2aa73612ead83091f49",
+  "scope": "Real production worker/model broker with Local Bun evaluator. Repeated conflicting writes still failed the task. Budget calibration is heuristic, not an exact tokenizer or guaranteed upper bound. No Chrome, Safari or Browser Linux execution claimed."
+}
