@@ -1,5 +1,5 @@
 {
-  "build": "e5a27b9df4",
+  "build": "eaacf4d6d8",
   "files": {
     "agents/assistant/agent.md": "6eb458313e",
     "agents/coder/agent.md": "3afbea3eaa",
@@ -62,7 +62,7 @@
     "downloads/askk-companion-darwin-arm64-cf6b594.tar.gz": "ba2be62984",
     "downloads/askk-companion-darwin-arm64-df88791.tar.gz": "c5b2d38659",
     "models.json": "2c7b7e2627",
-    "package-templates/basic.json": "19d6b0350a",
+    "package-templates/basic.json": "3291d999c5",
     "packages/starter/agent.md": "ee73d6fa1e",
     "packages/starter/agents/builder/agent.md": "50a574ccca",
     "packages/starter/agents/builder/soul.md": "0a442e6c59",
@@ -130,7 +130,7 @@
     "runtime/modules/core/native-protocol.js": "757ff58046",
     "runtime/modules/core/native-tools.js": "b68e4ce16c",
     "runtime/modules/core/package-spec.js": "1446884b1d",
-    "runtime/modules/core/package-template.js": "2bcdc7721d",
+    "runtime/modules/core/package-template.js": "a46f675932",
     "runtime/modules/core/package-workflows.js": "b4fed62b21",
     "runtime/modules/core/permissions.js": "b9ba873cf5",
     "runtime/modules/core/prompt.js": "78a83a84a3",
@@ -142,7 +142,7 @@
     "runtime/modules/core/tools.js": "4d4d2b8c24",
     "runtime/modules/execution/browser-linux.js": "5722daaed5",
     "runtime/modules/execution/local.js": "f280695c88",
-    "runtime/modules/runtime/agent-installations.js": "1f82aa5fbd",
+    "runtime/modules/runtime/agent-installations.js": "2d0d21ba75",
     "runtime/modules/runtime/agent.worker.js": "50a2e52a80",
     "runtime/modules/runtime/desk-packages.js": "01cd9a23de",
     "runtime/modules/runtime/hub.js": "784f2c36ca",
