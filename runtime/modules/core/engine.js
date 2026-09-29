@@ -327,9 +327,9 @@ export class Engine {
     const callId = `${this.currentAttemptId || this.runId}:call:${this.calls.length + 1}`
     this.calls.push(key)
     this.emit('call', call.name, call.text, { callId, args: call.args, slot: this.progress() })
-    const done = (text, ok, activity = {}) => {
+    const done = (text, ok, activity = {}, failureKind) => {
       this.running = this.running.filter((running) => running !== call.text)
-      this.emit('observation', call.text, text, { callId, ms: Date.now() - started, ok, activity, slot: this.progress() })
+      this.emit('observation', call.text, text, { callId, ms: Date.now() - started, ok, activity, ...(failureKind ? { failureKind } : {}), slot: this.progress() })
       return { text, ok, ...(includeIdentity ? { callId } : {}) }
     }
 
@@ -344,9 +344,9 @@ export class Engine {
     const names = Object.keys(item.parameters ?? {})
     if (this.contractVersion === 1 && 'value' in args && Object.keys(args).length === 1 && names.length && !names.includes('value')) args = { [names[0]]: args.value }
 
-    const { text, ok } = await runToolResult(item, args, { ...this.ctx, signal: this.signal, caller: this.path, call: call.text, callId })
+    const { text, ok, failureKind } = await runToolResult(item, args, { ...this.ctx, signal: this.signal, caller: this.path, call: call.text, callId })
     if (ok && item.cacheable === true && !item.writes) this.results.set(key, text)
-    return done(text, ok, toolActivity(item, { text, ok }, args))
+    return done(text, ok, failureKind ? {} : toolActivity(item, { text, ok }, args), failureKind)
   }
 
   /** Open a turn. The goal is new, so everything measured against it starts again. */

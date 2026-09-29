@@ -1,5 +1,5 @@
 {
-  "build": "1bdee2ddc1",
+  "build": "ee961a74a2",
   "files": {
     "agents/assistant/agent.md": "6eb458313e",
     "agents/coder/agent.md": "3afbea3eaa",
@@ -119,7 +119,7 @@
     "runtime/modules/core/completion.js": "f1a99e6856",
     "runtime/modules/core/context.js": "c43ffa8372",
     "runtime/modules/core/draft-backup.js": "ae0630bd19",
-    "runtime/modules/core/engine.js": "ed9528b729",
+    "runtime/modules/core/engine.js": "46155009ac",
     "runtime/modules/core/folder.js": "a745bce122",
     "runtime/modules/core/inference.js": "91b1c0f6f5",
     "runtime/modules/core/loop-budget.js": "f43b57f033",
@@ -137,7 +137,7 @@
     "runtime/modules/core/token-budget.js": "50a492499e",
     "runtime/modules/core/tool-activity.js": "2a90678bad",
     "runtime/modules/core/tool-input.js": "3d3e6ffb6d",
-    "runtime/modules/core/tools.js": "cd4b2b7c36",
+    "runtime/modules/core/tools.js": "4d4d2b8c24",
     "runtime/modules/execution/browser-linux.js": "5722daaed5",
     "runtime/modules/execution/local.js": "f280695c88",
     "runtime/modules/runtime/agent-installations.js": "1f82aa5fbd",
@@ -154,7 +154,7 @@
     "runtime/modules/workspace/artifact-timing.js": "f9695e80b0",
     "runtime/modules/workspace/artifacts.js": "60dacc6efd",
     "runtime/modules/workspace/contracts.js": "a6f716ebe5",
-    "runtime/modules/workspace/controller.js": "9973c40aef",
+    "runtime/modules/workspace/controller.js": "a99d076b53",
     "runtime/modules/workspace/files.js": "d9120790d2",
     "runtime/modules/workspace/isolation.js": "5779cd5540",
     "skills/verification.md": "a06786e824",
