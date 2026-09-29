@@ -153,3 +153,71 @@ test('observation format is explicit validated agent configuration', async () =>
   await expect(spec('silent')).rejects.toThrow('unsupported observation_format')
   expect(() => setup({ observationFormat: 'silent' })).toThrow('unsupported observation format')
 })
+
+test('command projection bounds model output while preserving failure identity and complete raw evidence', async () => {
+  const output = 'H'.repeat(2000) + 'MIDDLE-ONLY'.repeat(900) + 'T'.repeat(4000)
+  for (const status of [{ code: 0 }, { code: 1 }, { code: 143, cancelled: true, timedOut: true }]) {
+    const receipt = { id: 'command-1', runtimeId: 'runtime-1', revision: 8, signal: null, outputLength: output.length, outputTruncated: false, output, ...status }
+    const original = structuredClone(receipt)
+    const { engine, events } = setup({ observationFormat: 'compact', tools: [tool(workspace_run, { name: 'command' })], ctx: { request: async () => receipt } })
+    const row = JSON.parse(await engine.act({ do: 'tool', act: [[{ name: 'command', args: { command: 'bun test' } }]] })).stages[0][0]
+    expect(row.ok).toBe(status.code === 0)
+    expect(row.result.output.startsWith('H'.repeat(2000))).toBe(true)
+    expect(row.result.output.endsWith('T'.repeat(4000))).toBe(true)
+    expect(row.result.output).not.toContain('MIDDLE-ONLY')
+    expect(row.result.modelOutputProjection.output).toEqual({ originalLength: output.length, omitted: output.length - 6000, retainedLength: 6000 })
+    const { output: projectedOutput, modelOutputProjection, ...fields } = row.result
+    const { output: originalOutput, ...originalFields } = original
+    expect(fields).toEqual(originalFields)
+    expect(receipt).toEqual(original)
+    const event = events.find(event => event.kind === 'observation')
+    expect(event.activity.commandId).toBe('command-1')
+    expect(JSON.parse(row.ok ? event.value : event.value.slice('command failed: '.length))).toEqual(original)
+  }
+})
+
+test('command projection shares one budget across streams and preserves Unicode slice boundaries', () => {
+  const project = receipt => workspace_run.projectObservation({ text: JSON.stringify(receipt), ok: true, name: 'run' })
+  for (const length of [0, 5999, 6000]) {
+    const receipt = { id: 'c', code: 0, output: 'x'.repeat(length) }
+    expect(project(receipt)).toEqual(receipt)
+  }
+  const unicode = 'a'.repeat(1999) + '😀' + 'middle'.repeat(1000) + '😀' + 'b'.repeat(3999)
+  const result = project({ code: 1, output: unicode })
+  expect(result.output.isWellFormed()).toBe(true)
+  expect(result.modelOutputProjection.output).toEqual({ originalLength: unicode.length, omitted: unicode.length - 5998, retainedLength: 5998 })
+  const streams = project({ code: 0, output: 'o'.repeat(8000), stdout: 's'.repeat(8000), stderr: 'short diagnostic' })
+  expect(streams.stderr).toBe('short diagnostic')
+  expect(Object.values(streams.modelOutputProjection).reduce((sum, item) => sum + item.retainedLength, streams.stderr.length)).toBeLessThanOrEqual(6000)
+  expect(streams.modelOutputProjection.output.originalLength).toBe(8000)
+  expect(streams.modelOutputProjection.stdout.originalLength).toBe(8000)
+})
+
+test('command projection leaves raw errors and malformed receipt wrappers unchanged', () => {
+  const raw = 'transport error '.repeat(1000)
+  expect(workspace_run.projectObservation({ text: raw, ok: false, name: 'run' })).toBe(raw)
+  for (const receipt of [{ ok: false, error: 'Invalid exit receipt', received: { output: raw } }, { code: '0', output: raw }, { code: 0, received: {}, output: raw }]) {
+    expect(workspace_run.projectObservation({ text: `run failed: ${JSON.stringify(receipt)}`, ok: false, name: 'run' })).toEqual(receipt)
+  }
+})
+
+test('native provider history receives bounded command output paired with its actual failure', async () => {
+  const requests = [], events = [], output = 'start\n' + 'middle'.repeat(3000) + '\nterminal error'
+  const receipt = { id: 'native-command', code: 1, output }
+  const llm = inference({ provider: 'openai', model: 'fixture', contextLength: 32768, maxOutputTokens: 512, retries: 1 }, { fetch: async (_url, init) => {
+    requests.push(JSON.parse(init.body))
+    const first = requests.length === 1
+    const delta = first ? { tool_calls: [{ index: 0, id: 'provider-call', type: 'function', function: { name: 'workspace_run', arguments: '{"command":"bun test"}' } }] } : { content: 'The command failed.' }
+    return new Response(`data: ${JSON.stringify({ choices: [{ delta, finish_reason: first ? 'tool_calls' : 'stop' }] })}\n\ndata: [DONE]\n\n`)
+  } })
+  const engine = new Engine({ name: 'projection', contractVersion: 3, responseProtocol: 'native', historyFormat: 'messages', observationFormat: 'compact', tools: [tool(workspace_run, { name: 'workspace_run' })], ctx: { request: async () => receipt }, llm: async () => llm })
+  engine.listen(event => events.push(event))
+  expect(await engine.invoke('Run the check.')).toBe('The command failed.')
+  const message = requests[1].messages.find(message => message.role === 'tool')
+  expect(message.tool_call_id).toBe('provider-call')
+  expect(message.content).not.toContain(output)
+  expect(message.content).toContain('UTF-16 units omitted')
+  expect(message.content).toContain('terminal error')
+  expect(events.find(event => event.kind === 'observation')).toMatchObject({ ok: false, providerCallId: 'provider-call', activity: { commandId: 'native-command' } })
+  expect(events.find(event => event.kind === 'observation').value).toContain(output.replaceAll('\n', '\\n'))
+})

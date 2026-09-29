@@ -214,3 +214,10 @@ Project-loop trials execute in a fresh OS temporary directory outside the harnes
 `execution-environment.json` and the evaluation record retain the actual runtime identity/root. After shutdown, final files are copied to the requested evidence directory's `project` archive before the temporary root is removed. Archive failure retains the temporary source for recovery. Agent commands use a 30-second deadline; independent checks use 10 seconds, matching the execution API's seconds contract.
 
 Cancellation during an active command and overlap with subsequent independent checks still need a dedicated lifecycle audit. Existing cancellation archival coverage does not prove that ordering. Do not treat aborted or manually interrupted trials as quality comparisons.
+
+
+## Bounded command observations
+
+The workspace command tool owns its model-context projection in `src/builtin/workspace.js`; the engine does not branch on an agent name or task. In compact observation mode, valid exit receipts retain identity, revision, exit, cancellation and timeout fields. Long `output`, `stdout` and `stderr` fields share a budget of 6,000 retained UTF-16 units, preserving beginning and end with explicit omission markers and original/omitted counts. Short outputs remain exact. The limit is a character budget, not an exact token guarantee; markers and other receipt fields add overhead.
+
+Raw observation events and command receipts remain unchanged for inspection and verification. Native tool history uses the projected observation paired with its actual provider call ID. Invalid receipts and unstructured transport errors are not reinterpreted or summarized by this projector. Legacy observation mode remains unchanged. A log excerpt cannot establish that omitted diagnostics are irrelevant or that a command passed.
