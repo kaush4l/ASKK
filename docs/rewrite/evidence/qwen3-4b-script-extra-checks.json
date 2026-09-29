@@ -1,0 +1,28 @@
+{
+  "scope": "Post-comparison diagnostic on unchanged delivered script. Not part of original evaluator or model prompt. No retroactive score change.",
+  "path": ".cache/project-loop/compare-4-seed42-script-01/project/total.js",
+  "sourceSHA256": "af3c144568f8a3783fb9dde46adfe74d53ae88b0c78b6575431abe744f4adc31",
+  "cases": [
+    {
+      "input": "1oops",
+      "stdout": "1\n",
+      "stderr": "",
+      "code": 0,
+      "passed": false
+    },
+    {
+      "input": "3.5junk",
+      "stdout": "3.5\n",
+      "stderr": "",
+      "code": 0,
+      "passed": false
+    },
+    {
+      "input": "1e",
+      "stdout": "1\n",
+      "stderr": "",
+      "code": 0,
+      "passed": false
+    }
+  ]
+}

@@ -1,5 +1,18 @@
 # Implementation status
 
+Latest publication: source **`e7e19081`**, deployment **`d02543f1`**, [successful Pages workflow](https://github.com/kaush4l/ASKK/actions/runs/36578773412). [Hosted evidence](evidence/model-discovery-pages.json) confirms the page, workbench chunk, runtime context, workspace controller and agent index match the tested export. Export: **879,666,446 bytes / 216 files**.
+
+## Frozen small-model comparison
+
+[Six fresh trials](evidence/qwen3-size-comparison.json) compared official Qwen3-1.7B and Qwen3-4B Q8_0 weights with identical harness/prompt source hashes, shipped builder instructions, native tools, seed 42, 32K context and unchanged independent checks. **No trial passed full acceptance.** One trial per task/model is diagnostic, not a reliability estimate or capability ceiling; timings are not benchmarks.
+
+- **1.7B:** script, scaffold and repair remained incomplete and failed independent behavior checks.
+- **4B script:** ran positive, negative, empty and invalid-input checks, and passed the original withheld cases. The configured latest-command zero-exit gate rejected expected invalid-input exits. Separately, [extra checks](evidence/qwen3-4b-script-extra-checks.json) proved its `parseFloat` implementation incorrectly accepts numeric prefixes (`1oops`, `3.5junk`, `1e`). No retroactive score change.
+- **4B scaffold:** missing export and test imports failed checks; a malformed native tool call ended the run.
+- **4B repair:** delivered code passed independent behavior, package-script and discovery checks. It skipped reading the test and reproducing the failure before editing, so the required repair-cycle check failed despite the agent reaching `done`.
+
+Next evaluation revision should configure explicit assertion commands for expected rejection and strengthen numeric-prefix/exact-newline checks, then rerun both models against the same frozen evaluator. Preserve zero-exit defaults for ordinary commands; expected outcomes belong to trusted workflow configuration. No candidate prompt or relaxed acceptance was shipped. Temporary model servers were stopped; model weights remain ignored local test assets and are not deployed. These trials used Local Bun, not Browser Linux.
+
 ## Model discovery and stricter repair evidence
 
 Settings now retains up to 100 unique validated IDs returned by model listing and offers explicit selection into the settings draft. Selecting a draft does not change the saved model or grant any execution capability; saving clears old reply verification. Missing selected models remain failed while valid alternatives remain available. Discovery is scoped to endpoint/route and clears on model save, fresh discovery or relay identity change. Unsaved endpoint, route and key edits hide mismatched results. Listing still requires an existing saved model ID; discovery-before-configuration is not implemented.

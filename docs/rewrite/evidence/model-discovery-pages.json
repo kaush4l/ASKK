@@ -1,0 +1,52 @@
+{
+  "source": "e7e19081",
+  "deployment": "d02543f1cece707f96d3161d5e5131084c52a944",
+  "workflow": "https://github.com/kaush4l/ASKK/actions/runs/36578773412",
+  "verifiedAt": "2026-09-29T14:01:24.477Z",
+  "scope": "Hosted bytes match tested export; this does not verify browser runtime capabilities.",
+  "export": {
+    "version": 1,
+    "basePath": "/ASKK",
+    "totalBytes": 879666446,
+    "fileCount": 216,
+    "runtimeId": "c2w-node24-38d093f4a38002db",
+    "artifactHash": "c489bbc98525c73c932e8180ede4c816452893ea780ec3338f535f1ef5f4a93f"
+  },
+  "files": [
+    {
+      "path": "index.html",
+      "bytes": 41028,
+      "localSHA256": "70eaced3fff603b00adcdeda0fb7531be0b490636be297398f18c1750ad3ff87",
+      "hostedSHA256": "70eaced3fff603b00adcdeda0fb7531be0b490636be297398f18c1750ad3ff87",
+      "matches": true
+    },
+    {
+      "path": "_next/static/chunks/app/page-c8dd79a0b8787258.js",
+      "bytes": 329579,
+      "localSHA256": "a3089241c5588f0a9271646ff2a735e9e42b8381389ddc5c1b50c9e5597452b0",
+      "hostedSHA256": "a3089241c5588f0a9271646ff2a735e9e42b8381389ddc5c1b50c9e5597452b0",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/core/context.js",
+      "bytes": 5739,
+      "localSHA256": "05db32022d52318aa724d4db0f17c789aabebc2425415cb1b86bbe387491ee3c",
+      "hostedSHA256": "05db32022d52318aa724d4db0f17c789aabebc2425415cb1b86bbe387491ee3c",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/workspace/controller.js",
+      "bytes": 97907,
+      "localSHA256": "b6f103bc771cd6e022e4a21b10f24c2909a8ddd34fcec4dc5f6f857a2f698d0c",
+      "hostedSHA256": "b6f103bc771cd6e022e4a21b10f24c2909a8ddd34fcec4dc5f6f857a2f698d0c",
+      "matches": true
+    },
+    {
+      "path": "agents/index.json",
+      "bytes": 10465,
+      "localSHA256": "f47bb502054793dd1f4abfd87a900f0e57976d99d073e708f830d74eee1479cb",
+      "hostedSHA256": "f47bb502054793dd1f4abfd87a900f0e57976d99d073e708f830d74eee1479cb",
+      "matches": true
+    }
+  ]
+}
