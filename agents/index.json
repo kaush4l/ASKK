@@ -1,7 +1,7 @@
 {
-  "build": "633ee77eec",
+  "build": "4a07742ae0",
   "files": {
-    "agents/assistant/agent.md": "0067d3811b",
+    "agents/assistant/agent.md": "6eb458313e",
     "agents/coder/agent.md": "3afbea3eaa",
     "agents/coder/reviewer/agent.md": "2ca84fdcea",
     "agents/compactor/agent.md": "3c37406fed",
