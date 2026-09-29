@@ -61,6 +61,7 @@ async function llm() {
   modelHandle = descriptor.handle
   return {
     model: descriptor.model,
+    calibrationKey: descriptor.calibrationKey,
     settings: descriptor.settings,
     context: async () => descriptor.contextLength,
     async *stream(messages, { signal, onRequest, onFinish, maxOutputTokens, strictCompletion } = {}) {

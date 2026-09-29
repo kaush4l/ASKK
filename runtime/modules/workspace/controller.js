@@ -289,7 +289,7 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
   const refreshAgents = () => {
     const instances = new Map(cachedSummaryMap)
     for (const run of hub?.runs.values() ?? []) instances.set(run.id, run)
-    notify({ agents: [...instances.values()].map(run => ({ id: run.id, trace: run.trace ?? run.id, kind: run.kind, taskId: run.taskId, stageId: run.stageId, result: run.result, error: run.slot?.error, path: run.agent, agent: run.agent, name: state.agentDefinitions.find(row => row.path === run.agent)?.name ?? run.agent, current: run.slot?.current ?? '', maxSteps: run.slot?.maxSteps, steps: run.slot?.steps ?? 0, parent: run.parent ?? null, status: hub?.runs.get(run.id)?.ended === false && run.slot?.status === 'idle' ? 'queued' : run.slot?.status ?? 'starting', description: run.query, at: run.at })) })
+    notify({ agents: [...instances.values()].map(run => ({ id: run.id, trace: run.trace ?? run.id, kind: run.kind, taskId: run.taskId, stageId: run.stageId, result: run.result, error: run.slot?.error, terminationReason: run.slot?.terminationReason, path: run.agent, agent: run.agent, name: state.agentDefinitions.find(row => row.path === run.agent)?.name ?? run.agent, current: run.slot?.current ?? '', maxSteps: run.slot?.maxSteps, steps: run.slot?.steps ?? 0, parent: run.parent ?? null, status: hub?.runs.get(run.id)?.ended === false && run.slot?.status === 'idle' ? 'queued' : run.slot?.status ?? 'starting', description: run.query, at: run.at })) })
   }
   const sessionBoundaryFor = (workflows = state.workflows, selectedId = state.selectedWorkflowId) => {
     const selected = workflows.find(row => row.id === selectedId)

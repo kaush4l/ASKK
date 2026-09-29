@@ -26,6 +26,7 @@ import { CompactReAct, ReAct, responseModel } from './responses.js'
 import { runToolResult } from './tools.js'
 import { snapshot } from './prompt.js'
 import { buildAgentPrompt } from './agent-prompt.js'
+import { calibrationKey, reportedInputTokens } from './token-budget.js'
 
 const FINAL_NOTE =
   '## THIS IS YOUR LAST STEP\n\nThe step budget is spent. Set do to done and give the best answer you ' +
@@ -86,6 +87,7 @@ export class Engine {
     this.attempts = 0
     this.terminationReason = ''
     this.promptBudget = null
+    this.tokenCalibrations = new Map()
     this.activeLLM = null
     this.runId = crypto.randomUUID()
     this.currentAttemptId = ''
@@ -162,6 +164,7 @@ export class Engine {
       soul: this.soul, job: this.systemPrompt, learned: this.learned, tools: this.tools,
       contextText, history: this.history, response: this.response, template: this.promptTemplate,
       window: Number(await llm.context()), outputReserve: Math.max(1, Number(this.outputReserve) || 0, Number(llm.settings?.maxOutputTokens) || 4096),
+      calibration: this.tokenCalibrations.get(calibrationKey(llm)),
       steps: this.steps, maxSteps: this.maxSteps, observationFormat: this.observationFormat, note, final,
     })
     this.promptBudget = rendered.budget
@@ -245,7 +248,16 @@ export class Engine {
       signal: this.signal,
       maxOutputTokens: Number(llm.settings?.maxOutputTokens) || budget?.outputReserve,
       onRequest: (request) => this.emit('request', '', '', { attemptId, request }),
-      onFinish: (metadata) => this.emit('completion', '', '', { attemptId, ...metadata }),
+      onFinish: (metadata) => {
+        const actual = reportedInputTokens(metadata.usage)
+        // Highest observed ratio is still a heuristic: unseen text can tokenize differently.
+        if (actual !== null && budget?.baseInputTokens > 0) {
+          const key = calibrationKey(llm)
+          const previous = this.tokenCalibrations.get(key)
+          this.tokenCalibrations.set(key, { factor: Math.max(1, previous?.factor ?? 1, actual / budget.baseInputTokens), samples: (previous?.samples ?? 0) + 1 })
+        }
+        this.emit('completion', '', '', { attemptId, ...metadata })
+      },
     })) {
       if (delta.kind === 'reasoning') {
         this.emit('reasoning', '', delta.text)

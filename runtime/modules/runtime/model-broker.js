@@ -29,6 +29,7 @@ export class ModelBroker {
     this.sessions = new Map()
     this.scripts = new Map()
     this.contexts = new Map()
+    this.calibrationKeys = new Map()
   }
 
   async open({ owner, binding, settings, transport = {}, signal, validate = () => {}, secrets = [], redact = value => value, cacheKey = null }) {
@@ -72,7 +73,11 @@ export class ModelBroker {
       const contexts = this.contexts.get(owner) ?? new Map()
       contexts.set(contextKey, contextLength)
       this.contexts.set(owner, contexts)
-      return { handle, model: session.clean(session.llm.model), settings: { maxOutputTokens: frozen.maxOutputTokens }, contextLength }
+      // Stable across fresh stream handles; opaque so no connection secrets reach workers.
+      const identities = this.calibrationKeys.get(owner) ?? new Map()
+      if (!identities.has(contextKey)) identities.set(contextKey, crypto.randomUUID())
+      this.calibrationKeys.set(owner, identities)
+      return { handle, calibrationKey: identities.get(contextKey), model: session.clean(session.llm.model), settings: { maxOutputTokens: frozen.maxOutputTokens }, contextLength }
     } catch (error) {
       this.drop(session)
       const safe = this.error(session, error)
@@ -186,11 +191,13 @@ export class ModelBroker {
     for (const session of this.sessions.values()) if (session.owner === owner) this.drop(session)
     this.scripts.delete(owner)
     this.contexts.delete(owner)
+    this.calibrationKeys.delete(owner)
   }
 
   closeAll() {
     for (const session of this.sessions.values()) this.drop(session)
     this.scripts.clear()
     this.contexts.clear()
+    this.calibrationKeys.clear()
   }
 }
