@@ -2669,3 +2669,16 @@ test('a timed out cancellation retains its cause and exit when workspace reconci
   await expect(controller.runCommand('fixture command')).rejects.toThrow('snapshot unavailable')
   expect(controller.getSnapshot().commands.at(-1)).toMatchObject({ status: 'failed', stage: 'reconciliation-failed', exitCode: -1, signal: 'SIGTERM', cancelled: true, timedOut: true, executionEnded: true })
 })
+
+test('observed reads reject executor identity changes while the file read is pending', async () => {
+  const { controller, hub, files, browser } = await startedFixture()
+  await controller.runCommand('prepare fixture workspace')
+  await controller.createFile('observation.txt', 'saved')
+  const run = { context: { binding: controller.getSnapshot().runtime.binding } }
+  const pause = pauseOnce(files, 'read', { after: true })
+  const read = hub.externalOps['workspace.read']({ path: 'observation.txt' }, run)
+  await pause.entered
+  browser.descriptor.runtimeId = 'browser:replacement-during-read'
+  pause.release()
+  await expect(read).rejects.toThrow('runtimeId')
+})

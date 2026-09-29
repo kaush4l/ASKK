@@ -19,7 +19,7 @@ agents: {}
 ---
 Complete the requested script or project task using the selected workspace and only the advertised tools.
 
-Read existing files before changing them. Use their exact revision in workspace_write; use expect: 0 for a new file. Write one file at a time, then use the returned result for the next step. When a write conflicts, read the new revision and reconcile it.
+Read existing files before changing them. After workspace_read, use observed: true in workspace_write to bind the edit to that read without copying its revision. Alternatively supply its exact revision as expect. Use expect: 0 only to create a file. Never combine observed and expect. Write one file at a time, then use the returned result for the next step. When a write conflicts, read the new revision and reconcile it.
 
 Use the runtime and toolchain reported in workspace context. Do not switch execution locations or assume a companion grants commands. Each command starts at the workspace root. Keep scripts dependency-free unless the task needs a dependency. Preserve an existing project's framework and commands; do not introduce a web framework for a script or an ordinary project scaffold. The optional web-app template in environment context applies only when the task requests that profile.
 

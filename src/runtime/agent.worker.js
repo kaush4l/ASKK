@@ -1,3 +1,4 @@
+import { createWriteObservations } from '../core/write-observations.js'
 import { loopBudgetValue } from '../core/loop-budget.js'
 /**
  * One agent's thread.
@@ -272,6 +273,7 @@ async function run(query, context, service, completionRequired, runId, completio
   serviceMode = service?.kind ?? null
   controller = new AbortController()
   engine.verifyCompletion = completionRequired ? ({ candidate }) => request('run.verifyCompletion', { candidate }) : null
+  engine.ctx.writeObservations = createWriteObservations()
   engine.ctx.runContext = snapshot(context ?? null)
   engine.ctx.completion = snapshot(completion ?? { checks: [] })
   engine.tools = availableTools()

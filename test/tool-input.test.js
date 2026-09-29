@@ -95,7 +95,7 @@ test('workspace writes require a revision before invoking the external operation
   const received = []
   const item = tool(workspace_write, { name: 'write' })
   const ctx = { request: (_, args) => { received.push(args); return { ok: true, rev: 'r1' } } }
-  for (const revision of [{}, { expect: null }, { expect: undefined }, { expect: {} }, { expect: 1.5 }]) {
+  for (const revision of [{}, { expect: null }, { expect: undefined }, { expect: {} }, { expect: 1.5 }, { observed: true }, { observed: false }, { observed: true, expect: 0 }]) {
     expect((await runToolResult(item, { path: 'app.js', content: 'text', ...revision }, ctx)).ok).toBe(false)
   }
   expect(received).toHaveLength(0)
@@ -103,7 +103,8 @@ test('workspace writes require a revision before invoking the external operation
     expect((await runToolResult(item, { path: 'app.js', content: 'text', expect: expectRevision }, ctx)).ok).toBe(true)
   }
   expect(received.map(args => args.expect)).toEqual([0, 'r1'])
-  expect(item.parameters.expect).not.toContain('optional')
+  expect(item.parameters.expect).toContain('optional')
+  expect(item.parameters.observed).toContain('optional')
 })
 
 test('only local schema rejection carries invalid_input; adapter errors cannot impersonate it', async () => {

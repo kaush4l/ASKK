@@ -25,7 +25,8 @@ test('each tool name retains its local input contract, optional fields and first
     expect(args.properties.optional).toEqual({ type: ['integer', 'null'] })
     expect(args.properties.rows.items.additionalProperties).toBe(true)
     expect(calls[1].properties.args).toEqual({ type: 'object', additionalProperties: true })
-    expect(calls[2].properties.args.required).toContain('expect')
+    expect(calls[2].properties.args.required).toEqual(['path', 'content'])
+    expect(calls[2].properties.args.properties.observed).toMatchObject({ type: 'boolean', enum: [true] })
     expect(validateToolInput(args, { rows: [{ label: 'ok', extra: 'allowed' }] })).toEqual([])
     expect(validateToolInput(args, { rows: [] }).length).toBeGreaterThan(0)
     args.properties.rows.items.properties.label.minLength = 10

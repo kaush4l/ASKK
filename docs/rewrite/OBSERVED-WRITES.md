@@ -1,0 +1,16 @@
+# Writes bound to observed files
+
+The workspace capability supports two explicit preconditions:
+
+- `{path, content, expect: 0}` creates a file only when it does not exist. Exact literal revisions remain supported.
+- Read with `workspace_read({path})`, then write with `{path, content, observed: true}` to use that exact read revision without copying its opaque value.
+
+The worker resolves the second form before policy and approval into the concrete expected revision and an immutable observation ID. The desk independently validates that ID against the same run, path, revision, and execution identity. A later read does not retarget an already-approved write. The filesystem's existing compare-and-swap still decides whether a write can commit.
+
+Only successful explicit reads mint references. Listings, writes, conflict receipts, conversation history, restored runs, and other agents cannot supply them. References are not inherited by a new run. Read errors and write conflicts/errors revoke that path's references; the agent must read again and reconcile. Neither branch retries or overwrites automatically. Literal `expect: 0` is never converted into an update.
+
+The same shared adapter wraps the workbench and evaluation environment. The scaffold agent's folder instructions describe the contract; the engine has no coding-specific branch. Original proposals and resolved arguments remain separate in tool evidence. Failed writes do not create successful file activity, so the UI continues to update only from committed workspace state.
+
+Model-facing conflict feedback preserves the receipt and adds a recovery instruction. It distinguishes an ordinary uncommitted conflict from the existing committed-then-changed race; it never labels the latter as “nothing saved.”
+
+Automated coverage includes cross-run/path/runtime rejection, immutable observation selection, stale writes, conflict invalidation, approval refusal, owner edits during approval, and runtime replacement during an awaited read. Live model results remain separate from those contract guarantees.

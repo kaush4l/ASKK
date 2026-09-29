@@ -60,7 +60,8 @@ test('failed commands and conflicts remain structured failures with their comple
     const { engine } = setup({ observationFormat: 'compact', tools: [tool(spec, { name: 'task' })], ctx: { request: async () => receipt } })
     const row = JSON.parse(await engine.act({ do: 'tool', act: [[{ name: 'task', args }]] })).stages[0][0]
     expect(row.ok).toBe(false)
-    expect(row.result).toEqual(receipt)
+    expect(row.result).toMatchObject(receipt)
+    if (receipt.conflict) { expect(row.result.outcome).toBe('write_not_applied'); expect(row.result.recovery).toContain('observed:true') }
   }
 })
 
@@ -220,4 +221,13 @@ test('native provider history receives bounded command output paired with its ac
   expect(message.content).toContain('terminal error')
   expect(events.find(event => event.kind === 'observation')).toMatchObject({ ok: false, providerCallId: 'provider-call', activity: { commandId: 'native-command' } })
   expect(events.find(event => event.kind === 'observation').value).toContain(output.replaceAll('\n', '\\n'))
+})
+
+
+test('post-write conflict feedback does not claim the write was never applied', () => {
+  const receipt = { conflict: true, committed: true, writtenRevision: 'r1', rev: 'r2' }
+  const projected = workspace_write.projectObservation({ text: 'workspace_write failed: ' + JSON.stringify(receipt), ok: false, name: 'workspace_write' })
+  expect(projected.outcome).toBe('committed_then_changed')
+  expect(projected).toMatchObject(receipt)
+  expect(receipt.outcome).toBeUndefined()
 })

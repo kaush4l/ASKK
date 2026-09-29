@@ -1,3 +1,4 @@
+import { createObservedWorkspace } from '../../src/core/write-observations.js'
 /** Opt-in real-model evaluation. Agents use the production folder, worker, desk broker,
  * workspace adapters and real Local Bun commands. Independent checks never use LLM judgments. */
 import { createHash } from 'node:crypto'
@@ -167,6 +168,9 @@ export async function evaluateProjectLoop({ baseUrl, model, directory, caseName 
       'workspace.write': async ({ path, content, expect }) => { const result = await workspace.write({ path, content, expectedRevision: expect }); return result.conflict ? result : { ...result, ok: true, rev: result.rev ?? result.revision } },
       'workspace.run': (args, run) => workspace.run(resolveCommandReference(args, run?.completion, { resolved: true }).command, run),
     }
+    const observedWorkspace = createObservedWorkspace({ read: hub.externalOps['workspace.read'], write: hub.externalOps['workspace.write'], identity: () => { const current = execution.describeCapabilities(); return JSON.stringify([current.runtimeId, current.root]) } })
+    hub.externalOps['workspace.read'] = observedWorkspace.read
+    hub.externalOps['workspace.write'] = observedWorkspace.write
     hub.completionAdapters = { 'workspace.command': (options, run) => workspace.check(options, run), 'workspace.commands': (options, run) => workspace.checkRequired(options, run) }
     await hub.start()
     await hub.settings.set({ policy: { defaults: { read: 'allow', net: 'deny', write: 'allow', exec: 'allow' } } })

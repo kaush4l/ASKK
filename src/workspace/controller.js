@@ -1,3 +1,4 @@
+import { createObservedWorkspace } from '../core/write-observations.js'
 import { selectRequiredCommands, requiredCommandReason } from '../core/command-checks.js'
 import { resolveCommandReference } from '../core/command-reference.js'
 import { loopBudgetValue } from '../core/loop-budget.js'
@@ -501,6 +502,9 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
           }),
           'workspace.environment': forRun(() => ({ target: state.runtime.target, status: state.runtime.status, binding, capabilities: state.runtime.capabilities, toolchain: executor?.describeCapabilities().toolchain, template: state.template, files: state.files.map(row => row.path), revision: projectRevision, artifact: currentArtifact ? { id: currentArtifact.id, revision: currentArtifact.revision, verified: currentArtifact.verified } : null })),
         }
+        const observedWorkspace = createObservedWorkspace({ read: hub.externalOps['workspace.read'], write: hub.externalOps['workspace.write'], identity: () => { assertBound(binding); return JSON.stringify(binding) } })
+        hub.externalOps['workspace.read'] = forRun(observedWorkspace.read)
+        hub.externalOps['workspace.write'] = forRun(observedWorkspace.write)
         hub.completionAdapters = {
           'workspace.command': forRun(async (options, run) => {
             const reject = reason => ({ ok: false, reason })
