@@ -1,0 +1,27 @@
+{
+  "source": "21f938c8",
+  "deployment": "8a4d654abad8eeb0a1e71ebc948d73400b3ec4d5",
+  "workflow": "https://github.com/kaush4l/ASKK/actions/runs/36577129443",
+  "workflowConclusion": "success",
+  "checks": [
+    {
+      "path": "index.html",
+      "status": 200,
+      "sha256": "4d9fe7ea77b56b53d91920ab9567c1ae4477c9b5db8a462ed51ee1c4064ad160",
+      "matches": true
+    },
+    {
+      "path": "_next/static/chunks/app/page-c4dcd19b46c08038.js",
+      "status": 200,
+      "sha256": "957c551258b03585010f07683e9bad9ef1f16a3538b84d5dccbad91130979a9d",
+      "matches": true
+    },
+    {
+      "path": "_next/static/css/579661faac760205.css",
+      "status": 200,
+      "sha256": "a791746488c8b915f5131c4997edc43222ef29ee862305037c952d5c0e5f30cb",
+      "matches": true
+    }
+  ],
+  "scope": "Hosted byte verification of task-scoped dashboard answers. Separate local Chrome rendering-only fixture at 390×844; no fresh agent UI interaction, Safari/iPhone or Browser Linux acceptance."
+}
