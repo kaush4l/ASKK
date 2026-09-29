@@ -8,6 +8,7 @@ import Markdown from './Markdown.jsx'
 import Modal from './Modal.jsx'
 import ArtifactPreview from './ArtifactPreview.jsx'
 import ToolCard from './ToolCard.jsx'
+import { toolDestinations, selectedCommandRecord, selectedArtifactRecord } from './tool-navigation.js'
 import BindingReview from './BindingReview.jsx'
 import Dashboard, { SessionBoundaryNotice, WorkflowRequirements } from './Dashboard.jsx'
 import CompanionSetup from './CompanionSetup.jsx'
@@ -80,6 +81,8 @@ export default function Workbench() {
   fileSnapshot.current = state
   const [surface, setSurface] = useState('conversation')
   const [dashboardOpen, setDashboardOpen] = useState(true)
+  const [resultFocus, setResultFocus] = useState(null)
+  const resultNavigation = useRef(0)
   const [phoneSurface, setPhoneSurface] = useState('code')
   const phoneSurfaceRef = useRef(phoneSurface)
   phoneSurfaceRef.current = phoneSurface
@@ -129,7 +132,7 @@ export default function Workbench() {
   const [resolvedTheme, setResolvedTheme] = useState('dark')
   const [modal, commitModal] = useState(null)
   const modalNavigation = useRef(null)
-  modalNavigation.current ||= createModalNavigation(commitModal)
+  modalNavigation.current ||= createModalNavigation(commitModal, () => { resultNavigation.current++ })
   const setModal = useCallback(value => modalNavigation.current.show(value), [])
   useEffect(() => () => modalNavigation.current.invalidate(), [])
   const [modalValue, setModalValue] = useState('')
@@ -194,7 +197,7 @@ export default function Workbench() {
   const packageImportDisabled = state.packageInstalling || !state.ready || running || !!busy || state.model.status === 'checking' || state.agents.some(agent => activeStatus(agent.status)) || state.commands.some(command => activeStatus(command.status))
   const graphRunning = activeStatus(state.task?.status) || Boolean(selectedWorkflow?.strategy?.kind === 'graph' && activeStatus(state.run?.status))
   const needsWorkspace = selectedWorkflow?.workspace !== false
-  const currentCommand = state.commands.find(item => item.id === selectedCommand) || state.commands.at(-1)
+  const currentCommand = selectedCommandRecord(state.commands, selectedCommand)
   const runtimeConsole = useMemo(() => state.activity
     .filter(event => event.target === state.runtime.target && event.type === 'runtime.console')
     .map(event => String(event.data ?? '')).join('').slice(-100000)
@@ -403,7 +406,7 @@ export default function Workbench() {
     for (const id of groupId ? [groupId] : ['primary', 'secondary']) writeGroup(id, pinEditorTab(readGroup(id), path))
   }
 
-  const openFile = useCallback(async (path, automatic = false, { pin = false, groupId = activeEditorGroupRef.current, keepSelection = false } = {}) => {
+  const openFile = useCallback(async (path, automatic = false, { pin = false, groupId = activeEditorGroupRef.current, keepSelection = false, isCurrent = () => true } = {}) => {
     const navigation = fileNavigation.current.begin(groupId)
     if (!automatic) { setFollow(false); setDashboardOpen(false) }
     try {
@@ -411,9 +414,9 @@ export default function Workbench() {
         const accepted = await readEditorDocument({
           path, read: name => perform('readFile', name),
           snapshot: () => ({ documents: docsRef.current, files: fileSnapshot.current.files, ready: fileSnapshot.current.ready }),
-          isCurrent: () => fileNavigation.current.isCurrent(groupId, navigation),
+          isCurrent: () => isCurrent() && fileNavigation.current.isCurrent(groupId, navigation),
           install: file => {
-            if (!fileNavigation.current.isCurrent(groupId, navigation)) return false
+            if (!isCurrent() || !fileNavigation.current.isCurrent(groupId, navigation)) return false
             if (!docsRef.current[path]) {
               const next = { ...docsRef.current, [path]: { content: file.content, baseContent: file.content, baseRev: file.rev } }
               docsRef.current = next; setDocuments(next)
@@ -423,7 +426,7 @@ export default function Workbench() {
         })
         if (!accepted) return false
       }
-      if (!fileNavigation.current.isCurrent(groupId, navigation)) return false
+      if (!isCurrent() || !fileNavigation.current.isCurrent(groupId, navigation)) return false
       const dirty = new Set(Object.entries(docsRef.current).filter(([, doc]) => doc.content !== doc.baseContent).map(([name]) => name))
       const reveal = !automatic || innerWidth > 600 || phoneSurfaceRef.current === 'code'
       writeGroup(groupId, openEditorTab(readGroup(groupId), path, { pin, dirtyPaths: dirty, select: reveal && !keepSelection }))
@@ -588,12 +591,31 @@ export default function Workbench() {
     const link = document.createElement('a'); link.href = url; link.download = 'askk-run-evidence.json'; link.click()
     setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
-  function openTool(tool) {
-    if (tool.path && state.files.some(file => file.path === tool.path)) return openFile(tool.path)
-    if (tool.commandId) return showCommand(tool.commandId)
-    if (tool.artifactId) { setDashboardOpen(false); selectEditor(`artifact:${tool.artifactId}`); setSurface('workspace'); return }
-    setModal({ type: 'tool', tool })
+  function openTool(tool) { setModal({ type: 'tool', tool }) }
+  async function openToolResult(tool, kind) {
+    const ticket = ++resultNavigation.current
+    const isCurrent = () => ticket === resultNavigation.current
+    const destination = toolDestinations(tool, state)[kind]
+    if (!destination) { setToast(`This ${kind === 'artifact' ? 'preview' : kind} is no longer available in this workspace.`); return }
+    const groupId = activeEditorGroupRef.current
+    if (kind === 'file' && !await openFile(destination.path, false, { groupId, isCurrent })) return
+    if (!isCurrent()) return
+    setFollow(false); setModal(null); setDashboardOpen(false); setSurface('workspace')
+    if (innerWidth < 1280) setExplorerOpen(false)
+    if (kind === 'command') showCommand(destination.id)
+    if (kind === 'artifact') { selectEditor(`artifact:${destination.id}`, groupId); setPhoneSurface('preview') }
+    setResultFocus({ kind, groupId })
   }
+  useEffect(() => {
+    if (!resultFocus || modal || dashboardOpen) return
+    const frame = requestAnimationFrame(() => {
+      const target = resultFocus.kind === 'command' ? document.querySelector('select[aria-label="Command session"]')
+        : document.querySelector(`#editor-${resultFocus.groupId}-panel`)?.parentElement.querySelector('[role="tab"][aria-selected="true"]')
+      target?.focus({ preventScroll: true })
+      setResultFocus(null)
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [resultFocus, modal, dashboardOpen])
 
   useEffect(() => {
     const shortcut = event => {
@@ -644,13 +666,12 @@ export default function Workbench() {
   ]
   const paletteItems = paletteQuery.startsWith('>') ? paletteActions.filter(item => item.label.toLowerCase().includes(paletteQuery.slice(1).trim().toLowerCase())) : state.files.filter(file => file.path.toLowerCase().includes(paletteQuery.toLowerCase())).map(file => ({ label: file.path, icon: 'files', run: () => openFile(file.path) }))
 
-  function toolCard(tool) {
-    return <ToolCard key={tool.id || tool.name} tool={tool} approvals={state.approvals}
-      fileAvailable={!!tool.path && state.files.some(file => file.path === tool.path)}
-      commandAvailable={!!tool.commandId && state.commands.some(command => command.id === tool.commandId)}
-      artifactAvailable={!!tool.artifactId && state.artifacts.some(artifact => artifact.id === tool.artifactId)}
-      onFile={() => openFile(tool.path)} onCommand={() => showCommand(tool.commandId)}
-      onArtifact={() => { selectEditor(`artifact:${tool.artifactId}`); setSurface('workspace') }}/>
+  function toolCard(tool, options = {}) {
+    const destinations = toolDestinations(tool, state)
+    return <ToolCard key={tool.id || tool.name} tool={tool} approvals={state.approvals} {...options}
+      fileAvailable={!!destinations.file} commandAvailable={!!destinations.command} artifactAvailable={!!destinations.artifact}
+      onFile={() => openToolResult(tool, 'file')} onCommand={() => openToolResult(tool, 'command')}
+      onArtifact={() => openToolResult(tool, 'artifact')}/>
   }
 
   const paletteResults = paletteItems.slice(0, 30)
@@ -664,7 +685,7 @@ export default function Workbench() {
     const selection = group.selected
     const path = editorFilePath(selection)
     const doc = documents[path]
-    const artifact = state.artifacts.find(item => selection === `artifact:${item.id}`) || state.artifacts.find(item => item.id === state.activeArtifactId) || state.artifacts.at(-1)
+    const artifact = selectedArtifactRecord(state.artifacts, selection, state.activeArtifactId)
     const active = activeEditorGroup === groupId
     const number = groupId === 'primary' ? 1 : 2
     return <section key={groupId} className={`editor-group ${groupId} ${active ? 'active' : ''}`} aria-label={`Editor group ${number}`} onPointerDownCapture={() => activateGroup(groupId)} onFocusCapture={() => activateGroup(groupId)} style={groupsWide ? { flexBasis: `${(groupId === 'primary' ? groupGeometry.ratio : 1 - groupGeometry.ratio) * 100}%` } : undefined}>
@@ -676,7 +697,7 @@ export default function Workbench() {
       </div>
       <div className="editor-surface" role="tabpanel" id={`editor-${groupId}-panel`} aria-labelledby={`editor-${groupId}-${isPreviewTab(selection) ? 'preview' : encodeURIComponent(selection)}`}><div className="primary-editor">
         {selection === 'welcome' ? <Welcome state={state} onModel={() => openSettings('model')} onRuntime={() => openSettings('runtime')} onCreate={showCreate} onCompose={() => { showConversation(true) }}/>
-        : isPreviewTab(selection) ? <div className="preview-surface"><div className="preview-toolbar"><div className="preview-address"><Icon name="globe" size={13}/><span>{artifact?.name || 'Application preview'}</span></div><select aria-label={`Preview viewport in group ${number}`} value={previewSize} onChange={event => setPreviewSize(event.target.value)}><option value="fit">Fit</option><option value="390">Phone · 390</option><option value="768">Tablet · 768</option></select><IconButton icon="refresh" label="Refresh preview" disabled={!artifact?.html} onClick={() => action('refreshPreview')}/></div>{artifact?.html ? <ArtifactPreview artifact={artifact} projectId={state.project?.id} size={previewSize}/> : <div className="empty-preview"><div className="preview-illustration"><Icon name="globe" size={38}/></div><h2>A place for your creation.</h2><p>{artifact?.error || 'Build your project to see it running here. Your files, commands, and preview stay together.'}</p><button className="button primary" onClick={build} disabled={!!busy || !state.files.length || activeStatus(artifact?.status)}><Icon name="play" size={14}/>{busy === 'build' || activeStatus(artifact?.status) ? 'Building…' : dirtyPaths.size ? 'Save all & build' : 'Build preview'}</button></div>}</div>
+        : isPreviewTab(selection) ? <div className="preview-surface"><div className="preview-toolbar"><div className="preview-address"><Icon name="globe" size={13}/><span>{artifact?.name || 'Application preview'}</span></div><select aria-label={`Preview viewport in group ${number}`} value={previewSize} onChange={event => setPreviewSize(event.target.value)}><option value="fit">Fit</option><option value="390">Phone · 390</option><option value="768">Tablet · 768</option></select><IconButton icon="refresh" label="Refresh preview" disabled={!artifact?.html} onClick={() => action('refreshPreview')}/></div>{artifact?.html ? <ArtifactPreview artifact={artifact} projectId={state.project?.id} size={previewSize}/> : <div className="empty-preview"><div className="preview-illustration"><Icon name="globe" size={38}/></div><h2>A place for your creation.</h2><p>{selection?.startsWith('artifact:') && !artifact ? 'This recorded preview is no longer available in this workspace.' : artifact?.error || 'Build your project to see it running here. Your files, commands, and preview stay together.'}</p><button className="button primary" onClick={build} disabled={!!busy || !state.files.length || activeStatus(artifact?.status)}><Icon name="play" size={14}/>{busy === 'build' || activeStatus(artifact?.status) ? 'Building…' : dirtyPaths.size ? 'Save all & build' : 'Build preview'}</button></div>}</div>
         : isDiffTab(selection) && doc ? <><div className="editor-breadcrumb"><span>{path} · Changes</span><div><button className="text-button" onClick={() => selectEditor(path, groupId)}>Open file</button><button className="text-button" disabled={!dirtyPaths.has(path)} onClick={() => save(path)}><Icon name="save" size={13}/>Save</button></div></div><DiffView path={path} base={doc.baseContent} draft={doc.content} baseLabel="Saved base" draftLabel="Your draft"/></>
         : doc ? <><div className="editor-breadcrumb"><span>{path.split('/').join('  /  ')}</span><div>{doc.incoming && <button className="incoming-button" onClick={() => { setModal({ type: 'conflict', path, base: doc.baseContent, latest: doc.incoming.deleted ? null : doc.incoming, deleted: !!doc.incoming.deleted }); setModalValue(doc.content) }}>{doc.incoming.deleted ? 'File deleted · Review' : 'New committed version'}</button>}<button className="text-button" disabled={!dirtyPaths.has(path)} onClick={() => save(path)}><Icon name="save" size={13}/>{dirtyPaths.has(path) ? 'Save' : 'Saved'}</button><IconButton icon="changes" label={`Compare draft for ${lastName(path)}`} disabled={!dirtyPaths.has(path)} onClick={() => openDiff(path)}/><IconButton icon="more" label="File actions" onClick={() => { setModalValue(path); setModal({ type: 'fileMenu', path, groupId }) }}/></div></div><Editor key={`${state.project?.id || 'default'}:${groupId}`} cache={editorCache.current} groupId={groupId} scope={state.project?.id} path={path} value={doc.content} theme={resolvedTheme} onChange={content => changeDocument(path, content)} onSave={() => save(path)} onFocus={() => { activateGroup(groupId); setFollow(false) }} onPosition={next => { positions.current[groupId] = next; if (activeEditorGroupRef.current === groupId) setPosition(next) }}/></> : <div className="surface-loading">Opening file…</div>}
       </div></div>
@@ -696,7 +717,7 @@ export default function Workbench() {
       onOpenWorkspace={() => { setDashboardOpen(false); setSurface('workspace') }} onOpenSettings={section => openSettings(section === 'runtime' ? 'runtime' : 'model')}
       onSelectWorkflow={workflow => action('setWorkflow', workflow)} onToolPolicyChange={policy => action('setToolPolicy', policy)}
       onApprove={(...args) => action('approve', ...args)} onStopRun={() => action('stopRun')} onStopAgent={run => action('stopAgent', run)}
-      onOpenStudio={() => setModal({ type: 'packageStudio' })} studioDisabled={!state.ready} onInspectAgent={inspectAgent} onInspectRun={inspectRun} onOpenTool={openTool} importDisabled={packageImportDisabled} onImportAgent={() => { if (!packageImportDisabled) setModal({ type: 'packageImport' }) }}/>}
+      onOpenStudio={() => setModal({ type: 'packageStudio' })} studioDisabled={!state.ready} onInspectAgent={inspectAgent} onInspectRun={inspectRun} onOpenTool={openTool} renderTool={toolCard} importDisabled={packageImportDisabled} onImportAgent={() => { if (!packageImportDisabled) setModal({ type: 'packageImport' }) }}/>}
     <main hidden={dashboardOpen} className="workbench-body">
       <section id="main-conversation" className="conversation-pane" aria-label="Agent conversation">
         <div className="conversation-heading"><div><span className="eyebrow">{selectedWorkflow?.label || 'YOUR AGENT'}</span><h1>Keep the work in view.</h1>{state.workflows?.length > 0 && <select className="conversation-workflow" aria-label="Conversation workflow" value={state.selectedWorkflowId} disabled={running || state.packageInstalling} onChange={event => action('setWorkflow', event.target.value)}>{state.workflows.map(workflow => <option key={workflow.id} value={workflow.id} disabled={workflow.disabled}>{workflow.label}{workflow.disabled ? ' · Unavailable' : ''}</option>)}</select>}</div><IconButton icon="more" label="Conversation options" onClick={() => { setModalValue(state.goal || ''); setModal({ type: 'goal', revision: state.goalRevision }) }}/></div>
@@ -740,7 +761,7 @@ export default function Workbench() {
               {groupsWide && <ResizeHandle className="editor-group-divider" label="Resize editor groups" value={Math.round(groupGeometry.ratio * 100)} min={Math.round(380 / editorWidth * 100)} max={Math.round((1 - 380 / editorWidth) * 100)} onResize={delta => setGroupRatio(previous => editorGroupGeometry(editorWidth, editorGroupGeometry(editorWidth, previous).ratio + delta / editorWidth).ratio)}/>}
             </div>
             {panelOpen && <><ResizeHandle vertical label="Resize terminal panel" value={panelHeight} min={130} max={Math.max(130, viewportSize.height * .6)} onResize={delta => setPanelHeight(previous => Math.max(130, Math.min(innerHeight * .6, previous - delta)))}/><section className="bottom-panel" aria-label="Commands, terminal, problems, and output"><div className="panel-toolbar"><div className="panel-tabs">{['commands', 'terminal', 'problems', 'output'].map(tab => <button key={tab} aria-pressed={panelTab === tab} className={panelTab === tab ? 'active' : ''} onClick={() => setPanelTab(tab)}>{tab}{tab === 'commands' && state.commands.length > 0 && <span>{state.commands.length}</span>}{tab === 'problems' && problemCount > 0 && <span>{problemCount}</span>}</button>)}</div><div>{panelTab === 'terminal' && terminalId && <><button className="terminal-interrupt" aria-label="Interrupt terminal (Ctrl+C)" title="Interrupt terminal (Ctrl+C)" onClick={() => action('terminalInput', terminalId, '\u0003')}><Icon name="bolt" size={13}/><span>Interrupt</span></button><IconButton icon="stop" label="Close terminal session" onClick={async () => { try { await perform('closeTerminal', terminalId); setTerminalId(null) } catch (error) { setToast(error.message) } }}/></>} {panelTab === 'commands' && currentCommand && activeStatus(currentCommand.status) && <IconButton icon="stop" label="Stop selected command" onClick={() => action('stopCommand', currentCommand.id)}/>}<IconButton icon="close" label="Close terminal panel" onClick={closePanel}/></div></div>
-              {panelTab === 'commands' ? <>{state.commands.length > 0 && <div className="command-session-row"><select aria-label="Command session" value={currentCommand?.id || ''} onChange={event => setSelectedCommand(event.target.value)}>{state.commands.map(item => <option key={item.id} value={item.id}>{item.command} · {item.status}{item.exitCode != null ? ` (${item.exitCode})` : ''}</option>)}</select><span>{currentCommand?.cwd || 'project'}</span></div>}{currentCommand ? <Terminal controller={controller} sessionId={currentCommand.id} output={currentCommand.output || [currentCommand.stdout,currentCommand.stderr].filter(Boolean).join('\n')} outputLength={currentCommand.outputLength} theme={resolvedTheme}/> : <div className="command-empty"><Icon name="terminal" size={20}/><span>Run a command in your selected environment.</span></div>}<form className="command-input" onSubmit={event => { event.preventDefault(); if (state.runtime.status === 'unresponsive') return; if (command.trim()) { const value = command; setCommand(''); action('runCommand', value) } }}><span>❯</span><input aria-label="Shell command" placeholder="Enter a command…" value={command} onChange={event => setCommand(event.target.value)}/><button type="submit" className="text-button" disabled={!command.trim() || state.runtime.status === 'unresponsive'}>Run <Icon name="play" size={11}/></button></form></>
+              {panelTab === 'commands' ? <>{state.commands.length > 0 && <div className="command-session-row"><select aria-label="Command session" value={currentCommand?.id || ''} onChange={event => setSelectedCommand(event.target.value)}>{selectedCommand && !currentCommand && <option value="" disabled>Command output unavailable</option>}{state.commands.map(item => <option key={item.id} value={item.id}>{item.command} · {item.status}{item.exitCode != null ? ` (${item.exitCode})` : ''}</option>)}</select><span>{currentCommand?.cwd || 'project'}</span></div>}{currentCommand ? <Terminal controller={controller} sessionId={currentCommand.id} output={currentCommand.output || [currentCommand.stdout,currentCommand.stderr].filter(Boolean).join('\n')} outputLength={currentCommand.outputLength} theme={resolvedTheme}/> : <div className="command-empty"><Icon name="terminal" size={20}/><span>{selectedCommand ? 'This command output is no longer available in this workspace.' : 'Run a command in your selected environment.'}</span></div>}<form className="command-input" onSubmit={event => { event.preventDefault(); if (state.runtime.status === 'unresponsive') return; if (command.trim()) { const value = command; setCommand(''); action('runCommand', value) } }}><span>❯</span><input aria-label="Shell command" placeholder="Enter a command…" value={command} onChange={event => setCommand(event.target.value)}/><button type="submit" className="text-button" disabled={!command.trim() || state.runtime.status === 'unresponsive'}>Run <Icon name="play" size={11}/></button></form></>
               : panelTab === 'terminal' ? terminalId ? <Terminal controller={controller} sessionId={terminalId} interactive theme={resolvedTheme} onError={setToast}/> : <div className="command-empty terminal-empty"><Icon name="terminal" size={22}/><p>Open an interactive terminal in {state.runtime.target === 'local' ? 'Local Bun' : 'Browser Linux'}.</p><button className="button subtle small" onClick={async () => { try { const terminal = await perform('openTerminal', { cols: 80, rows: 24 }); setTerminalId(terminal.id) } catch (error) { setToast(error.message) } }}>Open terminal</button></div>
               : panelTab === 'problems' ? <div className="problems-list" aria-label="Reported problems">{state.error && <div className="problem-item"><Icon name="warning" size={15}/><div><strong>Workspace needs attention</strong><p>{state.error}</p><button className="text-button" onClick={() => setPanelTab('output')}>View output <Icon name="right" size={11}/></button></div></div>}{[...failedCommands].reverse().map(item => <button className="problem-item" key={item.id} onClick={() => showCommand(item.id)}><Icon name="warning" size={15}/><span><strong>{item.command || 'Command failed'}</strong><small>{item.error ? textOf(item.error) : item.exitCode != null ? `Exited with code ${item.exitCode}` : 'Command failed'} · View command output</small></span><Icon name="right" size={12}/></button>)}{!problemCount && <div className="command-empty"><Icon name="check" size={18}/><span>No reported problems.</span></div>}</div>
               : <div className="runtime-output"><button className="button subtle small" disabled={!state.run} onClick={async () => { try { await exportRunEvidence() } catch (error) { setToast(error.message) } }}>Export run evidence</button><strong>{state.runtime.phase || state.runtime.status}</strong><pre>{textOf(state.runtime.detail || state.runtime.error || 'Runtime diagnostics will appear here when execution starts.')}</pre>{runtimeConsole && <><strong>Recent environment output</strong><pre aria-label="Environment console">{runtimeConsole}</pre></>}</div>}
@@ -762,8 +783,8 @@ export default function Workbench() {
     {modal?.type === 'agent' && <AgentInspector details={modal.details} onCustomize={customizeAgent} onClose={() => setModal(null)}/>}
     {modal?.type === 'packageStudio' && <PackageStudio perform={perform} initialDraftId={modal.draftId} theme={theme} disabled={packageImportDisabled} onClose={() => setModal(null)} onInstalled={installed => { setModal(null); setToast(`${installed?.packageId || 'Agent'} installed. Its workflow is selected.`); setDashboardOpen(true) }}/> }
     {modal?.type === 'packageImport' && <PackageImport perform={perform} disabled={packageImportDisabled} onClose={() => setModal(null)} onInstalled={installed => { setModal(null); setToast(`${installed?.packageId || 'Agent'} installed. Its workflow is selected.`); setDashboardOpen(true) }}/>}
-    {modal?.type === 'run' && <RunInspector details={modal.details} onClose={() => setModal(null)} onRefresh={() => loadRun(modal.details.id)} onInspectRun={loadRun} onExport={() => exportRunEvidence(modal.details.id)}/>}
-    {modal?.type === 'tool' && <Modal wide title="Recorded tool action" onClose={() => setModal(null)}><ToolCard tool={state.messages.flatMap(message => message.tools || []).find(tool => tool.id === modal.tool.id && tool.runId === modal.tool.runId) || modal.tool} approvals={state.approvals}/></Modal>}
+    {modal?.type === 'run' && <RunInspector renderTool={toolCard} details={modal.details} onClose={() => setModal(null)} onRefresh={() => loadRun(modal.details.id)} onInspectRun={loadRun} onExport={() => exportRunEvidence(modal.details.id)}/>}
+    {modal?.type === 'tool' && <Modal wide title="Recorded tool action" onClose={() => setModal(null)}>{toolCard(state.messages.flatMap(message => message.tools || []).find(tool => tool.id === modal.tool.id && tool.runId === modal.tool.runId) || modal.tool)}</Modal>}
     {modal?.type === 'settings' && <Settings state={state} initialTab={modal.tab} theme={theme} setTheme={setTheme} perform={perform} onClose={() => setModal(null)} onError={setToast}/>}
     {(modal?.type === 'create' || modal?.type === 'rename') && <Modal title={modal.type === 'create' ? 'Create a file' : 'Rename file'} onClose={() => setModal(null)}><form onSubmit={submitFileAction}><label className="field-label" htmlFor="file-path">Path relative to your project</label><input id="file-path" className="form-input" autoFocus placeholder="src/app.js" value={modalValue} onChange={event => setModalValue(event.target.value)}/>{modalError && <p className="form-error">{modalError}</p>}<div className="modal-footer"><button type="button" className="button subtle" onClick={() => setModal(null)}>Cancel</button><button className="button primary" disabled={!!busy}>{modal.type === 'create' ? 'Create file' : 'Rename'}</button></div></form></Modal>}
     {modal?.type === 'fileMenu' && <Modal title={lastName(modal.path)} onClose={() => setModal(null)}><p className="modal-description mono">{modal.path}</p><div className="menu-actions">{readGroup(modal.groupId || activeEditorGroupRef.current).temporaryTab === modal.path && <button onClick={() => { pinTab(modal.path, modal.groupId || activeEditorGroupRef.current); setModal(null) }}><Icon name="pin"/>Keep file open</button>}<button onClick={() => setModal({ ...modal, type: 'rename' })}><Icon name="files"/>Rename file</button><button onClick={() => { navigator.clipboard?.writeText(modal.path).then(() => setToast('Path copied.')); setModal(null) }}><Icon name="code"/>Copy path</button><button className="danger-text" onClick={() => setModal({ ...modal, type: 'delete' })}><Icon name="close"/>Delete file</button></div></Modal>}

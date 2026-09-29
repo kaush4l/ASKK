@@ -52,7 +52,7 @@ export function WorkflowRequirements({ workflow, runtime = {} }) {
 }
 
 /** Projection only: the owner supplies live state and all operations. No runtime starts here. */
-export default function Dashboard({ state = {}, goal = '', onGoalChange, onSubmit, onOpenWorkspace, onOpenSettings, onSelectWorkflow, onToolPolicyChange, onApprove, onStopRun, onStopAgent, onInspectAgent, onInspectRun, onOpenTool, onImportAgent, onOpenStudio, studioDisabled = false, importDisabled = false, busy = false }) {
+export default function Dashboard({ state = {}, goal = '', onGoalChange, onSubmit, onOpenWorkspace, onOpenSettings, onSelectWorkflow, onToolPolicyChange, onApprove, onStopRun, onStopAgent, onInspectAgent, onInspectRun, onOpenTool, renderTool, onImportAgent, onOpenStudio, studioDisabled = false, importDisabled = false, busy = false }) {
   const formId = useId()
   const definitions = state.agentDefinitions || []
   const runs = (state.agents || []).filter(run => run.kind !== 'strategy')
@@ -141,7 +141,7 @@ export default function Dashboard({ state = {}, goal = '', onGoalChange, onSubmi
             const metadata = (run && definitions.find(definition => matches(definition, run))?.tools?.find(item => item.name === tool.name)) || allTools.get(tool.name)
             const risk = tool.risk || (metadata ? riskOf(metadata) : null)
             const pending = toolPresentationStatus(tool, approvals) === 'awaiting_approval'
-            return <div className="dashboard-tool-event" key={tool.id || index}><div className="dashboard-tool-event-meta"><span>{riskNames[risk] || 'Tool action'}</span><span>{pending ? 'Approval needed' : actionOf(metadata) === 'ask' ? 'Approval policy applies' : 'Recorded action'}</span>{onOpenTool && <button type="button" className="dashboard-inline" onClick={() => onOpenTool(tool)}>Inspect action<Icon name="right" size={12}/></button>}</div><ToolCard tool={tool} approvals={approvals}/></div>
+            return <div className="dashboard-tool-event" key={tool.id || index}><div className="dashboard-tool-event-meta"><span>{riskNames[risk] || 'Tool action'}</span><span>{pending ? 'Approval needed' : actionOf(metadata) === 'ask' ? 'Approval policy applies' : 'Recorded action'}</span>{onOpenTool && <button type="button" className="dashboard-inline" onClick={() => onOpenTool(tool)}>Inspect action<Icon name="right" size={12}/></button>}</div>{renderTool ? renderTool(tool, { approvals }) : <ToolCard tool={tool} approvals={approvals}/>}</div>
           }) : <div className="dashboard-activity-empty"><Icon name="bolt" size={19}/><p>Tool calls will appear here as they happen.<span>Inputs, outcomes, and approval requests stay inspectable.</span></p></div>}</section>
         </div>
 

@@ -41,8 +41,11 @@ export default function ToolCard({ tool, approvals, recorded = false, fileAvaila
       {presentation === 'awaiting_approval' && <p className="tool-approval-note">{recorded ? 'Approval was pending when this snapshot was captured. Refresh to check for newer records.' : 'This call is waiting for your decision. It has not been approved.'}</p>}
       <h4>{pending ? recorded ? 'Recorded outcome' : 'Current call' : hasResult ? 'Recorded result' : 'Result'}</h4><pre>{hasResult ? result || '(empty string)' : pending ? recorded ? 'No tool result was recorded in this snapshot.' : presentation === 'awaiting_approval' ? 'Waiting for approval before execution.' : 'Waiting for the tool to return…' : 'No result was recorded.'}</pre>
     </div>
+    {tool.path && fileAvailable !== undefined && <p className="tool-approval-note">{fileAvailable ? 'Opens the current workspace version; it may differ from this run.' : 'Current file unavailable. Historical file contents are not provided by this link.'}</p>}
+    {tool.commandId && commandAvailable === false && <p className="tool-approval-note">Command output no longer available in this workspace.</p>}
+    {tool.artifactId && artifactAvailable === false && <p className="tool-approval-note">Recorded preview no longer available in this workspace.</p>}
     {(fileAvailable || commandAvailable || artifactAvailable) && <div className="tool-links">
-      {fileAvailable && <button type="button" onClick={onFile}><Icon name="files" size={12}/>Open file</button>}
+      {fileAvailable && <button type="button" onClick={onFile}><Icon name="files" size={12}/>Open current file</button>}
       {commandAvailable && <button type="button" onClick={onCommand}><Icon name="terminal" size={12}/>View command</button>}
       {artifactAvailable && <button type="button" onClick={onArtifact}><Icon name="globe" size={12}/>Open preview</button>}
     </div>}

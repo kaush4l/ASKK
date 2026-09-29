@@ -28,3 +28,16 @@ test('late errors after navigation are ignored while current errors remain visib
   await expect(navigation.read(() => Promise.reject(new Error('Current missing run')))).rejects.toThrow('Current missing run')
   expect(values).toEqual([])
 })
+
+test('modal intents invalidate pending result navigation before asynchronous reads finish', async () => {
+  let resultVersion = 0, release
+  const navigator = createModalNavigation(() => {}, () => resultVersion++)
+  const captured = resultVersion
+  const reading = navigator.read(() => new Promise(resolve => { release = resolve }))
+  expect(resultVersion).toBeGreaterThan(captured)
+  const afterRead = resultVersion
+  navigator.show(null)
+  expect(resultVersion).toBeGreaterThan(afterRead)
+  release({ type: 'run' })
+  expect(await reading).toBe(false)
+})

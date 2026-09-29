@@ -103,3 +103,18 @@ test('verification receipt rendering stays bounded without discarding later atte
   expect(html).not.toContain('Verification attempt 13')
   expect(html).toContain('Show more verification receipts')
 })
+
+test('inspector shares result renderer with captured approvals and current-file semantics', () => {
+  let captured
+  const details = { ...base, approvals: [{ run: base.id, callId: 'read-one' }] }
+  const html = renderToStaticMarkup(<RunInspector details={details} onClose={() => {}} renderTool={(tool, options) => {
+    captured = options
+    return <ToolCard tool={{ ...tool, path: 'src/a.js', commandId: 'gone', artifactId: 'gone' }} {...options} fileAvailable commandAvailable={false} artifactAvailable={false} onFile={() => {}}/>
+  }}/>)
+  expect(captured).toEqual({ recorded: true, approvals: details.approvals })
+  expect(html).toContain('Open current file')
+  expect(html).toContain('may differ from this run')
+  expect(html).toContain('Command output no longer available')
+  expect(html).toContain('Recorded preview no longer available')
+  expect(html).not.toContain('View command</button>')
+})

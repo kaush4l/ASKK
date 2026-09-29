@@ -38,7 +38,7 @@ function CompletionEvidence({ completion, receipts }) {
   </section>
 }
 
-export default function RunInspector({ details, onClose, onRefresh, onInspectRun, onExport }) {
+export default function RunInspector({ details, onClose, onRefresh, onInspectRun, onExport, renderTool }) {
   const [toolLimit, setToolLimit] = useState(12)
   const [action, setAction] = useState('')
   const [error, setError] = useState('')
@@ -68,7 +68,7 @@ export default function RunInspector({ details, onClose, onRefresh, onInspectRun
       <CompletionEvidence completion={details.completion} receipts={details.completionReceipts}/>
       <section className="run-record-section"><h3>Tool activity <span>{tools.length}</span></h3>
         <p>Results pair only with their recorded call identities. A parent link identifies a run relationship, not a message delivery acknowledgement.</p>
-        {tools.length ? tools.slice(0, toolLimit).map((tool, index) => <div className="run-recorded-tool" key={`${tool.id}:${index}`}><ToolCard tool={tool} approvals={details.approvals} recorded/><Record title="Exact tool records" value={tool.raw}/></div>) : <p>No tool calls were recorded for this instance.</p>}
+        {tools.length ? tools.slice(0, toolLimit).map((tool, index) => <div className="run-recorded-tool" key={`${tool.id}:${index}`}>{renderTool ? renderTool(tool, { approvals: details.approvals, recorded: true }) : <ToolCard tool={tool} approvals={details.approvals} recorded/>}<Record title="Exact tool records" value={tool.raw}/></div>) : <p>No tool calls were recorded for this instance.</p>}
         {tools.length > toolLimit && <button type="button" className="button subtle small" onClick={() => setToolLimit(previous => previous + 12)}>Show more tool calls</button>}
       </section>
       {unpaired.length > 0 && <Records title="Unpaired tool records" records={unpaired} label={(_, index) => `Unpaired record ${index + 1}`} empty=""/>}
