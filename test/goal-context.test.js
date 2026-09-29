@@ -4,6 +4,26 @@ import { normalizeCompletion } from '../src/core/completion.js'
 import { resolveCommandReference } from '../src/core/command-reference.js'
 import { describeToolchain } from '../src/execution/toolchain.js'
 
+test('workspace prompts refresh original pending indexes without claiming verification', async () => {
+  const [piece] = contexts(['workspace'])
+  const completion = normalizeCompletion({ checks: [{ capability: 'workspace.commands', options: { commands: ['first check', 'second check'] } }] })
+  let pending = [{ requiredCheck: 0, reason: 'missing' }, { requiredCheck: 1, reason: 'stale' }]
+  const calls = []
+  const engine = { ctx: { completion, request: async op => { calls.push(op); return op === 'run.pendingCommands' ? pending : { files: [] } } } }
+  const render = async () => JSON.parse((await piece.render(engine)).split('\n')[1])
+  expect((await render()).pendingRequiredChecks).toEqual(pending)
+  pending = [{ requiredCheck: 1, reason: 'stale' }]
+  expect((await render()).pendingRequiredChecks).toEqual(pending)
+  pending = []
+  expect((await render()).pendingRequiredChecks).toEqual([])
+  expect(await piece.render(engine)).toContain('An empty list does not establish completion')
+  expect(calls.filter(op => op === 'run.pendingCommands')).toHaveLength(4)
+  engine.ctx.runContext = { workflow: { completion } }
+  engine.ctx.completion = { checks: [] }
+  expect((await render()).pendingRequiredChecks).toEqual([])
+  expect(calls.filter(op => op === 'run.pendingCommands')).toHaveLength(4)
+})
+
 test('workspace context refreshes adapter command facts without treating them as verification', async () => {
   const [piece] = contexts(['workspace'])
   let current = { target: 'local', toolchain: describeToolchain({ kind: 'bun', version: 'fixture' }) }
