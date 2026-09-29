@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "date": "2026-09-29",
+  "source": "10af09f",
+  "deployment": "97bb3f0",
+  "workflow": "https://github.com/kaush4l/ASKK/actions/runs/36549781220",
+  "conclusion": "success",
+  "export": {
+    "version": 1,
+    "basePath": "/ASKK",
+    "totalBytes": 854196919,
+    "fileCount": 209,
+    "runtimeId": "c2w-node24-38d093f4a38002db",
+    "artifactHash": "b6996cfd1de8b922b31530e39602f223a2792c21a4271478512dd6ecbfa32e04"
+  },
+  "files": [
+    {
+      "path": "index.html",
+      "sha256": "1691d48fb3bff5c3be5c073c42d9beb574a76cf7cb719b726fa8dcfb7bcc41f3",
+      "matchesExport": true
+    },
+    {
+      "path": "runtime/modules/core/mcp.js",
+      "sha256": "86b39e77b2b378dd9117055cbd27eae0a550fd0cb25a5ef6e4b256e20864ca6a",
+      "matchesExport": true
+    },
+    {
+      "path": "runtime/modules/core/tools.js",
+      "sha256": "90340652944d8bc05d77d23334fbc281a2d7ebfcd68160623b9d0768159291c4",
+      "matchesExport": true
+    },
+    {
+      "path": "runtime/modules/core/responses.js",
+      "sha256": "012cf269b97e3f96bea15c1ecb3de9917ede77cc9a2f0289b46985d6bc794209",
+      "matchesExport": true
+    },
+    {
+      "path": "runtime/modules/builtin/workspace.js",
+      "sha256": "f354cc117e7ee7d739895cba5d37d7becf3f14d9e68d178a8ff6ffebf519a978",
+      "matchesExport": true
+    },
+    {
+      "path": "packages/starter/agents/builder/agent.md",
+      "sha256": "c80f7d0e1794d23fab993e81b4b2525092da1e18e556c59d0e91b92dd4dd84f5",
+      "matchesExport": true
+    }
+  ],
+  "chrome": {
+    "runInspected": "rmumg1du31",
+    "observed": [
+      "Existing idle Pages tab reloaded and restored the saved run.",
+      "Completion verification section explicitly states no configuration and no receipts recorded.",
+      "Completed status and model answer remain separate from verification."
+    ],
+    "limits": [
+      "Historical run inspection, not new hosted inference.",
+      "Failed-to-passed receipt display tested in React component fixtures, not a live Pages command run.",
+      "Safari and small-model evaluation for this revision remain unverified."
+    ]
+  }
+}
