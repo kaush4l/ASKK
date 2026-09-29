@@ -67,7 +67,7 @@ export function projectRunTools(details = {}) {
     if (reason) { entries.forEach(entry => reject(entry, reason)); continue }
     const call = calls[0].event, observation = observations[0]?.event ?? null
     const known = observation?.ok === true || observation?.ok === false
-    const status = observation ? observation.ok === true ? 'done' : observation.ok === false ? 'failed' : 'unresolved'
+    const status = observation ? observation.ok === true ? 'done' : observation.ok === false ? observation.failureKind === 'invalid_input' ? 'rejected' : 'failed' : 'unresolved'
       : ACTIVE.has(runStatus) ? 'running' : ['interrupted', 'cancelled'].includes(runStatus) ? 'interrupted' : 'unresolved'
     tools.push({
       id: callId, callId, runId, agent, name: call.name, args: call.args,

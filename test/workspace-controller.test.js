@@ -1738,7 +1738,6 @@ test('agent inspector returns configured composition and only the selected agent
   await expect(controller.getAgentDetails('unknown')).rejects.toThrow('Unknown agent')
 })
 
-
 test('explicit null policy in configuration or restored preferences fails closed', async () => {
   await expect(startedFixture({ workbenchConfig: { ...generalWorkflows, toolPolicy: null } })).rejects.toThrow('Invalid run tool policy')
   const files = new ProjectFiles()
@@ -1747,7 +1746,6 @@ test('explicit null policy in configuration or restored preferences fails closed
   await files.store.put('settings', { key: 'workbench-state', value: { toolPolicy: null } })
   await expect(startedFixture({ sharedStore: files.store, workbenchConfig: generalWorkflows })).rejects.toThrow('Invalid run tool policy')
 })
-
 
 test('explicit direct model transport escapes a disconnected relay and works independently of delayed Linux', async () => {
   const runtime = healthFixturePort()
@@ -1908,7 +1906,6 @@ test('persisted role state restores interrupted without replaying roles', async 
   expect(second.controller.getSnapshot().task.nodes[0].status).toBe('interrupted')
   expect(second.hub.runs.size).toBe(0)
 })
-
 
 test('late coordinator state from a stopped admission cannot replace a newer visible task', async () => {
   const { controller, hub } = await startedFixture({ workbenchConfig: roleWorkflow, configureHub: strategyFixtureHub })
@@ -2307,7 +2304,6 @@ test('declared artifact check requires matching source, interaction and same-tas
   expect((await check()).ok).toBe(false)
 })
 
-
 test('authored workflow IDs cannot collide with another installed direct lead', async () => {
   const first = { ...importedGuide, id: 'foo', agentPath: 'installed/foo/pond-guide', workflows: [declaredWorkflow()] }
   first.workflows[0].id = 'bar'
@@ -2431,4 +2427,24 @@ test('a newer finished command cannot be overlooked during completion fingerprin
   try { await controller.runCommand('new failed check', { runId: run.id }) }
   finally { pause.release() }
   expect((await checking).ok).toBe(false)
+})
+
+test('live tool cards distinguish typed input rejection from adapter failure', async () => {
+  const { controller, hub } = await startedFixture()
+  for (const [ok, failureKind, value, status] of [
+    [false, 'invalid_input', 'diagnostic', 'rejected'],
+    [false, undefined, 'Invalid tool arguments: rejected before execution', 'failed'],
+    [false, 'unknown', 'diagnostic', 'failed'],
+    [true, 'invalid_input', 'diagnostic', 'done'],
+    [null, 'invalid_input', 'diagnostic', 'unresolved'],
+    [false, undefined, { failureKind: 'invalid_input' }, 'failed'],
+  ]) {
+    const callId = crypto.randomUUID()
+    hub.emit({ type: 'event', kind: 'call', callId, run: 'fixture', name: 'workspace_run', args: {} })
+    hub.emit({ type: 'event', kind: 'observation', callId, run: 'fixture', ok, failureKind, value })
+    const card = controller.getSnapshot().messages.at(-1).tools[0]
+    expect(card.status).toBe(status)
+    expect(card.summary).toEqual(value)
+    expect(card.commandId).toBeUndefined()
+  }
 })

@@ -19,6 +19,8 @@ test('version 2 malformed tool arguments never reach the side-effect handler and
   const outcomes = events.filter(event => event.kind === 'observation')
   expect(outcomes.map(event => event.ok)).toEqual([false, false, false, false, true])
   expect(outcomes.slice(0, 4).every(event => event.value.includes('Invalid tool arguments'))).toBe(true)
+  expect(outcomes.slice(0, 4).every(event => event.failureKind === 'invalid_input')).toBe(true)
+  expect(outcomes[4].failureKind).toBeUndefined()
 })
 
 test('schema defines advertised parameters and is isolated from later caller mutation', () => {
@@ -102,4 +104,21 @@ test('workspace writes require a revision before invoking the external operation
   }
   expect(received.map(args => args.expect)).toEqual([0, 'r1'])
   expect(item.parameters.expect).not.toContain('optional')
+})
+
+test('only local schema rejection carries invalid_input; adapter errors cannot impersonate it', async () => {
+  let calls = 0, projections = 0
+  const item = tool({ name: 'commit', inputSchema, run() { calls++; throw new TypeError('Invalid tool arguments: args.path is required') }, projectActivity() { projections++; return { commandId: 'not-a-command' } } })
+  const events = []
+  const engine = new Engine({ name: 'rejection-fixture', tools: [item], contractVersion: 2 })
+  engine.listen(event => events.push(event))
+  await engine.call({ name: 'commit', args: {}, text: 'commit({})' })
+  expect(calls).toBe(0)
+  expect(projections).toBe(0)
+  expect(events.at(-1)).toMatchObject({ ok: false, failureKind: 'invalid_input', activity: {} })
+  await engine.call({ name: 'commit', args: { path: 'app.js' }, text: 'commit({"path":"app.js"})' })
+  expect(calls).toBe(1)
+  expect(events.at(-1).ok).toBe(false)
+  expect(events.at(-1).failureKind).toBeUndefined()
+  expect(events.at(-1).value).toBe(events.find(event => event.kind === 'observation').value)
 })

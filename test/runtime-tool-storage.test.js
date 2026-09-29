@@ -229,3 +229,13 @@ test('retention protects completed siblings of an active strategy and evicts com
   expect(await hub.store.get('runs', 'root')).toBeDefined(); expect(await hub.store.get('runs', 'child')).toBeDefined()
   expect(await hub.store.get('runs', 'old-root')).toBeUndefined(); expect(await hub.store.get('runs', 'old-child')).toBeUndefined()
 })
+
+test('input rejection metadata survives persistence and trace export', async () => {
+  const { hub, run } = await fixture()
+  hub.record(run, { kind: 'call', name: 'fixture', callId: 'invalid', args: {} })
+  hub.record(run, { kind: 'observation', name: 'fixture', callId: 'invalid', ok: false, failureKind: 'invalid_input', value: 'args.path is required' })
+  await hub.persist(run)
+  const reader = new Hub(); reader.store = hub.store
+  expect((await reader.runsApi.get(run.id)).toolEvents[1]).toMatchObject({ ok: false, failureKind: 'invalid_input' })
+  expect((await reader.traces.export(run.trace)).runs[0].toolEvents[1]).toMatchObject({ ok: false, failureKind: 'invalid_input' })
+})

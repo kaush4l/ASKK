@@ -118,3 +118,18 @@ test('inspector shares result renderer with captured approvals and current-file 
   expect(html).toContain('Recorded preview no longer available')
   expect(html).not.toContain('View command</button>')
 })
+
+test('tool card makes rejected inputs visibly distinct from failed execution in live and recorded views', () => {
+  for (const recorded of [false, true]) {
+    const tool = { id: 'call', name: 'workspace_run', status: 'rejected', summary: 'args.command is required', hasResult: true }
+    const rejected = renderToStaticMarkup(<ToolCard tool={tool} recorded={recorded}/>)
+    expect(rejected).toContain('Run command · Not run')
+    expect(rejected).toContain('Input rejected before execution.')
+    expect(rejected).toContain('Validation result')
+    expect(rejected).not.toContain('View command')
+    const failed = renderToStaticMarkup(<ToolCard tool={{ ...tool, status: 'failed' }} recorded={recorded}/>)
+    expect(failed).toContain('Run command · Failed')
+    expect(failed).toContain('Recorded result')
+    expect(failed).not.toContain('Input rejected before execution.')
+  }
+})

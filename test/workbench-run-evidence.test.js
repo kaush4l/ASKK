@@ -125,3 +125,14 @@ test('projection is detached and deeply frozen without freezing or mutating the 
   expect(Object.isFrozen(output.unpaired[0].raw.value)).toBe(true)
   expect(() => { output.tools[0].args.nested.path = 'mutated' }).toThrow()
 })
+
+test('only typed local input rejection is projected as not run', () => {
+  for (const [ok, failureKind, value, status] of [
+    [false, 'invalid_input', 'diagnostic', 'rejected'],
+    [false, undefined, 'Invalid tool arguments: rejected before execution', 'failed'],
+    [false, 'unknown', 'diagnostic', 'failed'],
+    [true, 'invalid_input', 'diagnostic', 'done'],
+    [null, 'invalid_input', 'diagnostic', 'unresolved'],
+    [false, undefined, { failureKind: 'invalid_input' }, 'failed'],
+  ]) expect(view([call('typed'), result('typed', 'read', value, ok, { failureKind })]).tools[0].status).toBe(status)
+})

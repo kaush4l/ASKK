@@ -381,7 +381,7 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
           const matched = candidates[0]
           const activity = normalizeToolActivity(message.activity, { ok: message.ok })
           const messages = state.messages.map(row => !row.tools?.includes(matched) ? row : { ...row, tools: row.tools.map(tool => tool !== matched ? tool : {
-            ...tool, ...activity, status: message.ok === true ? 'done' : message.ok === false ? 'failed' : 'unresolved',
+            ...tool, ...activity, status: message.ok === true ? 'done' : message.ok === false ? message.failureKind === 'invalid_input' ? 'rejected' : 'failed' : 'unresolved',
             summary: message.value, hasResult: Object.hasOwn(message, 'value'),
           }) })
           notify({ messages })

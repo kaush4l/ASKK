@@ -6,7 +6,7 @@ const titles = {
   workspace_run: 'Run command', workspace_build: 'Build application', workspace_check: 'Check application',
   workspace_delete: 'Delete file', workspace_rename: 'Rename file', todo_write: 'Update task plan', todo_read: 'Read task plan',
 }
-const labels = { running: 'Running', awaiting_approval: 'Awaiting approval', done: 'Completed', completed: 'Completed', success: 'Completed', failed: 'Failed', error: 'Failed', interrupted: 'Interrupted', cancelled: 'Stopped', unresolved: 'Outcome not recorded' }
+const labels = { rejected: 'Not run', running: 'Running', awaiting_approval: 'Awaiting approval', done: 'Completed', completed: 'Completed', success: 'Completed', failed: 'Failed', error: 'Failed', interrupted: 'Interrupted', cancelled: 'Stopped', unresolved: 'Outcome not recorded' }
 const stringify = value => typeof value === 'string' ? value : value == null ? '' : JSON.stringify(value, null, 2)
 
 /** Presentation only: an approval never replaces the recorded tool outcome. */
@@ -39,7 +39,8 @@ export default function ToolCard({ tool, approvals, recorded = false, fileAvaila
     <div className="tool-details">
       {args && args !== '{}' && <><h4>Input</h4><pre>{args}</pre></>}
       {presentation === 'awaiting_approval' && <p className="tool-approval-note">{recorded ? 'Approval was pending when this snapshot was captured. Refresh to check for newer records.' : 'This call is waiting for your decision. It has not been approved.'}</p>}
-      <h4>{pending ? recorded ? 'Recorded outcome' : 'Current call' : hasResult ? 'Recorded result' : 'Result'}</h4><pre>{hasResult ? result || '(empty string)' : pending ? recorded ? 'No tool result was recorded in this snapshot.' : presentation === 'awaiting_approval' ? 'Waiting for approval before execution.' : 'Waiting for the tool to return…' : 'No result was recorded.'}</pre>
+      {presentation === 'rejected' && <p className="tool-approval-note">Input rejected before execution.</p>}
+      <h4>{presentation === 'rejected' ? 'Validation result' : pending ? recorded ? 'Recorded outcome' : 'Current call' : hasResult ? 'Recorded result' : 'Result'}</h4><pre>{hasResult ? result || '(empty string)' : pending ? recorded ? 'No tool result was recorded in this snapshot.' : presentation === 'awaiting_approval' ? 'Waiting for approval before execution.' : 'Waiting for the tool to return…' : 'No result was recorded.'}</pre>
     </div>
     {tool.path && fileAvailable !== undefined && <p className="tool-approval-note">{fileAvailable ? 'Opens the current workspace version; it may differ from this run.' : 'Current file unavailable. Historical file contents are not provided by this link.'}</p>}
     {tool.commandId && commandAvailable === false && <p className="tool-approval-note">Command output no longer available in this workspace.</p>}

@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { evaluateProjectLoop, repairCycle } from '../scripts/evals/project-loop.js'
+import { evaluateProjectLoop, repairCycle, evaluationSampling } from '../scripts/evals/project-loop.js'
 import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -36,16 +36,23 @@ test('a rejected proposal, cancelled command or ambiguous call is not a reproduc
 
 test('an absent project manifest never runs an ancestor package test script', async () => {
   const root = await mkdtemp(join(tmpdir(), 'askk-eval-ancestor-'))
-  const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: () => new Response(
+  const requests = []
+  const sampling = { temperature: 0.6, top_p: 0.95, top_k: 20, min_p: 0, seed: 42 }
+  const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: async request => {
+    requests.push(await request.json())
+    return new Response(
     `data: ${JSON.stringify({ choices: [{ delta: { content: 'invalid response' }, finish_reason: null }] })}\n\ndata: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }] })}\n\ndata: [DONE]\n\n`,
     { headers: { 'content-type': 'text/event-stream' } },
-  ) })
+  ) } })
   try {
     const marker = join(root, 'ancestor-ran')
     await writeFile(join(root, 'package.json'), JSON.stringify({ scripts: { test: `touch '${marker}'` } }))
-    const result = await evaluateProjectLoop({ baseUrl: `http://127.0.0.1:${server.port}/v1`, model: 'fixture', directory: join(root, 'attempt'), caseName: 'project' })
+    const result = await evaluateProjectLoop({ baseUrl: `http://127.0.0.1:${server.port}/v1`, model: 'fixture', directory: join(root, 'attempt'), caseName: 'project', sampling })
     const evidence = JSON.parse(await readFile(result.evidence, 'utf8'))
     const checks = evidence.checks.filter(check => ['independent package test script', 'independent Bun test discovery'].includes(check.name))
+    expect(evidence.sampling).toEqual(sampling)
+    expect(requests.length).toBeGreaterThan(0)
+    for (const request of requests) for (const [key, value] of Object.entries(sampling)) expect(request[key]).toBe(value)
     expect(result.passed).toBe(false)
     expect(checks).toHaveLength(2)
     expect(await Bun.file(marker).exists()).toBe(false)
@@ -56,3 +63,12 @@ test('an absent project manifest never runs an ancestor package test script', as
     }
   } finally { server.stop(true); await rm(root, { recursive: true, force: true }) }
 }, 15000)
+
+test('evaluation sampling is explicit, validated, detached and defaults remain stable', () => {
+  expect(evaluationSampling()).toEqual({ temperature: 0 })
+  const input = { temperature: 0.6, top_p: 0.95, seed: 42 }
+  const copy = evaluationSampling(input)
+  input.temperature = 0
+  expect(copy.temperature).toBe(0.6)
+  for (const input of [null, [], { temperature: '0.6' }, { temperature: NaN }, { temperature: 3 }, { top_p: 0 }, { top_k: 1.5 }, { min_p: -1 }, { seed: -1 }, { messages: [] }, { max_tokens: 10 }]) expect(() => evaluationSampling(input)).toThrow()
+})

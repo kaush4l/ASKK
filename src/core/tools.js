@@ -102,7 +102,7 @@ export function toolbox(tiers, { has = () => true } = {}) {
 export async function runToolResult(item, args, ctx) {
   try {
     const faults = validateToolInput(item.inputSchema, args ?? {})
-    if (faults.length) throw new TypeError(`Invalid tool arguments: ${faults.join('; ')}`)
+    if (faults.length) return { text: `${item.name} failed: Invalid tool arguments: ${faults.join('; ')}`, ok: false, failureKind: 'invalid_input' }
     const result = await item.run(args ?? {}, ctx)
     const text = result == null || result === '' ? '(no output)' : typeof result === 'string' ? result : JSON.stringify(result, null, 2)
     return { text, ok: true }
