@@ -20,7 +20,8 @@
  */
 
 import { loader, loadIndex, skillFiles } from '../core/folder.js'
-import { assertModelRelay, inference, InferenceError, redactedURL } from '../core/inference.js'
+import { assertModelRelay, modelRelayPath, inference, InferenceError, redactedURL } from '../core/inference.js'
+import { validModelRelayContract } from '../core/model-relay.js'
 import { describeTool, mcp } from '../core/mcp.js'
 import { read } from '../core/markdown.js'
 import { merge, resolve } from '../core/models.js'
@@ -44,7 +45,7 @@ const TOOL_EVENT_STORAGE = 'separate-v1'
 const EVIDENCE_TIMEOUT_MS = 15000
 const MODEL_PROBE_PROMPT = Object.freeze([{ role: 'user', content: 'Reply with exactly: Connected.' }])
 
-const bridgeIdentity = value => JSON.stringify({ name: value?.name, version: value?.version, runtimeId: value?.runtimeId, root: value?.root, capabilities: [...(value?.capabilities ?? [])].sort(), mcp: [...(value?.mcp ?? [])].sort(), clis: value?.clis })
+const bridgeIdentity = value => JSON.stringify({ name: value?.name, version: value?.version, runtimeId: value?.runtimeId, root: value?.root, capabilities: [...(value?.capabilities ?? [])].sort(), modelRelay: value?.modelRelay, mcp: [...(value?.mcp ?? [])].sort(), clis: value?.clis })
 
 /** A hard caller bound, including fetch implementations that ignore AbortSignal. */
 async function boundedModelCheck(callback, { signal, timeoutMs } = {}, defaultMs = 15000) {
@@ -230,7 +231,7 @@ export class Hub {
     if (this.disposed) return this
     await this.markInterrupted()
     if (waited) await this.readFolders()
-    if (bridge?.url) await this.bridgeCheck(bridge.url, bridge.token)
+    if (bridge?.url) await this.bridgeCheck(bridge.url, bridge.token, { minimumModelRelayVersion: bridge.minimumModelRelayVersion, restored: true })
     await this.mcpRefresh({ restart: false })
     if (this.disposed) return this
     this.publish({ type: 'boot', stage: 'threads', done: 0, total: this.specs.size })
@@ -422,7 +423,7 @@ export class Hub {
   hostInfo() {
     const bridge = this.bridgeState
     if (bridge.status !== 'answering') return null
-    return { name: bridge.health?.name, url: bridge.url, token: bridge.token, root: bridge.health?.root, capabilities: bridge.health?.capabilities ?? [] }
+    return { name: bridge.health?.name, url: bridge.url, token: bridge.token, root: bridge.health?.root, capabilities: bridge.health?.capabilities ?? [], ...(bridge.health?.modelRelay != null ? { modelRelay: structuredClone(bridge.health.modelRelay) } : {}) }
   }
 
   /** A resident thread, started if it is not running. */
@@ -1416,8 +1417,15 @@ export class Hub {
     const sequence = ++this.bridgeCheckSequence
     const previous = this.bridgeState
     const was = previous.status
+    const minimumModelRelayVersion = options.minimumModelRelayVersion ?? previous.minimumModelRelayVersion
+    let published = false
+    const current = () => {
+      if (this.disposed || options.signal?.aborted) throw new InferenceError('The agent desk stopped or companion pairing was cancelled before its scope could be adopted.', 'aborted')
+      if (sequence !== this.bridgeCheckSequence) throw new InferenceError('A newer companion connection check replaced this result.', 'configuration')
+    }
     try {
       if (this.disposed) throw new InferenceError('The agent desk stopped before companion pairing completed.', 'aborted')
+      if (minimumModelRelayVersion != null && minimumModelRelayVersion !== 1) throw new InferenceError('The saved companion model relay contract is unsupported. Disconnect this pairing explicitly before choosing a different companion.', 'relay_capability')
       const health = await boundedModelCheck(async signal => {
         const response = await this.fetch(`${base}/health`, { signal })
         if (!response.ok) throw new InferenceError(`The companion health check answered HTTP ${response.status}.`, 'relay_unavailable')
@@ -1430,28 +1438,54 @@ export class Hub {
         const capabilities = authenticated.capabilities ?? health.capabilities
         if (!Array.isArray(capabilities) || capabilities.some(item => typeof item !== 'string')) throw new InferenceError('The companion returned invalid capability information.', 'relay_capability')
         const verified = { ...health, root: authenticated.root ?? health.root, capabilities, ...(authenticated.runtimeId ? { runtimeId: authenticated.runtimeId } : {}) }
+        // Routing authority comes from the authenticated response, never public health.
+        delete verified.modelRelay
+        if (authenticated.modelRelay != null) verified.modelRelay = structuredClone(authenticated.modelRelay)
+        if (minimumModelRelayVersion === 1 && !validModelRelayContract(verified.modelRelay)) throw new InferenceError('This pairing requires scoped model relay version 1, but the companion no longer advertises it. Restore the scoped companion, or explicitly disconnect before pairing a legacy bridge.', 'relay_capability')
+        if (verified.modelRelay != null && !validModelRelayContract(verified.modelRelay)) throw new InferenceError('The companion returned an unsupported model relay contract. Update or reconnect the companion.', 'relay_capability')
         if (options.requireModelRelay) assertModelRelay(verified)
         return verified
       }, options)
-      if (this.disposed) throw new InferenceError('The agent desk stopped before companion pairing completed.', 'aborted')
-      if (sequence !== this.bridgeCheckSequence) throw new InferenceError('A newer companion connection check replaced this result.', 'configuration')
-      const changed = was !== 'answering' || previous.url !== base || previous.token !== token || bridgeIdentity(previous.health) !== bridgeIdentity(health)
-      this.bridgeState = { url: base, token, health, generation: (previous.generation ?? 0) + Number(changed), status: 'answering', since: was === 'answering' ? previous.since : Date.now(), error: '', errorCode: '' }
-      if (changed) {
-        this.bridgeToolsChanged(was === 'answering' ? 'the bridge identity or capabilities changed' : 'the bridge is answering')
+      current()
+      const pin = validModelRelayContract(health.modelRelay) ? 1 : minimumModelRelayVersion
+      const adopt = (pinSaved = false) => {
+        current()
+        const changed = was !== 'answering' || previous.url !== base || previous.token !== token || bridgeIdentity(previous.health) !== bridgeIdentity(health)
+        this.bridgeState = { url: base, token, health, ...(pin ? { minimumModelRelayVersion: pin, modelRelayPinSaved: pinSaved } : {}), generation: (previous.generation ?? 0) + Number(changed), status: 'answering', since: was === 'answering' ? previous.since : Date.now(), error: '', errorCode: '' }
+        if (changed) this.bridgeToolsChanged(was === 'answering' ? 'the bridge identity or capabilities changed' : 'the bridge is answering')
       }
+      // Upgrade old saved pairings before advertising scoped authority. A later
+      // reload must not forget that this endpoint was accepted as scoped v1.
+      const savedPinMatches = options.restored && options.minimumModelRelayVersion === 1 || previous.minimumModelRelayVersion === 1 && previous.modelRelayPinSaved && previous.url === base && previous.token === token
+      if (pin === 1 && !savedPinMatches) await this.bridgeSettingsWrite(async () => {
+        current()
+        if (this.store.durable === false) throw new InferenceError('Durable browser storage is required to save the scoped companion contract. Scoped pairing was not activated.', 'evidence_persistence')
+        try { await this.store.put('settings', { key: 'bridge', value: { url: base, token, minimumModelRelayVersion: 1 } }) }
+        catch { throw new InferenceError('The companion scope could not be saved. Retry after local storage is available; scoped pairing was not activated.', 'evidence_persistence') }
+        try {
+          adopt()
+          this.publish({ type: 'bridge', state: this.bridge.state() }); published = true
+          current()
+          this.bridgeState.modelRelayPinSaved = true
+        } catch (error) {
+          // Still inside the ordered write: cleanup precedes any newer pairing.
+          await this.store.delete('settings', 'bridge')
+          throw error
+        }
+      })
+      else adopt(Boolean(savedPinMatches))
     } catch (error) {
       if (error instanceof TypeError) error = new InferenceError('The browser could not read the HTTPS companion. Check its running state, trusted certificate and allowed page origin; this does not establish whether the model is online.', 'browser_unreadable')
       const failed = modelFailure(error, {}, { token })
       // A failed candidate must never replace an already paired, authorized service.
       if (this.disposed || options.requireModelRelay || sequence !== this.bridgeCheckSequence) return { url: base, status: 'down', since: Date.now(), capabilities: [], root: '', ...failed }
       const changed = was !== 'down' || previous.url !== base || previous.token !== token
-      this.bridgeState = { ...previous, url: base, token, generation: (previous.generation ?? 0) + Number(changed), status: 'down', since: was === 'down' ? previous.since : Date.now(), error: failed.error, errorCode: failed.errorCode }
+      this.bridgeState = { ...previous, url: base, token, ...(minimumModelRelayVersion ? { minimumModelRelayVersion } : {}), generation: (previous.generation ?? 0) + Number(changed), status: 'down', since: was === 'down' ? previous.since : Date.now(), error: failed.error, errorCode: failed.errorCode }
       if (was === 'answering') {
         this.bridgeToolsChanged('the bridge stopped answering')
       }
     }
-    this.publish({ type: 'bridge', state: this.bridge.state() })
+    if (!published) this.publish({ type: 'bridge', state: this.bridge.state() })
     return this.bridge.state()
   }
 
@@ -1481,6 +1515,7 @@ export class Hub {
     // Revoke old bridge clients immediately. Optional discovery cannot delay pairing,
     // cancellation or disconnect; mcpRefresh guards its eventual publication.
     for (const [name, server] of this.mcpServers) if (server.from === 'bridge') this.mcpServers.delete(name)
+    for (const thread of this.allThreads) thread.worker.postMessage({ type: 'host-revoked' })
     this.hostChanged(why)
     if (!this.disposed) this.mcpRefresh().catch(() => {})
   }
@@ -1500,8 +1535,8 @@ export class Hub {
 
   bridge = {
     state: () => {
-      const { url, status, since, health, error, errorCode, generation } = this.bridgeState
-      return { url, status, since, generation: generation ?? 0, runtimeId: health?.runtimeId ?? '', root: health?.root ?? '', capabilities: health?.capabilities ?? [], version: health?.version ?? '', error: error ?? '', errorCode: errorCode ?? '' }
+      const { url, status, since, health, error, errorCode, generation, minimumModelRelayVersion } = this.bridgeState
+      return { url, status, since, generation: generation ?? 0, ...(minimumModelRelayVersion ? { minimumModelRelayVersion } : {}), runtimeId: health?.runtimeId ?? '', root: health?.root ?? '', capabilities: health?.capabilities ?? [], ...(health?.modelRelay != null ? { modelRelay: structuredClone(health.modelRelay) } : {}), version: health?.version ?? '', error: error ?? '', errorCode: errorCode ?? '' }
     },
     pair: async (url, token, options = {}) => {
       const state = await this.bridgeCheck(url, token, options)
@@ -1509,7 +1544,8 @@ export class Hub {
         return this.bridgeSettingsWrite(async () => {
           const before = this.bridgePairFailure(state, token, options.signal)
           if (before) return before
-          await this.store.put('settings', { key: 'bridge', value: { url: state.url, token } })
+          // Scoped checks already stored this exact candidate before publication.
+          if (!(state.minimumModelRelayVersion === 1 && this.bridgeState.modelRelayPinSaved)) await this.store.put('settings', { key: 'bridge', value: { url: state.url, token } })
           const after = this.bridgePairFailure(state, token, options.signal)
           if (after) {
             // Still inside the ordered write: cleanup cannot erase a newer pairing.
@@ -1787,8 +1823,8 @@ export class Hub {
 
   bridgeFetch(url, init = {}) {
     const bridge = this.bridgeState
-    assertModelRelay(bridge.status === 'answering' ? bridge.health : null)
-    return this.fetch(`${bridge.url}/fetch`, {
+    const endpoint = modelRelayPath(bridge.status === 'answering' ? bridge.health : null)
+    return this.fetch(`${bridge.url}${endpoint}`, {
       method: 'POST',
       headers: { authorization: `Bearer ${bridge.token}`, 'content-type': 'application/json' },
       body: JSON.stringify({ url: String(url), method: init.method ?? 'GET', headers: init.headers ?? {}, body: init.body ?? null, stream: true }),

@@ -21,7 +21,7 @@ import { contexts } from '../core/context.js'
 import { BUILTIN_TOOL_GROUPS } from '../core/builtin-registry.js'
 import { Engine } from '../core/engine.js'
 import { versioned } from '../core/folder.js'
-import { assertModelRelay, inference } from '../core/inference.js'
+import { modelRelayPath, inference } from '../core/inference.js'
 import { resolve } from '../core/models.js'
 import { snapshot } from '../core/prompt.js'
 import { fromModule, tool, toolbox } from '../core/tools.js'
@@ -73,8 +73,8 @@ async function llm() {
 
 /** A fetch made from the owner's machine by the host bridge, streamed back. */
 async function bridgeFetch(url, init = {}) {
-  assertModelRelay(host)
-  return fetch(`${host.url}/fetch`, {
+  const endpoint = modelRelayPath(host)
+  return fetch(`${host.url}${endpoint}`, {
     method: 'POST',
     headers: { authorization: `Bearer ${host.token}`, 'content-type': 'application/json' },
     body: JSON.stringify({ url: String(url), method: init.method ?? 'GET', headers: init.headers ?? {}, body: init.body ?? null, stream: true }),
@@ -84,6 +84,7 @@ async function bridgeFetch(url, init = {}) {
 
 /** A model CLI run on the owner's machine by the host bridge; the reply streams as NDJSON. */
 async function bridgeRun(body, { signal } = {}) {
+  if (!host?.capabilities?.includes('cli')) throw new Error('The model CLI companion is no longer available. Reconnect it before starting another task.')
   return fetch(`${host.url}/run`, {
     method: 'POST',
     headers: { authorization: `Bearer ${host.token}`, 'content-type': 'application/json' },
@@ -294,6 +295,15 @@ self.onmessage = async ({ data }) => {
         controller?.abort()
         for (const waiting of pending.values()) waiting.reject(new Error('stopped by the owner'))
         pending.clear()
+        break
+      case 'host-revoked':
+        if (host) {
+          host = null
+          models.clear()
+          controller?.abort()
+          for (const waiting of pending.values()) waiting.reject(new Error('The companion connection changed; the previous authority was revoked.'))
+          pending.clear()
+        }
         break
       case 'settings':
         if (data.catalogue) catalogue = data.catalogue

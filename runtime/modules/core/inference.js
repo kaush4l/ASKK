@@ -27,6 +27,8 @@
 
 import { snapshot } from './prompt.js'
 
+import { modelRelayIssue } from './model-relay.js'
+
 export const DEFAULT_CONTEXT = 32768
 
 export class InferenceError extends Error {
@@ -39,8 +41,14 @@ export class InferenceError extends Error {
 
 /** Model transport authority is distinct from tool or native execution authority. */
 export function assertModelRelay(host) {
-  if (!host) throw new InferenceError('The selected model relay is disconnected. Reconnect it before requesting inference.', 'relay_unavailable')
-  if (!host.capabilities?.includes('model-relay') && !host.capabilities?.includes('fetch')) throw new InferenceError('This companion does not grant model-relay access.', 'relay_capability')
+  const issue = modelRelayIssue(host)
+  if (issue) throw new InferenceError(issue.message, issue.code)
+}
+
+/** Prefer the authenticated scoped route; older companions retain their legacy transport. */
+export function modelRelayPath(host) {
+  assertModelRelay(host)
+  return host.modelRelay ? '/model/fetch' : '/fetch'
 }
 
 /**
@@ -527,7 +535,7 @@ async function ok(response) {
     // The body is a courtesy.
   }
   const body = json(detail)
-  const relayCodes = { 'bridge.auth': 'relay_auth', 'bridge.origin': 'relay_origin', 'capability.unavailable': 'relay_capability', 'relay.upstream_unreachable': 'relay_upstream', 'relay.upstream_timeout': 'relay_timeout' }
+  const relayCodes = { 'bridge.auth': 'relay_auth', 'bridge.origin': 'relay_origin', 'capability.unavailable': 'relay_capability', 'relay.model_scope_required': 'relay_scope', 'relay.model_scope_denied': 'relay_scope', 'relay.model_redirect': 'relay_scope', 'relay.model_scope_invalid': 'relay_scope', 'relay.upstream_unreachable': 'relay_upstream', 'relay.upstream_timeout': 'relay_timeout' }
   const code = relayCodes[body?.code] ?? ([401, 403].includes(response.status) ? 'provider_auth' : 'provider_http')
   throw new InferenceError(`HTTP ${response.status}${detail ? `: ${detail}` : ''}`, code, { status: response.status })
 }
