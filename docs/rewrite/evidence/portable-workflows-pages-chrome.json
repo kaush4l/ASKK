@@ -1,0 +1,64 @@
+{
+  "date": "2026-09-29T07:50:43.378Z",
+  "origin": "https://kaush4l.github.io/ASKK/",
+  "source": "5c70e18",
+  "deployment": "bfc93f71c51f15550fdf6e53089cb280d7a970f3",
+  "artifactHash": "c5f86b39531b1a30195d22962574772659c9da0697c70530d4f82c4f32763eb1",
+  "checks": {
+    "draftRestored": true,
+    "existingPairingRestored": true,
+    "workflowRequirementsVisible": true,
+    "modelReplyCompleted": true,
+    "commandsNotStarted": true
+  },
+  "run": "assistant \u00b7 Recorded run\n\nA snapshot of this instance\u2019s recorded work. Inspect instructions, tool receipts, and results; refresh to read newer records.\n\nRefresh snapshot\nExport this trace\nStatus\nCompleted\nInstance\nrmumdmaee1\nTask trace\nrmumdmaee1\nPinned agent package\nAssigned task\nReply with exactly: Portable workflows ready. Do not use tools or delegate.\nRecorded result\nPortable workflows ready\nTool activity 0\n\nResults pair only with their recorded call identities. A parent link identifies a run relationship, not a message delivery acknowledgement.\n\nNo tool calls were recorded for this instance.\n\nRecorded guidance 0\n\nNo received notes were recorded in this run\u2019s history.\n\nHistorical prompts 1\nPrompt 1 \u00b7 Step 1 \u00b7 Attempt 1\n\nPrompt records show the model input at that time. Provider requests below keep retries separate and redact transport secrets.\n\nProvider requests 1\nRequest 1\nProvider completions 1\nCompletion 1",
+  "connections": "Connections\nBrowser harness\nLoaded\n\nAgent loops and bundled tools run in your browser.\n\nDesk default model\nModel configured\n\nQwen3.8-27B-Uncensored-oQ4e-fp16-mtp\nThrough HTTPS companion\n\nConfigure model\nOptional companion\nConnected\n\n1 advertised capabilities. Permissions are scoped to this connection.\n\nManage connection\nHost fetch relay\nUnavailable\nBrowser control\nUnavailable\nCommand execution\nNot started\n\nWeb research needs an available fetch tool or relay. Model access alone does not enable host commands or browser control.\n\nHow this task runs\nOwner controls\nAgent loop\nSingle agent\nKeep the task with the selected agent.\nAllow delegation\nLet available peer agents take part.\nAsk before\nRead\nNetwork\nWrite\nExecute\nAvailable tools\n11/11\n\nThese controls apply to the next task. Runtime permissions can still require approval or deny an action.",
+  "limitations": [
+    "Chrome only",
+    "No browser Linux boot or build",
+    "No imported-folder browser workflow run",
+    "No claim of production readiness"
+  ],
+  "servedFiles": [
+    {
+      "path": "index.html",
+      "sha256": "37d4836ce1512e041d44b7638803d3920cb64381814deefd7fdb94504ad9d67a",
+      "matches": true
+    },
+    {
+      "path": "workbench.json",
+      "sha256": "b619aab079c3cfc602c4ff89132fa125398698e79cfc655a666192f2f42ec67f",
+      "matches": true
+    },
+    {
+      "path": "packages/starter/workflows.json",
+      "sha256": "3715ace7ce426d5f3e711f5f01f38b18a425392fb73dfdb1043297c886e51918",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/core/package-workflows.js",
+      "sha256": "0de8d07b6d8b2b56608c4f2bd8b51c584a3e9b9030c59840be983e691b30bcd0",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/core/completion.js",
+      "sha256": "bb74ef5601e31fdb8fb6cdeea000fdf4d19f3a41d629005779a7d8cfe16c3426",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/runtime/hub.js",
+      "sha256": "79dadbb7a4e7eef6283f84a81fc350d56247d2a2ac42972e642bdcdb48037e7f",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/workspace/controller.js",
+      "sha256": "8e25d703094d2e85d7fdc21357235076cc967a0e1d5926f1b63ce923a3b6227c",
+      "matches": true
+    },
+    {
+      "path": "_next/static/chunks/app/page-36f8c5beda199850.js",
+      "sha256": "f4705c87405cbe287a02ab9015cc9a1391fe4ab65d321bf7ddc57202e981ba19",
+      "matches": true
+    }
+  ]
+}
