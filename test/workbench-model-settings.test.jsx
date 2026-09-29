@@ -194,3 +194,17 @@ test('scoped relay availability needs an explicit endpoint grant and never falls
   expect(modelRelayAvailable({ ...companion, modelRelay: { ...companion.modelRelay, status: 'configured', endpoints: ['http://127.0.0.1:8873/v1'] } })).toBe(true)
   expect(modelRelayAvailable({ ...companion, capabilities: ['fetch'], modelRelay: { ...companion.modelRelay, status: 'configured', endpoints: ['http://127.0.0.1:8873/v1'] } })).toBe(false)
 })
+
+test('model discovery exposes explicit draft choices even when the saved model is missing', () => {
+  const discovery = { ids: ['small-model', 'another-model'], baseUrl: saved.baseUrl, via: saved.via, truncated: false }
+  const tree = render(stateFor({ status: 'failed', errorCode: 'MODEL_NOT_LISTED', discovery }))
+  const choices = all(tree, node => node.tagName === 'select' && attr(node, 'aria-label') === 'Discovered models')
+  expect(choices).toHaveLength(1)
+  expect(all(choices[0], node => node.tagName === 'option').map(text)).toEqual(['Choose a model for your draft…', 'small-model', 'another-model'])
+  expect(text(tree)).toContain('Listing does not verify replies or tool use.')
+  expect(text(tree)).toContain('Model check failed')
+  const stale = render(stateFor({ discovery: { ...discovery, baseUrl: 'https://old-provider.invalid/v1' } }))
+  expect(all(stale, node => attr(node, 'aria-label') === 'Discovered models')).toHaveLength(0)
+  const locked = render(stateFor({ discovery }, { run: { status: 'running' } }))
+  expect(disabled(all(locked, node => attr(node, 'aria-label') === 'Discovered models')[0])).toBe(true)
+})

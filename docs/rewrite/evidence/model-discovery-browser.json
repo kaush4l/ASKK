@@ -1,0 +1,28 @@
+{
+  "scope": "Actual exported app in isolated Chrome origin with deterministic local model API. Browser interaction proof, not real-model quality, Safari/iPhone, VoiceOver or Browser Linux acceptance.",
+  "steps": [
+    "Saved fixture-alpha at isolated local endpoint",
+    "Listed models and saw fixture-alpha/fixture-beta options",
+    "Tested reply for fixture-alpha; status Reply verified",
+    "Selected fixture-beta from discovery dropdown; Model ID draft changed, checks disabled, prior reply explicitly scoped to saved fixture-alpha",
+    "Saved fixture-beta; status Model configured and previous probe/discovery cleared",
+    "Saved fixture-missing and listed; MODEL_NOT_LISTED stayed failed while valid alternatives remained selectable"
+  ],
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/v1/models"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "model": "fixture-alpha"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/models"
+    }
+  ],
+  "screenshot": "model-discovery-chrome.png",
+  "cleanup": "Temporary browser tab and API/static server closed; user application tabs left open."
+}

@@ -26,3 +26,17 @@ test('workspace context bounds the configured file listing and reports omissions
   expect(rendered).toContain('"filesOmitted":1')
   expect(rendered).not.toContain('c.js')
 })
+
+test('runtime context distinguishes general host tools from separately bound workspace execution', async () => {
+  const [runtime, workspace] = contexts(['runtime', 'workspace'])
+  const engine = { ctx: { request: async () => ({ target: 'local', status: 'ready', toolchain: { kind: 'bun' }, capabilities: ['fs', 'exec'] }) } }
+  const text = await runtime.render(engine)
+  expect(text).toContain('own worker')
+  expect(text).toContain('separately selected execution binding')
+  expect(text).not.toContain('No host companion is paired')
+  expect(text).not.toContain('inside a browser tab')
+  expect(await workspace.render(engine)).toContain('"target":"local"')
+  engine.ctx.host = { capabilities: ['model-relay'] }
+  expect(await runtime.render(engine)).toContain('only these capabilities: model-relay')
+  expect(await runtime.render(engine)).toContain('does not grant native execution')
+})

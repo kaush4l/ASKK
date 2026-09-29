@@ -2591,3 +2591,31 @@ test('a save started during required-check fingerprinting prevents completion', 
   try { expect((await checking).ok).toBe(false) }
   finally { writing.release(); await saving }
 })
+
+test('model discovery retains bounded usable IDs without verifying a missing selected model', async () => {
+  const { controller, hub } = await startedFixture()
+  await controller.setModel({ model: 'missing-model', baseUrl: 'https://model.invalid/v1', via: 'direct' })
+  hub.models = { refresh: async () => ({ ids: [null, {}, '', ' padded ', 'line\nbreak', 'x'.repeat(257), 'small-model', 'small-model', ...Array.from({ length: 105 }, (_, i) => `model-${i}`)], at: 123 }) }
+  await expect(controller.testModel()).rejects.toThrow('did not list model')
+  expect(controller.getSnapshot().model).toMatchObject({ status: 'failed', errorCode: 'MODEL_NOT_LISTED', probe: null, discovery: { ids: ['small-model', ...Array.from({ length: 99 }, (_, i) => `model-${i}`)], truncated: true, baseUrl: 'https://model.invalid/v1', via: 'direct' } })
+  // A selected model beyond the display cap remains valid discovery evidence.
+  await controller.setModel({ model: 'model-104', baseUrl: 'https://model.invalid/v1', via: 'direct' })
+  expect(controller.getSnapshot().model.discovery).toBeUndefined()
+  await controller.testModel()
+  expect(controller.getSnapshot().model.status).toBe('listed')
+  hub.models.refresh = async () => ({ ids: 'malformed', at: 456 })
+  await expect(controller.testModel()).rejects.toThrow('invalid model list')
+  expect(controller.getSnapshot().model.discovery).toBeNull()
+  await controller.setModel({ model: 'another-model', baseUrl: 'https://new-provider.invalid/v1', via: 'direct' })
+  expect(controller.getSnapshot().model.discovery).toBeUndefined()
+})
+
+test('relay identity changes clear discovered model choices', async () => {
+  const { controller, hub } = await startedFixture()
+  await controller.setModel({ model: 'fixture-model', baseUrl: 'https://model.invalid/v1', via: 'bridge' })
+  hub.models = { refresh: async () => ({ ids: ['fixture-model', 'small-model'], at: 123 }) }
+  await controller.testModel()
+  expect(controller.getSnapshot().model.discovery.ids).toEqual(['fixture-model', 'small-model'])
+  hub.emit({ type: 'bridge', state: { status: 'down', url: 'https://127.0.0.1:7717', error: 'Relay stopped' } })
+  expect(controller.getSnapshot().model.discovery).toBeNull()
+})

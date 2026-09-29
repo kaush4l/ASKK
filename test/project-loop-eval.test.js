@@ -7,31 +7,46 @@ import { join } from 'node:path'
 
 const trace = () => ({
   events: [
-    { kind: 'call', name: 'workspace_run', callId: 'fail', sequence: 1 },
-    { kind: 'observation', callId: 'fail', sequence: 2, ok: false, activity: { commandId: 'c1' } },
-    { kind: 'call', name: 'workspace_write', callId: 'edit', sequence: 3 },
-    { kind: 'observation', callId: 'edit', sequence: 4, ok: true, activity: { path: 'src/total.js' } },
-    { kind: 'call', name: 'workspace_run', callId: 'pass', sequence: 5 },
-    { kind: 'observation', callId: 'pass', sequence: 6, ok: true, activity: { commandId: 'c2' } },
+    { kind: 'call', name: 'workspace_read', callId: 'source', sequence: 1 },
+    { kind: 'observation', callId: 'source', sequence: 2, ok: true, activity: { path: 'src/total.js' } },
+    { kind: 'call', name: 'workspace_read', callId: 'tests', sequence: 3 },
+    { kind: 'observation', callId: 'tests', sequence: 4, ok: true, activity: { path: 'total.test.js' } },
+    { kind: 'call', name: 'workspace_run', callId: 'fail', sequence: 5 },
+    { kind: 'observation', callId: 'fail', sequence: 6, ok: false, activity: { commandId: 'c1' } },
+    { kind: 'call', name: 'workspace_write', callId: 'edit', sequence: 7 },
+    { kind: 'observation', callId: 'edit', sequence: 8, ok: true, activity: { path: 'src/total.js' } },
+    { kind: 'call', name: 'workspace_run', callId: 'pass', sequence: 9 },
+    { kind: 'observation', callId: 'pass', sequence: 10, ok: true, activity: { commandId: 'c2' } },
   ],
-  commands: [{ id: 'c1', code: 1 }, { id: 'c2', code: 0 }],
+  commands: [{ id: 'c1', command: 'bun test', code: 1, stage: 'complete' }, { id: 'c2', command: 'bun test', code: 0, stage: 'complete', sourceUnchanged: true, completedRevision: 'delivered' }],
 })
-test('repair evaluation needs an observed command failure before editing and a new successful check', () => {
+test('repair evaluation requires read, relevant failure, source edit and same fresh test', () => {
   const { events, commands } = trace()
-  expect(repairCycle(events, commands)).toEqual({ passed: true, failedCallId: 'fail', editCallId: 'edit', passedCallId: 'pass' })
-  expect(repairCycle(events.slice(2), commands).passed).toBe(false)
-  events[4].sequence = 3 // Check started while the edit was still unacknowledged.
-  expect(repairCycle(events, commands).passed).toBe(false)
+  expect(repairCycle(events, commands, 'delivered')).toEqual({ passed: true, failedCallId: 'fail', editCallId: 'edit', passedCallId: 'pass' })
+  commands.forEach(command => { command.command = '  bun run test  ' })
+  expect(repairCycle(events, commands, 'delivered').passed).toBe(true)
 })
-test('a rejected proposal, cancelled command or ambiguous call is not a reproduced failure', () => {
+test('repair evaluation rejects unrelated, missing, ambiguous, stale or unacknowledged evidence', () => {
   for (const mutate of [
-    fixture => { fixture.events[1].activity = {} },
-    fixture => { fixture.commands[0].cancelled = true },
-    fixture => { fixture.events.push({ ...fixture.events[0] }) },
-    fixture => { fixture.events[3].ok = false },
+    f => { f.commands[0].command = 'false'; f.commands[1].command = 'true'; f.events[7].activity.path = 'unrelated.txt' },
+    f => { f.events[1].ok = false },
+    f => { f.events[3].activity = {} },
+    f => { f.events[3].sequence = 6 },
+    f => { f.events[5].activity = {} },
+    f => { f.commands[0].cancelled = true },
+    f => { f.commands[0].timedOut = true },
+    f => { f.events.push({ ...f.events[4] }) },
+    f => { f.events[7].ok = false },
+    f => { f.events[7].activity.path = 'total.test.js' },
+    f => { f.events[8].sequence = 7 },
+    f => { f.commands[1].command = 'bun run test' },
+    f => { f.commands[1].completedRevision = 'old-source' },
+    f => { f.commands[1].sourceUnchanged = false },
+    f => { f.commands[1].timedOut = true },
+    f => { f.commands[1].stage = 'running' },
   ]) {
     const fixture = trace(); mutate(fixture)
-    expect(repairCycle(fixture.events, fixture.commands).passed).toBe(false)
+    expect(repairCycle(fixture.events, fixture.commands, 'delivered').passed).toBe(false)
   }
 })
 
@@ -138,3 +153,35 @@ test('evaluation sampling is explicit, validated, detached and defaults remain s
   expect(copy.temperature).toBe(0.6)
   for (const input of [null, [], { temperature: '0.6' }, { temperature: NaN }, { temperature: 3 }, { top_p: 0 }, { top_k: 1.5 }, { min_p: -1 }, { seed: -1 }, { messages: [] }, { max_tokens: 10 }]) expect(() => evaluationSampling(input)).toThrow()
 })
+
+for (const testMode of ['real', 'skipped', 'empty']) test(`repair fixture independently verifies ${testMode} tests`, async () => {
+  const root = await mkdtemp(join(tmpdir(), 'askk-eval-repair-'))
+  let step = 0, sourceRevision, testRevision
+  const source = "export function total(values) { let sum = 0; for (const value of values) { if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error('Invalid number'); sum += value } return sum }\n"
+  const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: async request => {
+    const body = await request.json()
+    const last = body.messages.filter(message => message.role === 'tool').at(-1)
+    if (step === 1) sourceRevision = JSON.parse(last.content).stages[0][0].result.rev
+    if (step === 2) testRevision = JSON.parse(last.content).stages[0][0].result.rev
+    const calls = [
+      { name: 'workspace_read', args: { path: 'src/total.js' } },
+      { name: 'workspace_read', args: { path: 'total.test.js' } },
+      { name: 'workspace_run', args: { command: 'bun test' } },
+      { name: 'workspace_write', args: { path: 'src/total.js', content: source, expect: sourceRevision } },
+      ...(testMode === 'real' ? [] : [{ name: 'workspace_write', args: { path: 'total.test.js', content: testMode === 'empty' ? '' : "import {test} from 'bun:test'; test.skip('skipped', () => {});\n", expect: testRevision } }]),
+      { name: 'workspace_run', args: { command: 'bun test' } },
+    ]
+    const call = calls[step++]
+    const delta = call ? { tool_calls: [{ index: 0, id: `call${step}`, type: 'function', function: { name: call.name, arguments: JSON.stringify(call.args) } }] } : { content: 'Finished fixture.' }
+    return new Response(`data: ${JSON.stringify({ choices: [{ delta, finish_reason: call ? 'tool_calls' : 'stop' }] })}\n\ndata: [DONE]\n\n`, { headers: { 'content-type': 'text/event-stream' } })
+  } })
+  try {
+    const result = await evaluateProjectLoop({ baseUrl: `http://127.0.0.1:${server.port}/v1`, model: 'fixture', directory: join(root, 'attempt'), caseName: 'repair', responseProtocol: 'native', contractVersion: 3, historyFormat: 'messages' })
+    const evidence = JSON.parse(await readFile(result.evidence, 'utf8'))
+    expect(evidence.checks.find(check => check.name === 'declared test script')?.passed).toBe(true)
+    expect(evidence.checks.some(check => check.name === 'agent ran the declared test script against delivered source')).toBe(false)
+    expect(evidence.checks.find(check => check.name === 'independent Bun test discovery')?.passed).toBe(testMode === 'real')
+    expect(evidence.checks.find(check => check.name === 'observed failure-driven repair cycle')?.passed).toBe(true)
+    expect(result.passed).toBe(testMode === 'real')
+  } finally { server.stop(true); await rm(root, { recursive: true, force: true }) }
+}, 15000)

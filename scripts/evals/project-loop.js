@@ -29,9 +29,9 @@ const cases = {
   },
 }
 
-/** Require an observed failure, an acknowledged edit, then a newly started check.
- * A repaired file alone does not establish a failure-driven agent loop. */
-export function repairCycle(events, commands) {
+/** Require source/test reads, a failing test, an acknowledged source edit, and
+ * the same test rerun successfully against the delivered source. */
+export function repairCycle(events, commands, deliveredRevision) {
   const uniqueCall = id => {
     const matches = events.filter(row => row.kind === 'call' && row.callId === id)
     return matches.length === 1 ? matches[0] : null
@@ -40,16 +40,20 @@ export function repairCycle(events, commands) {
     const call = uniqueCall(row.callId)
     const receipts = commands.filter(command => command.id === row.activity?.commandId)
     return { row, call, receipt: receipts.length === 1 ? receipts[0] : null }
-  })
+  }).filter(({ row, call }) => call && row.sequence > call.sequence)
+  const testCommand = receipt => ['bun test', 'bun run test'].includes(receipt?.command?.trim())
+  const completed = receipt => receipt?.stage === 'complete' && Number.isInteger(receipt.code) && !receipt.cancelled && !receipt.timedOut
   for (const failed of outcomes) {
-    if (failed.call?.name !== 'workspace_run' || failed.row.ok !== false || !Number.isInteger(failed.receipt?.code) || failed.receipt.code === 0 || failed.receipt.cancelled) continue
+    if (failed.call.name !== 'workspace_run' || failed.row.ok !== false || !completed(failed.receipt) || failed.receipt.code === 0 || !testCommand(failed.receipt)) continue
+    const readRequired = ['src/total.js', 'total.test.js'].every(path => outcomes.some(read => read.call.name === 'workspace_read' && read.row.ok === true && read.row.activity?.path === path && read.row.sequence < failed.call.sequence))
+    if (!readRequired) continue
     for (const edit of outcomes) {
-      if (edit.call?.name !== 'workspace_write' || edit.row.ok !== true || !edit.row.activity?.path || !(edit.call.sequence > failed.row.sequence)) continue
-      const passed = outcomes.find(check => check.call?.name === 'workspace_run' && check.row.ok === true && check.receipt?.code === 0 && !check.receipt.cancelled && check.call.sequence > edit.row.sequence)
+      if (edit.call.name !== 'workspace_write' || edit.row.ok !== true || edit.row.activity?.path !== 'src/total.js' || !(edit.call.sequence > failed.row.sequence)) continue
+      const passed = outcomes.find(check => check.call.name === 'workspace_run' && check.row.ok === true && completed(check.receipt) && check.receipt.code === 0 && check.receipt.command?.trim() === failed.receipt.command.trim() && check.call.sequence > edit.row.sequence && check.receipt.sourceUnchanged === true && (deliveredRevision === undefined || check.receipt.completedRevision === deliveredRevision))
       if (passed) return { passed: true, failedCallId: failed.row.callId, editCallId: edit.row.callId, passedCallId: passed.row.callId }
     }
   }
-  return { passed: false, reason: 'No ordered failed command → acknowledged edit → new successful command was observed.' }
+  return { passed: false, reason: 'No required reads → failing test → acknowledged source edit → same successful test against delivered source was observed.' }
 }
 
 /** Evaluation sampling belongs to the model profile, not agent logic. */
@@ -160,11 +164,11 @@ export async function evaluateProjectLoop({ baseUrl, model, directory, caseName 
       } })
       checks.push({ args, code: result.code, cancelled: result.cancelled, timedOut: result.timedOut, output: output.trim(), stderr, passed: !result.cancelled && !result.timedOut && (definition.expected[index] === null ? Number.isInteger(result.code) && result.code !== 0 && checks.every(check => check.passed) : result.code === 0 && output.trim() === definition.expected[index]) })
     }
-    if (caseName === 'project') {
+    if (caseName === 'project' || caseName === 'repair') {
       let declared = false
       try { const pkg = JSON.parse((await execution.read('package.json')).content); declared = typeof pkg.scripts?.test === 'string' && Boolean(pkg.scripts.test.trim()) } catch {}
       checks.push({ name: 'declared test script', passed: declared })
-      checks.push({ name: 'agent ran the declared test script against delivered source', passed: declared && ranDeclaredTests(commands, run, deliveredRevision) })
+      if (caseName === 'project') checks.push({ name: 'agent ran the declared test script against delivered source', passed: declared && ranDeclaredTests(commands, run, deliveredRevision) })
       const reportPath = join(root, `bun-tests-${crypto.randomUUID()}.xml`)
       for (const args of [['run', 'test'], ['test', '--reporter=junit', `--reporter-outfile=${reportPath}`]]) {
         // Bun can resolve a missing package script from an ancestor project.
@@ -179,7 +183,7 @@ export async function evaluateProjectLoop({ baseUrl, model, directory, caseName 
         checks.push({ name: args[0] === 'run' ? 'independent package test script' : 'independent Bun test discovery', args, code: result.code, output, report, passed: result.code === 0 && !result.cancelled && !result.timedOut && (report === null || report.passed) })
       }
     }
-    if (caseName === 'repair') checks.push({ name: 'observed failure-driven repair cycle', ...repairCycle(run.toolEvents, commands) })
+    if (caseName === 'repair') checks.push({ name: 'observed failure-driven repair cycle', ...repairCycle(run.toolEvents, commands, deliveredRevision) })
     const checkedRevision = await workspace.revision()
     checks.push({ name: 'independent checks retained the delivered source', deliveredRevision, checkedRevision, passed: deliveredRevision === checkedRevision })
     const evidence = { version: 2, evaluatorHashes, instructionsOverride: instructions ?? null, deliveredRevision, checkedRevision, completion: run.completion, completionReceipts: run.completionReceipts ?? [], caseName, model, baseUrl, contextLength, sampling: resolvedSampling, responseProtocol: hub.specs.get('bundled/starter/builder')?.engine.responseProtocol ?? 'envelope', jsonOutput, structuredOutput, historyFormat: hub.specs.get('bundled/starter/builder')?.engine.historyFormat ?? 'transcript', enableThinking, maxOutputTokens, contractVersion: hub.specs.get('bundled/starter/builder')?.engine.contractVersion, responses, turns: run.turns, events: run.log, runtime: 'Local Bun (not Browser Linux)', startedAt, elapsedMs: Date.now() - startedAt, result: run.result, status: run.slot.status, passed: run.slot.status === 'done' && checks.every(row => row.passed), agentCompleted: run.slot.status === 'done', independentChecksPassed: checks.every(row => row.passed), checks, commands, prompts: run.prompts, requests: run.requests, completions: run.completions, tools: run.toolEvents, files: await execution.list(), metrics: { promptCount: run.prompts.length, repairs: run.log.filter(row => row.kind === 'repair').length, toolCalls: run.toolEvents.filter(row => row.kind === 'call').length, inputTokensEstimated: run.prompts.map(row => row.snapshot?.budget?.inputTokens) } }

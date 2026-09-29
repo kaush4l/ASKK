@@ -851,6 +851,7 @@ export function Settings({ state, initialTab, theme, setTheme, perform, onClose,
   const agentActive = activeStatus(state.run?.status) || activeStatus(state.task?.status)
   const draft = { baseUrl, model, key, via: modelVia }
   const modelDirty = modelDraftChanged(draft, state.model)
+  const discovery = !key && baseUrl === state.model.discovery?.baseUrl && modelVia === state.model.discovery?.via ? state.model.discovery : null
   const checkAllowed = modelHydrated && canCheckModel({ draft, saved: state.model, busy: !!busy, active: agentActive })
   const modelRelayAvailable = relayCanModel(state.companion)
   const modelPairingBound = state.runtime.target === 'local' || state.runtime.networkRelay
@@ -877,6 +878,7 @@ export function Settings({ state, initialTab, theme, setTheme, perform, onClose,
       {!modelHydrated && <p className="form-help" role="status">Restoring saved model settings. Saving, pairing and connection checks become available when the desk finishes opening.</p>}
       <label>Model connection<select className="form-input" value={modelVia} onChange={event => setModelVia(event.target.value)} disabled={modelLocked}><option value="direct">Direct from this browser</option><option value="bridge">Through HTTPS companion</option></select></label>
       <label>API base URL<input className="form-input" type="url" required disabled={modelLocked} value={baseUrl} onChange={event => setBaseUrl(event.target.value)} placeholder="https://api.example.com/v1"/></label>
+      {discovery && <label>Discovered models<select className="form-input" aria-label="Discovered models" disabled={modelLocked} value="" onChange={event => { if (event.target.value) setModel(event.target.value) }}><option value="">Choose a model for your draft…</option>{discovery.ids.map(id => <option key={id} value={id}>{id}</option>)}</select><span className="form-help">{discovery.ids.length ? `${discovery.ids.length} model IDs listed${discovery.truncated ? ' (first 100 shown)' : ''}. Choose one, then save and test its reply. Listing does not verify replies or tool use.` : 'The endpoint returned no usable model IDs.'}</span></label>}
       <label>Model ID<input className="form-input" required disabled={modelLocked} value={model} onChange={event => setModel(event.target.value)} placeholder="Model name from your provider"/></label>
       <label>API key <span className="optional">optional for local models</span><input className="form-input" type="password" autoComplete="off" disabled={modelLocked} value={key} onChange={event => setKey(event.target.value)} placeholder="Leave blank to keep the saved key"/></label>
       <div className="model-route" aria-label="Selected model route"><strong>Selected route{modelDirty ? ' · unsaved' : ''}</strong><ol><li>{pageOrigin || 'This page'}</li>{modelVia === 'bridge' && <li>{state.companion.url || bridgeUrl}<span>{modelRelayAvailable ? 'Model relay paired' : 'Model relay not connected'}</span></li>}<li>{baseUrl || 'Set an API base URL'}<span>{model || 'Choose a model'}</span></li></ol></div>
@@ -894,7 +896,7 @@ export function Settings({ state, initialTab, theme, setTheme, perform, onClose,
       <div className="model-check-actions"><button className="button primary" disabled={modelLocked}>{busy === 'Saving model…' ? busy : 'Save model'}</button><button type="button" className="button subtle" disabled={!checkAllowed} onClick={() => checkModel('listing')}>List models</button><button type="button" className="button subtle" disabled={!checkAllowed} onClick={() => checkModel('reply')}>Test reply</button>{checking && <button type="button" className="button subtle" onClick={() => { Promise.resolve().then(() => perform('cancelModelCheck')).catch(error => setError(error.message)) }}>Cancel check</button>}</div>
       <p className="form-help">{!modelHydrated ? 'Waiting for the restored model configuration.' : agentActive ? 'Model checks are unavailable while an agent task is active.' : modelDirty ? 'Save model changes before running either check.' : 'List models checks discovery only. Test reply sends a short generation request and may incur provider usage; it works even when listing is unsupported.'}</p>
       <section className={`model-check-result ${state.model.status === 'failed' ? 'error' : ''}`} aria-label="Model check result" aria-live="polite" aria-busy={checking}>
-        <strong>{modelStatusLabel(state.model)}</strong>
+        <strong>{modelStatusLabel(state.model)}</strong>{modelDirty && <p>Recorded checks apply to the saved model {state.model.id}, not the unsaved draft.</p>}
         {checking && <p>{state.model.check?.kind === 'reply' ? 'Waiting for a complete streamed reply…' : 'Requesting the model list…'}</p>}
         {state.model.check?.cancelled && <p>Connection check cancelled. You can start another check.</p>}
         {state.model.status === 'listed' && <p>The endpoint listed this model. A reply has not been verified by this listing.</p>}

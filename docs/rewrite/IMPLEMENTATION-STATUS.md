@@ -1,6 +1,14 @@
 # Implementation status
 
-Latest publication: source **`21f938c8`**, deployment **`8a4d654a`**, [successful Pages workflow](https://github.com/kaush4l/ASKK/actions/runs/36577129443). [Hosted evidence](evidence/answer-scope-pages.json) confirms the page, workbench chunk and CSS match the tested export. Export: **879,664,237 bytes / 216 files**.
+## Model discovery and stricter repair evidence
+
+Settings now retains up to 100 unique validated IDs returned by model listing and offers explicit selection into the settings draft. Selecting a draft does not change the saved model or grant any execution capability; saving clears old reply verification. Missing selected models remain failed while valid alternatives remain available. Discovery is scoped to endpoint/route and clears on model save, fresh discovery or relay identity change. Unsaved endpoint, route and key edits hide mismatched results. Listing still requires an existing saved model ID; discovery-before-configuration is not implemented.
+
+[Actual Chrome interaction evidence](evidence/model-discovery-browser.json) covers discovery, draft selection, saved-versus-draft check labeling, verification reset and missing-model recovery against a deterministic local endpoint in an isolated app origin. Only an explicit test of fixture-alpha generated a request. This does not establish real-model quality or Safari/iPhone/VoiceOver behavior. Validation: **981 passed, 1 skipped, 0 failed**, 7,290 assertions across 96 files.
+
+The repair evaluator now requires successful reads of the existing source and test before a failing `bun test` or `bun run test`, an acknowledged source edit, and a successful rerun of the same invocation against the delivered revision. Repair also receives independent manifest, package-script and Bun test-discovery checks. Skipped and empty tests cannot pass merely through exit zero. Runtime context now distinguishes desk host capabilities from the independently selected workspace execution binding. These changes precede fresh model comparisons; earlier repair results used weaker criteria.
+
+Historical publication: source **`21f938c8`**, deployment **`8a4d654a`**, [successful Pages workflow](https://github.com/kaush4l/ASKK/actions/runs/36577129443). [Hosted evidence](evidence/answer-scope-pages.json) confirms the page, workbench chunk and CSS match the tested export. Export: **879,664,237 bytes / 216 files**.
 
 ## Current-task answers and artifact competence diagnostics
 
