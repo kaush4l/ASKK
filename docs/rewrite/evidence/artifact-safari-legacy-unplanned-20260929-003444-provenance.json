@@ -1,0 +1,37 @@
+{
+  "capturedAt": "2026-09-29T00:45:28.095969+00:00",
+  "classification": "Unplanned legacy fixture receipt; trigger unknown, not a current release Safari acceptance run",
+  "server": {
+    "pid": 62409,
+    "command": "bun scripts/verify-artifacts.js",
+    "port": 5192,
+    "workingDirectory": "repository root",
+    "bundledAt": "unknown; process elapsed about 6h43m at discovery",
+    "responseSnapshots": {
+      "module.js": {
+        "bytes": 279651,
+        "sha256": "537b014479ccf59988a9d14e173b5266f2f6913e6406a1c9488fbfd0c65d6765"
+      },
+      "fixtures.json": {
+        "bytes": 602472,
+        "sha256": "97c081ea8ca282f021b932906b372451853a791d22e417763acdf2e02db1c2ac"
+      }
+    }
+  },
+  "newReceipt": {
+    "path": "artifact-safari-legacy-unplanned-20260929-003444.json",
+    "at": "2026-09-29T00:34:44.091Z",
+    "sha256": "1a97d168f41169eeb30170698e3ebbaa9e20efbc3b1bffee4952e29dfc3c4c08"
+  },
+  "historicalReceipt": {
+    "path": "artifact-safari.json",
+    "at": "2026-09-28T17:58:59.458Z",
+    "sha256": "a2834a79c96bcd051e6c250de9110406ccb1c9f844a56890e2f2a10f4d638b3e",
+    "source": "git HEAD at 24e5822"
+  },
+  "trigger": "Unknown. All three agents report no Safari interaction near the timestamp. The legacy UI invokes this writer only after its Run checks handler completes; no request access log establishes who or what initiated it.",
+  "limitations": [
+    "Legacy server bundled its renderer on startup but served the HTML shell from the live filesystem; this is not an immutable release fixture.",
+    "The two positive hydration/storage checks failed; three adversarial checks were rejected. These results are preserved without inferring a Safari regression or production success."
+  ]
+}
