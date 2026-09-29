@@ -1,0 +1,45 @@
+{
+  "before": {
+    "at": "2026-09-29T06:39:22.891Z",
+    "isolated": true,
+    "navigation": "reload",
+    "origin": 1790663950405.8
+  },
+  "after": {
+    "at": "2026-09-29T06:39:35.787Z",
+    "isolated": true,
+    "navigation": "reload",
+    "origin": 1790663966594.805
+  },
+  "draft": "Back navigation checkpoint \u2014 keep this draft.",
+  "replayedRuns": 0,
+  "sourceCommit": "ad40356e2504dad611ff7600fedee042b31d8078",
+  "url": "http://127.0.0.1:5193/ASKK/",
+  "build": {
+    "version": 1,
+    "basePath": "/ASKK",
+    "totalBytes": 803259231,
+    "fileCount": 183,
+    "runtimeId": "c2w-node24-38d093f4a38002db",
+    "artifactHash": "bd0cae94609048c51cbdd1197ad1e605bcb27cd414fd211d909a0e1f4135acea"
+  },
+  "scope": "Actual Chrome navigation from the exported desk to desk.json and Back, without any synthetic lifecycle events. Back was followed by a new time origin and reload navigation.",
+  "checks": {
+    "draftPreserved": true,
+    "noRunsReplayed": true,
+    "postRecoveryRun": "rmumb3wlj1",
+    "postRecoveryResult": "Ready",
+    "postRecoveryStatus": "Completed",
+    "historicalPrompts": 1,
+    "providerRequests": 1,
+    "providerCompletions": 1,
+    "toolCalls": 0,
+    "executionStarted": false
+  },
+  "limitations": [
+    "The pageshow.persisted event itself was not instrumented; the observed Back-then-reload and successful new task are the browser evidence.",
+    "A raw CDP observer-registration method was unsupported and made no page modification.",
+    "Storage failure and hung-checkpoint cases are covered by automated tests, not browser fault injection.",
+    "Native Safari recovery retest remains pending."
+  ]
+}

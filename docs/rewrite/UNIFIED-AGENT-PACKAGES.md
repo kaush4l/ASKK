@@ -157,6 +157,26 @@ their stored bytes. Restoring installations only replaces the installed
 namespace. Owner installation still requires an acknowledged durable storage
 transaction before activation; installation alone starts no agent task.
 
+## Returning after navigation
+
+Leaving the document stops its agent workers and marks active work interrupted.
+A document restored from browser Back/Forward cache cannot reuse that stopped
+runtime. Its `pageshow.persisted` handler disables new work, saves current drafts,
+checkpoints durable workspace/history/evidence storage, rechecks drafts and
+reloads a fresh document. It never replays an agent task or a process.
+
+The save phase has a five-second bound. Draft failure, non-durable storage,
+checkpoint failure or timeout keeps the restored document available for copying
+work, with an explicit error and new-work admission disabled. A late checkpoint
+cannot trigger a delayed reload. Ordinary tab visibility changes do not invoke
+this mechanism. The composer uses one synchronously updated draft reference
+across Dashboard and Workspace.
+
+The [local Chrome receipt](evidence/page-recovery-local-chrome.json) records an
+actual Back action followed by a reload, retained draft, no replay and a completed
+new model turn. The original issue was observed in Safari; its native recovery
+retest remains pending. This is not browser Linux or command-process acceptance.
+
 ## Migration and remaining work
 
 Legacy `main`/`assistant` paths and their stored conversations, memories, learned

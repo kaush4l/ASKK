@@ -1,0 +1,87 @@
+{
+  "at": "2026-09-29T06:29:23.943Z",
+  "guestFrames": 0,
+  "isolated": true,
+  "resources": [
+    {
+      "bytes": 39811,
+      "path": "index.html",
+      "sha256": "e394634557a434436039aff6e52ec17bd0e96713115f2f5f8f6b504fe32a8e61",
+      "status": 200,
+      "matchesTestedExport": true
+    },
+    {
+      "bytes": 397,
+      "path": "desk.json",
+      "sha256": "0b8c5b14490f84332cf1d60196e67c5b34152cb3d071562e5fef7085ea89c44b",
+      "status": 200,
+      "matchesTestedExport": true
+    },
+    {
+      "bytes": 2170,
+      "path": "packages/starter/agent.md",
+      "sha256": "bbd2b0477917e68021deedc3e6bdfd392f2a686268eaab7e38e9c052289c7097",
+      "status": 200,
+      "matchesTestedExport": true
+    },
+    {
+      "bytes": 105730,
+      "path": "runtime/modules/runtime/hub.js",
+      "sha256": "6f7020b5febe6439d4ef13b78a411118bd3618337567a6fb9b7291b100faf277",
+      "status": 200,
+      "matchesTestedExport": true
+    },
+    {
+      "bytes": 8475,
+      "path": "runtime/modules/runtime/desk-packages.js",
+      "sha256": "77986477c45566c305a23a964f57ad3d6fdf7edffb3a396d41de28dfd241bd73",
+      "status": 200,
+      "matchesTestedExport": true
+    },
+    {
+      "bytes": 256984,
+      "path": "_next/static/chunks/app/page-00f2b46d8322e649.js",
+      "sha256": "2f6019ffe8f9930db3501fd209997330e2d3918e8863da405eb23bb3785f84c7",
+      "status": 200,
+      "matchesTestedExport": true
+    }
+  ],
+  "serviceWorker": "https://kaush4l.github.io/ASKK/coi-serviceworker.js",
+  "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36",
+  "sourceCommit": "c0329c0",
+  "deploymentCommit": "4c2139713474837c4fb3387816459ff96e2b16d4",
+  "deploymentRun": "https://github.com/kaush4l/ASKK/actions/runs/36530908327",
+  "build": {
+    "version": 1,
+    "basePath": "/ASKK",
+    "totalBytes": 803252248,
+    "fileCount": 182,
+    "runtimeId": "c2w-node24-38d093f4a38002db",
+    "artifactHash": "85f6fa8da09231c1b3dc6f483aa59800829090c97319e1adb5d44ee3f9b7b3db"
+  },
+  "checks": {
+    "normalReloadLoaded": true,
+    "restoredInstallation": "663bfecf-a02f-4206-b760-94273b94555f",
+    "draftPreserved": "Safari relay checkpoint \u2014 keep this draft.",
+    "sessionBoundaryVisible": true,
+    "oldDefinitionLabeledUnavailable": true,
+    "run": "rmumamg161",
+    "agent": "bundled/starter/assistant",
+    "result": "The plan is empty.",
+    "toolActivity": 1,
+    "tool": "todo_read",
+    "toolStatus": "Completed",
+    "prompts": 2,
+    "requests": 2,
+    "completions": 2,
+    "modelRoute": "Through HTTPS companion",
+    "companionAdvertisedCapabilities": 1,
+    "commands": "Not started",
+    "guestFrames": 0
+  },
+  "scope": "Actual Pages Chrome normal reload, existing imported-folder restoration, bundled task-plan tool task through the existing HTTPS model relay; fetched six normal same-origin asset URLs through the browser and matched tested export hashes.",
+  "limitations": [
+    "This receipt precedes the subsequent page-lifecycle fix.",
+    "No fresh permission grants, browser Linux, graph concurrency, or performance acceptance."
+  ]
+}

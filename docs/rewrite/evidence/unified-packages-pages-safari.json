@@ -1,0 +1,31 @@
+{
+  "sourceCommit": "c0329c0",
+  "deploymentCommit": "4c2139713474837c4fb3387816459ff96e2b16d4",
+  "at": "2026-09-29T06:29:23.943Z",
+  "url": "https://kaush4l.github.io/ASKK/",
+  "scope": "Native Safari normal reload and saved-agent restoration; fresh task interrupted by a reproducible Back-cache lifecycle failure.",
+  "checks": {
+    "reloadLoaded": true,
+    "restoredInstallation": "958894ef-f5ba-447d-93ea-35a0f5bf2362",
+    "restoredRun": "rmum846bp1",
+    "savedResult": "Yes, the current task plan is empty.",
+    "definitionCount": 12,
+    "oldDefinitionsUnavailableLabeled": true,
+    "sessionBoundaryVisible": true,
+    "modelRoute": "Through HTTPS companion",
+    "companionConnected": true,
+    "companionAdvertisedCapabilities": 1,
+    "commandExecution": "Not started",
+    "browserLinux": "Not started"
+  },
+  "failure": {
+    "trigger": "Navigate away and Back; the runtime stopped on pagehide but the page returned from browser cache.",
+    "message": "Strategy admission was cancelled",
+    "freshModelTurnCompleted": false
+  },
+  "limitations": [
+    "Safari was switched away during the check; no further actions were taken in the user-selected tab.",
+    "No Safari resource hash, trace export, fresh model turn, Browser Linux, artifact, or VoiceOver acceptance.",
+    "No browser trust, permission or security setting was changed."
+  ]
+}

@@ -1,0 +1,103 @@
+{
+  "at": "2026-09-29T06:47:59.123Z",
+  "files": [
+    {
+      "bytes": 39811,
+      "path": "index.html",
+      "sha256": "16626a3091dff077c6cf66126dc64da1d859e5fcc708c9443cac0598d686b9e5",
+      "status": 200,
+      "matchesExport": true
+    },
+    {
+      "bytes": 397,
+      "path": "desk.json",
+      "sha256": "0b8c5b14490f84332cf1d60196e67c5b34152cb3d071562e5fef7085ea89c44b",
+      "status": 200,
+      "matchesExport": true
+    },
+    {
+      "bytes": 2170,
+      "path": "packages/starter/agent.md",
+      "sha256": "bbd2b0477917e68021deedc3e6bdfd392f2a686268eaab7e38e9c052289c7097",
+      "status": 200,
+      "matchesExport": true
+    },
+    {
+      "bytes": 107594,
+      "path": "runtime/modules/runtime/hub.js",
+      "sha256": "aac40c72067a6740e7634452fb9ac064196d3d5b94e706f20a69ea8802b9711b",
+      "status": 200,
+      "matchesExport": true
+    },
+    {
+      "bytes": 8475,
+      "path": "runtime/modules/runtime/desk-packages.js",
+      "sha256": "77986477c45566c305a23a964f57ad3d6fdf7edffb3a396d41de28dfd241bd73",
+      "status": 200,
+      "matchesExport": true
+    },
+    {
+      "bytes": 2088,
+      "path": "runtime/modules/runtime/page-lifecycle.js",
+      "sha256": "8ecb2b5de5ae583f6854d5e45d3520c5de36aa2c52a0cab7b52dcc7c7cdaab22",
+      "status": 200,
+      "matchesExport": true
+    },
+    {
+      "bytes": 258161,
+      "path": "_next/static/chunks/app/page-1991e04fea2f2b5e.js",
+      "sha256": "934428fdc8e4123fe25dbf5a182aed9fd8ff3b6049b72122e702e09f36206d9a",
+      "status": 200,
+      "matchesExport": true
+    }
+  ],
+  "guestFrames": 0,
+  "isolated": true,
+  "serviceWorker": "https://kaush4l.github.io/ASKK/coi-serviceworker.js",
+  "url": "https://kaush4l.github.io/ASKK/",
+  "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36",
+  "before": {
+    "at": "2026-09-29T06:42:25.929Z",
+    "isolated": true,
+    "navigation": "reload",
+    "origin": 1790664135490.525
+  },
+  "after": {
+    "at": "2026-09-29T06:46:34.541Z",
+    "isolated": true,
+    "navigation": "reload",
+    "origin": 1790664151650.255
+  },
+  "draft": "Published Back checkpoint \u2014 preserve this draft.",
+  "replayedRuns": 0,
+  "sourceCommit": "ad40356e2504dad611ff7600fedee042b31d8078",
+  "deploymentCommit": "cde3add0d2bb44028466c6c0d3d1d32170ead3c5",
+  "deploymentAction": "https://github.com/kaush4l/ASKK/actions/runs/36532333407",
+  "build": {
+    "version": 1,
+    "basePath": "/ASKK",
+    "totalBytes": 803259231,
+    "fileCount": 183,
+    "runtimeId": "c2w-node24-38d093f4a38002db",
+    "artifactHash": "bd0cae94609048c51cbdd1197ad1e605bcb27cd414fd211d909a0e1f4135acea"
+  },
+  "checks": {
+    "draftPreserved": true,
+    "noRunsReplayed": true,
+    "postRecoveryRun": "rmumbcn2m1",
+    "postRecoveryResult": "Ready",
+    "postRecoveryStatus": "Completed",
+    "historicalPrompts": 1,
+    "providerRequests": 1,
+    "providerCompletions": 1,
+    "toolCalls": 0,
+    "modelRoute": "HTTPS companion, model-relay only",
+    "nativeExecutionStarted": false,
+    "guestStarted": false
+  },
+  "limitations": [
+    "Navigation used the real Back control; pageshow.persisted itself was not instrumented.",
+    "The relay had existing certificate trust. This is not a fresh installation or Safari recovery check.",
+    "No guest, application build, physical iPhone or VoiceOver acceptance was performed."
+  ]
+}
