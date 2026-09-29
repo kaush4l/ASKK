@@ -10,6 +10,7 @@ import { boundModelAvailable } from './models.js'
 
 const ENGINE = {
   observation_format: 'observationFormat', history_format: 'historyFormat', output_reserve: 'outputReserve',
+  rejected_completion_history: 'rejectedCompletionHistory',
   require_verification: 'requireVerification', max_steps: 'maxSteps', repairs: 'repairs',
   compact_at: 'compactAt', keep: 'keep', remembers: 'remembers',
 }

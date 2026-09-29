@@ -54,6 +54,8 @@ export class Engine {
     if (!['legacy', 'compact'].includes(this.observationFormat)) throw new Error(`unsupported observation format: ${this.observationFormat}`)
     this.historyFormat = options.historyFormat ?? 'transcript'
     if (!['transcript', 'messages'].includes(this.historyFormat)) throw new Error('Unsupported history_format')
+    this.rejectedCompletionHistory = options.rejectedCompletionHistory ?? 'retain'
+    if (!['retain', 'omit'].includes(this.rejectedCompletionHistory)) throw new Error('Unsupported rejected_completion_history')
     this.responseProtocol = options.responseProtocol ?? 'envelope'
     if (!['envelope', 'native'].includes(this.responseProtocol)) throw new Error('Unsupported response_protocol')
     if (this.responseProtocol === 'native' && (this.contractVersion !== 3 || this.historyFormat !== 'messages')) throw new Error('Native protocol requires contract version 3 and messages history')
@@ -419,15 +421,18 @@ export class Engine {
         const assistantContent = this.responseProtocol === 'native' ? value.nativeReply.text : this.contractVersion === 3 ? JSON.stringify(value) : this.contractVersion === 2
           ? JSON.stringify({ do: value.do, act: value.do === 'tool' ? this.response.calls(value).map((stage) => stage.map(({ name, args }) => ({ name, args }))) : value.act })
           : answer || (typeof value.act === 'string' ? value.act : JSON.stringify(value.act)) || ''
-        this.remember(this.responseProtocol === 'native' ? { role: 'assistant', content: assistantContent, ...(value.nativeReply.call ? { nativeCall: value.nativeReply.call } : {}) } : { role: 'assistant', content: assistantContent })
+        const assistantTurn = this.responseProtocol === 'native' ? { role: 'assistant', content: assistantContent, ...(value.nativeReply.call ? { nativeCall: value.nativeReply.call } : {}) } : { role: 'assistant', content: assistantContent }
+        const deferCompletion = !final && value.do === 'done' && this.verifyCompletion && this.rejectedCompletionHistory === 'omit'
+        if (!deferCompletion) this.remember(assistantTurn)
         if (final) {
           return this.finish(answer || `Stopped at the step limit (${this.maxSteps} steps) without a final answer.`, '', 'step_budget')
         }
         if (value.do === 'done') {
           if (this.verifyCompletion) {
+            this.emit('completion_proposal', '', assistantContent, { attemptId: this.currentAttemptId, historyPolicy: this.rejectedCompletionHistory })
             let verification
             try {
-              verification = await this.verifyCompletion({ answer, goal: this.goal, steps: this.steps, signal: this.signal })
+              verification = await this.verifyCompletion({ answer, candidate: { content: assistantContent, attemptId: this.currentAttemptId }, goal: this.goal, steps: this.steps, signal: this.signal })
             } catch (error) {
               verification = { ok: false, reason: error?.message ?? String(error) }
             }
@@ -439,6 +444,7 @@ export class Engine {
               continue
             }
           }
+          if (deferCompletion) this.remember(assistantTurn)
           if (this.inbox.length) continue
           return this.finish(answer)
         }

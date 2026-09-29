@@ -94,7 +94,7 @@ const lastOpen = (spans, kind) => {
 // The archive owner appends internally. Public run/trace views must not expose
 // that mutable collection; records read from storage also need frozen entries.
 const replyRejectionsOf = record => record.replyRejections ?? (record.log ?? []).filter(event => ['repair', 'rejected'].includes(event.kind))
-const evidenceView = record => record && ({ ...record, replyRejections: Object.freeze(replyRejectionsOf(record).map(event => Object.isFrozen(event) ? event : snapshot(event))), toolEvents: Object.freeze((record.toolEvents ?? []).map(event => Object.isFrozen(event) ? event : snapshot(event))) })
+const evidenceView = record => record && ({ ...record, completionProposals: Object.freeze((record.completionProposals ?? []).map(event => Object.isFrozen(event) ? event : snapshot(event))), replyRejections: Object.freeze(replyRejectionsOf(record).map(event => Object.isFrozen(event) ? event : snapshot(event))), toolEvents: Object.freeze((record.toolEvents ?? []).map(event => Object.isFrozen(event) ? event : snapshot(event))) })
 
 const boundedEvidence = async (work, timeoutMs = EVIDENCE_TIMEOUT_MS) => {
   const budget = Math.max(1, Math.min(60000, Number(timeoutMs) || EVIDENCE_TIMEOUT_MS))
@@ -614,6 +614,7 @@ export class Hub {
       requests: [],
       completions: [],
       replyRejections: [],
+      completionProposals: [],
       toolEvents: [],
       spans: [],
       log: [],
@@ -741,6 +742,7 @@ export class Hub {
   record(run, event) {
     const at = Date.now()
     const spans = run.spans
+    if (event.kind === 'completion_proposal') (run.completionProposals ??= []).push(snapshot({ ...event, at }))
     // Rejected proposals are unexecuted model evidence, never tool activity.
     if (['repair', 'rejected'].includes(event.kind)) (run.replyRejections ??= []).push(snapshot({ ...event, at }))
     // Model-facing observations may be projected. Keep the exact paired calls
@@ -783,7 +785,7 @@ export class Hub {
       if (run.log.length > 400) run.log.shift()
     }
     this.publish({ ...event, type: 'event', run: run.id, agent: run.agent, at })
-    if (['prompt', 'request', 'completion', 'call', 'observation', 'repair', 'rejected', 'retry'].includes(event.kind)) this.persist(run)
+    if (['prompt', 'request', 'completion', 'completion_proposal', 'call', 'observation', 'repair', 'rejected', 'retry'].includes(event.kind)) this.persist(run)
   }
 
   end(run, text, ok, error = '', slot = null) {
@@ -882,7 +884,7 @@ export class Hub {
   }
 
   runRecord(run) {
-    return { ...this.describe(run), turns: run.turns, prompts: run.prompts, requests: run.requests ?? [], completions: run.completions ?? [], replyRejections: replyRejectionsOf(run), toolEventStorage: TOOL_EVENT_STORAGE, toolEventCount: run.toolEvents?.length ?? 0, spans: run.spans, log: run.log, result: run.result ?? '', todo: run.todo ?? [] }
+    return { ...this.describe(run), turns: run.turns, prompts: run.prompts, requests: run.requests ?? [], completions: run.completions ?? [], replyRejections: replyRejectionsOf(run), completionProposals: run.completionProposals ?? [], toolEventStorage: TOOL_EVENT_STORAGE, toolEventCount: run.toolEvents?.length ?? 0, spans: run.spans, log: run.log, result: run.result ?? '', todo: run.todo ?? [] }
   }
 
   writeRunRecord(record) {
@@ -1001,16 +1003,17 @@ export class Hub {
     }
   }
 
-  async verifyCompletion(run) {
+  async verifyCompletion(run, candidate) {
     const assertActive = () => { if (!run || run.ended || run.cancelRequested || this.disposed) throw new Error('Completion check was cancelled or its run ended') }
     assertActive()
+    const proposal = candidate && typeof candidate.content === 'string' && typeof candidate.attemptId === 'string' ? snapshot({ content: candidate.content, attemptId: candidate.attemptId }) : null
     const adapters = Object.fromEntries(Object.entries(this.completionAdapters ?? {}).map(([name, handler]) => [name, options => handler(options, run)]))
     // Narrow compatibility for trusted low-level clients; package workflows
     // must bind the named adapter and never choose an arbitrary RPC operation.
     if (run.legacyCompletion && !adapters['workspace.artifact'] && Object.hasOwn(this.externalOps, 'workspace.acceptance') && typeof this.externalOps['workspace.acceptance'] === 'function') adapters['workspace.artifact'] = () => this.externalOps['workspace.acceptance']({}, run)
     const receipt = await evaluateCompletion(run.completion, adapters, { assertActive })
     assertActive()
-    const recorded = snapshot({ ...receipt, runId: run.id, at: Date.now() })
+    const recorded = snapshot({ ...receipt, runId: run.id, at: Date.now(), ...(proposal ? { proposal } : {}) })
     run.completionReceipts.push(recorded)
     this.persist(run)
     this.publish({ type: 'verification', run: run.id, receipt: recorded })
@@ -1070,7 +1073,7 @@ export class Hub {
   }
 
   ops = {
-    async 'run.verifyCompletion'(_args, run) { return this.verifyCompletion(run) },
+    async 'run.verifyCompletion'(args, run) { return this.verifyCompletion(run, args.candidate) },
     async 'run.pendingCommands'(_args, run) { return this.pendingCommands(run) },
     async call({ agent, query, call, infrastructure }, run) {
       if (!run) throw new Error('no run is active on this thread')
@@ -1704,7 +1707,7 @@ export class Hub {
 
   run(id) {
     const run = this.runs.get(id)
-    return run ? evidenceView({ ...this.describe(run), turns: run.turns, prompts: run.prompts, requests: run.requests ?? [], completions: run.completions ?? [], replyRejections: replyRejectionsOf(run), toolEvents: run.toolEvents ?? [], spans: run.spans, log: run.log, result: run.result ?? '', todo: run.todo ?? [] }) : null
+    return run ? evidenceView({ ...this.describe(run), turns: run.turns, prompts: run.prompts, requests: run.requests ?? [], completions: run.completions ?? [], replyRejections: replyRejectionsOf(run), completionProposals: run.completionProposals ?? [], toolEvents: run.toolEvents ?? [], spans: run.spans, log: run.log, result: run.result ?? '', todo: run.todo ?? [] }) : null
   }
 
   runsApi = {

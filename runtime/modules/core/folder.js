@@ -32,6 +32,7 @@ const INFERENCE = {
 const ENGINE = {
   response_format: 'responseFormat', response_protocol: 'responseProtocol',
   observation_format: 'observationFormat', history_format: 'historyFormat',
+  rejected_completion_history: 'rejectedCompletionHistory',
   contract_version: 'contractVersion',
   prompt_template: 'promptTemplate',
   output_reserve: 'outputReserve',
@@ -164,6 +165,7 @@ export async function readSpec(path, { index, load }) {
   }
 
   if (engine.historyFormat !== undefined && !['transcript', 'messages'].includes(engine.historyFormat)) throw new Error('Unsupported history_format')
+  if (engine.rejectedCompletionHistory !== undefined && !['retain', 'omit'].includes(engine.rejectedCompletionHistory)) throw new Error('Unsupported rejected_completion_history')
   if (engine.historyFormat === 'messages') assertMessageHistoryTemplate(engine.promptTemplate)
 
   const ownSoul = index.files?.[`agents/${path}/soul.md`] != null

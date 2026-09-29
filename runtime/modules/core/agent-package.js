@@ -16,7 +16,7 @@ const CEILINGS = { maxFiles: 4096, maxFileBytes: 128 * 1024 * 1024, maxExpandedB
 const ID = /^[a-z][a-z0-9_-]{0,63}$/
 const PACKAGE_ID = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/
 const VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/
-const KNOWN = new Set(['workflows', 'package_id', 'package_version', 'id', 'name', 'description', 'agents', 'services', 'tools', 'context', 'skills', 'private', 'permissions', 'model', 'temperature', 'max_output_tokens', 'context_length', 'response_format', 'response_protocol', 'observation_format', 'history_format', 'contract_version', 'prompt_template', 'output_reserve', 'require_verification', 'max_steps', 'repairs', 'compact_at', 'keep', 'remembers', 'session'])
+const KNOWN = new Set(['workflows', 'package_id', 'package_version', 'id', 'name', 'description', 'agents', 'services', 'tools', 'context', 'skills', 'private', 'permissions', 'model', 'temperature', 'max_output_tokens', 'context_length', 'response_format', 'response_protocol', 'observation_format', 'history_format', 'rejected_completion_history', 'contract_version', 'prompt_template', 'output_reserve', 'require_verification', 'max_steps', 'repairs', 'compact_at', 'keep', 'remembers', 'session'])
 const UNSUPPORTED_CONFIG = /^(?:api[_-]?key|access[_-]?token|refresh[_-]?token|token|secret|password|credentials?|authorization|headers|private[_-]?key|provider|base[_-]?url|via)$/i
 const SCRIPT = /\.(?:[cm]?js|jsx|tsx?|wasm|sh|bash|zsh|py|pyc|exe|dll|dylib|so)$/i
 const SECRET_FILE = /(?:^|\/)(?:\.env(?:\..*)?|\.npmrc|\.netrc|id_rsa|id_ed25519)$|\.(?:pem|key|p12|pfx)$/i
@@ -216,6 +216,7 @@ function validateSettings(settings, path, root) {
   if (settings.response_format !== undefined && !['json', 'toon'].includes(settings.response_format)) fail('PACKAGE_SCHEMA', `${path} has an unsupported response format`)
   if ((settings.contract_version ?? 2) >= 2 && settings.response_format !== undefined && settings.response_format !== 'json') fail('PACKAGE_SCHEMA', `${path} contract version ${settings.contract_version ?? 2} requires json`)
   if (settings.history_format !== undefined && !['transcript', 'messages'].includes(settings.history_format)) fail('PACKAGE_SCHEMA', `${path} has an unsupported history format`)
+  if (settings.rejected_completion_history !== undefined && !['retain', 'omit'].includes(settings.rejected_completion_history)) fail('PACKAGE_SCHEMA', `${path} has an unsupported rejected completion history policy`)
   if (settings.observation_format !== undefined && !['legacy', 'compact'].includes(settings.observation_format)) fail('PACKAGE_SCHEMA', `${path} has an unsupported observation format`)
   if (settings.tools !== undefined) stringList(settings.tools, `${path}.tools`)
   if (settings.context !== undefined && !plain(settings.context)) stringList(settings.context, `${path}.context`)
