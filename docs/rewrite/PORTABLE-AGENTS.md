@@ -149,3 +149,13 @@ remain pending. The credential-isolating broker is also pending: package files
 cannot contain credentials, but existing workers still receive configured
 transport data. Application tools remain trusted desk capabilities. A package
 cannot create a new search, browser-control, or media adapter simply by naming one.
+
+## Authoring inside the browser
+
+Open **Agent studio** on the dashboard to create or resume a draft. The starter is configuration in `public/package-templates/basic.json`; the creation form writes `agent.md` and `soul.md`. Source files remain editable with CodeMirror, and the Instructions view edits the same `soul.md` text. Add, rename or remove supporting files without a host checkout.
+
+**Save draft** commits text even when the folder is not yet valid. Saves check the opened version and acknowledge only a completed browser storage transaction. Closing or switching with unsaved changes offers Save, Discard or Keep editing. Draft source is separate from the coding workspace and remains editable during agent work. Review and installation wait for idle admission.
+
+**Review saved draft** passes its exact saved files through the shared package validator. Model and tool bindings remain explicit. **Install as new agent** creates a new immutable installation and selects it without starting a task. Changing a saved draft does not change any installed agent or existing run. Editing an existing installation in place, cloning shipped/imported folders, deleting saved drafts and backup export are not yet provided by this UI. Drafts are local to this browser origin; closing the browser before an explicit save can still lose unsaved edits.
+
+Implementation locations: `src/runtime/package-drafts.js` owns durable draft revisions and reviewed-stage binding; `src/workbench/PackageStudio.jsx` owns authoring interactions; `src/core/package-template.js` renders non-executable starter configuration. Current limits are 32 drafts, 64 MiB total draft bytes and the existing per-package source limits. A generated integrity lock is not editable draft source.

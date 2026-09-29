@@ -1,0 +1,26 @@
+{
+  "date": "2026-09-29T08:00:36.105Z",
+  "origin": "http://127.0.0.1:5193/ASKK/",
+  "checks": {
+    "createdInBrowser": true,
+    "invalidDraftSaved": true,
+    "invalidReviewRejected": "agent.md has unterminated frontmatter",
+    "invalidDraftRestoredAfterReload": true,
+    "repairedSavedDraftRestoredInFinalBuild": true,
+    "reviewedAndInstalled": true,
+    "unsavedCloseDecision": true,
+    "explicitDiscard": true,
+    "narrow390": {
+      "dialogWidth": 390,
+      "outerHorizontalOverflow": false
+    }
+  },
+  "team": "AGENTS AT WORK\nYour live team\nNo active runs\n\nActual runs, current activity and recorded outcomes.\n1 instance belongs to the selected task.\n\nGoal\nEvidence\nNo runs need attention\nSelected task & active runs\n1 of 1\nRC\nReading companion\nCompleted\nGive one practical rule for choosing my next book. Keep the answer under 30 words.\n#umdyh511\nSelected task\nRun details & actions\nRecent runs\n22 recorded",
+  "answer": "Latest answer\nAgent\n\nPick the book that best matches your current goal, not the one with the highest rating.",
+  "limitations": [
+    "Chrome only; no physical iPhone or Safari check",
+    "Initial invalid-draft checks preceded final backend hardening; final build restored/reviewed/installed and ran the repaired draft",
+    "No Browser Linux or native commands started",
+    "This installs a new agent; existing installation replacement and package backup export remain future work"
+  ]
+}

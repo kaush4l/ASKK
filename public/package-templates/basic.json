@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "files": [
+    {
+      "path": "agent.md",
+      "content": "---\npackage_id: \"my.agent\"\npackage_version: \"1.0.0\"\nid: \"assistant\"\nname: {{name}}\ndescription: {{description}}\ncontext: [\"goal\", \"budget\"]\ntools: []\nresponse_format: \"json\"\ncontract_version: 2\nmax_steps: 24\nsession: \"task\"\n---\nFollow the owner\u2019s goal using the available context and tools. State missing capabilities clearly.\n"
+    },
+    {
+      "path": "soul.md",
+      "content": "{{instructions}}\n"
+    }
+  ]
+}

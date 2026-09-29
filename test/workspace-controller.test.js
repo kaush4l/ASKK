@@ -2212,3 +2212,27 @@ test('authored workflow IDs cannot collide with another installed direct lead', 
   expect(legacy.execution).toEqual({ workspace: 'required' })
   expect(legacy.workspace).toBe(true)
 })
+
+test('agent draft authoring stays available during work while reviewed installation stays idle-only', async () => {
+  const calls = []
+  const { controller, hub } = await startedFixture({ workbenchConfig: {defaultWorkflow:'assistant', workflows:[{id:'assistant',label:'Assistant',description:'',agent:'main',workspace:false}]}, configureHub(hub) {
+    hub.packageDrafts = {
+      list: async () => [{id:'draft',version:1}], read: async id => ({id,version:1}),
+      create: async row => { calls.push(['create',row]); return {id:'draft',version:1,...row} },
+      save: async (id,row) => { calls.push(['save',id,row]); return {id,version:2,...row} },
+      preview: async () => { calls.push(['preview']); return {} },
+      install: async () => { calls.push(['install']); return {} },
+    }
+  } })
+  const run = await controller.sendGoal('Keep working')
+  hub.emit({type:'status',run,slot:{status:'thinking'}})
+  const records = [{path:'agent.md',content:'unfinished source'}]
+  expect(await controller.listAgentDrafts()).toEqual([{id:'draft',version:1}])
+  expect(await controller.readAgentDraft('draft')).toEqual({id:'draft',version:1})
+  await controller.createAgentDraft({label:'Draft',files:records})
+  await controller.saveAgentDraft('draft',{expectedVersion:1,files:records})
+  await expect(controller.previewAgentDraft('draft')).rejects.toThrow('active work')
+  await expect(controller.installAgentDraft('draft',{expectedVersion:1,stageId:'x',bindings:{}})).rejects.toThrow('active work')
+  expect(calls.map(row=>row[0])).toEqual(['create','save'])
+  expect(controller.getSnapshot().runtime.status).toBe('idle')
+})

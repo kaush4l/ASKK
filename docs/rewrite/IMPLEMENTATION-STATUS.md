@@ -2,6 +2,14 @@
 
 Evidence checkpoint: 2026-09-29. Latest published source `5c70e18` adds portable folder workflows, declared execution/check bindings and Settings hydration repair; evidence follows below. Preceding source `91612b9` added server-enforced model relay scope, durable downgrade protection, worker revocation, a downloadable bundled Mac companion and Goal/Evidence team presentation. Actual Pages Chrome completed a model reply and an approved tool turn through the packaged relay, restored pairing and a draft after reload, and downloaded the matching archive. Native execution and Browser Linux remained Not started. Current native Safari, physical iPhone, VoiceOver and Browser Linux Next-build acceptance remain pending. These are engineering-preview results, not production readiness or one-shot reliability.
 
+## Agent studio candidate
+
+The browser can now create, resume and edit agent folders without a host checkout. Drafts preserve invalid source durably, detect version conflicts and install only a reviewed saved revision as a new agent. Existing installations are unchanged. The simple instructions field and source editor share `soul.md`. Draft editing remains available during work; installation retains the idle admission boundary.
+
+Final regression: **763 passed, 1 skipped, 0 failed, 5592 assertions**, 70 files, 19.90 seconds. Export: **828,742,277 bytes / 197 files**, artifact hash `cf5a9ea2a868e1c8404d831383968c31c3849a51606daf0b70d4e5dfde508498`. [Local Chrome evidence](evidence/package-studio-local-chrome.json) covers browser-only creation, invalid-save/reload/rejection, repaired-source installation, real model completion, explicit unsaved-close decisions and a 390px layout check. Initial invalid-source checks preceded final storage hardening; the final export separately restored, reviewed, installed and ran the repaired draft. [Desktop](evidence/package-studio-desktop-chrome.png) and [narrow](evidence/package-studio-narrow-chrome.png) screenshots are retained.
+
+No physical iPhone, current Safari or Browser Linux build acceptance is implied. Existing-installation replacement, copying installed folders into drafts, draft deletion and backup export remain pending.
+
 ## Published portable workflows
 
 Published source `5c70e18` lets each agent folder declare `workflows.json`, package-local strategies and prompt templates, workspace requirements, and named completion checks. Bundled workflows now use the same compiler as imported folders. The trusted `workspace.artifact` adapter checks the current bound revision, task-owned fresh build and retained interaction evidence; a model response cannot supply or replace its checker. Other domain-specific check adapters remain unimplemented.

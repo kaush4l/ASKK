@@ -51,7 +51,7 @@ export function WorkflowRequirements({ workflow, runtime = {} }) {
 }
 
 /** Projection only: the owner supplies live state and all operations. No runtime starts here. */
-export default function Dashboard({ state = {}, goal = '', onGoalChange, onSubmit, onOpenWorkspace, onOpenSettings, onSelectWorkflow, onToolPolicyChange, onApprove, onStopRun, onStopAgent, onInspectAgent, onInspectRun, onOpenTool, onImportAgent, importDisabled = false, busy = false }) {
+export default function Dashboard({ state = {}, goal = '', onGoalChange, onSubmit, onOpenWorkspace, onOpenSettings, onSelectWorkflow, onToolPolicyChange, onApprove, onStopRun, onStopAgent, onInspectAgent, onInspectRun, onOpenTool, onImportAgent, onOpenStudio, studioDisabled = false, importDisabled = false, busy = false }) {
   const formId = useId()
   const definitions = state.agentDefinitions || []
   const runs = (state.agents || []).filter(run => run.kind !== 'strategy')
@@ -88,7 +88,7 @@ export default function Dashboard({ state = {}, goal = '', onGoalChange, onSubmi
 
   return <main className="agent-dashboard" aria-label="Agent dashboard">
     <div className="dashboard-content">
-      <header className="dashboard-intro"><div><span className="dashboard-eyebrow">YOUR AGENT WORKSPACE</span><h1>What needs doing?</h1><p>Set a goal. Choose the tools. Keep the work in view.</p></div><div className="dashboard-intro-actions">{onImportAgent && <button type="button" className="dashboard-import-button" disabled={importDisabled || policyLocked || model.status === 'checking'} onClick={onImportAgent}><Icon name="plus" size={15}/>Import agent</button>}<button type="button" className="dashboard-workspace-link" onClick={onOpenWorkspace}><Icon name="code" size={17}/><span>Open coding workspace</span><Icon name="right" size={14}/></button></div></header>
+      <header className="dashboard-intro"><div><span className="dashboard-eyebrow">YOUR AGENT WORKSPACE</span><h1>What needs doing?</h1><p>Set a goal. Choose the tools. Keep the work in view.</p></div><div className="dashboard-intro-actions">{onOpenStudio && <button type="button" className="dashboard-import-button" disabled={studioDisabled} onClick={onOpenStudio}><Icon name="agents" size={15}/>Agent studio</button>}{onImportAgent && <button type="button" className="dashboard-import-button" disabled={importDisabled || policyLocked || model.status === 'checking'} onClick={onImportAgent}><Icon name="plus" size={15}/>Import agent</button>}<button type="button" className="dashboard-workspace-link" onClick={onOpenWorkspace}><Icon name="code" size={17}/><span>Open coding workspace</span><Icon name="right" size={14}/></button></div></header>
       {state.packageInstalling && <p className="dashboard-notice" role="status">Installing the reviewed agent definition. Starting tasks, changing workflows and importing another package are paused until it finishes.</p>}
       {state.error && <div className="dashboard-global-error" role="alert"><Icon name="warning" size={17}/><p>{textOf(state.error)}</p></div>}
 
