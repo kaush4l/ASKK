@@ -13,8 +13,8 @@ export function createWriteObservations() {
       const validContent = receipt?.found === false ? receipt.content === null && receipt.rev === 0 : typeof receipt?.content === 'string' && (receipt.found === undefined || receipt.found === true)
       if (!pathValid(path) || !plain(receipt) || receipt.ok === false || receipt.conflict || !validContent || !revision(receipt.rev) || !plain(reference) || typeof reference.id !== 'string' || !reference.id.trim() || reference.path !== path || reference.revision !== receipt.rev) fail('expected a successful explicit read with matching path and revision')
       const previous = records.get(reference.id)
-      if (previous && (previous.path !== path || previous.revision !== receipt.rev)) fail('observation identity cannot be reassigned')
-      const record = Object.freeze({ id: reference.id, path, revision: receipt.rev })
+      if (previous && (previous.path !== path || previous.revision !== receipt.rev || previous.content !== receipt.content)) fail('observation identity cannot be reassigned')
+      const record = Object.freeze({ id: reference.id, path, revision: receipt.rev, content: receipt.content })
       records.set(record.id, record); latest.set(path, record)
       return record
     },
@@ -32,6 +32,10 @@ export function createWriteObservations() {
       if (!record || record.path !== args.path) fail(`No write performed for ${JSON.stringify(args.path)}. Call workspace_read with ${JSON.stringify({ path: args.path })} and inspect its result before retrying workspace_write for that path with observed:true. Reading another path or listing files does not satisfy this requirement. Do not repeat this write before reading.`)
       if (resolved && (!hasExpect || args.expect !== record.revision || args.observationId !== record.id)) fail('resolved revision does not match its read observation')
       return Object.freeze({ path: args.path, content: args.content, observed: true, expect: record.revision, observationId: record.id })
+    },
+    contentChanged(args) {
+      const resolved = this.resolve(args, { resolved: true })
+      return records.get(resolved.observationId).content !== resolved.content
     },
     invalidate(path) {
       latest.delete(path)
@@ -71,14 +75,15 @@ export function createObservedWorkspace({ read, write, identity }) {
     async write(args, run) {
       let state = runs.get(run)
       try {
-        let concrete = args
+        let concrete = args, contentChangedFromRead
         if (own(args, 'observed') || own(args, 'observationId')) {
           state = scope(run)
           concrete = state.observations.resolve(args, { resolved: true })
+          contentChangedFromRead = state.observations.contentChanged(concrete)
         }
         const receipt = await write(concrete, run)
         if (receipt?.conflict || receipt?.ok === false) state?.observations.invalidate(args.path)
-        return receipt
+        return receipt?.ok === true && !receipt.conflict && contentChangedFromRead !== undefined ? { ...receipt, contentChangedFromRead } : receipt
       } catch (error) { state?.observations.invalidate(args?.path); throw error }
     },
   }

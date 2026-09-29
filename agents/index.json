@@ -1,5 +1,5 @@
 {
-  "build": "43ec29940a",
+  "build": "0bbc757386",
   "files": {
     "agents/assistant/agent.md": "6eb458313e",
     "agents/coder/agent.md": "3afbea3eaa",
@@ -112,7 +112,7 @@
     "runtime/modules/builtin/skill.js": "99ccaf44a9",
     "runtime/modules/builtin/todo.js": "e9da4fc366",
     "runtime/modules/builtin/web.js": "5e776fbf1e",
-    "runtime/modules/builtin/workspace.js": "2860d1973a",
+    "runtime/modules/builtin/workspace.js": "7212baf7a6",
     "runtime/modules/core/agent-package.js": "0c8851c74d",
     "runtime/modules/core/agent-prompt.js": "12dbd90419",
     "runtime/modules/core/builtin-registry.js": "6ed80d1426",
@@ -145,7 +145,7 @@
     "runtime/modules/core/tool-activity.js": "2a90678bad",
     "runtime/modules/core/tool-input.js": "3d3e6ffb6d",
     "runtime/modules/core/tools.js": "d30bfd499c",
-    "runtime/modules/core/write-observations.js": "d12cf937b1",
+    "runtime/modules/core/write-observations.js": "48e2661586",
     "runtime/modules/execution/browser-linux.js": "9ada42365b",
     "runtime/modules/execution/local.js": "442378fd41",
     "runtime/modules/execution/toolchain.js": "69672a1789",
