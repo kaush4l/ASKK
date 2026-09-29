@@ -31,6 +31,7 @@ import { normalizeCompletion, LEGACY_ARTIFACT_COMPLETION, evaluateCompletion } f
 import { loadStrategy, startHubStrategy, strategyChildState } from './strategy-hub.js'
 import { openStore } from './store.js'
 import { AgentInstallations, installationDecision, installedModelAvailable } from './agent-installations.js'
+import { PackageDrafts } from './package-drafts.js'
 import { loadDeskPackages } from './desk-packages.js'
 import { watchPageLifecycle } from './page-lifecycle.js'
 import { hasToolRequirement, normalizeToolPolicy, scopedToolDecision, toolSelected } from './tool-policy.js'
@@ -177,6 +178,7 @@ export class Hub {
     this.allThreads = new Set()
     this.externalOps = {}
     this.packages = new AgentInstallations(this)
+    this.packageDrafts = new PackageDrafts(this)
   }
 
   // ─── events ────────────────────────────────────────────────────────────────

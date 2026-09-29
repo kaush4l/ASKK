@@ -7,6 +7,7 @@ import { boundModelAvailable, resolve as resolveModel } from '../core/models.js'
 import { openaiBase, anthropicBase } from '../core/inference.js'
 import { hasModelRelay } from '../core/model-relay.js'
 import { normalizeCompletion, LEGACY_ARTIFACT_COMPLETION } from '../core/completion.js'
+import { renderPackageTemplate } from '../core/package-template.js'
 import { createWorkspaceBinding, assertWorkspaceBinding, assertWorkspacePort, assertExecutionPort, createArtifactManifest, assertArtifactManifest, createBoundRunSnapshot } from './contracts.js'
 
 const active = status => ['thinking', 'calling', 'waiting', 'compacting', 'running', 'starting', 'cancelling', 'verifying'].includes(status)
@@ -387,6 +388,23 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
     }
   }
 
+  async function activatePackage(activate) {
+      await controller.start(); requireIdle()
+      if (disposed) throw new Error('The agent desk was closed')
+      if (modelCheck || connecting || transferring) throw new Error('Finish the connection check or workspace transfer before installing an agent')
+      if (!hub.packages) throw new Error('This runtime does not support agent folder installation')
+      const epoch = ++packageInstallEpoch
+      packageInstalling = true; notify({ packageInstalling: true })
+      try {
+        const admissionGuard = () => !disposed && epoch === packageInstallEpoch && !active(state.run?.status) && !connecting && !transferring && !modelCheck
+        const result = await activate(admissionGuard)
+        if (!admissionGuard()) throw new Error('The agent desk stopped while installation was finishing. Reopen it to inspect saved installations.')
+        refreshPackages(`package-${result.id}`); refreshDefinitions(); refreshAgents()
+        await persistUI({ strict: true })
+        if (result.status === 'disabled') throw new Error(`Agent folder saved, but unavailable: ${result.error || 'check its model and tool bindings'}`)
+        return result
+      } finally { packageInstalling = false; notify({ packageInstalling: false }) }
+  }
   const controller = {
     get hub() { return hub },
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener) },
@@ -571,22 +589,41 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
       if (!hub.packages) throw new Error('This runtime does not support agent folder installation')
       return hub.packages.preview(records)
     },
-    async installAgentPackage(stageId, bindings) {
+    async listAgentDrafts() {
+      await controller.start(); requirePageActive()
+      return hub.packageDrafts.list()
+    },
+    async readAgentDraft(draftId) {
+      await controller.start(); requirePageActive()
+      return hub.packageDrafts.read(draftId)
+    },
+    async createAgentDraft(options = {}) {
+      await controller.start(); requirePageActive()
+      let records = options.files
+      if (records === undefined) {
+        const response = await fetch(`${base}package-templates/basic.json`)
+        if (!response.ok) throw new Error('The agent starter template could not be loaded.')
+        const text = await response.text()
+        if (text.length > 1048576) throw new Error('The agent starter template is too large.')
+        records = renderPackageTemplate(JSON.parse(text), options)
+      }
+      requirePageActive()
+      return hub.packageDrafts.create({ label: options.label ?? 'My agent', files: records })
+    },
+    async saveAgentDraft(draftId, changes) {
+      await controller.start(); requirePageActive()
+      return hub.packageDrafts.save(draftId, changes)
+    },
+    async previewAgentDraft(draftId) {
       await controller.start(); requireIdle()
-      if (disposed) throw new Error('The agent desk was closed')
-      if (modelCheck || connecting || transferring) throw new Error('Finish the connection check or workspace transfer before installing an agent')
-      if (!hub.packages) throw new Error('This runtime does not support agent folder installation')
-      const epoch = ++packageInstallEpoch
-      packageInstalling = true; notify({ packageInstalling: true })
-      try {
-        const admissionGuard = () => !disposed && epoch === packageInstallEpoch && !active(state.run?.status) && !connecting && !transferring && !modelCheck
-        const result = await hub.packages.install(stageId, { ...bindings, admissionGuard })
-        if (!admissionGuard()) throw new Error('The agent desk stopped while installation was finishing. Reopen it to inspect saved installations.')
-        refreshPackages(`package-${result.id}`); refreshDefinitions(); refreshAgents()
-        await persistUI({ strict: true })
-        if (result.status === 'disabled') throw new Error(`Agent folder saved, but unavailable: ${result.error || 'check its model and tool bindings'}`)
-        return result
-      } finally { packageInstalling = false; notify({ packageInstalling: false }) }
+      if (modelCheck || connecting || transferring) throw new Error('Finish the connection check or workspace transfer before reviewing an agent')
+      return hub.packageDrafts.preview(draftId)
+    },
+    async installAgentDraft(draftId, { expectedVersion, stageId, bindings }) {
+      return activatePackage(admissionGuard => hub.packageDrafts.install(draftId, { ...bindings, expectedVersion, stageId, admissionGuard }))
+    },
+    async installAgentPackage(stageId, bindings) {
+      return activatePackage(admissionGuard => hub.packages.install(stageId, { ...bindings, admissionGuard }))
     },
     async getAgentDetails(path) {
       await controller.start()
