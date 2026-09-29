@@ -1,6 +1,14 @@
 # Implementation status
 
-Latest publication: source **`c7d48d98`**, deployment **`20432e33`**, [successful Pages workflow](https://github.com/kaush4l/ASKK/actions/runs/36575570211). [Hosted evidence](evidence/output-projection-pages.json) confirms the page, workspace tool module and agent index match the tested export. Export: **879,662,727 bytes / 216 files**.
+## Current-task answers and artifact competence diagnostics
+
+The dashboard now scopes its answer to the current run identity rather than selecting the last assistant message across unrelated tasks. Admission gaps show no recorded answer. The panel labels text **Model answer**, identifies its run, and displays recorded completion evidence separately. Incomplete/failed status and failed checks use restrained error styling and explicit text; an agent's success claim cannot label the task verified. History remains available in the workspace transcript.
+
+[Direct artifact diagnostics](evidence/qwen3-artifact-competence.json) separate code generation from tool/revision orchestration. The same Qwen3-1.7B generated parseable files but omitted the required export and test imports/discoverable filename. A direct repair using actual check diagnostics corrected the export and passed withheld function behavior; test discovery still failed. A folder prompt with an unrelated Bun module/test example produced matching imports/discoverable tests in a real loop, but incorrect source, invalid manifest and rejected completion claims left it incomplete. All complete-project checks failed; none of these single trials establishes a capability ceiling or reliability. Candidate instructions remain experimental, and evaluator acceptance was not weakened. Exact diagnostic programs, inputs, outputs and execution results are retained in the evidence.
+
+Independent withheld checks now retain stderr separately while preserving stdout comparisons and all pass expressions. Validation: **974 passed, 1 skipped, 0 failed**, 7,242 assertions across 96 files. A local server-rendered dashboard fixture using the exported CSS was inspected in Chrome at **390 × 844**; [screenshot](evidence/answer-scope-chrome-390.png) shows current task status and failed checks alongside a false success claim, with the prior-task answer absent. This is rendering-only evidence, not agent interaction, native Safari/iPhone or VoiceOver acceptance. The temporary tab/server and evaluation model were stopped; user tabs/model endpoints were untouched.
+
+Historical publication: source **`c7d48d98`**, deployment **`20432e33`**, [successful Pages workflow](https://github.com/kaush4l/ASKK/actions/runs/36575570211). [Hosted evidence](evidence/output-projection-pages.json) confirms the page, workspace tool module and agent index match the tested export. Export: **879,662,727 bytes / 216 files**.
 
 ## Bounded command context and clean scaffold trials
 

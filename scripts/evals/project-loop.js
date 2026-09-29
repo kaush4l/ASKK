@@ -152,8 +152,13 @@ export async function evaluateProjectLoop({ baseUrl, model, directory, caseName 
     const deliveredRevision = await workspace.revision()
     for (const [index, args] of definition.checks.entries()) {
       let output = ''
-      const result = await execution.startJob({ program: process.execPath, args, timeout: INDEPENDENT_CHECK_TIMEOUT_SECONDS, onOutput: event => { if (event.stream !== 'stderr') output += event.data ?? event.text ?? '' } })
-      checks.push({ args, code: result.code, cancelled: result.cancelled, timedOut: result.timedOut, output: output.trim(), passed: !result.cancelled && !result.timedOut && (definition.expected[index] === null ? Number.isInteger(result.code) && result.code !== 0 && checks.every(check => check.passed) : result.code === 0 && output.trim() === definition.expected[index]) })
+      let stderr = ''
+      const result = await execution.startJob({ program: process.execPath, args, timeout: INDEPENDENT_CHECK_TIMEOUT_SECONDS, onOutput: event => {
+        const text = event.data ?? event.text ?? ''
+        if (event.stream === 'stderr') stderr += text
+        else output += text
+      } })
+      checks.push({ args, code: result.code, cancelled: result.cancelled, timedOut: result.timedOut, output: output.trim(), stderr, passed: !result.cancelled && !result.timedOut && (definition.expected[index] === null ? Number.isInteger(result.code) && result.code !== 0 && checks.every(check => check.passed) : result.code === 0 && output.trim() === definition.expected[index]) })
     }
     if (caseName === 'project') {
       let declared = false

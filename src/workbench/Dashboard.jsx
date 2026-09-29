@@ -7,6 +7,7 @@ import Markdown from './Markdown.jsx'
 import ToolCard, { toolPresentationStatus } from './ToolCard.jsx'
 import StrategyProgress from './StrategyProgress.jsx'
 import AgentTeam from './AgentTeam.jsx'
+import { projectCompletionEvidence } from '../core/completion-evidence.js'
 import { modelStatusLabel, modelRelayAvailable } from './model-ui.js'
 import './dashboard.css'
 
@@ -78,7 +79,14 @@ export default function Dashboard({ state = {}, goal = '', onGoalChange, onSubmi
   const allTools = new Map(definitions.flatMap(agent => (agent.tools || []).map(tool => [tool.name, tool])))
   const recordedTools = (state.messages || []).flatMap(message => message.tools || [])
   const activity = (state.messages || []).flatMap(message => (message.tools || []).map(tool => ({ ...tool, at: message.at }))).slice(-6).reverse()
-  const answer = [...(state.messages || [])].reverse().find(message => message.role === 'assistant' && textOf(message.content).trim())
+  const answerRunId = state.run?.run || task?.id
+  const answerRun = (state.agents || []).find(run => run.id === answerRunId)
+  // A launch has no run ID until admission. Never fill that gap with an older answer.
+  const answer = answerRunId && [...(state.messages || [])].reverse().find(message => message.runId === answerRunId && message.role === 'assistant' && textOf(message.content).trim())
+  const answerStatus = answerRun?.status || state.run?.status || task?.status
+  const answerStatusLabel = ['done', 'completed', 'verified'].includes(answerStatus) ? 'Run finished' : answerStatus ? labelOf(answerStatus) : 'Status not recorded'
+  const answerProblem = ['failed', 'error', 'incomplete', 'interrupted', 'unresponsive'].includes(answerStatus)
+  const answerEvidence = answerRun?.completionEvidence || projectCompletionEvidence(answerRun)
   const advertisedBrowser = ['browser', 'browser-control'].some(cap => capabilities.has(cap)) && tools.some(tool => toolEnabled(tool) && /^(browser[._]|host_browser)/.test(tool.name))
   const fetchAvailable = capabilities.has('fetch')
   const delayed = runtime.status === 'unresponsive' && workflow?.workspace
@@ -122,7 +130,11 @@ export default function Dashboard({ state = {}, goal = '', onGoalChange, onSubmi
 
           <StrategyProgress task={task} definition={graph} agents={definitions} onInspectRun={onInspectRun}/>
 
-          {answer && <section className="dashboard-answer" aria-label="Latest agent answer"><div className="dashboard-section-heading"><h2>Latest answer</h2><span>{answer.agent || 'Agent'}</span></div><Markdown text={textOf(answer.content)}/></section>}
+          {(state.run || task) && <section className="dashboard-answer" aria-label="Current task model answer"><div className="dashboard-section-heading"><h2>Model answer</h2><span className={`dashboard-answer-status${answerProblem ? ' is-problem' : ''}`}>{answerStatusLabel}</span></div>
+            {answerRunId && <p className="dashboard-footnote">Run {answerRunId}</p>}
+            <p className={`dashboard-answer-evidence${answerEvidence.outcome === 'failed' ? ' is-failed' : ''}`} role="status">{answerEvidence.label}{active(answerStatus) && answerEvidence.outcome === 'passed' ? ' · current run still in progress' : ''}</p>
+            {answer ? <><p className="dashboard-footnote">The model’s answer does not establish that the task passed its checks.</p><Markdown text={textOf(answer.content)}/></> : <p className="dashboard-empty">No model answer recorded for the current task yet.</p>}
+          </section>}
 
           <details className="dashboard-library">
             <summary><span><strong>Agent library</strong><small>Definitions and instructions</small></span><span>{definitions.length} configured</span><Icon name="down" size={14}/></summary>

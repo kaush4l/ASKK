@@ -116,7 +116,12 @@
 .dashboard-activity-empty > svg { color: var(--accent); }
 .dashboard-activity-empty p { font-size: 12px; }
 .dashboard-activity-empty span { display: block; color: var(--muted); font-size: 11px; margin-top: 4px; }
-.dashboard-answer { padding: 20px; border: 1px solid var(--line); border-radius: 10px; background: var(--editor); overflow-wrap: anywhere; }
+.dashboard-answer { min-width: 0; padding: 20px; border: 1px solid var(--line); border-radius: 10px; background: var(--editor); overflow-wrap: anywhere; }
+.dashboard-answer .dashboard-section-heading { flex-wrap: wrap; }
+.dashboard-answer .dashboard-answer-status { max-width: 100%; padding: 4px 8px; border-radius: 5px; color: var(--secondary); background: var(--chat); font-weight: 600; }
+.dashboard-answer .dashboard-answer-status.is-problem { color: var(--red); background: var(--red-soft); }
+.dashboard-answer-evidence { margin: 10px 0; padding: 8px 10px; border-left: 3px solid var(--line-strong); color: var(--secondary); font-size: 12px; line-height: 1.6; }
+.dashboard-answer-evidence.is-failed { border-color: var(--red); color: var(--red); background: var(--red-soft); }
 .dashboard-answer .markdown { font-size: 13px; line-height: 1.8; }
 .dashboard-answer pre { overflow: auto; }
 .dashboard-approvals { border: 1px solid color-mix(in srgb, var(--accent) 60%, var(--line)); border-radius: 10px; padding: 18px; background: var(--accent-soft); }
