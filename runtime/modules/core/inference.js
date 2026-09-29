@@ -120,7 +120,7 @@ export function inference(settings = {}, { fetch: fetcher = globalThis.fetch?.bi
             const transientHTTP = error.code === 'provider_http' && (error.metadata?.status === 429 || error.metadata?.status >= 500)
             if (error instanceof InferenceError && !transientHTTP) {
               if (!completion && (error.code === 'truncated' || (nativeTools !== undefined && spoken))) recordCompletion({ finishReason: 'missing', usage: null })
-              if (completion) error.metadata = completion
+              if (completion) error.metadata = error.metadata?.rejectedNativeReply ? { ...error.metadata, ...completion } : completion
               throw error
             }
             last = unreadable(error, settings, { pageURL, bridgeURL })
@@ -207,7 +207,7 @@ const openai = {
     if (reserved.some(key => Object.hasOwn(extras, key))) throw new InferenceError('request_params cannot override model, messages, streaming or configured token/temperature limits', 'configuration')
     const body = { ...extras, model: settings.model, messages, stream: true, stream_options: { include_usage: true } }
     const native = nativeTools !== undefined
-    const calls = native ? nativeToolAccumulator(nativeTools, message => { throw new InferenceError(message, 'provider_response') }) : null
+    const calls = native ? nativeToolAccumulator(nativeTools, (message, metadata) => { throw new InferenceError(message, 'provider_response', metadata) }) : null
     if (nativeTools?.length) Object.assign(body, { tools: nativeTools, parallel_tool_calls: false, tool_choice: 'auto' })
     if (settings.temperature != null) body.temperature = Number(settings.temperature)
     if (settings.maxOutputTokens != null) body.max_tokens = Number(settings.maxOutputTokens)
@@ -216,6 +216,7 @@ const openai = {
     let finishReason = null
     let usage = null
     let ended = false
+    let nativeText = ''
     for await (const data of sse(response.body, { signal })) {
       if (data === '[DONE]') { ended = true; break }
       const event = json(data)
@@ -233,7 +234,10 @@ const openai = {
       }
       const reasoning = delta.reasoning_content ?? delta.reasoning
       if (reasoning) yield { text: String(reasoning), kind: 'reasoning' }
-      if (delta.content) yield { text: String(delta.content), kind: 'text' }
+      if (delta.content) {
+        if (native) nativeText += String(delta.content)
+        yield { text: String(delta.content), kind: 'text' }
+      }
     }
     if (native) {
       const metadata = { finishReason: !ended || !finishReason ? 'missing' : finishReason, usage }
@@ -241,7 +245,13 @@ const openai = {
       else onFinish?.(snapshot(metadata))
       if (calls.size && metadata.finishReason !== 'tool_calls') throw new InferenceError('Native tool calls require tool_calls finish reason', 'provider_response')
       if (!calls.size && metadata.finishReason !== 'stop') throw new InferenceError('Native final text requires stop finish reason', 'provider_response')
-      const call = calls.finish()
+      let call
+      try { call = calls.finish() } catch (error) {
+        if (ended && finishReason === 'tool_calls' && error.metadata?.rejectedNativeCall) {
+          error.metadata = { transportComplete: true, rejectedNativeReply: { text: nativeText, call: error.metadata.rejectedNativeCall } }
+        }
+        throw error
+      }
       if (call) yield { kind: 'tool_call', call }
     } else complete({ finishReason: strictCompletion && (!ended || !finishReason) ? 'missing' : finishReason ?? (ended ? 'stop' : 'missing'), usage }, onFinish)
   },
