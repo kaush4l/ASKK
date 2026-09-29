@@ -1,0 +1,145 @@
+{
+  "version": 1,
+  "scope": "Rebuilt Apple Silicon companion; per-file integrity verified, cancellation through packaged source using bundled Bun. Unit and real-process tests separately cover TERM-ignoring original-group descendants. No new TLS, Safari, iPhone, signing, browser-guest or escaped-descendant acceptance.",
+  "sourceRevision": "cfe5ccd2b211d27bcab7594d24a0fe552a457b7a",
+  "manifest": {
+    "schema": 1,
+    "name": "askk-local-companion",
+    "target": "darwin-arm64",
+    "runtime": {
+      "target": "darwin-arm64",
+      "version": "1.4.2",
+      "revision": "744846f844374847c902b5e7fd59b4342a51ef99",
+      "sha256": "35d20dd0263e5c950194434b925454fdfa9ba6e4467da960410fa05b08a7a5b5",
+      "upstream": "https://github.com/oven-sh/bun/tree/bun-v1.4.2",
+      "license": "https://github.com/oven-sh/bun/blob/bun-v1.4.2/LICENSE.md",
+      "pinOrigin": "Installed Darwin ARM64 Bun executable, measured 2026-09-28; not an independently authenticated release download"
+    },
+    "sourceRevision": "cfe5ccd2b211d27bcab7594d24a0fe552a457b7a",
+    "files": [
+      {
+        "path": "host/companion.js",
+        "mode": 420,
+        "size": 29946,
+        "sha256": "4a7f7100f2e74a401240667044a7b1d25cfb0c7ccb21cf06d667cdd88bb961ac"
+      },
+      {
+        "path": "host/process-group.js",
+        "mode": 420,
+        "size": 2647,
+        "sha256": "c791f609c6fac6928cbd04d4ee0236a2d218246cbfd273a9409e9e4660bb4448"
+      },
+      {
+        "path": "src/core/companion-manifest.js",
+        "mode": 420,
+        "size": 5045,
+        "sha256": "7942834d7545e58732a1fae97f4eff213b2b6dafc285d6b110f261b7e0672c71"
+      },
+      {
+        "path": "scripts/companion/launch.js",
+        "mode": 420,
+        "size": 4817,
+        "sha256": "70a7446bbf3d5bc48186254791866735d33a6466574ef6d83a51acbafac7cf9b"
+      },
+      {
+        "path": "scripts/companion/options.js",
+        "mode": 420,
+        "size": 4735,
+        "sha256": "25182a43ccd649f940bc07b932fbdb3f8bcf8f3f021fbb2708c39337d6807bbd"
+      },
+      {
+        "path": "scripts/companion/package.js",
+        "mode": 420,
+        "size": 5649,
+        "sha256": "b41743afbfe22eeb76bdf12c215042fee053d77633af9cbe244b14192c1dd0d2"
+      },
+      {
+        "path": "scripts/companion/runtime-pin.json",
+        "mode": 420,
+        "size": 459,
+        "sha256": "ab6259aaa031cbd71578f7164b9b9c879f60f55ac9de8c95ac61cf02e9d23ed9"
+      },
+      {
+        "path": "licenses/BUN-LICENSE.md",
+        "mode": 420,
+        "size": 5613,
+        "sha256": "b9caf52728691b4057e371232c221a132883198be2f3d2ddf92c90404c984b1a"
+      },
+      {
+        "path": "README.md",
+        "mode": 420,
+        "size": 13415,
+        "sha256": "bd16c0897af7f6698373263eb83ccaa79801f7ce279eec46cae09d4fb0108d23"
+      },
+      {
+        "path": "askk-companion",
+        "mode": 493,
+        "size": 342,
+        "sha256": "f59e781267af2c8ea9c1e64d363a0c72dd33dcd539c856621df59def879eee3d"
+      },
+      {
+        "path": "bin/bun",
+        "mode": 493,
+        "size": 139,
+        "sha256": "79ded42c8ead54748766c67070fe8d9f7c3bb7876bb0e8f16ea3db0c4aba9a96"
+      },
+      {
+        "path": "bunfig.toml",
+        "mode": 420,
+        "size": 81,
+        "sha256": "9c0914ce67e33c18fbca030ee7a969e6ec416ae45b84979b083d8680c6c4bfbd"
+      },
+      {
+        "path": "runtime/bun",
+        "mode": 493,
+        "size": 61884464,
+        "sha256": "35d20dd0263e5c950194434b925454fdfa9ba6e4467da960410fa05b08a7a5b5"
+      }
+    ],
+    "policy": {
+      "capabilities": "explicit-at-launch",
+      "tls": "external-owner-trusted-certificate",
+      "runtimeSelection": "explicit-in-workbench",
+      "packageFormat": "directory",
+      "signed": false
+    }
+  },
+  "check": {
+    "sourceRevision": "cfe5ccd2b211d27bcab7594d24a0fe552a457b7a",
+    "runtime": "1.4.2",
+    "passed": true,
+    "code": -1,
+    "cancelled": true,
+    "cleanup": {
+      "ok": true,
+      "scope": "original-process-group",
+      "verification": "no-live-members"
+    },
+    "scope": "Packaged source cancellation through LocalExecution, running with bundled Bun. No browser or signing acceptance."
+  },
+  "release": {
+    "id": "cfe5ccd-darwin-arm64",
+    "label": "Apple Silicon Mac",
+    "target": "darwin-arm64",
+    "file": "downloads/askk-companion-darwin-arm64-cfe5ccd.tar.gz",
+    "bytes": 25406829,
+    "sha256": "29105c2dee6a42ace3dac238930c6b60fbe30628600bd36b1081f51efffd8646",
+    "sourceRevision": "cfe5ccd2b211d27bcab7594d24a0fe552a457b7a",
+    "runtime": "Bun 1.4.2",
+    "signed": false,
+    "status": "developer-preview",
+    "instructions": "https://github.com/kaush4l/ASKK/blob/cfe5ccd/scripts/companion/README.md#start-explicitly"
+  },
+  "tests": {
+    "passed": 1020,
+    "skipped": 1,
+    "failed": 0,
+    "assertions": 7606,
+    "files": 100
+  },
+  "limits": [
+    "Original process group only; descendants that change group/session are outside this cleanup receipt.",
+    "No process-count, CPU or memory quota.",
+    "No new model scaffold trial; previous failure remains authoritative."
+  ]
+}
