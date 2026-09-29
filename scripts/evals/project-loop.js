@@ -1,5 +1,6 @@
 /** Opt-in real-model evaluation. Agents use the production folder, worker, desk broker,
  * workspace adapters and real Local Bun commands. Independent checks never use LLM judgments. */
+import { createHash } from 'node:crypto'
 import { cp, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -7,6 +8,7 @@ import { Hub } from '../../src/runtime/hub.js'
 import { LocalExecution } from '../../src/execution/local.js'
 import { createCompanion } from '../../host/companion.js'
 import { listing } from '../listing.js'
+import { createEvaluationWorkspace, ranDeclaredTests, bunTestReport } from './workspace-evidence.js'
 
 const cases = {
   script: {
@@ -14,7 +16,7 @@ const cases = {
     checks: [['total.js', '19', '-7', '0.5'], ['total.js'], ['total.js', 'invalid']], expected: ['12.5', '0', null],
   },
   project: {
-    goal: 'Scaffold a minimal dependency-free Bun JavaScript project. Export total(values) from src/total.js: sum finite numbers in an array, returning 0 for an empty array, throwing for nonnumeric or nonfinite entries. Include package.json with a test script and real bun:test tests. Run the test script and check its results. Do not create a web app.',
+    goal: 'Scaffold a minimal dependency-free Bun JavaScript project. Export total(values) from src/total.js: sum finite numbers in an array, returning 0 for an empty array, throwing for nonnumeric or nonfinite entries. Include package.json with a test script and real bun:test tests. Run the test script with bun run test and check its results. Do not create a web app.',
     checks: [['-e', "import {total} from './src/total.js'; if(total([19,-7,0.5])!==12.5||total([])!==0)process.exit(2); for(const v of [['x'],[NaN],[Infinity]]){let failed=false;try{total(v)}catch{failed=true}if(!failed)process.exit(3)} console.log('withheld passed')"]], expected: ['withheld passed'],
   },
   repair: {
@@ -53,6 +55,8 @@ export async function evaluateProjectLoop({ baseUrl, model, directory, caseName 
   if (typeof enableThinking !== 'boolean') throw new Error('enableThinking must be a boolean')
   if (contractVersion !== undefined && ![2, 3].includes(contractVersion)) throw new Error('Evaluation contractVersion must be 2 or 3')
   if (!cases[caseName]) throw new Error(`Choose one of ${Object.keys(cases).join(', ')}`)
+  const evaluatorHashes = {}
+  for (const name of ['project-loop.js', 'workspace-evidence.js']) evaluatorHashes[name] = createHash('sha256').update(await readFile(new URL(name, import.meta.url))).digest('hex')
   const definition = cases[caseName], root = resolve(directory), site = join(root, 'site'), project = join(root, 'project')
   // Refuse overwrite so every attempt retains its own source and evidence.
   await mkdir(root, { recursive: false }); await mkdir(project); await mkdir(site)
@@ -68,9 +72,11 @@ export async function evaluateProjectLoop({ baseUrl, model, directory, caseName 
   const companion = await createCompanion({ root: project, port: 0, capabilities: ['fs', 'exec'] })
   const execution = new LocalExecution({ url: companion.url, token: companion.token })
   let hub, timer, unsubscribe
-  const commands = [], responses = [], attempts = new Map(); const startedAt = Date.now()
+  let workspace; const responses = [], attempts = new Map(); const startedAt = Date.now()
   try {
     await execution.prepare()
+    workspace = createEvaluationWorkspace(execution)
+    const commands = workspace.commands
     for (const [path, content] of Object.entries(definition.seed ?? {})) await execution.write({ path, content, expectedRevision: 0 })
     hub = new Hub({ base: `${pathToFileURL(site).href}/`, storeName: `project-eval-${crypto.randomUUID()}` })
     unsubscribe = hub.subscribe(event => {
@@ -84,19 +90,10 @@ export async function evaluateProjectLoop({ baseUrl, model, directory, caseName 
       'workspace.environment': async () => ({ target: 'local', status: 'ready', toolchain: execution.describeCapabilities().toolchain, files: (await execution.list()).map(row => row.path), capabilities: ['fs', 'exec'] }),
       'workspace.list': () => execution.list(),
       'workspace.read': ({ path }) => execution.read(path),
-      'workspace.write': async ({ path, content, expect }) => { const result = await execution.write({ path, content, expectedRevision: expect }); return result.conflict ? result : { ...result, ok: true, rev: result.rev ?? result.revision } },
-      'workspace.run': async ({ command }, run) => {
-        const id = crypto.randomUUID(); let output = ''
-        const result = await execution.startJob({ id, program: '/bin/sh', args: ['-c', command], timeout: 30000, onOutput: event => { output += event.data ?? event.text ?? '' } })
-        const receipt = { ...result, id, output, runId: run.id }; commands.push(receipt); return receipt
-      },
+      'workspace.write': async ({ path, content, expect }) => { const result = await workspace.write({ path, content, expectedRevision: expect }); return result.conflict ? result : { ...result, ok: true, rev: result.rev ?? result.revision } },
+      'workspace.run': ({ command }, run) => workspace.run(command, run),
     }
-    hub.completionAdapters = { 'workspace.command': async () => {
-      const command = commands.at(-1)
-      if (!command) return { ok: false, reason: 'No command has run. Run the written script or project tests with workspace_run, inspect the output, and repair failures before finishing.' }
-      if (command.cancelled || command.code !== 0) return { ok: false, reason: `The last command ${command.cancelled ? 'was cancelled' : `exited with code ${command.code}`}. Inspect its output, fix the cause and run the check again.`, commandId: command.id }
-      return { ok: true, commandId: command.id, reason: 'A successful command was recorded. Independent withheld-input checks follow the run.' }
-    } }
+    hub.completionAdapters = { 'workspace.command': (options, run) => workspace.check(options, run) }
     await hub.start()
     await hub.settings.set({ policy: { defaults: { read: 'allow', net: 'deny', write: 'allow', exec: 'allow' } } })
     const run = hub.startRun('bundled/starter/builder', definition.goal, { context: { workflow: { completion: { checks: [{ capability: 'workspace.command', options: { requireFresh: true } }] } } } })
@@ -104,18 +101,29 @@ export async function evaluateProjectLoop({ baseUrl, model, directory, caseName 
     await run.answer
     clearTimeout(timer)
     const checks = []
+    const deliveredRevision = await workspace.revision()
     for (const [index, args] of definition.checks.entries()) {
       let output = ''
       const result = await execution.startJob({ program: process.execPath, args, timeout: 10000, onOutput: event => { if (event.stream !== 'stderr') output += event.data ?? event.text ?? '' } })
-      checks.push({ args, code: result.code, output: output.trim(), passed: definition.expected[index] === null ? result.code !== 0 : result.code === 0 && output.trim() === definition.expected[index] })
+      checks.push({ args, code: result.code, cancelled: result.cancelled, timedOut: result.timedOut, output: output.trim(), passed: !result.cancelled && !result.timedOut && (definition.expected[index] === null ? Number.isInteger(result.code) && result.code !== 0 && checks.every(check => check.passed) : result.code === 0 && output.trim() === definition.expected[index]) })
     }
     if (caseName === 'project') {
-      let valid = false
-      try { const pkg = JSON.parse((await execution.read('package.json')).content); valid = typeof pkg.scripts?.test === 'string' && commands.some(row => row.code === 0 && row.output.includes('pass')) } catch {}
-      checks.push({ name: 'declared and executed test suite', passed: valid })
+      let declared = false
+      try { const pkg = JSON.parse((await execution.read('package.json')).content); declared = typeof pkg.scripts?.test === 'string' && Boolean(pkg.scripts.test.trim()) } catch {}
+      checks.push({ name: 'declared test script', passed: declared })
+      checks.push({ name: 'agent ran the declared test script against delivered source', passed: ranDeclaredTests(commands, run, deliveredRevision) })
+      const reportPath = join(root, `bun-tests-${crypto.randomUUID()}.xml`)
+      for (const args of [['run', 'test'], ['test', '--reporter=junit', `--reporter-outfile=${reportPath}`]]) {
+        let output = ''
+        const result = await execution.startJob({ program: process.execPath, args, timeout: 10000, onOutput: event => { output += event.data ?? event.text ?? '' } })
+        const report = args[0] === 'test' ? bunTestReport(await readFile(reportPath, 'utf8').catch(() => '')) : null
+        checks.push({ name: args[0] === 'run' ? 'independent package test script' : 'independent Bun test discovery', args, code: result.code, output, report, passed: result.code === 0 && !result.cancelled && !result.timedOut && (report === null || report.passed) })
+      }
     }
     if (caseName === 'repair') checks.push({ name: 'observed failure-driven repair cycle', ...repairCycle(run.toolEvents, commands) })
-    const evidence = { version: 1, caseName, model, baseUrl, contextLength, jsonOutput, enableThinking, maxOutputTokens, contractVersion: hub.specs.get('bundled/starter/builder')?.engine.contractVersion, responses, events: run.log, runtime: 'Local Bun (not Browser Linux)', startedAt, elapsedMs: Date.now() - startedAt, result: run.result, status: run.slot.status, passed: run.slot.status === 'done' && checks.every(row => row.passed), checks, commands, prompts: run.prompts, requests: run.requests, completions: run.completions, tools: run.toolEvents, files: await execution.list(), metrics: { promptCount: run.prompts.length, repairs: run.log.filter(row => row.kind === 'repair').length, toolCalls: run.toolEvents.filter(row => row.kind === 'call').length, inputTokensEstimated: run.prompts.map(row => row.snapshot?.budget?.inputTokens) } }
+    const checkedRevision = await workspace.revision()
+    checks.push({ name: 'independent checks retained the delivered source', deliveredRevision, checkedRevision, passed: deliveredRevision === checkedRevision })
+    const evidence = { version: 2, evaluatorHashes, deliveredRevision, checkedRevision, completion: run.completion, completionReceipts: run.completionReceipts ?? [], caseName, model, baseUrl, contextLength, jsonOutput, enableThinking, maxOutputTokens, contractVersion: hub.specs.get('bundled/starter/builder')?.engine.contractVersion, responses, events: run.log, runtime: 'Local Bun (not Browser Linux)', startedAt, elapsedMs: Date.now() - startedAt, result: run.result, status: run.slot.status, passed: run.slot.status === 'done' && checks.every(row => row.passed), agentCompleted: run.slot.status === 'done', independentChecksPassed: checks.every(row => row.passed), checks, commands, prompts: run.prompts, requests: run.requests, completions: run.completions, tools: run.toolEvents, files: await execution.list(), metrics: { promptCount: run.prompts.length, repairs: run.log.filter(row => row.kind === 'repair').length, toolCalls: run.toolEvents.filter(row => row.kind === 'call').length, inputTokensEstimated: run.prompts.map(row => row.snapshot?.budget?.inputTokens) } }
     await writeFile(join(root, 'evidence.json'), JSON.stringify(evidence, null, 2))
     return { caseName, passed: evidence.passed, status: evidence.status, checks, elapsedMs: evidence.elapsedMs, metrics: evidence.metrics, evidence: join(root, 'evidence.json') }
   } finally { clearTimeout(timer); unsubscribe?.(); hub?.stop(); await execution.dispose(); await companion.close() }

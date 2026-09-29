@@ -2416,3 +2416,19 @@ test('an owner edit during a successful command cannot certify the new source un
   await controller.runCommand('check updated source', { runId: run.id })
   expect((await check()).ok).toBe(true)
 })
+
+test('a newer finished command cannot be overlooked during completion fingerprinting', async () => {
+  const workflow = declaredWorkflow()
+  workflow.completion = { checks: [{ capability: 'workspace.command', options: { requireFresh: true } }] }
+  const { controller, hub, browser } = await startedFixture({ configureHub(hub) { packageFixtureHub(hub, [{ ...importedGuide, workflows: [workflow] }]); declaredStrategyFixture(hub) } })
+  await controller.setWorkflow(`package-${importedGuide.id}:workflow:build`)
+  const run = hub.runs.get(await controller.sendGoal('Check the source'))
+  await controller.runCommand('first successful check', { runId: run.id })
+  const pause = pauseOnce(browser, 'list')
+  const checking = hub.completionAdapters['workspace.command']({ requireFresh: true }, run)
+  await pause.entered
+  browser.onJob = async () => ({ code: 2 })
+  try { await controller.runCommand('new failed check', { runId: run.id }) }
+  finally { pause.release() }
+  expect((await checking).ok).toBe(false)
+})

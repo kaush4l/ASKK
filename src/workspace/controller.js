@@ -487,16 +487,17 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
           'workspace.command': forRun(async (options, run) => {
             const reject = reason => ({ ok: false, reason })
             if (running.size) return reject('Wait for commands to finish before completing.')
-            const command = state.commands.findLast(row => {
+            const latestCommand = () => state.commands.findLast(row => {
               const producer = hub.runs.get(row.runId)
               return producer && producer.trace === run.trace
             })
+            const command = latestCommand()
             if (!command || command.status !== 'done' || command.exitCode !== 0 || command.cancelled || command.stage !== 'complete') return reject('This task needs a completed command with a recorded zero exit code.')
             if (options.requireFresh && (command.sourceUnchanged !== true || !command.completedFingerprint || command.completedRevision !== projectRevision)) return reject('Run the checks again against the current saved files.')
             assertBound(run.context.binding); assertBound(command.binding)
             const currentFingerprint = await fingerprint()
             assertBound(command.binding)
-            if (running.size || options.requireFresh && (command.completedRevision !== projectRevision || command.completedFingerprint !== currentFingerprint)) return reject('Source files changed after the command completed; rerun the checks.')
+            if (running.size || latestCommand()?.id !== command.id || options.requireFresh && (command.completedRevision !== projectRevision || command.completedFingerprint !== currentFingerprint)) return reject('Source files or command evidence changed during completion; rerun the checks.')
             return { ok: true, reason: 'A task-owned command exited successfully against the recorded workspace. This receipt alone does not prove functional correctness.', evidence: { commandId: command.id, command: command.command, exitCode: command.exitCode, revision: command.completedRevision, sourceFingerprint: command.completedFingerprint, runtime: command.binding } }
           }),
           'workspace.artifact': forRun(async (options, run) => {

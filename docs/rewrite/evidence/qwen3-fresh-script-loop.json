@@ -1,0 +1,346 @@
+{
+  "version": 1,
+  "date": "2026-09-29",
+  "model": "Qwen3-1.7B-Q8_0",
+  "provenance": "qwen3-small-model-diagnostic.json",
+  "scope": "Two Local Bun execution smoke passes. Agent commands used installed host Node; independent checks used Bun. This is not bundled-companion, browser, scaffolding, repair or one-shot reliability acceptance. First run preceded final concurrent-command/JUnit hardening; second records final evaluator hashes. Earlier failures remain separate evidence.",
+  "deliveredSource": {
+    "path": "qwen3-fresh-script.js",
+    "sha256": "41227acdf05dae4d8160447728afcb38e339c405f4a9811469cc1156cd18f5c7"
+  },
+  "runs": [
+    {
+      "attempt": "qwen3-fresh-script-01",
+      "evaluatorVersion": 2,
+      "evaluatorHashes": null,
+      "status": "done",
+      "passed": true,
+      "result": "The verified result.",
+      "elapsedMs": 34241,
+      "contractVersion": 2,
+      "contextLength": 8192,
+      "maxOutputTokens": 2048,
+      "enableThinking": true,
+      "jsonOutput": false,
+      "metrics": {
+        "promptCount": 8,
+        "repairs": 1,
+        "toolCalls": 4,
+        "inputTokensEstimated": [
+          1238,
+          1459,
+          1679,
+          1898,
+          1998,
+          2180,
+          2252,
+          2504
+        ]
+      },
+      "checks": [
+        {
+          "args": [
+            "total.js",
+            "19",
+            "-7",
+            "0.5"
+          ],
+          "code": 0,
+          "cancelled": false,
+          "timedOut": false,
+          "output": "12.5",
+          "passed": true
+        },
+        {
+          "args": [
+            "total.js"
+          ],
+          "code": 0,
+          "cancelled": false,
+          "timedOut": false,
+          "output": "0",
+          "passed": true
+        },
+        {
+          "args": [
+            "total.js",
+            "invalid"
+          ],
+          "code": 1,
+          "cancelled": false,
+          "timedOut": false,
+          "output": "",
+          "passed": true
+        },
+        {
+          "name": "independent checks retained the delivered source",
+          "deliveredRevision": "f38b81979386a945766354736ba5758cc74c1a445d7061464514055d5ddbff6a",
+          "checkedRevision": "f38b81979386a945766354736ba5758cc74c1a445d7061464514055d5ddbff6a",
+          "passed": true
+        }
+      ],
+      "completion": {
+        "checks": [
+          {
+            "capability": "workspace.command",
+            "options": {
+              "requireFresh": true
+            }
+          }
+        ]
+      },
+      "completionReceipts": [
+        {
+          "ok": false,
+          "checks": [
+            {
+              "capability": "workspace.command",
+              "options": {
+                "requireFresh": true
+              },
+              "ok": false,
+              "evidence": {
+                "ok": false,
+                "reason": "This task needs a completed command with a recorded zero exit code."
+              }
+            }
+          ],
+          "reason": "This task needs a completed command with a recorded zero exit code.",
+          "runId": "rmumkpl311",
+          "at": 1790680147571
+        },
+        {
+          "ok": false,
+          "checks": [
+            {
+              "capability": "workspace.command",
+              "options": {
+                "requireFresh": true
+              },
+              "ok": false,
+              "evidence": {
+                "ok": false,
+                "reason": "This task needs a completed command with a recorded zero exit code."
+              }
+            }
+          ],
+          "reason": "This task needs a completed command with a recorded zero exit code.",
+          "runId": "rmumkpl311",
+          "at": 1790680150985
+        },
+        {
+          "ok": true,
+          "checks": [
+            {
+              "capability": "workspace.command",
+              "options": {
+                "requireFresh": true
+              },
+              "ok": true,
+              "evidence": {
+                "ok": true,
+                "commandId": "2803d233-68b5-4518-a352-47aa95cc9580",
+                "sourceRevision": "f38b81979386a945766354736ba5758cc74c1a445d7061464514055d5ddbff6a",
+                "reason": "A task-owned command exited zero against this source snapshot. Functional correctness requires the independent checks.",
+                "evidence": {
+                  "commandId": "2803d233-68b5-4518-a352-47aa95cc9580",
+                  "command": "node total.js",
+                  "runId": "rmumkpl311",
+                  "trace": "rmumkpl311",
+                  "runtimeId": "local-bun:3813a13e-3773-444e-8c4b-856cfe015633",
+                  "inputRevision": "f38b81979386a945766354736ba5758cc74c1a445d7061464514055d5ddbff6a",
+                  "completedRevision": "f38b81979386a945766354736ba5758cc74c1a445d7061464514055d5ddbff6a",
+                  "completedEpoch": 4,
+                  "finishedAt": 1790680156306,
+                  "sourceUnchanged": true,
+                  "matchesAtCompletion": true
+                }
+              }
+            }
+          ],
+          "reason": "All configured completion checks passed.",
+          "runId": "rmumkpl311",
+          "at": 1790680156306
+        }
+      ],
+      "commands": [
+        {
+          "id": "2803d233-68b5-4518-a352-47aa95cc9580",
+          "command": "node total.js",
+          "runId": "rmumkpl311",
+          "trace": "rmumkpl311",
+          "runtimeId": "local-bun:3813a13e-3773-444e-8c4b-856cfe015633",
+          "code": 0,
+          "cancelled": false,
+          "timedOut": false,
+          "inputRevision": "f38b81979386a945766354736ba5758cc74c1a445d7061464514055d5ddbff6a",
+          "completedRevision": "f38b81979386a945766354736ba5758cc74c1a445d7061464514055d5ddbff6a",
+          "sourceUnchanged": true,
+          "stage": "complete"
+        }
+      ],
+      "rawEvidenceSha256": "ec1edadd1e41625a693cecb6a6a6f67c3dab54fb6d844194b9cc7f3fea4c603e"
+    },
+    {
+      "attempt": "qwen3-fresh-script-02",
+      "evaluatorVersion": 2,
+      "evaluatorHashes": {
+        "project-loop.js": "95d60bfe78459fca0dd0c569f2bf1d6f2edf1478e021944680755e2a308d8ed3",
+        "workspace-evidence.js": "68334584368771045c0dfcb309c38c7ebcd9335ebfe7c1d082db6dfaa99965c0"
+      },
+      "status": "done",
+      "passed": true,
+      "result": "The verified result.",
+      "elapsedMs": 18227,
+      "contractVersion": 2,
+      "contextLength": 8192,
+      "maxOutputTokens": 2048,
+      "enableThinking": true,
+      "jsonOutput": false,
+      "metrics": {
+        "promptCount": 4,
+        "repairs": 0,
+        "toolCalls": 5,
+        "inputTokensEstimated": [
+          1238,
+          1459,
+          1679,
+          2350
+        ]
+      },
+      "checks": [
+        {
+          "args": [
+            "total.js",
+            "19",
+            "-7",
+            "0.5"
+          ],
+          "code": 0,
+          "cancelled": false,
+          "timedOut": false,
+          "output": "12.5",
+          "passed": true
+        },
+        {
+          "args": [
+            "total.js"
+          ],
+          "code": 0,
+          "cancelled": false,
+          "timedOut": false,
+          "output": "0",
+          "passed": true
+        },
+        {
+          "args": [
+            "total.js",
+            "invalid"
+          ],
+          "code": 1,
+          "cancelled": false,
+          "timedOut": false,
+          "output": "",
+          "passed": true
+        },
+        {
+          "name": "independent checks retained the delivered source",
+          "deliveredRevision": "f38b81979386a945766354736ba5758cc74c1a445d7061464514055d5ddbff6a",
+          "checkedRevision": "f38b81979386a945766354736ba5758cc74c1a445d7061464514055d5ddbff6a",
+          "passed": true
+        }
+      ],
+      "completion": {
+        "checks": [
+          {
+            "capability": "workspace.command",
+            "options": {
+              "requireFresh": true
+            }
+          }
+        ]
+      },
+      "completionReceipts": [
+        {
+          "ok": true,
+          "checks": [
+            {
+              "capability": "workspace.command",
+              "options": {
+                "requireFresh": true
+              },
+              "ok": true,
+              "evidence": {
+                "ok": true,
+                "commandId": "e5bd9438-ddd9-4a00-8615-e7bfc2ece3a9",
+                "sourceRevision": "f38b81979386a945766354736ba5758cc74c1a445d7061464514055d5ddbff6a",
+                "reason": "A task-owned command exited zero against this source snapshot. Functional correctness requires the independent checks.",
+                "evidence": {
+                  "commandId": "e5bd9438-ddd9-4a00-8615-e7bfc2ece3a9",
+                  "command": "node total.js",
+                  "runId": "rmumkuw3i1",
+                  "trace": "rmumkuw3i1",
+                  "runtimeId": "local-bun:3d5b4209-1330-49d6-95e5-9155686664b0",
+                  "inputRevision": "f38b81979386a945766354736ba5758cc74c1a445d7061464514055d5ddbff6a",
+                  "completedRevision": "f38b81979386a945766354736ba5758cc74c1a445d7061464514055d5ddbff6a",
+                  "completedEpoch": 2,
+                  "finishedAt": 1790680387846,
+                  "sourceUnchanged": true,
+                  "matchesAtCompletion": true
+                }
+              }
+            }
+          ],
+          "reason": "All configured completion checks passed.",
+          "runId": "rmumkuw3i1",
+          "at": 1790680387846
+        }
+      ],
+      "commands": [
+        {
+          "id": "c1d081d7-e2b1-47e5-b80c-07bb05478b2b",
+          "command": "node total.js 1 2 3",
+          "runId": "rmumkuw3i1",
+          "trace": "rmumkuw3i1",
+          "runtimeId": "local-bun:3d5b4209-1330-49d6-95e5-9155686664b0",
+          "code": 0,
+          "cancelled": false,
+          "timedOut": false,
+          "inputRevision": "f38b81979386a945766354736ba5758cc74c1a445d7061464514055d5ddbff6a",
+          "completedRevision": "f38b81979386a945766354736ba5758cc74c1a445d7061464514055d5ddbff6a",
+          "sourceUnchanged": true,
+          "stage": "complete"
+        },
+        {
+          "id": "3781b82d-345b-4e74-bdef-5dbe1fd1da7e",
+          "command": "node total.js 1a",
+          "runId": "rmumkuw3i1",
+          "trace": "rmumkuw3i1",
+          "runtimeId": "local-bun:3d5b4209-1330-49d6-95e5-9155686664b0",
+          "code": 1,
+          "cancelled": false,
+          "timedOut": false,
+          "inputRevision": "f38b81979386a945766354736ba5758cc74c1a445d7061464514055d5ddbff6a",
+          "completedRevision": "f38b81979386a945766354736ba5758cc74c1a445d7061464514055d5ddbff6a",
+          "sourceUnchanged": true,
+          "stage": "complete"
+        },
+        {
+          "id": "e5bd9438-ddd9-4a00-8615-e7bfc2ece3a9",
+          "command": "node total.js",
+          "runId": "rmumkuw3i1",
+          "trace": "rmumkuw3i1",
+          "runtimeId": "local-bun:3d5b4209-1330-49d6-95e5-9155686664b0",
+          "code": 0,
+          "cancelled": false,
+          "timedOut": false,
+          "inputRevision": "f38b81979386a945766354736ba5758cc74c1a445d7061464514055d5ddbff6a",
+          "completedRevision": "f38b81979386a945766354736ba5758cc74c1a445d7061464514055d5ddbff6a",
+          "sourceUnchanged": true,
+          "stage": "complete"
+        }
+      ],
+      "rawEvidenceSha256": "df201c111ab116a0de28d05ade9f9a385c9a852bc405ffee9959c09356a9ae62"
+    }
+  ]
+}
