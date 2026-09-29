@@ -144,8 +144,7 @@ Bundled definitions now use `bundled/<desk-id>/<role-id>`; owner installations u
 `installed/<installation-id>/<role-id>`. Old bundled session/history keys are
 preserved for review and are not silently copied into the new identities.
 
-In-browser source editing, replacement/upgrades, removal and backup export
-remain pending. The credential-isolating broker is also pending: package files
+In-place replacement/upgrades and removal remain pending. The credential-isolating broker is also pending: package files
 cannot contain credentials, but existing workers still receive configured
 transport data. Application tools remain trusted desk capabilities. A package
 cannot create a new search, browser-control, or media adapter simply by naming one.
@@ -156,6 +155,15 @@ Open **Agent studio** on the dashboard to create or resume a draft. The starter 
 
 **Save draft** commits text even when the folder is not yet valid. Saves check the opened version and acknowledge only a completed browser storage transaction. Closing or switching with unsaved changes offers Save, Discard or Keep editing. Draft source is separate from the coding workspace and remains editable during agent work. Review and installation wait for idle admission.
 
-**Review saved draft** passes its exact saved files through the shared package validator. Model and tool bindings remain explicit. **Install as new agent** creates a new immutable installation and selects it without starting a task. Changing a saved draft does not change any installed agent or existing run. Editing an existing installation in place, cloning shipped/imported folders, deleting saved drafts and backup export are not yet provided by this UI. Drafts are local to this browser origin; closing the browser before an explicit save can still lose unsaved edits.
+**Review saved draft** passes its exact saved files through the shared package validator. Model and tool bindings remain explicit. **Install as new agent** creates a new immutable installation and selects it without starting a task. Changing a saved draft does not change any installed agent or existing run. Editing an existing installation in place and deleting saved drafts are not yet provided by this UI. Drafts are local to this browser origin; closing the browser before an explicit save can still lose unsaved edits.
 
 Implementation locations: `src/runtime/package-drafts.js` owns durable draft revisions and reviewed-stage binding; `src/workbench/PackageStudio.jsx` owns authoring interactions; `src/core/package-template.js` renders non-executable starter configuration. Current limits are 32 drafts, 64 MiB total draft bytes and the existing per-package source limits. A generated integrity lock is not editable draft source.
+
+
+## Copying and backing up agent folders
+
+Open an agent definition and choose **Customize a copy** to copy its complete verified source folder into a new draft. This works for bundled and installed definitions. It preserves supporting prompts, roles and workflows; the generated integrity lock is rebuilt on review. Model bindings, grants, memory and run history are not copied. Binary source assets currently prevent copying into the text studio rather than being silently omitted.
+
+**Download draft backup** exports the exact saved draft name and text files as a versioned JSON file. Save pending changes first. The browser reports that a download was requested, not that a file was durably saved by the operating system. **Restore draft backup** validates the file and durably creates a separate draft; it never installs or starts an agent. Invalid authored source can round-trip, while malformed backup envelopes, unsafe paths, duplicate paths and oversized input are rejected. Any sensitive text manually included in source remains part of the backup.
+
+`src/core/draft-backup.js` owns the portable format and text limits. `src/runtime/package-source.js` verifies and copies canonical package sources. Draft backups preserve authored text, not a runnable workspace or a full desk backup.

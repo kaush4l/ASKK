@@ -5,7 +5,7 @@ import Modal from './Modal.jsx'
 import DiffView from './DiffView.jsx'
 import { PackageImportFeedback, PackageImportReview } from './PackageImport.jsx'
 import { defaultPackageChoices } from './package-import.js'
-import { draftChanged, draftChanges, studioFilePath } from './package-studio.js'
+import { draftChanged, draftChanges, readDraftBackup, studioFilePath } from './package-studio.js'
 import './package-studio.css'
 
 const Editor = dynamic(() => import('./Editor.jsx'), { ssr: false, loading: () => <p>Opening source editor…</p> })
@@ -28,6 +28,7 @@ export default function PackageStudio({ perform, disabled = false, theme = 'dark
   const [pending, setPending] = useState(null)
   const mounted = useRef(true)
   const operating = useRef(true)
+  const restoreInput = useRef(null)
   const dirty = draftChanged(saved, draft)
   const wizardDirty = creating && Object.values(wizard).some(Boolean)
   const file = draft?.files.find(item => item.path === path)
@@ -49,6 +50,12 @@ export default function PackageStudio({ perform, disabled = false, theme = 'dark
     })()
     return () => { mounted.current = false }
   }, [])
+  useEffect(() => {
+    if (!dirty && !wizardDirty) return
+    const warn = event => { event.preventDefault(); event.returnValue = '' }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [dirty, wizardDirty])
   async function run(label, action) {
     if (operating.current) return false
     operating.current = true
@@ -81,6 +88,31 @@ export default function PackageStudio({ perform, disabled = false, theme = 'dark
       setPreview(result); setChoices(defaultPackageChoices(result)); setMessage('Saved draft validated. Review model and tool access before installing.')
     })
   }
+  async function downloadBackup() {
+    if (dirty || !draft) return
+    await run('preparing backup', async () => {
+      const result = await perform('exportAgentDraft', draft.id, { expectedVersion: saved.version })
+      if (!mounted.current) return
+      const url = URL.createObjectURL(new Blob([result.text], { type: result.mimeType }))
+      const link = document.createElement('a')
+      link.href = url; link.download = result.filename; document.body.append(link)
+      try { link.click() } finally { link.remove(); setTimeout(() => URL.revokeObjectURL(url), 60000) }
+      setMessage(`Backup download requested for saved version ${saved.version}. Keep the file to restore this draft in another browser.`)
+    })
+  }
+  function selectBackup(event) {
+    const selected = event.target.files?.[0]
+    event.target.value = ''
+    if (!selected) return
+    request(() => run('restoring backup', async () => {
+      const text = await readDraftBackup(selected, { isCurrent: () => mounted.current })
+      const result = await perform('restoreAgentDraft', text)
+      if (!mounted.current) return
+      openRecord(result)
+      setDrafts(previous => [result, ...previous.filter(row => row.id !== result.id)])
+      setMessage('Backup restored as a new draft in this browser. Review it when ready to install. Nothing was installed or started.')
+    }))
+  }
   async function install(bindings) {
     if (disabled || dirty || !preview) return
     await run('installing', async () => {
@@ -103,8 +135,9 @@ export default function PackageStudio({ perform, disabled = false, theme = 'dark
   function beginCreate() { setCreating(true); setDraft(null); setSaved(null); setPreview(null); setWizard({ label: '', description: '', instructions: '' }); setError(''); setMessage('') }
   return <Modal title="Agent studio" wide focusInput={false} onClose={() => request(onClose)}>
     <div className="package-studio" aria-busy={Boolean(busy)}>
-      <p className="modal-description">Create and edit agent folders in this browser. Save unfinished source at any time; install a reviewed version when it is ready.</p>
+      <p className="modal-description">Create and edit agent folders. Drafts are saved only in this browser; download a backup to keep them elsewhere or move them to another device. Install a reviewed version when it is ready.</p>
       <fieldset className="studio-picker" disabled={Boolean(busy) || Boolean(pending)}><label>Saved drafts<select className="form-input" aria-label="Saved drafts" value={draft?.id || ''} onChange={event => { const id = event.target.value; if (id) request(() => run('loading', async () => { const record = await perform('readAgentDraft', id); if (mounted.current) openRecord(record) })) }}><option value="">Choose a draft…</option>{drafts.map(row => <option key={row.id} value={row.id}>{row.label || 'Untitled agent'}</option>)}</select></label><button className="button" type="button" onClick={() => request(beginCreate)}>Create agent</button></fieldset>
+      <div className="studio-backup"><button type="button" className="button" disabled={Boolean(busy) || Boolean(pending)} onClick={() => restoreInput.current?.click()}>Restore draft backup</button><input ref={restoreInput} type="file" accept=".json,application/json" aria-label="Choose draft backup" hidden onChange={selectBackup}/><p className="form-help">Restore creates a new draft and keeps existing saved drafts. It does not install or run an agent.</p></div>
       <PackageImportFeedback message={busy ? `${busy[0].toUpperCase()}${busy.slice(1)}…` : message || (dirty || wizardDirty ? 'Unsaved changes' : draft ? `Saved draft · version ${saved.version}` : '')} error={error}/>
       {pending && <section className="studio-unsaved" role="alert" aria-label="Unsaved draft"><strong>Save your changes before leaving?</strong><p>Discard removes only changes since your last save.</p><div><button className="button primary" disabled={Boolean(busy) || creating && !wizard.label.trim()} onClick={async () => { const next = pending; if (await save()) { setPending(null); next() } }}>Save and continue</button><button className="button" disabled={Boolean(busy)} onClick={() => { const next = pending; setPending(null); if (draft) setDraft(saved); setWizard({ label: '', description: '', instructions: '' }); next() }}>Discard changes</button><button className="button" disabled={Boolean(busy)} onClick={() => setPending(null)}>Keep editing</button></div></section>}
       <fieldset className="studio-content" disabled={Boolean(busy) || Boolean(pending)}>
@@ -118,7 +151,8 @@ export default function PackageStudio({ perform, disabled = false, theme = 'dark
             {file ? <div className="studio-editor"><Editor key={draft.id} path={path} value={file.content} theme={theme} scope={`package:${draft.id}`} onChange={changeFile} onSave={save} readOnly={Boolean(busy) || Boolean(pending)}/></div> : <p>No files in this draft. Add agent.md to make an installable folder.</p>}
           </>}
           {changes.length > 0 && <details className="studio-changes"><summary>Review {changes.length} changed {changes.length === 1 ? 'file' : 'files'} since last save</summary>{changes.map(change => <details key={change.path}><summary>{change.kind}: {change.path}</summary><DiffView {...change}/></details>)}</details>}
-          <div className="studio-actions"><button type="button" className="button" disabled={!dirty} onClick={save}>Save draft</button><button type="button" className="button primary" disabled={dirty || disabled} onClick={review}>Review saved draft</button></div>
+          <div className="studio-actions"><button type="button" className="button" disabled={!dirty} onClick={save}>Save draft</button><button type="button" className="button" disabled={dirty} onClick={downloadBackup} aria-describedby="studio-backup-help">Download draft backup</button><button type="button" className="button primary" disabled={dirty || disabled} onClick={review}>Review saved draft</button></div>
+          <p className="form-help" id="studio-backup-help">{dirty ? 'Save changes before downloading a backup. ' : `Backup includes saved version ${saved.version}. `}It contains the draft name and exact source files, including unfinished edits in saved source. Connections, tool approvals, and run history are not included. Any sensitive text you put in source is included.</p>
           <p className="form-help">Invalid source can be saved. Installation requires a valid folder. Existing agents and runs are never changed.</p>
           {disabled && <p className="form-help">You can keep editing. Finish active work or connection checks before reviewing and installing.</p>}
         </>}

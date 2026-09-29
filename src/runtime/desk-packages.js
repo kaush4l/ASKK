@@ -92,7 +92,7 @@ async function loadCandidate({ base, index, fetch: fetcher = fetch, catalogue, s
     if (files.some(path => !safePublishedPath(path))) fail(`${entry.path} contains an unsafe published file path`)
     return { ...entry, files }
   })
-  const specs = [], packages = [], workflows = []; let total = 0
+  const specs = [], packages = [], workflows = [], packageSources = []; let total = 0
   for (const entry of entries) {
     signal.throwIfAborted()
     const prefix = `${entry.path}/`
@@ -110,9 +110,10 @@ async function loadCandidate({ base, index, fetch: fetcher = fetch, catalogue, s
     const resolvedWorkflows = await compilePackageWorkflows(pkg, { specs: compiled })
     signal.throwIfAborted()
     specs.push(...compiled)
+    packageSources.push({ id: entry.id, data: pkg.data })
     workflows.push(...resolvedWorkflows?.workflows ?? [])
     packages.push(snapshot({ id: entry.id, namespace: 'bundled', path: entry.path, packageId: pkg.data.packageId, packageVersion: pkg.data.packageVersion, revisionDigest: pkg.data.revisionDigest, agents: compiled.map(spec => spec.path), defaultWorkflow: resolvedWorkflows?.default ?? null }))
   }
   if (!specs.some(spec => spec.path === configuration.defaultAgent)) fail('defaultAgent must name an available agent in a configured shipped package')
-  return snapshot({ defaultAgent: configuration.defaultAgent, specs, packages, workflows })
+  return snapshot({ defaultAgent: configuration.defaultAgent, specs, packages, workflows, packageSources })
 }

@@ -164,7 +164,7 @@ Verified primary sources on 2026-09-29:
   [model download states](https://developer.chrome.com/docs/ai/get-started#model-download).
 - **Certain:** Chrome foundation-model APIs exclude iOS and Android. Desktop
   success is not iPhone support. [Chrome hardware requirements](https://developer.chrome.com/docs/ai/get-started#hardware).
-- **Certain:** Apple describes Foundation Models as a native Swift API.
+- **Certain:** Apple documents native Swift and Python Foundation Models APIs. The [official Python SDK](https://apple.github.io/python-apple-fm-sdk/getting_started.html) requires a compatible Mac, macOS 26+, Xcode 26+, Python 3.10+ and enabled Apple Intelligence. These are possible native adapter dependencies, not bundled ASKK capabilities.
   **Likely conclusion:** no documented public Safari JavaScript API for direct
   access to Apple's generative model was found. WebKit's Prompt API standards
   position is `oppose`; Safari 27's release notes do not announce equivalent

@@ -565,6 +565,12 @@ export default function Workbench() {
     try { await modalNavigation.current.read(async () => ({ type: 'agent', details: await perform('getAgentDetails', path) })) }
     catch (error) { setToast(error.message) }
   }
+  async function customizeAgent(path) {
+    try { await modalNavigation.current.read(async () => {
+      const draft = await perform('customizeAgentPackage', path)
+      return { type: 'packageStudio', draftId: draft.id }
+    }) } catch (error) { setToast(error.message) }
+  }
   async function loadRun(runId) {
     return modalNavigation.current.read(async () => {
       const details = await perform('getRunDetails', runId)
@@ -752,8 +758,8 @@ export default function Workbench() {
       else if (event.key === 'Enter' && paletteResults[paletteSelection]) { event.preventDefault(); setPalette(false); paletteResults[paletteSelection].run() }
     }}/><kbd>esc</kbd></div><div ref={paletteResultsNode} id="palette-results" role="listbox" aria-label="Matching files and commands" className="palette-results">{paletteResults.map((item, index) => <button role="option" tabIndex={-1} id={`palette-option-${index}`} data-palette-index={index} aria-selected={index === paletteSelection} className={index === paletteSelection ? 'highlighted' : ''} key={item.label} onClick={() => { setPalette(false); item.run() }}><Icon name={item.icon}/><span>{item.label}</span><Icon name="right" size={13}/></button>)}{!paletteResults.length && <p>{paletteQuery.startsWith('>') ? 'No matching commands.' : 'No matching files. Type > to find a command.'}</p>}</div><div className="palette-hint"><kbd>↵</kbd> open selected result <span>{paletteItems.length > paletteResults.length ? 'First 30 matches. Type more to narrow results.' : 'Files and commands, one place.'}</span></div></Modal>}
     {modal?.type === 'goal' && <Modal title="Conversation goal" onClose={() => setModal(null)}><p className="modal-description">Keep a goal in context across messages and agent runs. Saving updates the next prompt; the composer remains available for individual requests.</p><label className="field-label" htmlFor="saved-goal">Saved goal</label><textarea id="saved-goal" className="form-input" rows={6} maxLength={12000} value={modalValue} onChange={event => setModalValue(event.target.value)}/><div className="modal-footer"><button className="button subtle" onClick={() => setModal(null)}>Cancel</button><button className="button subtle" disabled={!!busy || !state.goal} onClick={async () => { try { await perform('setConversationGoal', '', modal.revision); setModal(null) } catch (error) { setToast(error.message) } }}>Clear goal</button><button className="button primary" disabled={!!busy || modalValue.trim() === state.goal} onClick={async () => { try { await perform('setConversationGoal', modalValue, modal.revision); setModal(null) } catch (error) { setToast(error.message) } }}>Save goal</button></div></Modal>}
-    {modal?.type === 'agent' && <AgentInspector details={modal.details} onClose={() => setModal(null)}/>}
-    {modal?.type === 'packageStudio' && <PackageStudio perform={perform} theme={theme} disabled={packageImportDisabled} onClose={() => setModal(null)} onInstalled={installed => { setModal(null); setToast(`${installed?.packageId || 'Agent'} installed. Its workflow is selected.`); setDashboardOpen(true) }}/> }
+    {modal?.type === 'agent' && <AgentInspector details={modal.details} onCustomize={customizeAgent} onClose={() => setModal(null)}/>}
+    {modal?.type === 'packageStudio' && <PackageStudio perform={perform} initialDraftId={modal.draftId} theme={theme} disabled={packageImportDisabled} onClose={() => setModal(null)} onInstalled={installed => { setModal(null); setToast(`${installed?.packageId || 'Agent'} installed. Its workflow is selected.`); setDashboardOpen(true) }}/> }
     {modal?.type === 'packageImport' && <PackageImport perform={perform} disabled={packageImportDisabled} onClose={() => setModal(null)} onInstalled={installed => { setModal(null); setToast(`${installed?.packageId || 'Agent'} installed. Its workflow is selected.`); setDashboardOpen(true) }}/>}
     {modal?.type === 'run' && <RunInspector details={modal.details} onClose={() => setModal(null)} onRefresh={() => loadRun(modal.details.id)} onInspectRun={loadRun} onExport={() => exportRunEvidence(modal.details.id)}/>}
     {modal?.type === 'tool' && <Modal wide title="Recorded tool action" onClose={() => setModal(null)}><ToolCard tool={state.messages.flatMap(message => message.tools || []).find(tool => tool.id === modal.tool.id && tool.runId === modal.tool.runId) || modal.tool} approvals={state.approvals}/></Modal>}

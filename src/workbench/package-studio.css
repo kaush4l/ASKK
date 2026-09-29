@@ -8,6 +8,8 @@
 .package-studio small { display: block; font-size: 11px; color: var(--muted); line-height: 1.6; margin-top: 6px; }
 .studio-create { display: grid; gap: 15px; }
 .studio-label { margin-bottom: 15px; }
+.studio-backup { margin-block: 14px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.studio-backup .form-help { margin-bottom: 0; }
 .studio-modes,.studio-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-block: 14px; }
 .studio-modes [aria-pressed=true] { border-color: var(--accent); color: var(--accent); }
 .studio-file-toolbar { display: flex; gap: 10px; align-items: end; margin-bottom: 12px; }
@@ -30,4 +32,5 @@
   .studio-picker { align-items: stretch; flex-direction: column; }
   .package-studio input,.package-studio textarea,.package-studio select { font-size: 16px; }
   .studio-actions > .button { flex: 1; }
+  .studio-backup > .button { width: 100%; }
 }

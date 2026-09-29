@@ -17,6 +17,54 @@ async function fixture(run, options = {}) {
 }
 
 describe('Bun companion contracts', () => {
+  test('omitted grants advertise no authority and refuse every capability without side effects', async () => {
+    let upstreamRequests = 0
+    const upstream = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch() { upstreamRequests++; return new Response('must not reach') } })
+    try { await fixture(async ({ root, companion, call }) => {
+      await writeFile(join(root, 'existing.txt'), 'unchanged')
+      expect((await (await fetch(`${companion.url}/health`)).json()).capabilities).toEqual([])
+      expect((await (await call('/whoami')).json()).capabilities).toEqual([])
+      const url = `${upstream.url.origin}/v1/models`
+      const requests = [
+        ['/workspace/list', {}], ['/workspace/read', { path: 'existing.txt' }],
+        ['/workspace/snapshot', {}], ['/workspace/write', { path: 'created.txt', content: 'no' }],
+        ['/workspace/remove', { path: 'existing.txt' }], ['/workspace/rename', { path: 'existing.txt', destination: 'renamed.txt' }],
+        ['/jobs/run', { program: '/bin/sh', args: ['-c', 'echo no > executed.txt'] }], ['/jobs/cancel', { id: 'absent' }],
+        ['/terminals/open', {}], ['/terminals/close', { id: 'absent' }],
+        ['/fetch', { url }], ['/model/fetch', { url }], ['/network/fetch', { url }],
+      ]
+      for (const [path, body] of requests) {
+        const response = await call(path, body)
+        expect(response.status).toBe(403)
+        expect((await response.json()).code).toBe('capability.unavailable')
+      }
+      expect(upstreamRequests).toBe(0)
+      expect(await readFile(join(root, 'existing.txt'), 'utf8')).toBe('unchanged')
+      for (const path of ['created.txt', 'renamed.txt', 'executed.txt']) expect(await stat(join(root, path)).catch(() => null)).toBeNull()
+    }, { modelEndpoints: [`${upstream.url.origin}/v1`] }) } finally { upstream.stop(true) }
+  })
+
+  test('capability grants reject malformed input and cannot be expanded by mutating the caller array', async () => {
+    for (const capabilities of [null, 'exec', {}, ['unknown'], ['exec', 'exec'], [''], [undefined]]) {
+      await expect(createCompanion({ port: 0, capabilities })).rejects.toThrow('Capabilities must be an array of unique names')
+    }
+    const capabilities = []
+    await fixture(async ({ call }) => {
+      capabilities.push('exec', 'fs', 'fetch')
+      expect((await (await call('/whoami')).json()).capabilities).toEqual([])
+      expect((await call('/jobs/run', { program: '/bin/echo', args: ['no'] })).status).toBe(403)
+    }, { capabilities })
+  })
+
+  test('direct CLI refuses to start without explicit grants and explains inference-only setup', async () => {
+    const child = Bun.spawn([process.execPath, 'host/companion.js', '--port', '0'], { cwd: new URL('..', import.meta.url).pathname, stdout: 'pipe', stderr: 'pipe' })
+    const [code, stdout, stderr] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()])
+    expect(code).not.toBe(0)
+    expect(stdout).not.toContain('Pairing token:')
+    expect(stderr).toContain('Explicit --capabilities is required')
+    expect(stderr).toContain('--capabilities model-relay --model-endpoint BASE')
+  })
+
   test('an explicit child environment is shared by commands and non-login PTYs without inheriting caller variables', async () => {
     const previous = process.env.ASKK_PACKAGE_PARENT_ONLY
     process.env.ASKK_PACKAGE_PARENT_ONLY = 'must-not-inherit'
@@ -30,7 +78,7 @@ describe('Bun companion contracts', () => {
     await until(async () => await readFile(join(root, 'environment.txt'), 'utf8').catch(() => '') === '/usr/bin:/bin\nselected-only\nunset')
     expect(await readFile(join(root, 'environment.txt'), 'utf8')).toBe('/usr/bin:/bin\nselected-only\nunset')
     await local.closeTerminal(terminal.id)
-    }, { childEnv: { PATH: '/usr/bin:/bin', ASKK_ENV_FIXTURE: 'selected-only' } }) }
+    }, { capabilities: ['exec', 'terminal'], childEnv: { PATH: '/usr/bin:/bin', ASKK_ENV_FIXTURE: 'selected-only' } }) }
     finally { if (previous === undefined) delete process.env.ASKK_PACKAGE_PARENT_ONLY; else process.env.ASKK_PACKAGE_PARENT_ONLY = previous }
   })
 
@@ -43,12 +91,12 @@ describe('Bun companion contracts', () => {
     expect((await call('/fs/read', { path: 'must-not-exist.txt' })).status).toBe(404)
     local.health = health
     expect((await local.startJob({ program: '/bin/sh', args: ['-c', 'exit 0'] })).code).toBe(0)
-  }))
+  }, { capabilities: ['fs', 'exec'] }))
 
   test('empty pairing POST, origin checks and streaming model relay match the hub protocol', async () => fixture(async ({ companion, local, call }) => {
     const response = await fetch(`${companion.url}/whoami`, { method: 'POST', headers: { authorization: `Bearer ${companion.token}` } })
     expect((await response.json()).runtime).toBe('bun')
-    expect((await local.prepare()).capabilities).toContain('terminal')
+    expect((await local.prepare()).capabilities).toEqual(['fetch'])
     expect((await call('/whoami', {}, { origin: 'https://refused.example' })).status).toBe(403)
     expect((await fetch(`${companion.url}/whoami`, { method: 'POST' })).status).toBe(401)
     const preflight = await fetch(`${companion.url}/fetch`, { method: 'OPTIONS', headers: { origin: 'https://owner.example', 'access-control-request-private-network': 'true' } })
@@ -64,7 +112,7 @@ describe('Bun companion contracts', () => {
       expect(new TextDecoder().decode((await reader.read()).value)).toBe('data: [DONE]\n\n')
       expect((await reader.read()).done).toBe(true)
     } finally { upstream.stop(true) }
-  }))
+  }, { capabilities: ['fetch'] }))
 
   test('concurrent CAS writes return one conflict, including aliases and explicit create-only null', async () => fixture(async ({ root, local }) => {
     const first = await local.write({ path: 'value.txt', content: 'initial', expectedRevision: null })
@@ -79,7 +127,7 @@ describe('Bun companion contracts', () => {
     expect((await local.write({ path: 'value.txt', content: 'overwrite', expectedRevision: null })).conflict).toBe(true)
     await expect(local.remove({ path: 'value.txt', expectedRevision: first.rev })).rejects.toMatchObject({ status: 409, conflict: true })
     expect((await local.read('value.txt')).content).toBe(current.content)
-  }))
+  }, { capabilities: ['fs'] }))
 
   test('concurrent renames cannot overwrite an existing destination', async () => fixture(async ({ local }) => {
     const a = await local.write({ path: 'a.txt', content: 'a' }); const b = await local.write({ path: 'b.txt', content: 'b' })
@@ -90,7 +138,7 @@ describe('Bun companion contracts', () => {
     expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1)
     expect(results.find(result => result.status === 'rejected').reason.status).toBe(409)
     expect((await local.list()).map(file => file.path)).toHaveLength(2)
-  }))
+  }, { capabilities: ['fs'] }))
 
   test('paths and symlinks cannot escape, and oversized writes fail before changing a file', async () => fixture(async ({ root, local }) => {
     const outside = await mkdtemp(join(tmpdir(), 'askk-outside-'))
@@ -106,7 +154,7 @@ describe('Bun companion contracts', () => {
       expect(await stat(join(outside, 'new.txt')).catch(() => null)).toBeNull()
       await expect(local.startJob({ program: '/bin/pwd', cwd: 'escape' })).rejects.toMatchObject({ status: 403 })
     } finally { await rm(outside, { recursive: true, force: true }) }
-  }))
+  }, { capabilities: ['fs', 'exec'] }))
 
   test('streaming preserves split UTF-8, stderr, fake prompt markers and the actual exit code', async () => fixture(async ({ local }) => {
     const output = []; const events = []; local.onEvent = event => events.push(event)
@@ -117,7 +165,7 @@ describe('Bun companion contracts', () => {
     expect(result).toMatchObject({ code: 7, jobId: 'unicode', cancelled: false })
     expect(events.at(-1).type).toBe('exit')
     expect(events.map(event => event.sequence)).toEqual(events.map((_, index) => index + 1))
-  }))
+  }, { capabilities: ['exec'] }))
 
   test('cancelling kills the process group and a thrown output callback also cancels work', async () => fixture(async ({ root, local }) => {
     let started = false
@@ -130,7 +178,7 @@ describe('Bun companion contracts', () => {
     expect(await stat(join(root, 'group-leak.txt')).catch(() => null)).toBeNull()
     expect(await stat(join(root, 'callback-leak.txt')).catch(() => null)).toBeNull()
     expect((await local.startJob({ program: '/bin/sh', args: ['-c', 'exit 0'] })).code).toBe(0)
-  }))
+  }, { capabilities: ['exec'] }))
 
   test('a rejected duplicate command identity never cancels the original command', async () => fixture(async ({ companion, local }) => {
     let started = false
@@ -140,7 +188,7 @@ describe('Bun companion contracts', () => {
     await expect(other.startJob({ id: 'owned-job', program: '/bin/sh', args: ['-c', 'exit 3'] })).rejects.toMatchObject({ status: 409 })
     expect(await pending).toMatchObject({ code: 0, cancelled: false })
     await other.dispose()
-  }))
+  }, { capabilities: ['exec'] }))
 
   test('Bun PTY accepts input, changes dimensions, reports shell exit and closes on dispose', async () => fixture(async ({ root, local }) => {
     const terminal = await local.openTerminal({ cols: 82, rows: 25 }); const events = []
@@ -157,7 +205,7 @@ describe('Bun companion contracts', () => {
     await local.dispose()
     await until(() => socket.readyState === WebSocket.CLOSED)
     expect(local.terminals.size).toBe(0)
-  }), 15000)
+  }, { capabilities: ['terminal'] }), 15000)
 })
 
 test('binary source snapshots preserve exact bytes and exclude generated output', async () => fixture(async ({ root, local }) => {
@@ -168,7 +216,7 @@ test('binary source snapshots preserve exact bytes and exclude generated output'
   expect(snapshot.files.map(file => file.path)).toEqual(['public/image.bin'])
   expect(Buffer.from(snapshot.files[0].base64, 'base64')).toEqual(bytes)
   await expect(local.write({ path: 'invalid.bin', base64: 'a=wrong' })).rejects.toThrow('canonical base64')
-}))
+}, { capabilities: ['fs'] }))
 
 test('model-only pairing never authorizes guest relay or native commands', async () => {
   const root = await mkdtemp(join(tmpdir(), 'askk-model-only-'))

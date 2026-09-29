@@ -362,6 +362,7 @@ export class Hub {
       this.defaultAgent = shipped.defaultAgent
       this.packageWorkflows = snapshot(shipped.workflows ?? [])
       this.shippedPackages = shipped.packages
+      this.shippedPackageSources = shipped.packageSources
       this.packages.items = installations.items
       this.publish({ type: 'packages', installations: this.packages.list() })
     })

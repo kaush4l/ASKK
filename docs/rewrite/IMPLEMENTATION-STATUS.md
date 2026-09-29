@@ -2,6 +2,14 @@
 
 Evidence checkpoint: 2026-09-29. Latest published source `7da7423` adds browser Agent studio on top of portable folder workflows, declared execution/check bindings and Settings hydration repair; evidence follows below. Preceding source `91612b9` added server-enforced model relay scope, durable downgrade protection, worker revocation, a downloadable bundled Mac companion and Goal/Evidence team presentation. Actual Pages Chrome completed a model reply and an approved tool turn through the packaged relay, restored pairing and a draft after reload, and downloaded the matching archive. Native execution and Browser Linux remained Not started. Current native Safari, physical iPhone, VoiceOver and Browser Linux Next-build acceptance remain pending. These are engineering-preview results, not production readiness or one-shot reliability.
 
+## Candidate: portable copies and run-linked receipts
+
+The next export adds **Customize a copy** for verified bundled/installed folders, versioned saved-draft download/restore, and the latest recorded tool outcome directly on each agent run card. Approval controls retain priority; receipt matching uses run IDs rather than display names. Local Chrome copied both an installed folder and all 30 editable files in the bundled starter, downloaded/restored a draft, validated the restored folder without installation, and opened a historical run's matching tool receipt. [Local evidence](evidence/package-backup-local-chrome.json), [restored review](evidence/package-backup-local-chrome.png).
+
+Companion source now requires explicit CLI grants; the API defaults to no grants and snapshots the granted list. Tests prove refused file/command/terminal/network routes do not produce side effects. The existing downloadable package is unchanged and already requires explicit grants in its launcher; this does not update an already-running companion.
+
+Regression: **780 passed, 1 skipped, 0 failed, 5714 assertions**, 72 files, 20.44 seconds. Export: **828,777,586 bytes / 199 files**, artifact hash `4ea759f941052f71778c85dc1158983b361966d566ee5ede2c1c8aff93eb414f`. Publishing and hosted verification are recorded separately. The manifest/broker boundary, Apple adapter, Safari/iPhone acceptance and Browser Linux Next build remain open.
+
 ## Published Agent studio
 
 The browser can now create, resume and edit agent folders without a host checkout. Drafts preserve invalid source durably, detect version conflicts and install only a reviewed saved revision as a new agent. Existing installations are unchanged. The simple instructions field and source editor share `soul.md`. Draft editing remains available during work; installation retains the idle admission boundary.

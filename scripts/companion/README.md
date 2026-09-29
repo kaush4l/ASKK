@@ -40,6 +40,8 @@ mkdir -m 700 "$HOME/.askk-pairing"
 
 All grants are required flags. For inference alone, specify `--capabilities model-relay` and your explicit `--model-endpoint` base; add `network-relay` only when you intend general network access for Browser Linux. `--allow-origin` accepts exact HTTPS origins (or HTTP loopback origins); repeat it for additional pages. `--port` defaults to 7717. `--check` verifies hashes and path configuration, including model endpoint syntax, without opening a server or creating a token; it does not verify TLS key matching, browser trust or model readiness. `--help` is safe without credentials.
 
+Direct source launches with `bun host/companion.js` also require explicit `--capabilities`; omission stops startup with guidance. Programmatic `createCompanion()` calls default to no grants, and reject unknown, duplicate or malformed grants. The server copies the supplied grant list at startup so later caller mutations cannot expand authority. These source changes do not alter previously built archives; rebuild and verify a new package to include them.
+
 ### Model-only scope
 
 `--model-endpoint` is repeatable and independent of the `model-relay` grant. For each exact API base, the server allows only `GET <base>/models`, `POST <base>/chat/completions`, and `POST <base>/messages`, matching the current HTTP model adapters. It does not authorize arbitrary paths under `/v1`, model-management endpoints, other HTTP methods, query strings, credentials in URLs, ambiguous/encoded paths, or redirects. Configure the final endpoint directly. Custom query-based provider routes require a future explicit contract; they are not silently passed through.

@@ -63,15 +63,15 @@ These commands build the UI and publish its worker graph. They do **not** compil
 **Local Bun** requires the companion and explicit runtime selection:
 
 ```sh
-bun host/companion.js --root /absolute/path/to/project --allow-origin http://127.0.0.1:5187
+bun host/companion.js --root /absolute/path/to/project --capabilities fs,exec,terminal --allow-origin http://127.0.0.1:5187
 ```
 
-For model access alone, start the companion with `--capabilities model-relay` and pair its printed URL/token in Settings → Model → Through HTTPS companion. Use Settings → Execution for host filesystem and command access. Pairing a model relay does not itself select native commands. Moving an existing workspace requires an explicit snapshot transfer into an empty destination. Commands run as your user; filesystem API confinement is not an OS sandbox.
+For model access alone, start the companion with `--capabilities model-relay --model-endpoint http://127.0.0.1:8873/v1` (substitute your explicit model API base) and pair its printed URL/token in Settings → Model → Through HTTPS companion. Use Settings → Execution for host filesystem and command access. Pairing a model relay does not itself select native commands. Moving an existing workspace requires an explicit snapshot transfer into an empty destination. Commands run as your user; filesystem API confinement is not an OS sandbox.
 
 A hosted HTTPS page needs a browser-trusted HTTPS companion for the intended Chrome/Safari flow. Given an already trusted certificate/key valid for `127.0.0.1`:
 
 ```sh
-bun host/companion.js --root /absolute/path/to/project \
+bun host/companion.js --root /absolute/path/to/project --capabilities fs,exec,terminal \
   --tls-cert /path/to/loopback-cert.pem --tls-key /path/to/loopback-key.pem \
   --allow-origin https://kaush4l.github.io
 ```

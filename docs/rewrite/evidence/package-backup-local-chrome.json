@@ -1,0 +1,22 @@
+{
+  "date": "2026-09-29",
+  "surface": "Chrome desktop, local production export /ASKK",
+  "checks": {
+    "installedFolderCopy": "Reading companion copied into independent draft",
+    "download": "Browser-created agent-draft.askk-draft.json, 758 bytes; SHA256 09a752589e0c4b8b4378fd6ab1baacfe83086e2be1445dc82b57f0daf018e094",
+    "restore": "Exact file selected by native Go to path; new draft created; original drafts retained; review validated without installation",
+    "bundledFolderCopy": "assistant copy includes 30 editable files, all roles, workflows, strategies and prompts",
+    "reload": "Copied and restored drafts retained",
+    "linkedReceipt": "After final rebuild, recorded assistant run card opens its completed todo_read action"
+  },
+  "interventions": [
+    "Extension upload unavailable; native file picker used without changing security settings",
+    "Initial picker selection chose a different JSON document and was rejected; exact path selection restored the correct backup"
+  ],
+  "limits": [
+    "No fresh model inference in this slice",
+    "No Safari, physical iPhone or VoiceOver acceptance",
+    "No Browser Linux build acceptance",
+    "Draft format carries text source only, not binary files, memory, credentials or tool grants"
+  ]
+}

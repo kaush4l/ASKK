@@ -143,3 +143,62 @@ test('closing during preview rejects admission; closing after acknowledged save 
   expect(saved).toMatchObject({ label: 'Saved before close', version: 2 })
   expect(await new PackageDrafts(hub).read(draft.id)).toEqual(saved)
 })
+
+test('portable backup preserves unfinished text and imports with a new identity without activation', async () => {
+  const { hub, drafts } = await fixture()
+  const authored = [{ path: 'agent.md', content: '---\nbroken: [\r\n\u0000😀\ud800' }, { path: 'notes/unfinished.txt', content: '' }]
+  const draft = await drafts.create({ label: 'Unfinished 🧰', files: authored })
+  await hub.store.put('settings', { key: 'provider-secret', value: { apiKey: 'never-export-this' } })
+  const backup = await drafts.exportBackup(draft.id, { expectedVersion: 1 })
+  expect(backup).toMatchObject({ filename: 'agent-draft.askk-draft.json', mimeType: 'application/json' })
+  expect(JSON.parse(backup.text)).toEqual({ format: 'askk-agent-draft', version: 1, label: draft.label, files: authored })
+  expect(backup.text).not.toContain('never-export-this')
+  const imported = await drafts.importBackup(backup.text)
+  const importedAgain = await drafts.importBackup(backup.text)
+  expect(new Set([draft.id, imported.id, importedAgain.id]).size).toBe(3)
+  expect(imported).toMatchObject({ version: 1, files: authored, label: draft.label })
+  expect(await drafts.read(draft.id)).toEqual(draft)
+  expect(drafts.reviews.size).toBe(0)
+  expect(hub.packages.stages.size).toBe(0)
+  expect(hub.packages.list()).toEqual([])
+  expect(hub.specs.size).toBe(0)
+})
+
+test('backup export refuses stale revisions and follows preceding queued saves', async () => {
+  const { drafts } = await fixture()
+  const draft = await drafts.create({ files })
+  const saving = drafts.save(draft.id, { expectedVersion: 1, label: 'Changed' })
+  const exporting = drafts.exportBackup(draft.id, { expectedVersion: 1 })
+  await saving
+  await expect(exporting).rejects.toThrow('changed')
+  await expect(drafts.exportBackup(draft.id)).rejects.toThrow('changed')
+  const backup = await drafts.exportBackup(draft.id, { expectedVersion: 2 })
+  expect(JSON.parse(backup.text).label).toBe('Changed')
+})
+
+test('backup rejects unsupported envelopes and unsafe files before creating anything', async () => {
+  const { drafts } = await fixture()
+  const draft = await drafts.create({ files })
+  const good = { format: 'askk-agent-draft', version: 1, label: 'Imported', files }
+  for (const value of [null, [], { ...good, version: 2 }, { ...good, format: 'package' }, { ...good, id: draft.id }, { ...good, bindings: {} }, { ...good, credentials: {} }, { ...good, history: [] }, { ...good, label: null }, { ...good, files: [{ path: '../agent.md', content: '' }] }, { ...good, files: [{ path: 'askk.lock.json', content: '' }] }, { ...good, files: [{ ...files[0], mode: 'text' }] }, { ...good, files: [files[0], { ...files[0], path: 'AGENT.md' }] }]) {
+    await expect(drafts.importBackup(JSON.stringify(value))).rejects.toThrow()
+  }
+  await expect(drafts.importBackup('{')).rejects.toThrow('JSON')
+  await expect(drafts.importBackup(good)).rejects.toThrow('text JSON')
+  expect(await drafts.list()).toHaveLength(1)
+  expect(await drafts.read(draft.id)).toEqual(draft)
+})
+
+test('backup import respects admission and failed writes preserve all prior work', async () => {
+  const { hub, drafts } = await fixture()
+  const draft = await drafts.create({ files })
+  const backup = await drafts.exportBackup(draft.id, { expectedVersion: 1 })
+  hub.store.durable = false
+  await expect(drafts.importBackup(backup.text)).rejects.toThrow('durable')
+  hub.store.durable = true
+  hub.store.update = async () => { throw new Error('QuotaExceededError') }
+  await expect(drafts.importBackup(backup.text)).rejects.toThrow('Quota')
+  expect(await drafts.list()).toHaveLength(1)
+  expect(await drafts.read(draft.id)).toEqual(draft)
+  expect(drafts.reviews.size).toBe(0)
+})

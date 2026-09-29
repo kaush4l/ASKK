@@ -75,6 +75,7 @@ export default function Dashboard({ state = {}, goal = '', onGoalChange, onSubmi
   const tools = roleGroups.flatMap(group => group.definition?.tools || [])
   const toolEnabled = tool => tool.available !== false && tool.selected !== false && actionOf(tool) !== 'deny' && !disabled.has(tool.name) && (tool.tier !== 'agent' || !graph && Boolean(policy.allowDelegation))
   const allTools = new Map(definitions.flatMap(agent => (agent.tools || []).map(tool => [tool.name, tool])))
+  const recordedTools = (state.messages || []).flatMap(message => message.tools || [])
   const activity = (state.messages || []).flatMap(message => (message.tools || []).map(tool => ({ ...tool, at: message.at }))).slice(-6).reverse()
   const answer = [...(state.messages || [])].reverse().find(message => message.role === 'assistant' && textOf(message.content).trim())
   const advertisedBrowser = ['browser', 'browser-control'].some(cap => capabilities.has(cap)) && tools.some(tool => toolEnabled(tool) && /^(browser[._]|host_browser)/.test(tool.name))
@@ -116,7 +117,7 @@ export default function Dashboard({ state = {}, goal = '', onGoalChange, onSubmi
 
           {approvals.length > 0 && <section className="dashboard-approvals" aria-label="Actions awaiting your approval"><div className="dashboard-section-heading"><h2>Your decision is needed</h2><span>{approvals.length} pending</span></div>{approvals.map(approval => <article key={approval.id} className="dashboard-approval"><div className="dashboard-approval-title"><Icon name="warning" size={16}/><h3 id={`${formId}-approval-${approval.id}`} tabIndex={-1}>{titleOf(approval.tool || approval.call)}</h3><span>{riskNames[approval.risk] || 'Action'}</span></div><p>{approval.agent} · {approval.reason || 'This action requires your approval.'}</p><details><summary>Review exact input</summary><pre>{textOf(approval.args)}</pre></details><div className="dashboard-approval-actions"><button type="button" onClick={() => onApprove?.(approval.id, false)}>Deny</button><button type="button" onClick={() => onApprove?.(approval.id, true)}>Approve once</button></div></article>)}</section>}
 
-          <AgentTeam runs={state.agents || []} definitions={definitions} approvals={approvals} activeRunId={state.run?.run || task?.id} onInspectRun={onInspectRun} onInspectAgent={onInspectAgent} onStopAgent={onStopAgent} onReviewApproval={id => document.getElementById(`${formId}-approval-${id}`)?.focus()}/>
+          <AgentTeam tools={recordedTools} onOpenTool={onOpenTool} runs={state.agents || []} definitions={definitions} approvals={approvals} activeRunId={state.run?.run || task?.id} onInspectRun={onInspectRun} onInspectAgent={onInspectAgent} onStopAgent={onStopAgent} onReviewApproval={id => document.getElementById(`${formId}-approval-${id}`)?.focus()}/>
 
           <StrategyProgress task={task} definition={graph} agents={definitions} onInspectRun={onInspectRun}/>
 

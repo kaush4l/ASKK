@@ -248,3 +248,44 @@ test('large streamed activity and task descriptions are bounded in the actual DO
   const tree = render({ runs: [run('unicode', { current: 'A'.repeat(279) + '🌱' + 'B'.repeat(20) })] })
   expect(all(tree, node => attr(node, 'class') === 'agent-instance-task').map(text)).toEqual(['A'.repeat(279) + '…'])
 })
+
+test('tool links retain exact run and call identity across identical agent and tool names', () => {
+  const tools = [{ id: 'old', runId: 'one', name: 'workspace_read', status: 'done' }, { id: 'other', runId: 'two', name: 'workspace_read', status: 'failed' }, { id: 'latest', runId: 'one', name: 'workspace_read', status: 'running' }, { id: 'unowned', agent: 'Pond observer', name: 'workspace_read', status: 'done' }]
+  const team = projectAgentTeam({ runs: [run('one'), run('two'), run('three')], tools })
+  expect(team.current.map(item => [item.run.id, item.tool?.id])).toEqual([['one', 'latest'], ['three', undefined], ['two', 'other']])
+  const opened = []
+  for (const item of team.current) {
+    const control = buttons(AgentInstance({ item, onOpenTool: tool => opened.push(tool) })).find(button => button.props.className === 'agent-instance-tool')
+    control?.props.onClick()
+  }
+  expect(opened).toEqual([tools[2], tools[1]])
+  expect(opened[0]).toBe(tools[2])
+  const tree = render({ runs: [run('one'), run('two')], tools, onOpenTool: () => {} })
+  expect(text(cards(tree)[0])).toContain('Workspace readRunning')
+  expect(text(cards(tree)[1])).toContain('Workspace readFailed')
+})
+
+test('an exact pending decision keeps priority over the linked tool in the fixed attention slot', () => {
+  const tools = [{ id: 'call', runId: 'one', name: 'workspace_write', status: 'running' }]
+  const approvals = [{ id: 'approval', run: 'one', callId: 'call' }]
+  const item = projectAgentTeam({ runs: [run('one')], tools, approvals }).current[0]
+  expect(item.toolStatus).toBe('awaiting_approval')
+  const called = []
+  const controls = buttons(AgentInstance({ item, onOpenTool: () => called.push('tool'), onReviewApproval: id => called.push(id) }))
+  expect(controls.some(button => button.props.className === 'agent-instance-tool')).toBe(false)
+  controls.find(button => button.props['aria-label']?.startsWith('Review 1 pending')).props.onClick()
+  expect(called).toEqual(['approval'])
+  const settled = projectAgentTeam({ runs: [run('one')], tools: [{ ...tools[0], status: 'failed' }], approvals }).current[0]
+  expect(settled.toolStatus).toBe('failed')
+})
+
+test('dashboard links an instance receipt even when it falls outside six recent global actions', () => {
+  const retained = { id: 'retained-call', runId: 'one', name: 'workspace_read', status: 'unresolved' }
+  const tools = [retained, ...Array.from({ length: 7 }, (_, i) => ({ id: `later-${i}`, runId: 'other', name: 'workspace_write', status: 'done' }))]
+  const tree = parseFragment(renderToStaticMarkup(<Dashboard state={{ agents: [run('one')], agentDefinitions: definitions, messages: [{ tools }] }} onOpenTool={() => {}}/>))
+  const card = cards(tree).find(node => attr(node, 'data-run-id') === 'one')
+  const control = all(card, node => node.tagName === 'button' && attr(node, 'class') === 'agent-instance-tool')[0]
+  expect(control).toBeDefined()
+  expect(attr(control, 'aria-label')).toContain('Outcome not recorded')
+  expect(attr(control, 'aria-label')).toContain('run one')
+})

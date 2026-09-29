@@ -88,3 +88,8 @@
 @media (max-width: 560px) { .agent-team-grid { grid-template-columns: minmax(0, 1fr); }.agent-team-heading h2 { font-size: 19px; } }
 @media (pointer: coarse) { .agent-instance-relation button { min-height: 44px; } }
 @media (prefers-reduced-motion: reduce) { .agent-team *, .agent-team *::before, .agent-team *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
+
+.agent-instance-attention > .agent-instance-tool { width: 100%; min-width: 0; color: var(--secondary); text-align: left; }
+.agent-instance-tool > svg { flex-shrink: 0; }
+.agent-instance-tool > span { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-instance-tool > small { max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }

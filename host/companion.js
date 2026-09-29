@@ -11,6 +11,7 @@ const failure = (message, status = 400, code = 'request.invalid') => Object.assi
 const json = (value, status = 200, headers = {}) => Response.json(value, { status, headers })
 const ignored = new Set(['node_modules', '.git', '.next', '.cache', 'out', 'dist'])
 const mime = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2' }
+const capabilityNames = Object.freeze(['fs', 'exec', 'terminal', 'fetch', 'model-relay', 'network-relay'])
 const modelRoutes = Object.freeze([['GET', '/models'], ['POST', '/chat/completions'], ['POST', '/messages']])
 const modelHeaders = new Set(['accept', 'content-type', 'authorization', 'x-api-key', 'openai-organization', 'openai-project', 'anthropic-version', 'anthropic-beta', 'anthropic-dangerous-direct-browser-access'])
 
@@ -53,7 +54,9 @@ export async function createCompanion(options = {}) {
   const root = await realpath(options.root ?? process.cwd())
   const token = options.token ?? randomBytes(32).toString('base64url')
   const origins = new Set(options.origins ?? ['https://kaush4l.github.io', 'http://localhost:5187', 'http://127.0.0.1:5187'])
-  const capabilities = options.capabilities ?? ['fs', 'exec', 'terminal', 'fetch', 'model-relay', 'network-relay']
+  const requestedCapabilities = options.capabilities === undefined ? [] : options.capabilities
+  if (!Array.isArray(requestedCapabilities) || new Set(requestedCapabilities).size !== requestedCapabilities.length || [...requestedCapabilities].some(name => !capabilityNames.includes(name))) throw new Error(`Capabilities must be an array of unique names from: ${capabilityNames.join(',')}`)
+  const capabilities = Object.freeze([...requestedCapabilities])
   const modelEndpoints = normalizeModelEndpoints(options.modelEndpoints)
   const modelRelay = Object.freeze({ version: 1, endpoint: '/model/fetch', endpoints: modelEndpoints, status: modelEndpoints.length ? 'configured' : 'scope-required' })
   const childEnv = options.childEnv === undefined ? process.env : { ...options.childEnv }
@@ -238,6 +241,7 @@ export async function createCompanion(options = {}) {
 
 if (import.meta.main) {
   const args = {}; for (let i = 2; i < process.argv.length; i++) { const name = process.argv[i].replace(/^--/, ''); if (['allow-origin', 'model-endpoint'].includes(name)) (args[name] ??= []).push(process.argv[++i]); else args[name] = process.argv[++i] }
+  if (!args.capabilities) throw new Error(`Explicit --capabilities is required; list only the grants you intend from: ${capabilityNames.join(',')}. For inference alone use --capabilities model-relay --model-endpoint BASE.`)
   const companion = await createCompanion({ root: args.root, port: Number(args.port ?? 7717), cert: args['tls-cert'], key: args['tls-key'], token: process.env.ASKK_PAIRING_TOKEN, origins: args['allow-origin'], capabilities: args.capabilities?.split(','), modelEndpoints: args['model-endpoint'] })
   console.log(`ASKK companion · ${companion.url}\nProject: ${companion.root}\nPairing token: ${companion.token}`)
   for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, async () => { await companion.close(); process.exit(0) })

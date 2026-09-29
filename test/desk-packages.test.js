@@ -39,6 +39,8 @@ test('shipped and imported copies use the same validated agent behavior and expl
   expect(desk.specs[0].services.compaction).toBe('bundled/demo/summarizer')
   expect(installed[0].services.compaction).toBe('installed/demo/summarizer')
   expect(desk.packages[0].revisionDigest).toBe(pkg.data.revisionDigest)
+  expect(desk.packageSources).toEqual([{ id: 'demo', data: pkg.data }])
+  expect(Object.isFrozen(desk.packageSources[0].data)).toBe(true)
   expect(Object.isFrozen(desk.specs[0].engine)).toBe(true)
 })
 

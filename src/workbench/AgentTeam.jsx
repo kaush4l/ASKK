@@ -2,10 +2,12 @@
 
 import { useId, useMemo, useState } from 'react'
 import Icon from './Icons.jsx'
+import { toolPresentationStatus } from './ToolCard.jsx'
 import './agent-team.css'
 
 const LIVE = new Set(['queued', 'starting', 'thinking', 'calling', 'running', 'waiting', 'compacting', 'cancelling', 'verifying', 'unresponsive'])
 const LABELS = { queued: 'Queued', starting: 'Starting', thinking: 'Generating reply', calling: 'Using a tool', running: 'Running', waiting: 'Waiting', compacting: 'Organizing context', cancelling: 'Stopping', verifying: 'Verifying', unresponsive: 'Response delayed', done: 'Completed', completed: 'Completed', verified: 'Verified', failed: 'Failed', error: 'Failed', incomplete: 'Incomplete', cancelled: 'Stopped', stopped: 'Stopped', interrupted: 'Interrupted', skipped: 'Skipped', idle: 'Idle', ready: 'Ready' }
+const TOOL_LABELS = { running: 'Running', waiting: 'Waiting', awaiting_approval: 'Awaiting approval', done: 'Completed', completed: 'Completed', success: 'Completed', failed: 'Failed', error: 'Failed', interrupted: 'Interrupted', cancelled: 'Stopped', unresolved: 'Outcome not recorded' }
 const SUCCESS = new Set(['done', 'completed', 'verified'])
 const PROBLEM = new Set(['failed', 'error', 'incomplete', 'interrupted', 'unresponsive'])
 const identityOf = run => run.path || run.agent || ''
@@ -20,7 +22,9 @@ const activityPreview = value => {
 const initialCount = { current: 6, recent: 6 }
 
 /** Only recorded identities establish membership; names and descriptions never do. */
-export function projectAgentTeam({ runs = [], definitions = [], approvals = [], activeRunId } = {}) {
+export function projectAgentTeam({ runs = [], definitions = [], approvals = [], tools = [], activeRunId } = {}) {
+  const latestTools = new Map()
+  for (const tool of tools) if (tool?.runId && tool?.id) latestTools.set(tool.runId, tool)
   const index = new Map(runs.filter(run => run?.id).map(run => [run.id, run]))
   const records = [...index.values()].filter(run => run.kind !== 'strategy')
   const selected = index.get(activeRunId)
@@ -50,7 +54,7 @@ export function projectAgentTeam({ runs = [], definitions = [], approvals = [], 
     const status = needsDecision ? 'Needs your decision' : LABELS[run.status] || 'Status unavailable'
     const tone = PROBLEM.has(run.status) ? 'problem' : needsDecision ? 'decision' : SUCCESS.has(run.status) ? 'complete' : live ? 'live' : 'neutral'
     const icon = run.status === 'cancelling' ? 'stop' : tone === 'problem' || needsDecision ? 'warning' : tone === 'complete' ? 'check' : run.status === 'calling' ? 'bolt' : null
-    return { run, name: nameOf(run), identity: identityOf(run), definitionAvailable: definitions.some(definition => definition.path === identityOf(run)), live, status, pending, decisions, selected: belongs(run), parentName: parent ? nameOf(parent) : '', parentAvailable: Boolean(parent), parentLabel: parent?.kind === 'strategy' || run.stageId || run.kind === 'strategy-role' ? 'Parent run' : 'Delegated by', tone, icon }
+    return { run, tool: latestTools.get(run.id), toolStatus: latestTools.has(run.id) ? toolPresentationStatus(latestTools.get(run.id), approvals) : null, name: nameOf(run), identity: identityOf(run), definitionAvailable: definitions.some(definition => definition.path === identityOf(run)), live, status, pending, decisions, selected: belongs(run), parentName: parent ? nameOf(parent) : '', parentAvailable: Boolean(parent), parentLabel: parent?.kind === 'strategy' || run.stageId || run.kind === 'strategy-role' ? 'Parent run' : 'Delegated by', tone, icon }
   })
   // Selected-task slots survive terminal transitions. Selection and the current
   // roster are the only sources of membership; no old task is retained in state.
@@ -59,8 +63,10 @@ export function projectAgentTeam({ runs = [], definitions = [], approvals = [], 
   return { current, live: items.filter(item => item.live).sort(byTime(1)), recent: items.filter(item => !item.live && !item.selected).sort(byTime(-1)), attention: current.filter(item => item.pending || item.tone === 'problem'), selectedCount: items.filter(item => item.selected).length, total: items.length }
 }
 
-export function AgentInstance({ item, instanceId, detailsOpen = false, onToggleDetails, onInspectRun, onInspectAgent, onStopAgent, onReviewApproval }) {
-  const { run, name, identity, definitionAvailable, live, status, pending, decisions, selected, parentName, parentAvailable, parentLabel, tone, icon } = item
+export function AgentInstance({ item, instanceId, detailsOpen = false, onToggleDetails, onInspectRun, onInspectAgent, onStopAgent, onReviewApproval, onOpenTool }) {
+  const { run, tool, toolStatus, name, identity, definitionAvailable, live, status, pending, decisions, selected, parentName, parentAvailable, parentLabel, tone, icon } = item
+  const toolLabel = tool ? String(tool.name || 'Tool action').replace(/[_.]/g, ' ').replace(/^\w/, letter => letter.toUpperCase()) : ''
+  const toolOutcome = TOOL_LABELS[toolStatus] || toolStatus || 'Outcome not recorded'
   const initials = name.trim().split(/\s+/).slice(0, 2).map(part => [...part][0]).join('').toLocaleUpperCase()
   const activity = activityPreview(text(run.current).trim() || text(run.description).trim())
   const hasResult = run.result !== undefined && run.result !== null && run.result !== ''
@@ -73,7 +79,7 @@ export function AgentInstance({ item, instanceId, detailsOpen = false, onToggleD
       <span className="agent-instance-task" id={`${descriptionId}-activity`}>{activity || (live ? 'No activity detail recorded yet.' : hasResult ? 'Recorded result available to inspect.' : 'No activity detail recorded.')}</span>
     </button>
     <div className="agent-instance-tags"><span className="agent-instance-suffix" title={run.id}>#{String(run.id).slice(-8)}</span>{selected && <span>Selected task</span>}</div>
-    <div className="agent-instance-attention">{pending > 0 && (onReviewApproval && decisions[0]?.id ? <button type="button" onClick={() => onReviewApproval(decisions[0].id)} aria-label={`Review ${pending} pending ${pending === 1 ? 'decision' : 'decisions'} for ${name} run ${run.id}`}><Icon name="warning" size={13}/>{pending} pending {pending === 1 ? 'decision' : 'decisions'}<Icon name="right" size={12}/></button> : <span><Icon name="warning" size={13}/>{pending} pending {pending === 1 ? 'decision' : 'decisions'}</span>)}</div>
+    <div className="agent-instance-attention">{pending > 0 && (onReviewApproval && decisions[0]?.id ? <button type="button" onClick={() => onReviewApproval(decisions[0].id)} aria-label={`Review ${pending} pending ${pending === 1 ? 'decision' : 'decisions'} for ${name} run ${run.id}`}><Icon name="warning" size={13}/>{pending} pending {pending === 1 ? 'decision' : 'decisions'}<Icon name="right" size={12}/></button> : <span><Icon name="warning" size={13}/>{pending} pending {pending === 1 ? 'decision' : 'decisions'}</span>)}{!pending && tool && (onOpenTool ? <button className="agent-instance-tool" type="button" onClick={() => onOpenTool(tool)} aria-label={`Inspect latest tool ${toolLabel} · ${toolOutcome} for ${name} run ${run.id}`} title={`${toolLabel} · ${toolOutcome}`}><Icon name="bolt" size={13}/><span>{toolLabel}</span><small>{toolOutcome}</small><Icon name="right" size={12}/></button> : <span className="agent-instance-tool" title={`${toolLabel} · ${toolOutcome}`}><Icon name="bolt" size={13}/><span>{toolLabel}</span><small>{toolOutcome}</small></span>)}</div>
     <details className="agent-instance-details" open={detailsOpen}>
       <summary onClick={event => { if (onToggleDetails) { event.preventDefault(); onToggleDetails(run.id, !detailsOpen) } }}>Run details &amp; actions<Icon name="down" size={13}/></summary>
       <div className="agent-instance-evidence">
@@ -93,13 +99,13 @@ export function AgentInstance({ item, instanceId, detailsOpen = false, onToggleD
 }
 
 /** Run-instance projection only. No agent execution, inferred messages or idle catalogue entries. */
-export default function AgentTeam({ runs = [], definitions = [], approvals = [], activeRunId, onInspectRun, onInspectAgent, onStopAgent, onReviewApproval }) {
+export default function AgentTeam({ runs = [], definitions = [], approvals = [], tools = [], activeRunId, onInspectRun, onInspectAgent, onStopAgent, onReviewApproval, onOpenTool }) {
   const heading = useId()
   const [visible, setVisible] = useState(initialCount)
   const [view, setView] = useState('goal')
   const [expanded, setExpanded] = useState({})
-  const team = useMemo(() => projectAgentTeam({ runs, definitions, approvals, activeRunId }), [runs, definitions, approvals, activeRunId])
-  const callbacks = { onInspectRun, onInspectAgent, onStopAgent, onReviewApproval, onToggleDetails: (id, open) => setExpanded(value => ({ ...value, [id]: open })) }
+  const team = useMemo(() => projectAgentTeam({ runs, definitions, approvals, tools, activeRunId }), [runs, definitions, approvals, tools, activeRunId])
+  const callbacks = { onOpenTool, onInspectRun, onInspectAgent, onStopAgent, onReviewApproval, onToggleDetails: (id, open) => setExpanded(value => ({ ...value, [id]: open })) }
   function renderGroup(group) {
     const items = team[group]
     if (!items.length) return null
