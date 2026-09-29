@@ -1,0 +1,17 @@
+{
+  "checks": [
+    {
+      "capability": "workspace.commands",
+      "options": {
+        "commands": [
+          "bun -e 'const r=Bun.spawnSync([process.execPath,\"total.js\",...[\"2\",\"3\"]],{timeout:5000});if(!(r.exitCode===0&&!r.signalCode&&!r.error&&r.stdout.toString()===\"5\\n\"))process.exit(1)'",
+          "bun -e 'const r=Bun.spawnSync([process.execPath,\"total.js\",...[\"-2\",\"-3\"]],{timeout:5000});if(!(r.exitCode===0&&!r.signalCode&&!r.error&&r.stdout.toString()===\"-5\\n\"))process.exit(1)'",
+          "bun -e 'const r=Bun.spawnSync([process.execPath,\"total.js\",...[]],{timeout:5000});if(!(r.exitCode===0&&!r.signalCode&&!r.error&&r.stdout.toString()===\"0\\n\"))process.exit(1)'",
+          "bun -e 'const r=Bun.spawnSync([process.execPath,\"total.js\",...[\"invalid\"]],{timeout:5000});if(!(Number.isInteger(r.exitCode)&&r.exitCode!==0&&!r.signalCode&&!r.error))process.exit(1)'",
+          "bun -e 'const r=Bun.spawnSync([process.execPath,\"total.js\",...[\"7bad\"]],{timeout:5000});if(!(Number.isInteger(r.exitCode)&&r.exitCode!==0&&!r.signalCode&&!r.error))process.exit(1)'"
+        ],
+        "requireFresh": true
+      }
+    }
+  ]
+}

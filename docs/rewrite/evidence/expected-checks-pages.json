@@ -1,0 +1,45 @@
+{
+  "source": "b9ae8ecc",
+  "deployment": "830fcc8ac0528f5e0346e7be8f976bd4ff6186ab",
+  "workflow": "https://github.com/kaush4l/ASKK/actions/runs/36581450992",
+  "verifiedAt": "2026-09-29T14:19:00.838Z",
+  "scope": "Hosted bytes match tested export. No browser runtime acceptance inferred.",
+  "export": {
+    "version": 1,
+    "basePath": "/ASKK",
+    "totalBytes": 879666452,
+    "fileCount": 216,
+    "runtimeId": "c2w-node24-38d093f4a38002db",
+    "artifactHash": "05483d403a1ea99040340c5ee973c8f8d079e3d69005863ae66d9b83b22fa700"
+  },
+  "files": [
+    {
+      "path": "index.html",
+      "bytes": 41028,
+      "localSHA256": "b199d9f9fa7f4b18aa39acec8b54d6ff59dd08a9ded52b5789c840e5a99f0261",
+      "hostedSHA256": "b199d9f9fa7f4b18aa39acec8b54d6ff59dd08a9ded52b5789c840e5a99f0261",
+      "matches": true
+    },
+    {
+      "path": "_next/static/chunks/app/page-be9ac017db897080.js",
+      "bytes": 329582,
+      "localSHA256": "6ca685a2556769e07eec120a6e21236f714f784a272dd2a4c2f6c4022fa77aa4",
+      "hostedSHA256": "6ca685a2556769e07eec120a6e21236f714f784a272dd2a4c2f6c4022fa77aa4",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/core/completion-evidence.js",
+      "bytes": 1520,
+      "localSHA256": "a8275aa66a3630f428f5e95b4a33b8676c8d5950595e11eb02c423ebf1956ac5",
+      "hostedSHA256": "a8275aa66a3630f428f5e95b4a33b8676c8d5950595e11eb02c423ebf1956ac5",
+      "matches": true
+    },
+    {
+      "path": "agents/index.json",
+      "bytes": 10465,
+      "localSHA256": "aec6152f6ab2fca7a7cdfbed20ce9b08f5710109f36849d4029aac1cf10fd592",
+      "hostedSHA256": "aec6152f6ab2fca7a7cdfbed20ce9b08f5710109f36849d4029aac1cf10fd592",
+      "matches": true
+    }
+  ]
+}

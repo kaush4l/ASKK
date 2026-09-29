@@ -1,6 +1,8 @@
 # Implementation status
 
-Latest publication: source **`e7e19081`**, deployment **`d02543f1`**, [successful Pages workflow](https://github.com/kaush4l/ASKK/actions/runs/36578773412). [Hosted evidence](evidence/model-discovery-pages.json) confirms the page, workbench chunk, runtime context, workspace controller and agent index match the tested export. Export: **879,666,446 bytes / 216 files**.
+Latest publication: source **`b9ae8ecc`**, deployment **`830fcc8a`**, [successful Pages workflow](https://github.com/kaush4l/ASKK/actions/runs/36581450992). [Hosted evidence](evidence/expected-checks-pages.json) confirms the page, workbench chunk, completion module and agent index match the tested export. Export: **879,666,452 bytes / 216 files**.
+
+Historical publication: source **`e7e19081`**, deployment **`d02543f1`**, [successful Pages workflow](https://github.com/kaush4l/ASKK/actions/runs/36578773412). [Hosted evidence](evidence/model-discovery-pages.json) confirms the page, workbench chunk, runtime context, workspace controller and agent index match the tested export. Export: **879,666,446 bytes / 216 files**.
 
 ## Expected rejection and configured assertions
 
@@ -9,6 +11,10 @@ The script evaluator now supplies four exact assertion commands through the exis
 Independent script checks now require exact newline output and reject numeric prefixes, malformed exponents and mixed invalid arguments. Independent checks retain signal evidence and reject signal termination; a real companion probe confirmed signal exits otherwise appear as code -1. Repair-cycle checks reject signaled receipts too. Native-worker fixtures cover valid source, missing assertions, missing newline, permissive parsing and signal termination.
 
 The dashboard now says **Required commands passed · only configured checks covered** for required-command receipts, while retaining the raw-command warning. Validation: **986 passed, 1 skipped, 0 failed**, 7,353 assertions across 96 files. The static export built successfully. No new Safari/iPhone or Browser Linux acceptance is claimed.
+
+[Fresh script diagnostics](evidence/expected-script-checks.json) retain four attempts, including a preliminary 4B run before signal rejection was tightened. The final 4B run completed all configured checks but failed withheld numeric-prefix behavior. The final 1.7B run hit the 240-second deadline, retained incorrect string-concatenation code and failed acceptance. This bounded failure is not a capability ceiling or a timing benchmark.
+
+A further 4B trial used an [additional visible `7bad` assertion](evidence/script-prefix-required-checks.json), with the same agent instructions, engine and withheld checks. It generated source that passed every withheld case, but changed a required negative-input command’s string arguments into numeric arguments, omitted required checks and exhausted its steps. It remains incomplete, not a success. These results motivate selecting configured checks by reference through the existing permission path; the design is documented in [AGENT-SKELETON.md](AGENT-SKELETON.md#next-experiment-selecting-required-checks-by-reference-not-implemented). That interface is not implemented yet. Both temporary model servers exited, and the local model assets were not deployed.
 
 ## Frozen small-model comparison
 
@@ -19,7 +25,7 @@ The dashboard now says **Required commands passed · only configured checks cove
 - **4B scaffold:** missing export and test imports failed checks; a malformed native tool call ended the run.
 - **4B repair:** delivered code passed independent behavior, package-script and discovery checks. It skipped reading the test and reproducing the failure before editing, so the required repair-cycle check failed despite the agent reaching `done`.
 
-Next evaluation revision should configure explicit assertion commands for expected rejection and strengthen numeric-prefix/exact-newline checks, then rerun both models against the same frozen evaluator. Preserve zero-exit defaults for ordinary commands; expected outcomes belong to trusted workflow configuration. No candidate prompt or relaxed acceptance was shipped. Temporary model servers were stopped; model weights remain ignored local test assets and are not deployed. These trials used Local Bun, not Browser Linux.
+These trials motivated the subsequent explicit assertion commands and numeric-prefix/exact-newline checks documented above. Ordinary command zero-exit defaults remain unchanged; expected outcomes belong to trusted workflow configuration. No candidate prompt or relaxed acceptance was shipped. Temporary model servers were stopped; model weights remain ignored local test assets and are not deployed. These trials used Local Bun, not Browser Linux.
 
 ## Model discovery and stricter repair evidence
 
