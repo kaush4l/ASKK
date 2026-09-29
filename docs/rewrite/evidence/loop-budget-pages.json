@@ -1,0 +1,52 @@
+{
+  "source": "596c95a",
+  "deployment": "20f57f31d13a90d5b25d7ad3e672fb7a42f94a0e",
+  "workflow": "https://github.com/kaush4l/ASKK/actions/runs/36557097694",
+  "checks": [
+    {
+      "path": "index.html",
+      "status": 200,
+      "sha256": "44f59b4b5d0ab2f546563a73f0a77e4e1b6e7db84d17c163c00158becbd0214c",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/core/loop-budget.js",
+      "status": 200,
+      "sha256": "ee2d56766bda9a77d9117348299412786d3accab1e5148550c180ab9135f2113",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/core/engine.js",
+      "status": 200,
+      "sha256": "d274df8c353176f34bd08f8acf908ee411e6208d20ea688855809a214cbbd181",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/core/agent-package.js",
+      "status": 200,
+      "sha256": "547a0e3f13b36f3560b539b4d0f3c9a9a932fb9e2c4bb7c0a9ac3bc8e6eba214",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/runtime/agent.worker.js",
+      "status": 200,
+      "sha256": "e86497ee22cd5e836d43bd12e63f56d23545c206a5e813d2e7f81f25f3ca1fe2",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/runtime/hub.js",
+      "status": 200,
+      "sha256": "afd1185afe2e3ae52287b3ec24e509fa0e16ba848e2fae6d7f30f1371697b58e",
+      "matches": true
+    }
+  ],
+  "scope": "HTTP asset verification only. Shared validation covered by automated tests; no new hosted inference or browser/guest execution claimed.",
+  "export": {
+    "version": 1,
+    "basePath": "/ASKK",
+    "totalBytes": 854206083,
+    "fileCount": 211,
+    "runtimeId": "c2w-node24-38d093f4a38002db",
+    "artifactHash": "7f2b3c80187794cbf462db03194c34e68bcab4b00b31182135838ac1d530fa84"
+  }
+}
