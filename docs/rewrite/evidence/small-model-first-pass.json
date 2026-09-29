@@ -1,0 +1,434 @@
+{
+  "version": 1,
+  "date": "2026-09-29",
+  "model": {
+    "repository": "Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF",
+    "revision": "2ab9f8f42af02fc212effaef7c4850c885e965f4",
+    "file": "qwen2.5-coder-1.5b-instruct-q4_k_m.gguf",
+    "sha256": "cc324af070c2ecbfd324a30884d2f951a7ff756aba85cb811a6ec436933bb046",
+    "source": "https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF/blob/2ab9f8f42af02fc212effaef7c4850c885e965f4/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf"
+  },
+  "runtime": {
+    "engine": "llama-server 6940 c5023daf6",
+    "execution": "Local Bun",
+    "server": "Separate temporary loopback process on port 8874; stopped after evaluation. Existing 8873 model server unchanged.",
+    "weights": "Retained under ignored .cache/small-model; not bundled in Pages."
+  },
+  "runs": [
+    {
+      "caseName": "script",
+      "status": "failed",
+      "passed": false,
+      "elapsedMs": 2674,
+      "result": "(failed: reply did not match contract version 2 after 3 attempts)",
+      "checks": [
+        {
+          "args": [
+            "total.js",
+            "19",
+            "-7",
+            "0.5"
+          ],
+          "code": 1,
+          "output": "",
+          "passed": false
+        },
+        {
+          "args": [
+            "total.js"
+          ],
+          "code": 1,
+          "output": "",
+          "passed": false
+        },
+        {
+          "args": [
+            "total.js",
+            "invalid"
+          ],
+          "code": 1,
+          "output": "",
+          "passed": true
+        }
+      ],
+      "metrics": {
+        "promptCount": 3,
+        "repairs": 2,
+        "toolCalls": 0,
+        "inputTokensEstimated": [
+          1156,
+          1198,
+          1198
+        ]
+      },
+      "attempt": "small-script-01",
+      "contextLength": 32768,
+      "jsonOutput": false,
+      "evidenceSha256": "71f79dfdabb3c492d09fb6235db4690f0766ca296875ffb01ada3b40d3c43eb5"
+    },
+    {
+      "caseName": "script",
+      "status": "failed",
+      "passed": false,
+      "elapsedMs": 2333,
+      "result": "(failed: reply did not match contract version 2 after 3 attempts)",
+      "checks": [
+        {
+          "args": [
+            "total.js",
+            "19",
+            "-7",
+            "0.5"
+          ],
+          "code": 1,
+          "output": "",
+          "passed": false
+        },
+        {
+          "args": [
+            "total.js"
+          ],
+          "code": 1,
+          "output": "",
+          "passed": false
+        },
+        {
+          "args": [
+            "total.js",
+            "invalid"
+          ],
+          "code": 1,
+          "output": "",
+          "passed": true
+        }
+      ],
+      "metrics": {
+        "promptCount": 3,
+        "repairs": 2,
+        "toolCalls": 0,
+        "inputTokensEstimated": [
+          1155,
+          1198,
+          1198
+        ]
+      },
+      "attempt": "small-script-02",
+      "contextLength": 8192,
+      "jsonOutput": false,
+      "evidenceSha256": "0865a2440c8f7dad0bf68fe6bf10e3ca223b2e7685a280972c59fba712e26992"
+    },
+    {
+      "caseName": "script",
+      "status": "incomplete",
+      "passed": false,
+      "elapsedMs": 11326,
+      "result": "The result and any unfinished work.",
+      "checks": [
+        {
+          "args": [
+            "total.js",
+            "19",
+            "-7",
+            "0.5"
+          ],
+          "code": 1,
+          "output": "",
+          "passed": false
+        },
+        {
+          "args": [
+            "total.js"
+          ],
+          "code": 1,
+          "output": "",
+          "passed": false
+        },
+        {
+          "args": [
+            "total.js",
+            "invalid"
+          ],
+          "code": 1,
+          "output": "",
+          "passed": true
+        }
+      ],
+      "metrics": {
+        "promptCount": 25,
+        "repairs": 0,
+        "toolCalls": 23,
+        "inputTokensEstimated": [
+          1155,
+          1343,
+          1407,
+          1570,
+          1732,
+          1895,
+          2057,
+          2220,
+          2382,
+          2545,
+          2708,
+          2871,
+          3034,
+          3197,
+          3360,
+          3523,
+          3686,
+          3861,
+          4024,
+          4187,
+          4350,
+          4513,
+          4688,
+          4863,
+          4782
+        ]
+      },
+      "attempt": "small-script-03",
+      "contextLength": 8192,
+      "jsonOutput": true,
+      "evidenceSha256": "b4df2903427514b607ac1ba02e9f372ae9d51dba64f72d276d61e23f64d28b78"
+    },
+    {
+      "caseName": "script",
+      "status": "failed",
+      "passed": false,
+      "elapsedMs": 13673,
+      "result": "(failed: request budget exceeds context window (6219 input + 2048 output > 8192))",
+      "checks": [
+        {
+          "args": [
+            "total.js",
+            "19",
+            "-7",
+            "0.5"
+          ],
+          "code": 1,
+          "output": "",
+          "passed": false
+        },
+        {
+          "args": [
+            "total.js"
+          ],
+          "code": 1,
+          "output": "",
+          "passed": false
+        },
+        {
+          "args": [
+            "total.js",
+            "invalid"
+          ],
+          "code": 1,
+          "output": "",
+          "passed": true
+        }
+      ],
+      "metrics": {
+        "promptCount": 23,
+        "repairs": 0,
+        "toolCalls": 21,
+        "inputTokensEstimated": [
+          1240,
+          1464,
+          1528,
+          1761,
+          1994,
+          2227,
+          2460,
+          2693,
+          2926,
+          3159,
+          3392,
+          3626,
+          3859,
+          4093,
+          4326,
+          4560,
+          4793,
+          5039,
+          5273,
+          5506,
+          5740,
+          5973,
+          6219
+        ]
+      },
+      "attempt": "small-script-04",
+      "contextLength": 8192,
+      "jsonOutput": true,
+      "evidenceSha256": "8b58b8489fcffa4b3bc16f401d158d0e6eb764bc97645e2a0ca2f79ec61f6d00"
+    },
+    {
+      "caseName": "script",
+      "status": "failed",
+      "passed": false,
+      "elapsedMs": 13123,
+      "result": "(failed: request budget exceeds context window (6240 input + 2048 output > 8192))",
+      "checks": [
+        {
+          "args": [
+            "total.js",
+            "19",
+            "-7",
+            "0.5"
+          ],
+          "code": 1,
+          "output": "",
+          "passed": false
+        },
+        {
+          "args": [
+            "total.js"
+          ],
+          "code": 1,
+          "output": "",
+          "passed": false
+        },
+        {
+          "args": [
+            "total.js",
+            "invalid"
+          ],
+          "code": 1,
+          "output": "",
+          "passed": true
+        }
+      ],
+      "metrics": {
+        "promptCount": 23,
+        "repairs": 0,
+        "toolCalls": 21,
+        "inputTokensEstimated": [
+          1240,
+          1464,
+          1549,
+          1782,
+          2015,
+          2248,
+          2481,
+          2714,
+          2947,
+          3180,
+          3414,
+          3647,
+          3881,
+          4114,
+          4348,
+          4581,
+          4815,
+          5060,
+          5294,
+          5527,
+          5761,
+          5994,
+          6240
+        ]
+      },
+      "attempt": "small-script-05",
+      "contextLength": 8192,
+      "jsonOutput": true,
+      "evidenceSha256": "27c16dd192ae65044bdfb403451de006e206b0f099900e1a793a87845456497b"
+    },
+    {
+      "caseName": "project",
+      "status": "failed",
+      "passed": false,
+      "elapsedMs": 9442,
+      "result": "(failed: provider did not complete the reply (length))",
+      "checks": [
+        {
+          "args": [
+            "-e",
+            "import {total} from './src/total.js'; if(total([19,-7,0.5])!==12.5||total([])!==0)process.exit(2); for(const v of [['x'],[NaN],[Infinity]]){let failed=false;try{total(v)}catch{failed=true}if(!failed)process.exit(3)} console.log('withheld passed')"
+          ],
+          "code": 1,
+          "output": "",
+          "passed": false
+        },
+        {
+          "name": "declared and executed test suite",
+          "passed": false
+        }
+      ],
+      "metrics": {
+        "promptCount": 1,
+        "repairs": 0,
+        "toolCalls": 0,
+        "inputTokensEstimated": [
+          1238
+        ]
+      },
+      "attempt": "small-project-01",
+      "contextLength": 8192,
+      "jsonOutput": true,
+      "evidenceSha256": "8c6a0fd33aac113ba9d9f092419d6552fac14d039cee63876f0c6b3c78bbe80b"
+    }
+  ],
+  "decisionReplay": {
+    "sourceAttempt": "small-script-05",
+    "attemptId": "35fcbaa6-ba92-43a0-b379-8ec8de5397c5:4:1",
+    "scope": "Read-only decision-point replay; no proposed tool was executed.",
+    "cases": [
+      {
+        "name": "flattened",
+        "response": "{\"do\":\"tool\",\"act\":[[{\"name\":\"workspace_write\",\"args\":{\"path\":\"total.js\",\"content\":\"const total = require('total.js');\\n\\nfunction sum(...args) {\\n  return args.reduce((acc, curr) => acc + curr, 0);\\n}\\n\\nmodule.exports = sum;\",\"expect\":0}}]]}\n\n",
+        "usage": {
+          "completion_tokens": 75,
+          "prompt_tokens": 1806,
+          "total_tokens": 1881
+        },
+        "elapsedMs": 542,
+        "faults": [],
+        "proposedTools": [
+          {
+            "name": "workspace_write",
+            "args": {
+              "path": "total.js",
+              "content": "const total = require('total.js');\n\nfunction sum(...args) {\n  return args.reduce((acc, curr) => acc + curr, 0);\n}\n\nmodule.exports = sum;",
+              "expect": 0
+            }
+          }
+        ]
+      },
+      {
+        "name": "role-preserving",
+        "response": "{\"do\":\"tool\",\"act\":[[{\"name\":\"workspace_write\",\"args\":{\"path\":\"total.js\",\"content\":\"const total = require('total.js');\\n\\nfunction sum(...args) {\\n  return args.reduce((acc, curr) => acc + curr, 0);\\n}\\n\\nmodule.exports = sum;\",\"expect\":0}}]]}",
+        "usage": {
+          "completion_tokens": 75,
+          "prompt_tokens": 1851,
+          "total_tokens": 1926
+        },
+        "elapsedMs": 678,
+        "faults": [],
+        "proposedTools": [
+          {
+            "name": "workspace_write",
+            "args": {
+              "path": "total.js",
+              "content": "const total = require('total.js');\n\nfunction sum(...args) {\n  return args.reduce((acc, curr) => acc + curr, 0);\n}\n\nmodule.exports = sum;",
+              "expect": 0
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "findings": [
+    "Unconstrained replies failed strict JSON parsing before tool execution.",
+    "JSON mode produced valid envelopes but repeated conflicting writes.",
+    "Clearer content/revision descriptions changed file content into code but did not produce the requested CLI.",
+    "Actionable completion feedback did not resolve the loop.",
+    "Role-preserving replay at one captured conflict point proposed the same conflicting write as the flattened control. No production history-format change is justified by this comparison.",
+    "Project attempt hit the output limit; no truncated action was executed.",
+    "The local token estimate undercounted actual provider prompt tokens in later repeated loops."
+  ],
+  "limitations": [
+    "All attempts failed independent checks; no small-model capability pass.",
+    "Different attempts changed explicit variables; not a statistical comparison.",
+    "Only one small model and quantization tested.",
+    "Raw evidence stays in .cache/project-loop; raw model replies are captured per attempt beginning small-script-05."
+  ]
+}

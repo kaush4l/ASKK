@@ -47,7 +47,8 @@ export function repairCycle(events, commands) {
   return { passed: false, reason: 'No ordered failed command → acknowledged edit → new successful command was observed.' }
 }
 
-export async function evaluateProjectLoop({ baseUrl, model, directory, caseName = 'script', timeoutMs = 240000 }) {
+export async function evaluateProjectLoop({ baseUrl, model, directory, caseName = 'script', timeoutMs = 240000, contextLength = 32768, jsonOutput = false }) {
+  if (!Number.isSafeInteger(contextLength) || contextLength < 4096) throw new Error('Evaluation context length must be an integer of at least 4096 tokens')
   if (!cases[caseName]) throw new Error(`Choose one of ${Object.keys(cases).join(', ')}`)
   const definition = cases[caseName], root = resolve(directory), site = join(root, 'site'), project = join(root, 'project')
   // Refuse overwrite so every attempt retains its own source and evidence.
@@ -55,16 +56,23 @@ export async function evaluateProjectLoop({ baseUrl, model, directory, caseName 
   for (const name of ['packages', 'tools']) await cp(new URL(`../../public/${name}`, import.meta.url), join(site, name), { recursive: true })
   await cp(new URL('../../public/desk.json', import.meta.url), join(site, 'desk.json'))
   await mkdir(join(site, 'agents'))
-  await writeFile(join(site, 'models.json'), JSON.stringify({ default: 'evaluation', models: { evaluation: { provider: 'openai', model, base_url: baseUrl, context_length: 32768, max_output_tokens: 2048, temperature: 0, request_params: { chat_template_kwargs: { enable_thinking: false } } } } }))
+  await writeFile(join(site, 'models.json'), JSON.stringify({ default: 'evaluation', models: { evaluation: { provider: 'openai', model, base_url: baseUrl, context_length: contextLength, max_output_tokens: 2048, temperature: 0, request_params: { chat_template_kwargs: { enable_thinking: false }, ...(jsonOutput ? { response_format: { type: 'json_object' } } : {}) } } } }))
   await writeFile(join(site, 'agents/index.json'), JSON.stringify(await listing(site)))
   const companion = await createCompanion({ root: project, port: 0, capabilities: ['fs', 'exec'] })
   const execution = new LocalExecution({ url: companion.url, token: companion.token })
-  let hub, timer
-  const commands = []; const startedAt = Date.now()
+  let hub, timer, unsubscribe
+  const commands = [], responses = [], attempts = new Map(); const startedAt = Date.now()
   try {
     await execution.prepare()
     for (const [path, content] of Object.entries(definition.seed ?? {})) await execution.write({ path, content, expectedRevision: 0 })
     hub = new Hub({ base: `${pathToFileURL(site).href}/`, storeName: `project-eval-${crypto.randomUUID()}` })
+    unsubscribe = hub.subscribe(event => {
+      if (event.type !== 'event') return
+      if (event.kind === 'prompt') {
+        const response = { runId: event.run, attemptId: event.attemptId, text: '' }
+        responses.push(response); attempts.set(event.run, response)
+      } else if (event.kind === 'delta' && attempts.has(event.run)) attempts.get(event.run).text += event.value
+    })
     hub.externalOps = {
       'workspace.environment': async () => ({ target: 'local', status: 'ready', toolchain: execution.describeCapabilities().toolchain, files: (await execution.list()).map(row => row.path), capabilities: ['fs', 'exec'] }),
       'workspace.list': () => execution.list(),
@@ -76,7 +84,12 @@ export async function evaluateProjectLoop({ baseUrl, model, directory, caseName 
         const receipt = { ...result, id, output, runId: run.id }; commands.push(receipt); return receipt
       },
     }
-    hub.completionAdapters = { 'workspace.command': async () => ({ ok: commands.length > 0 && commands.at(-1).code === 0 && !commands.at(-1).cancelled, reason: 'Evaluator also checks withheld inputs after the run.' }) }
+    hub.completionAdapters = { 'workspace.command': async () => {
+      const command = commands.at(-1)
+      if (!command) return { ok: false, reason: 'No command has run. Run the written script or project tests with workspace_run, inspect the output, and repair failures before finishing.' }
+      if (command.cancelled || command.code !== 0) return { ok: false, reason: `The last command ${command.cancelled ? 'was cancelled' : `exited with code ${command.code}`}. Inspect its output, fix the cause and run the check again.`, commandId: command.id }
+      return { ok: true, commandId: command.id, reason: 'A successful command was recorded. Independent withheld-input checks follow the run.' }
+    } }
     await hub.start()
     await hub.settings.set({ policy: { defaults: { read: 'allow', net: 'deny', write: 'allow', exec: 'allow' } } })
     const run = hub.startRun('bundled/starter/builder', definition.goal, { context: { workflow: { completion: { checks: [{ capability: 'workspace.command', options: { requireFresh: true } }] } } } })
@@ -95,15 +108,15 @@ export async function evaluateProjectLoop({ baseUrl, model, directory, caseName 
       checks.push({ name: 'declared and executed test suite', passed: valid })
     }
     if (caseName === 'repair') checks.push({ name: 'observed failure-driven repair cycle', ...repairCycle(run.toolEvents, commands) })
-    const evidence = { version: 1, caseName, model, baseUrl, runtime: 'Local Bun (not Browser Linux)', startedAt, elapsedMs: Date.now() - startedAt, result: run.result, status: run.slot.status, passed: run.slot.status === 'done' && checks.every(row => row.passed), checks, commands, prompts: run.prompts, requests: run.requests, completions: run.completions, tools: run.toolEvents, files: await execution.list(), metrics: { promptCount: run.prompts.length, repairs: run.log.filter(row => row.kind === 'repair').length, toolCalls: run.toolEvents.filter(row => row.kind === 'call').length, inputTokensEstimated: run.prompts.map(row => row.snapshot?.budget?.inputTokens) } }
+    const evidence = { version: 1, caseName, model, baseUrl, contextLength, jsonOutput, responses, events: run.log, runtime: 'Local Bun (not Browser Linux)', startedAt, elapsedMs: Date.now() - startedAt, result: run.result, status: run.slot.status, passed: run.slot.status === 'done' && checks.every(row => row.passed), checks, commands, prompts: run.prompts, requests: run.requests, completions: run.completions, tools: run.toolEvents, files: await execution.list(), metrics: { promptCount: run.prompts.length, repairs: run.log.filter(row => row.kind === 'repair').length, toolCalls: run.toolEvents.filter(row => row.kind === 'call').length, inputTokensEstimated: run.prompts.map(row => row.snapshot?.budget?.inputTokens) } }
     await writeFile(join(root, 'evidence.json'), JSON.stringify(evidence, null, 2))
     return { caseName, passed: evidence.passed, status: evidence.status, checks, elapsedMs: evidence.elapsedMs, metrics: evidence.metrics, evidence: join(root, 'evidence.json') }
-  } finally { clearTimeout(timer); hub?.stop(); await execution.dispose(); await companion.close() }
+  } finally { clearTimeout(timer); unsubscribe?.(); hub?.stop(); await execution.dispose(); await companion.close() }
 }
 if (import.meta.main) {
   if (!process.argv.includes('--run')) throw new Error('Explicit --run required; this evaluation lets the model write files and execute commands in its new project directory.')
   const option = name => { const index = process.argv.indexOf(name); return index < 0 ? undefined : process.argv[index + 1] }
   const model = option('--model'), baseUrl = option('--base-url'), directory = option('--directory')
   if (!model || !baseUrl || !directory) throw new Error('Provide --model, --base-url and a new --directory path; optional --case script|project|repair.')
-  console.log(JSON.stringify(await evaluateProjectLoop({ model, baseUrl, directory, caseName: option('--case') ?? 'script' }), null, 2))
+  console.log(JSON.stringify(await evaluateProjectLoop({ model, baseUrl, directory, caseName: option('--case') ?? 'script', contextLength: Number(option('--context-length') ?? 32768), jsonOutput: process.argv.includes('--json-output') }), null, 2))
 }

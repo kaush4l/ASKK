@@ -52,3 +52,11 @@ MCP schemas are retained separately as `providerInputSchema`: full JSON Schema i
 `getRunDetails` forwards completion configuration and receipts explicitly. After awaiting archived evidence, it rereads a live run and captures its pending approvals synchronously, without another await, then freezes the combined view. Persisted-only records receive no live approval authority. Tool cards match nonempty run and call IDs; rendered call text is never an identity fallback. A captured approval cannot replace a recorded outcome. Snapshot cards say what was pending when captured and require a refresh for newer state.
 
 The earlier renderer change omitted completion fields at the controller boundary. Controller-level regressions now cover that omission, rather than relying solely on rendering synthetic props.
+
+## First small-model results
+
+The installed llama-server was used with verified official Qwen2.5-Coder 1.5B Q4_K_M weights in a separate loopback process. [All six attempts are recorded](evidence/small-model-first-pass.json); none passed. Syntax-only JSON output mode did not establish semantic tool use: writes repeated despite revision conflicts, and the scaffold attempt exhausted output before a valid complete action. A read-only replay with real assistant/user history roles chose the same conflicting action, so history restructuring was not applied.
+
+The evaluator now accepts `--context-length 8192` and optional `--json-output` for providers that support JSON object output. It records raw response text per attempt, including rejected replies, and returns actionable command-verification feedback. Clearer workspace content/revision argument descriptions are committed for continued evaluation; they did not solve this model's failures and are not in deployment `fcc4c29`.
+
+Next investigations must separate baseline code generation, response-envelope complexity, tool-selection quality and actual token accounting. Do not claim that a syntax-constrained response or a model's final-answer example proves task completion. The 27B passes remain separate from these small-model failures.
