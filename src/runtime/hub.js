@@ -20,7 +20,7 @@
  */
 
 import { agentHash, agentPaths, headPaths, loader, loadIndex, readSpec, skillFiles } from '../core/folder.js'
-import { inference } from '../core/inference.js'
+import { assertModelRelay, inference, InferenceError, redactedURL } from '../core/inference.js'
 import { describeTool, mcp } from '../core/mcp.js'
 import { read } from '../core/markdown.js'
 import { merge, resolve } from '../core/models.js'
@@ -40,6 +40,43 @@ const WRITERS = new Set(['host', 'files', 'workspace'])
 const HOSTED = new Set(['host', 'web', 'mcp'])
 const TOOL_EVENT_STORAGE = 'separate-v1'
 const EVIDENCE_TIMEOUT_MS = 15000
+const MODEL_PROBE_PROMPT = Object.freeze([{ role: 'user', content: 'Reply with exactly: Connected.' }])
+
+const bridgeIdentity = value => JSON.stringify({ name: value?.name, version: value?.version, runtimeId: value?.runtimeId, root: value?.root, capabilities: [...(value?.capabilities ?? [])].sort(), mcp: [...(value?.mcp ?? [])].sort(), clis: value?.clis })
+
+/** A hard caller bound, including fetch implementations that ignore AbortSignal. */
+async function boundedModelCheck(callback, { signal, timeoutMs } = {}, defaultMs = 15000) {
+  const requested = timeoutMs ?? defaultMs
+  if (!Number.isFinite(requested) || requested <= 0) throw new InferenceError('Connection timeout must be a positive number of milliseconds.', 'configuration')
+  const limit = Math.min(requested, 120000)
+  const controller = new AbortController()
+  const cancelled = () => controller.abort(new InferenceError('Model connection check cancelled.', 'aborted'))
+  if (signal?.aborted) cancelled()
+  else signal?.addEventListener('abort', cancelled, { once: true })
+  let timer; let rejectAbort
+  const aborted = new Promise((_, reject) => { rejectAbort = () => reject(controller.signal.reason); controller.signal.addEventListener('abort', rejectAbort, { once: true }) })
+  try {
+    if (controller.signal.aborted) throw controller.signal.reason
+    timer = setTimeout(() => controller.abort(new InferenceError(`Model connection check timed out after ${limit} ms.`, 'timeout')), limit)
+    return await Promise.race([Promise.resolve().then(() => { if (controller.signal.aborted) throw controller.signal.reason; return callback(controller.signal, limit) }), aborted])
+  } finally {
+    clearTimeout(timer); signal?.removeEventListener('abort', cancelled); controller.signal.removeEventListener('abort', rejectAbort)
+  }
+}
+
+/** Provider bodies/errors can echo credentials; redact known values as well as named fields. */
+function modelEvidence(value, settings = {}, bridge = {}) {
+  const secrets = [settings.apiKey, bridge.token, ...Object.entries(settings.headers ?? {}).filter(([key]) => !['content-type', 'accept'].includes(key.toLowerCase())).map(([, val]) => val)].filter(val => typeof val === 'string' && val.length > 0)
+  const clean = input => {
+    if (typeof input === 'string') return secrets.reduce((text, secret) => text.split(secret).join('[redacted]'), input)
+    if (Array.isArray(input)) return input.map(clean)
+    if (input && typeof input === 'object') return Object.fromEntries(Object.entries(input).map(([key, val]) => [key, /api[_-]?key|authorization|password|secret|access[_-]?token|refresh[_-]?token|^token$/i.test(key) ? '[redacted]' : clean(val)]))
+    return input
+  }
+  return snapshot(clean(value))
+}
+
+const modelFailure = (error, settings, bridge) => modelEvidence({ error: String(error?.message ?? error), errorCode: error?.code ?? (error?.name === 'AbortError' ? 'aborted' : 'provider_error'), ...(error?.metadata?.status ? { httpStatus: error.metadata.status } : {}), at: Date.now() }, settings, bridge)
 
 const lastOpen = (spans, kind) => {
   for (let index = spans.length - 1; index >= 0; index -= 1) if (spans[index].kind === kind && spans[index].ms == null) return spans[index]
@@ -109,6 +146,7 @@ export class Hub {
     this.retentionQueue = Promise.resolve()
     this.scheduled = { items: [], next: 1 } // schedules, saved in settings
     this.mcpServers = new Map() // name → {name, url, from, status, tools, error, client}
+    this.mcpRefreshSequence = 0
     this.boards = new Map() // trace → {entries, next, released}
     this.approvals = new Map() // id → approval
     this.index = { files: {} }
@@ -118,7 +156,9 @@ export class Hub {
     this.changed = new Map() // path → files changed at the last reload
     this.fileCatalogue = {}
     this.saved = { catalogue: {}, policy: DEFAULT_POLICY, dreaming: true }
-    this.bridgeState = { status: 'unpaired', since: Date.now(), url: '', token: '', health: null, error: '' }
+    this.bridgeState = { status: 'unpaired', generation: 0, since: Date.now(), url: '', token: '', health: null, error: '' }
+    this.bridgeCheckSequence = 0
+    this.bridgeSettingsWrites = Promise.resolve()
     this.lockState = 'starting'
     this.nextRun = 1
     this.nextApproval = 1
@@ -230,6 +270,7 @@ export class Hub {
 
   stop(why = 'stopped') {
     this.disposed = true
+    this.bridgeCheckSequence++
     this.leadAbort?.abort()
     clearTimeout(this.dreamTimer)
     clearInterval(this.poll)
@@ -1045,6 +1086,8 @@ export class Hub {
 
   /** List each server's tools. Threads granting `mcp` restart when what they would see changed. */
   async mcpRefresh({ restart = true } = {}) {
+    const sequence = ++this.mcpRefreshSequence
+    const bridgeGeneration = this.bridgeState.generation
     const before = JSON.stringify(this.mcpTools())
     const next = new Map()
     await Promise.all(
@@ -1060,6 +1103,8 @@ export class Hub {
         next.set(server.name, row)
       }),
     )
+    // Discovery may outlive a pairing change or shutdown. Never restore old clients.
+    if (this.disposed || sequence !== this.mcpRefreshSequence || bridgeGeneration !== this.bridgeState.generation) return this.mcp.list()
     this.mcpServers = next
     this.publish({ type: 'mcp', servers: this.mcp.list() })
     if (restart && JSON.stringify(this.mcpTools()) !== before) this.hostChanged('MCP tools changed')
@@ -1245,28 +1290,44 @@ export class Hub {
     return data
   }
 
-  async bridgeCheck(url, token) {
+  async bridgeCheck(url, token, options = {}) {
     const base = String(url).trim().replace(/\/+$/, '')
+    const sequence = ++this.bridgeCheckSequence
     const previous = this.bridgeState
     const was = previous.status
     try {
-      const health = await (await this.fetch(`${base}/health`)).json()
-      const check = await this.fetch(`${base}/whoami`, { method: 'POST', headers: { authorization: `Bearer ${token}` } })
-      if (check.status === 401) throw new Error('the bridge refused the token')
-      if (check.status === 403) throw new Error('the bridge refused this page’s origin; start it with --allow-origin')
-      if (!check.ok) throw new Error(`the bridge answered ${check.status}`)
-      const identity = value => JSON.stringify({ name: value?.name, version: value?.version, runtimeId: value?.runtimeId, root: value?.root, capabilities: [...(value?.capabilities ?? [])].sort(), mcp: [...(value?.mcp ?? [])].sort(), clis: value?.clis })
-      const changed = previous.url !== base || previous.token !== token || identity(previous.health) !== identity(health)
-      this.bridgeState = { url: base, token, health, status: 'answering', since: was === 'answering' ? this.bridgeState.since : Date.now(), error: '' }
-      if (was !== 'answering' || changed) {
-        await this.mcpRefresh({ restart: false })
-        this.hostChanged(was === 'answering' ? 'the bridge identity or capabilities changed' : 'the bridge is answering')
+      if (this.disposed) throw new InferenceError('The agent desk stopped before companion pairing completed.', 'aborted')
+      const health = await boundedModelCheck(async signal => {
+        const response = await this.fetch(`${base}/health`, { signal })
+        if (!response.ok) throw new InferenceError(`The companion health check answered HTTP ${response.status}.`, 'relay_unavailable')
+        const health = await response.json()
+        const check = await this.fetch(`${base}/whoami`, { method: 'POST', headers: { authorization: `Bearer ${token}` }, signal })
+        if (check.status === 401) throw new InferenceError('The companion refused the pairing token.', 'relay_auth')
+        if (check.status === 403) throw new InferenceError('The companion refused this page’s origin; configure its exact allowed origin.', 'relay_origin')
+        if (!check.ok) throw new InferenceError(`The companion answered HTTP ${check.status}.`, 'relay_unavailable')
+        const authenticated = await check.json()
+        const capabilities = authenticated.capabilities ?? health.capabilities
+        if (!Array.isArray(capabilities) || capabilities.some(item => typeof item !== 'string')) throw new InferenceError('The companion returned invalid capability information.', 'relay_capability')
+        const verified = { ...health, root: authenticated.root ?? health.root, capabilities, ...(authenticated.runtimeId ? { runtimeId: authenticated.runtimeId } : {}) }
+        if (options.requireModelRelay) assertModelRelay(verified)
+        return verified
+      }, options)
+      if (this.disposed) throw new InferenceError('The agent desk stopped before companion pairing completed.', 'aborted')
+      if (sequence !== this.bridgeCheckSequence) throw new InferenceError('A newer companion connection check replaced this result.', 'configuration')
+      const changed = was !== 'answering' || previous.url !== base || previous.token !== token || bridgeIdentity(previous.health) !== bridgeIdentity(health)
+      this.bridgeState = { url: base, token, health, generation: (previous.generation ?? 0) + Number(changed), status: 'answering', since: was === 'answering' ? previous.since : Date.now(), error: '', errorCode: '' }
+      if (changed) {
+        this.bridgeToolsChanged(was === 'answering' ? 'the bridge identity or capabilities changed' : 'the bridge is answering')
       }
     } catch (error) {
-      this.bridgeState = { ...this.bridgeState, url: base, token, status: 'down', since: was === 'down' ? this.bridgeState.since : Date.now(), error: String(error.message) }
+      if (error instanceof TypeError) error = new InferenceError('The browser could not read the HTTPS companion. Check its running state, trusted certificate and allowed page origin; this does not establish whether the model is online.', 'browser_unreadable')
+      const failed = modelFailure(error, {}, { token })
+      // A failed candidate must never replace an already paired, authorized service.
+      if (this.disposed || options.requireModelRelay || sequence !== this.bridgeCheckSequence) return { url: base, status: 'down', since: Date.now(), capabilities: [], root: '', ...failed }
+      const changed = was !== 'down' || previous.url !== base || previous.token !== token
+      this.bridgeState = { ...previous, url: base, token, generation: (previous.generation ?? 0) + Number(changed), status: 'down', since: was === 'down' ? previous.since : Date.now(), error: failed.error, errorCode: failed.errorCode }
       if (was === 'answering') {
-        await this.mcpRefresh({ restart: false })
-        this.hostChanged('the bridge stopped answering')
+        this.bridgeToolsChanged('the bridge stopped answering')
       }
     }
     this.publish({ type: 'bridge', state: this.bridge.state() })
@@ -1275,14 +1336,14 @@ export class Hub {
 
   setBridge(status, error = '') {
     if (this.bridgeState.status === status) return
-    this.bridgeState = { ...this.bridgeState, status, since: Date.now(), error }
-    this.hostChanged(status === 'down' ? 'the bridge stopped answering' : 'host changed')
+    this.bridgeState = { ...this.bridgeState, generation: (this.bridgeState.generation ?? 0) + 1, status, since: Date.now(), error }
+    this.bridgeToolsChanged(status === 'down' ? 'the bridge stopped answering' : 'host changed')
     this.publish({ type: 'bridge', state: this.bridge.state() })
   }
 
   /** Host tools are decided when a thread builds, so resident threads restart when idle. */
   hostChanged(why) {
-    if (!this.started) return
+    if (!this.started || this.disposed) return
     for (const thread of [...this.threads.values()]) {
       if (thread.busy) thread.stale = true
       else this.restart(thread, why)
@@ -1295,26 +1356,59 @@ export class Hub {
     }
   }
 
+  bridgeToolsChanged(why) {
+    // Revoke old bridge clients immediately. Optional discovery cannot delay pairing,
+    // cancellation or disconnect; mcpRefresh guards its eventual publication.
+    for (const [name, server] of this.mcpServers) if (server.from === 'bridge') this.mcpServers.delete(name)
+    this.hostChanged(why)
+    if (!this.disposed) this.mcpRefresh().catch(() => {})
+  }
+
+  bridgeSettingsWrite(work) {
+    const pending = this.bridgeSettingsWrites.catch(() => {}).then(work)
+    this.bridgeSettingsWrites = pending
+    return pending
+  }
+
+  bridgePairFailure(state, token, signal) {
+    let error
+    if (this.disposed || signal?.aborted) error = new InferenceError('The agent desk stopped or companion pairing was cancelled before its save completed.', 'aborted')
+    else if (this.bridgeState.status !== 'answering' || state.generation !== this.bridgeState.generation || state.url !== this.bridgeState.url || token !== this.bridgeState.token) error = new InferenceError('The companion connection changed before pairing could be saved.', 'configuration')
+    return error ? { ...state, status: 'down', capabilities: [], ...modelFailure(error) } : null
+  }
+
   bridge = {
     state: () => {
-      const { url, status, since, health, error } = this.bridgeState
-      return { url, status, since, root: health?.root ?? '', capabilities: health?.capabilities ?? [], version: health?.version ?? '', error: error ?? '' }
+      const { url, status, since, health, error, errorCode, generation } = this.bridgeState
+      return { url, status, since, generation: generation ?? 0, runtimeId: health?.runtimeId ?? '', root: health?.root ?? '', capabilities: health?.capabilities ?? [], version: health?.version ?? '', error: error ?? '', errorCode: errorCode ?? '' }
     },
-    pair: async (url, token) => {
-      const state = await this.bridgeCheck(url, token)
-      if (state.status === 'answering') await this.store.put('settings', { key: 'bridge', value: { url: this.bridgeState.url, token } })
+    pair: async (url, token, options = {}) => {
+      const state = await this.bridgeCheck(url, token, options)
+      if (state.status === 'answering') {
+        return this.bridgeSettingsWrite(async () => {
+          const before = this.bridgePairFailure(state, token, options.signal)
+          if (before) return before
+          await this.store.put('settings', { key: 'bridge', value: { url: state.url, token } })
+          const after = this.bridgePairFailure(state, token, options.signal)
+          if (after) {
+            // Still inside the ordered write: cleanup cannot erase a newer pairing.
+            await this.store.delete('settings', 'bridge')
+            return after
+          }
+          return state
+        })
+      }
       return state
     },
     check: () => (this.bridgeState.url ? this.bridgeCheck(this.bridgeState.url, this.bridgeState.token) : this.bridge.state()),
     disconnect: async () => {
-      await this.store.delete('settings', 'bridge')
       const was = this.bridgeState.status
-      this.bridgeState = { status: 'unpaired', since: Date.now(), url: '', token: '', health: null, error: '' }
-      if (was === 'answering') {
-        await this.mcpRefresh({ restart: false })
-        this.hostChanged('the bridge was disconnected')
-      }
+      this.bridgeCheckSequence++
+      this.bridgeState = { status: 'unpaired', generation: (this.bridgeState.generation ?? 0) + 1, since: Date.now(), url: '', token: '', health: null, error: '' }
+      const cleared = this.bridgeSettingsWrite(() => this.store.delete('settings', 'bridge'))
+      if (was === 'answering') this.bridgeToolsChanged('the bridge was disconnected')
       this.publish({ type: 'bridge', state: this.bridge.state() })
+      await cleared
     },
   }
 
@@ -1483,23 +1577,78 @@ export class Hub {
     }
   }
 
+  modelConnection(alias) {
+    const settings = resolve(alias ? { model: alias } : {}, this.catalogue())
+    const selected = this.bridgeState
+    const generation = selected.generation ?? 0
+    const bridge = selected.status === 'answering' ? (url, init) => {
+      if ((this.bridgeState.generation ?? 0) !== generation) throw new InferenceError('The companion connection changed during this check.', 'configuration')
+      return this.bridgeFetch(url, init)
+    } : null
+    return { settings, selected, options: { fetch: this.fetch, bridge, bridgeURL: selected.url, pageURL: globalThis.location?.href ?? this.base, run: selected.status === 'answering' && selected.health?.capabilities?.includes('cli') ? (body, options) => this.bridgeRun(body, options) : null } }
+  }
+
   models = {
-    /** List the models a catalogue entry's server offers (the default entry when none is named). */
-    refresh: async (alias) => {
-      const catalogue = this.catalogue()
-      const settings = resolve(alias ? { model: alias } : (this.specs.get('main')?.inference ?? {}), catalogue)
+    /** Listing is optional metadata, not proof of generation. No agent is selected or started. */
+    refresh: async (alias, options = {}) => {
+      const { settings, selected, options: transport } = this.modelConnection(alias)
       try {
-        const bridge = this.bridgeState.status === 'answering' ? (url, init) => this.bridgeFetch(url, init) : null
-        const listed = await inference(settings, { fetch: this.fetch, bridge, bridgeURL: this.bridgeState.url, pageURL: globalThis.location?.href ?? this.base, run: bridge ? (body) => this.bridgeRun(body) : null }).models()
-        return { ids: listed.map((model) => model.id), models: listed, at: Date.now() }
+        const listed = await boundedModelCheck(signal => inference(settings, transport).models({ signal }), options)
+        return { ids: listed.map(model => model.id), models: listed, at: Date.now() }
       } catch (error) {
-        return { error: String(error.message), at: Date.now() }
+        if (error.code === 'provider_http' && [404, 405, 501].includes(error.metadata?.status)) error = new InferenceError('This provider does not support model listing; a reply can still be tested.', 'listing_unsupported', error.metadata)
+        return modelFailure(error, settings, selected)
       }
+    },
+    /** A fixed, tool-free transport probe. Never creates an Engine, worker, run or conversation. */
+    probe: async (alias, options = {}) => {
+      const { settings, selected, options: transport } = this.modelConnection(alias)
+      const sequence = this.modelProbeSequence = (this.modelProbeSequence ?? 0) + 1
+      const started = performance.now()
+      const receipt = { version: 1, id: crypto.randomUUID(), kind: 'model-probe', startedAt: Date.now(), model: { alias: settings.alias, provider: settings.provider, id: settings.model }, route: { via: settings.via === 'bridge' ? 'bridge' : 'direct', endpoint: null, ...(settings.via === 'bridge' ? { relay: null, generation: selected.generation ?? 0, runtimeId: selected.health?.runtimeId ?? null } : {}) }, prompt: snapshot(MODEL_PROBE_PROMPT), maxOutputTokens: 128, requests: [], completions: [] }
+      let text = ''; let characters = 0; let failure = null; let terminal = false
+      try {
+        try { receipt.route.endpoint = settings.baseUrl ? redactedURL(settings.baseUrl) : null; if (settings.via === 'bridge') receipt.route.relay = selected.url ? redactedURL(selected.url) : null } catch { throw new InferenceError('The model or relay endpoint is not a valid URL.', 'configuration') }
+        if (!['openai', 'anthropic'].includes(settings.provider)) throw new InferenceError('Reply verification supports HTTP streaming model providers; it does not start model CLIs or scripted agents.', 'configuration')
+        // Configured thinking/provider options are retained, but no provider tool schema is sent.
+        if (settings.requestParams != null && (typeof settings.requestParams !== 'object' || Array.isArray(settings.requestParams))) throw new InferenceError('request_params must be an object.', 'configuration')
+        const requestParams = { ...(settings.requestParams ?? {}) }
+        for (const key of ['tools', 'tool_choice', 'functions', 'function_call', 'parallel_tool_calls']) delete requestParams[key]
+        const llm = inference({ ...settings, requestParams, retries: 1 }, transport)
+        await boundedModelCheck(async (signal, limit) => {
+          receipt.timeoutMs = limit
+          for await (const delta of llm.stream(MODEL_PROBE_PROMPT, { signal, maxOutputTokens: 128, strictCompletion: true,
+            onRequest: request => { if (!terminal && !signal.aborted) receipt.requests.push(modelEvidence(request, settings, selected)) },
+            onFinish: completion => { if (!terminal && !signal.aborted) receipt.completions.push(modelEvidence(completion, settings, selected)) },
+          })) {
+            if (terminal || signal.aborted) throw signal.reason ?? new InferenceError('Probe ended.', 'aborted')
+            characters += delta.text.length
+            if (characters > 32768) throw new InferenceError('The reply probe exceeded its bounded output.', 'output_limit')
+            if (delta.kind === 'text') text += delta.text
+          }
+          if (signal.aborted) throw signal.reason
+          if (!text.trim()) throw new InferenceError('The provider completed without a text reply.', 'probe_empty')
+        }, options, 60000)
+      } catch (error) { failure = modelFailure(error, settings, selected) }
+      terminal = true
+      receipt.at = Date.now(); receipt.elapsedMs = performance.now() - started
+      receipt.status = failure ? failure.errorCode === 'aborted' ? 'aborted' : failure.errorCode === 'timeout' ? 'timed_out' : 'failed' : 'completed'
+      receipt.text = text
+      if (failure) Object.assign(receipt, { error: failure.error, errorCode: failure.errorCode })
+      const frozen = modelEvidence(receipt, settings, selected)
+      try {
+        // Newer probes own the single last-receipt slot; late older results cannot replace them.
+        const write = (this.modelProbeWrite ?? Promise.resolve()).catch(() => {}).then(() => sequence === this.modelProbeSequence ? this.store.put('settings', { key: 'model-probe:last', value: frozen }) : undefined)
+        this.modelProbeWrite = write
+        await boundedEvidence(write)
+      } catch { return { error: 'The probe ended, but its evidence could not be saved. Retry after local storage is available.', errorCode: 'evidence_persistence', at: Date.now(), receipt: frozen } }
+      return failure ? { ...failure, receipt: frozen } : { text: frozen.text, at: frozen.at, elapsedMs: frozen.elapsedMs, receipt: frozen }
     },
   }
 
   bridgeFetch(url, init = {}) {
     const bridge = this.bridgeState
+    assertModelRelay(bridge.status === 'answering' ? bridge.health : null)
     return this.fetch(`${bridge.url}/fetch`, {
       method: 'POST',
       headers: { authorization: `Bearer ${bridge.token}`, 'content-type': 'application/json' },
@@ -1508,12 +1657,13 @@ export class Hub {
     })
   }
 
-  bridgeRun(body) {
+  bridgeRun(body, { signal } = {}) {
     const bridge = this.bridgeState
     return this.fetch(`${bridge.url}/run`, {
       method: 'POST',
       headers: { authorization: `Bearer ${bridge.token}`, 'content-type': 'application/json' },
       body: JSON.stringify(body),
+      signal,
     })
   }
 

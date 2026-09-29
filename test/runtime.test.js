@@ -390,6 +390,8 @@ describe('MCP', () => {
     await new Promise((ready) => bridge.stdout.on('data', (chunk) => String(chunk).includes('token') && ready()))
     try {
       await hub.bridge.pair('http://127.0.0.1:17722', 'mcp-rt')
+      // Pairing authenticates the companion; optional tool discovery has its own lifecycle.
+      await hub.mcp.refresh()
       expect(hub.mcp.list()).toMatchObject([{ name: 'echo', from: 'bridge', status: 'answering' }])
       await until(() => hub.manifest().find((row) => row.path === 'toolsmith').tools.some((tool) => tool.name === 'echo__say'))
       const row = hub.manifest().find((row) => row.path === 'toolsmith')

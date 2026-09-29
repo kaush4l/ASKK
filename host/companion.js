@@ -173,7 +173,7 @@ export async function createCompanion(options = {}) {
           const stream = new ReadableStream({ async pull(sink) { try { if (!reader) { finish(); sink.close(); return } const part = await reader.read(); if (part.done) { finish(); sink.close() } else sink.enqueue(part.value) } catch (error) { finish(); sink.error(error) } }, cancel() { abort(); finish(); return reader?.cancel() } })
           const forwarded = Object.fromEntries(['content-type', 'content-range', 'accept-ranges', 'etag', 'last-modified', 'cache-control'].flatMap(name => upstream.headers.has(name) ? [[name, upstream.headers.get(name)]] : []))
           return new Response([204, 205, 304].includes(upstream.status) || body.method === 'HEAD' ? null : stream, { status: upstream.status, headers: { ...forwarded, ...headers, 'content-type': upstream.headers.get('content-type') ?? 'application/octet-stream' } })
-        } catch (error) { clearTimeout(timer); request.signal.removeEventListener('abort', abort); throw error }
+        } catch (error) { clearTimeout(timer); request.signal.removeEventListener('abort', abort); throw failure(controller.signal.aborted ? 'The relay request was cancelled or timed out before an upstream response.' : 'The companion could not reach the upstream model or network endpoint.', controller.signal.aborted ? 504 : 502, controller.signal.aborted ? 'relay.upstream_timeout' : 'relay.upstream_unreachable') }
       }
       throw failure('Endpoint not found', 404)
     } catch (error) { return respond({ error: error.message, code: error.code ?? 'companion.error' }, error.status ?? 500) }

@@ -658,7 +658,7 @@ test('failed pairing publication leaves the prior native file and command connec
   const { controller, hub, files } = await startedFixture({ createCompanion: options => { pairs++; if (options.url !== original.url) return Object.assign(new ControlledExecution('local'), options); return pairs > 1 ? replacement : original }, createExecution: async () => original })
   await controller.connectCompanion({ url: original.url, token: original.token })
   await controller.setExecutionTarget('local', { transfer: true })
-  hub.settings.set = async () => { throw new Error('Pairing settings could not be saved') }
+  hub.bridge.pair = async () => { throw new Error('Pairing settings could not be saved') }
   await expect(controller.connectCompanion({ url: original.url, token: original.token })).rejects.toThrow('could not be saved')
   expect(files.backend).toBe(original)
   await controller.runCommand('still uses original connection')
@@ -858,7 +858,7 @@ test('relay loss invalidates a model check without changing Browser Linux or its
   await controller.buildPreview()
   const before = controller.getSnapshot()
   await controller.testModel()
-  expect(controller.getSnapshot().model.status).toBe('connected')
+  expect(controller.getSnapshot().model.status).toBe('listed')
   hub.emit({ type: 'bridge', state: { status: 'down', url: 'https://127.0.0.1:7717', error: 'Connection refused' } })
   expect(controller.getSnapshot().model).toMatchObject({ status: 'failed', checkedAt: null, error: 'Connection refused' })
   expect(controller.getSnapshot().runtime).toEqual(before.runtime)
@@ -866,7 +866,7 @@ test('relay loss invalidates a model check without changing Browser Linux or its
   hub.emit({ type: 'bridge', state: { status: 'answering', url: 'https://127.0.0.1:7717', capabilities: ['model-relay'] } })
   expect(controller.getSnapshot().model.status).toBe('configured')
   await controller.testModel()
-  expect(controller.getSnapshot().model).toMatchObject({ status: 'connected', error: '', checkedAt: 123 })
+  expect(controller.getSnapshot().model).toMatchObject({ status: 'listed', error: '', checkedAt: 123 })
 })
 
 test('an in-flight model check cannot restore success after relay loss or model changes', async () => {
@@ -893,13 +893,167 @@ test('failed or missing-model probes clear previous success; relay loss leaves d
   hub.models = { refresh: async () => ({ ids: ['fixture-model'], at: 123 }) }
   await controller.testModel()
   hub.emit({ type: 'bridge', state: { status: 'down', url: 'https://127.0.0.1:7717', error: 'Relay stopped' } })
-  expect(controller.getSnapshot().model.status).toBe('connected')
+  expect(controller.getSnapshot().model.status).toBe('listed')
   hub.models.refresh = async () => ({ ids: ['another-model'], at: 456 })
   await expect(controller.testModel()).rejects.toThrow('did not list model')
   expect(controller.getSnapshot().model).toMatchObject({ status: 'failed', checkedAt: null })
   hub.models.refresh = async () => { throw new Error('Provider offline') }
   await expect(controller.testModel()).rejects.toThrow('Provider offline')
   expect(controller.getSnapshot().model).toMatchObject({ status: 'failed', checkedAt: null, error: 'Provider offline' })
+})
+
+test('reply verification is independent of model listing and never starts an agent or execution', async () => {
+  let starts = 0
+  const { controller, hub } = await startedFixture({ createExecution: async () => { starts++; throw new Error('Unexpected runtime') } })
+  const pending = deferred(); let signal
+  hub.models = {
+    refresh: async () => ({ error: 'Listing unsupported', errorCode: 'listing_unsupported' }),
+    probe: async (alias, options) => { expect(alias).toBe('workbench'); signal = options.signal; return pending.promise },
+  }
+  await expect(controller.testModel()).rejects.toThrow('Listing unsupported')
+  expect(controller.getSnapshot().model.errorCode).toBe('listing_unsupported')
+  const reply = controller.probeModel()
+  expect(controller.getSnapshot().model).toMatchObject({ status: 'checking', check: { kind: 'reply', status: 'checking' } })
+  expect(signal.aborted).toBe(false)
+  await expect(controller.testModel()).rejects.toThrow('current model check')
+  const result = { text: 'Ready.', at: 99, elapsedMs: 45, receipt: { status: 'completed', requests: [] } }
+  pending.resolve(result)
+  expect(await reply).toEqual(result)
+  expect(controller.getSnapshot().model).toMatchObject({ status: 'verified', checkedAt: 99, probe: result })
+  expect(Object.isFrozen(controller.getSnapshot().model.probe.receipt)).toBe(true)
+  expect(starts).toBe(0); expect(hub.asks).toHaveLength(0)
+  expect(controller.getSnapshot().runtime.phase).toBe('Not started')
+})
+
+test('cancelled reply checks abort transport and stale completion cannot replace a newer check', async () => {
+  const { controller, hub } = await startedFixture()
+  const pending = deferred(); let signal
+  hub.models = { probe: (_, options) => { signal = options.signal; return pending.promise }, refresh: async () => ({ ids: ['fixture-model'], at: 100 }) }
+  const old = controller.probeModel()
+  await expect(controller.sendGoal('Do not overlap this probe')).rejects.toThrow('current model check')
+  await expect(controller.connectCompanion({ url: 'https://127.0.0.1:7717', token: 'fixture-only' })).rejects.toThrow('current model check')
+  expect(hub.asks).toHaveLength(0)
+  expect(controller.cancelModelCheck()).toBe(true)
+  expect(signal.aborted).toBe(true)
+  expect(controller.getSnapshot().model).toMatchObject({ status: 'configured', error: '', check: { status: 'cancelled', cancelled: true } })
+  await controller.testModel()
+  pending.resolve({ text: 'Late reply', at: 99, receipt: {} })
+  await expect(old).rejects.toMatchObject({ name: 'AbortError', code: 'MODEL_CHECK_CANCELLED' })
+  expect(controller.getSnapshot().model).toMatchObject({ status: 'listed', checkedAt: 100, probe: null })
+  expect(controller.cancelModelCheck()).toBe(false)
+})
+
+test('relay grant and session changes invalidate proof even at the same endpoint', async () => {
+  const { controller, hub } = await startedFixture({ restoredBridge: true })
+  const connection = { status: 'answering', url: 'https://127.0.0.1:7717', root: '/paired-root', runtimeId: 'relay-1', generation: 1, capabilities: ['model-relay', 'network-relay'] }
+  hub.emit({ type: 'bridge', state: connection })
+  hub.models = { probe: async () => ({ text: 'Ready', at: 123, receipt: { status: 'completed' } }) }
+  await controller.probeModel()
+  hub.emit({ type: 'bridge', state: { ...connection, capabilities: [...connection.capabilities].reverse() } })
+  expect(controller.getSnapshot().model.status).toBe('verified')
+  hub.emit({ type: 'bridge', state: { ...connection, generation: 2 } })
+  expect(controller.getSnapshot().model).toMatchObject({ status: 'configured', checkedAt: null, probe: null })
+  await controller.probeModel()
+  hub.emit({ type: 'bridge', state: { ...connection, capabilities: ['network-relay'] } })
+  expect(controller.getSnapshot().model).toMatchObject({ status: 'failed', errorCode: 'MODEL_RELAY_DENIED', probe: null })
+  expect(controller.getSnapshot().runtime.target).toBe('browser')
+})
+
+test('a failed model save that supersedes a probe cannot leave uncancellable checking state', async () => {
+  const { controller, hub } = await startedFixture()
+  const pending = deferred()
+  hub.models = { probe: () => pending.promise }
+  const old = controller.probeModel()
+  hub.settings.set = async () => { throw new Error('Settings quota exceeded') }
+  await expect(controller.setModel({ model: 'new-model', baseUrl: 'https://new.invalid/v1', via: 'direct' })).rejects.toThrow('quota')
+  expect(controller.getSnapshot().model).toMatchObject({ status: 'configured', id: 'fixture-model', check: null })
+  pending.resolve({ text: 'Late reply', receipt: {} })
+  await expect(old).rejects.toThrow('connection changed')
+  expect(controller.cancelModelCheck()).toBe(false)
+})
+
+test('model-only pairing validates its grant without creating an execution adapter or mounting files', async () => {
+  let adapters = 0; let requests = 0
+  const { controller, hub, files } = await startedFixture({ createCompanion: () => { adapters++; throw new Error('Unexpected execution adapter') } })
+  const before = controller.getSnapshot().runtime
+  hub.bridge.pair = async (url, token, options) => {
+    requests++; expect(token).toBe('fixture-only'); expect(options).toEqual({ requireModelRelay: true, timeoutMs: 15000 })
+    return { status: 'answering', url, runtimeId: 'relay-only', generation: 2, capabilities: ['model-relay'] }
+  }
+  await controller.pairModelRelay({ url: 'https://127.0.0.1:7717', token: 'fixture-only' })
+  expect(controller.getSnapshot().companion).toMatchObject({ status: 'connected', capabilities: ['model-relay'] })
+  expect(controller.getSnapshot().model.via).toBe('bridge')
+  expect(controller.getSnapshot().runtime).toEqual(before)
+  expect(files.backend).toBeFalsy(); expect(adapters).toBe(0); expect(requests).toBe(1)
+  expect(hub.asks).toHaveLength(0)
+})
+
+test('failed model-only pairing preserves previous route and capability binding', async () => {
+  const { controller, hub } = await startedFixture()
+  const before = controller.getSnapshot()
+  hub.bridge.pair = async () => ({ status: 'down', error: 'Model relay access is denied', errorCode: 'relay_capability' })
+  await expect(controller.pairModelRelay({ url: 'https://127.0.0.1:7717', token: 'fixture-only' })).rejects.toMatchObject({ code: 'relay_capability' })
+  expect(controller.getSnapshot().model).toEqual(before.model)
+  expect(controller.getSnapshot().companion).toEqual(before.companion)
+  expect(controller.getSnapshot().runtime).toEqual(before.runtime)
+})
+
+test('model-only pairing cannot replace a companion during an admitted workspace transfer', async () => {
+  const { controller, hub, browser } = await startedFixture()
+  await controller.startRuntime()
+  let pairs = 0
+  hub.bridge.pair = async () => { pairs++; throw new Error('Unexpected pairing') }
+  const paused = pauseOnce(browser, 'snapshot')
+  const transfer = controller.setExecutionTarget('local', { transfer: true })
+  await paused.entered
+  await expect(controller.pairModelRelay({ url: 'https://127.0.0.1:7717', token: 'fixture-only' })).rejects.toThrow('snapshot transfer')
+  expect(pairs).toBe(0)
+  paused.release(); await transfer
+  expect(controller.getSnapshot().runtime.target).toBe('local')
+})
+
+test('a disposed desk cannot save model settings from a late pairing result', async () => {
+  const { controller, hub } = await startedFixture()
+  const pending = deferred(); let saved = 0
+  hub.bridge.pair = () => pending.promise
+  hub.settings.set = async () => { saved++ }
+  const pairing = controller.pairModelRelay({ url: 'https://127.0.0.1:7717', token: 'fixture-only' })
+  controller.stop()
+  pending.resolve({ status: 'answering', url: 'https://127.0.0.1:7717', capabilities: ['model-relay'] })
+  await expect(pairing).rejects.toThrow('desk was closed')
+  expect(saved).toBe(0)
+})
+
+test('partial or failed reply receipts cannot establish model verification', async () => {
+  const { controller, hub } = await startedFixture()
+  for (const receipt of [{}, { status: 'failed' }, { status: 'aborted' }, { status: 'timed_out' }, { status: 'completed', errorCode: 'truncated' }]) {
+    hub.models = { probe: async () => ({ text: 'Partial reply', receipt }) }
+    await expect(controller.probeModel()).rejects.toThrow('completed reply receipt')
+    expect(controller.getSnapshot().model).toMatchObject({ status: 'failed', errorCode: 'MODEL_INCOMPLETE_REPLY', probe: null })
+  }
+})
+
+test('execution pairing without a model relay grant does not select that model transport', async () => {
+  const port = Object.assign(new ControlledExecution('local'), { url: 'https://companion.invalid', token: 'fixture-only' })
+  const { controller } = await startedFixture({ createCompanion: () => port })
+  expect(controller.getSnapshot().model.via).toBe('direct')
+  await controller.connectCompanion({ url: port.url, token: port.token })
+  expect(controller.getSnapshot().model.via).toBe('direct')
+})
+
+test('model checks refuse active tasks and controller disposal aborts an idle reply probe', async () => {
+  const { controller, hub } = await startedFixture()
+  const pending = deferred(); let signal
+  hub.models = { probe: (_, options) => { signal = options.signal; return pending.promise } }
+  const reply = controller.probeModel()
+  controller.stop()
+  expect(signal.aborted).toBe(true)
+  pending.resolve({ text: 'Late', receipt: {} })
+  await expect(reply).rejects.toThrow('connection changed')
+  const next = await startedFixture({ workbenchConfig: generalWorkflows })
+  await next.controller.sendGoal('Active agent')
+  next.hub.emit({ type: 'status', run: next.hub.asks[0].id, slot: { status: 'thinking' } })
+  await expect(next.controller.probeModel()).rejects.toThrow('Finish or stop active work')
 })
 
 test('guest failure clears readiness and dead terminal handles while preserving its last artifact', async () => {
@@ -1416,7 +1570,7 @@ test('explicit direct model transport escapes a disconnected relay and works ind
   expect(checked.ids).toEqual(['fixture-model'])
   expect(requested).toEqual(['https://model.invalid/v1/models'])
   expect(hub.settings.get().catalogue.models.workbench.via).toBe('direct')
-  expect(controller.getSnapshot().model).toMatchObject({ via: 'direct', status: 'connected' })
+  expect(controller.getSnapshot().model).toMatchObject({ via: 'direct', status: 'listed' })
   expect(controller.getSnapshot().runtime.status).toBe('unresponsive')
   const runId = await controller.sendGoal('Explain this without executing files')
   expect(hub.runs.get(runId).agent).toBe('assistant')

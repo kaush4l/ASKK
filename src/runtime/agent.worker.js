@@ -20,7 +20,7 @@
 import { contexts } from '../core/context.js'
 import { Engine } from '../core/engine.js'
 import { versioned } from '../core/folder.js'
-import { inference } from '../core/inference.js'
+import { assertModelRelay, inference } from '../core/inference.js'
 import { resolve } from '../core/models.js'
 import { snapshot } from '../core/prompt.js'
 import { fromModule, tool, toolbox } from '../core/tools.js'
@@ -69,6 +69,7 @@ async function llm() {
 
 /** A fetch made from the owner's machine by the host bridge, streamed back. */
 async function bridgeFetch(url, init = {}) {
+  assertModelRelay(host)
   return fetch(`${host.url}/fetch`, {
     method: 'POST',
     headers: { authorization: `Bearer ${host.token}`, 'content-type': 'application/json' },

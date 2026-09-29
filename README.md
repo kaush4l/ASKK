@@ -6,6 +6,7 @@ The UI is a Next.js static export written in JavaScript/JSX. Agents run in Web W
 
 A local Qwen model completed a native task-board verification with 37 passing check steps, after eight repeated failures and targeted owner steering over roughly 24 minutes. This proves a guided recovery on an existing application, not one-shot reliability. The [published Chrome workbench](https://kaush4l.github.io/ASKK/) has passed shell, worker, draft-reload, missing-chunk, and trusted HTTPS model-relay connection checks; general assistant inference now also passes in hosted Chrome using the local Qwen endpoint. Browser-guest application builds remain a separate gate.
 
+- [Folder-defined agent desk plan](docs/rewrite/AGENT-DESK-PLAN.md)
 - [Current architecture and seven contracts](docs/rewrite/ARCHITECTURE.md)
 - [Configured parallel roles and completion contracts](docs/rewrite/CONFIGURED-STRATEGIES.md)
 - [Measured status and remaining gates](docs/rewrite/IMPLEMENTATION-STATUS.md)
@@ -16,7 +17,7 @@ A local Qwen model completed a native task-board verification with 37 passing ch
 
 Open [ASKK on GitHub Pages](https://kaush4l.github.io/ASKK/). The dashboard is the entry point; use the Workspace navigation to return to files and conversation without losing the goal draft.
 
-1. Configure a model, choose **Direct from this browser** or **Through HTTPS companion**, save, and test the connection. Direct access requires browser networking permission and endpoint CORS; Safari needs a trusted HTTPS companion for the local HTTP model. A disconnected saved relay must be reconnected or explicitly changed to Direct. The browser runs the agent loop; the endpoint performs inference.
+1. Configure a model, choose **Direct from this browser** or **Through HTTPS companion**, and save. **List models** checks the catalogue; **Test reply** sends a bounded, tool-free request and displays the actual reply and receipt. Either check can be cancelled. Direct access requires browser networking permission and endpoint CORS; Safari needs a trusted HTTPS companion for the local HTTP model. A disconnected saved relay must be reconnected or explicitly changed to Direct. The browser runs the agent loop; the endpoint performs inference.
 2. Choose **General assistant** for research, planning, or questions. This starts browser agent workers without downloading or booting Browser Linux. Web fetch is subject to CORS; search requires a companion that explicitly advertises `fetch`. Browser control is unavailable unless an actual tool and its required capability are supplied.
 3. Choose **Compare perspectives** to run an approach and independent critique in parallel, followed by synthesis. Role cards link to actual results and exact historical prompts. This reasoning workflow needs no command environment. Graph inputs stay fixed during a run; stop to change the goal. For General assistant, choose **Single agent** or **Allow delegation**, enable the tools you want, and select which effect classes require approval. These choices are pinned for the next task and inherited by its subagents. Existing denials still apply. The internal context compactor is runtime infrastructure, not task delegation.
 4. Inspect agents, pending approvals, and tool inputs/results as work runs. **View instructions** separates soul/agent instructions, dynamic context and tool descriptions, and the most recently recorded prompt. A recorded prompt describes that historical request, not a preview of a future request.
@@ -60,7 +61,7 @@ These commands build the UI and publish its worker graph. They do **not** compil
 bun host/companion.js --root /absolute/path/to/project --allow-origin http://127.0.0.1:5187
 ```
 
-Pair the printed URL and token in Settings → Runtime. Pairing a model relay does not itself select native commands. Moving an existing workspace requires an explicit snapshot transfer into an empty destination. Commands run as your user; filesystem API confinement is not an OS sandbox.
+For model access alone, start the companion with `--capabilities model-relay` and pair its printed URL/token in Settings → Model → Through HTTPS companion. Use Settings → Execution for host filesystem and command access. Pairing a model relay does not itself select native commands. Moving an existing workspace requires an explicit snapshot transfer into an empty destination. Commands run as your user; filesystem API confinement is not an OS sandbox.
 
 A hosted HTTPS page needs a browser-trusted HTTPS companion for the intended Chrome/Safari flow. Given an already trusted certificate/key valid for `127.0.0.1`:
 
@@ -91,6 +92,8 @@ require_verification: true
 ---
 Read the current files, implement the requested result, and verify it.
 ```
+
+A portable package validator now accepts declarative folder records, preserves authored source, validates local agent references and prompt paths, and generates a complete SHA-256 lock. Folder installation, visual/source editing and replacement of the bundled catalogue are still pending; imported executable tools are not enabled by this foundation. See the [agent desk plan](docs/rewrite/AGENT-DESK-PLAN.md).
 
 The main and coder agents use compact version 2 JSON. Calls within a stage may run concurrently; stages run in order. Policy decides whether tools run, are denied, or need approval. Exact structured prompt attempts and redacted provider requests are recorded separately.
 

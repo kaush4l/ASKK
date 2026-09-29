@@ -5,6 +5,7 @@ import Icon from './Icons.jsx'
 import Markdown from './Markdown.jsx'
 import ToolCard, { toolPresentationStatus } from './ToolCard.jsx'
 import StrategyProgress from './StrategyProgress.jsx'
+import { modelStatusLabel, modelRelayAvailable } from './model-ui.js'
 import './dashboard.css'
 
 const active = status => ['starting', 'running', 'thinking', 'calling', 'waiting', 'compacting', 'cancelling', 'verifying'].includes(status)
@@ -55,7 +56,7 @@ export default function Dashboard({ state = {}, goal = '', onGoalChange, onSubmi
   const advertisedBrowser = ['browser', 'browser-control'].some(cap => capabilities.has(cap)) && tools.some(tool => toolEnabled(tool) && /^(browser[._]|host_browser)/.test(tool.name))
   const fetchAvailable = capabilities.has('fetch')
   const delayed = runtime.status === 'unresponsive' && workflow?.workspace
-  const canSubmit = !graphRunning && state.ready && Boolean(workflow) && Boolean(goal.trim()) && !busy && (!delayed || working) && (!graph || policy.allowDelegation || working)
+  const canSubmit = model.status !== 'checking' && !graphRunning && state.ready && Boolean(workflow) && Boolean(goal.trim()) && !busy && (!delayed || working) && (!graph || policy.allowDelegation || working)
   const setPolicy = patch => onToolPolicyChange?.(patch)
   const submit = event => { event.preventDefault(); if (canSubmit) onSubmit?.() }
   const matches = (definition, run) => run.agent === definition.path || run.agent === definition.name || run.name === definition.path || run.name === definition.name
@@ -78,7 +79,7 @@ export default function Dashboard({ state = {}, goal = '', onGoalChange, onSubmi
             <form className="dashboard-composer" onSubmit={submit}>
               <label htmlFor="dashboard-goal">Dashboard goal</label>
               <textarea id="dashboard-goal" value={goal} onChange={event => onGoalChange?.(event.target.value)} placeholder={graphRunning ? 'Draft a goal for the next run…' : working ? 'Add a note to the current task…' : 'Describe the result you want…'} rows={4} onKeyDown={event => { if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') { event.preventDefault(); if (canSubmit) onSubmit?.() } }}/>
-              <div className="dashboard-composer-footer"><span>{graphRunning ? 'Role inputs are fixed for this run. Stop the workflow to change the goal.' : working ? 'Your note steers the current task.' : 'Your goal stays here when you open the workspace.'}</span><div>{working && <button className="dashboard-stop" type="button" onClick={onStopRun}><Icon name="stop" size={13}/>{graphRunning ? 'Stop workflow' : 'Stop'}</button>}<button className="dashboard-submit" type="submit" disabled={!canSubmit}>{busy ? 'Please wait…' : graphRunning ? 'Run in progress' : working ? 'Send note' : 'Start task'}<Icon name="arrow" size={16}/></button></div></div>
+              <div className="dashboard-composer-footer"><span>{model.status === 'checking' ? 'Model check in progress. Finish or cancel it in Model settings before starting a task.' : graphRunning ? 'Role inputs are fixed for this run. Stop the workflow to change the goal.' : working ? 'Your note steers the current task.' : 'Your goal stays here when you open the workspace.'}</span><div>{working && <button className="dashboard-stop" type="button" onClick={onStopRun}><Icon name="stop" size={13}/>{graphRunning ? 'Stop workflow' : 'Stop'}</button>}<button className="dashboard-submit" type="submit" disabled={!canSubmit}>{busy ? 'Please wait…' : model.status === 'checking' ? 'Checking model…' : graphRunning ? 'Run in progress' : working ? 'Send note' : 'Start task'}<Icon name="arrow" size={16}/></button></div></div>
             </form>
             {notice && <aside className="dashboard-notice" role="note"><strong>{notice.title}</strong><span>{notice.body}</span></aside>}
             {delayed && <p className="dashboard-error" role="status">Environment response delayed. Existing operations stay open while their outcomes are reconciled.</p>}
@@ -113,7 +114,7 @@ export default function Dashboard({ state = {}, goal = '', onGoalChange, onSubmi
         <aside className="dashboard-sidebar" aria-label="Task controls and connections">
           <section className="dashboard-connections"><div className="dashboard-section-heading"><h2>Connections</h2><Icon name="globe" size={15}/></div>
             <Capability icon="box" title="Browser harness" value={state.ready ? 'Loaded' : 'Loading'} detail="Agent loops and bundled tools run in your browser."/>
-            <Capability icon="spark" title="Model" value={model.status === 'connected' ? 'Connection tested' : model.status === 'failed' ? 'Connection failed' : model.id ? 'Not tested' : 'Not configured'} detail={model.id ? <>{model.id}<br/>{model.via === 'bridge' ? `Through HTTPS companion${companion.status === 'connected' ? '' : ' · not connected'}` : 'Direct from this browser'}</> : 'Connect an OpenAI-compatible model endpoint.'} action={() => onOpenSettings?.('model')} actionLabel="Configure model"/>
+            <Capability icon="spark" title="Model" value={modelStatusLabel(model)} detail={model.id ? <>{model.id}<br/>{model.via === 'bridge' ? `Through HTTPS companion${modelRelayAvailable(companion) ? '' : ' · relay unavailable'}` : 'Direct from this browser'}</> : 'Connect an OpenAI-compatible model endpoint.'} action={() => onOpenSettings?.('model')} actionLabel="Configure model"/>
             <Capability icon="laptop" title="Optional companion" value={companion.status === 'connected' ? 'Connected' : 'Not connected'} detail={companion.status === 'connected' ? `${capabilities.size} advertised capabilities. Permissions are scoped to this connection.` : 'Enable selected network or host tools by pairing a companion.'} action={() => onOpenSettings?.('runtime')} actionLabel="Manage connection"/>
             <dl className="dashboard-capability-facts"><div><dt>Host fetch relay</dt><dd>{fetchAvailable ? 'Advertised' : 'Unavailable'}</dd></div><div><dt>Browser control</dt><dd>{advertisedBrowser ? 'Advertised' : 'Unavailable'}</dd></div><div><dt>Command execution</dt><dd>{runtime.status === 'ready' ? (runtime.target === 'local' ? 'Local Bun ready' : 'Browser Linux ready') : labelOf(runtime.status || 'idle') === 'Available' ? 'Not started' : labelOf(runtime.status)}</dd></div></dl><p className="dashboard-footnote">Web research needs an available fetch tool or relay. Model access alone does not enable host commands or browser control.</p>
           </section>

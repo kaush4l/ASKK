@@ -393,6 +393,25 @@
   .settings-form { display: flex; flex-direction: column; gap: 15px; }
   .settings-form .modal-description { margin-bottom: 0; }
   .settings-form>label { margin: 0; }
+  .model-route { padding: 12px; border: 1px solid var(--line); border-radius: 7px; background: var(--editor); font-size: 11px; min-width: 0; }
+  .model-route strong { display: block; margin-bottom: 10px; }
+  .model-route ol { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; }
+  .model-route li { overflow-wrap: anywhere; color: var(--secondary); }
+  .model-route li span { display: block; margin-top: 3px; color: var(--muted); }
+  .model-relay-setup { display: flex; flex-direction: column; gap: 13px; border-top: 1px solid var(--line); padding-top: 16px; min-width: 0; }
+  .model-relay-setup > label { display: block; font-size: 11px; }
+  .model-setup-help { font-size: 11px; line-height: 1.7; color: var(--secondary); }
+  .model-setup-help summary, .model-check-result summary { cursor: pointer; min-height: 32px; display: list-item; padding-block: 6px; }
+  .model-setup-help ol { padding-left: 20px; margin: 9px 0; }
+  .model-setup-help a { display: inline-block; padding-block: 8px; text-decoration: underline; text-underline-offset: 3px; }
+  .model-setup-help pre, .model-check-result pre { padding: 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--editor); font: 11px/1.7 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 220px; overflow: auto; margin-block: 9px; }
+  .model-check-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .model-check-actions .button { flex: 1 1 auto; min-height: 44px; }
+  .model-check-result { min-width: 0; border-top: 1px solid var(--line); padding-top: 13px; font-size: 12px; }
+  .model-check-result p { color: var(--secondary); font-size: 11px; line-height: 1.7; margin-top: 7px; overflow-wrap: anywhere; }
+  .model-check-result.error > strong, .model-check-result.error p { color: var(--red); }
+  .model-check-result code { display: block; margin-top: 4px; font-size: 10px; }
+  @media (pointer: coarse) { .model-setup-help summary, .model-check-result summary, .model-setup-help a { min-height: 44px; } }
   .optional { font-size: 10px; color: var(--muted); font-weight: 400; margin-left: 5px; }
   .connection-help { display: flex; gap: 9px; color: var(--secondary); font-size: 10px; line-height: 1.8; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 11px; }
   .connection-help>svg { margin-top: 3px; }
