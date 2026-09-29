@@ -37,6 +37,12 @@ export class InferenceError extends Error {
   }
 }
 
+/** Model transport authority is distinct from tool or native execution authority. */
+export function assertModelRelay(host) {
+  if (!host) throw new InferenceError('The selected model relay is disconnected. Reconnect it before requesting inference.', 'relay_unavailable')
+  if (!host.capabilities?.includes('model-relay') && !host.capabilities?.includes('fetch')) throw new InferenceError('This companion does not grant model-relay access.', 'relay_capability')
+}
+
 /**
  * Build the inference a settings object asks for. `onRetry(attempt, error)` is told about each
  * failed attempt, so the thread can say "retrying" instead of looking stuck.
@@ -51,7 +57,8 @@ export function inference(settings = {}, { fetch: fetcher = globalThis.fetch?.bi
     retries: Math.max(1, Math.min(5, Number(settings.retries) || 3)),
     retryDelay: settings.retryDelay ?? 1000,
 
-    async *stream(messages, { signal, onRequest, onFinish, maxOutputTokens } = {}) {
+    async *stream(messages, { signal, onRequest, onFinish, maxOutputTokens, strictCompletion = false } = {}) {
+      if (signal?.aborted) throw new InferenceError('Model request cancelled.', 'aborted')
       let last
       const frozenMessages = snapshot(messages)
       // Scripted cursors intentionally remain stateful; provider configuration does not.
@@ -78,7 +85,7 @@ export function inference(settings = {}, { fetch: fetcher = globalThis.fetch?.bi
             onRequest?.(snapshot({ provider: 'cli', transportAttempt: attempt + 1, body }))
             return run(body, options)
           })
-          for await (const delta of provider.deltas(requestSettings, frozenMessages, { fetch: trackedFetch, run: trackedRun, signal, onFinish: recordCompletion })) {
+          for await (const delta of provider.deltas(requestSettings, frozenMessages, { fetch: trackedFetch, run: trackedRun, signal, onFinish: recordCompletion, strictCompletion })) {
             spoken = true
             if (delta.kind === 'reasoning') reasoningChars += delta.text.length
             else if (delta.kind === 'text') {
@@ -89,21 +96,25 @@ export function inference(settings = {}, { fetch: fetcher = globalThis.fetch?.bi
           }
           return
         } catch (error) {
-          if (signal?.aborted) throw new InferenceError('stopped')
-          if (error instanceof InferenceError) {
+          if (signal?.aborted) throw new InferenceError('Model request cancelled.', 'aborted')
+          const transientHTTP = error.code === 'provider_http' && (error.metadata?.status === 429 || error.metadata?.status >= 500)
+          if (error instanceof InferenceError && !transientHTTP) {
             if (!completion && error.code === 'truncated') recordCompletion({ finishReason: 'missing', usage: null })
             if (completion) error.metadata = completion
             throw error
           }
           last = unreadable(error, settings, { pageURL, bridgeURL })
-          if (spoken) throw new InferenceError(`${self.model} stopped mid-reply: ${error.message}`)
+          if (spoken) {
+            if (!completion) recordCompletion({ finishReason: 'missing', usage: null })
+            throw new InferenceError(`${self.model} stopped mid-reply: ${error.message}`, 'truncated', completion)
+          }
           if (attempt + 1 < self.retries) {
             onRetry?.(attempt + 1, error)
             await sleep(self.retryDelay * 2 ** attempt, signal)
           }
         }
       }
-      throw new InferenceError(`${self.model || settings.provider} did not answer after ${self.retries} tries: ${last?.message ?? last}`)
+      throw new InferenceError(`${self.model || settings.provider} did not answer after ${self.retries} tries: ${last?.message ?? last}`, last?.code ?? 'provider_error', last?.metadata)
     },
 
     async invoke(messages, options) {
@@ -112,8 +123,9 @@ export function inference(settings = {}, { fetch: fetcher = globalThis.fetch?.bi
       return text
     },
 
-    async models() {
-      try { return provider.models ? await provider.models(settings, { fetch: send, run }) : [] }
+    async models({ signal } = {}) {
+      if (signal?.aborted) throw new InferenceError('Model request cancelled.', 'aborted')
+      try { return provider.models ? await provider.models(settings, { fetch: send, run, signal }) : [] }
       catch (error) { throw unreadable(error, settings, { pageURL, bridgeURL }) }
     },
 
@@ -153,7 +165,7 @@ function unreadable(error, settings, { pageURL, bridgeURL } = {}) {
   const browserPolicy = loopback && page && page.origin !== target.origin
     ? ` A browser-to-loopback request can also require local-network permission.${page.protocol === 'https:' && target.protocol === 'http:' ? ' This HTTPS page is calling HTTP loopback; mixed-content protection may block that route. Check the browser console and use a trusted HTTPS companion relay when required.' : ''}`
     : ''
-  return new Error(`The browser could not read a reply from ${route}${origin}. ${reasons}${browserPolicy} This failure does not establish that the model server is offline.`)
+  return new InferenceError(`The browser could not read a reply from ${route}${origin}. ${reasons}${browserPolicy} This failure does not establish that the model server is offline.`, 'browser_unreadable')
 }
 
 /** Rough token count — four characters to a token, no tokenizer to load. */
@@ -164,7 +176,7 @@ export function tokens(text) {
 const CONTEXT_KEYS = ['context_length', 'max_context_length', 'max_model_len', 'context_window', 'loaded_context_length']
 
 const openai = {
-  async *deltas(settings, messages, { fetch, signal, onFinish }) {
+  async *deltas(settings, messages, { fetch, signal, onFinish, strictCompletion }) {
     const base = openaiBase(settings)
     const headers = { 'content-type': 'application/json', ...extraHeaders(settings) }
     if (settings.apiKey) headers.authorization = `Bearer ${settings.apiKey}`
@@ -180,7 +192,7 @@ const openai = {
     let finishReason = null
     let usage = null
     let ended = false
-    for await (const data of sse(response.body)) {
+    for await (const data of sse(response.body, { signal })) {
       if (data === '[DONE]') { ended = true; break }
       const event = json(data)
       if (event?.error) throw new Error(event.error.message ?? JSON.stringify(event.error))
@@ -191,15 +203,17 @@ const openai = {
       if (reasoning) yield { text: String(reasoning), kind: 'reasoning' }
       if (delta.content) yield { text: String(delta.content), kind: 'text' }
     }
-    complete({ finishReason: finishReason ?? (ended ? 'stop' : 'missing'), usage }, onFinish)
+    complete({ finishReason: strictCompletion && (!ended || !finishReason) ? 'missing' : finishReason ?? (ended ? 'stop' : 'missing'), usage }, onFinish)
   },
-  async models(settings, { fetch }) {
+  async models(settings, { fetch, signal }) {
     const base = openaiBase(settings)
     const headers = { ...extraHeaders(settings), ...(settings.apiKey ? { authorization: `Bearer ${settings.apiKey}` } : {}) }
-    const response = await fetch(`${base}/models`, { headers })
+    const response = await fetch(`${base}/models`, { headers, signal })
     await ok(response)
     const listed = await response.json()
-    return (listed.data ?? listed.models ?? []).map((model) => ({
+    const rows = listed.data ?? listed.models
+    if (!Array.isArray(rows)) throw new InferenceError('The provider returned an invalid model list.', 'provider_response')
+    return rows.map((model) => ({
       id: model.id ?? model.name,
       contextLength: CONTEXT_KEYS.map((key) => model[key]).find(Boolean) ?? null,
     }))
@@ -207,7 +221,7 @@ const openai = {
 }
 
 const anthropic = {
-  async *deltas(settings, messages, { fetch, signal, onFinish }) {
+  async *deltas(settings, messages, { fetch, signal, onFinish, strictCompletion }) {
     const base = anthropicBase(settings)
     const system = messages
       .filter((message) => message.role === 'system')
@@ -226,7 +240,7 @@ const anthropic = {
     let finishReason = null
     let usage = {}
     let ended = false
-    for await (const data of sse(response.body)) {
+    for await (const data of sse(response.body, { signal })) {
       const event = json(data)
       if (event?.type === 'error') throw new Error(event.error?.message ?? 'anthropic error')
       if (event?.type === 'message_start' && event.message?.usage) usage = { ...usage, ...event.message.usage }
@@ -239,14 +253,15 @@ const anthropic = {
       if (event.delta?.type === 'text_delta') yield { text: event.delta.text, kind: 'text' }
       else if (event.delta?.type === 'thinking_delta') yield { text: event.delta.thinking, kind: 'reasoning' }
     }
-    complete({ finishReason: finishReason ?? (ended ? 'end_turn' : 'missing'), usage }, onFinish)
+    complete({ finishReason: strictCompletion && (!ended || !finishReason) ? 'missing' : finishReason ?? (ended ? 'end_turn' : 'missing'), usage }, onFinish)
   },
-  async models(settings, { fetch }) {
+  async models(settings, { fetch, signal }) {
     const base = anthropicBase(settings)
-    const response = await fetch(`${base}/models`, { headers: anthropicHeaders(settings) })
+    const response = await fetch(`${base}/models`, { headers: anthropicHeaders(settings), signal })
     await ok(response)
     const listed = await response.json()
-    return (listed.data ?? []).map((model) => ({ id: model.id, contextLength: null }))
+    if (!Array.isArray(listed.data)) throw new InferenceError('The provider returned an invalid model list.', 'provider_response')
+    return listed.data.map((model) => ({ id: model.id, contextLength: null }))
   },
 }
 
@@ -433,7 +448,7 @@ function redactedHeaders(headers = {}) {
   return Object.fromEntries(Object.entries(headers).map(([key, value]) => [key, visible.has(key.toLowerCase()) ? value : '[redacted]']))
 }
 
-function redactedURL(value) {
+export function redactedURL(value) {
   const url = new URL(value)
   url.username = ''
   url.password = ''
@@ -442,8 +457,12 @@ function redactedURL(value) {
 }
 
 /** Server-sent events from a byte stream: yields each event's joined `data:` lines. */
-export async function* sse(body) {
+export async function* sse(body, { signal } = {}) {
+  if (!body) throw new InferenceError('The provider returned no response stream.', 'truncated')
   const reader = body.pipeThrough(new TextDecoderStream()).getReader()
+  const abort = () => { reader.cancel(signal.reason).catch(() => {}) }
+  signal?.addEventListener('abort', abort, { once: true })
+  if (signal?.aborted) abort()
   let buffer = ''
   try {
     while (true) {
@@ -461,6 +480,8 @@ export async function* sse(body) {
     const data = dataOf(buffer)
     if (data != null) yield data
   } finally {
+    signal?.removeEventListener('abort', abort)
+    await reader.cancel().catch(() => {})
     reader.releaseLock()
   }
 }
@@ -505,7 +526,10 @@ async function ok(response) {
   } catch {
     // The body is a courtesy.
   }
-  throw new Error(`HTTP ${response.status}${detail ? `: ${detail}` : ''}`)
+  const body = json(detail)
+  const relayCodes = { 'bridge.auth': 'relay_auth', 'bridge.origin': 'relay_origin', 'capability.unavailable': 'relay_capability', 'relay.upstream_unreachable': 'relay_upstream', 'relay.upstream_timeout': 'relay_timeout' }
+  const code = relayCodes[body?.code] ?? ([401, 403].includes(response.status) ? 'provider_auth' : 'provider_http')
+  throw new InferenceError(`HTTP ${response.status}${detail ? `: ${detail}` : ''}`, code, { status: response.status })
 }
 
 function json(text) {

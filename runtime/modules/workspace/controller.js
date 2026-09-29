@@ -10,6 +10,8 @@ const id = prefix => `${prefix}-${crypto.randomUUID()}`
 const readSaved = key => { try { return JSON.parse(localStorage.getItem(key) ?? 'null') } catch { return null } }
 const LEGACY_WORKFLOW = Object.freeze({ id: 'coding', label: 'Build an app', description: 'Create and verify an application in the selected workspace.', agent: 'main', workspace: true })
 const DEFAULT_TOOL_POLICY = normalizeToolPolicy({ disabledTools: [], approvalRisks: [], allowDelegation: true })
+const canRelayModels = value => (value?.capabilities ?? value?.health?.capabilities ?? []).some(capability => ['model-relay', 'fetch'].includes(capability))
+const companionIdentity = value => JSON.stringify([value?.status, value?.url, value?.runtimeId, value?.generation, value?.root, [...(value?.capabilities ?? [])].sort()])
 function workflowsFrom(configuration) {
   if (configuration.workflows === undefined) return [LEGACY_WORKFLOW]
   if (!Array.isArray(configuration.workflows) || !configuration.workflows.length || configuration.workflows.length > 32) throw new Error('Invalid workbench workflows')
@@ -29,7 +31,7 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
   let state = { ready: false, error: '', project: { name: 'Untitled workspace', id: 'default' }, goal: '', goalRevision: 0, files: [], messages: [], run: null, task: null, runtime: { target: 'browser', status: 'idle', phase: 'Not started', capabilities: [] }, companion: { status: 'disconnected', url: 'https://127.0.0.1:7717' }, model: { status: 'unconfigured', id: '', baseUrl: '' }, commands: [], artifacts: [], agents: [], agentDefinitions: [], workflows: [], selectedWorkflowId: 'assistant', toolPolicy: DEFAULT_TOOL_POLICY, plans: [], approvals: [], activity: [] }
   let hub; let local; let executor; let browser; let started; let disposed = false; let activeRun; let projectRevision = 0; let taskStartRevision = 0; let currentArtifact; let unsubscribe; let runtimeBoot; let taskArtifactId; let watcher; let watched = ''; let acceptance = { requireArtifact: true, requireInteraction: true }
   let uiLoaded = false; let persistTimer; let savingUI = Promise.resolve()
-  let binding; let workspaceLocation = null; let locationLoaded = false; let legacyNative = false; let modelProfiles = []; let modelEpoch = 0; let launchEpoch = 0; const runBindings = new Map()
+  let binding; let workspaceLocation = null; let locationLoaded = false; let legacyNative = false; let modelProfiles = []; let modelEpoch = 0; let modelCheck; let launchEpoch = 0; const runBindings = new Map()
   const executionEpochs = { browser: 0, local: 0 }; const executionErrors = {}
   const executionHealth = { browser: 'responsive', local: 'responsive' }; const healthVersions = { browser: 0, local: 0 }; const healthWaiters = new Set()
   let runtimeEstablished = false; let recovering; let watching = false
@@ -46,6 +48,31 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
   }
   const notify = patch => { if (disposed) return; state = { ...state, ...patch }; for (const listener of listeners) listener(); if (uiLoaded && ['messages', 'run', 'task', 'plans', 'commands', 'artifacts', 'selectedWorkflowId', 'toolPolicy'].some(key => key in patch)) { clearTimeout(persistTimer); persistTimer = setTimeout(persistUI, 200) } }
   const report = error => { notify({ error: error?.message ?? String(error) }); return error }
+  const invalidateModelCheck = (reason = 'The model connection changed during this check. Test the current connection again.') => {
+    modelEpoch++
+    modelCheck?.abort.abort(Object.assign(new Error(reason), { code: 'MODEL_CONNECTION_CHANGED' }))
+    modelCheck = null
+  }
+  const checkModel = async kind => {
+    if (active(state.run?.status)) throw new Error('Finish or stop active work before testing its model')
+    if (connecting) throw new Error('Wait for the companion connection change to finish')
+    if (modelCheck) throw new Error('Cancel or finish the current model check first')
+    const check = { kind, epoch: ++modelEpoch, abort: new AbortController(), startedAt: Date.now() }
+    modelCheck = check
+    notify({ model: { ...state.model, status: 'checking', error: '', errorCode: null, checkedAt: null, probe: null, check: { kind, startedAt: check.startedAt, status: 'checking' } } })
+    try {
+      const result = await hub.models[kind === 'reply' ? 'probe' : 'refresh']('workbench', { signal: check.abort.signal })
+      if (check.epoch !== modelEpoch) throw check.abort.signal.reason ?? new Error('The model connection changed during this check. Test the current connection again.')
+      if (result.error) throw Object.assign(new Error(result.error), { code: result.errorCode })
+      if (kind === 'listing' && (!Array.isArray(result.ids) || !result.ids.includes(state.model.id))) throw Object.assign(new Error(`The server answered, but did not list model ${state.model.id}. Available: ${(result.ids ?? []).slice(0, 12).join(', ')}`), { code: 'MODEL_NOT_LISTED' })
+      if (kind === 'reply' && (typeof result.text !== 'string' || !result.text.trim() || result.receipt?.status !== 'completed' || result.receipt.errorCode)) throw Object.assign(new Error('The model check returned no completed reply receipt.'), { code: 'MODEL_INCOMPLETE_REPLY' })
+      notify({ model: { ...state.model, status: kind === 'reply' ? 'verified' : 'listed', error: '', errorCode: null, checkedAt: result.at, probe: kind === 'reply' ? snapshot(result) : null, check: { kind, startedAt: check.startedAt, status: 'done' } } })
+      return result
+    } catch (error) {
+      if (check.epoch === modelEpoch) notify({ model: { ...state.model, status: 'failed', error: error.message, errorCode: error.code ?? 'MODEL_CHECK_FAILED', checkedAt: null, probe: null, check: { kind, startedAt: check.startedAt, status: 'failed' } } })
+      throw check.abort.signal.aborted ? check.abort.signal.reason : error
+    } finally { if (modelCheck === check) modelCheck = null }
+  }
   const requestCancellation = key => { try { Promise.resolve(executor?.cancelJob?.(key)).catch(report) } catch (error) { report(error) } }
   const activity = event => notify({ activity: [...state.activity.slice(-199), { id: id('event'), at: Date.now(), ...event }] })
   const refreshFiles = async () => notify({ files: await files.list() })
@@ -239,15 +266,17 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
     if (message.type === 'bridge') {
       refreshDefinitions()
       const connected = message.state.status === 'answering'
-      const changed = state.companion.status !== (connected ? 'connected' : message.state.status) || state.companion.url !== message.state.url
+      const nextCompanion = { status: connected ? 'connected' : message.state.status, url: message.state.url, runtimeId: message.state.runtimeId, generation: message.state.generation, capabilities: message.state.capabilities ?? [], root: message.state.root, error: message.state.error }
+      const changed = companionIdentity(state.companion) !== companionIdentity(nextCompanion)
       const nativeEndpoints = [binding?.target === 'local' ? executor?.url : null, local?.url, connectingEndpoint].filter(Boolean).map(url => url.replace(/\/$/, ''))
       const lostNative = changed && ['down', 'unpaired'].includes(message.state.status) && nativeEndpoints.length > 0 &&
         (!message.state.url || nativeEndpoints.includes(message.state.url.replace(/\/$/, '')))
-      notify({ companion: { status: connected ? 'connected' : message.state.status, url: message.state.url, capabilities: message.state.capabilities ?? [], root: message.state.root, error: message.state.error } })
+      notify({ companion: nextCompanion })
       if (lostNative) runtimeEvent('local', { type: 'runtime.error', error: message.state.error || 'The native companion connection is unavailable.' })
       if (changed && state.model.via === 'bridge') {
-        modelEpoch++
-        notify({ model: { ...state.model, status: connected ? 'configured' : 'failed', checkedAt: null, error: connected ? '' : message.state.error || 'The model relay is unavailable.' } })
+        invalidateModelCheck()
+        const available = connected && canRelayModels(nextCompanion)
+        notify({ model: { ...state.model, status: available ? 'configured' : 'failed', checkedAt: null, check: null, probe: null, errorCode: available ? null : connected ? 'MODEL_RELAY_DENIED' : 'MODEL_RELAY_UNAVAILABLE', error: available ? '' : connected ? 'The companion does not grant model relay access.' : message.state.error || 'The model relay is unavailable.' } })
       }
     }
     if (message.type === 'boot' && message.stage === 'ready') { refreshDefinitions(); notify({ ready: true }) }
@@ -377,7 +406,7 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
       })().catch(error => { report(error); throw error })
       return started
     },
-    stop() { persistUI(); disposed = true; clearInterval(watcher); clearTimeout(persistTimer); unsubscribe?.(); hub?.stop(); settleHealthWaiters(new Error('The workspace was closed before the operation could be reconciled')); for (const abort of running.values()) abort.abort(); for (const port of new Set([browser, local, executor].filter(Boolean))) { try { Promise.resolve(port.dispose()).catch(error => { state = { ...state, error: `Environment shutdown could not be confirmed: ${error.message}` } }) } catch (error) { state = { ...state, error: `Environment shutdown could not be confirmed: ${error.message}` } } } for (const artifact of state.artifacts) URL.revokeObjectURL(artifact.url); listeners.clear() },
+    stop() { invalidateModelCheck(); persistUI(); disposed = true; clearInterval(watcher); clearTimeout(persistTimer); unsubscribe?.(); hub?.stop(); settleHealthWaiters(new Error('The workspace was closed before the operation could be reconciled')); for (const abort of running.values()) abort.abort(); for (const port of new Set([browser, local, executor].filter(Boolean))) { try { Promise.resolve(port.dispose()).catch(error => { state = { ...state, error: `Environment shutdown could not be confirmed: ${error.message}` } }) } catch (error) { state = { ...state, error: `Environment shutdown could not be confirmed: ${error.message}` } } } for (const artifact of state.artifacts) URL.revokeObjectURL(artifact.url); listeners.clear() },
     readFile: path => { requireResponsive(); return files.read(path) },
     saveFile: args => mutateFiles(() => files.save(args)),
     createFile: (path, content = '') => mutateFiles(() => files.save({ path, content, expect: 0 })),
@@ -446,6 +475,8 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
     async sendGoal(text) {
       if (!text.trim()) return
       await controller.start()
+      if (modelCheck) throw new Error('Cancel or finish the current model check before starting a task')
+      if (connecting) throw new Error('Wait for the companion connection change to finish')
       const workflow = state.workflows.find(row => row.id === state.selectedWorkflowId) ?? LEGACY_WORKFLOW
       if (workflow.workspace) requireWritable({ allowReconciledSetup: active(state.run?.status) })
       if (active(state.run?.status)) {
@@ -492,17 +523,39 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
     approve: (approvalId, approved, always = false) => hub.answerApproval(approvalId, { approved, always }),
     async setModel({ baseUrl, model, apiKey, via }) {
       if (active(state.run?.status)) throw new Error('Finish or stop active work before changing its model')
-      modelEpoch++
+      invalidateModelCheck()
+      if (state.model.status === 'checking') notify({ model: { ...state.model, status: 'configured', check: null, checkedAt: null, probe: null } })
       const previous = hub?.settings.get().catalogue.models?.workbench ?? {}
       const configured = modelProfiles.find(profile => profile.model === model && profile.base_url === baseUrl) ?? { provider: 'openai' }
       const sameModel = previous.model === model && previous.base_url === baseUrl
       const previousKey = previous.base_url === baseUrl ? previous.api_key : ''
-      const profile = { ...configured, ...(sameModel ? previous : {}), base_url: baseUrl, model, api_key: apiKey ?? previousKey ?? '', via: via ?? state.model.via ?? (local ? 'bridge' : undefined) }
+      const relay = hub?.bridge.state()
+      const profile = { ...configured, ...(sameModel ? previous : {}), base_url: baseUrl, model, api_key: apiKey ?? previousKey ?? '', via: via ?? state.model.via ?? (relay?.status === 'answering' && canRelayModels(relay) ? 'bridge' : 'direct') }
       if (hub?.store) await hub.settings.set({ catalogue: { default: 'workbench', models: { workbench: profile } }, dreaming: false })
       notify({ model: { status: 'configured', id: model, baseUrl, via: profile.via } }); saveSetting('askk:workbench-settings', { model: { id: model, baseUrl, via: profile.via } })
     },
+    async pairModelRelay({ url, token }) {
+      requireIdle()
+      if (transferring) throw new Error('Wait for the workspace snapshot transfer to finish')
+      if (connecting) throw new Error('Wait for the companion connection change to finish')
+      if (modelCheck) throw new Error('Cancel or finish the current model check before pairing')
+      if (state.runtime.target === 'local') throw new Error('Use Execution settings to change the companion while Local Bun is selected. Its workspace binding must be preserved.')
+      if (state.runtime.networkRelay) throw new Error('Use Execution settings to change the companion while its guest network relay is selected.')
+      connecting = true
+      try {
+        const paired = await hub.bridge.pair(url, token, { requireModelRelay: true, timeoutMs: 15000 })
+        if (disposed) throw new Error('The desk was closed before model pairing completed.')
+        if (paired?.status !== 'answering') throw Object.assign(new Error(paired?.error || 'The model relay could not be paired.'), { code: paired?.errorCode ?? 'MODEL_RELAY_UNAVAILABLE' })
+        if (!canRelayModels(paired)) throw Object.assign(new Error('The companion does not grant model relay access.'), { code: 'MODEL_RELAY_DENIED' })
+        onHub({ type: 'bridge', state: paired })
+        local = null // Native execution requires its own explicit connection/binding.
+        await controller.setModel({ model: state.model.id, baseUrl: state.model.baseUrl, via: 'bridge' })
+        return { url: paired.url, capabilities: paired.capabilities, runtimeId: paired.runtimeId }
+      } finally { connecting = false }
+    },
     async connectCompanion({ url, token, transfer = false, rebind = false, expectedProposal = null }) {
       requireWritable(); requireIdle()
+      if (modelCheck) throw new Error('Cancel or finish the current model check before pairing')
       if (terminals.size) throw new Error('Close terminal sessions before changing companion connections')
       connecting = true
       connectingEndpoint = url
@@ -524,7 +577,7 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
         await hub.bridge.pair(url, token)
         if (hub.bridge.state().status !== 'answering') throw new Error(hub.bridge.state().error)
         if (state.runtime.networkRelay) await browser?.setNetworkRelay({ url: next.url, token: next.token })
-        await controller.setModel({ model: state.model.id, baseUrl: state.model.baseUrl, via: 'bridge' })
+        if (canRelayModels(health)) await controller.setModel({ model: state.model.id, baseUrl: state.model.baseUrl, via: 'bridge' })
         if (proposed) {
           const current = locationOf(bindExecutor(next, 'local'), next)
           try {
@@ -562,22 +615,19 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
           }
         }
         local = next
-        notify({ companion: { status: 'connected', url: endpointOf(next), capabilities: health.capabilities, root: health.root } })
+        notify({ companion: { ...state.companion, status: 'connected', url: endpointOf(next), capabilities: health.capabilities, root: health.root, runtimeId: health.runtimeId } })
         return health
       } finally { connecting = false; connectingEndpoint = null }
     },
-    async testModel() {
-      const epoch = ++modelEpoch
-      try {
-        const result = await hub.models.refresh('workbench')
-        if (epoch !== modelEpoch) throw new Error('The model connection changed during this check. Test the current connection again.')
-        if (result.error) throw new Error(result.error)
-        if (!result.ids.includes(state.model.id)) throw new Error(`The server answered, but did not list model ${state.model.id}. Available: ${result.ids.slice(0, 12).join(', ')}`)
-        notify({ model: { ...state.model, status: 'connected', error: '', checkedAt: result.at } }); return result
-      } catch (error) {
-        if (epoch === modelEpoch) notify({ model: { ...state.model, status: 'failed', error: error.message, checkedAt: null } })
-        throw error
-      }
+    testModel() { return checkModel('listing') },
+    probeModel() { return checkModel('reply') },
+    cancelModelCheck() {
+      if (!modelCheck) return false
+      const check = modelCheck
+      modelEpoch++; modelCheck = null
+      check.abort.abort(Object.assign(new Error('Connection check cancelled.'), { name: 'AbortError', code: 'MODEL_CHECK_CANCELLED' }))
+      notify({ model: { ...state.model, status: 'configured', checkedAt: null, probe: null, error: '', errorCode: null, check: { kind: check.kind, startedAt: check.startedAt, status: 'cancelled', cancelled: true } } })
+      return true
     },
     async setGuestNetworkRelay(enabled) {
       requireWritable(); requireIdle()
