@@ -3,11 +3,26 @@
   "files": [
     {
       "path": "agent.md",
-      "content": "---\npackage_id: \"my.agent\"\npackage_version: \"1.0.0\"\nid: \"assistant\"\nname: {{name}}\ndescription: {{description}}\ncontext: [\"goal\", \"budget\"]\ntools: []\nresponse_format: \"json\"\ncontract_version: 2\nmax_steps: 24\nsession: \"task\"\n---\nFollow the owner\u2019s goal using the available context and tools. State missing capabilities clearly.\n"
+      "content": "---\npackage_id: \"my.agent\"\npackage_version: \"1.0.0\"\nid: \"assistant\"\nname: {{name}}\ndescription: {{description}}\ncontext: [\"goal\", \"budget\"]\ntools: []\n{{protocol}}\nmax_steps: 24\nsession: \"task\"\n---\nFollow the owner’s goal using the available context and tools. State missing capabilities clearly.\n"
     },
     {
       "path": "soul.md",
       "content": "{{instructions}}\n"
     }
-  ]
+  ],
+  "protocols": [
+    {
+      "id": "envelope",
+      "label": "JSON envelope (default)",
+      "description": "Uses the existing JSON response contract.",
+      "source": "response_format: \"json\"\ncontract_version: 2"
+    },
+    {
+      "id": "native",
+      "label": "Native tool calls",
+      "description": "Requires an OpenAI-compatible endpoint and model that support native function/tool calls. Forced JSON mode and structured JSON-schema output are incompatible; final answers are plain text. This configures the agent response protocol; model connections and command execution stay separate.",
+      "source": "response_protocol: \"native\"\ncontract_version: 3\nhistory_format: \"messages\""
+    }
+  ],
+  "defaultDescription": "Help with the owner’s goal using the available context and tools."
 }

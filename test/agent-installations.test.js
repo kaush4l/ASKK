@@ -119,3 +119,10 @@ test('duplicate stored installation identities disable the conflicting installat
   expect(hub.specs.get(bundled.path)).toBe(bundled)
   expect((await hub.store.get('settings', 'agent-installations:v1')).value.records).toHaveLength(2)
 })
+
+test('installation review exposes the authored response protocol before installation', async () => {
+  const { manager } = await fixture()
+  expect((await manager.preview(source)).agents[0].responseProtocol).toBe('envelope')
+  const native = [{ ...source[0], content: source[0].content.replace('id: lead\n', 'id: lead\nresponse_protocol: native\ncontract_version: 3\nhistory_format: messages\n') }]
+  expect((await manager.preview(native)).agents[0].responseProtocol).toBe('native')
+})

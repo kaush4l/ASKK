@@ -24,9 +24,11 @@ test('review includes deleted empty files and added files', () => {
 })
 
 test('draft installation review says new installation and keeps its explicit binding gate', () => {
-  const preview = { stageId: 'stage', packageId: 'agent', packageVersion: '1', agents: [{ id: 'lead', tools: [] }], files: [], modelAliases: ['$default'], availableModels: [], availableTools: [] }
+  const preview = { stageId: 'stage', packageId: 'agent', packageVersion: '1', agents: [{ id: 'lead', tools: [], responseProtocol: 'native' }], files: [], modelAliases: ['$default'], availableModels: [], availableTools: [] }
   const html = renderToStaticMarkup(<PackageImportReview preview={preview} choices={{ leadAgentId: 'lead', models: {}, tools: [] }} actionLabel="Install as new agent" helpText="Existing agents and runs stay unchanged."/>)
   expect(html).toContain('Install as new agent')
+  expect(html).toContain('Response protocol')
+  expect(html).toContain('Native tool calls')
   expect(html).toContain('Existing agents and runs stay unchanged.')
   expect(html).toContain('type="submit" class="button primary" disabled=""')
 })

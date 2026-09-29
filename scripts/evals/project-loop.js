@@ -63,9 +63,10 @@ export function evaluationSampling(value = { temperature: 0 }) {
   return { temperature: 0, ...value }
 }
 
-export async function evaluateProjectLoop({ baseUrl, model, directory, caseName = 'script', timeoutMs = 240000, contextLength = 32768, jsonOutput = false, enableThinking = false, maxOutputTokens = 2048, contractVersion, structuredOutput = false, historyFormat, sampling, responseProtocol }) {
+export async function evaluateProjectLoop({ baseUrl, model, directory, caseName = 'script', timeoutMs = 240000, contextLength = 32768, jsonOutput = false, enableThinking = false, maxOutputTokens = 2048, contractVersion, structuredOutput = false, historyFormat, sampling, responseProtocol, instructions }) {
   if (responseProtocol !== undefined && !['envelope', 'native'].includes(responseProtocol)) throw new Error('Unsupported responseProtocol')
   if (responseProtocol === 'native' && (contractVersion !== 3 || historyFormat !== 'messages')) throw new Error('Native evaluation requires contractVersion 3 and historyFormat messages')
+  if (instructions !== undefined && (typeof instructions !== 'string' || !instructions.trim() || instructions.length > 32000)) throw new Error('Evaluation instructions must be nonempty text of at most 32000 characters')
   const resolvedSampling = evaluationSampling(sampling)
   const { temperature, ...samplingParams } = resolvedSampling
   if (!Number.isSafeInteger(contextLength) || contextLength < 4096) throw new Error('Evaluation context length must be an integer of at least 4096 tokens')
@@ -92,6 +93,13 @@ export async function evaluateProjectLoop({ baseUrl, model, directory, caseName 
   if (historyFormat !== undefined) {
     const path = join(site, 'packages/starter/agents/builder/agent.md')
     await writeFile(path, (await readFile(path, 'utf8')).replace('observation_format: "compact"', `observation_format: "compact"\nhistory_format: "${historyFormat}"`))
+  }
+  if (instructions !== undefined) {
+    const path = join(site, 'packages/starter/agents/builder/agent.md')
+    const source = await readFile(path, 'utf8')
+    const end = source.indexOf('\n---\n', 4)
+    if (end < 0) throw new Error('Builder front matter terminator missing')
+    await writeFile(path, source.slice(0, end + 5) + instructions.trim() + '\n')
   }
   await cp(new URL('../../public/desk.json', import.meta.url), join(site, 'desk.json'))
   await mkdir(join(site, 'agents'))
@@ -157,7 +165,7 @@ export async function evaluateProjectLoop({ baseUrl, model, directory, caseName 
     if (caseName === 'repair') checks.push({ name: 'observed failure-driven repair cycle', ...repairCycle(run.toolEvents, commands) })
     const checkedRevision = await workspace.revision()
     checks.push({ name: 'independent checks retained the delivered source', deliveredRevision, checkedRevision, passed: deliveredRevision === checkedRevision })
-    const evidence = { version: 2, evaluatorHashes, deliveredRevision, checkedRevision, completion: run.completion, completionReceipts: run.completionReceipts ?? [], caseName, model, baseUrl, contextLength, sampling: resolvedSampling, responseProtocol: hub.specs.get('bundled/starter/builder')?.engine.responseProtocol ?? 'envelope', jsonOutput, structuredOutput, historyFormat: hub.specs.get('bundled/starter/builder')?.engine.historyFormat ?? 'transcript', enableThinking, maxOutputTokens, contractVersion: hub.specs.get('bundled/starter/builder')?.engine.contractVersion, responses, turns: run.turns, events: run.log, runtime: 'Local Bun (not Browser Linux)', startedAt, elapsedMs: Date.now() - startedAt, result: run.result, status: run.slot.status, passed: run.slot.status === 'done' && checks.every(row => row.passed), agentCompleted: run.slot.status === 'done', independentChecksPassed: checks.every(row => row.passed), checks, commands, prompts: run.prompts, requests: run.requests, completions: run.completions, tools: run.toolEvents, files: await execution.list(), metrics: { promptCount: run.prompts.length, repairs: run.log.filter(row => row.kind === 'repair').length, toolCalls: run.toolEvents.filter(row => row.kind === 'call').length, inputTokensEstimated: run.prompts.map(row => row.snapshot?.budget?.inputTokens) } }
+    const evidence = { version: 2, evaluatorHashes, instructionsOverride: instructions ?? null, deliveredRevision, checkedRevision, completion: run.completion, completionReceipts: run.completionReceipts ?? [], caseName, model, baseUrl, contextLength, sampling: resolvedSampling, responseProtocol: hub.specs.get('bundled/starter/builder')?.engine.responseProtocol ?? 'envelope', jsonOutput, structuredOutput, historyFormat: hub.specs.get('bundled/starter/builder')?.engine.historyFormat ?? 'transcript', enableThinking, maxOutputTokens, contractVersion: hub.specs.get('bundled/starter/builder')?.engine.contractVersion, responses, turns: run.turns, events: run.log, runtime: 'Local Bun (not Browser Linux)', startedAt, elapsedMs: Date.now() - startedAt, result: run.result, status: run.slot.status, passed: run.slot.status === 'done' && checks.every(row => row.passed), agentCompleted: run.slot.status === 'done', independentChecksPassed: checks.every(row => row.passed), checks, commands, prompts: run.prompts, requests: run.requests, completions: run.completions, tools: run.toolEvents, files: await execution.list(), metrics: { promptCount: run.prompts.length, repairs: run.log.filter(row => row.kind === 'repair').length, toolCalls: run.toolEvents.filter(row => row.kind === 'call').length, inputTokensEstimated: run.prompts.map(row => row.snapshot?.budget?.inputTokens) } }
     await writeFile(join(root, 'evidence.json'), JSON.stringify(evidence, null, 2))
     return { caseName, passed: evidence.passed, status: evidence.status, checks, elapsedMs: evidence.elapsedMs, metrics: evidence.metrics, evidence: join(root, 'evidence.json') }
   } finally { clearTimeout(timer); unsubscribe?.(); hub?.stop(); await execution.dispose(); await companion.close() }
@@ -167,5 +175,5 @@ if (import.meta.main) {
   const option = name => { const index = process.argv.indexOf(name); return index < 0 ? undefined : process.argv[index + 1] }
   const model = option('--model'), baseUrl = option('--base-url'), directory = option('--directory')
   if (!model || !baseUrl || !directory) throw new Error('Provide --model, --base-url and a new --directory path; optional --case script|project|repair.')
-  console.log(JSON.stringify(await evaluateProjectLoop({ model, baseUrl, directory, sampling: option('--sampling') ? JSON.parse(await readFile(option('--sampling'), 'utf8')) : undefined, caseName: option('--case') ?? 'script', contextLength: Number(option('--context-length') ?? 32768), jsonOutput: process.argv.includes('--json-output'), structuredOutput: process.argv.includes('--structured-output'), historyFormat: option('--history-format'), responseProtocol: option('--response-protocol'), enableThinking: process.argv.includes('--thinking'), maxOutputTokens: Number(option('--max-output-tokens') ?? 2048), contractVersion: option('--contract-version') === undefined ? undefined : Number(option('--contract-version')) }), null, 2))
+  console.log(JSON.stringify(await evaluateProjectLoop({ model, baseUrl, directory, instructions: option('--instructions') ? await readFile(option('--instructions'), 'utf8') : undefined, sampling: option('--sampling') ? JSON.parse(await readFile(option('--sampling'), 'utf8')) : undefined, caseName: option('--case') ?? 'script', contextLength: Number(option('--context-length') ?? 32768), jsonOutput: process.argv.includes('--json-output'), structuredOutput: process.argv.includes('--structured-output'), historyFormat: option('--history-format'), responseProtocol: option('--response-protocol'), enableThinking: process.argv.includes('--thinking'), maxOutputTokens: Number(option('--max-output-tokens') ?? 2048), contractVersion: option('--contract-version') === undefined ? undefined : Number(option('--contract-version')) }), null, 2))
 }

@@ -26,7 +26,7 @@ const requestedTools = agent => [...new Set([...(agent.settings.tools ?? []), ..
 export function installedModelAvailable(catalogue, alias) {
   return boundModelAvailable(catalogue, alias)
 }
-const summaries = data => data.agents.map(agent => ({ id: agent.id, name: agent.settings.name ?? agent.id, description: agent.settings.description ?? '', tools: requestedTools(agent), modelAlias: agent.settings.model ?? '$default', delegates: snapshot(agent.delegates), notes: [...agent.notes] }))
+const summaries = data => data.agents.map(agent => ({ id: agent.id, name: agent.settings.name ?? agent.id, description: agent.settings.description ?? '', tools: requestedTools(agent), modelAlias: agent.settings.model ?? '$default', responseProtocol: agent.settings.response_protocol ?? 'envelope', delegates: snapshot(agent.delegates), notes: [...agent.notes] }))
 const envelope = row => {
   if (row == null) return { version: 1, records: [] }
   const value = row.value
