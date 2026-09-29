@@ -2489,6 +2489,20 @@ test('live native tools preserve provider IDs without replacing engine receipt l
   expect(cards.find(card => card.id === 'engine-b')).toMatchObject({ providerCallId: 'provider-shared', status: 'done', summary: 'second' })
 })
 
+test('live tool cards retain original references and matched resolved command evidence', async () => {
+  const { controller, hub } = await startedFixture()
+  for (const callId of ['required-a', 'required-b']) hub.emit({ type: 'event', kind: 'call', callId, run: 'reference-run', name: 'workspace_run', args: { requiredCheck: 0 } })
+  const resolvedArgs = { command: '  bun run test\n', requiredCheck: 0 }
+  hub.emit({ type: 'event', kind: 'observation', callId: 'required-b', run: 'other-run', ok: true, resolvedArgs, value: 'wrong run' })
+  hub.emit({ type: 'event', kind: 'observation', callId: 'required-b', run: 'reference-run', ok: true, resolvedArgs, value: 'success' })
+  resolvedArgs.command = 'later mutation'
+  const cards = controller.getSnapshot().messages.flatMap(row => row.tools ?? [])
+  expect(cards.find(card => card.id === 'required-a').resolvedArgs).toBeUndefined()
+  expect(cards.find(card => card.id === 'required-b')).toMatchObject({
+    args: { requiredCheck: 0 }, resolvedArgs: { command: '  bun run test\n', requiredCheck: 0 }, command: '  bun run test\n', status: 'done', summary: 'success',
+  })
+})
+
 async function requiredCommandFixture(commands = ['bun run test', 'bun run lint']) {
   const workflow = declaredWorkflow()
   workflow.completion = { checks: [{ capability: 'workspace.commands', options: { commands } }] }
@@ -2497,6 +2511,27 @@ async function requiredCommandFixture(commands = ['bun run test', 'bun run lint'
   const run = fixture.hub.runs.get(await fixture.controller.sendGoal('Deliver the configured checks'))
   return { ...fixture, run, check: () => fixture.hub.completionAdapters['workspace.commands'](run.context.workflow.completion.checks[0].options, run) }
 }
+
+test('workspace command adapter revalidates references against run completion and retains normal receipts', async () => {
+  const exact = '  bun run test\n'
+  const { controller, hub, browser, run } = await requiredCommandFixture([exact])
+  // The fixture Hub does not perform the real Hub's immutable run capture.
+  run.completion = structuredClone(run.context.workflow.completion)
+  const execute = args => hub.externalOps['workspace.run'](args, run)
+  for (const args of [{ requiredCheck: 0 }, { command: exact.trim(), requiredCheck: 0 }, { command: exact, requiredCheck: 1 }, { command: exact, requiredCheck: 0, extra: true }]) {
+    expect(() => execute(args)).toThrow()
+  }
+  expect(browser.jobs).toHaveLength(0)
+  run.context = { ...run.context, workflow: { ...run.context.workflow, completion: { checks: [{ capability: 'workspace.commands', options: { commands: ['echo context replacement'] } }] } } }
+  expect(() => execute({ command: 'echo context replacement', requiredCheck: 0 })).toThrow()
+  const receipt = await execute({ command: exact, requiredCheck: 0 })
+  expect(receipt).toMatchObject({ code: 0, type: 'exit' })
+  expect(controller.getSnapshot().commands.at(-1)).toMatchObject({ id: receipt.id, command: exact, exitCode: 0, runId: run.id, sourceUnchanged: true })
+  const verified = await hub.completionAdapters['workspace.commands'](run.completion.checks[0].options, run)
+  expect(verified.ok).toBe(true)
+  await controller.saveFile({ path: 'changed.js', content: 'changed', expect: 0 })
+  expect((await hub.completionAdapters['workspace.commands'](run.completion.checks[0].options, run)).ok).toBe(false)
+})
 
 test('required commands need every exact task-owned receipt; unrelated success cannot mask missing or failed checks', async () => {
   const { controller, browser, run, check } = await requiredCommandFixture()

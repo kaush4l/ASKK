@@ -144,3 +144,19 @@ test('native call identity appears only inside expanded tool details', () => {
   expect(legacy).not.toContain('Engine call ID')
   expect(legacy).not.toContain('Provider call ID')
 })
+
+test('resolved check arguments remain separate from the proposal and do not imply execution or verification', () => {
+  const details = { ...base, toolEvents: [
+    { kind: 'call', callId: 'check', name: 'workspace_run', args: { requiredCheck: 0 } },
+    { kind: 'observation', callId: 'check', name: 'workspace_run', resolvedArgs: { command: 'bun test', timeoutMs: 10000 }, ok: false, value: 'Owner refused this call' },
+  ] }
+  const html = renderToStaticMarkup(<RunInspector details={details} onClose={() => {}}/>)
+  expect(html).toContain('Proposed input')
+  expect(html).toContain('requiredCheck')
+  expect(html).toContain('Resolved arguments')
+  expect(html).toContain('bun test')
+  expect(html).toContain('Run command · Failed · bun test')
+  expect(html).toContain('Owner refused this call')
+  expect(html).toContain('No completion verification receipts were recorded.')
+  expect(html).not.toContain('· Passed')
+})

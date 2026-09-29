@@ -686,7 +686,7 @@ export class Hub {
     thread.run = run.id
     run.thread = thread
     run.modelController = new AbortController()
-    thread.worker.postMessage({ type: 'invoke', runId: run.id, query: run.query, context: run.context, service: run.service, completionRequired: run.completion.checks.length > 0 })
+    thread.worker.postMessage({ type: 'invoke', runId: run.id, query: run.query, context: run.context, service: run.service, completionRequired: run.completion.checks.length > 0, completion: run.completion })
   }
 
   onThreadMessage(thread, message) {

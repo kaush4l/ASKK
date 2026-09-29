@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { normalizeCompletion } from '../../src/core/completion.js'
+import { resolveCommandReference } from '../../src/core/command-reference.js'
 import { Hub } from '../../src/runtime/hub.js'
 import { LocalExecution } from '../../src/execution/local.js'
 import { createCompanion } from '../../host/companion.js'
@@ -155,12 +156,12 @@ export async function evaluateProjectLoop({ baseUrl, model, directory, caseName 
       'workspace.list': () => execution.list(),
       'workspace.read': ({ path }) => execution.read(path),
       'workspace.write': async ({ path, content, expect }) => { const result = await workspace.write({ path, content, expectedRevision: expect }); return result.conflict ? result : { ...result, ok: true, rev: result.rev ?? result.revision } },
-      'workspace.run': ({ command }, run) => workspace.run(command, run),
+      'workspace.run': (args, run) => workspace.run(resolveCommandReference(args, run?.completion, { resolved: true }).command, run),
     }
     hub.completionAdapters = { 'workspace.command': (options, run) => workspace.check(options, run), 'workspace.commands': (options, run) => workspace.checkRequired(options, run) }
     await hub.start()
     await hub.settings.set({ policy: { defaults: { read: 'allow', net: 'deny', write: 'allow', exec: 'allow' } } })
-    const goal = definition.goal + (completionContract.checks.some(check => check.capability === 'workspace.commands') ? '\nRun every exact command in workflow.completion through workspace_run after saving the final source. Each required command must itself exit zero.' : '')
+    const goal = definition.goal + (completionContract.checks.some(check => check.capability === 'workspace.commands') ? '\nRun every configured command in workflow.completion through workspace_run after saving the final source. You may select each by its zero-based requiredCheck index instead of copying the command text. Each required command must itself exit zero.' : '')
     const run = hub.startRun('bundled/starter/builder', goal, { context: { workflow: { completion: completionContract } } })
     timer = setTimeout(() => { workspace.stop(); hub.abort(run) }, timeoutMs)
     await run.answer

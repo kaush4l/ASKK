@@ -1,0 +1,6 @@
+{
+  "scope": "Chrome rendering fixture using production ToolCard and exported CSS at 390 x 844. No command was executed by this fixture; no Safari/iPhone, VoiceOver or live approval acceptance inferred.",
+  "checks": ["Proposed requiredCheck index remains visible", "Resolved exact shell command wraps within narrow card", "Recorded refusal remains separate from argument resolution", "No execution or verification success claimed"],
+  "screenshot": "check-reference-chrome-390.png",
+  "cleanup": "Temporary viewport override reset, tab closed and fixture server stopped. User tabs untouched."
+}

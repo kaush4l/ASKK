@@ -66,14 +66,17 @@ export function projectRunTools(details = {}) {
     else if (observations.length && !namesMatch(calls[0].event, observations[0].event)) reason = 'name_mismatch'
     if (reason) { entries.forEach(entry => reject(entry, reason)); continue }
     const call = calls[0].event, observation = observations[0]?.event ?? null
+    const resolvedArgs = record(observation?.resolvedArgs) ? observation.resolvedArgs : null
+    const effectiveArgs = resolvedArgs ?? call.args
     const known = observation?.ok === true || observation?.ok === false
     const status = observation ? observation.ok === true ? 'done' : observation.ok === false ? observation.failureKind === 'invalid_input' ? 'rejected' : 'failed' : 'unresolved'
       : ACTIVE.has(runStatus) ? 'running' : ['interrupted', 'cancelled'].includes(runStatus) ? 'interrupted' : 'unresolved'
     tools.push({
       ...(validId(call.providerCallId) ? { providerCallId: call.providerCallId } : {}),
       id: callId, callId, runId, agent, name: call.name, args: call.args,
-      ...(typeof call.args?.path === 'string' ? { path: call.args.path } : {}),
-      ...(typeof call.args?.command === 'string' ? { command: call.args.command } : {}),
+      ...(resolvedArgs ? { resolvedArgs } : {}),
+      ...(typeof effectiveArgs?.path === 'string' ? { path: effectiveArgs.path } : {}),
+      ...(typeof effectiveArgs?.command === 'string' ? { command: effectiveArgs.command } : {}),
       ...normalizeToolActivity(observation?.activity, { ok: observation?.ok }),
       status, summary: observation ? observation.value : undefined,
       hasResult: observation !== null && own(observation, 'value'), outcomeKnown: known,

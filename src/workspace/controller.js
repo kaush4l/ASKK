@@ -1,4 +1,5 @@
 import { selectRequiredCommands, requiredCommandReason } from '../core/command-checks.js'
+import { resolveCommandReference } from '../core/command-reference.js'
 import { loopBudgetValue } from '../core/loop-budget.js'
 import { normalizeToolActivity } from '../core/tool-activity.js'
 import { ProjectFiles } from './files.js'
@@ -395,8 +396,10 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
         if (candidates.length === 1) {
           const matched = candidates[0]
           const activity = normalizeToolActivity(message.activity, { ok: message.ok })
+          const resolvedArgs = message.resolvedArgs && typeof message.resolvedArgs === 'object' && !Array.isArray(message.resolvedArgs) ? snapshot(message.resolvedArgs) : null
           const messages = state.messages.map(row => !row.tools?.includes(matched) ? row : { ...row, tools: row.tools.map(tool => tool !== matched ? tool : {
             ...tool, ...activity, status: message.ok === true ? 'done' : message.ok === false ? message.failureKind === 'invalid_input' ? 'rejected' : 'failed' : 'unresolved',
+            ...(resolvedArgs ? { resolvedArgs, ...(typeof resolvedArgs.command === 'string' ? { command: resolvedArgs.command } : {}), ...(typeof resolvedArgs.path === 'string' ? { path: resolvedArgs.path } : {}) } : {}),
             summary: message.value, hasResult: Object.hasOwn(message, 'value'),
           }) })
           notify({ messages })
@@ -488,7 +491,7 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
             if (supplied.length === 2 && String(args.expect) !== String(args.expectedRevision)) throw new Error('workspace.write received conflicting expect and expectedRevision values')
             return controller.saveFile({ ...args, expect: args[supplied[0]] })
           }),
-          'workspace.run': forRun((args, run) => controller.runCommand(args.command, { actor: run?.agent, runId: run?.id })),
+          'workspace.run': forRun((args, run) => controller.runCommand(resolveCommandReference(args, run?.completion, { resolved: true }).command, { actor: run?.agent, runId: run?.id })),
           'workspace.build': forRun((_, run) => controller.buildPreview({ actor: run?.agent, runId: run?.id })),
           'workspace.check': forRun((args, run) => controller.checkArtifact(args, { requireInteraction: run.context?.workflow?.completion?.checks.find(check => check.capability === 'workspace.artifact')?.options.requireInteraction ?? acceptance.requireInteraction })),
           'workspace.acceptance': forRun(async () => {

@@ -122,3 +122,18 @@ test('only local schema rejection carries invalid_input; adapter errors cannot i
   expect(events.at(-1).failureKind).toBeUndefined()
   expect(events.at(-1).value).toBe(events.find(event => event.kind === 'observation').value)
 })
+
+test('argument resolution preserves the proposal and rejects invalid resolution before the side-effect handler', async () => {
+  const proposal = { reference: 0 }, calls = []
+  const descriptor = tool({ name: 'resolve', resolveArguments: () => ({ command: 'exact command' }), run: args => { calls.push(args); expect(Object.isFrozen(args)).toBe(true); return 'receipt' } })
+  const result = await runToolResult(descriptor, proposal, {})
+  expect(result).toEqual({ ok: true, text: 'receipt', resolvedArgs: { command: 'exact command' } })
+  expect(proposal).toEqual({ reference: 0 })
+  expect(calls).toEqual([{ command: 'exact command' }])
+  for (const resolveArguments of [() => { throw Error('reference missing') }, () => [], () => null, () => new Date(), async () => { throw Error('async unsupported') }]) {
+    const rejected = await runToolResult(tool({ name: 'bad', resolveArguments, run: () => { throw Error('must not reach handler') } }), {}, {})
+    expect(rejected.ok).toBe(false)
+    expect(rejected.failureKind).toBe('invalid_input')
+    expect(rejected.text).not.toContain('must not reach handler')
+  }
+})

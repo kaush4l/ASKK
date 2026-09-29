@@ -150,3 +150,16 @@ test('provider call IDs remain diagnostic while engine IDs determine receipt lin
   ])
   expect(view([call('legacy'), result('legacy')]).tools[0]).not.toHaveProperty('providerCallId')
 })
+
+test('resolved arguments preserve the proposal and expose the recorded command without changing failure status', () => {
+  const resolvedArgs = { command: 'bun test', timeoutMs: 10000 }
+  const events = [call('check', 'workspace_run', { requiredCheck: 0 }), result('check', 'workspace_run', 'Owner refused this call', false, { resolvedArgs })]
+  const tool = view(events).tools[0]
+  expect(tool).toMatchObject({ args: { requiredCheck: 0 }, resolvedArgs, command: 'bun test', status: 'failed', summary: 'Owner refused this call' })
+  expect(Object.isFrozen(tool.resolvedArgs)).toBe(true)
+  resolvedArgs.command = 'changed later'
+  expect(tool.resolvedArgs.command).toBe('bun test')
+  expect(tool.raw.call.args).toEqual({ requiredCheck: 0 })
+  expect(view([events[0]], 'running').tools[0]).not.toHaveProperty('resolvedArgs')
+  expect(view([call('check', 'workspace_run', { requiredCheck: 0 }), result('other', 'workspace_run', 'done', true, { resolvedArgs })]).tools[0]).not.toHaveProperty('resolvedArgs')
+})

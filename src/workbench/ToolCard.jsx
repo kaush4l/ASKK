@@ -27,6 +27,7 @@ export default function ToolCard({ tool, approvals, recorded = false, fileAvaila
   const result = tool.hasResult && tool.summary === null ? 'null' : stringify(tool.summary)
   const hasResult = tool.hasResult ?? Boolean(result)
   const args = stringify(tool.args)
+  const resolvedArgs = stringify(tool.resolvedArgs)
   const complete = ['done', 'completed', 'success'].includes(tool.status)
   const pending = ['running', 'waiting', 'awaiting_approval'].includes(presentation)
   return <details className={`tool-card ${presentation || ''}`}>
@@ -38,7 +39,8 @@ export default function ToolCard({ tool, approvals, recorded = false, fileAvaila
     </summary>
     <div className="tool-details">
       {tool.providerCallId && <><h4>Engine call ID</h4><pre>{tool.id}</pre><h4>Provider call ID</h4><pre>{tool.providerCallId}</pre></>}
-      {args && args !== '{}' && <><h4>Input</h4><pre>{args}</pre></>}
+      {args && (args !== '{}' || resolvedArgs) && <><h4>{resolvedArgs ? 'Proposed input' : 'Input'}</h4><pre>{args}</pre></>}
+      {resolvedArgs && <><h4>Resolved arguments</h4><pre>{resolvedArgs}</pre></>}
       {presentation === 'awaiting_approval' && <p className="tool-approval-note">{recorded ? 'Approval was pending when this snapshot was captured. Refresh to check for newer records.' : 'This call is waiting for your decision. It has not been approved.'}</p>}
       {presentation === 'rejected' && <p className="tool-approval-note">Input rejected before execution.</p>}
       <h4>{presentation === 'rejected' ? 'Validation result' : pending ? recorded ? 'Recorded outcome' : 'Current call' : hasResult ? 'Recorded result' : 'Result'}</h4><pre>{hasResult ? result || '(empty string)' : pending ? recorded ? 'No tool result was recorded in this snapshot.' : presentation === 'awaiting_approval' ? 'Waiting for approval before execution.' : 'Waiting for the tool to return…' : 'No result was recorded.'}</pre>

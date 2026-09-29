@@ -4,6 +4,14 @@ Latest publication: source **`b9ae8ecc`**, deployment **`830fcc8a`**, [successfu
 
 Historical publication: source **`e7e19081`**, deployment **`d02543f1`**, [successful Pages workflow](https://github.com/kaush4l/ASKK/actions/runs/36578773412). [Hosted evidence](evidence/model-discovery-pages.json) confirms the page, workbench chunk, runtime context, workspace controller and agent index match the tested export. Export: **879,666,446 bytes / 216 files**.
 
+## Required-check references
+
+The existing `workspace_run` tool now accepts a zero-based `requiredCheck` reference instead of requiring the model to copy a shell command. Its trusted resolver uses the frozen run completion contract before command guardrails, permission checks and approval. The desk independently checks the command/reference pair before normal execution. Raw command support, exact receipts, freshness and cancellation remain unchanged; no task-specific agent branch was added.
+
+The generic tool dispatcher retains proposed input separately from resolved arguments. Approval shows the actual command, and live cards plus recorded inspection expose both forms. Invalid references are rejected before execution. Native-worker and controller fixtures cover exact command preservation, allow/ask/refuse/deny behavior, forbidden shell text, invalid references, configuration mutation, mismatched adapter pairs, source changes and scoped UI evidence.
+
+Validation: **1,005 passed, 1 skipped, 0 failed**, 7,497 assertions across 98 files. Static export built successfully. Model and browser results follow separately; no Safari/iPhone or Browser Linux acceptance is inferred from these tests.
+
 ## Expected rejection and configured assertions
 
 The script evaluator now supplies four exact assertion commands through the existing `workspace.commands` capability. Commands assert positive, negative, empty and invalid inputs; a later raw invalid-input command may exit nonzero without invalidating successful required assertions. No agent-engine branch was added. Missing required receipts still reject completion, and project/repair criteria retain their prior scope.
