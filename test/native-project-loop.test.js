@@ -18,9 +18,10 @@ for (const rejectedCompletionHistory of [undefined, 'retain', 'omit']) test(`nat
     return new Response(chunks.map(x => `data: ${JSON.stringify(x)}\n\n`).join('') + 'data: [DONE]\n\n', { headers: { 'content-type': 'text/event-stream' } })
   } })
   try {
-    const result = await evaluateProjectLoop({ baseUrl: `http://127.0.0.1:${server.port}/v1`, model: 'native-fixture', directory: join(root, 'attempt'), caseName: 'script', rejectedCompletionHistory, contractVersion: 3, historyFormat: 'messages', responseProtocol: 'native', instructions: 'Use the saved receipt before continuing.', completion: { checks: [{ capability: 'workspace.commands', options: { commands: ['bun total.js 1 2 3', 'bun total.js'] } }] } })
+    const result = await evaluateProjectLoop({ baseUrl: `http://127.0.0.1:${server.port}/v1`, model: 'native-fixture', directory: join(root, 'attempt'), caseName: 'script', maxSteps: rejectedCompletionHistory === undefined ? undefined : 48, rejectedCompletionHistory, contractVersion: 3, historyFormat: 'messages', responseProtocol: 'native', instructions: 'Use the saved receipt before continuing.', completion: { checks: [{ capability: 'workspace.commands', options: { commands: ['bun total.js 1 2 3', 'bun total.js'] } }] } })
     const evidence = JSON.parse(await readFile(result.evidence, 'utf8'))
     expect(result.passed).toBe(true)
+    expect(evidence.maxSteps).toBe(rejectedCompletionHistory === undefined ? 24 : 48)
     expect(evidence.rejectedCompletionHistory).toBe(rejectedCompletionHistory ?? 'retain')
     expect(evidence.completionProposals).toHaveLength(2)
     for (const proposal of evidence.completionProposals) {
@@ -34,6 +35,7 @@ for (const rejectedCompletionHistory of [undefined, 'retain', 'omit']) test(`nat
     const agentSource = await readFile(join(root, 'attempt/site/packages/starter/agents/builder/agent.md'), 'utf8')
     if (rejectedCompletionHistory === undefined) expect(agentSource).not.toContain('rejected_completion_history:')
     else expect(agentSource).toContain(`rejected_completion_history: "${rejectedCompletionHistory}"`)
+    expect(agentSource).toContain(`max_steps: ${evidence.maxSteps}`)
     expect(agentSource).toContain('contract_version: 3')
     expect(agentSource).toContain('history_format: "messages"')
     expect(agentSource).toContain('\n---\nUse the saved receipt before continuing.\n')

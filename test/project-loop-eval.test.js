@@ -263,3 +263,33 @@ test('evaluation rejects invalid completion history before creating an attempt',
     expect(await stat(directory).catch(error => error.code)).toBe('ENOENT')
   } finally { await rm(root, { recursive: true, force: true }) }
 })
+
+test('evaluation rejects invalid effort budgets before creating output', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'askk-eval-effort-'))
+  const directory = join(root, 'not-created')
+  try {
+    for (const maxSteps of [0, -1, 1001, 1.5, NaN, Infinity, null, '48', true]) {
+      await expect(evaluateProjectLoop({ directory, maxSteps })).rejects.toThrow('max_steps must be an integer from 1 to 1000')
+    }
+    await expect(stat(directory)).rejects.toMatchObject({ code: 'ENOENT' })
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
+
+test('an evaluation effort override actually stops ordinary tool dispatch at its limit', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'askk-eval-one-step-'))
+  let requests = 0
+  const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch() {
+    requests++
+    const chunk = requests === 1 ? { choices: [{ delta: { tool_calls: [{ index: 0, id: `call-${requests}`, type: 'function', function: { name: 'workspace_environment', arguments: '{}' } }] }, finish_reason: 'tool_calls' }] } : { choices: [{ delta: { content: 'Budget exhausted; work remains.' }, finish_reason: 'stop' }] }
+    return new Response(`data: ${JSON.stringify(chunk)}\n\ndata: [DONE]\n\n`, { headers: { 'content-type': 'text/event-stream' } })
+  } })
+  try {
+    const result = await evaluateProjectLoop({ baseUrl: `http://127.0.0.1:${server.port}/v1`, model: 'fixture', directory: join(root, 'attempt'), maxSteps: 1, responseProtocol: 'native', contractVersion: 3, historyFormat: 'messages' })
+    const evidence = JSON.parse(await readFile(result.evidence, 'utf8'))
+    expect(evidence.maxSteps).toBe(1)
+    expect(result.passed).toBe(false)
+    expect(result.status).toBe('incomplete')
+    expect(evidence.tools.filter(row => row.kind === 'call')).toHaveLength(1)
+    expect(requests).toBe(2) // One ordinary step and the final budget summary request.
+  } finally { server.stop(true); await rm(root, { recursive: true, force: true }) }
+})
