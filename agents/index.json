@@ -1,5 +1,5 @@
 {
-  "build": "2cb9c3cb2b",
+  "build": "d8d932bc59",
   "files": {
     "agents/assistant/agent.md": "6eb458313e",
     "agents/coder/agent.md": "3afbea3eaa",
@@ -118,7 +118,7 @@
     "runtime/modules/core/calls.js": "22b191102d",
     "runtime/modules/core/command-checks.js": "6343158d92",
     "runtime/modules/core/companion-manifest.js": "2e0137eefc",
-    "runtime/modules/core/completion-evidence.js": "a5d5541db4",
+    "runtime/modules/core/completion-evidence.js": "f021d5061b",
     "runtime/modules/core/completion.js": "79f501b2e9",
     "runtime/modules/core/context.js": "c99a439c35",
     "runtime/modules/core/draft-backup.js": "ae0630bd19",
