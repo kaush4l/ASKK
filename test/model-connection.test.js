@@ -70,6 +70,15 @@ test('probe sends one small tool-free request and persists only its terminal red
   expect(Object.isFrozen(result.receipt.requests)).toBe(true)
 })
 
+test('connection probe remains transport-only for a schema-enabled model profile', async () => {
+  let body
+  const { hub } = fixture(async (_, init) => { body = JSON.parse(init.body); return reply() }, { structured_output: 'json_schema' })
+  const result = await hub.models.probe('chosen')
+  expect(result.receipt.status).toBe('completed')
+  expect(body.response_format).toBeUndefined()
+  expect(hub.fileCatalogue.models.chosen.structured_output).toBe('json_schema')
+})
+
 test('probe never retries HTTP failures and redacts echoed credentials in failure evidence', async () => {
   let count = 0
   const { hub, writes } = fixture(async () => { count++; return new Response('sensitive-provider-key busy', { status: 503 }) }, { api_key: 'sensitive-provider-key' })

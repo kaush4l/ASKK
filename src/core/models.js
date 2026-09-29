@@ -28,6 +28,8 @@ const KEYS = {
   headers: 'headers',
   request_params: 'requestParams',
   requestParams: 'requestParams',
+  structured_output: 'structuredOutput',
+  structuredOutput: 'structuredOutput',
   // the cli provider: which model CLI the host bridge runs
   cli: 'cli',
   command: 'command',

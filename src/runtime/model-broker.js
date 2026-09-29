@@ -77,7 +77,7 @@ export class ModelBroker {
       const identities = this.calibrationKeys.get(owner) ?? new Map()
       if (!identities.has(contextKey)) identities.set(contextKey, crypto.randomUUID())
       this.calibrationKeys.set(owner, identities)
-      return { handle, calibrationKey: identities.get(contextKey), model: session.clean(session.llm.model), settings: { maxOutputTokens: frozen.maxOutputTokens }, contextLength }
+      return { handle, calibrationKey: identities.get(contextKey), model: session.clean(session.llm.model), settings: { maxOutputTokens: frozen.maxOutputTokens, ...(frozen.structuredOutput !== undefined ? { structuredOutput: frozen.structuredOutput } : {}) }, contextLength }
     } catch (error) {
       this.drop(session)
       const safe = this.error(session, error)
@@ -101,7 +101,7 @@ export class ModelBroker {
     return session.clean({ message: String(error?.message ?? error), code: error?.code ?? (error?.name === 'AbortError' ? 'aborted' : 'provider_error'), metadata: error?.metadata ?? null })
   }
 
-  start(handle, { owner, binding, messages, maxOutputTokens, strictCompletion = false }) {
+  start(handle, { owner, binding, messages, maxOutputTokens, strictCompletion = false, responseSchema }) {
     const session = this.get(handle, { owner, binding })
     if (session.stream && !session.stream.done) throw new InferenceError('A model stream is already active.', 'configuration')
     const controller = new AbortController()
@@ -112,6 +112,7 @@ export class ModelBroker {
       signal: controller.signal,
       maxOutputTokens,
       strictCompletion,
+      responseSchema: responseSchema === undefined ? undefined : structuredClone(responseSchema),
       onRequest: request => this.push(stream, { type: 'request', request: session.clean(request) }),
       onFinish: metadata => this.push(stream, { type: 'finish', metadata: session.clean(metadata) }),
     })

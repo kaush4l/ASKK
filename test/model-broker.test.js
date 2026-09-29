@@ -32,6 +32,20 @@ test('broker freezes credentials on desk and preserves ordered receipts, deltas 
   broker.closeAll()
 })
 
+test('broker captures response schema at start before lazy stream consumption', async () => {
+  const broker = new ModelBroker(), id = identity()
+  let body
+  const descriptor = await broker.open({ ...id, settings: { provider: 'openai', contextLength: 4000, structuredOutput: 'json_schema' }, transport: { fetch: async (_, init) => { body = JSON.parse(init.body); return sse('{}') } } })
+  expect(descriptor.settings.structuredOutput).toBe('json_schema')
+  const responseSchema = { type: 'object', properties: { value: { const: 'original' } } }
+  broker.start(descriptor.handle, { ...id, messages, responseSchema })
+  responseSchema.properties.value.const = 'mutated'
+  const result = await drain(broker, descriptor.handle, id)
+  expect(result.error).toBeFalsy()
+  expect(body.response_format.json_schema.schema.properties.value.const).toBe('original')
+  broker.closeAll()
+})
+
 test('broker retains retries and completion metadata before terminal truncation errors', async () => {
   const broker = new ModelBroker(), id = identity()
   let calls = 0

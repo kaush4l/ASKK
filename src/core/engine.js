@@ -165,6 +165,7 @@ export class Engine {
       soul: this.soul, job: this.systemPrompt, learned: this.learned, tools: this.tools,
       contextText, history: this.history, response: this.response, template: this.promptTemplate,
       window: Number(await llm.context()), outputReserve: Math.max(1, Number(this.outputReserve) || 0, Number(llm.settings?.maxOutputTokens) || 4096),
+      structuredOutput: llm.settings?.structuredOutput,
       calibration: this.tokenCalibrations.get(calibrationKey(llm)),
       steps: this.steps, maxSteps: this.maxSteps, observationFormat: this.observationFormat, note, final,
     })
@@ -203,18 +204,18 @@ export class Engine {
     let raw = ''
     for (let attempt = 0; attempt <= this.repairs; attempt += 1) {
       this.activeLLM = await this.llm()
-      const { sheet, messages, budget, layers, responseMode, toolNames } = await this.render(note, { final })
+      const { sheet, messages, budget, layers, responseMode, toolNames, responseSchema } = await this.render(note, { final })
       this.attempts += 1
       const attemptId = `${this.runId}:${this.steps}:${attempt + 1}`
       this.currentAttemptId = attemptId
-      const requestSnapshot = snapshot({ attemptId, step: this.steps, attempt: attempt + 1, contractVersion: this.contractVersion, observationFormat: this.observationFormat, model: this.activeLLM.model, messages, budget, layers, responseMode, toolNames })
+      const requestSnapshot = snapshot({ attemptId, step: this.steps, attempt: attempt + 1, contractVersion: this.contractVersion, observationFormat: this.observationFormat, model: this.activeLLM.model, messages, budget, layers, responseMode, toolNames, ...(responseSchema ? { responseSchema } : {}) })
       this.emit('prompt', `step ${this.steps}`, sheet, { step: this.steps, attempt: attempt + 1, attemptId, tokens: budget.inputTokens, requestSnapshot })
       if (budget.total > budget.window) {
         this.error = `request budget exceeds context window (${budget.inputTokens} input + ${budget.outputReserve} output > ${budget.window})`
         return { failed: true, reason: 'context_budget' }
       }
       try {
-        raw = await this.spoken(requestSnapshot.messages, { attemptId, budget })
+        raw = await this.spoken(requestSnapshot.messages, { attemptId, budget, responseSchema: requestSnapshot.responseSchema })
       } catch (error) {
         this.error = this.signal?.aborted ? STOPPED : error.message
         return { failed: true, reason: this.signal?.aborted ? 'cancelled' : error.code ?? 'provider_error' }
@@ -235,7 +236,7 @@ export class Engine {
   }
 
   /** Stream one reply, announcing each field the moment it is finished. */
-  async spoken(messages, { attemptId, budget } = {}) {
+  async spoken(messages, { attemptId, budget, responseSchema } = {}) {
     const llm = this.activeLLM ?? await this.llm()
     this.lastModel = llm.model
     let text = ''
@@ -249,6 +250,7 @@ export class Engine {
     }
     for await (const delta of llm.stream(messages, {
       signal: this.signal,
+      responseSchema,
       maxOutputTokens: Number(llm.settings?.maxOutputTokens) || budget?.outputReserve,
       onRequest: (request) => this.emit('request', '', '', { attemptId, request }),
       onFinish: (metadata) => {

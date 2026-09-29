@@ -26,6 +26,7 @@
  */
 
 import { snapshot } from './prompt.js'
+import { schemaResponseFormat } from './responses.js'
 
 import { modelRelayIssue } from './model-relay.js'
 
@@ -65,12 +66,16 @@ export function inference(settings = {}, { fetch: fetcher = globalThis.fetch?.bi
     retries: Math.max(1, Math.min(5, Number(settings.retries) || 3)),
     retryDelay: settings.retryDelay ?? 1000,
 
-    async *stream(messages, { signal, onRequest, onFinish, maxOutputTokens, strictCompletion = false } = {}) {
+    async *stream(messages, { signal, onRequest, onFinish, maxOutputTokens, strictCompletion = false, responseSchema } = {}) {
       if (signal?.aborted) throw new InferenceError('Model request cancelled.', 'aborted')
+      if (settings.requestParams != null && (typeof settings.requestParams !== 'object' || Array.isArray(settings.requestParams))) throw new InferenceError('request_params must be an object', 'configuration')
+      if (settings.structuredOutput !== undefined && (settings.structuredOutput !== 'json_schema' || (settings.provider ?? 'openai') !== 'openai')) throw new InferenceError('structured_output json_schema requires an OpenAI-compatible endpoint', 'configuration')
+      if (settings.structuredOutput && Object.hasOwn(settings.requestParams ?? {}, 'response_format')) throw new InferenceError('structured_output conflicts with request_params.response_format', 'configuration')
+      if (settings.structuredOutput && !responseSchema) throw new InferenceError('The agent did not supply a response schema for this request', 'configuration')
       let last
       const frozenMessages = snapshot(messages)
       // Scripted cursors intentionally remain stateful; provider configuration does not.
-      const requestSettings = settings.provider === 'scripted' ? settings : { ...settings, headers: { ...settings.headers }, ...(maxOutputTokens != null ? { maxOutputTokens } : {}) }
+      const requestSettings = settings.provider === 'scripted' ? settings : { ...settings, ...(settings.structuredOutput ? { requestParams: { ...settings.requestParams, response_format: schemaResponseFormat(snapshot(responseSchema)) } } : {}), headers: { ...settings.headers }, ...(maxOutputTokens != null ? { maxOutputTokens } : {}) }
       for (let attempt = 0; attempt < self.retries; attempt += 1) {
         let spoken = false
         // Character counts are UTF-16 string lengths, never estimates of token usage.
