@@ -1,6 +1,8 @@
 # Implementation status
 
-Latest publication: source **`b9ae8ecc`**, deployment **`830fcc8a`**, [successful Pages workflow](https://github.com/kaush4l/ASKK/actions/runs/36581450992). [Hosted evidence](evidence/expected-checks-pages.json) confirms the page, workbench chunk, completion module and agent index match the tested export. Export: **879,666,452 bytes / 216 files**.
+Latest publication: source **`df09f5e1`**, deployment **`b47a859b`**, [successful Pages workflow](https://github.com/kaush4l/ASKK/actions/runs/36584853860). [Hosted evidence](evidence/check-reference-pages.json) confirms 11 page, UI, runtime and index files match the tested export. Export: **879,673,513 bytes / 217 files**.
+
+Historical publication: source **`b9ae8ecc`**, deployment **`830fcc8a`**, [successful Pages workflow](https://github.com/kaush4l/ASKK/actions/runs/36581450992). [Hosted evidence](evidence/expected-checks-pages.json) confirms the page, workbench chunk, completion module and agent index match the tested export. Export: **879,666,452 bytes / 216 files**.
 
 Historical publication: source **`e7e19081`**, deployment **`d02543f1`**, [successful Pages workflow](https://github.com/kaush4l/ASKK/actions/runs/36578773412). [Hosted evidence](evidence/model-discovery-pages.json) confirms the page, workbench chunk, runtime context, workspace controller and agent index match the tested export. Export: **879,666,446 bytes / 216 files**.
 
@@ -13,6 +15,10 @@ Current-run references are advertised under `referenceCompletion`; inherited dif
 The generic tool dispatcher retains proposed input separately from resolved arguments. Approval shows the actual command, and live cards plus recorded inspection expose both forms. Invalid references are rejected before execution. Native-worker and controller fixtures cover exact command preservation, allow/ask/refuse/deny behavior, forbidden shell text, invalid references, configuration mutation, mismatched adapter pairs, source changes and scoped UI evidence.
 
 Validation: **1,007 passed, 1 skipped, 0 failed**, 7,519 assertions across 98 files. Static export built successfully. Model and browser results follow separately; no Safari/iPhone or Browser Linux acceptance is inferred from these tests.
+
+[Real-model reference trials](evidence/check-reference-models.json) record a 4B script pass, a 1.7B failure, and a second 4B pass after current-run context clarification. The final 4B trial wrote the script and selected all five configured commands by reference; all eight independent CLI cases and unchanged-source verification passed. It used nine model requests and six tool calls. The 1.7B trial retained a reference error in generated code and exhausted its steps. These are single-seed diagnostics with distinct prompt versions, not a reliability estimate, controlled causal proof or speed benchmark. Script success does not establish scaffold/repair or Browser Linux readiness.
+
+[Chrome rendering evidence](evidence/check-reference-browser.json) checks the production tool card with exported CSS at 390 × 844. Proposed input, resolved command and refusal outcome remain distinct. It is a rendering fixture, not a live approval, Safari/iPhone or VoiceOver acceptance test. Temporary tabs, fixture server and model servers were stopped; user model endpoints were untouched.
 
 ## Expected rejection and configured assertions
 

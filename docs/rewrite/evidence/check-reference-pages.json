@@ -1,0 +1,94 @@
+{
+  "source": "df09f5e1",
+  "deployment": "b47a859ba1b9014549d47e4b6e5dc7026f21aee5",
+  "workflow": "https://github.com/kaush4l/ASKK/actions/runs/36584853860",
+  "verifiedAt": "2026-09-29T14:46:29.156Z",
+  "scope": "Hosted bytes match tested export. Browser runtime acceptance not inferred.",
+  "export": {
+    "version": 1,
+    "basePath": "/ASKK",
+    "totalBytes": 879673513,
+    "fileCount": 217,
+    "runtimeId": "c2w-node24-38d093f4a38002db",
+    "artifactHash": "da3bd1bf88ffed7c3dc549099297c9fe779e6cbcd5617e007d1b24f975f2f3f3"
+  },
+  "files": [
+    {
+      "path": "index.html",
+      "bytes": 41028,
+      "localSHA256": "0c4278a3cf09b7077acac35fed2b22232f1d157ac4f25482bf790bc3795371f2",
+      "hostedSHA256": "0c4278a3cf09b7077acac35fed2b22232f1d157ac4f25482bf790bc3795371f2",
+      "matches": true
+    },
+    {
+      "path": "_next/static/chunks/app/page-6890952e8ac0d779.js",
+      "bytes": 331254,
+      "localSHA256": "900976ddb28c88f1dcba73c631e77e0226e6f43a5b99fc9ae301d8c0291a53db",
+      "hostedSHA256": "900976ddb28c88f1dcba73c631e77e0226e6f43a5b99fc9ae301d8c0291a53db",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/core/command-reference.js",
+      "bytes": 1850,
+      "localSHA256": "b7dc0a1028b52b936d40a2b57b0286532448235f8cccc0f82d6c2c1b17cba61c",
+      "hostedSHA256": "b7dc0a1028b52b936d40a2b57b0286532448235f8cccc0f82d6c2c1b17cba61c",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/core/context.js",
+      "bytes": 6787,
+      "localSHA256": "3fbb3a5802bdd444f681076fc620eecabf610d465900c92fe0ed35071b9d73d2",
+      "hostedSHA256": "3fbb3a5802bdd444f681076fc620eecabf610d465900c92fe0ed35071b9d73d2",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/core/tools.js",
+      "bytes": 6445,
+      "localSHA256": "8f3a4805a579e36283c4b4a706dc3d120a0325730a88fc7570b2f9329692d2a9",
+      "hostedSHA256": "8f3a4805a579e36283c4b4a706dc3d120a0325730a88fc7570b2f9329692d2a9",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/core/engine.js",
+      "bytes": 25826,
+      "localSHA256": "8e894715fcd147931795249f2d29e3885898d8746dbd9cbb246755b3a366bdfb",
+      "hostedSHA256": "8e894715fcd147931795249f2d29e3885898d8746dbd9cbb246755b3a366bdfb",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/runtime/agent.worker.js",
+      "bytes": 14964,
+      "localSHA256": "26b970d5ab3b71b0118aa4c15110b76340f0047bcf0178e1d77ee629238ca0df",
+      "hostedSHA256": "26b970d5ab3b71b0118aa4c15110b76340f0047bcf0178e1d77ee629238ca0df",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/runtime/hub.js",
+      "bytes": 120871,
+      "localSHA256": "436e8cc55d55ade537630b885e35930ef477f6108bc4e8354db4d20283943495",
+      "hostedSHA256": "436e8cc55d55ade537630b885e35930ef477f6108bc4e8354db4d20283943495",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/workspace/controller.js",
+      "bytes": 98438,
+      "localSHA256": "8a8305e8a75a833649b1b5c735316e0b1774338649788b376c3d91c01a70a731",
+      "hostedSHA256": "8a8305e8a75a833649b1b5c735316e0b1774338649788b376c3d91c01a70a731",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/builtin/workspace.js",
+      "bytes": 15720,
+      "localSHA256": "e3e61e03c958be8d2ad8f1f93d5549c080bf8b461b9faf5e5956e51d8054c66e",
+      "hostedSHA256": "e3e61e03c958be8d2ad8f1f93d5549c080bf8b461b9faf5e5956e51d8054c66e",
+      "matches": true
+    },
+    {
+      "path": "agents/index.json",
+      "bytes": 10528,
+      "localSHA256": "faa024115e60f6ce5a7c3897607ea066552e69c753ed784c3abcf9d613cb21a4",
+      "hostedSHA256": "faa024115e60f6ce5a7c3897607ea066552e69c753ed784c3abcf9d613cb21a4",
+      "matches": true
+    }
+  ]
+}
