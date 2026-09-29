@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "url": "https://kaush4l.github.io/ASKK/",
+  "source": "ed1271b",
+  "deployment": "9c8e10a",
+  "buildId": "8ebBfZcr6WY1y7jjCdxAj",
+  "artifactHash": "18559e8a50695a20024617208ebe379ee5f164c0cc2a2d662bcea2f9d2890a23",
+  "at": "2026-09-29T01:27:25.989Z",
+  "crossOriginIsolated": true,
+  "files": [
+    {
+      "bytes": 38313,
+      "path": "/ASKK/",
+      "sha256": "fcb2b132994263117fdc49dc7e8a2bf80158c89e076aaac3f08c16f5efc9afbd",
+      "status": 200
+    },
+    {
+      "bytes": 12628,
+      "path": "/ASKK/runtime/modules/runtime/agent.worker.js",
+      "sha256": "62bf5fa8523e74df846f38fe1498884189f306dfacb3d44a8a2440688baa74c4",
+      "status": 200
+    },
+    {
+      "bytes": 63262,
+      "path": "/ASKK/runtime/modules/workspace/controller.js",
+      "sha256": "0ee983c6852433f0a7356f0be56fabd0073c5f5a697bc15b41e9ed13b6561d05",
+      "status": 200
+    },
+    {
+      "bytes": 1523,
+      "path": "/ASKK/workbench.json",
+      "sha256": "3bf33481de6d567a232f07349dafb60b407837684c308cf41f1a2792b7141094",
+      "status": 200
+    },
+    {
+      "bytes": 1983,
+      "path": "/ASKK/agents/assistant/agent.md",
+      "sha256": "7e6bbfbd3a61f9b69081afe1b46e8d0467ac0aad5c041f47775c4ae6ed06883e",
+      "status": 200
+    }
+  ],
+  "guestFrames": 0,
+  "pageChunks": [
+    "https://kaush4l.github.io/ASKK/_next/static/chunks/app/page-311c17dd56a47d7b.js"
+  ],
+  "checks": {
+    "normalReload": true,
+    "originalDraftPreserved": true,
+    "defaultGeneralWorkflow": true,
+    "sevenAgentDefinitions": true,
+    "directModelMetadata": true,
+    "realHostedInference": true,
+    "modelEndpoint": "http://127.0.0.1:8873/v1",
+    "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+    "answer": "Latest answer\nAgent\n\nThe connection works. This app's browser worker is a JavaScript sandbox where my agent loop runs, not a browser-automation tool that can navigate pages or interact with the DOM.",
+    "executionTarget": "Browser Linux",
+    "executionStatus": "Not started",
+    "companion": "Disconnected",
+    "nativeExecution": false
+  },
+  "diagnostics": {
+    "originalBlockers": [
+      "old coding-only submission waited for Linux",
+      "saved relay route was disconnected"
+    ],
+    "correctedEndpoint": "An intermediate test used HTTPS on the HTTP model port and failed. Correcting to the HTTP endpoint passed direct metadata and inference in this Chrome profile.",
+    "temporaryRelay": "Started with model-relay only, never paired, stopped before hosted inference.",
+    "earlierAnswer": "The first hosted reply incorrectly equated browser worker execution with browser automation. The configured assistant instructions were clarified, then the final real reply distinguished them correctly."
+  },
+  "limits": [
+    "One actual Chrome profile with existing local-network access; not proof for fresh browser permissions.",
+    "No Safari/VoiceOver acceptance in this release smoke.",
+    "No Browser Linux or native application build, browser control, web search, or one-shot coding generation."
+  ]
+}

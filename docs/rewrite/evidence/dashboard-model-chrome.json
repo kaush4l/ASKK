@@ -27,5 +27,20 @@
     "Real inference preceded a presentation-only move placing the latest answer above the agent grid; final export was then reloaded and route/prompt restoration checked.",
     "No Browser Linux command, native command, web search, browser control, or one-shot app generation was exercised.",
     "No Safari or VoiceOver acceptance in this probe."
-  ]
+  ],
+  "additionalChecks": {
+    "finalDashboardApproval": {
+      "tool": "todo_read",
+      "policy": "read requires approval",
+      "before": "Approval needed",
+      "decision": "Approve once",
+      "after": "Completed",
+      "answer": "The todo_read call returned that the plan is empty."
+    },
+    "clarifiedAgentScope": {
+      "source": "ed1271b",
+      "answer": "The agent loop is JavaScript running in a Web Worker inside this application, and that by itself does not permit browser automation — only an explicitly advertised browser-control tool can navigate pages or interact with their DOM.",
+      "environment": "Loopback production export; actual local Qwen; zero guest frames; disconnected companion"
+    }
+  }
 }
