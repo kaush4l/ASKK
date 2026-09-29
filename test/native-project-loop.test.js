@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { evaluateProjectLoop } from '../scripts/evals/project-loop.js'
 
-test('native provider proposals cross the production worker and guarded dispatcher into verified real files and commands', async () => {
+for (const rejectedCompletionHistory of [undefined, 'retain', 'omit']) test(`native provider proposals cross the production worker into verified files with completion history ${rejectedCompletionHistory ?? 'default'}`, async () => {
   const root = await mkdtemp(join(tmpdir(), 'askk-native-loop-'))
   const requests = []
   const source = 'const values=process.argv.slice(2).map(Number);if(values.some(n=>!Number.isFinite(n)))process.exit(1);console.log(values.reduce((a,b)=>a+b,0));\n'
@@ -18,12 +18,22 @@ test('native provider proposals cross the production worker and guarded dispatch
     return new Response(chunks.map(x => `data: ${JSON.stringify(x)}\n\n`).join('') + 'data: [DONE]\n\n', { headers: { 'content-type': 'text/event-stream' } })
   } })
   try {
-    const result = await evaluateProjectLoop({ baseUrl: `http://127.0.0.1:${server.port}/v1`, model: 'native-fixture', directory: join(root, 'attempt'), caseName: 'script', contractVersion: 3, historyFormat: 'messages', responseProtocol: 'native', instructions: 'Use the saved receipt before continuing.', completion: { checks: [{ capability: 'workspace.commands', options: { commands: ['bun total.js 1 2 3', 'bun total.js'] } }] } })
+    const result = await evaluateProjectLoop({ baseUrl: `http://127.0.0.1:${server.port}/v1`, model: 'native-fixture', directory: join(root, 'attempt'), caseName: 'script', rejectedCompletionHistory, contractVersion: 3, historyFormat: 'messages', responseProtocol: 'native', instructions: 'Use the saved receipt before continuing.', completion: { checks: [{ capability: 'workspace.commands', options: { commands: ['bun total.js 1 2 3', 'bun total.js'] } }] } })
     const evidence = JSON.parse(await readFile(result.evidence, 'utf8'))
     expect(result.passed).toBe(true)
+    expect(evidence.rejectedCompletionHistory).toBe(rejectedCompletionHistory ?? 'retain')
+    expect(evidence.completionProposals).toHaveLength(2)
+    for (const proposal of evidence.completionProposals) {
+      expect(proposal.value).toBe('Created and ran the script.')
+      expect(proposal.historyPolicy).toBe(rejectedCompletionHistory ?? 'retain')
+      expect(proposal.attemptId).toBeTruthy()
+    }
+    expect(requests[3].messages.some(message => message.role === 'assistant' && message.content === 'Created and ran the script.')).toBe(rejectedCompletionHistory !== 'omit')
     expect(evidence.instructionsOverride).toBe('Use the saved receipt before continuing.')
     expect(requests[0].messages.some(message => message.content?.includes('Use the saved receipt before continuing.'))).toBe(true)
     const agentSource = await readFile(join(root, 'attempt/site/packages/starter/agents/builder/agent.md'), 'utf8')
+    if (rejectedCompletionHistory === undefined) expect(agentSource).not.toContain('rejected_completion_history:')
+    else expect(agentSource).toContain(`rejected_completion_history: "${rejectedCompletionHistory}"`)
     expect(agentSource).toContain('contract_version: 3')
     expect(agentSource).toContain('history_format: "messages"')
     expect(agentSource).toContain('\n---\nUse the saved receipt before continuing.\n')

@@ -246,3 +246,20 @@ for (const variant of ['valid', 'numeric-prefix', 'numeric-prefix-signal', 'miss
     if (variant === 'valid') expect(evidence.checks[0].output).toBe('12.5\n')
   } finally { server.stop(true); await rm(root, { recursive: true, force: true }) }
 }, 15000)
+
+
+test('evaluation rejects invalid completion history before creating an attempt', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'askk-eval-history-'))
+  const directory = join(root, 'attempt')
+  try {
+    for (const rejectedCompletionHistory of ['auto', '', null, false, 0, ['omit']]) {
+      await expect(evaluateProjectLoop({ directory, rejectedCompletionHistory })).rejects.toThrow('Unsupported rejectedCompletionHistory')
+      expect(await stat(directory).catch(error => error.code)).toBe('ENOENT')
+    }
+    const child = Bun.spawn([process.execPath, 'scripts/evals/project-loop.js', '--run', '--model', 'fixture', '--base-url', 'http://127.0.0.1:1/v1', '--directory', directory, '--rejected-completion-history', 'invalid'], { stdout: 'pipe', stderr: 'pipe' })
+    const stderr = await new Response(child.stderr).text()
+    expect(await child.exited).not.toBe(0)
+    expect(stderr).toContain('Unsupported rejectedCompletionHistory')
+    expect(await stat(directory).catch(error => error.code)).toBe('ENOENT')
+  } finally { await rm(root, { recursive: true, force: true }) }
+})

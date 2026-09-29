@@ -9,3 +9,7 @@ The worker sends the exact candidate content and attempt ID to the desk. Complet
 No bundled agent enables omission yet. A prior live 4B diagnostic repeatedly carried rejected completion claims forward, but that observation does not establish causality. The option enables a controlled comparison; improved live-model reliability remains unproven.
 
 Validation covers native and envelope protocols, default compatibility, configured omission, actual worker configuration, next-prompt contents, compaction, exact long proposal persistence/export, and cancellation during verification. No completion checks were weakened.
+
+## Live comparison
+
+The opt-in project evaluator accepts `--rejected-completion-history retain|omit` (API: `rejectedCompletionHistory`). It overrides only the copied agent configuration for that attempt and records the effective setting plus completion proposals in evidence. Invalid values fail before creating an attempt. Keep the task, model profile, command limits, completion contract, and independent checks identical when comparing modes; never infer correctness from fewer rejected answers or more tool calls.
