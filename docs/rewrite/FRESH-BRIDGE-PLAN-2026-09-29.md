@@ -255,3 +255,20 @@ approved task-plan tool call with only `model-relay`, restored pairing/draft, an
 downloaded the matching archive. The final suite passed 709 tests with one CLI
 skip. Native Safari/iPhone, fresh TLS onboarding and signed distribution remain
 unverified; the current archive is explicitly an unsigned developer preview.
+
+## Authenticated discovery implementation, 2026-09-29
+
+`src/core/companion-manifest.js` now owns the v1 descriptor and validation.
+The current companion exposes it only through authenticated `/whoami`. Existing
+legacy grant IDs remain authoritative, and contradictions reject pairing.
+This initial protocol describes the seven current adapters; a new adapter needs
+an explicit protocol implementation, not an arbitrary name in an agent folder.
+The descriptor reports dependencies unchecked and readiness unverified. Actual
+model probe receipts remain separate and scoped to the selected model route.
+
+Hub pairing strips unauthenticated manifest claims, records a durable minimum
+manifest version, and includes canonical manifest identity in revocation and
+probe invalidation. LocalExecution validates the same contract. Settings shows
+support, grants and checks separately; developer details expose only selected
+metadata. Legacy companions say details unreported. Browser control remains
+unsupported, and native command scope explicitly disclaims filesystem isolation.

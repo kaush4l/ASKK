@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createCompanion } from '../host/companion.js'
 import { LocalExecution } from '../src/execution/local.js'
+import { readCompanionManifest } from '../src/core/companion-manifest.js'
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 async function until(check, ms = 5000) { const end = Date.now() + ms; while (Date.now() < end) { if (await check()) return; await sleep(15) } throw new Error('Fixture condition did not become true') }
@@ -17,6 +18,21 @@ async function fixture(run, options = {}) {
 }
 
 describe('Bun companion contracts', () => {
+  test('only authenticated identity reports manifest and configuration never claims probes', async () => {
+    await fixture(async ({ companion, call }) => {
+      const publicHealth = await (await fetch(`${companion.url}/health`)).json()
+      expect(publicHealth.capabilityManifest).toBeUndefined()
+      expect((await fetch(`${companion.url}/whoami`, { method: 'POST' })).status).toBe(401)
+      const identity = await (await call('/whoami')).json()
+      const manifest = readCompanionManifest(identity)
+      expect(manifest.instanceId).toBe(identity.runtimeId)
+      expect(manifest.runtime).toEqual({ kind: 'bun', version: Bun.version })
+      expect(manifest.capabilities.filter(row => row.grant === 'allowed').map(row => row.id)).toEqual(['model-relay'])
+      expect(manifest.capabilities.every(row => row.dependencies === 'unchecked' && row.readiness === 'unverified')).toBe(true)
+      expect(manifest.capabilities.find(row => row.id === 'model-relay').availability).toBe('scope-required')
+    }, { capabilities: ['model-relay'] })
+  })
+
   test('omitted grants advertise no authority and refuse every capability without side effects', async () => {
     let upstreamRequests = 0
     const upstream = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch() { upstreamRequests++; return new Response('must not reach') } })

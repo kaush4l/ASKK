@@ -1,0 +1,20 @@
+.companion-capabilities { margin-top: 18px; min-width: 0; }
+.companion-capabilities h3 { margin: 0 0 8px; font-size: 13px; }
+.companion-capabilities p { color: var(--muted); font-size: 12px; line-height: 1.5; }
+.companion-capabilities-list { display: grid; gap: 8px; padding: 0; list-style: none; }
+.companion-capability { min-width: 0; padding: 12px; border: 1px solid var(--line); border-radius: 6px; }
+.companion-capability strong { font-size: 12px; }
+.companion-capability dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 10px 0 0; }
+.companion-capability dt { color: var(--muted); font-size: 10px; }
+.companion-capability dd { margin: 4px 0 0; font-size: 12px; }
+.companion-capabilities summary { cursor: pointer; padding: 8px 0; font-size: 12px; }
+.companion-capabilities code, .companion-capabilities dd { overflow-wrap: anywhere; }
+.companion-capability-metadata { display: grid; gap: 8px; margin: 8px 0; font-size: 11px; }
+.companion-capability-metadata dt { color: var(--muted); }
+.companion-capability-metadata dd { margin: 3px 0 0; }
+@media (max-width: 600px) {
+  .companion-capability dl { grid-template-columns: 1fr; gap: 6px; }
+  .companion-capability dl > div { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .companion-capability dd { margin: 0; }
+}
+@media (pointer: coarse) { .companion-capabilities summary { min-height: 44px; display: flex; align-items: center; } }

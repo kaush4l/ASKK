@@ -1,3 +1,4 @@
+import { readCompanionManifest } from '../core/companion-manifest.js'
 /**
  * The hub — the page side of the harness. It spawns, routes and records, and has no opinions.
  *
@@ -47,7 +48,7 @@ const TOOL_EVENT_STORAGE = 'separate-v1'
 const EVIDENCE_TIMEOUT_MS = 15000
 const MODEL_PROBE_PROMPT = Object.freeze([{ role: 'user', content: 'Reply with exactly: Connected.' }])
 
-const bridgeIdentity = value => JSON.stringify({ name: value?.name, version: value?.version, runtimeId: value?.runtimeId, root: value?.root, capabilities: [...(value?.capabilities ?? [])].sort(), modelRelay: value?.modelRelay, mcp: [...(value?.mcp ?? [])].sort(), clis: value?.clis })
+const bridgeIdentity = value => JSON.stringify({ name: value?.name, version: value?.version, runtimeId: value?.runtimeId, root: value?.root, capabilities: [...(value?.capabilities ?? [])].sort(), modelRelay: value?.modelRelay, capabilityManifest: value?.capabilityManifest, mcp: [...(value?.mcp ?? [])].sort(), clis: value?.clis })
 
 /** A hard caller bound, including fetch implementations that ignore AbortSignal. */
 async function boundedModelCheck(callback, { signal, timeoutMs } = {}, defaultMs = 15000) {
@@ -234,7 +235,7 @@ export class Hub {
     if (this.disposed) return this
     await this.markInterrupted()
     if (waited) await this.readFolders()
-    if (bridge?.url) await this.bridgeCheck(bridge.url, bridge.token, { minimumModelRelayVersion: bridge.minimumModelRelayVersion, restored: true })
+    if (bridge?.url) await this.bridgeCheck(bridge.url, bridge.token, { minimumModelRelayVersion: bridge.minimumModelRelayVersion, minimumCapabilityManifestVersion: bridge.minimumCapabilityManifestVersion, restored: true })
     await this.mcpRefresh({ restart: false })
     if (this.disposed) return this
     this.publish({ type: 'boot', stage: 'threads', done: 0, total: this.specs.size })
@@ -428,7 +429,7 @@ export class Hub {
   hostInfo() {
     const bridge = this.bridgeState
     if (bridge.status !== 'answering') return null
-    return { name: bridge.health?.name, url: bridge.url, token: bridge.token, root: bridge.health?.root, capabilities: bridge.health?.capabilities ?? [], ...(bridge.health?.modelRelay != null ? { modelRelay: structuredClone(bridge.health.modelRelay) } : {}) }
+    return { name: bridge.health?.name, url: bridge.url, token: bridge.token, root: bridge.health?.root, capabilities: bridge.health?.capabilities ?? [], ...(bridge.health?.capabilityManifest ? { capabilityManifest: structuredClone(bridge.health.capabilityManifest) } : {}), ...(bridge.health?.modelRelay != null ? { modelRelay: structuredClone(bridge.health.modelRelay) } : {}) }
   }
 
   /** A resident thread, started if it is not running. */
@@ -1457,6 +1458,7 @@ export class Hub {
     const previous = this.bridgeState
     const was = previous.status
     const minimumModelRelayVersion = options.minimumModelRelayVersion ?? previous.minimumModelRelayVersion
+    const minimumCapabilityManifestVersion = options.minimumCapabilityManifestVersion ?? previous.minimumCapabilityManifestVersion
     let published = false
     const current = () => {
       if (this.disposed || options.signal?.aborted) throw new InferenceError('The agent desk stopped or companion pairing was cancelled before its scope could be adopted.', 'aborted')
@@ -1465,6 +1467,7 @@ export class Hub {
     try {
       if (this.disposed) throw new InferenceError('The agent desk stopped before companion pairing completed.', 'aborted')
       if (minimumModelRelayVersion != null && minimumModelRelayVersion !== 1) throw new InferenceError('The saved companion model relay contract is unsupported. Disconnect this pairing explicitly before choosing a different companion.', 'relay_capability')
+      if (minimumCapabilityManifestVersion != null && minimumCapabilityManifestVersion !== 1) throw new InferenceError('The saved companion capability manifest is unsupported. Disconnect explicitly before choosing another companion.', 'companion_manifest')
       const health = await boundedModelCheck(async signal => {
         const response = await this.fetch(`${base}/health`, { signal })
         if (!response.ok) throw new InferenceError(`The companion health check answered HTTP ${response.status}.`, 'relay_unavailable')
@@ -1478,6 +1481,10 @@ export class Hub {
         if (!Array.isArray(capabilities) || capabilities.some(item => typeof item !== 'string')) throw new InferenceError('The companion returned invalid capability information.', 'relay_capability')
         const verified = { ...health, root: authenticated.root ?? health.root, capabilities, ...(authenticated.runtimeId ? { runtimeId: authenticated.runtimeId } : {}) }
         // Routing authority comes from the authenticated response, never public health.
+        delete verified.capabilityManifest
+        const manifest = readCompanionManifest(authenticated)
+        if (minimumCapabilityManifestVersion === 1 && !manifest) throw new InferenceError('This pairing requires capability manifest version 1. Reconnect the updated companion, or disconnect explicitly before pairing a legacy bridge.', 'companion_manifest')
+        if (manifest) verified.capabilityManifest = manifest
         delete verified.modelRelay
         if (authenticated.modelRelay != null) verified.modelRelay = structuredClone(authenticated.modelRelay)
         if (minimumModelRelayVersion === 1 && !validModelRelayContract(verified.modelRelay)) throw new InferenceError('This pairing requires scoped model relay version 1, but the companion no longer advertises it. Restore the scoped companion, or explicitly disconnect before pairing a legacy bridge.', 'relay_capability')
@@ -1487,25 +1494,30 @@ export class Hub {
       }, options)
       current()
       const pin = validModelRelayContract(health.modelRelay) ? 1 : minimumModelRelayVersion
+      const manifestPin = health.capabilityManifest ? 1 : minimumCapabilityManifestVersion
+      const pins = { ...(pin ? { minimumModelRelayVersion: pin } : {}), ...(manifestPin ? { minimumCapabilityManifestVersion: manifestPin } : {}) }
       const adopt = (pinSaved = false) => {
         current()
         const changed = was !== 'answering' || previous.url !== base || previous.token !== token || bridgeIdentity(previous.health) !== bridgeIdentity(health)
-        this.bridgeState = { url: base, token, health, ...(pin ? { minimumModelRelayVersion: pin, modelRelayPinSaved: pinSaved } : {}), generation: (previous.generation ?? 0) + Number(changed), status: 'answering', since: was === 'answering' ? previous.since : Date.now(), error: '', errorCode: '' }
+        this.bridgeState = { url: base, token, health, ...pins, modelRelayPinSaved: pinSaved, capabilityManifestPinSaved: pinSaved, generation: (previous.generation ?? 0) + Number(changed), status: 'answering', since: was === 'answering' ? previous.since : Date.now(), error: '', errorCode: '' }
         if (changed) this.bridgeToolsChanged(was === 'answering' ? 'the bridge identity or capabilities changed' : 'the bridge is answering')
       }
       // Upgrade old saved pairings before advertising scoped authority. A later
       // reload must not forget that this endpoint was accepted as scoped v1.
-      const savedPinMatches = options.restored && options.minimumModelRelayVersion === 1 || previous.minimumModelRelayVersion === 1 && previous.modelRelayPinSaved && previous.url === base && previous.token === token
-      if (pin === 1 && !savedPinMatches) await this.bridgeSettingsWrite(async () => {
+      const sameConnection = previous.url === base && previous.token === token
+      const savedPinMatches = (!pin || options.restored && options.minimumModelRelayVersion === pin || sameConnection && previous.minimumModelRelayVersion === pin && previous.modelRelayPinSaved)
+        && (!manifestPin || options.restored && options.minimumCapabilityManifestVersion === manifestPin || sameConnection && previous.minimumCapabilityManifestVersion === manifestPin && previous.capabilityManifestPinSaved)
+      if ((pin === 1 || manifestPin === 1) && !savedPinMatches) await this.bridgeSettingsWrite(async () => {
         current()
         if (this.store.durable === false) throw new InferenceError('Durable browser storage is required to save the scoped companion contract. Scoped pairing was not activated.', 'evidence_persistence')
-        try { await this.store.put('settings', { key: 'bridge', value: { url: base, token, minimumModelRelayVersion: 1 } }) }
+        try { await this.store.put('settings', { key: 'bridge', value: { url: base, token, ...pins } }) }
         catch { throw new InferenceError('The companion scope could not be saved. Retry after local storage is available; scoped pairing was not activated.', 'evidence_persistence') }
         try {
           adopt()
           this.publish({ type: 'bridge', state: this.bridge.state() }); published = true
           current()
           this.bridgeState.modelRelayPinSaved = true
+          this.bridgeState.capabilityManifestPinSaved = true
         } catch (error) {
           // Still inside the ordered write: cleanup precedes any newer pairing.
           await this.store.delete('settings', 'bridge')
@@ -1519,7 +1531,7 @@ export class Hub {
       // A failed candidate must never replace an already paired, authorized service.
       if (this.disposed || options.requireModelRelay || sequence !== this.bridgeCheckSequence) return { url: base, status: 'down', since: Date.now(), capabilities: [], root: '', ...failed }
       const changed = was !== 'down' || previous.url !== base || previous.token !== token
-      this.bridgeState = { ...previous, url: base, token, ...(minimumModelRelayVersion ? { minimumModelRelayVersion } : {}), generation: (previous.generation ?? 0) + Number(changed), status: 'down', since: was === 'down' ? previous.since : Date.now(), error: failed.error, errorCode: failed.errorCode }
+      this.bridgeState = { ...previous, url: base, token, ...(minimumModelRelayVersion ? { minimumModelRelayVersion } : {}), ...(minimumCapabilityManifestVersion ? { minimumCapabilityManifestVersion } : {}), generation: (previous.generation ?? 0) + Number(changed), status: 'down', since: was === 'down' ? previous.since : Date.now(), error: failed.error, errorCode: failed.errorCode }
       if (was === 'answering') {
         this.bridgeToolsChanged('the bridge stopped answering')
       }
@@ -1574,8 +1586,8 @@ export class Hub {
 
   bridge = {
     state: () => {
-      const { url, status, since, health, error, errorCode, generation, minimumModelRelayVersion } = this.bridgeState
-      return { url, status, since, generation: generation ?? 0, ...(minimumModelRelayVersion ? { minimumModelRelayVersion } : {}), runtimeId: health?.runtimeId ?? '', root: health?.root ?? '', capabilities: health?.capabilities ?? [], ...(health?.modelRelay != null ? { modelRelay: structuredClone(health.modelRelay) } : {}), version: health?.version ?? '', error: error ?? '', errorCode: errorCode ?? '' }
+      const { url, status, since, health, error, errorCode, generation, minimumModelRelayVersion, minimumCapabilityManifestVersion } = this.bridgeState
+      return { url, status, since, generation: generation ?? 0, ...(minimumModelRelayVersion ? { minimumModelRelayVersion } : {}), ...(minimumCapabilityManifestVersion ? { minimumCapabilityManifestVersion } : {}), ...(health?.capabilityManifest ? { capabilityManifest: structuredClone(health.capabilityManifest) } : {}), runtimeId: health?.runtimeId ?? '', root: health?.root ?? '', capabilities: health?.capabilities ?? [], ...(health?.modelRelay != null ? { modelRelay: structuredClone(health.modelRelay) } : {}), version: health?.version ?? '', error: error ?? '', errorCode: errorCode ?? '' }
     },
     pair: async (url, token, options = {}) => {
       const state = await this.bridgeCheck(url, token, options)
@@ -1584,7 +1596,7 @@ export class Hub {
           const before = this.bridgePairFailure(state, token, options.signal)
           if (before) return before
           // Scoped checks already stored this exact candidate before publication.
-          if (!(state.minimumModelRelayVersion === 1 && this.bridgeState.modelRelayPinSaved)) await this.store.put('settings', { key: 'bridge', value: { url: state.url, token } })
+          if (!(state.minimumModelRelayVersion === 1 && this.bridgeState.modelRelayPinSaved || state.minimumCapabilityManifestVersion === 1 && this.bridgeState.capabilityManifestPinSaved)) await this.store.put('settings', { key: 'bridge', value: { url: state.url, token } })
           const after = this.bridgePairFailure(state, token, options.signal)
           if (after) {
             // Still inside the ordered write: cleanup cannot erase a newer pairing.

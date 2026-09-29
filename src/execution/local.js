@@ -1,3 +1,4 @@
+import { readCompanionManifest } from '../core/companion-manifest.js'
 /** Authenticated client for the owner's optional Bun companion. */
 export class LocalExecution {
   constructor({ url = 'https://127.0.0.1:7717', token = '', onEvent = () => {}, createSocket = address => new WebSocket(address) } = {}) {
@@ -9,8 +10,14 @@ export class LocalExecution {
     if (!response.ok) { const data = await response.json().catch(() => ({})); throw Object.assign(new Error(data.error ?? `Companion answered ${response.status}`), { ...data, code: data.code, status: response.status }) }
     return response
   }
-  async prepare() { const health = await (await this.request('/whoami')).json(); this.health = health; return health }
-  describeCapabilities() { return { runtimeId: this.health?.runtimeId ?? 'local:unpaired', root: this.health?.root, toolchain: { kind: 'bun', version: this.health?.version }, capabilities: this.health?.capabilities ?? [] } }
+  async prepare() {
+    const health = await (await this.request('/whoami')).json()
+    const capabilityManifest = readCompanionManifest(health)
+    if (this.health?.capabilityManifest && !capabilityManifest) throw Object.assign(new Error('The companion no longer supplies its capability manifest. Reconnect explicitly.'), { code: 'companion_manifest' })
+    this.health = { ...health, capabilityManifest }
+    return this.health
+  }
+  describeCapabilities() { return { runtimeId: this.health?.runtimeId ?? 'local:unpaired', root: this.health?.root, toolchain: { kind: this.health?.capabilityManifest?.runtime.kind ?? this.health?.runtime ?? 'unknown', version: this.health?.capabilityManifest?.runtime.version ?? this.health?.version }, capabilityManifest: this.health?.capabilityManifest ?? null, capabilities: this.health?.capabilities ?? [] } }
   async list(path = '') { return (await (await this.request('/workspace/list', { path })).json()).files }
   async read(path) { return (await this.request('/workspace/read', { path })).json() }
   async write(args) {

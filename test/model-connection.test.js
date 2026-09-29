@@ -467,3 +467,43 @@ test('real worker uses the authenticated scoped route even when generic fetch is
     expect(completions[0]).toMatchObject({ path: '/model/fetch', body: { url: 'https://provider.invalid/v1/chat/completions', method: 'POST', stream: true } })
   } finally { hub?.stop(); server.stop(true); await rm(site, { recursive: true, force: true }) }
 })
+
+test('capability manifest is authenticated, pinned durably, and invalidates identity without granting readiness', async () => {
+  const { createCompanionManifest } = await import('../src/core/companion-manifest.js')
+  const make = (root = '/project') => {
+    const host = { root, runtimeId: 'fixture-instance', runtime: 'bun', version: '1.test', capabilities: ['model-relay'], modelRelay: { version: 1, endpoint: '/model/fetch', status: 'configured', endpoints: ['https://provider.example/v1'] } }
+    return { ...host, capabilityManifest: createCompanionManifest(host, { os: 'darwin', arch: 'arm64' }) }
+  }
+  let authenticated = make()
+  const { hub, writes } = fixture(async url => Response.json(url.endsWith('/whoami') ? authenticated : { name: 'askk-companion', capabilities: ['exec'], capabilityManifest: { spoofed: true } }))
+  const first = await hub.bridge.pair('https://companion.example', 'fixture-token')
+  expect(first).toMatchObject({ status: 'answering', generation: 1, minimumCapabilityManifestVersion: 1, capabilities: ['model-relay'], capabilityManifest: authenticated.capabilityManifest })
+  expect(first.capabilityManifest.capabilities.every(row => row.readiness === 'unverified')).toBe(true)
+  expect(writes.at(-1).value).toMatchObject({ minimumModelRelayVersion: 1, minimumCapabilityManifestVersion: 1 })
+  expect(hub.hostInfo().capabilityManifest.instanceId).toBe('fixture-instance')
+  authenticated = make('/other-project')
+  expect(await hub.bridgeCheck('https://companion.example', 'fixture-token')).toMatchObject({ status: 'answering', generation: 2 })
+  delete authenticated.capabilityManifest
+  expect(await hub.bridgeCheck('https://companion.example', 'fixture-token')).toMatchObject({ status: 'down', errorCode: 'companion_manifest', minimumCapabilityManifestVersion: 1 })
+  expect(hub.hostInfo()).toBeNull()
+  await hub.bridge.disconnect()
+  expect(await hub.bridge.pair('https://companion.example', 'fixture-token')).toMatchObject({ status: 'answering' })
+  expect(hub.bridge.state().capabilityManifest).toBeUndefined()
+})
+
+test('saved manifest pin rejects downgrade and malformed descriptors without public-health fallback', async () => {
+  for (const descriptor of [undefined, null, { protocol: { name: 'askk-capabilities', version: 2 } }]) {
+    const { hub } = fixture(async url => Response.json({ capabilities: [], ...(url.endsWith('/whoami') ? descriptor === undefined ? {} : { capabilityManifest: descriptor } : { capabilityManifest: { claimed: true } }) }))
+    expect(await hub.bridgeCheck('https://companion.example', 'fixture-token', { minimumCapabilityManifestVersion: 1, restored: true })).toMatchObject({ status: 'down', errorCode: 'companion_manifest' })
+  }
+})
+
+test('manifest contract storage failure prevents activation', async () => {
+  const { createCompanionManifest } = await import('../src/core/companion-manifest.js')
+  const authenticated = { root: '/project', runtimeId: 'fixture-manifest-only', runtime: 'bun', version: '1.test', capabilities: [], modelRelay: { version: 1, endpoint: '/model/fetch', status: 'scope-required', endpoints: [] } }
+  authenticated.capabilityManifest = createCompanionManifest(authenticated, { os: 'darwin', arch: 'arm64' })
+  const { hub } = fixture(async () => Response.json(authenticated))
+  hub.store.put = async () => { throw new Error('quota') }
+  expect(await hub.bridge.pair('https://companion.example', 'fixture-token')).toMatchObject({ status: 'down', errorCode: 'evidence_persistence' })
+  expect(hub.hostInfo()).toBeNull()
+})

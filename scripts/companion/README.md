@@ -86,3 +86,18 @@ bun scripts/companion/acceptance.js --execute \
 The package includes Bun's unchanged upstream licensing overview, including linked-library notices and relinking-source instructions. Public redistribution also needs the applicable notices/source obligations and macOS distribution-signing review; this local handoff does not claim those release gates complete.
 
 Primary references: [Bun runtime and `--bun`](https://bun.sh/docs/runtime#--bun), [standalone executables and embedded-runtime CLI mode](https://bun.sh/docs/bundler/executables#act-as-the-bun-cli), [pinned Bun licensing and relinking instructions](https://github.com/oven-sh/bun/blob/bun-v1.4.2/LICENSE.md). This package copies the reviewed runtime directly rather than compiling an extra executable just to expose the same CLI.
+
+## Authenticated capability discovery
+
+Current source returns `capabilityManifest` v1 only from authenticated `/whoami`.
+It separates implemented adapters, explicit grants, scope and readiness. All
+adapter dependencies start unchecked; configuration never reports a successful
+operation. Commands and terminals explicitly report that the initial project
+folder does not confine their host filesystem access. Browser control is
+reported unsupported.
+
+The browser validates this descriptor against authenticated grants and runtime
+identity, saves its minimum supported version before adopting it, and rejects
+silent downgrade after reload. Older packages without this descriptor remain
+usable when explicitly paired as legacy; their implementation details are
+unreported. The scope/grant checks remain enforced by the companion routes.

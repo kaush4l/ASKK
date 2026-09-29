@@ -5,6 +5,7 @@ import { mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from 
 import { resolve, relative, dirname, join, extname } from 'node:path'
 import { spawn } from 'node:child_process'
 import { StringDecoder } from 'node:string_decoder'
+import { createCompanionManifest } from '../src/core/companion-manifest.js'
 
 const digest = value => createHash('sha256').update(value).digest('hex')
 const failure = (message, status = 400, code = 'request.invalid') => Object.assign(new Error(message), { status, code })
@@ -61,6 +62,8 @@ export async function createCompanion(options = {}) {
   const modelRelay = Object.freeze({ version: 1, endpoint: '/model/fetch', endpoints: modelEndpoints, status: modelEndpoints.length ? 'configured' : 'scope-required' })
   const childEnv = options.childEnv === undefined ? process.env : { ...options.childEnv }
   const runtimeId = `local-bun:${crypto.randomUUID()}`
+  const identity = { ok: true, root, runtimeId, capabilities, modelRelay, runtime: 'bun', version: Bun.version }
+  const capabilityManifest = createCompanionManifest(identity, { os: process.platform, arch: process.arch })
   const jobs = new Map(); const terminals = new Map(); const tickets = new Map(); const locks = new Map()
   let closing = false
   async function inside(path = '.') {
@@ -150,7 +153,7 @@ export async function createCompanion(options = {}) {
       try { body = rawBody ? JSON.parse(rawBody) : {} } catch { throw failure('Invalid JSON body') }
       if (!body || typeof body !== 'object' || Array.isArray(body)) throw failure('Request body must be a JSON object')
       if (body.runtimeId && body.runtimeId !== runtimeId) throw failure('The execution environment restarted or changed. Reconnect and explicitly bind this workspace before continuing.', 409, 'RUNTIME_CHANGED')
-      if (path === '/whoami') return respond({ ok: true, root, runtimeId, capabilities, modelRelay, runtime: 'bun', version: Bun.version })
+      if (path === '/whoami') return respond({ ...identity, capabilityManifest })
       if (path === '/jobs/run') { server.timeout(request, 0); const response = await command(body, request); for (const [key, value] of Object.entries(headers)) response.headers.set(key, value); return response }
       if (path === '/jobs/cancel') { requireCapability('exec'); const job = jobs.get(body.id); if (job) kill(job); return respond({ ok: Boolean(job) }) }
       if (path.startsWith('/workspace/')) {
