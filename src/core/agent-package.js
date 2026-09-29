@@ -1,3 +1,4 @@
+import { validateLoopBudget } from './loop-budget.js'
 /**
  * Portable, declarative folder ingestion. This module does not fetch, execute,
  * install, grant capabilities, or rewrite authored files.
@@ -196,13 +197,15 @@ function stringList(value, label) {
   return [...value]
 }
 function validateSettings(settings, path, root) {
+  try { validateLoopBudget(settings, { authored: true, prefix: `${path}.` }) }
+  catch (error) { fail('PACKAGE_SCHEMA', error.message) }
   if (typeof settings.id !== 'string' || !ID.test(settings.id)) fail('PACKAGE_SCHEMA', `${path} requires a stable lowercase id`)
   if (settings.workflows !== undefined && (!root || typeof settings.workflows !== 'string')) fail('PACKAGE_SCHEMA', `${path}.workflows must be a root-only manifest reference`)
   if (!root && (Object.hasOwn(settings, 'package_id') || Object.hasOwn(settings, 'package_version'))) fail('PACKAGE_SCHEMA', `${path} cannot redefine root package identity`)
   for (const key of ['name', 'description', 'model']) if (settings[key] !== undefined && (typeof settings[key] !== 'string' || !settings[key].trim() || settings[key].length > (key === 'description' ? 4000 : 256))) fail('PACKAGE_SCHEMA', `${path}.${key} must be bounded text`)
   if (settings.model !== undefined && !/^[A-Za-z0-9][A-Za-z0-9._/-]{0,255}$/.test(settings.model)) fail('PACKAGE_SCHEMA', `${path}.model must be a desk profile alias, not a transport URL`)
   for (const key of ['private', 'remembers', 'require_verification']) if (settings[key] !== undefined && typeof settings[key] !== 'boolean') fail('PACKAGE_SCHEMA', `${path}.${key} must be boolean`)
-  for (const [key, min, max] of [['max_steps', 1, 10000], ['repairs', 0, 10], ['keep', 0, 10000], ['output_reserve', 1, 1000000], ['max_output_tokens', 1, 1000000], ['context_length', 1, 10000000]]) if (settings[key] !== undefined && (!Number.isSafeInteger(settings[key]) || settings[key] < min || settings[key] > max)) fail('PACKAGE_SCHEMA', `${path}.${key} is outside the supported bound`)
+  for (const [key, min, max] of [['output_reserve', 1, 1000000], ['max_output_tokens', 1, 1000000], ['context_length', 1, 10000000]]) if (settings[key] !== undefined && (!Number.isSafeInteger(settings[key]) || settings[key] < min || settings[key] > max)) fail('PACKAGE_SCHEMA', `${path}.${key} is outside the supported bound`)
   if (settings.temperature !== undefined && (typeof settings.temperature !== 'number' || !Number.isFinite(settings.temperature) || settings.temperature < 0 || settings.temperature > 2)) fail('PACKAGE_SCHEMA', `${path}.temperature is invalid`)
   if (settings.compact_at !== undefined && (typeof settings.compact_at !== 'number' || settings.compact_at <= 0 || settings.compact_at > 1)) fail('PACKAGE_SCHEMA', `${path}.compact_at is invalid`)
   if (settings.session !== undefined && !['agent', 'task'].includes(settings.session)) fail('PACKAGE_SCHEMA', `${path}.session must be agent or task`)

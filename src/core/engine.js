@@ -1,3 +1,4 @@
+import { loopBudgetValue } from './loop-budget.js'
 import { toolActivity } from './tool-activity.js'
 /**
  * The agent engine — the skeleton's loop, one per thread.
@@ -64,10 +65,10 @@ export class Engine {
       } catch { /* Historical prose is not an action. */ }
       return turn
     }) : options.history ?? []
-    this.maxSteps = Math.floor(Math.max(1, Math.min(1000, Number(options.maxSteps) || 10)))
-    this.repairs = Math.floor(Math.max(0, Math.min(3, Number(options.repairs ?? 2) || 0)))
+    this.maxSteps = loopBudgetValue('maxSteps', options.maxSteps)
+    this.repairs = loopBudgetValue('repairs', options.repairs)
     this.compactAt = options.compactAt ?? 0.9
-    this.keep = Math.floor(Math.max(1, Number(options.keep) || 4))
+    this.keep = loopBudgetValue('keep', options.keep)
     this.summarise = options.summarise ?? null // async (text) → summary, written by the compactor agent
     this.ctx = options.ctx ?? {}
     this.onHistory = options.onHistory ?? null

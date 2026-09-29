@@ -37,7 +37,7 @@ Fresh UX inspection found that current Goal mode simplifies only the team sectio
 
 ## Next bounded work
 
-1. Share budget validation between package import and engine. Import currently allows 10,000 steps/10 repairs while the engine clamps to 1,000/3; unsupported settings must be rejected or visibly normalized. Audit `keep` too. Context-window bounds do not replace cumulative run/team expenditure limits.
+1. Shared budget validation is implemented in source: package import/restore, legacy folders and runtime now reject unsupported values with explicit ranges. See the module map for compatibility details. Cumulative run/team expenditure limits remain separate work; context-window bounds do not replace them.
 2. Add adapter-specific readiness probes and retained receipts; keep model access, network relay and native execution independent.
 3. Extend package targets with per-platform pins and real cancellation/PTY/TLS acceptance before listing a platform as supported.
 4. Apply simple mode across the dashboard and connect result actions; verify iPhone-sized layouts, keyboard access and reduced motion in actual browsers.
