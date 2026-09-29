@@ -1,0 +1,52 @@
+import { expect, test } from 'bun:test'
+import { Engine } from '../src/core/engine.js'
+import { inference } from '../src/core/inference.js'
+import { instructions, runToolResult, tool } from '../src/core/tools.js'
+import { validateToolInput } from '../src/core/tool-input.js'
+import { workspace_write } from '../src/builtin/workspace.js'
+
+const inputSchema = { type: 'object', properties: { path: { type: 'string', minLength: 1 }, revision: { type: ['string', 'integer'] } }, required: ['path'], additionalProperties: false }
+
+test('version 2 malformed tool arguments never reach the side-effect handler and can be repaired', async () => {
+  const calls = [], events = []
+  const argsList = [{}, { path: 4 }, { path: '' }, { path: 'app.js', unexpected: true }, { path: 'app.js', revision: 0 }]
+  const replies = [...argsList.map(args => JSON.stringify({ do: 'tool', act: [[{ name: 'commit', args }]] })), JSON.stringify({ do: 'done', act: 'Recorded.' })]
+  const llm = inference({ provider: 'scripted', replies, maxOutputTokens: 256 })
+  const engine = new Engine({ name: 'schema-fixture', llm: async () => llm, contractVersion: 2, maxSteps: 8, tools: [tool({ name: 'commit', inputSchema, run: args => { calls.push(args); return 'saved' } })] })
+  engine.listen(event => events.push(event))
+  expect(await engine.invoke('Commit the fixture')).toBe('Recorded.')
+  expect(calls).toEqual([{ path: 'app.js', revision: 0 }])
+  const outcomes = events.filter(event => event.kind === 'observation')
+  expect(outcomes.map(event => event.ok)).toEqual([false, false, false, false, true])
+  expect(outcomes.slice(0, 4).every(event => event.value.includes('Invalid tool arguments'))).toBe(true)
+})
+
+test('schema defines advertised parameters and is isolated from later caller mutation', () => {
+  const schema = structuredClone(inputSchema)
+  const item = tool({ name: 'commit', parameters: { unrelated: 'boolean' }, inputSchema: schema, run() {} })
+  expect(item.parameters).toEqual({ path: 'string', revision: 'string or integer (optional)' })
+  expect(instructions(item)).toContain('revision')
+  expect(instructions(item)).not.toContain('unrelated')
+  schema.properties.path.type = 'number'
+  schema.required.length = 0
+  expect(validateToolInput(item.inputSchema, {})).toEqual(['args.path is required'])
+  expect(validateToolInput(item.inputSchema, { path: 'app.js', revision: 0 })).toEqual([])
+})
+
+test('legacy tools retain adapter-level inputs without gaining a schema', async () => {
+  let received
+  const item = tool({ name: 'legacy', parameters: { custom: 'legacy description' }, run: args => { received = args; return 'accepted' } })
+  const args = { custom: 42, extra: { retained: true } }
+  expect(item.inputSchema).toBeNull()
+  expect(item.parameters).toEqual({ custom: 'legacy description' })
+  expect(await runToolResult(item, args, {})).toEqual({ text: 'accepted', ok: true })
+  expect(received).toEqual(args)
+})
+
+test('workspace schema rejects unknown inputs before invoking its external operation', async () => {
+  let requests = 0
+  const result = await runToolResult(tool(workspace_write, { name: 'renamed_write' }), { path: 'app.js', content: 'text', force: true }, { request: () => { requests++; return { ok: true, rev: 'r1' } } })
+  expect(result.ok).toBe(false)
+  expect(result.text).toContain('args.force is not an accepted parameter')
+  expect(requests).toBe(0)
+})

@@ -1,4 +1,5 @@
 import { parseStages } from '../core/calls.js'
+import { normalizeToolActivity } from '../core/tool-activity.js'
 
 const ACTIVE = new Set(['queued', 'thinking', 'calling', 'waiting', 'compacting', 'starting', 'running', 'cancelling', 'verifying'])
 const own = (value, key) => Object.prototype.hasOwnProperty.call(value, key)
@@ -72,6 +73,7 @@ export function projectRunTools(details = {}) {
       id: callId, callId, runId, agent, name: call.name, args: call.args,
       ...(typeof call.args?.path === 'string' ? { path: call.args.path } : {}),
       ...(typeof call.args?.command === 'string' ? { command: call.args.command } : {}),
+      ...normalizeToolActivity(observation?.activity, { ok: observation?.ok }),
       status, summary: observation ? observation.value : undefined,
       hasResult: observation !== null && own(observation, 'value'), outcomeKnown: known,
       reason: !observation ? 'missing_outcome' : !known ? 'unknown_outcome' : null,

@@ -12,13 +12,14 @@ export function normalizeCompletion(value) {
   const seen = new Set()
   const checks = Array.from(value.checks).map(check => {
     keys(check, ['capability', 'options'], 'check')
-    if (check.capability !== 'workspace.artifact') fail(`unsupported check capability: ${String(check.capability)}`)
+    if (!['workspace.artifact', 'workspace.command'].includes(check.capability)) fail(`unsupported check capability: ${String(check.capability)}`)
     if (seen.has(check.capability)) fail(`duplicate check: ${check.capability}`)
     seen.add(check.capability)
     const options = check.options ?? {}
-    keys(options, ['requireFresh', 'requireInteraction'], 'workspace.artifact options')
+    const defaults = check.capability === 'workspace.command' ? { requireFresh: true } : { requireFresh: true, requireInteraction: true }
+    keys(options, Object.keys(defaults), `${check.capability} options`)
     for (const [name, value] of Object.entries(options)) if (typeof value !== 'boolean') fail(`${name} must be boolean`)
-    return { capability: check.capability, options: { requireFresh: true, requireInteraction: true, ...options } }
+    return { capability: check.capability, options: { ...defaults, ...options } }
   })
   return freeze({ checks })
 }

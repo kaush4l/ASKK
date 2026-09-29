@@ -1,3 +1,4 @@
+import { toolActivity } from './tool-activity.js'
 /**
  * The agent engine — the skeleton's loop, one per thread.
  *
@@ -22,11 +23,12 @@
 
 import { tokens } from './inference.js'
 import { CompactReAct, ReAct, responseModel } from './responses.js'
-import { instructions, runToolResult } from './tools.js'
-import { renderPrompt, snapshot } from './prompt.js'
+import { runToolResult } from './tools.js'
+import { snapshot } from './prompt.js'
+import { buildAgentPrompt } from './agent-prompt.js'
 
 const FINAL_NOTE =
-  '## THIS IS YOUR LAST STEP\n\nThe step budget is spent. Reply now with do: done and the best answer you ' +
+  '## THIS IS YOUR LAST STEP\n\nThe step budget is spent. Set do to done and give the best answer you ' +
   'have, saying plainly what is unfinished. No more tools.'
 
 const STOPPED = 'stopped by the owner'
@@ -153,33 +155,17 @@ export class Engine {
    * response format. Sent as two messages, the part that does not change between steps first,
    * so providers that cache a prefix can reuse it.
    */
-  async render(note = '') {
-    const tools = this.tools.map(instructions).join('\n')
-    const present = (await Promise.all(this.context.map((piece) => piece.name === 'budget' ? '__HARNESS_BUDGET__' : piece.render(this)))).filter(Boolean).join('\n')
-    const turns = this.history.map((turn) => `${turn.role}: ${turn.content}`).join('\n\n')
+  async render(note = '', { final = false } = {}) {
+    const contextText = (await Promise.all(this.context.map((piece) => piece.name === 'budget' ? '__HARNESS_BUDGET__' : piece.render(this)))).filter(Boolean).join('\n')
     const llm = this.activeLLM ?? await this.llm()
-    const window = Number(await llm.context())
-    const outputReserve = Math.max(1, Number(this.outputReserve) || 0, Number(llm.settings?.maxOutputTokens) || 4096)
-    if (!Number.isFinite(window) || window < 1 || !Number.isFinite(outputReserve)) throw new Error('context window and output reserve must be finite positive token counts')
-    const values = {
-      soul: this.soul, job: this.systemPrompt,
-      learned: this.learned ? `## LEARNED\n\n${this.learned}` : '',
-      tools: tools ? `## TOOLS\n\n${tools}` : '',
-      context: present ? `## CONTEXT\n\n${present}` : '',
-      conversation: `## CONVERSATION\n\n${turns}`,
-      response: this.response.instructions({ tools: this.tools }), note,
-    }
-    if (this.observationFormat === 'compact') values.response += '\nTool results use staged-v1 observations: stages and calls match the preceding action in order; callId identifies the exact recorded call. These observations are not response envelopes.'
-    let rendered = renderPrompt(this.promptTemplate, values)
-    for (let pass = 0; pass < 3; pass += 1) {
-      const inputTokens = tokens(JSON.stringify(rendered.messages)) + 16
-      this.promptBudget = { inputTokens, outputReserve, window, total: inputTokens + outputReserve, estimated: true }
-      const line = `This is step ${this.steps} of ${this.maxSteps}. The full request is estimated at ${inputTokens} input tokens plus ${outputReserve} reserved output tokens of a ${window} token window.`
-      rendered = renderPrompt(this.promptTemplate, { ...values, context: values.context.replace('__HARNESS_BUDGET__', line) })
-    }
-    const inputTokens = tokens(JSON.stringify(rendered.messages)) + 16
-    this.promptBudget = { ...this.promptBudget, inputTokens, total: inputTokens + outputReserve }
-    return { ...rendered, budget: { ...this.promptBudget } }
+    const rendered = buildAgentPrompt({
+      soul: this.soul, job: this.systemPrompt, learned: this.learned, tools: this.tools,
+      contextText, history: this.history, response: this.response, template: this.promptTemplate,
+      window: Number(await llm.context()), outputReserve: Math.max(1, Number(this.outputReserve) || 0, Number(llm.settings?.maxOutputTokens) || 4096),
+      steps: this.steps, maxSteps: this.maxSteps, observationFormat: this.observationFormat, note, final,
+    })
+    this.promptBudget = rendered.budget
+    return rendered
   }
 
   /** Fold older turns into one summary when the sheet nears the context window. */
@@ -213,11 +199,11 @@ export class Engine {
     let raw = ''
     for (let attempt = 0; attempt <= this.repairs; attempt += 1) {
       this.activeLLM = await this.llm()
-      const { sheet, messages, budget } = await this.render(note)
+      const { sheet, messages, budget, layers, responseMode, toolNames } = await this.render(note, { final })
       this.attempts += 1
       const attemptId = `${this.runId}:${this.steps}:${attempt + 1}`
       this.currentAttemptId = attemptId
-      const requestSnapshot = snapshot({ attemptId, step: this.steps, attempt: attempt + 1, contractVersion: this.contractVersion, observationFormat: this.observationFormat, model: this.activeLLM.model, messages, budget })
+      const requestSnapshot = snapshot({ attemptId, step: this.steps, attempt: attempt + 1, contractVersion: this.contractVersion, observationFormat: this.observationFormat, model: this.activeLLM.model, messages, budget, layers, responseMode, toolNames })
       this.emit('prompt', `step ${this.steps}`, sheet, { step: this.steps, attempt: attempt + 1, attemptId, tokens: budget.inputTokens, requestSnapshot })
       if (budget.total > budget.window) {
         this.error = `request budget exceeds context window (${budget.inputTokens} input + ${budget.outputReserve} output > ${budget.window})`
@@ -230,16 +216,16 @@ export class Engine {
         return { failed: true, reason: this.signal?.aborted ? 'cancelled' : error.code ?? 'provider_error' }
       }
       const { value, faults } = this.response.parse(raw)
+      if (responseMode === 'final-only' && value.do === 'tool') faults.push('do: only done is allowed; no tools are available for this response')
       if (!faults.length) return value
       if (attempt === this.repairs) break
       this.emit('repair', '', `retrying rejected reply (${attempt + 1} of ${this.repairs})`, { faults, attemptId })
       const shown = faults.map((fault) => `- ${fault}`).join('\n')
       note = `${final ? `\n\n${FINAL_NOTE}` : ''}\n\n## YOUR LAST REPLY WAS REJECTED\n\n${shown}\n\nThat reply was not used. Write the whole reply again, in the format above.`
-      if (this.contractVersion === 2) note += `\n\n${this.response.instructions({ tools: this.tools })}`
     }
     this.error = `reply did not match contract version ${this.contractVersion} after ${this.repairs + 1} attempts`
     this.emit('rejected', '', raw, { step: this.steps })
-    return { failed: true, reason: 'invalid_response' }
+    return { failed: true, reason: final ? 'step_budget' : 'invalid_response' }
   }
 
   /** Stream one reply, announcing each field the moment it is finished. */
@@ -321,9 +307,9 @@ export class Engine {
     const callId = `${this.currentAttemptId || this.runId}:call:${this.calls.length + 1}`
     this.calls.push(key)
     this.emit('call', call.name, call.text, { callId, args: call.args, slot: this.progress() })
-    const done = (text, ok) => {
+    const done = (text, ok, activity = {}) => {
       this.running = this.running.filter((running) => running !== call.text)
-      this.emit('observation', call.text, text, { callId, ms: Date.now() - started, ok, slot: this.progress() })
+      this.emit('observation', call.text, text, { callId, ms: Date.now() - started, ok, activity, slot: this.progress() })
       return { text, ok, ...(includeIdentity ? { callId } : {}) }
     }
 
@@ -336,11 +322,11 @@ export class Engine {
 
     let args = call.args
     const names = Object.keys(item.parameters ?? {})
-    if ('value' in args && Object.keys(args).length === 1 && names.length && !names.includes('value')) args = { [names[0]]: args.value }
+    if (this.contractVersion === 1 && 'value' in args && Object.keys(args).length === 1 && names.length && !names.includes('value')) args = { [names[0]]: args.value }
 
     const { text, ok } = await runToolResult(item, args, { ...this.ctx, signal: this.signal, caller: this.path, call: call.text, callId })
     if (ok && item.cacheable === true && !item.writes) this.results.set(key, text)
-    return done(text, ok)
+    return done(text, ok, toolActivity(item, { text, ok }, args))
   }
 
   /** Open a turn. The goal is new, so everything measured against it starts again. */
@@ -372,7 +358,7 @@ export class Engine {
         if (final) this.emit('final', '', 'final summary, no tools')
         const value = await this.step(final)
         if (this.signal?.aborted) return this.finish('', STOPPED)
-        if (value.failed) return this.finish('', this.error, value.reason)
+        if (value.failed) return final && value.reason === 'step_budget' ? this.finish(`Stopped at the step limit (${this.maxSteps} steps) without a valid final answer.`, '', 'step_budget') : this.finish('', this.error, value.reason)
         if (this.inbox.length && !final) {
           this.emit('superseded', '', 'A new owner instruction arrived; the pending proposal was discarded before dispatch.')
           continue

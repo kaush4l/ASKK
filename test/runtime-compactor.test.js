@@ -57,19 +57,20 @@ test('production compactor uses a bounded version 2 summary prompt through a rea
   } finally { await close() }
 }, 15000)
 
-test('a compactor that repeats a historical tool call has no capability and remains incomplete', async () => {
+test('a compactor that repeats a historical tool call has no capability and rejects the response before dispatch', async () => {
   const { hub, effects, close } = await fixture({ do: 'tool', act: [[{ name: 'workspace_read', args: { path: 'app/page.js' } }]] })
   try {
     const run = hub.startRun('bundled/starter/compactor', source)
-    expect(await run.answer).toContain('Stopped at the step limit')
-    expect(run.slot.status).toBe('incomplete')
+    expect(await run.answer).toContain('failed: reply did not match contract version 2')
+    expect(run.slot).toMatchObject({ status: 'failed', terminationReason: 'invalid_response' })
     expect(effects).toEqual([])
-    expect(run.turns.some(turn => turn.role === 'observation' && /no tool named.*workspace_read/i.test(turn.content))).toBe(true)
-    expect((await hub.runsApi.get(run.id)).slot.status).toBe('incomplete')
+    expect(run.toolEvents).toEqual([])
+    expect(run.turns.filter(turn => turn.role !== 'user')).toEqual([])
+    expect((await hub.runsApi.get(run.id)).slot.status).toBe('failed')
   } finally { await close() }
 }, 15000)
 
-test('an incomplete real compactor child cannot replace its parent history with a step-limit message', async () => {
+test('a rejected real compactor child cannot replace its parent history with a failure message', async () => {
   const { hub, events, effects, close } = await fixture({ do: 'tool', act: [[{ name: 'workspace_read', args: { path: 'app/page.js' } }]] })
   try {
     // Only the parent's compaction threshold and external capabilities are fixture settings.
@@ -84,16 +85,17 @@ test('an incomplete real compactor child cannot replace its parent history with 
     expect(run.slot.status).toBe('done')
     expect(run.children).toHaveLength(1)
     const child = await hub.runsApi.get(run.children[0])
-    expect(child).toMatchObject({ kind: 'compact', parent: run.id, slot: { status: 'incomplete' } })
-    expect(child.result).toContain('Stopped at the step limit')
-    expect(child.turns.some(turn => turn.role === 'observation' && /no tool named/.test(turn.content))).toBe(true)
+    expect(child).toMatchObject({ kind: 'compact', parent: run.id, slot: { status: 'failed', terminationReason: 'invalid_response' } })
+    expect(child.result).toContain('failed: reply did not match contract version 2')
+    expect(child.toolEvents).toEqual([])
+    expect(child.turns.filter(turn => turn.role !== 'user')).toEqual([])
     expect(effects).toEqual([])
     const saved = await hub.store.get('sessions', 'bundled/starter/main')
     expect(saved.turns.slice(0, history.length)).toEqual(history)
     expect(saved.turns.some(turn => turn.role === 'summary')).toBe(false)
     const parentPrompt = events.find(event => event.kind === 'prompt' && event.agent === 'bundled/starter/main')
     for (const turn of history) expect(parentPrompt.value).toContain(turn.content)
-    expect(parentPrompt.value).not.toContain('Stopped at the step limit')
-    expect(events.some(event => event.kind === 'compaction_failed' && event.agent === 'bundled/starter/main' && /incomplete/.test(event.value))).toBe(true)
+    expect(parentPrompt.value).not.toContain('failed: reply did not match contract version 2')
+    expect(events.some(event => event.kind === 'compaction_failed' && event.agent === 'bundled/starter/main' && /failed/.test(event.value))).toBe(true)
   } finally { await close() }
 }, 15000)

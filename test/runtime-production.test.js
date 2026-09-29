@@ -24,7 +24,7 @@ test('published starter validates local resources and refuses a mismatched suppl
     }
     const loaded = await loadDeskPackages({ ...options, index: await listing(site) })
     expect(loaded.defaultAgent).toBe('bundled/starter/assistant')
-    expect(loaded.specs).toHaveLength(10)
+    expect(loaded.specs.map(spec => spec.package.agentId).sort()).toEqual(['assistant', 'builder', 'coder', 'compactor', 'critic', 'dreamer', 'main', 'planner', 'researcher', 'reviewer', 'synthesizer'])
     for (const spec of loaded.specs) {
       expect(spec.soul).not.toContain('global soul')
       expect(String(JSON.stringify(spec.engine.promptTemplate))).not.toContain('global prompt')
@@ -67,20 +67,20 @@ test('production main uses version 2 prompts and the host-owned completion gate 
     const events = []
     hub.subscribe((event) => events.push(event))
     await hub.start()
-    const roles = ['assistant', 'main', 'coder', 'coder/reviewer', 'researcher', 'planner', 'critic', 'synthesizer', 'compactor', 'dreamer']
+    const roles = ['assistant', 'builder', 'main', 'coder', 'coder/reviewer', 'researcher', 'planner', 'critic', 'synthesizer', 'compactor', 'dreamer']
     const residents = new Set(['assistant', 'main', 'coder', 'reviewer'])
-    const soul = read(await readFile(join(site, 'agents/soul.md'), 'utf8')).body
-    expect(hub.specs.size).toBe(10)
+    expect(hub.specs.size).toBe(11)
     for (const legacyPath of roles) {
       const id = legacyPath.split('/').at(-1)
       const spec = hub.specs.get(`bundled/starter/${id}`)
       expect(spec.package.namespace).toBe('bundled')
       expect(spec.package.packageId).toBe('org.askk.starter')
-      expect(spec.soul).toBe(soul)
+      expect(spec.soul).toBe(spec.packageResources[spec.soulFrom])
+      expect(spec.soulFrom).toBe(id === 'assistant' ? 'soul.md' : `agents/${legacyPath}/soul.md`)
       expect(spec.engine.session).toBe(residents.has(id) ? 'agent' : 'task')
       expect(spec.localTools).toEqual([])
-      if (id !== 'dreamer') expect(spec.body).toBe(read(await readFile(join(site, 'agents', legacyPath, 'agent.md'), 'utf8')).body)
-      if (!['compactor', 'dreamer'].includes(id)) expect(spec.services).toEqual({ compaction: 'bundled/starter/compactor', retrospective: 'bundled/starter/dreamer' })
+      expect(spec.body.trim()).toBe(read(await readFile(join(site, 'packages/starter', id === 'assistant' ? 'agent.md' : `agents/${legacyPath}/agent.md`), 'utf8')).body.trim())
+      if (!['compactor', 'dreamer', 'builder'].includes(id)) expect(spec.services).toEqual({ compaction: 'bundled/starter/compactor', retrospective: 'bundled/starter/dreamer' })
       expect(hub.specs.has(legacyPath)).toBe(false)
     }
     expect(hub.specs.get('bundled/starter/coder').delegates.map(row => row.path)).toEqual(['bundled/starter/reviewer'])
@@ -92,10 +92,21 @@ test('production main uses version 2 prompts and the host-owned completion gate 
     const dreamer = hub.specs.get('bundled/starter/dreamer')
     expect(dreamer.commonTools).toEqual({ reflection: 'tools/reflection.js' })
     expect(dreamer.body).not.toContain('skill_save')
-    for (const id of ['researcher', 'reviewer', 'dreamer']) {
+    for (const id of ['researcher', 'dreamer']) {
       expect(hub.specs.get(`bundled/starter/${id}`).engine.contractVersion).toBe(1)
       expect(hub.specs.get(`bundled/starter/${id}`).engine.responseFormat).toBe('toon')
     }
+    const reviewer = hub.specs.get('bundled/starter/reviewer')
+    expect(reviewer.engine).toMatchObject({ contractVersion: 2, responseFormat: 'json', observationFormat: 'compact' })
+    expect(reviewer.grants).toEqual(['workspace'])
+    expect(reviewer.context).toEqual(['runtime', 'workspace', 'budget'])
+    expect(reviewer.permissions).toEqual({ workspace_write: 'deny', workspace_run: 'deny', workspace_build: 'deny', workspace_check: 'deny' })
+    const builder = hub.specs.get('bundled/starter/builder')
+    expect(builder.engine).toMatchObject({ session: 'task', contractVersion: 2, responseFormat: 'json', observationFormat: 'compact', maxSteps: 24 })
+    expect(builder.grants).toEqual(['workspace'])
+    expect(builder.delegates).toEqual([])
+    expect(builder.services).toEqual({})
+    expect(builder.engine.requireVerification).not.toBe(true)
     const context = { binding: { runtimeId: 'fixture-browser-session', target: 'browser' } }
     const run = hub.startRun('bundled/starter/main', 'Read fixture.txt to inspect the fixture environment.', { context })
     context.binding.runtimeId = 'changed-after-dispatch'
@@ -122,7 +133,7 @@ test('production main uses version 2 prompts and the host-owned completion gate 
     expect(mainTools.some(tool => ['add', 'multiply', 'haiku', 'create_agent'].includes(tool.name))).toBe(false)
     expect(hub.specs.has('main/haiku')).toBe(false)
     for (const path of ['bundled/starter/main', 'bundled/starter/coder']) {
-      expect(hub.specs.get(path).body).toContain('Call workspace_environment only when that context is missing or later evidence shows it may be stale')
+      expect(hub.specs.get(path).engine.promptTemplate.system).toContain('Call workspace_environment only when that context is missing or later evidence shows it may be stale')
       expect(hub.specs.get(path).body).not.toContain('Inspect workspace_environment first')
     }
     expect(prompts[0].value).toContain('fixture-browser-session')
@@ -173,4 +184,74 @@ test('production main uses version 2 prompts and the host-owned completion gate 
     hub?.stop()
     await rm(site, { recursive: true, force: true })
   }
+}, 15000)
+
+test('production builder worker writes and runs through declared tools, retains activity receipts and requires the command checker', async () => {
+  const site = await mkdtemp(join(tmpdir(), 'askk-builder-worker-'))
+  let hub
+  try {
+    await cp(join(import.meta.dir, '../public'), site, { recursive: true, filter: path => !['browser-linux', 'runtime'].includes(path.split('/').at(-1)) })
+    const content = 'console.log(6 * 7)\n'
+    const reply = (doValue, act) => JSON.stringify({ do: doValue, act })
+    await writeFile(join(site, 'models.json'), JSON.stringify({ default: 'fixture', models: { fixture: {
+      provider: 'scripted', model: 'fixture', max_output_tokens: 512,
+      script: { builder: [
+        reply('done', 'Unverified proposal'),
+        reply('tool', [[{ name: 'workspace_write', args: { path: 'answer.js', content, expect: 0 } }]]),
+        reply('tool', [[{ name: 'workspace_run', args: { command: 'node answer.js' } }]]),
+        reply('done', 'The recorded command exited zero and printed 42.'),
+      ] },
+    } } }))
+    await writeFile(join(site, 'agents/index.json'), JSON.stringify(await listing(site)))
+    hub = new Hub({ base: `${pathToFileURL(site).href}/`, storeName: `builder-${crypto.randomUUID()}` })
+    const files = new Map(), calls = [], events = []
+    let executedRun, proposals = 0
+    // These effects are explicit fixtures; this proves worker dispatch, not real shell execution.
+    hub.externalOps = {
+      'workspace.environment': () => ({ target: 'fixture', status: 'ready', capabilities: ['files', 'commands'], files: [...files.keys()] }),
+      'workspace.write': (args, run) => {
+        expect(args).toEqual({ path: 'answer.js', content, expect: 0 })
+        calls.push(['write', run.id]); files.set(args.path, args.content)
+        return { ok: true, path: args.path, rev: 'fixture-revision-1' }
+      },
+      'workspace.run': (args, run) => {
+        expect(args).toEqual({ command: 'node answer.js' })
+        expect(files.get('answer.js')).toBe(content)
+        calls.push(['run', run.id]); executedRun = run.id
+        return { id: 'fixture-command-1', code: 0, output: '42\n' }
+      },
+      'workspace.build': () => { throw new Error('Unexpected app build') },
+      'workspace.check': () => { throw new Error('Unexpected artifact inspection') },
+    }
+    hub.completionAdapters = {
+      'workspace.command': (options, run) => {
+        expect(options).toEqual({ requireFresh: true }); proposals++
+        return { ok: executedRun === run.id, reason: executedRun === run.id ? 'Recorded fixture command belongs to this run' : 'Execute the requested script first', commandId: executedRun === run.id ? 'fixture-command-1' : null }
+      },
+    }
+    hub.subscribe(event => { events.push(event); if (event.type === 'approval') hub.approvalsApi.answer(event.approval.id, { approved: true }) })
+    await hub.start()
+    const authored = JSON.parse(await readFile(join(site, 'packages/starter/workflows.json'), 'utf8')).workflows.find(row => row.id === 'project')
+    const run = hub.startRun('bundled/starter/builder', 'Write answer.js and execute it.', { context: { workflow: { workspace: true, completion: authored.completion }, binding: { runtimeId: 'fixture-runtime', target: 'local' } } })
+    expect(await run.answer).toBe('The recorded command exited zero and printed 42.')
+    expect(run.slot.status).toBe('done')
+    expect(proposals).toBe(2)
+    expect(calls).toEqual([['write', run.id], ['run', run.id]])
+    expect(run.completionReceipts.map(row => row.ok)).toEqual([false, true])
+    expect(run.completionReceipts.every(row => row.checks[0].capability === 'workspace.command')).toBe(true)
+    const prompts = events.filter(event => event.kind === 'prompt' && event.run === run.id)
+    expect(prompts).toHaveLength(4)
+    for (const prompt of prompts) {
+      expect([...prompt.requestSnapshot.toolNames].sort()).toEqual(['workspace_environment', 'workspace_list', 'workspace_read', 'workspace_run', 'workspace_write'])
+      expect(prompt.value).not.toContain('workspace_build(')
+      expect(prompt.value).not.toContain('workspace_check(')
+      expect(prompt.value).not.toContain('Configure output:')
+      expect(prompt.value.match(/## RESPONSE FORMAT/g)).toHaveLength(1)
+    }
+    const observations = run.toolEvents.filter(event => event.kind === 'observation')
+    expect(observations).toHaveLength(2)
+    expect(observations[0]).toMatchObject({ ok: true, activity: { path: 'answer.js' } })
+    expect(observations[1]).toMatchObject({ ok: true, activity: { commandId: 'fixture-command-1' } })
+    expect(JSON.parse(observations[1].value)).toMatchObject({ code: 0, output: '42\n' })
+  } finally { hub?.stop(); await rm(site, { recursive: true, force: true }) }
 }, 15000)

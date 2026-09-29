@@ -26,9 +26,10 @@ test('real workers report policy and owner denial as failed compact observations
     for (const mode of ['deny', 'ask']) {
       const run = hub.startRun(mode, 'Try the configured write once, then report the observed denial.')
       expect(await run.answer).toBe('The denied write was not performed.')
+      if (mode === 'deny') expect(run.prompts[0].sheet).not.toContain('- workspace_write(')
       const observation = run.toolEvents.find(event => event.kind === 'observation')
       expect(observation.ok).toBe(false)
-      expect(observation.value).toContain(mode === 'deny' ? 'refused by policy' : 'the owner refused this call: Keep the workspace unchanged')
+      expect(observation.value).toContain(mode === 'deny' ? 'no tool named' : 'the owner refused this call: Keep the workspace unchanged')
       const model = JSON.parse(run.turns.find(turn => turn.role === 'observation').content)
       expect(model.stages[0][0]).toMatchObject({ callId: observation.callId, name: 'workspace_write', ok: false })
       expect(run.prompts.at(-1).snapshot.observationFormat).toBe('compact')

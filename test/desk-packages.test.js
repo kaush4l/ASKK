@@ -140,7 +140,7 @@ test('shipped workflows resolve only verified package resources and match import
   await expect(loadDeskPackages(f.input)).rejects.toThrow('published index')
 })
 
-test('actual shipped starter supplies three package-local workflows without global strategy lookups', async () => {
+test('actual shipped starter supplies four package-local workflows without global strategy lookups', async () => {
   const root = join(import.meta.dir, '../public')
   const files = new Map([['desk.json', await readFile(join(root, 'desk.json'), 'utf8')]])
   for (const glob of ['packages/starter/**/*', 'tools/*.js']) {
@@ -150,9 +150,15 @@ test('actual shipped starter supplies three package-local workflows without glob
   const requested = []
   const fetch = async url => { const path = new URL(url).pathname.slice('/ASKK/'.length); requested.push(path); return new Response(files.get(path) ?? '', { status: files.has(path) ? 200 : 404 }) }
   const desk = await loadDeskPackages({ base: 'https://desk.invalid/ASKK/', index, fetch, catalogue })
-  expect(desk.workflows.map(row => row.id).sort()).toEqual(['assistant', 'coding', 'parallel-review'])
+  expect(desk.workflows.map(row => row.id).sort()).toEqual(['assistant', 'coding', 'parallel-review', 'project'])
   expect(desk.workflows.every(row => row.agent.startsWith('bundled/starter/') && row.package.revisionDigest === desk.packages[0].revisionDigest)).toBe(true)
   expect(desk.workflows.find(row => row.id === 'coding')).toMatchObject({ execution: { workspace: 'required' }, completion: { checks: [{ capability: 'workspace.artifact', options: { requireFresh: true, requireInteraction: true } }] } })
+  expect(desk.workflows.find(row => row.id === 'project')).toMatchObject({
+    agent: 'bundled/starter/builder', execution: { workspace: 'required' },
+    strategy: { kind: 'agent', agent: 'bundled/starter/builder', delegation: 'none', session: 'agent' },
+    completion: { checks: [{ capability: 'workspace.command', options: { requireFresh: true } }] },
+  })
+  expect(desk.workflows.find(row => row.id === 'assistant')).toMatchObject({ agent: 'bundled/starter/assistant', execution: { workspace: 'none' }, completion: { checks: [] } })
   expect(desk.workflows.find(row => row.id === 'parallel-review').strategy.nodes).toHaveLength(3)
   expect(requested.some(path => path.startsWith('strategies/') || path.startsWith('prompts/'))).toBe(false)
 })

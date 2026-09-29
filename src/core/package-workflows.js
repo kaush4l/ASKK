@@ -41,15 +41,9 @@ export async function resolvePackageWorkflows(reference, { read, agents, agentSe
     if (!['none', 'required'].includes(row.execution.workspace)) fail('unsupported workspace requirement')
     keys(row.completion, ['checks'], 'completion')
     if (!Array.isArray(row.completion.checks) || row.completion.checks.length > 16) fail('completion checks must be a bounded array')
-    for (const check of row.completion.checks) {
-      keys(check, ['capability', 'options'], 'completion check')
-      if (check.capability !== 'workspace.artifact') fail('unsupported completion capability')
-      keys(check.options, ['requireFresh', 'requireInteraction'], 'completion options')
-      if (typeof check.options.requireFresh !== 'boolean' || typeof check.options.requireInteraction !== 'boolean') fail('completion options must be booleans')
-    }
     let completion
     try { completion = normalizeCompletion(row.completion) } catch (error) { fail(error.message) }
-    if (completion.checks.length && row.execution.workspace !== 'required') fail('workspace.artifact requires a workspace')
+    if (completion.checks.length && row.execution.workspace !== 'required') fail('workspace completion checks require a workspace')
     const raw = await json(row.strategy)
     const local = value => { if (!id(value) || !agents.has(value)) fail('strategy must reference an available package-local agent ID'); return resolveAgent(value) }
     let strategy, outputId

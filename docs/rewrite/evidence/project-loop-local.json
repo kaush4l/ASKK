@@ -1,0 +1,182 @@
+{
+  "version": 1,
+  "date": "2026-09-29",
+  "runs": [
+    {
+      "caseName": "script",
+      "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+      "runtime": "Local Bun (not Browser Linux)",
+      "elapsedMs": 240056,
+      "status": "cancelled",
+      "passed": false,
+      "checks": [
+        {
+          "args": [
+            "total.js",
+            "19",
+            "-7",
+            "0.5"
+          ],
+          "code": 1,
+          "output": "",
+          "passed": false
+        },
+        {
+          "args": [
+            "total.js"
+          ],
+          "code": 1,
+          "output": "",
+          "passed": false
+        },
+        {
+          "args": [
+            "total.js",
+            "invalid"
+          ],
+          "code": 1,
+          "output": "",
+          "passed": true
+        }
+      ],
+      "metrics": {
+        "promptCount": 1,
+        "repairs": 0,
+        "toolCalls": 1,
+        "inputTokensEstimated": [
+          1104
+        ]
+      },
+      "attempt": "script-01",
+      "evidenceSha256": "20fd592da7084e3cc716a73fa4328fe81ad610cf7f94cb29471df155f9145622",
+      "scope": "Production folder/worker/broker with evaluator workspace adapter; independent post-run checks. Not a browser UI or Browser Linux run.",
+      "excludedReason": "Evaluator omitted owner write/exec grants; approval wait timed out. Preserved configuration failure; corrected script-02 followed."
+    },
+    {
+      "caseName": "script",
+      "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+      "runtime": "Local Bun (not Browser Linux)",
+      "elapsedMs": 34444,
+      "status": "done",
+      "passed": true,
+      "checks": [
+        {
+          "args": [
+            "total.js",
+            "19",
+            "-7",
+            "0.5"
+          ],
+          "code": 0,
+          "output": "12.5",
+          "passed": true
+        },
+        {
+          "args": [
+            "total.js"
+          ],
+          "code": 0,
+          "output": "0",
+          "passed": true
+        },
+        {
+          "args": [
+            "total.js",
+            "invalid"
+          ],
+          "code": 1,
+          "output": "",
+          "passed": true
+        }
+      ],
+      "metrics": {
+        "promptCount": 3,
+        "repairs": 0,
+        "toolCalls": 5,
+        "inputTokensEstimated": [
+          1104,
+          1484,
+          2097
+        ]
+      },
+      "attempt": "script-02",
+      "evidenceSha256": "4d1d4c80e77de5231b5126e70f42ed2437b22741cae41f9ef4b8fbebf5ca3381",
+      "scope": "Production folder/worker/broker with evaluator workspace adapter; independent post-run checks. Not a browser UI or Browser Linux run."
+    },
+    {
+      "caseName": "project",
+      "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+      "runtime": "Local Bun (not Browser Linux)",
+      "elapsedMs": 50308,
+      "status": "done",
+      "passed": true,
+      "checks": [
+        {
+          "args": [
+            "-e",
+            "import {total} from './src/total.js'; if(total([19,-7,0.5])!==12.5||total([])!==0)process.exit(2); for(const v of [['x'],[NaN],[Infinity]]){let failed=false;try{total(v)}catch{failed=true}if(!failed)process.exit(3)} console.log('withheld passed')"
+          ],
+          "code": 0,
+          "output": "withheld passed",
+          "passed": true
+        },
+        {
+          "name": "declared and executed test suite",
+          "passed": true
+        }
+      ],
+      "metrics": {
+        "promptCount": 3,
+        "repairs": 0,
+        "toolCalls": 4,
+        "inputTokensEstimated": [
+          1101,
+          2481,
+          2754
+        ]
+      },
+      "attempt": "project-01",
+      "evidenceSha256": "480108daa89097fb73853b723c8bbfbfc97c64372ae5d9f1a7a81ca3e7f183c6",
+      "scope": "Production folder/worker/broker with evaluator workspace adapter; independent post-run checks. Not a browser UI or Browser Linux run."
+    },
+    {
+      "caseName": "repair",
+      "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+      "runtime": "Local Bun (not Browser Linux)",
+      "elapsedMs": 46239,
+      "status": "done",
+      "passed": true,
+      "checks": [
+        {
+          "args": [
+            "-e",
+            "import {total} from './src/total.js';if(total([19,-7,0.5])!==12.5||total([])!==0)process.exit(2);for(const v of [['x'],[NaN],[Infinity]]){let failed=false;try{total(v)}catch{failed=true}if(!failed)process.exit(3)}console.log('withheld passed')"
+          ],
+          "code": 0,
+          "output": "withheld passed",
+          "passed": true
+        }
+      ],
+      "metrics": {
+        "promptCount": 4,
+        "repairs": 0,
+        "toolCalls": 5,
+        "inputTokensEstimated": [
+          1107,
+          1583,
+          1923,
+          2130
+        ]
+      },
+      "attempt": "repair-01",
+      "evidenceSha256": "f18f1fc6d73efa5d52e144ae93b605f03c5aa00ff5eac578511b9eabfc5403de",
+      "scope": "Production folder/worker/broker with evaluator workspace adapter; independent post-run checks. Not a browser UI or Browser Linux run."
+    }
+  ],
+  "limitations": [
+    "No identified small-model endpoint tested.",
+    "Repair case passed but did not demonstrate an observed failing-command-to-repair cycle.",
+    "Single attempts are not a reliability benchmark.",
+    "Raw prompt/request/receipt records remain in .cache/project-loop/<attempt>/evidence.json."
+  ]
+}

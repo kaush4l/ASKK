@@ -875,7 +875,7 @@ test('failed goal persistence cannot publish a saved goal or overwrite its durab
 test('failed command tool observations retain their linked command receipt', async () => {
   const { controller, hub } = await startedFixture()
   hub.emit({ type: 'event', kind: 'call', callId: 'failed-call', run: 'fixture-run', name: 'workspace_run', args: { command: 'fails' }, value: 'workspace_run({command:"fails"})' })
-  hub.emit({ type: 'event', kind: 'observation', callId: 'failed-call', run: 'fixture-run', ok: false, value: `workspace_run failed: ${JSON.stringify({ id: 'failed-command', code: 2, output: 'compiler diagnostic' })}` })
+  hub.emit({ type: 'event', kind: 'observation', callId: 'failed-call', run: 'fixture-run', ok: false, activity: { commandId: 'failed-command' }, value: `workspace_run failed: ${JSON.stringify({ id: 'failed-command', code: 2, output: 'compiler diagnostic' })}` })
   const card = controller.getSnapshot().messages.at(-1).tools[0]
   expect(card.status).toBe('failed')
   expect(card.commandId).toBe('failed-command')
@@ -2235,4 +2235,75 @@ test('agent draft authoring stays available during work while reviewed installat
   await expect(controller.installAgentDraft('draft',{expectedVersion:1,stageId:'x',bindings:{}})).rejects.toThrow('active work')
   expect(calls.map(row=>row[0])).toEqual(['create','save'])
   expect(controller.getSnapshot().runtime.status).toBe('idle')
+})
+
+test('live tool observations match exact run and call identity without borrowing another run outcome', async () => {
+  const { controller, hub } = await startedFixture()
+  for (const run of ['run-a', 'run-b']) hub.emit({ type: 'event', kind: 'call', run, callId: 'same-call', name: 'custom_tool', args: {}, value: 'called' })
+  hub.emit({ type: 'event', kind: 'observation', run: 'unrelated', callId: 'same-call', ok: true, value: 'forged', activity: { artifactId: 'forged' } })
+  expect(controller.getSnapshot().messages.flatMap(row => row.tools ?? []).map(tool => tool.status)).toEqual(['running', 'running'])
+  hub.emit({ type: 'event', kind: 'observation', run: 'run-a', callId: 'same-call', ok: true, value: 'a result', activity: { artifactId: 'artifact-a' } })
+  const [first, second] = controller.getSnapshot().messages.flatMap(row => row.tools ?? [])
+  expect(first).toMatchObject({ runId: 'run-a', status: 'done', artifactId: 'artifact-a', summary: 'a result' })
+  expect(second).toMatchObject({ runId: 'run-b', status: 'running', summary: 'called' })
+  expect(second.artifactId).toBeUndefined()
+})
+
+test('live duplicate identities and ambiguous legacy calls do not manufacture outcomes', async () => {
+  const { controller, hub } = await startedFixture()
+  for (let index = 0; index < 2; index++) hub.emit({ type: 'event', kind: 'call', run: 'duplicate', callId: 'same', name: 'custom_tool', args: {}, value: 'called' })
+  hub.emit({ type: 'event', kind: 'observation', run: 'duplicate', callId: 'same', ok: true, value: 'ambiguous' })
+  for (const callId of ['one', 'two']) hub.emit({ type: 'event', kind: 'call', run: 'legacy', callId, name: 'custom_tool', args: {}, value: 'called' })
+  hub.emit({ type: 'event', kind: 'observation', run: 'legacy', ok: true, value: 'also ambiguous' })
+  expect(controller.getSnapshot().messages.flatMap(row => row.tools ?? []).every(tool => tool.status === 'running')).toBe(true)
+  hub.emit({ type: 'event', kind: 'observation', run: 'legacy', callId: 'one', ok: false, value: 'failed' })
+  hub.emit({ type: 'event', kind: 'observation', run: 'legacy', ok: true, value: 'unique legacy result' })
+  const legacy = controller.getSnapshot().messages.flatMap(row => row.tools ?? []).filter(tool => tool.runId === 'legacy')
+  expect(legacy.map(tool => [tool.id, tool.status, tool.summary])).toEqual([['one', 'failed', 'failed'], ['two', 'done', 'unique legacy result']])
+})
+
+test('command completion requires task-owned current-source receipts and rejects failures or stale files', async () => {
+  const workflow = declaredWorkflow()
+  workflow.completion = { checks: [{ capability: 'workspace.command', options: { requireFresh: true } }] }
+  const { controller, hub, browser } = await startedFixture({ configureHub(hub) { packageFixtureHub(hub, [{ ...importedGuide, workflows: [workflow] }]); declaredStrategyFixture(hub) } })
+  await controller.setWorkflow(`package-${importedGuide.id}:workflow:build`)
+  const run = hub.runs.get(await controller.sendGoal('Write and verify a script'))
+  const check = () => hub.completionAdapters['workspace.command']({ requireFresh: true }, run)
+  expect((await check()).ok).toBe(false)
+  await controller.runCommand('owner check')
+  expect((await check()).ok).toBe(false)
+  await controller.runCommand('task check', { runId: run.id })
+  expect(await check()).toMatchObject({ ok: true, evidence: { command: 'task check', exitCode: 0, runtime: run.context.binding } })
+  browser.externalWrite('outside.txt', 'external change')
+  expect((await check()).ok).toBe(false)
+  await controller.runCommand('updated check', { runId: run.id })
+  expect((await check()).ok).toBe(true)
+  browser.onJob = async () => ({ code: 2 })
+  await controller.runCommand('failing latest check', { runId: run.id })
+  expect((await check()).ok).toBe(false)
+  expect(controller.getSnapshot().artifacts).toHaveLength(0)
+})
+
+test('an owner edit during a successful command cannot certify the new source until it is checked again', async () => {
+  const workflow = declaredWorkflow()
+  workflow.completion = { checks: [{ capability: 'workspace.command', options: { requireFresh: true } }] }
+  const { controller, hub, browser } = await startedFixture({ configureHub(hub) { packageFixtureHub(hub, [{ ...importedGuide, workflows: [workflow] }]); declaredStrategyFixture(hub) } })
+  await controller.setWorkflow(`package-${importedGuide.id}:workflow:build`)
+  const run = hub.runs.get(await controller.sendGoal('Check the saved source'))
+  const check = () => hub.completionAdapters['workspace.command']({ requireFresh: true }, run)
+  const entered = deferred(); const finished = deferred()
+  browser.onJob = () => { entered.resolve(); return finished.promise }
+  const pending = controller.runCommand('check old source', { runId: run.id })
+  await entered.promise
+  try {
+    const file = await controller.readFile('app/page.jsx')
+    await controller.saveFile({ path: file.path, content: 'export default function Page() { return "edited during check" }', expect: file.rev })
+    expect((await check()).ok).toBe(false)
+  } finally { finished.resolve({ code: 0 }) }
+  await pending
+  expect(controller.getSnapshot().commands.at(-1)).toMatchObject({ status: 'done', exitCode: 0, sourceUnchanged: false })
+  expect((await check()).ok).toBe(false)
+  browser.onJob = async () => ({ code: 0 })
+  await controller.runCommand('check updated source', { runId: run.id })
+  expect((await check()).ok).toBe(true)
 })

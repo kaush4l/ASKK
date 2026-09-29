@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "id": "project",
+  "kind": "agent",
+  "label": "Scripts and projects",
+  "agent": "builder",
+  "delegation": "none",
+  "session": "agent"
+}

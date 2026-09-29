@@ -1,3 +1,4 @@
+import { normalizeToolActivity } from '../core/tool-activity.js'
 import { ProjectFiles } from './files.js'
 import { LocalExecution } from '../execution/local.js'
 import { prepareIsolation } from './isolation.js'
@@ -371,20 +372,19 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
         const card = { id: message.callId ?? id('tool'), name: message.name, args: message.args, path: message.args?.path, command: message.args?.command, status: 'running', summary: message.value, runId: message.run, agent: message.agent ?? hub.runs.get(message.run)?.agent }
         notify({ messages: [...state.messages, { id: card.id, role: 'assistant', content: '', at: Date.now(), tools: [card] }] })
       } else if (message.kind === 'observation') {
-        let found = false
-        const messages = [...state.messages].reverse().map(row => {
-          const matched = row.tools?.find(tool => message.callId ? tool.id === message.callId : tool.runId === message.run && tool.status === 'running')
-          if (found || !matched) return row
-          const hasReceipt = ['workspace_write', 'workspace_run', 'workspace_check', 'workspace_build'].includes(matched.name)
-          let result
-          if (hasReceipt) {
-            const prefix = `${matched.name} failed: `
-            const value = String(message.value)
-            try { result = JSON.parse(message.ok === false && value.startsWith(prefix) ? value.slice(prefix.length) : value) } catch {}
-          }
-          const failed = typeof message.ok === 'boolean' ? !message.ok : Boolean(hasReceipt && (result?.conflict || result?.ok === false || result?.cancelled || Number.isInteger(result?.code ?? result?.exitCode) && (result.code ?? result.exitCode) !== 0))
-          found = true; return { ...row, tools: row.tools.map(tool => ({ ...tool, status: failed ? 'failed' : 'done', summary: String(message.value).slice(0, 4000), ...(tool.name === 'workspace_run' && result?.id ? { commandId: result.id } : {}), ...(tool.name === 'workspace_build' && result?.id ? { artifactId: result.id } : {}) })) }
-        }).reverse(); notify({ messages })
+        // A receipt belongs to one exact run/call pair. Legacy missing IDs are
+        // accepted only when that run has one unambiguous outstanding call.
+        const candidates = state.messages.flatMap(row => (row.tools ?? []).filter(tool =>
+          tool.runId === message.run && (message.callId ? tool.id === message.callId : tool.status === 'running')))
+        if (candidates.length === 1) {
+          const matched = candidates[0]
+          const activity = normalizeToolActivity(message.activity, { ok: message.ok })
+          const messages = state.messages.map(row => !row.tools?.includes(matched) ? row : { ...row, tools: row.tools.map(tool => tool !== matched ? tool : {
+            ...tool, ...activity, status: message.ok === true ? 'done' : message.ok === false ? 'failed' : 'unresolved',
+            summary: message.value, hasResult: Object.hasOwn(message, 'value'),
+          }) })
+          notify({ messages })
+        }
       } else if (['error', 'repair', 'retry', 'incomplete'].includes(message.kind)) activity({ type: message.kind, text: message.value, runId: message.run })
     }
   }
@@ -477,6 +477,21 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
           'workspace.environment': forRun(() => ({ target: state.runtime.target, status: state.runtime.status, binding, capabilities: state.runtime.capabilities, toolchain: executor?.describeCapabilities().toolchain, template: state.template, files: state.files.map(row => row.path), revision: projectRevision, artifact: currentArtifact ? { id: currentArtifact.id, revision: currentArtifact.revision, verified: currentArtifact.verified } : null })),
         }
         hub.completionAdapters = {
+          'workspace.command': forRun(async (options, run) => {
+            const reject = reason => ({ ok: false, reason })
+            if (running.size) return reject('Wait for commands to finish before completing.')
+            const command = state.commands.findLast(row => {
+              const producer = hub.runs.get(row.runId)
+              return producer && producer.trace === run.trace
+            })
+            if (!command || command.status !== 'done' || command.exitCode !== 0 || command.cancelled || command.stage !== 'complete') return reject('This task needs a completed command with a recorded zero exit code.')
+            if (options.requireFresh && (command.sourceUnchanged !== true || !command.completedFingerprint || command.completedRevision !== projectRevision)) return reject('Run the checks again against the current saved files.')
+            assertBound(run.context.binding); assertBound(command.binding)
+            const currentFingerprint = await fingerprint()
+            assertBound(command.binding)
+            if (running.size || options.requireFresh && (command.completedRevision !== projectRevision || command.completedFingerprint !== currentFingerprint)) return reject('Source files changed after the command completed; rerun the checks.')
+            return { ok: true, reason: 'A task-owned command exited successfully against the recorded workspace. This receipt alone does not prove functional correctness.', evidence: { commandId: command.id, command: command.command, exitCode: command.exitCode, revision: command.completedRevision, sourceFingerprint: command.completedFingerprint, runtime: command.binding } }
+          }),
           'workspace.artifact': forRun(async (options, run) => {
             const artifact = currentArtifact
             const receipt = artifact?.checks
@@ -915,6 +930,10 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
       notify({ commands: [...state.commands, { id: jobId, command, cwd: jobBinding.root, actor, runId, runtime: state.runtime.target, binding: jobBinding, revision: jobRevision, status: 'running', output: '', outputLength: 0, at: Date.now() }] })
       let receivedExit
       try {
+        const inputRevision = projectRevision
+        const inputFingerprint = await fingerprint()
+        assertBound(jobBinding)
+        if (inputRevision !== projectRevision) throw new Error('Source changed while preparing the command; retry against the saved files.')
         const result = await executor.startJob({ id: jobId, program: '/bin/sh', args: [jobRuntime === 'local' ? '-c' : '-lc', command], cwd: '.', signal: abort.signal, onOutput(event) { const row = state.commands.find(row => row.id === jobId); const chunk = String(event.data ?? event.text ?? ''); commandUpdate(jobId, { output: `${row?.output ?? ''}${chunk}`.slice(-500000), outputLength: (row?.outputLength ?? 0) + chunk.length }) } })
         assertBound(jobBinding)
         if (result.runtimeId && result.runtimeId !== jobBinding.runtimeId) throw new Error('The command receipt came from a different runtime session')
@@ -924,7 +943,9 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
         await awaitReceiptHealth(jobBinding)
         await files.checkpoint(); await refreshFiles(); watched = JSON.stringify(await files.list())
         assertBound(jobBinding)
-        commandUpdate(jobId, { status: result.cancelled ? 'cancelled' : code === 0 ? 'done' : 'failed', stage: 'complete', exitCode: code })
+        const completedFingerprint = await fingerprint()
+        assertBound(jobBinding)
+        commandUpdate(jobId, { inputFingerprint, sourceUnchanged: inputFingerprint === completedFingerprint && inputRevision === projectRevision, completedFingerprint, completedRevision: projectRevision, status: result.cancelled ? 'cancelled' : code === 0 ? 'done' : 'failed', stage: 'complete', exitCode: code })
         const row = state.commands.find(row => row.id === jobId)
         return { ...result, id: jobId, output: row.output, outputLength: row.outputLength, runtime: jobRuntime, binding: jobBinding, revision: jobRevision }
       } catch (error) { commandUpdate(jobId, { status: receivedExit?.cancelled ? 'cancelled' : 'failed', stage: receivedExit ? 'reconciliation-failed' : 'outcome-unknown', error: receivedExit ? `Command exited${receivedExit.exitCode != null ? ` with code ${receivedExit.exitCode}` : ''}; workspace reconciliation failed: ${error.message}` : error.message }); throw error }

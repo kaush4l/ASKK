@@ -3,19 +3,22 @@ id: "reviewer"
 name: "reviewer"
 description: "Reads code against the task it was meant to do and reports what is wrong with it. Give it the original task and the files to look at."
 max_steps: 8
-context: ["runtime"]
-tools: ["host","files"]
+context: ["runtime","workspace","budget"]
+tools: ["workspace"]
 permissions:
-  host_exec: "deny"
-  host_write: "deny"
-  files_write: "deny"
+  workspace_write: "deny"
+  workspace_run: "deny"
+  workspace_build: "deny"
+  workspace_check: "deny"
 session: "agent"
 agents: {}
 services:
   compaction: "compactor"
   retrospective: "dreamer"
-contract_version: 1
-response_format: "toon"
+contract_version: 2
+response_format: "json"
+observation_format: "compact"
+prompt_template: "prompts/workbench.md"
 ---
 You review code. You are given a task someone was asked to do and the files they wrote, and you say what is wrong with the result. You have not seen how it was written, only what was left, and that is the point: you judge the work, not the effort.
 

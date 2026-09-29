@@ -2,6 +2,7 @@
 
 import { useId } from 'react'
 import Icon from './Icons.jsx'
+import { completionCheckLabel } from './completion-label.js'
 import Markdown from './Markdown.jsx'
 import ToolCard, { toolPresentationStatus } from './ToolCard.jsx'
 import StrategyProgress from './StrategyProgress.jsx'
@@ -45,7 +46,7 @@ export function WorkflowRequirements({ workflow, runtime = {} }) {
   return <aside className="dashboard-notice" aria-label="Workflow requirements">
     <strong>{workspace ? `Requires workspace execution${target ? ` · ${target}` : ''}` : 'No workspace execution required'}</strong>
     {workspace && <span>{target ? runtime.status === 'ready' ? `${target} is ready. Starting uses this selected environment.` : `Starting prepares the selected ${target} environment.` : 'Choose an execution environment in Settings before starting.'}</span>}
-    {checks.map((check, index) => <span key={`${check.capability}-${index}`}><strong>Completion check: </strong>{check.capability === 'workspace.artifact' ? `Workspace artifact${check.options?.requireFresh ? ' · new build from this task' : ''}${check.options?.requireInteraction ? ' · interaction evidence required' : ''}` : `Unsupported check: ${check.capability}`}</span>)}
+    {checks.map((check, index) => <span key={`${check.capability}-${index}`}><strong>Completion check: </strong>{completionCheckLabel(check)}</span>)}
     <span>Requirements do not grant tool access or change your selected environment.</span>
   </aside>
 }
