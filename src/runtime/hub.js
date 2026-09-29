@@ -1,3 +1,4 @@
+import { ModelBroker } from './model-broker.js'
 import { readCompanionManifest } from '../core/companion-manifest.js'
 /**
  * The hub — the page side of the harness. It spawns, routes and records, and has no opinions.
@@ -293,6 +294,7 @@ export class Hub {
     if (!pageTransition) this.pageLifecycle?.dispose()
     if (this.disposed) return
     this.disposed = true
+    this.modelBroker.closeAll()
     this.bridgeCheckSequence++
     this.leadAbort?.abort()
     clearTimeout(this.dreamTimer)
@@ -409,10 +411,9 @@ export class Hub {
       .map((peer) => ({ path: peer.path, name: peer.name, description: peer.description }))
     return {
       type: 'init',
-      spec,
-      catalogue: this.catalogue(),
+      spec: { ...spec, inference: {} },
       policy: this.policyFor(spec),
-      host: this.hostInfo(),
+      host: this.workerHostInfo(),
       base: String(this.base),
       index: this.index,
       agents,
@@ -430,6 +431,51 @@ export class Hub {
     const bridge = this.bridgeState
     if (bridge.status !== 'answering') return null
     return { name: bridge.health?.name, url: bridge.url, token: bridge.token, root: bridge.health?.root, capabilities: bridge.health?.capabilities ?? [], ...(bridge.health?.capabilityManifest ? { capabilityManifest: structuredClone(bridge.health.capabilityManifest) } : {}), ...(bridge.health?.modelRelay != null ? { modelRelay: structuredClone(bridge.health.modelRelay) } : {}) }
+  }
+
+  workerHostInfo() {
+    const host = this.hostInfo()
+    return host ? { name: host.name, root: host.root, capabilities: [...host.capabilities] } : null
+  }
+
+  modelBroker = new ModelBroker()
+
+  async modelRequest(thread, run, { op, args = {}, runId }) {
+    const active = () => {
+      if (this.disposed || !run || run.ended || run.cancelRequested || runId !== run.id || thread.run !== run.id || !this.allThreads.has(thread)) throw new InferenceError('The model request no longer belongs to an active run.', 'aborted')
+    }
+    active()
+    const identity = { owner: thread, binding: run.id }
+    if (op === 'model.open') {
+      if (thread.spec.package && !installedModelAvailable(this.catalogue(), thread.spec.inference.model)) throw new InferenceError('The installed agent’s bound model profile is no longer configured; bind a configured profile before running it.', 'configuration')
+      const settings = { ...resolve(thread.spec.inference, this.catalogue()), agent: thread.spec.name }
+      const selected = this.bridgeState
+      const generation = selected.generation ?? 0
+      const relayed = settings.via === 'bridge' || settings.provider === 'cli'
+      run.modelRelayed = relayed
+      const validate = () => {
+        active()
+        if (relayed && (this.bridgeState.generation ?? 0) !== generation) throw new InferenceError('The companion connection changed; the previous authority was revoked.', 'configuration')
+      }
+      const transport = {
+        fetch: this.fetch,
+        bridge: selected.status === 'answering' ? (url, init) => this.bridgeFetch(url, init) : null,
+        bridgeURL: selected.url,
+        pageURL: globalThis.location?.href ?? this.base,
+        run: selected.status === 'answering' && selected.health?.capabilities?.includes('cli') ? (body, options) => this.bridgeRun(body, options) : null,
+      }
+      try {
+        return await this.modelBroker.open({ ...identity, settings, transport, cacheKey: relayed ? generation : null, signal: run.modelController.signal, validate, redact: value => modelEvidence(value, settings, selected) })
+      } catch (error) {
+        const clean = modelEvidence({ message: String(error?.message ?? error), code: error?.code, metadata: error?.metadata }, settings, selected)
+        throw Object.assign(new Error(clean.message), { code: clean.code, metadata: clean.metadata })
+      }
+    }
+    if (op === 'model.start') return this.modelBroker.start(args.handle, { ...identity, messages: args.messages, maxOutputTokens: args.maxOutputTokens, strictCompletion: args.strictCompletion })
+    if (op === 'model.next') return this.modelBroker.next(args.handle, identity)
+    if (op === 'model.closeStream') return this.modelBroker.closeStream(args.handle, identity)
+    if (op === 'model.close') return this.modelBroker.close(args.handle, identity)
+    throw new Error('Unknown model operation')
   }
 
   /** A resident thread, started if it is not running. */
@@ -491,6 +537,7 @@ export class Hub {
   }
 
   retire(thread) {
+    this.modelBroker.closeOwner(thread)
     thread.worker.terminate()
     this.allThreads.delete(thread)
     if (this.threads.get(thread.key) === thread) this.threads.delete(thread.key)
@@ -637,7 +684,8 @@ export class Hub {
     thread.busy = true
     thread.run = run.id
     run.thread = thread
-    thread.worker.postMessage({ type: 'invoke', query: run.query, context: run.context, service: run.service, completionRequired: run.completion.checks.length > 0 })
+    run.modelController = new AbortController()
+    thread.worker.postMessage({ type: 'invoke', runId: run.id, query: run.query, context: run.context, service: run.service, completionRequired: run.completion.checks.length > 0 })
   }
 
   onThreadMessage(thread, message) {
@@ -736,6 +784,7 @@ export class Hub {
   end(run, text, ok, error = '', slot = null) {
     if (run.ended) return
     run.ended = true
+    run.modelController?.abort()
     run.result = text
     const terminal = slot?.status ?? run.slot.status
     run.slot = { ...run.slot, ...(slot ?? {}), run: run.id, status: ok ? 'done' : ['incomplete', 'cancelled', 'interrupted'].includes(terminal) ? terminal : 'failed', error: ok ? '' : error || run.slot.error || 'failed', current: '', startedAt: run.slot.startedAt }
@@ -905,6 +954,7 @@ export class Hub {
 
   abort(run) {
     run.cancelRequested = true
+    run.modelController?.abort()
     if (run.cancelStrategy && !run.ended) { run.cancelStrategy(); return }
     for (const child of run.children) {
       const below = this.runs.get(child)
@@ -962,14 +1012,19 @@ export class Hub {
     return { ...receipt, evidence: recorded }
   }
 
-  async handle(thread, run, { id, op, args }) {
+  async handle(thread, run, { id, op, args, runId }) {
     try {
+      if (op.startsWith('model.')) {
+        const value = await this.modelRequest(thread, run, { op, args, runId })
+        thread.worker.postMessage({ type: 'reply', id, ok: true, value })
+        return
+      }
       const handler = this.externalOps[op] ?? this.ops[op]
       if (!handler) throw new Error(`unknown request "${op}"`)
       const value = await handler.call(this, args ?? {}, run, thread)
       thread.worker.postMessage({ type: 'reply', id, ok: true, value })
     } catch (error) {
-      thread.worker.postMessage({ type: 'reply', id, ok: false, error: String(error?.message ?? error) })
+      thread.worker.postMessage({ type: 'reply', id, ok: false, error: String(error?.message ?? error), code: error?.code, metadata: error?.metadata })
     }
   }
 
@@ -1566,7 +1621,11 @@ export class Hub {
     // Revoke old bridge clients immediately. Optional discovery cannot delay pairing,
     // cancellation or disconnect; mcpRefresh guards its eventual publication.
     for (const [name, server] of this.mcpServers) if (server.from === 'bridge') this.mcpServers.delete(name)
-    for (const thread of this.allThreads) thread.worker.postMessage({ type: 'host-revoked' })
+    for (const thread of this.allThreads) {
+      const run = thread.busy ? this.runs.get(thread.run) : null
+      if (run?.modelRelayed) run.modelController?.abort()
+      thread.worker.postMessage({ type: 'host-revoked' })
+    }
     this.hostChanged(why)
     if (!this.disposed) this.mcpRefresh().catch(() => {})
   }
@@ -1799,7 +1858,7 @@ export class Hub {
 
   broadcastSettings() {
     for (const thread of this.allThreads) {
-      thread.worker.postMessage({ type: 'settings', catalogue: this.catalogue(), policy: this.policyFor(thread.spec) })
+      thread.worker.postMessage({ type: 'settings', policy: this.policyFor(thread.spec) })
     }
   }
 

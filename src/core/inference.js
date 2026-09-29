@@ -138,10 +138,10 @@ export function inference(settings = {}, { fetch: fetcher = globalThis.fetch?.bi
     },
 
     /** Configured wins; otherwise ask the provider; otherwise a default. */
-    async context() {
+    async context({ signal } = {}) {
       if (settings.contextLength) return Number(settings.contextLength)
       try {
-        const listed = await self.models()
+        const listed = await self.models({ signal })
         const found = listed.find((model) => model.id === settings.model)
         if (found?.contextLength) return (settings.contextLength = found.contextLength)
       } catch {
