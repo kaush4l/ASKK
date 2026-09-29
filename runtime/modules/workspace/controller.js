@@ -993,17 +993,17 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
         assertBound(jobBinding)
         if (result.runtimeId && result.runtimeId !== jobBinding.runtimeId) throw new Error('The command receipt came from a different runtime session')
         const code = result.code ?? result.exitCode
-        receivedExit = { exitCode: code, cancelled: Boolean(result.cancelled), signal: result.signal ?? null }
+        receivedExit = { exitCode: code, cancelled: Boolean(result.cancelled), timedOut: result.timedOut === true, signal: result.signal ?? null }
         commandUpdate(jobId, { ...receivedExit, executionEnded: true, stage: 'reconciling' })
         await awaitReceiptHealth(jobBinding)
         await files.checkpoint(); await refreshFiles(); watched = JSON.stringify(await files.list())
         assertBound(jobBinding)
         const completedFingerprint = await fingerprint()
         assertBound(jobBinding)
-        commandUpdate(jobId, { inputFingerprint, sourceUnchanged: inputFingerprint === completedFingerprint && inputRevision === projectRevision, completedFingerprint, completedRevision: projectRevision, status: result.cancelled ? 'cancelled' : result.timedOut || code !== 0 ? 'failed' : 'done', cancelled: result.cancelled === true, timedOut: result.timedOut === true, stage: 'complete', exitCode: code })
+        commandUpdate(jobId, { inputFingerprint, sourceUnchanged: inputFingerprint === completedFingerprint && inputRevision === projectRevision, completedFingerprint, completedRevision: projectRevision, status: result.timedOut ? 'failed' : result.cancelled ? 'cancelled' : code !== 0 ? 'failed' : 'done', cancelled: result.cancelled === true, timedOut: result.timedOut === true, stage: 'complete', exitCode: code })
         const row = state.commands.find(row => row.id === jobId)
         return { ...result, id: jobId, output: row.output, outputLength: row.outputLength, runtime: jobRuntime, binding: jobBinding, revision: jobRevision }
-      } catch (error) { commandUpdate(jobId, { status: receivedExit?.cancelled ? 'cancelled' : 'failed', stage: receivedExit ? 'reconciliation-failed' : 'outcome-unknown', error: receivedExit ? `Command exited${receivedExit.exitCode != null ? ` with code ${receivedExit.exitCode}` : ''}; workspace reconciliation failed: ${error.message}` : error.message }); throw error }
+      } catch (error) { commandUpdate(jobId, { status: receivedExit?.cancelled && !receivedExit.timedOut ? 'cancelled' : 'failed', stage: receivedExit ? 'reconciliation-failed' : 'outcome-unknown', error: receivedExit ? `Command exited${receivedExit.exitCode != null ? ` with code ${receivedExit.exitCode}` : ''}; workspace reconciliation failed: ${error.message}` : error.message }); throw error }
       finally { running.delete(jobId) }
     },
     async stopCommand(commandId) { running.get(commandId)?.abort(); await executor?.cancelJob?.(commandId) },

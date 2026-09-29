@@ -1,4 +1,5 @@
 import { readCompanionManifest } from '../core/companion-manifest.js'
+import { describeToolchain } from './toolchain.js'
 /** Authenticated client for the owner's optional Bun companion. */
 export class LocalExecution {
   constructor({ url = 'https://127.0.0.1:7717', token = '', onEvent = () => {}, createSocket = address => new WebSocket(address) } = {}) {
@@ -17,7 +18,7 @@ export class LocalExecution {
     this.health = { ...health, capabilityManifest }
     return this.health
   }
-  describeCapabilities() { return { runtimeId: this.health?.runtimeId ?? 'local:unpaired', root: this.health?.root, toolchain: { kind: this.health?.capabilityManifest?.runtime.kind ?? this.health?.runtime ?? 'unknown', version: this.health?.capabilityManifest?.runtime.version ?? this.health?.version }, capabilityManifest: this.health?.capabilityManifest ?? null, capabilities: this.health?.capabilities ?? [] } }
+  describeCapabilities() { return { runtimeId: this.health?.runtimeId ?? 'local:unpaired', root: this.health?.root, toolchain: describeToolchain({ kind: this.health?.capabilityManifest?.runtime.kind ?? this.health?.runtime ?? 'unknown', version: this.health?.capabilityManifest?.runtime.version ?? this.health?.version }), capabilityManifest: this.health?.capabilityManifest ?? null, capabilities: this.health?.capabilities ?? [] } }
   async list(path = '') { return (await (await this.request('/workspace/list', { path })).json()).files }
   async read(path) { return (await this.request('/workspace/read', { path })).json() }
   async write(args) {
@@ -36,7 +37,7 @@ export class LocalExecution {
       const response = await this.request('/jobs/run', { id, program, args, cwd, timeout }, { signal: combined })
       accepted = true
       reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = ''; let result
-      const accept = line => { if (!line.trim()) return; const event = JSON.parse(line); if (event.jobId !== id) throw new Error('Command receipt has the wrong identity'); this.onEvent(event); if (event.type === 'output') onOutput(event); if (event.type === 'exit') { if (!Number.isInteger(event.code)) throw new Error('Command exit receipt has no exit code'); result = event } }
+      const accept = line => { if (!line.trim()) return; const event = JSON.parse(line); if (event.jobId !== id) throw new Error('Command receipt has the wrong identity'); this.onEvent(event); if (event.type === 'error') throw Object.assign(new Error(event.error ?? 'Command execution could not be confirmed'), { code: event.code, cleanup: event.cleanup }); if (event.type === 'output') onOutput(event); if (event.type === 'exit') { if (!Number.isInteger(event.code)) throw new Error('Command exit receipt has no exit code'); result = event } }
       while (true) { const { value, done } = await reader.read(); if (done) break; buffer += decoder.decode(value, { stream: true }); let cut; while ((cut = buffer.indexOf('\n')) >= 0) { accept(buffer.slice(0, cut)); buffer = buffer.slice(cut + 1) } }
       buffer += decoder.decode(); if (buffer) accept(buffer)
       if (!result) throw new Error('Command stream ended without an exit receipt')
