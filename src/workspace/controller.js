@@ -1,3 +1,4 @@
+import { selectRequiredCommands, requiredCommandReason } from '../core/command-checks.js'
 import { loopBudgetValue } from '../core/loop-budget.js'
 import { normalizeToolActivity } from '../core/tool-activity.js'
 import { ProjectFiles } from './files.js'
@@ -9,6 +10,7 @@ import { boundModelAvailable, resolve as resolveModel } from '../core/models.js'
 import { openaiBase, anthropicBase } from '../core/inference.js'
 import { hasModelRelay } from '../core/model-relay.js'
 import { normalizeCompletion, LEGACY_ARTIFACT_COMPLETION } from '../core/completion.js'
+import { projectCompletionEvidence } from '../core/completion-evidence.js'
 import { renderPackageTemplate } from '../core/package-template.js'
 import { copyAgentSource } from '../runtime/package-source.js'
 import { createWorkspaceBinding, assertWorkspaceBinding, assertWorkspacePort, assertExecutionPort, createArtifactManifest, assertArtifactManifest, createBoundRunSnapshot } from './contracts.js'
@@ -290,7 +292,7 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
   const refreshAgents = () => {
     const instances = new Map(cachedSummaryMap)
     for (const run of hub?.runs.values() ?? []) instances.set(run.id, run)
-    notify({ agents: [...instances.values()].map(run => ({ id: run.id, trace: run.trace ?? run.id, kind: run.kind, taskId: run.taskId, stageId: run.stageId, result: run.result, error: run.slot?.error, terminationReason: run.slot?.terminationReason, path: run.agent, agent: run.agent, name: state.agentDefinitions.find(row => row.path === run.agent)?.name ?? run.agent, current: run.slot?.current ?? '', maxSteps: run.slot?.maxSteps, steps: run.slot?.steps ?? 0, parent: run.parent ?? null, status: hub?.runs.get(run.id)?.ended === false && run.slot?.status === 'idle' ? 'queued' : run.slot?.status ?? 'starting', description: run.query, at: run.at })) })
+    notify({ agents: [...instances.values()].map(run => ({ id: run.id, trace: run.trace ?? run.id, kind: run.kind, taskId: run.taskId, stageId: run.stageId, result: run.result, error: run.slot?.error, terminationReason: run.slot?.terminationReason, completionEvidence: projectCompletionEvidence(run), path: run.agent, agent: run.agent, name: state.agentDefinitions.find(row => row.path === run.agent)?.name ?? run.agent, current: run.slot?.current ?? '', maxSteps: run.slot?.maxSteps, steps: run.slot?.steps ?? 0, parent: run.parent ?? null, status: hub?.runs.get(run.id)?.ended === false && run.slot?.status === 'idle' ? 'queued' : run.slot?.status ?? 'starting', description: run.query, at: run.at })) })
   }
   const sessionBoundaryFor = (workflows = state.workflows, selectedId = state.selectedWorkflowId) => {
     const selected = workflows.find(row => row.id === selectedId)
@@ -336,7 +338,7 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
     if (message.type === 'packages') { refreshPackages(); refreshDefinitions() }
     if (message.type === 'settings') { refreshPackages(); refreshDefinitions() }
     if (message.type === 'run' && !message.run.parent && !activeRun && state.run?.status === 'starting') activeRun = message.run.id
-    if (message.type === 'run') refreshAgents()
+    if (message.type === 'run' || message.type === 'verification') refreshAgents()
     if (message.type === 'strategy' && message.run === activeRun) notify({ task: message.task })
     if (message.type === 'persistence-error') notify({ error: message.error })
     if (message.type === 'bridge') {
@@ -486,19 +488,38 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
         hub.completionAdapters = {
           'workspace.command': forRun(async (options, run) => {
             const reject = reason => ({ ok: false, reason })
-            if (running.size) return reject('Wait for commands to finish before completing.')
+            if (running.size || fileMutations) return reject('Wait for commands to finish before completing.')
             const latestCommand = () => state.commands.findLast(row => {
               const producer = hub.runs.get(row.runId)
               return producer && producer.trace === run.trace
             })
             const command = latestCommand()
-            if (!command || command.status !== 'done' || command.exitCode !== 0 || command.cancelled || command.stage !== 'complete') return reject('This task needs a completed command with a recorded zero exit code.')
+            if (!command || command.status !== 'done' || command.exitCode !== 0 || command.cancelled || command.timedOut || command.stage !== 'complete') return reject('This task needs a completed command with a recorded zero exit code.')
             if (options.requireFresh && (command.sourceUnchanged !== true || !command.completedFingerprint || command.completedRevision !== projectRevision)) return reject('Run the checks again against the current saved files.')
             assertBound(run.context.binding); assertBound(command.binding)
             const currentFingerprint = await fingerprint()
             assertBound(command.binding)
-            if (running.size || latestCommand()?.id !== command.id || options.requireFresh && (command.completedRevision !== projectRevision || command.completedFingerprint !== currentFingerprint)) return reject('Source files or command evidence changed during completion; rerun the checks.')
+            if (running.size || fileMutations || latestCommand()?.id !== command.id || options.requireFresh && (command.completedRevision !== projectRevision || command.completedFingerprint !== currentFingerprint)) return reject('Source files or command evidence changed during completion; rerun the checks.')
             return { ok: true, reason: 'A task-owned command exited successfully against the recorded workspace. This receipt alone does not prove functional correctness.', evidence: { commandId: command.id, command: command.command, exitCode: command.exitCode, revision: command.completedRevision, sourceFingerprint: command.completedFingerprint, runtime: command.binding } }
+          }),
+          'workspace.commands': forRun(async (options, run) => {
+            const required = normalizeCompletion({ checks: [{ capability: 'workspace.commands', options }] }).checks[0].options.commands
+            const reject = reason => ({ ok: false, reason })
+            if (running.size || fileMutations) return reject('Wait for commands to finish before checking the required commands.')
+            assertBound(run.context.binding)
+            const owns = row => Boolean(row.runId && hub.runs.get(row.runId)?.trace === run.trace)
+            const selected = selectRequiredCommands(state.commands, required, owns)
+            for (const [index, command] of selected.entries()) {
+              if (!command || command.status !== 'done' || command.exitCode !== 0 || command.cancelled || command.timedOut || command.stage !== 'complete') return reject(requiredCommandReason(required[index], command))
+              assertBound(command.binding)
+              if (command.sourceUnchanged !== true || !command.completedFingerprint) return reject(`Required command must be rerun against the current saved source: ${required[index]}`)
+            }
+            const checkedRevision = projectRevision
+            const currentFingerprint = await fingerprint()
+            assertBound(run.context.binding)
+            const latest = selectRequiredCommands(state.commands, required, owns)
+            if (running.size || fileMutations || checkedRevision !== projectRevision || selected.some((command, index) => latest[index]?.id !== command.id || command.completedFingerprint !== currentFingerprint)) return reject('Source files or required command evidence changed during completion; rerun the required commands.')
+            return { ok: true, reason: 'Every configured command passed against the current saved source. This proves only the assertions those commands actually check.', evidence: { checkedRevision, sourceFingerprint: currentFingerprint, commands: selected.map(command => ({ commandId: command.id, command: command.command, exitCode: command.exitCode, revision: command.completedRevision, sourceFingerprint: command.completedFingerprint, runtime: command.binding })) } }
           }),
           'workspace.artifact': forRun(async (options, run) => {
             const artifact = currentArtifact
@@ -959,7 +980,7 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
         assertBound(jobBinding)
         const completedFingerprint = await fingerprint()
         assertBound(jobBinding)
-        commandUpdate(jobId, { inputFingerprint, sourceUnchanged: inputFingerprint === completedFingerprint && inputRevision === projectRevision, completedFingerprint, completedRevision: projectRevision, status: result.cancelled ? 'cancelled' : code === 0 ? 'done' : 'failed', stage: 'complete', exitCode: code })
+        commandUpdate(jobId, { inputFingerprint, sourceUnchanged: inputFingerprint === completedFingerprint && inputRevision === projectRevision, completedFingerprint, completedRevision: projectRevision, status: result.cancelled ? 'cancelled' : result.timedOut || code !== 0 ? 'failed' : 'done', cancelled: result.cancelled === true, timedOut: result.timedOut === true, stage: 'complete', exitCode: code })
         const row = state.commands.find(row => row.id === jobId)
         return { ...result, id: jobId, output: row.output, outputLength: row.outputLength, runtime: jobRuntime, binding: jobBinding, revision: jobRevision }
       } catch (error) { commandUpdate(jobId, { status: receivedExit?.cancelled ? 'cancelled' : 'failed', stage: receivedExit ? 'reconciliation-failed' : 'outcome-unknown', error: receivedExit ? `Command exited${receivedExit.exitCode != null ? ` with code ${receivedExit.exitCode}` : ''}; workspace reconciliation failed: ${error.message}` : error.message }); throw error }

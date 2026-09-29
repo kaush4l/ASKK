@@ -26,6 +26,8 @@
 .agent-team-group-heading > span { font: 11px var(--mono); color: var(--muted); }
 .agent-team-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 10px; list-style: none; padding: 0; margin: 0; }
 .agent-instance { min-width: 0; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 11px; background: var(--chat); overflow: hidden; }
+.agent-instance-completion { margin: 0; padding: 4px 12px 8px; color: var(--secondary); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.agent-instance-completion.is-failed { color: var(--team-problem); }
 .agent-instance.tone-live { border-color: color-mix(in srgb, var(--team-active) 45%, var(--line)); }
 .agent-instance.tone-decision { border-color: color-mix(in srgb, var(--team-decision) 65%, var(--line)); }
 .agent-instance.tone-problem { border-color: color-mix(in srgb, var(--red) 55%, var(--line)); }

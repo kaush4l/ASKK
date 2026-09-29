@@ -1,0 +1,6 @@
+{
+  "checks": [{
+    "capability": "workspace.commands",
+    "options": { "commands": ["bun run test", "bun test"] }
+  }]
+}

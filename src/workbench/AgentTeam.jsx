@@ -3,12 +3,12 @@
 import { useId, useMemo, useState } from 'react'
 import Icon from './Icons.jsx'
 import { toolPresentationStatus } from './ToolCard.jsx'
+import { projectCompletionEvidence } from '../core/completion-evidence.js'
 import './agent-team.css'
 
 const LIVE = new Set(['queued', 'starting', 'thinking', 'calling', 'running', 'waiting', 'compacting', 'cancelling', 'verifying', 'unresponsive'])
-const LABELS = { queued: 'Queued', starting: 'Starting', thinking: 'Generating reply', calling: 'Using a tool', running: 'Running', waiting: 'Waiting', compacting: 'Organizing context', cancelling: 'Stopping', verifying: 'Verifying', unresponsive: 'Response delayed', done: 'Completed', completed: 'Completed', verified: 'Verified', failed: 'Failed', error: 'Failed', incomplete: 'Incomplete', cancelled: 'Stopped', stopped: 'Stopped', interrupted: 'Interrupted', skipped: 'Skipped', idle: 'Idle', ready: 'Ready' }
+const LABELS = { queued: 'Queued', starting: 'Starting', thinking: 'Generating reply', calling: 'Using a tool', running: 'Running', waiting: 'Waiting', compacting: 'Organizing context', cancelling: 'Stopping', verifying: 'Verifying', unresponsive: 'Response delayed', done: 'Agent finished', completed: 'Agent finished', verified: 'Agent finished', failed: 'Failed', error: 'Failed', incomplete: 'Incomplete', cancelled: 'Stopped', stopped: 'Stopped', interrupted: 'Interrupted', skipped: 'Skipped', idle: 'Idle', ready: 'Ready' }
 const TOOL_LABELS = { running: 'Running', waiting: 'Waiting', awaiting_approval: 'Awaiting approval', done: 'Completed', completed: 'Completed', success: 'Completed', failed: 'Failed', error: 'Failed', interrupted: 'Interrupted', cancelled: 'Stopped', unresolved: 'Outcome not recorded' }
-const SUCCESS = new Set(['done', 'completed', 'verified'])
 const PROBLEM = new Set(['failed', 'error', 'incomplete', 'interrupted', 'unresponsive'])
 const STOP_REASONS = new Map([['step_budget', 'Step limit reached'], ['context_budget', 'Context limit reached'], ['invalid_response', 'Invalid model reply']])
 const identityOf = run => run.path || run.agent || ''
@@ -54,8 +54,8 @@ export function projectAgentTeam({ runs = [], definitions = [], approvals = [], 
     const needsDecision = pending > 0 && !['cancelling', 'unresponsive'].includes(run.status)
     const stopReason = ['failed', 'incomplete'].includes(run.status) ? STOP_REASONS.get(run.terminationReason) : null
     const status = needsDecision ? 'Needs your decision' : `${LABELS[run.status] || 'Status unavailable'}${stopReason ? ` · ${stopReason}` : ''}`
-    const tone = PROBLEM.has(run.status) ? 'problem' : needsDecision ? 'decision' : SUCCESS.has(run.status) ? 'complete' : live ? 'live' : 'neutral'
-    const icon = run.status === 'cancelling' ? 'stop' : tone === 'problem' || needsDecision ? 'warning' : tone === 'complete' ? 'check' : run.status === 'calling' ? 'bolt' : null
+    const tone = PROBLEM.has(run.status) ? 'problem' : needsDecision ? 'decision' : live ? 'live' : 'neutral'
+    const icon = run.status === 'cancelling' ? 'stop' : tone === 'problem' || needsDecision ? 'warning' : run.status === 'calling' ? 'bolt' : null
     return { run, tool: latestTools.get(run.id), toolStatus: latestTools.has(run.id) ? toolPresentationStatus(latestTools.get(run.id), approvals) : null, name: nameOf(run), identity: identityOf(run), definitionAvailable: definitions.some(definition => definition.path === identityOf(run)), live, status, pending, decisions, selected: belongs(run), parentName: parent ? nameOf(parent) : '', parentAvailable: Boolean(parent), parentLabel: parent?.kind === 'strategy' || run.stageId || run.kind === 'strategy-role' ? 'Parent run' : 'Delegated by', tone, icon }
   })
   // Selected-task slots survive terminal transitions. Selection and the current
@@ -71,15 +71,17 @@ export function AgentInstance({ item, instanceId, detailsOpen = false, onToggleD
   const toolOutcome = TOOL_LABELS[toolStatus] || toolStatus || 'Outcome not recorded'
   const initials = name.trim().split(/\s+/).slice(0, 2).map(part => [...part][0]).join('').toLocaleUpperCase()
   const activity = activityPreview(text(run.current).trim() || text(run.description).trim())
+  const completionEvidence = run.completionEvidence || projectCompletionEvidence(run)
   const hasResult = run.result !== undefined && run.result !== null && run.result !== ''
   const descriptionId = instanceId || `agent-run-${encodeURIComponent(run.id)}`
   return <li className={`agent-instance tone-${tone}`} data-run-id={run.id}>
-    <button className="agent-instance-open" type="button" onClick={() => onInspectRun?.(run.id)} disabled={!onInspectRun} aria-label={`Inspect ${name} run ${run.id}`} aria-describedby={`${descriptionId}-status ${descriptionId}-activity`}>
+    <button className="agent-instance-open" type="button" onClick={() => onInspectRun?.(run.id)} disabled={!onInspectRun} aria-label={`Inspect ${name} run ${run.id}`} aria-describedby={`${descriptionId}-status ${descriptionId}-activity ${descriptionId}-completion`}>
       <span className="agent-instance-avatar" aria-hidden="true">{initials || <Icon name="agents" size={17}/>}<i/></span>
       <span className="agent-instance-identity"><strong>{name}</strong><span className="agent-instance-status" id={`${descriptionId}-status`}>{icon ? <Icon name={icon} size={13}/> : <i aria-hidden="true"/>}{status}</span></span>
       <Icon className="agent-instance-chevron" name="right" size={14}/>
       <span className="agent-instance-task" id={`${descriptionId}-activity`}>{activity || (live ? 'No activity detail recorded yet.' : hasResult ? 'Recorded result available to inspect.' : 'No activity detail recorded.')}</span>
     </button>
+    <p id={`${descriptionId}-completion`} className={`agent-instance-completion${completionEvidence.outcome === 'failed' ? ' is-failed' : ''}`}>{completionEvidence.label}{live && completionEvidence.outcome === 'passed' ? ' · current run still in progress' : ''}</p>
     <div className="agent-instance-tags"><span className="agent-instance-suffix" title={run.id}>#{String(run.id).slice(-8)}</span>{selected && <span>Selected task</span>}</div>
     <div className="agent-instance-attention">{pending > 0 && (onReviewApproval && decisions[0]?.id ? <button type="button" onClick={() => onReviewApproval(decisions[0].id)} aria-label={`Review ${pending} pending ${pending === 1 ? 'decision' : 'decisions'} for ${name} run ${run.id}`}><Icon name="warning" size={13}/>{pending} pending {pending === 1 ? 'decision' : 'decisions'}<Icon name="right" size={12}/></button> : <span><Icon name="warning" size={13}/>{pending} pending {pending === 1 ? 'decision' : 'decisions'}</span>)}{!pending && tool && (onOpenTool ? <button className="agent-instance-tool" type="button" onClick={() => onOpenTool(tool)} aria-label={`Inspect latest tool ${toolLabel} · ${toolOutcome} for ${name} run ${run.id}`} title={`${toolLabel} · ${toolOutcome}`}><Icon name="bolt" size={13}/><span>{toolLabel}</span><small>{toolOutcome}</small><Icon name="right" size={12}/></button> : <span className="agent-instance-tool" title={`${toolLabel} · ${toolOutcome}`}><Icon name="bolt" size={13}/><span>{toolLabel}</span><small>{toolOutcome}</small></span>)}</div>
     <details className="agent-instance-details" open={detailsOpen}>

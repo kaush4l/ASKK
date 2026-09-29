@@ -1,3 +1,5 @@
+import { selectRequiredCommands, requiredCommandReason } from '../../src/core/command-checks.js'
+import { normalizeCompletion } from '../../src/core/completion.js'
 /** Real execution receipts for evaluations; no model text can create completion evidence. */
 export function createEvaluationWorkspace(execution) {
   const commands = []
@@ -40,6 +42,20 @@ export function createEvaluationWorkspace(execution) {
         Object.assign(receipt, { stage: 'failed', output, error: error.message })
         throw error
       } finally { running-- }
+    },
+    async checkRequired(options, run) {
+      const required = normalizeCompletion({ checks: [{ capability: 'workspace.commands', options }] }).checks[0].options.commands
+      const reject = reason => ({ ok: false, reason })
+      if (running || writing) return reject('Wait for commands and writes to finish before checking required commands.')
+      const owns = row => row.trace === (run.trace ?? run.id)
+      const selected = selectRequiredCommands(commands, required, owns)
+      for (const [index, command] of selected.entries()) {
+        if (!command || command.stage !== 'complete' || command.code !== 0 || command.cancelled || command.timedOut) return reject(requiredCommandReason(required[index], command ? { ...command, exitCode: command.code } : null))
+      }
+      const before = epoch, currentRevision = await revision()
+      const latest = selectRequiredCommands(commands, required, owns)
+      if (running || writing || before !== epoch || selected.some((command, index) => latest[index]?.id !== command.id || !command.sourceUnchanged || command.completedEpoch !== epoch || command.completedRevision !== currentRevision)) return reject('Required commands must all pass against the current saved source; rerun them after edits.')
+      return { ok: true, reason: 'All configured command receipts passed; this proves only their assertions.', evidence: { sourceRevision: currentRevision, commands: selected.map(command => ({ commandId: command.id, command: command.command, exitCode: command.code, runtimeId: command.runtimeId, sourceRevision: command.completedRevision })) } }
     },
     async check({ requireFresh = true } = {}, run) {
       const reject = reason => ({ ok: false, reason })

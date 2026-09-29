@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto'
 import { cp, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { normalizeCompletion } from '../../src/core/completion.js'
 import { Hub } from '../../src/runtime/hub.js'
 import { LocalExecution } from '../../src/execution/local.js'
 import { createCompanion } from '../../host/companion.js'
@@ -63,10 +64,11 @@ export function evaluationSampling(value = { temperature: 0 }) {
   return { temperature: 0, ...value }
 }
 
-export async function evaluateProjectLoop({ baseUrl, model, directory, caseName = 'script', timeoutMs = 240000, contextLength = 32768, jsonOutput = false, enableThinking = false, maxOutputTokens = 2048, contractVersion, structuredOutput = false, historyFormat, sampling, responseProtocol, instructions }) {
+export async function evaluateProjectLoop({ baseUrl, model, directory, caseName = 'script', timeoutMs = 240000, contextLength = 32768, jsonOutput = false, enableThinking = false, maxOutputTokens = 2048, contractVersion, structuredOutput = false, historyFormat, sampling, responseProtocol, instructions, completion }) {
   if (responseProtocol !== undefined && !['envelope', 'native'].includes(responseProtocol)) throw new Error('Unsupported responseProtocol')
   if (responseProtocol === 'native' && (contractVersion !== 3 || historyFormat !== 'messages')) throw new Error('Native evaluation requires contractVersion 3 and historyFormat messages')
   if (instructions !== undefined && (typeof instructions !== 'string' || !instructions.trim() || instructions.length > 32000)) throw new Error('Evaluation instructions must be nonempty text of at most 32000 characters')
+  const completionContract = normalizeCompletion(completion ?? { checks: [{ capability: 'workspace.command', options: { requireFresh: true } }] })
   const resolvedSampling = evaluationSampling(sampling)
   const { temperature, ...samplingParams } = resolvedSampling
   if (!Number.isSafeInteger(contextLength) || contextLength < 4096) throw new Error('Evaluation context length must be an integer of at least 4096 tokens')
@@ -129,10 +131,10 @@ export async function evaluateProjectLoop({ baseUrl, model, directory, caseName 
       'workspace.write': async ({ path, content, expect }) => { const result = await workspace.write({ path, content, expectedRevision: expect }); return result.conflict ? result : { ...result, ok: true, rev: result.rev ?? result.revision } },
       'workspace.run': ({ command }, run) => workspace.run(command, run),
     }
-    hub.completionAdapters = { 'workspace.command': (options, run) => workspace.check(options, run) }
+    hub.completionAdapters = { 'workspace.command': (options, run) => workspace.check(options, run), 'workspace.commands': (options, run) => workspace.checkRequired(options, run) }
     await hub.start()
     await hub.settings.set({ policy: { defaults: { read: 'allow', net: 'deny', write: 'allow', exec: 'allow' } } })
-    const run = hub.startRun('bundled/starter/builder', definition.goal, { context: { workflow: { completion: { checks: [{ capability: 'workspace.command', options: { requireFresh: true } }] } } } })
+    const run = hub.startRun('bundled/starter/builder', definition.goal, { context: { workflow: { completion: completionContract } } })
     timer = setTimeout(() => hub.abort(run), timeoutMs)
     await run.answer
     clearTimeout(timer)
@@ -175,5 +177,5 @@ if (import.meta.main) {
   const option = name => { const index = process.argv.indexOf(name); return index < 0 ? undefined : process.argv[index + 1] }
   const model = option('--model'), baseUrl = option('--base-url'), directory = option('--directory')
   if (!model || !baseUrl || !directory) throw new Error('Provide --model, --base-url and a new --directory path; optional --case script|project|repair.')
-  console.log(JSON.stringify(await evaluateProjectLoop({ model, baseUrl, directory, instructions: option('--instructions') ? await readFile(option('--instructions'), 'utf8') : undefined, sampling: option('--sampling') ? JSON.parse(await readFile(option('--sampling'), 'utf8')) : undefined, caseName: option('--case') ?? 'script', contextLength: Number(option('--context-length') ?? 32768), jsonOutput: process.argv.includes('--json-output'), structuredOutput: process.argv.includes('--structured-output'), historyFormat: option('--history-format'), responseProtocol: option('--response-protocol'), enableThinking: process.argv.includes('--thinking'), maxOutputTokens: Number(option('--max-output-tokens') ?? 2048), contractVersion: option('--contract-version') === undefined ? undefined : Number(option('--contract-version')) }), null, 2))
+  console.log(JSON.stringify(await evaluateProjectLoop({ model, baseUrl, directory, completion: option('--completion') ? JSON.parse(await readFile(option('--completion'), 'utf8')) : undefined, instructions: option('--instructions') ? await readFile(option('--instructions'), 'utf8') : undefined, sampling: option('--sampling') ? JSON.parse(await readFile(option('--sampling'), 'utf8')) : undefined, caseName: option('--case') ?? 'script', contextLength: Number(option('--context-length') ?? 32768), jsonOutput: process.argv.includes('--json-output'), structuredOutput: process.argv.includes('--structured-output'), historyFormat: option('--history-format'), responseProtocol: option('--response-protocol'), enableThinking: process.argv.includes('--thinking'), maxOutputTokens: Number(option('--max-output-tokens') ?? 2048), contractVersion: option('--contract-version') === undefined ? undefined : Number(option('--contract-version')) }), null, 2))
 }

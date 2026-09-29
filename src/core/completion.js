@@ -12,10 +12,19 @@ export function normalizeCompletion(value) {
   const seen = new Set()
   const checks = Array.from(value.checks).map(check => {
     keys(check, ['capability', 'options'], 'check')
-    if (!['workspace.artifact', 'workspace.command'].includes(check.capability)) fail(`unsupported check capability: ${String(check.capability)}`)
+    if (!['workspace.artifact', 'workspace.command', 'workspace.commands'].includes(check.capability)) fail(`unsupported check capability: ${String(check.capability)}`)
     if (seen.has(check.capability)) fail(`duplicate check: ${check.capability}`)
     seen.add(check.capability)
     const options = check.options ?? {}
+    if (check.capability === 'workspace.commands') {
+      keys(options, ['commands', 'requireFresh'], 'workspace.commands options')
+      if (!Array.isArray(options.commands) || !options.commands.length || options.commands.length > 16) fail('commands must contain 1–16 exact command strings')
+      const commands = Array.from(options.commands)
+      if (commands.some(command => typeof command !== 'string' || !command.trim() || command.length > 8192 || command.includes('\0'))) fail('each command must be a nonempty string of at most 8192 characters without NUL')
+      if (new Set(commands).size !== commands.length) fail('commands must be unique')
+      if (Object.hasOwn(options, 'requireFresh') && options.requireFresh !== true) fail('workspace.commands requires fresh evidence')
+      return { capability: check.capability, options: { commands, requireFresh: true } }
+    }
     const defaults = check.capability === 'workspace.command' ? { requireFresh: true } : { requireFresh: true, requireInteraction: true }
     keys(options, Object.keys(defaults), `${check.capability} options`)
     for (const [name, value] of Object.entries(options)) if (typeof value !== 'boolean') fail(`${name} must be boolean`)

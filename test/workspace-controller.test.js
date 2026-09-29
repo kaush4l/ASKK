@@ -2461,3 +2461,106 @@ test('live native tools preserve provider IDs without replacing engine receipt l
   expect(cards.find(card => card.id === 'engine-a')).toMatchObject({ providerCallId: 'provider-shared', status: 'running' })
   expect(cards.find(card => card.id === 'engine-b')).toMatchObject({ providerCallId: 'provider-shared', status: 'done', summary: 'second' })
 })
+
+async function requiredCommandFixture(commands = ['bun run test', 'bun run lint']) {
+  const workflow = declaredWorkflow()
+  workflow.completion = { checks: [{ capability: 'workspace.commands', options: { commands } }] }
+  const fixture = await startedFixture({ configureHub(hub) { packageFixtureHub(hub, [{ ...importedGuide, workflows: [workflow] }]); declaredStrategyFixture(hub) } })
+  await fixture.controller.setWorkflow(`package-${importedGuide.id}:workflow:build`)
+  const run = fixture.hub.runs.get(await fixture.controller.sendGoal('Deliver the configured checks'))
+  return { ...fixture, run, check: () => fixture.hub.completionAdapters['workspace.commands'](run.context.workflow.completion.checks[0].options, run) }
+}
+
+test('required commands need every exact task-owned receipt; unrelated success cannot mask missing or failed checks', async () => {
+  const { controller, browser, run, check } = await requiredCommandFixture()
+  await controller.runCommand('bun run test')
+  await controller.runCommand('echo successful', { runId: run.id })
+  expect(await check()).toMatchObject({ ok: false })
+  await controller.runCommand('bun run test', { runId: run.id })
+  expect((await check()).reason).toContain('bun run lint')
+  browser.onJob = async () => ({ code: 2 })
+  await controller.runCommand('bun run lint', { runId: run.id })
+  browser.onJob = async () => ({ code: 0 })
+  await controller.runCommand('echo successful', { runId: run.id })
+  expect((await check()).ok).toBe(false)
+  await controller.runCommand('bun run lint', { runId: run.id })
+  const result = await check()
+  expect(result.ok).toBe(true)
+  expect(result.evidence.commands.map(row => row.command)).toEqual(['bun run test', 'bun run lint'])
+  expect(result.evidence.commands.every(row => row.runtime.runtimeId === run.context.binding.runtimeId)).toBe(true)
+})
+
+test('all required command checks must belong to the current saved source', async () => {
+  const { controller, browser, run, check } = await requiredCommandFixture()
+  await controller.runCommand('bun run test', { runId: run.id })
+  browser.externalWrite('changed.txt', 'new source')
+  await controller.runCommand('bun run lint', { runId: run.id })
+  expect((await check()).ok).toBe(false)
+  await controller.runCommand('bun run test', { runId: run.id })
+  expect((await check()).ok).toBe(true)
+})
+
+test('required command completion rejects replaced evidence during fingerprinting', async () => {
+  const { controller, browser, run, check } = await requiredCommandFixture(['bun run test'])
+  await controller.runCommand('bun run test', { runId: run.id })
+  const pause = pauseOnce(browser, 'list')
+  const checking = check()
+  await pause.entered
+  browser.onJob = async () => ({ code: 2 })
+  try { await controller.runCommand('bun run test', { runId: run.id }) }
+  finally { pause.release() }
+  expect((await checking).ok).toBe(false)
+})
+
+test('cancelled or timed out required commands cannot pass even with zero exit codes', async () => {
+  const { controller, browser, run, check } = await requiredCommandFixture(['bun run test'])
+  for (const flags of [{ cancelled: true }, { timedOut: true }]) {
+    browser.onJob = async () => ({ code: 0, ...flags })
+    await controller.runCommand('bun run test', { runId: run.id })
+    expect((await check()).ok).toBe(false)
+  }
+})
+
+test('live agent evidence updates on verification receipts without exposing raw receipt payloads', async () => {
+  const { controller, hub } = await startedFixture()
+  const run = { id: 'live-evidence', agent: 'assistant', slot: { status: 'verifying' }, completion: { checks: [{ capability: 'workspace.command' }] }, completionReceipts: [] }
+  hub.runs.set(run.id, run)
+  hub.emit({ type: 'status', run: run.id, slot: run.slot })
+  expect(controller.getSnapshot().agents.find(row => row.id === run.id).completionEvidence.label).toBe('No completion checks recorded')
+  run.completionReceipts.push({ ok: true, checks: [{ capability: 'workspace.command', ok: true, evidence: { output: 'large raw output stays in inspector' } }] })
+  hub.emit({ type: 'verification', run: run.id, receipt: run.completionReceipts.at(-1) })
+  const projected = controller.getSnapshot().agents.find(row => row.id === run.id)
+  expect(projected.completionEvidence).toEqual({ outcome: 'passed', label: 'Latest recorded: Command check passed · behavior not verified' })
+  expect(projected.completionReceipts).toBeUndefined()
+  run.completionReceipts.push({ ok: false, checks: [{ capability: 'workspace.command', ok: false }] })
+  hub.emit({ type: 'verification', run: run.id, receipt: run.completionReceipts.at(-1) })
+  expect(controller.getSnapshot().agents.find(row => row.id === run.id).completionEvidence.outcome).toBe('failed')
+  expect(projected.completionEvidence.outcome).toBe('passed')
+})
+
+test('required commands cannot certify source while an acknowledged save is still pending', async () => {
+  const { controller, browser, run, check } = await requiredCommandFixture(['bun run test'])
+  await controller.runCommand('bun run test', { runId: run.id })
+  const file = await controller.readFile('app/page.jsx')
+  const pause = pauseOnce(browser, 'write')
+  const saving = controller.saveFile({ path: file.path, content: 'export default function Page() { return "new source" }', expect: file.rev })
+  await pause.entered
+  try { expect((await check()).ok).toBe(false) }
+  finally { pause.release(); await saving }
+  expect((await check()).ok).toBe(false)
+})
+
+test('a save started during required-check fingerprinting prevents completion', async () => {
+  const { controller, browser, run, check } = await requiredCommandFixture(['bun run test'])
+  await controller.runCommand('bun run test', { runId: run.id })
+  const file = await controller.readFile('app/page.jsx')
+  const reading = pauseOnce(browser, 'list')
+  const checking = check()
+  await reading.entered
+  const writing = pauseOnce(browser, 'write')
+  const saving = controller.saveFile({ path: file.path, content: 'export default function Page() { return "racing edit" }', expect: file.rev })
+  await writing.entered
+  reading.release()
+  try { expect((await checking).ok).toBe(false) }
+  finally { writing.release(); await saving }
+})

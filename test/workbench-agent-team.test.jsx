@@ -113,7 +113,7 @@ test('terminal cards show recorded stop reasons while unknown and stale reasons 
     ['failed', undefined, 'Failed'],
     ['incomplete', 'toString', 'Incomplete'],
     ['thinking', 'context_budget', 'Generating reply'],
-    ['done', 'step_budget', 'Completed'],
+    ['done', 'step_budget', 'Agent finished'],
     ['cancelled', 'invalid_response', 'Stopped'],
   ]
   for (const [status, terminationReason, expected] of cases) {
@@ -307,4 +307,31 @@ test('dashboard links an instance receipt even when it falls outside six recent 
   expect(control).toBeDefined()
   expect(attr(control, 'aria-label')).toContain('Outcome not recorded')
   expect(attr(control, 'aria-label')).toContain('run one')
+})
+
+test('finished cards distinguish recorded scoped evidence from an agent claim', () => {
+  const passed = capability => ({ ok: true, checks: [{ capability, ok: true }] })
+  const cases = [
+    [{ completion: { checks: [] } }, 'No completion checks configured'],
+    [{ completion: { checks: [{ capability: 'workspace.command' }] } }, 'No completion checks recorded'],
+    [{ completionReceipts: [passed('workspace.command')] }, 'Command check passed · behavior not verified'],
+    [{ completionReceipts: [passed('workspace.commands')] }, 'Required command checks passed · behavior not verified'],
+    [{ completionReceipts: [passed('workspace.artifact')] }, 'Scoped checks passed · only recorded requirements checked'],
+    [{ completionReceipts: [passed('workspace.command'), { ok: false, checks: [] }] }, 'Latest recorded checks: did not pass'],
+    [{ completionReceipts: [{ ok: true, checks: [] }] }, 'no checks performed'],
+    [{ completionReceipts: [{ ok: true, checks: [{ capability: 'workspace.command' }] }] }, 'outcome not recorded'],
+  ]
+  for (const [evidence, expected] of cases) {
+    const tree = render({ runs: [run('finished', { status: 'done', result: 'Everything works!', ...evidence })] })
+    expect(text(tree)).toContain('Agent finished')
+    expect(text(tree)).toContain(expected)
+    expect(text(tree)).not.toContain('Verified')
+    expect(attr(cards(tree)[0], 'class')).toBe('agent-instance tone-neutral')
+  }
+})
+
+test('a pass retained during resumed work is labeled historical and cannot style active work as success', () => {
+  const tree = render({ runs: [run('resumed', { completionEvidence: { outcome: 'passed', label: 'Latest recorded: Command check passed · behavior not verified' } })] })
+  expect(text(tree)).toContain('Latest recorded: Command check passed · behavior not verified · current run still in progress')
+  expect(attr(cards(tree)[0], 'class')).toBe('agent-instance tone-live')
 })

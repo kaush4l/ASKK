@@ -183,3 +183,26 @@ Accepted history retains the provider's original argument string and pairs the a
 The evaluator accepts `--response-protocol native --contract-version 3 --history-format messages`. A deterministic provider fixture exercises the production folder, worker, model broker, actual workspace writes, a real host command and independent script checks. This fixture establishes integration, not model competence or browser execution.
 
 [Three native Qwen3 trials](evidence/qwen3-native-loop.json) produced one script pass and two failures. The script independently passed numeric, empty and invalid-input checks; the model itself ran empty-input checks after recovering from a command-not-found error. Scaffold and repair reached real tool dispatch without envelope repairs but produced or retained incorrect code, repeated unsuccessful commands, and exhausted the step budget. Their completion claims remained unverified/incomplete. These results establish one native script-loop smoke pass, not general task reliability, thorough model self-verification, or Browser Linux support. The temporary model server was stopped.
+
+### Required command receipts
+
+A workflow can opt into a stronger receipt contract without changing the agent kernel:
+
+```json
+{
+  "completion": {
+    "checks": [{
+      "capability": "workspace.commands",
+      "options": { "commands": ["bun run test", "bun run lint"] }
+    }]
+  }
+}
+```
+
+These are exact command strings, not patterns or commands automatically executed by the completion adapter. The agent receives workflow requirements in workspace context and uses the ordinary permission-checked command tool. Importing this configuration grants no execution permission. Up to 16 unique commands are allowed; each is bounded to 8,192 characters. Fresh evidence is mandatory.
+
+The desk selects the latest task-owned receipt for every configured command. All must exit zero without timeout or cancellation and retain the same saved-source fingerprint as the checked workspace. Pending saves/jobs, changed runtime bindings, source changes during commands or verification, and replaced receipts reject completion. A failed later rerun cannot borrow an earlier pass. The configuration and accepted evidence remain immutable run records. Missing/failed command diagnostics return through the existing completion-rejection loop; no task-specific branch is added to the engine.
+
+A passed suite proves only the assertions its commands actually execute. It does not make model-authored tests independent or comprehensive. The existing `workspace.command` option still means one successful command, while `workspace.artifact` retains its artifact-specific checks. Dashboard cards separate **Agent finished** from the scope and outcome of the latest recorded completion evidence. Full configuration and receipts remain in the inspector.
+
+The real-model evaluator accepts `--completion path/to/contract.json`; omitted configuration preserves its previous baseline. Withheld behavior checks remain outside the model's repair feedback. The native production-worker fixture tests completion rejection for a missing required command, normal guarded execution, and accepted receipts after all commands run.
