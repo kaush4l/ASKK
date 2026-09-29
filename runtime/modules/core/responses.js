@@ -15,6 +15,8 @@ import { exampleToolInput } from './tool-input.js'
 
 import { parseStages, structuredStages } from './calls.js'
 
+export const schemaResponseFormat = schema => ({ type: 'json_schema', json_schema: { name: 'agent_response', strict: false, schema } })
+
 /** The ReAct reply: think, then say `do`, then `act`. One payload field, not two. */
 export const ReAct = {
   name: 'ReActResponse',
@@ -176,6 +178,17 @@ export function responseModel(shape = ReAct, format = 'toon') {
     shape,
     format,
     instructions,
+
+    /** Optional provider constraint, never a substitute for parsing or tool validation. */
+    schema({ tools = [], finalOnly = tools.length === 0 } = {}) {
+      if (format !== 'json' || ![2, 3].includes(shape.version)) throw new Error('Response schema requires JSON contract version 2 or 3')
+      const object = properties => ({ type: 'object', properties, required: Object.keys(properties), additionalProperties: false })
+      const done = object({ do: { const: 'done' }, act: { type: 'string', minLength: 1 } })
+      if (finalOnly || !tools.length) return done
+      const call = object({ name: { type: 'string', enum: [...new Set(tools.map(tool => tool.name))] }, args: { type: 'object' } })
+      const array = items => ({ type: 'array', minItems: 1, items })
+      return { anyOf: [object({ do: { const: 'tool' }, act: shape.version === 3 ? call : array(array(call)) }), done] }
+    },
 
     /** The whole reply, validated: `{ value, faults }`. Faults are what the repair shows the model. */
     parse(text) {

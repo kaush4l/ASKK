@@ -472,7 +472,7 @@ export class Hub {
         throw Object.assign(new Error(clean.message), { code: clean.code, metadata: clean.metadata })
       }
     }
-    if (op === 'model.start') return this.modelBroker.start(args.handle, { ...identity, messages: args.messages, maxOutputTokens: args.maxOutputTokens, strictCompletion: args.strictCompletion })
+    if (op === 'model.start') return this.modelBroker.start(args.handle, { ...identity, messages: args.messages, maxOutputTokens: args.maxOutputTokens, strictCompletion: args.strictCompletion, responseSchema: args.responseSchema })
     if (op === 'model.next') return this.modelBroker.next(args.handle, identity)
     if (op === 'model.closeStream') return this.modelBroker.closeStream(args.handle, identity)
     if (op === 'model.close') return this.modelBroker.close(args.handle, identity)
@@ -1900,7 +1900,9 @@ export class Hub {
         if (settings.requestParams != null && (typeof settings.requestParams !== 'object' || Array.isArray(settings.requestParams))) throw new InferenceError('request_params must be an object.', 'configuration')
         const requestParams = { ...(settings.requestParams ?? {}) }
         for (const key of ['tools', 'tool_choice', 'functions', 'function_call', 'parallel_tool_calls']) delete requestParams[key]
-        const llm = inference({ ...settings, requestParams, retries: 1 }, transport)
+        // A connection probe has no agent contract and establishes transport only.
+        // Schema support is evidenced by actual agent requests and validation.
+        const llm = inference({ ...settings, structuredOutput: undefined, requestParams, retries: 1 }, transport)
         await boundedModelCheck(async (signal, limit) => {
           receipt.timeoutMs = limit
           for await (const delta of llm.stream(MODEL_PROBE_PROMPT, { signal, maxOutputTokens: 128, strictCompletion: true,

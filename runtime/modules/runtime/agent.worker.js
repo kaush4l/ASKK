@@ -65,10 +65,10 @@ async function llm() {
     calibrationKey: descriptor.calibrationKey,
     settings: descriptor.settings,
     context: async () => descriptor.contextLength,
-    async *stream(messages, { signal, onRequest, onFinish, maxOutputTokens, strictCompletion } = {}) {
+    async *stream(messages, { signal, onRequest, onFinish, maxOutputTokens, strictCompletion, responseSchema } = {}) {
       const handle = descriptor.handle
       if (signal?.aborted) throw new Error('stopped by the owner')
-      await request('model.start', { handle, messages, maxOutputTokens, strictCompletion })
+      await request('model.start', { handle, messages, maxOutputTokens, strictCompletion, responseSchema })
       try {
         while (true) {
           if (signal?.aborted) throw new Error('stopped by the owner')
