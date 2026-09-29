@@ -1,5 +1,7 @@
 # Implementation status
 
+Latest publication: source **`3104ca55`**, deployment **`3b0d3f0c`**, [successful Pages workflow](https://github.com/kaush4l/ASKK/actions/runs/36571553209). [Hosted evidence](evidence/required-command-pages.json) confirms seven files match the tested export. Required command receipts and scoped live completion labels are published; task reliability and browser execution gates remain open.
+
 ## Required command suites and live completion evidence
 
 The new opt-in `workspace.commands` contract requires every configured exact command to have a latest task-owned zero-exit receipt against the current saved-source fingerprint. Missing checks, failed reruns, cancelled/timed-out jobs, runtime changes, and pending or racing saves cannot pass. It does not execute imported commands: normal tool permission checks still apply. See the [configuration guide](AGENT-SKELETON.md#required-command-receipts). Agent cards now separate **Agent finished** from a compact, scope-limited summary of the latest recorded verification result; exact receipts stay in the inspector.
@@ -8,7 +10,7 @@ The new opt-in `workspace.commands` contract requires every configured exact com
 
 [One real Qwen3 scaffold trial](evidence/qwen3-required-commands.json) used an explicit visible [command suite](evidence/scaffold-required-commands.json), candidate instructions and unchanged independent evaluator checks. It ran the required test command but failed to repair a missing export; all completion attempts were rejected and the task remained incomplete. This supports verification-path correctness, not improved coding reliability. A local Chrome page loaded the export, but another tab owned that origin's runtime, so no live-card or new browser inference acceptance is claimed. Safari, iPhone and Browser Linux acceptance remain open.
 
-Latest publication: source **`1a50e79d`**, deployment **`d5b453e9`**, [successful Pages workflow](https://github.com/kaush4l/ASKK/actions/runs/36570259281). [Hosted evidence](evidence/native-starter-pages.json) confirms seven files match the tested export. Native starter creation is available in Agent studio; the receipt procedure remains an evaluation candidate. Details and limitations follow.
+Historical publication: source **`1a50e79d`**, deployment **`d5b453e9`**, [successful Pages workflow](https://github.com/kaush4l/ASKK/actions/runs/36570259281). [Hosted evidence](evidence/native-starter-pages.json) confirms seven files match the tested export. Native starter creation is available in Agent studio; the receipt procedure remains an evaluation candidate. Details and limitations follow.
 
 ## Native starter creation and receipt procedure experiment
 

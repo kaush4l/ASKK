@@ -1,0 +1,51 @@
+{
+  "source": "3104ca55",
+  "deployment": "3b0d3f0c0759975ed3ebfb4cc9aa9cfcb8589f3e",
+  "workflow": "https://github.com/kaush4l/ASKK/actions/runs/36571553209",
+  "workflowConclusion": "success",
+  "checks": [
+    {
+      "path": "index.html",
+      "status": 200,
+      "sha256": "863d82ade27d24f1fa7307dc720a93e7d2f00434caf7eee7c4cda140d4113741",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/core/completion.js",
+      "status": 200,
+      "sha256": "43776c7375f579396cb60d668c3a1b849944c5c21130985229c6584c5df9724f",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/core/command-checks.js",
+      "status": 200,
+      "sha256": "a1afcf565bf363fe994631a74c87949a4ca734f04096026a1627185f066e1ea1",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/core/completion-evidence.js",
+      "status": 200,
+      "sha256": "63ecd0ffef0cdbf17f2f1821a0ec80e96d5f015e440b5e1cf42a1c56bea95038",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/workspace/controller.js",
+      "status": 200,
+      "sha256": "2940309efdf2ab6d61f78028ad90265b562feacf21dd06d7b3f3cd94d5700f44",
+      "matches": true
+    },
+    {
+      "path": "_next/static/chunks/app/page-778b040a62cdb9f4.js",
+      "status": 200,
+      "sha256": "62f44e1bfe32b234ba682c95733f1cec54147de9b90f86c566e63354916258be",
+      "matches": true
+    },
+    {
+      "path": "_next/static/css/e1cb7ed65b90f118.css",
+      "status": 200,
+      "sha256": "d6a05f24e9cb383de69351dada715b8a26df7cde77c874f8a278b71523901b3e",
+      "matches": true
+    }
+  ],
+  "scope": "Hosted byte checks. Automated live-card projection/component tests and production-worker command suite fixture. No live browser card, hosted inference, Safari, iPhone or Browser Linux acceptance."
+}
