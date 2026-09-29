@@ -1,0 +1,41 @@
+{
+  "source": "7009f143",
+  "deployment": "675e73b0db54d44a60f9ce40de20573a28abbe5c",
+  "workflow": "https://github.com/kaush4l/ASKK/actions/runs/36590722559",
+  "workflowConclusion": "success",
+  "export": {
+    "version": 1,
+    "basePath": "/ASKK",
+    "totalBytes": 905089393,
+    "fileCount": 219,
+    "runtimeId": "c2w-node24-38d093f4a38002db",
+    "artifactHash": "f188167d056c701980205bab467fbf8fdede37defe710884dcb240929fceef74"
+  },
+  "checks": [
+    {
+      "path": "index.html",
+      "status": 200,
+      "sha256": "7317698ef060df96f436fda6d89da621f96d66f896fde72a824616d3d8b74000",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/core/completion.js",
+      "status": 200,
+      "sha256": "2e609971ba3e9da079ad1bb21f7a3439e3414aa469ec345c4ce01942871bb836",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/core/context.js",
+      "status": 200,
+      "sha256": "af6bbfdd4d7aa5a8e0e4da70655110f8ff66b35b2935f956fc29c7ad3eaa3df1",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/runtime/hub.js",
+      "status": 200,
+      "sha256": "dd78d6e0ba7ee7fa7c645a61f6880b6a65ab0673eff310a9bda65746b0a535d2",
+      "matches": true
+    }
+  ],
+  "scope": "Exact hosted byte checks and automated tests. No new live-model or browser interaction trial; Safari, iPhone and Browser Linux acceptance remain unverified."
+}
