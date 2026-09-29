@@ -1,0 +1,186 @@
+{
+  "version": 1,
+  "scope": "Actual hosted Chrome model probe and one browser-agent turn",
+  "source": "02987e8",
+  "deployment": "af0297f",
+  "browser": {
+    "at": "2026-09-29T04:29:43.668Z",
+    "draft": "Safari relay checkpoint — keep this draft.",
+    "files": [
+      {
+        "bytes": 38357,
+        "path": "index.html",
+        "sha256": "42f6c32126f97733c5ebc071581fdc3d812e0b49ef8801093c804f45a7aefc49",
+        "status": 200
+      },
+      {
+        "bytes": 95981,
+        "path": "runtime/modules/runtime/hub.js",
+        "sha256": "b15436fc8d867acec78e82897966f29ee605cafaf0a8a4515a2a82de5e4bd52b",
+        "status": 200
+      },
+      {
+        "bytes": 27451,
+        "path": "runtime/modules/core/inference.js",
+        "sha256": "b54dc591480a3c8e33cdc329d14a68b75510b9bcc98e1176b3f57abe0cec0fc9",
+        "status": 200
+      },
+      {
+        "bytes": 71503,
+        "path": "runtime/modules/workspace/controller.js",
+        "sha256": "952ee92af88682d5452d5f5936c4b4a8c01aa02e255761047845d72234643325",
+        "status": 200
+      },
+      {
+        "bytes": 24754,
+        "path": "runtime/modules/core/agent-package.js",
+        "sha256": "10d3663278b3cf7577324271c5635414e67d01a5c2b27302947b10ed73ae5c8c",
+        "status": 200
+      }
+    ],
+    "frames": [],
+    "isolation": true,
+    "resources": [
+      "https://kaush4l.github.io/ASKK/_next/static/chunks/app/page-3c9d42fb47b9520e.js"
+    ],
+    "url": "https://kaush4l.github.io/ASKK/",
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36"
+  },
+  "probe": {
+    "at": 1790656215485,
+    "completions": [
+      {
+        "diagnostics": {
+          "contentChars": 10,
+          "reasoningChars": 0
+        },
+        "finishReason": "stop",
+        "usage": {
+          "completion_tokens": 2,
+          "generation_duration": 0.32,
+          "generation_tokens_per_second": 6.31,
+          "input_tokens": 18,
+          "output_tokens": 2,
+          "prompt_eval_duration": 0.84,
+          "prompt_tokens": 18,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "prompt_tokens_per_second": 21.51,
+          "time_to_first_token": 0.84,
+          "time_to_first_visible_token": 0.9,
+          "total_time": 1.15,
+          "total_tokens": 20
+        }
+      }
+    ],
+    "elapsedMs": 1174.089999973774,
+    "id": "c0e60fd3-1a9b-408b-a4e4-2c306f1902c5",
+    "kind": "model-probe",
+    "maxOutputTokens": 128,
+    "model": {
+      "alias": "workbench",
+      "id": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+      "provider": "openai"
+    },
+    "prompt": [
+      {
+        "content": "Reply with exactly: Connected.",
+        "role": "user"
+      }
+    ],
+    "requests": [
+      {
+        "body": {
+          "chat_template_kwargs": {
+            "enable_thinking": false
+          },
+          "max_tokens": 128,
+          "messages": [
+            {
+              "content": "Reply with exactly: Connected.",
+              "role": "user"
+            }
+          ],
+          "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+          "stream": true,
+          "stream_options": {
+            "include_usage": true
+          },
+          "temperature": 0
+        },
+        "headers": {
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "provider": "openai",
+        "transportAttempt": 1,
+        "url": "http://127.0.0.1:8873/v1/chat/completions"
+      }
+    ],
+    "route": {
+      "endpoint": "http://127.0.0.1:8873/v1",
+      "generation": 2,
+      "relay": "https://127.0.0.1:7717/",
+      "runtimeId": "local-bun:ae42ac77-a980-4440-8135-787be04322b5",
+      "via": "bridge"
+    },
+    "startedAt": 1790656214311,
+    "status": "completed",
+    "text": "Connected.",
+    "timeoutMs": 60000,
+    "version": 1
+  },
+  "agentRun": {
+    "agent": "assistant",
+    "at": 1790656411072,
+    "completions": [
+      {
+        "finishReason": "stop",
+        "usage": {
+          "completion_tokens": 11,
+          "generation_duration": 0.8,
+          "generation_tokens_per_second": 13.67,
+          "input_tokens": 1691,
+          "output_tokens": 11,
+          "prompt_eval_duration": 6.58,
+          "prompt_tokens": 1691,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "prompt_tokens_per_second": 257.07,
+          "time_to_first_token": 6.58,
+          "time_to_first_visible_token": 6.63,
+          "total_time": 7.38,
+          "total_tokens": 1702
+        }
+      }
+    ],
+    "contextWorkflow": {
+      "agent": "assistant",
+      "description": "Research, plan, reason, and coordinate agents without starting a workspace runtime.",
+      "id": "assistant",
+      "label": "General assistant",
+      "strategyRef": "strategies/conversation.json",
+      "workspace": false
+    },
+    "id": "rmum6ldj41",
+    "query": "Say hello in exactly three words. Do not use tools.",
+    "requestCount": 1,
+    "result": "Hello there friend",
+    "status": "done"
+  },
+  "final": {
+    "at": "2026-09-29T04:35:01.298Z",
+    "draft": "Safari relay checkpoint — keep this draft.",
+    "footer": "Browser Linux · Not started\nChanges saved locally\nReply verified",
+    "guestFrames": 0,
+    "relay": {
+      "capabilities": [
+        "model-relay"
+      ],
+      "runtimeId": "local-bun:ae42ac77-a980-4440-8135-787be04322b5"
+    },
+    "toolEvents": 0
+  }
+}

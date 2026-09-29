@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "scope": "Actual native Safari UI on GitHub Pages; listing and bounded tool-free generation, not a full agent turn",
+  "observedAt": "2026-09-29T04:30:54Z",
+  "url": "https://kaush4l.github.io/ASKK/",
+  "deployment": "af0297f",
+  "source": "02987e8",
+  "browser": {
+    "name": "Safari",
+    "version": "27.2",
+    "build": "22625.2.5.11.1",
+    "versionSource": "installed Safari.app Info.plist"
+  },
+  "route": {
+    "endpoint": "http://127.0.0.1:8873/v1",
+    "relay": "https://127.0.0.1:7717",
+    "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+    "capabilities": [
+      "model-relay"
+    ]
+  },
+  "observations": [
+    "Existing Pages tab restored the historical failed HTTP-loopback turn after normal reload.",
+    "Selected Through HTTPS companion and paired the scoped relay in Model settings.",
+    "List models displayed Model listed.",
+    "Test reply displayed Reply verified and Connected.",
+    "Displayed elapsed time was 1.1s.",
+    "Visible receipt ID was 7baaf669-7931-42a9-b62a-8e7993ba6256.",
+    "Browser Linux remained Not started.",
+    "Existing certificate trust was used without changing browser or system trust.",
+    "The one temporary Safari tab was closed; all 13 original tabs were retained."
+  ],
+  "limits": [
+    "Elapsed time is the rounded UI value, not an independently timed benchmark.",
+    "Safari accessibility text truncated the expanded JSON receipt; no complete Safari provider request export was captured.",
+    "The native screenshot captured the blurred background but omitted the dialog; it is not visual acceptance evidence.",
+    "Native goal typing and clipboard delivery were unreliable. A full Safari agent turn, visual rendering, VoiceOver and guest execution remain unverified.",
+    "Exact delivered-file hashes were verified independently in Chrome; Safari was checked through its actual new connection controls."
+  ]
+}
