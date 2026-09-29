@@ -19,13 +19,13 @@ export async function prepareLaunch(options, packageRoot, env = process.env) {
   if (!parentInfo.isDirectory() || (parentInfo.mode & 0o077) !== 0 || typeof process.getuid === 'function' && parentInfo.uid !== process.getuid()) throw new Error('The pairing-file directory must already exist, belong to you and have mode0700')
   const pairingFile = join(parent, basename(options.pairingFile))
   if (contains(root, pairingFile) || contains(bundle, pairingFile)) throw new Error('Keep the pairing file outside the granted workspace and package')
-  return { root, cert, key, pairingFile, port: options.port, origins: options.origins, capabilities: options.capabilities, shell: '/bin/sh', shellArgs: [], childEnv: childEnvironment(bundle, env) }
+  return { root, cert, key, pairingFile, port: options.port, origins: options.origins, capabilities: options.capabilities, modelEndpoints: options.modelEndpoints, shell: '/bin/sh', shellArgs: [], childEnv: childEnvironment(bundle, env) }
 }
 
 export async function launch(options, { packageRoot = fileURLToPath(new URL('../../', import.meta.url)), env = process.env, create = createCompanion } = {}) {
   await verifyPackage(packageRoot)
   const prepared = await prepareLaunch(options, packageRoot, env)
-  if (options.check) return { checked: true, root: prepared.root, capabilities: prepared.capabilities, origins: prepared.origins, pairingFile: prepared.pairingFile }
+  if (options.check) return { checked: true, root: prepared.root, capabilities: prepared.capabilities, modelEndpoints: prepared.modelEndpoints, origins: prepared.origins, pairingFile: prepared.pairingFile }
   // Reserve exclusively before opening a server. Never replace another session's token.
   const handle = await open(prepared.pairingFile, 'wx', 0o600)
   let companion, closing, pairingText

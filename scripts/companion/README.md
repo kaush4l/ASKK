@@ -32,12 +32,25 @@ mkdir -m 700 "$HOME/.askk-pairing"
   --root /absolute/project \
   --allow-origin https://kaush4l.github.io \
   --capabilities fs,exec,terminal,model-relay,network-relay \
+  --model-endpoint http://127.0.0.1:8873/v1 \
   --tls-cert /absolute/private/loopback-cert.pem \
   --tls-key /absolute/private/loopback-key.pem \
   --pairing-file "$HOME/.askk-pairing/session.json"
 ```
 
-All grants are required flags. For relay-only use, specify only `--capabilities model-relay,network-relay`. `--allow-origin` accepts exact HTTPS origins (or HTTP loopback origins); repeat it for additional pages. `--port` defaults to 7717. `--check` verifies hashes and path configuration without opening a server or creating a token; it does not verify TLS key matching or browser trust. `--help` is safe without credentials.
+All grants are required flags. For inference alone, specify `--capabilities model-relay` and your explicit `--model-endpoint` base; add `network-relay` only when you intend general network access for Browser Linux. `--allow-origin` accepts exact HTTPS origins (or HTTP loopback origins); repeat it for additional pages. `--port` defaults to 7717. `--check` verifies hashes and path configuration, including model endpoint syntax, without opening a server or creating a token; it does not verify TLS key matching, browser trust or model readiness. `--help` is safe without credentials.
+
+### Model-only scope
+
+`--model-endpoint` is repeatable and independent of the `model-relay` grant. For each exact API base, the server allows only `GET <base>/models`, `POST <base>/chat/completions`, and `POST <base>/messages`, matching the current HTTP model adapters. It does not authorize arbitrary paths under `/v1`, model-management endpoints, other HTTP methods, query strings, credentials in URLs, ambiguous/encoded paths, or redirects. Configure the final endpoint directly. Custom query-based provider routes require a future explicit contract; they are not silently passed through.
+
+The scoped `/model/fetch` endpoint accepts only `accept`, `content-type`, `authorization`, `x-api-key`, `openai-organization`, `openai-project`, `anthropic-version`, `anthropic-beta`, and `anthropic-dangerous-direct-browser-access` headers. Routing and method-override headers are rejected. POST content uses JSON. An unavailable upstream remains an upstream error; being configured is not proof that the model is responding.
+
+An older launch command with `model-relay` but no endpoint scope can still start its other granted capabilities. Its model requests fail closed with `relay.model_scope_required` and instructions to restart with `--model-endpoint` and reconnect. Authenticated `/whoami` reports `modelRelay: {version: 1, endpoint: '/model/fetch', endpoints: [...], status: 'configured' | 'scope-required'}`; `/health` reports the same descriptor for allowed origins. The client must retain scope identity when recording a successful model probe.
+
+New clients use `/model/fetch` even when generic `fetch` is granted. Legacy `/fetch` callers are scoped when only `model-relay` is granted; an explicit `fetch` grant keeps that generic endpoint available independently. `/network/fetch` continues to require `network-relay`. Neither relay grant permits files, commands, terminals or browser automation. The separate historical `host/bridge.js` protocol has not acquired this scope contract.
+
+The scoped-route tests run against disposable local upstreams and prove refused requests do not reach them, redirects do not escape, and streaming cancellation is retained. The earlier immutable package acceptance predates this change; rebuild and reaccept a new package before describing these source changes as part of that accepted binary.
 
 The URL and token are written to the exclusive mode 0600 pairing file. Console output names its path, never its token. Read it locally and enter its URL/token into Settings → Runtime; do not paste it into an agent conversation. Explicitly select Local Bun only when you intend native commands. Any different workspace location still requires the workbench's explicit review/transfer flow.
 

@@ -1,9 +1,10 @@
 import { isAbsolute, join } from 'node:path'
+import { normalizeModelEndpoints } from '../../host/companion.js'
 
 export const capabilityNames = Object.freeze(['fs', 'exec', 'terminal', 'fetch', 'model-relay', 'network-relay'])
 const text = value => typeof value === 'string' && value.length > 0 && !/[\u0000-\u001f\u007f]/.test(value)
 const absolute = (value, label) => { if (!text(value) || !isAbsolute(value)) throw new Error(`${label} must be an absolute path without control characters`); return value }
-const known = new Set(['root', 'allow-origin', 'capabilities', 'tls-cert', 'tls-key', 'pairing-file', 'port'])
+const known = new Set(['root', 'allow-origin', 'capabilities', 'model-endpoint', 'tls-cert', 'tls-key', 'pairing-file', 'port'])
 
 export const help = `ASKK Local Bun companion (Apple Silicon macOS)
 Usage: ./askk-companion --root /project --allow-origin https://kaush4l.github.io \\
@@ -12,6 +13,9 @@ Usage: ./askk-companion --root /project --allow-origin https://kaush4l.github.io
   --pairing-file /private/askk-pairing.json [--port 7717] [--check]
 
 All grants are explicit. Repeat --allow-origin for additional exact page origins.
+Model relay also needs --model-endpoint http://127.0.0.1:8873/v1 (repeatable).
+Only GET /models and POST /chat/completions or /messages below that base are allowed.
+Without an endpoint scope, model requests fail closed; other grants still work.
 --check validates package hashes and path configuration without starting a server;
         certificate validity/key matching and browser trust are separate startup gates.
 --help  prints this message without loading credentials or starting a server.
@@ -30,7 +34,7 @@ export function parseLaunchOptions(argv) {
     if (!known.has(name)) throw new Error(`Unknown option: ${flag}`)
     const value = argv[++i]
     if (!text(value) || value.startsWith('--')) throw new Error(`Missing value for --${name}`)
-    if (name === 'allow-origin') (args[name] ??= []).push(value)
+    if (name === 'allow-origin' || name === 'model-endpoint') (args[name] ??= []).push(value)
     else { if (Object.hasOwn(args, name)) throw new Error(`Duplicate --${name}`); args[name] = value }
   }
   const root = absolute(args.root, '--root'), cert = absolute(args['tls-cert'], '--tls-cert'), key = absolute(args['tls-key'], '--tls-key'), pairingFile = absolute(args['pairing-file'], '--pairing-file')
@@ -45,7 +49,8 @@ export function parseLaunchOptions(argv) {
   if (!capabilities?.length || new Set(capabilities).size !== capabilities.length || capabilities.some(name => !capabilityNames.includes(name))) throw new Error(`Explicit --capabilities must list unique names from: ${capabilityNames.join(',')}`)
   const port = args.port ?? '7717'
   if (!/^[1-9]\d{0,4}$/.test(port) || Number(port) > 65535) throw new Error('--port must be an integer from 1 to 65535')
-  return { root, origins, capabilities, cert, key, pairingFile, port: Number(port), check }
+  const modelEndpoints = normalizeModelEndpoints(args['model-endpoint'])
+  return { root, origins, capabilities, modelEndpoints, cert, key, pairingFile, port: Number(port), check }
 }
 
 /** Explicitly omit inherited provider tokens, pairing tokens and runtime preload flags. */

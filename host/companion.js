@@ -11,12 +11,51 @@ const failure = (message, status = 400, code = 'request.invalid') => Object.assi
 const json = (value, status = 200, headers = {}) => Response.json(value, { status, headers })
 const ignored = new Set(['node_modules', '.git', '.next', '.cache', 'out', 'dist'])
 const mime = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2' }
+const modelRoutes = Object.freeze([['GET', '/models'], ['POST', '/chat/completions'], ['POST', '/messages']])
+const modelHeaders = new Set(['accept', 'content-type', 'authorization', 'x-api-key', 'openai-organization', 'openai-project', 'anthropic-version', 'anthropic-beta', 'anthropic-dangerous-direct-browser-access'])
+
+/** Deliberately narrow URL grammar: no server-dependent decoding or route rewriting. */
+function modelURL(value) {
+  if (typeof value !== 'string' || !/^https?:\/\/[^/?#\s\\]+(?:\/[A-Za-z0-9._~/-]*)?$/.test(value)) throw failure('Model relay URLs must be HTTP(S), without query, fragment, encoded path or backslash.', 403, 'relay.model_scope_denied')
+  const path = /^https?:\/\/[^/]+(\/.*)?$/.exec(value)?.[1] ?? ''
+  if (path.includes('//') || path.split('/').some(part => part === '.' || part === '..')) throw failure('Model relay URLs cannot contain ambiguous or dot-segment paths.', 403, 'relay.model_scope_denied')
+  let url
+  try { url = new URL(value) } catch { throw failure('Model relay URL is invalid.', 403, 'relay.model_scope_denied') }
+  if (url.username || url.password || /^https?:\/\/[^/]*@/.test(value)) throw failure('Model relay URLs cannot contain credentials; use an allowed authentication header.', 403, 'relay.model_scope_denied')
+  return url
+}
+
+export function normalizeModelEndpoints(values = []) {
+  if (!Array.isArray(values) || values.length > 32) throw failure('Configure at most 32 explicit --model-endpoint BASE values.', 400, 'relay.model_scope_invalid')
+  return Object.freeze([...new Set(values.map(value => {
+    const url = modelURL(value)
+    return `${url.origin}${url.pathname.replace(/\/$/, '')}`
+  }))])
+}
+
+function scopedModelRequest(body, endpoints) {
+  if (!endpoints.length) throw failure('Model relay has no endpoint scope. Restart the companion with --model-endpoint http://127.0.0.1:8873/v1 (or your explicit model API base), then reconnect.', 403, 'relay.model_scope_required')
+  const target = modelURL(body.url)
+  const method = typeof (body.method ?? 'GET') === 'string' ? (body.method ?? 'GET').toUpperCase() : ''
+  if (!modelRoutes.some(([verb, suffix]) => method === verb && endpoints.some(base => `${base}${suffix}` === target.href))) throw failure('Model relay permits only GET models and POST chat/completions or messages at a configured --model-endpoint base.', 403, 'relay.model_scope_denied')
+  if (body.headers != null && (typeof body.headers !== 'object' || Array.isArray(body.headers))) throw failure('Model relay headers must be an object of allowed provider headers.', 403, 'relay.model_scope_denied')
+  const headers = new Headers()
+  for (const [name, value] of Object.entries(body.headers ?? {})) {
+    if (!modelHeaders.has(name.toLowerCase()) || typeof value !== 'string' || /[\r\n]/.test(value)) throw failure('Model relay accepts only authentication, content negotiation and supported provider headers; routing and method override headers are forbidden.', 403, 'relay.model_scope_denied')
+    try { headers.set(name, value) } catch { throw failure('Model relay contains an invalid provider header.', 403, 'relay.model_scope_denied') }
+  }
+  if (body.bodyBase64 !== undefined || body.body != null && typeof body.body !== 'string' || method === 'GET' && body.body != null) throw failure('Model relay accepts a text request body only for POST inference.', 403, 'relay.model_scope_denied')
+  if (method === 'POST' && headers.has('content-type') && headers.get('content-type').split(';')[0].trim().toLowerCase() !== 'application/json') throw failure('Model inference requests must use application/json.', 403, 'relay.model_scope_denied')
+  return { target, method, headers }
+}
 
 export async function createCompanion(options = {}) {
   const root = await realpath(options.root ?? process.cwd())
   const token = options.token ?? randomBytes(32).toString('base64url')
   const origins = new Set(options.origins ?? ['https://kaush4l.github.io', 'http://localhost:5187', 'http://127.0.0.1:5187'])
   const capabilities = options.capabilities ?? ['fs', 'exec', 'terminal', 'fetch', 'model-relay', 'network-relay']
+  const modelEndpoints = normalizeModelEndpoints(options.modelEndpoints)
+  const modelRelay = Object.freeze({ version: 1, endpoint: '/model/fetch', endpoints: modelEndpoints, status: modelEndpoints.length ? 'configured' : 'scope-required' })
   const childEnv = options.childEnv === undefined ? process.env : { ...options.childEnv }
   const runtimeId = `local-bun:${crypto.randomUUID()}`
   const jobs = new Map(); const terminals = new Map(); const tickets = new Map(); const locks = new Map()
@@ -93,7 +132,7 @@ export async function createCompanion(options = {}) {
     try {
       if (request.method === 'OPTIONS') return new Response(null, { status: allowed ? 204 : 403, headers })
       if (!allowed) throw failure('This page origin is not allowed', 403, 'bridge.origin')
-      if (path === '/health') return respond({ name: 'askk-companion', version: '2.0.0', runtimeId, capabilities, root, originAllowed: true })
+      if (path === '/health') return respond({ name: 'askk-companion', version: '2.0.0', runtimeId, capabilities, modelRelay, root, originAllowed: true })
       if (path === '/terminals/socket') {
         const ticket = tickets.get(url.searchParams.get('ticket')); tickets.delete(url.searchParams.get('ticket'))
         if (!ticket || ticket.expires < Date.now() || ticket.origin !== origin || !terminals.has(ticket.id)) throw failure('Terminal ticket expired or invalid', 401, 'bridge.auth')
@@ -108,7 +147,7 @@ export async function createCompanion(options = {}) {
       try { body = rawBody ? JSON.parse(rawBody) : {} } catch { throw failure('Invalid JSON body') }
       if (!body || typeof body !== 'object' || Array.isArray(body)) throw failure('Request body must be a JSON object')
       if (body.runtimeId && body.runtimeId !== runtimeId) throw failure('The execution environment restarted or changed. Reconnect and explicitly bind this workspace before continuing.', 409, 'RUNTIME_CHANGED')
-      if (path === '/whoami') return respond({ ok: true, root, runtimeId, capabilities, runtime: 'bun', version: Bun.version })
+      if (path === '/whoami') return respond({ ok: true, root, runtimeId, capabilities, modelRelay, runtime: 'bun', version: Bun.version })
       if (path === '/jobs/run') { server.timeout(request, 0); const response = await command(body, request); for (const [key, value] of Object.entries(headers)) response.headers.set(key, value); return response }
       if (path === '/jobs/cancel') { requireCapability('exec'); const job = jobs.get(body.id); if (job) kill(job); return respond({ ok: Boolean(job) }) }
       if (path.startsWith('/workspace/')) {
@@ -159,21 +198,25 @@ export async function createCompanion(options = {}) {
         return respond({ id, ticket })
       }
       if (path === '/terminals/close') { requireCapability('terminal'); closeTerminal(body.id); return respond({ ok: true }) }
-      if (path === '/fetch' || path === '/network/fetch') {
+      if (path === '/fetch' || path === '/network/fetch' || path === '/model/fetch') {
+        const modelOnly = path === '/model/fetch' || path === '/fetch' && !capabilities.includes('fetch')
         if (path === '/network/fetch') requireCapability('network-relay')
-        else if (!capabilities.includes('fetch')) requireCapability('model-relay')
-        const target = new URL(body.url); if (!['https:', 'http:'].includes(target.protocol)) throw failure('Only HTTP(S) model and network endpoints are supported')
+        else if (modelOnly) requireCapability('model-relay')
+        else requireCapability('fetch')
+        const scoped = modelOnly ? scopedModelRequest(body, modelEndpoints) : null
+        const target = scoped?.target ?? new URL(body.url); if (!['https:', 'http:'].includes(target.protocol)) throw failure('Only HTTP(S) model and network endpoints are supported')
         const controller = new AbortController(); const abort = () => controller.abort(); request.signal.addEventListener('abort', abort, { once: true }); const timer = setTimeout(abort, 600000)
         server.timeout(request, 0)
         try {
           const payload = path === '/network/fetch' && typeof body.bodyBase64 === 'string' ? Buffer.from(body.bodyBase64, 'base64') : body.body ?? undefined
-          const upstream = await fetch(target, { method: body.method ?? 'GET', headers: body.headers ?? {}, body: payload, signal: controller.signal })
+          const upstream = await fetch(target, { method: scoped?.method ?? body.method ?? 'GET', headers: scoped?.headers ?? body.headers ?? {}, body: payload, signal: controller.signal, redirect: modelOnly ? 'manual' : 'follow' })
+          if (modelOnly && upstream.status >= 300 && upstream.status < 400) { await upstream.body?.cancel(); throw failure('The configured model endpoint returned a redirect. Configure its final API base explicitly; model relay never follows redirects.', 502, 'relay.model_redirect') }
           if (!body.stream) { const text = await upstream.text(); clearTimeout(timer); request.signal.removeEventListener('abort', abort); return respond({ status: upstream.status, text, type: upstream.headers.get('content-type') }) }
           const reader = upstream.body?.getReader(); const finish = () => { clearTimeout(timer); request.signal.removeEventListener('abort', abort) }
           const stream = new ReadableStream({ async pull(sink) { try { if (!reader) { finish(); sink.close(); return } const part = await reader.read(); if (part.done) { finish(); sink.close() } else sink.enqueue(part.value) } catch (error) { finish(); sink.error(error) } }, cancel() { abort(); finish(); return reader?.cancel() } })
           const forwarded = Object.fromEntries(['content-type', 'content-range', 'accept-ranges', 'etag', 'last-modified', 'cache-control'].flatMap(name => upstream.headers.has(name) ? [[name, upstream.headers.get(name)]] : []))
           return new Response([204, 205, 304].includes(upstream.status) || body.method === 'HEAD' ? null : stream, { status: upstream.status, headers: { ...forwarded, ...headers, 'content-type': upstream.headers.get('content-type') ?? 'application/octet-stream' } })
-        } catch (error) { clearTimeout(timer); request.signal.removeEventListener('abort', abort); throw failure(controller.signal.aborted ? 'The relay request was cancelled or timed out before an upstream response.' : 'The companion could not reach the upstream model or network endpoint.', controller.signal.aborted ? 504 : 502, controller.signal.aborted ? 'relay.upstream_timeout' : 'relay.upstream_unreachable') }
+        } catch (error) { clearTimeout(timer); request.signal.removeEventListener('abort', abort); if (error.code === 'relay.model_redirect') throw error; throw failure(controller.signal.aborted ? 'The relay request was cancelled or timed out before an upstream response.' : 'The companion could not reach the upstream model or network endpoint.', controller.signal.aborted ? 504 : 502, controller.signal.aborted ? 'relay.upstream_timeout' : 'relay.upstream_unreachable') }
       }
       throw failure('Endpoint not found', 404)
     } catch (error) { return respond({ error: error.message, code: error.code ?? 'companion.error' }, error.status ?? 500) }
@@ -194,8 +237,8 @@ export async function createCompanion(options = {}) {
 }
 
 if (import.meta.main) {
-  const args = {}; for (let i = 2; i < process.argv.length; i++) { const name = process.argv[i].replace(/^--/, ''); if (name === 'allow-origin') (args[name] ??= []).push(process.argv[++i]); else args[name] = process.argv[++i] }
-  const companion = await createCompanion({ root: args.root, port: Number(args.port ?? 7717), cert: args['tls-cert'], key: args['tls-key'], token: process.env.ASKK_PAIRING_TOKEN, origins: args['allow-origin'], capabilities: args.capabilities?.split(',') })
+  const args = {}; for (let i = 2; i < process.argv.length; i++) { const name = process.argv[i].replace(/^--/, ''); if (['allow-origin', 'model-endpoint'].includes(name)) (args[name] ??= []).push(process.argv[++i]); else args[name] = process.argv[++i] }
+  const companion = await createCompanion({ root: args.root, port: Number(args.port ?? 7717), cert: args['tls-cert'], key: args['tls-key'], token: process.env.ASKK_PAIRING_TOKEN, origins: args['allow-origin'], capabilities: args.capabilities?.split(','), modelEndpoints: args['model-endpoint'] })
   console.log(`ASKK companion · ${companion.url}\nProject: ${companion.root}\nPairing token: ${companion.token}`)
   for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, async () => { await companion.close(); process.exit(0) })
 }

@@ -180,3 +180,135 @@ test('model-only pairing never authorizes guest relay or native commands', async
     expect((await call('/workspace/list', {})).status).toBe(403)
   } finally { await companion.close(); await rm(root, { recursive: true, force: true }) }
 })
+
+test('model scope is authenticated, immutable and supports only current provider routes', async () => {
+  const received = []
+  const upstream = Bun.serve({ hostname: '127.0.0.1', port: 0, async fetch(request) { received.push({ method: request.method, path: new URL(request.url).pathname, text: await request.text(), auth: request.headers.get('authorization') }); return new Response('data: model-result\n\ndata: [DONE]\n\n', { headers: { 'content-type': 'text/event-stream' } }) } })
+  const base = `http://127.0.0.1:${upstream.port}/v1`, endpoints = [`${base}/`]
+  try { await fixture(async ({ companion, call }) => {
+    endpoints.push('https://must-not-be-added.example/v1')
+    const descriptor = { version: 1, endpoint: '/model/fetch', endpoints: [base], status: 'configured' }
+    expect((await (await call('/whoami')).json()).modelRelay).toEqual(descriptor)
+    expect((await (await fetch(`${companion.url}/health`)).json()).modelRelay).toEqual(descriptor)
+    for (const [path, method, endpoint] of [['/models', 'GET', '/model/fetch'], ['/chat/completions', 'POST', '/model/fetch'], ['/messages', 'POST', '/fetch']]) {
+      const response = await call(endpoint, { url: `${base}${path}`, method, stream: true, headers: { authorization: 'Bearer fixture-only', 'content-type': 'application/json' }, ...(method === 'POST' ? { body: '{"model":"fixture","messages":[]}' } : {}) })
+      expect(response.status).toBe(200)
+      expect(response.headers.get('content-type')).toBe('text/event-stream')
+      expect(await response.text()).toBe('data: model-result\n\ndata: [DONE]\n\n')
+    }
+    expect(received.map(row => [row.method, row.path])).toEqual([['GET', '/v1/models'], ['POST', '/v1/chat/completions'], ['POST', '/v1/messages']])
+    expect(received.every(row => row.auth === 'Bearer fixture-only')).toBe(true)
+    expect(received[1].text).toBe('{"model":"fixture","messages":[]}')
+  }, { capabilities: ['model-relay'], modelEndpoints: endpoints }) } finally { upstream.stop(true) }
+})
+
+test('missing model scope fails closed with recovery instructions for new and legacy routes', async () => fixture(async ({ call }) => {
+  expect((await (await call('/whoami')).json()).modelRelay).toEqual({ version: 1, endpoint: '/model/fetch', endpoints: [], status: 'scope-required' })
+  for (const path of ['/fetch', '/model/fetch']) {
+    const response = await call(path, { url: 'http://127.0.0.1:8873/v1/models' })
+    expect(response.status).toBe(403)
+    const error = await response.json()
+    expect(error.code).toBe('relay.model_scope_required')
+    expect(error.error).toContain('--model-endpoint')
+    expect(error.error).toContain('reconnect')
+  }
+}, { capabilities: ['model-relay'] }))
+
+test('scoped inference streams incrementally and cancellation reaches its upstream', async () => {
+  let second, cancelled = false
+  const encoder = new TextEncoder()
+  const upstream = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch(request) {
+    request.signal.addEventListener('abort', () => { cancelled = true }, { once: true })
+    return new Response(new ReadableStream({ start(controller) { controller.enqueue(encoder.encode('data: first\n\n')); second = () => controller.enqueue(encoder.encode('data: second\n\n')) }, cancel() { cancelled = true } }), { headers: { 'content-type': 'text/event-stream' } })
+  } })
+  const base = `http://127.0.0.1:${upstream.port}/v1`
+  try { await fixture(async ({ call }) => {
+    const response = await call('/model/fetch', { url: `${base}/chat/completions`, method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"model":"fixture","messages":[]}', stream: true })
+    expect(response.status).toBe(200)
+    const reader = response.body.getReader(), decoder = new TextDecoder()
+    expect(decoder.decode((await reader.read()).value)).toBe('data: first\n\n')
+    second()
+    expect(decoder.decode((await reader.read()).value)).toBe('data: second\n\n')
+    await reader.cancel()
+    await until(() => cancelled, 2000)
+    expect(cancelled).toBe(true)
+  }, { capabilities: ['model-relay'], modelEndpoints: [base] }) } finally { upstream.stop(true) }
+})
+
+test('model scope refuses destination, method, path and header bypasses before contacting upstream', async () => {
+  let requests = 0
+  const upstream = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch() { requests++; return new Response('must not be requested') } })
+  const origin = `http://127.0.0.1:${upstream.port}`, base = `${origin}/v1`
+  const denied = [
+    { url: `${origin}/v10/models` }, { url: `${base}/admin` }, { url: `${base}/models/delete`, method: 'POST' },
+    { url: `${base}/models`, method: 'POST' }, { url: `${base}/chat/completions`, method: 'GET' },
+    { url: `${base}/models`, method: 'DELETE' }, { url: `${base}/models`, method: 'HEAD' }, { url: `${base}/models`, method: false },
+    { url: `${base}/models?method=DELETE` }, { url: `${base}/models#ignored` },
+    { url: `${base}/../v1/models` }, { url: `${base}/%2e%2e/v1/models` }, { url: `${base}/%252e%252e/v1/models` },
+    { url: `${base}/%6dodels` }, { url: `${base}%2fmodels` }, { url: `${base}/models%3fignored` }, { url: `${base}//models` },
+    { url: `${base}\\models` }, { url: `${base}/models;other=admin` },
+    { url: `http://fixture:secret@127.0.0.1:${upstream.port}/v1/models` }, { url: `http://localhost:${upstream.port}/v1/models` },
+    { url: `${base}/models`, headers: { Host: 'other.example' } },
+    { url: `${base}/models`, headers: { 'X-HTTP-Method-Override': 'DELETE' } },
+    { url: `${base}/models`, headers: { 'X-Original-URL': '/admin' } },
+    { url: `${base}/models`, headers: { 'X-Forwarded-Host': 'other.example' } },
+    { url: `${base}/models`, headers: { authorization: 'fixture\r\nX-Method: DELETE' } },
+    { url: `${base}/models`, headers: [['authorization', 'fixture']] },
+    { url: `${base}/models`, body: '{}' }, { url: `${base}/models`, bodyBase64: 'e30=' },
+    { url: `${base}/chat/completions`, method: 'POST', body: '{}', headers: { 'content-type': 'text/plain' } },
+  ]
+  try { await fixture(async ({ call }) => {
+    for (const endpoint of ['/model/fetch', '/fetch']) for (const body of denied) {
+      const response = await call(endpoint, body)
+      expect(response.status).toBe(403)
+      expect((await response.json()).code).toBe('relay.model_scope_denied')
+    }
+    expect(requests).toBe(0)
+  }, { capabilities: ['model-relay'], modelEndpoints: [base] }) } finally { upstream.stop(true) }
+})
+
+test('model relay never follows redirects, including another otherwise allowed model route', async () => {
+  let externalRequests = 0, modelRequests = 0, location, status = 307
+  const outside = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch() { externalRequests++; return new Response('forbidden target') } })
+  const upstream = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch() { modelRequests++; return new Response(null, { status, headers: { location } }) } })
+  const base = `http://127.0.0.1:${upstream.port}/v1`
+  try { await fixture(async ({ call }) => {
+    for (const target of [`http://127.0.0.1:${outside.port}/private`, '/admin', `${base}/chat/completions`]) {
+      location = target
+      for (const code of [301, 302, 303, 307, 308]) {
+        status = code
+        const response = await call('/model/fetch', { url: `${base}/models`, stream: true })
+        expect(response.status).toBe(502)
+        expect((await response.json()).code).toBe('relay.model_redirect')
+      }
+    }
+    expect(modelRequests).toBe(15)
+    expect(externalRequests).toBe(0)
+  }, { capabilities: ['model-relay'], modelEndpoints: [base] }) } finally { upstream.stop(true); outside.stop(true) }
+})
+
+test('generic fetching and guest networking stay independent from scoped model inference', async () => {
+  const upstream = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: request => new Response(`${request.method} ${new URL(request.url).pathname}`) })
+  const base = `http://127.0.0.1:${upstream.port}/v1`
+  try {
+    await fixture(async ({ call }) => {
+      const general = await call('/fetch', { url: `${base}/admin`, method: 'DELETE' })
+      expect((await general.json()).text).toBe('DELETE /v1/admin')
+      expect((await call('/model/fetch', { url: `${base}/admin`, method: 'DELETE' })).status).toBe(403)
+      expect((await call('/network/fetch', { url: `${base}/models` })).status).toBe(403)
+    }, { capabilities: ['model-relay', 'fetch'], modelEndpoints: [base] })
+    await fixture(async ({ call }) => {
+      expect((await call('/fetch', { url: `${base}/models` })).status).toBe(200)
+      expect((await (await call('/model/fetch', { url: `${base}/models` })).json()).code).toBe('relay.model_scope_required')
+    }, { capabilities: ['model-relay', 'fetch'] })
+    await fixture(async ({ call }) => {
+      expect((await call('/fetch', { url: `${base}/models` })).status).toBe(200)
+      expect((await (await call('/model/fetch', { url: `${base}/models` })).json()).code).toBe('capability.unavailable')
+    }, { capabilities: ['fetch'], modelEndpoints: [base] })
+    await fixture(async ({ call }) => {
+      expect((await call('/network/fetch', { url: `${base}/unrelated` })).status).toBe(200)
+      expect((await call('/fetch', { url: `${base}/models` })).status).toBe(403)
+      expect((await call('/model/fetch', { url: `${base}/models` })).status).toBe(403)
+    }, { capabilities: ['network-relay'], modelEndpoints: [base] })
+  } finally { upstream.stop(true) }
+})

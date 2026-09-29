@@ -35,6 +35,12 @@ test('launcher requires explicit validated grants, exact origins and external cr
   expect(() => parseBuildOptions(['--tls-key', '/do-not-package'])).toThrow()
 })
 
+test('launcher parses explicit model endpoint scopes without inventing a missing scope', () => {
+  expect(parseLaunchOptions(args).modelEndpoints).toEqual([])
+  expect(parseLaunchOptions([...args, '--model-endpoint', 'http://127.0.0.1:8873/v1/', '--model-endpoint', 'https://api.example/v1']).modelEndpoints).toEqual(['http://127.0.0.1:8873/v1', 'https://api.example/v1'])
+  for (const endpoint of ['file:///model', 'https://owner:secret@example.com/v1', 'https://api.example/v1?token=private', 'https://api.example/v1#fragment', 'https://api.example/v1/../admin', 'https://api.example/%76%31', 'https://api.example/v1//other']) expect(() => parseLaunchOptions([...args, '--model-endpoint', endpoint])).toThrow()
+})
+
 test('child environment owns command lookup without inherited secrets or preload/profile hooks', () => {
   const env = childEnvironment('/moved package', { PATH: '/malicious', HOME: '/owner', LANG: 'en_US.UTF-8', OPENAI_API_KEY: 'private', ASKK_PAIRING_TOKEN: 'private', NODE_OPTIONS: '--require /x', BUN_OPTIONS: '--preload /x', ENV: '/profile', BASH_ENV: '/profile' })
   expect(env).toEqual({ PATH: '/moved package/bin:/usr/bin:/bin:/usr/sbin:/sbin', HOME: '/owner', LANG: 'en_US.UTF-8' })
@@ -80,11 +86,11 @@ test('check-only and mocked lifecycle keep credentials private and preserve expl
   await mkdir(root); await mkdir(privateDir, { mode: 0o700 })
   const cert = join(privateDir, 'cert.pem'), key = join(privateDir, 'key.pem'), pairingFile = join(privateDir, 'pairing.json')
   await writeFile(cert, 'fixture certificate'); await writeFile(key, 'fixture key', { mode: 0o600 })
-  const options = { ...parseLaunchOptions(args), root, cert, key, pairingFile }
+  const options = { ...parseLaunchOptions([...args, '--model-endpoint', 'http://127.0.0.1:8873/v1']), root, cert, key, pairingFile }
   const canonicalOutput = await realpath(output)
   let calls = 0, closed = 0
-  const create = async value => { calls++; expect(value).toMatchObject({ capabilities: ['model-relay', 'network-relay'], shell: '/bin/sh', shellArgs: [] }); expect(value.childEnv.PATH).toBe(`${canonicalOutput}/bin:/usr/bin:/bin:/usr/sbin:/sbin`); return { token: 'PRIVATE_FIXTURE_TOKEN', url: 'https://127.0.0.1:7717', root, close: async () => { closed++ } } }
-  expect((await launch({ ...options, check: true }, { packageRoot: output, create })).checked).toBe(true)
+  const create = async value => { calls++; expect(value).toMatchObject({ capabilities: ['model-relay', 'network-relay'], modelEndpoints: ['http://127.0.0.1:8873/v1'], shell: '/bin/sh', shellArgs: [] }); expect(value.childEnv.PATH).toBe(`${canonicalOutput}/bin:/usr/bin:/bin:/usr/sbin:/sbin`); return { token: 'PRIVATE_FIXTURE_TOKEN', url: 'https://127.0.0.1:7717', root, close: async () => { closed++ } } }
+  expect(await launch({ ...options, check: true }, { packageRoot: output, create })).toMatchObject({ checked: true, modelEndpoints: ['http://127.0.0.1:8873/v1'] })
   expect(calls).toBe(0)
   expect(await lstat(pairingFile).catch(() => null)).toBeNull()
   const running = await launch(options, { packageRoot: output, create })
