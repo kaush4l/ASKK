@@ -23,7 +23,7 @@ import { toolActivity } from './tool-activity.js'
  */
 
 import { tokens } from './inference.js'
-import { CompactReAct, ReAct, responseModel } from './responses.js'
+import { CompactReAct, SingleReAct, ReAct, responseModel } from './responses.js'
 import { runToolResult } from './tools.js'
 import { snapshot } from './prompt.js'
 import { buildAgentPrompt } from './agent-prompt.js'
@@ -45,9 +45,9 @@ export class Engine {
     this.learned = options.learned ?? '' // what experience taught this agent, accepted by the owner
     this.llm = options.llm // async () → inference, resolved per step so a model change reaches the next step
     this.contractVersion = options.contractVersion ?? 1
-    if (![1, 2].includes(this.contractVersion)) throw new Error(`unsupported contract version: ${this.contractVersion}`)
-    if (this.contractVersion === 2 && options.responseFormat && options.responseFormat !== 'json') throw new Error('contract version 2 requires JSON')
-    this.response = responseModel(options.shape ?? (this.contractVersion === 2 ? CompactReAct : ReAct), options.responseFormat ?? (this.contractVersion === 2 ? 'json' : 'toon'))
+    if (![1, 2, 3].includes(this.contractVersion)) throw new Error(`unsupported contract version: ${this.contractVersion}`)
+    if (this.contractVersion >= 2 && options.responseFormat && options.responseFormat !== 'json') throw new Error(`contract version ${this.contractVersion} requires JSON`)
+    this.response = responseModel(options.shape ?? (this.contractVersion === 3 ? SingleReAct : this.contractVersion === 2 ? CompactReAct : ReAct), options.responseFormat ?? (this.contractVersion >= 2 ? 'json' : 'toon'))
     this.observationFormat = options.observationFormat ?? 'legacy'
     if (!['legacy', 'compact'].includes(this.observationFormat)) throw new Error(`unsupported observation format: ${this.observationFormat}`)
     this.promptTemplate = options.promptTemplate
@@ -244,7 +244,7 @@ export class Engine {
       for (const [name, value] of Object.entries(fields)) {
         if (shown.has(name)) continue
         shown.add(name)
-        this.emit('field', name, Array.isArray(value) ? (value.some((item) => typeof item === 'object') ? JSON.stringify(value, null, 2) : value.join('\n')) : String(value))
+        this.emit('field', name, Array.isArray(value) ? (value.some((item) => typeof item === 'object') ? JSON.stringify(value, null, 2) : value.join('\n')) : value && typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value))
       }
     }
     for await (const delta of llm.stream(messages, {
@@ -380,7 +380,7 @@ export class Engine {
         }
 
         const answer = this.response.answer(value)
-        const assistantContent = this.contractVersion === 2
+        const assistantContent = this.contractVersion === 3 ? JSON.stringify(value) : this.contractVersion === 2
           ? JSON.stringify({ do: value.do, act: value.do === 'tool' ? this.response.calls(value).map((stage) => stage.map(({ name, args }) => ({ name, args }))) : value.act })
           : answer || (typeof value.act === 'string' ? value.act : JSON.stringify(value.act)) || ''
         this.remember({ role: 'assistant', content: assistantContent })

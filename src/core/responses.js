@@ -75,6 +75,23 @@ export const CompactReAct = {
   recovered: ReAct.recovered,
 }
 
+/** One action per decision; normalized to the same validated dispatcher stages. */
+export const SingleReAct = {
+  ...CompactReAct,
+  name: 'SingleReActResponse',
+  version: 3,
+  fields: [ReAct.fields[2], { name: 'act', kind: 'call or text', description: 'With do="tool", exactly one {"name":"tool_name","args":{}} object. Wait for its result before choosing the next action. With do="done", a non-empty final answer string.' }],
+  validate(value) {
+    const faults = []
+    if (!['tool', 'done'].includes(value.do)) faults.push('do: expected exactly "tool" or "done"')
+    if (Object.keys(value).some(key => !['do', 'act'].includes(key))) faults.push('reply: version 3 permits only do and act')
+    if (value.do === 'tool') faults.push(...structuredStages([[value.act]]).faults)
+    else if (value.do === 'done' && (typeof value.act !== 'string' || !value.act.trim())) faults.push('act: expected a non-empty final answer string')
+    return faults
+  },
+  calls: value => value.do === 'tool' ? structuredStages([[value.act]]).stages : [],
+}
+
 /** The response, speaking one format. */
 export function responseModel(shape = ReAct, format = 'toon') {
   const names = new Set(shape.fields.map((field) => field.name))
@@ -93,7 +110,7 @@ export function responseModel(shape = ReAct, format = 'toon') {
     const lines = fields.map((field) => `- ${field.name} (${field.kind}): ${field.description}`)
     if (format === 'json') {
       if (finalOnly) return `## RESPONSE FORMAT\n\nContract version ${shape.version ?? 1}. Reply with a single JSON object, no markdown fences, with these fields:\n\n${lines.join('\n')}\n\nFinal example: {"do":"done","act":"The result and any unfinished work."}\n`
-      const act = shape.version === 2 ? [[{ name, args }]] : `[[${name}(${JSON.stringify(args)})]]`
+      const act = shape.version === 3 ? { name, args } : shape.version === 2 ? [[{ name, args }]] : `[[${name}(${JSON.stringify(args)})]]`
       return `## RESPONSE FORMAT\n\nContract version ${shape.version ?? 1}. Reply with a single JSON object, no markdown fences, with these fields:\n\n${lines.join('\n')}\n\n${exampleTool ? `Tool example: ${JSON.stringify({ do: 'tool', act })}\n` : ''}Final example: {"do":"done","act":"The verified result."}\n`
     }
     const example = fields.map((field) => `${field.name}: ${field.name === 'act' ? toolExample || 'The result and any unfinished work.' : field.name === 'do' ? exampleTool ? 'tool' : 'done' : field.example ?? sample(field)}`)
@@ -130,7 +147,7 @@ export function responseModel(shape = ReAct, format = 'toon') {
 
   const json = (text) => {
     let source = String(text)
-    if (shape.version !== 2) {
+    if ((shape.version ?? 1) < 2) {
       const start = source.indexOf('{')
       const end = source.lastIndexOf('}')
       if (start === -1 || end <= start) return { value: null, faults: [] }
@@ -150,7 +167,7 @@ export function responseModel(shape = ReAct, format = 'toon') {
   }
 
   const read = (text) => {
-    if (format === 'json') return json(text).value ?? (shape.version === 2 ? {} : toon(text))
+    if (format === 'json') return json(text).value ?? ((shape.version ?? 1) >= 2 ? {} : toon(text))
     const found = toon(text)
     return Object.keys(found).length ? found : (json(text).value ?? {})
   }
@@ -162,7 +179,7 @@ export function responseModel(shape = ReAct, format = 'toon') {
 
     /** The whole reply, validated: `{ value, faults }`. Faults are what the repair shows the model. */
     parse(text) {
-      if (format === 'json' && shape.version === 2) {
+      if (format === 'json' && (shape.version ?? 1) >= 2) {
         const parsed = json(text)
         if (parsed.faults.length) return { value: {}, faults: parsed.faults }
         return { value: parsed.value, faults: shape.validate(parsed.value) }
