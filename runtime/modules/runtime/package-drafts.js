@@ -1,6 +1,6 @@
 /** Browser-owned text folders. Invalid authored content is durable; only reviewed
  * snapshots pass to the existing package validator and installation compiler. */
-import { PACKAGE_LIMITS, PACKAGE_LOCK } from '../core/agent-package.js'
+import { draftLabel as labelOf, draftFiles as filesOf, encodeDraftBackup, decodeDraftBackup } from '../core/draft-backup.js'
 import { snapshot } from '../core/prompt.js'
 
 const KEY = 'package-drafts:v1'
@@ -14,29 +14,6 @@ const encoder = new TextEncoder()
 const fail = (code, message) => { throw Object.assign(new Error(message), { code }) }
 const plain = value => Boolean(value && typeof value === 'object' && !Array.isArray(value) && [Object.prototype, null].includes(Object.getPrototypeOf(value)))
 const only = (value, keys) => Object.keys(value).every(key => keys.includes(key))
-const labelOf = value => {
-  if (typeof value !== 'string' || value.length > 200) fail('DRAFT_LABEL', 'A draft name must be text of at most 200 characters.')
-  return value
-}
-function filesOf(files) {
-  if (!Array.isArray(files) || files.length > PACKAGE_LIMITS.maxFiles) fail('DRAFT_LIMIT', 'The draft has too many files.')
-  let bytes = 0
-  const paths = new Set()
-  return Array.from(files, file => {
-    if (!plain(file) || !only(file, ['path', 'content'])) fail('DRAFT_TEXT', 'Draft files must be plain path and text records.')
-    const path = file?.path
-    if (typeof path !== 'string' || !path || path.length > 1024 || path !== path.normalize('NFC') || /[\\:%\u0000-\u001f\u007f]/.test(path) || path.split('/').length > 32 || path.split('/').some(part => !part || part === '.' || part === '..' || part.trim() !== part || part.endsWith('.'))) fail('DRAFT_PATH', 'Draft files require safe relative paths.')
-    const alias = path.toLowerCase()
-    if (paths.has(alias)) fail('DRAFT_PATH', `Duplicate draft path: ${path}`)
-    paths.add(alias)
-    if (alias === PACKAGE_LOCK || alias.endsWith(`/${PACKAGE_LOCK}`)) fail('DRAFT_LOCK', 'askk.lock.json is generated when validating a draft; remove it from editable files.')
-    if (typeof file.content !== 'string') fail('DRAFT_TEXT', `Draft file ${path} must contain text.`)
-    if (file.content.length > PACKAGE_LIMITS.maxFileBytes) fail('DRAFT_LIMIT', `Draft file ${path} exceeds the byte limit.`)
-    const size = encoder.encode(file.content).length
-    if (size > PACKAGE_LIMITS.maxFileBytes || (bytes += size) > PACKAGE_LIMITS.maxExpandedBytes) fail('DRAFT_LIMIT', 'Draft file bytes exceed the package limit.')
-    return { path, content: file.content }
-  })
-}
 const bytesOf = record => record.files.reduce((sum, file) => sum + encoder.encode(file.content).length, 0)
 function envelope(row) {
   if (row == null) return { version: 1, records: [] }
@@ -65,6 +42,14 @@ export class PackageDrafts {
     return snapshot(saved.records.map(({ files, ...record }) => ({ ...record, fileCount: files.length, bytes: bytesOf({ files }) })))
   }
   async read(id) { return snapshot(locate(envelope(await this.hub.store.get('settings', KEY)), id)) }
+  async exportBackup(id, { expectedVersion } = {}) {
+    return this.ordered(async () => {
+      const draft = await this.read(id)
+      if (draft.version !== expectedVersion) fail('DRAFT_CONFLICT', 'This draft changed since it was opened. Reload the saved draft before exporting again.')
+      return encodeDraftBackup(draft)
+    })
+  }
+  async importBackup(text) { return this.create(decodeDraftBackup(text)) }
   async create({ label = 'Untitled agent', files = [] } = {}) {
     const record = { id: crypto.randomUUID(), label: labelOf(label), files: filesOf(files), version: 1, createdAt: Date.now(), updatedAt: Date.now() }
     return this.ordered(async () => {

@@ -8,6 +8,7 @@ import { openaiBase, anthropicBase } from '../core/inference.js'
 import { hasModelRelay } from '../core/model-relay.js'
 import { normalizeCompletion, LEGACY_ARTIFACT_COMPLETION } from '../core/completion.js'
 import { renderPackageTemplate } from '../core/package-template.js'
+import { copyAgentSource } from '../runtime/package-source.js'
 import { createWorkspaceBinding, assertWorkspaceBinding, assertWorkspacePort, assertExecutionPort, createArtifactManifest, assertArtifactManifest, createBoundRunSnapshot } from './contracts.js'
 
 const active = status => ['thinking', 'calling', 'waiting', 'compacting', 'running', 'starting', 'cancelling', 'verifying'].includes(status)
@@ -592,6 +593,20 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
     async listAgentDrafts() {
       await controller.start(); requirePageActive()
       return hub.packageDrafts.list()
+    },
+    async customizeAgentPackage(path) {
+      await controller.start(); requirePageActive()
+      const source = await copyAgentSource(hub, path)
+      requirePageActive()
+      return hub.packageDrafts.create(source)
+    },
+    async exportAgentDraft(draftId, options) {
+      await controller.start(); requirePageActive()
+      return hub.packageDrafts.exportBackup(draftId, options)
+    },
+    async restoreAgentDraft(text) {
+      await controller.start(); requirePageActive()
+      return hub.packageDrafts.importBackup(text)
     },
     async readAgentDraft(draftId) {
       await controller.start(); requirePageActive()
