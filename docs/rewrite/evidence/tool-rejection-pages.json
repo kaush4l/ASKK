@@ -1,0 +1,54 @@
+{
+  "source": "e8b4043e",
+  "deployment": "47d485c44ff79b534d1e30b208f1e7441f97262b",
+  "workflow": "https://github.com/kaush4l/ASKK/actions/runs/36566388370",
+  "workflowConclusion": "success",
+  "checks": [
+    {
+      "path": "index.html",
+      "status": 200,
+      "sha256": "6579cefeca03ff7a778771f28016d4c2ea2b61882dfb03869b7b124d2011f65d",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/core/tools.js",
+      "status": 200,
+      "sha256": "6be9dc84631ac2d00e2ac22c316c3d98d1e4b31d63f6e863086d823435be7d4e",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/core/engine.js",
+      "status": 200,
+      "sha256": "dee6706d8dc076270a9b386e57e146dd858485cf96fffe65d71265612efc17e1",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/workspace/controller.js",
+      "status": 200,
+      "sha256": "198d1f9cceb7533cb49bec7d4f8db3f3a23c087902542d9de967ba49497ffc09",
+      "matches": true
+    },
+    {
+      "path": "_next/static/chunks/app/page-738ae725a8361924.js",
+      "status": 200,
+      "sha256": "0b545fd0b3bc70a35292664cf76a77740c960385f2397484ff274c1168b5e90c",
+      "matches": true
+    }
+  ],
+  "scope": "HTTP asset verification only. Invalid tool input now appears as Not run in live and recorded projections. Component/controller/core and persistence tests cover the distinction; no new live browser interaction, hosted inference, Safari/iPhone or Browser Linux acceptance. Six local model trials: one script pass, no full scaffold/repair gate pass. Model defaults unchanged.",
+  "tests": {
+    "passed": 906,
+    "skipped": 1,
+    "failed": 0,
+    "assertions": 6722,
+    "files": 89
+  },
+  "export": {
+    "version": 1,
+    "basePath": "/ASKK",
+    "totalBytes": 854223300,
+    "fileCount": 211,
+    "runtimeId": "c2w-node24-38d093f4a38002db",
+    "artifactHash": "73078d429470a1aedd92748435e4fed23482c3fd8153c775e0406535ba97e087"
+  }
+}
