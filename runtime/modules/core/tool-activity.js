@@ -13,6 +13,8 @@ export function normalizeToolActivity(value, { ok } = {}) {
       if (key !== 'commandId' && !ok) continue
       if ((key === 'path' ? path : identifier)(descriptor.value)) result[key] = descriptor.value
     }
+    const comparison = Object.getOwnPropertyDescriptor(value, 'contentChangedFromRead')
+    if (ok && result.path && comparison && Object.hasOwn(comparison, 'value') && typeof comparison.value === 'boolean') result.contentChangedFromRead = comparison.value
     return result
   } catch { return {} }
 }

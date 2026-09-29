@@ -132,7 +132,7 @@ const receiptActivity = mode => ({ text: raw, ok, name, args }) => {
     return { commandId: receipt.id }
   }
   if (!ok) return {}
-  if (mode === 'write') return receipt.ok === true && !receipt.conflict && (text(receipt.rev) || Number.isSafeInteger(receipt.rev) && receipt.rev > 0) ? { path: args.path } : {}
+  if (mode === 'write') return receipt.ok === true && !receipt.conflict && (text(receipt.rev) || Number.isSafeInteger(receipt.rev) && receipt.rev > 0) ? { path: args.path, ...(typeof receipt.contentChangedFromRead === 'boolean' ? { contentChangedFromRead: receipt.contentChangedFromRead } : {}) } : {}
   if (mode === 'read') return typeof receipt.content === 'string' && receipt.rev !== undefined ? { path: args.path } : {}
   if (mode === 'check') return !invalidCheck(receipt, args.assertions) && receipt.ok ? { artifactId: receipt.artifactId } : {}
   if (mode === 'build') {
