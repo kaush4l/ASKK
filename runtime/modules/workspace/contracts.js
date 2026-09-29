@@ -198,7 +198,7 @@ export function assertArtifactManifest(input, { binding, sourceRevision, sourceF
 export function assertPromptSnapshot(input) {
   record(input, 'PromptSnapshot'); jsonData(input); string(input.attemptId, 'prompt.attemptId'); string(input.model, 'prompt.model')
   integer(input.step, 'prompt.step'); integer(input.attempt, 'prompt.attempt', 1)
-  if (![1, 2].includes(input.contractVersion)) fail('UNSUPPORTED_CONTRACT_VERSION', 'Unsupported prompt response contractVersion')
+  if (![1, 2, 3].includes(input.contractVersion)) fail('UNSUPPORTED_CONTRACT_VERSION', 'Unsupported prompt response contractVersion')
   if (!Array.isArray(input.messages) || !input.messages.length) fail('INVALID_CONTRACT', 'prompt.messages must be a nonempty array')
   for (const message of input.messages) {
     record(message, 'prompt message')

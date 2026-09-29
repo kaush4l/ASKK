@@ -143,10 +143,10 @@ export async function readSpec(path, { index, load }) {
     else if (!WIRING.includes(key)) notes.push(`unknown key "${key}" ignored`)
   }
   validateLoopBudget(engine, { prefix: `${path}.` })
-  if (engine.contractVersion != null && ![1, 2].includes(engine.contractVersion)) throw new Error(`unsupported contract_version: ${engine.contractVersion}`)
+  if (engine.contractVersion != null && ![1, 2, 3].includes(engine.contractVersion)) throw new Error(`unsupported contract_version: ${engine.contractVersion}`)
   if (engine.observationFormat != null && !['legacy', 'compact'].includes(engine.observationFormat)) throw new Error(`unsupported observation_format: ${engine.observationFormat}`)
-  if (engine.contractVersion === 2) {
-    if (engine.responseFormat && engine.responseFormat !== 'json') throw new Error('contract_version 2 requires response_format: json')
+  if (engine.contractVersion >= 2) {
+    if (engine.responseFormat && engine.responseFormat !== 'json') throw new Error(`contract_version ${engine.contractVersion} requires response_format: json`)
     engine.responseFormat = 'json'
   }
   if (typeof engine.promptTemplate === 'string') {

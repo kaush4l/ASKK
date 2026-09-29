@@ -209,9 +209,9 @@ function validateSettings(settings, path, root) {
   if (settings.temperature !== undefined && (typeof settings.temperature !== 'number' || !Number.isFinite(settings.temperature) || settings.temperature < 0 || settings.temperature > 2)) fail('PACKAGE_SCHEMA', `${path}.temperature is invalid`)
   if (settings.compact_at !== undefined && (typeof settings.compact_at !== 'number' || settings.compact_at <= 0 || settings.compact_at > 1)) fail('PACKAGE_SCHEMA', `${path}.compact_at is invalid`)
   if (settings.session !== undefined && !['agent', 'task'].includes(settings.session)) fail('PACKAGE_SCHEMA', `${path}.session must be agent or task`)
-  if (settings.contract_version !== undefined && ![1, 2].includes(settings.contract_version)) fail('PACKAGE_SCHEMA', `${path} has an unsupported response contract`)
+  if (settings.contract_version !== undefined && ![1, 2, 3].includes(settings.contract_version)) fail('PACKAGE_SCHEMA', `${path} has an unsupported response contract`)
   if (settings.response_format !== undefined && !['json', 'toon'].includes(settings.response_format)) fail('PACKAGE_SCHEMA', `${path} has an unsupported response format`)
-  if ((settings.contract_version ?? 2) === 2 && settings.response_format !== undefined && settings.response_format !== 'json') fail('PACKAGE_SCHEMA', `${path} contract version 2 requires json`)
+  if ((settings.contract_version ?? 2) >= 2 && settings.response_format !== undefined && settings.response_format !== 'json') fail('PACKAGE_SCHEMA', `${path} contract version ${settings.contract_version ?? 2} requires json`)
   if (settings.observation_format !== undefined && !['legacy', 'compact'].includes(settings.observation_format)) fail('PACKAGE_SCHEMA', `${path} has an unsupported observation format`)
   if (settings.tools !== undefined) stringList(settings.tools, `${path}.tools`)
   if (settings.context !== undefined && !plain(settings.context)) stringList(settings.context, `${path}.context`)
@@ -276,7 +276,7 @@ export async function importAgentPackage(records, { limits: requestedLimits } = 
   const agents = agentPaths.map(path => {
     const { settings, body } = definition(bytesByPath.get(path), path)
     validateSettings(settings, path, path === 'agent.md')
-    return { id: settings.id, path, settings, body, contractVersion: settings.contract_version ?? 2, responseFormat: settings.response_format ?? ((settings.contract_version ?? 2) === 2 ? 'json' : 'toon'), references: [], delegates: {}, notes: Object.keys(settings).filter(key => !KNOWN.has(key)).map(key => `Uninterpreted frontmatter preserved: ${key}`) }
+    return { id: settings.id, path, settings, body, contractVersion: settings.contract_version ?? 2, responseFormat: settings.response_format ?? ((settings.contract_version ?? 2) >= 2 ? 'json' : 'toon'), references: [], delegates: {}, notes: Object.keys(settings).filter(key => !KNOWN.has(key)).map(key => `Uninterpreted frontmatter preserved: ${key}`) }
   })
   const root = agents.find(agent => agent.path === 'agent.md')
   const packageId = root.settings.package_id, packageVersion = root.settings.package_version
