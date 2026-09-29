@@ -215,3 +215,17 @@ test('a client older than the stored schema cannot open an empty replacement wor
   try { await expect(openStore('newer-schema-fixture')).rejects.toMatchObject({ name: 'VersionError' }) }
   finally { globalThis.indexedDB = original }
 })
+
+test('retention protects completed siblings of an active strategy and evicts completed traces together', async () => {
+  const hub = new Hub(); hub.store = await openStore(`strategy-retention-${crypto.randomUUID()}`)
+  for (const record of [
+    { id: 'root', trace: 'graph', at: 1, slot: { status: 'running' } },
+    { id: 'child', trace: 'graph', at: 2, slot: { status: 'done' } },
+    { id: 'old-root', trace: 'old-graph', at: 3, slot: { status: 'done' } },
+    { id: 'old-child', trace: 'old-graph', at: 4, slot: { status: 'done' } },
+  ]) await hub.store.put('runs', record)
+  for (let index = 0; index < 198; index++) await hub.store.put('runs', { id: `keep-${index}`, at: index + 10, slot: { status: 'done' } })
+  await hub.retainRuns()
+  expect(await hub.store.get('runs', 'root')).toBeDefined(); expect(await hub.store.get('runs', 'child')).toBeDefined()
+  expect(await hub.store.get('runs', 'old-root')).toBeUndefined(); expect(await hub.store.get('runs', 'old-child')).toBeUndefined()
+})

@@ -131,7 +131,7 @@ async function fixture({ seed = source, localSeed = {}, inspectArtifact, createE
   return { controller, files, browser, local }
 }
 
-async function startedFixture({ restoredBridge = false, modelProfile = {}, workbenchConfig = {}, createCompanion, createExecution, sharedStore, inspectArtifact } = {}) {
+async function startedFixture({ restoredBridge = false, modelProfile = {}, workbenchConfig = {}, createCompanion, createExecution, sharedStore, inspectArtifact, configureHub } = {}) {
   const saved = new Map(['fetch', 'location', 'localStorage', 'isSecureContext'].map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]))
   cleanups.push(() => { for (const [key, descriptor] of saved) { if (descriptor) Object.defineProperty(globalThis, key, descriptor); else delete globalThis[key] } })
   const settings = new Map()
@@ -166,6 +166,7 @@ async function startedFixture({ restoredBridge = false, modelProfile = {}, workb
   // Keep the real ProjectFiles transaction store supplied by the fixture.
   row.files.start = async () => row.files
   hub.store = row.files.store
+  configureHub?.(hub)
   await row.controller.start()
   return { ...row, hub }
 }
@@ -1421,4 +1422,66 @@ test('explicit direct model transport escapes a disconnected relay and works ind
   expect(hub.runs.get(runId).agent).toBe('assistant')
   expect(hub.runs.get(runId).context.binding).toBeUndefined()
   expect(controller.getSnapshot().runtime.status).toBe('unresponsive')
+})
+
+const roleDefinition = { version: 1, id: 'review', kind: 'graph', nodes: [{ id: 'answer', agent: 'assistant', dependsOn: [], template: '{{goal}}', inputs: { goal: { from: 'goal', maxChars: 12000 } } }], output: 'answer', limits: { maxParallel: 1, maxWallMs: 10000 } }
+const roleWorkflow = { defaultWorkflow: 'review', workflows: [{ id: 'review', label: 'Review', description: 'Configured roles', agent: 'assistant', workspace: false, strategy: 'strategies/review.json' }] }
+function strategyFixtureHub(hub) {
+  hub.loadStrategy = async ref => { expect(ref).toBe('strategies/review.json'); return { definition: structuredClone(roleDefinition), definitionHash: 'sha256:fixture', files: { [ref]: 'fixture' } } }
+  hub.startStrategy = async (definition, query, options) => {
+    expect(definition).toEqual(roleDefinition)
+    expect(options.definitionHash).toBe('sha256:fixture')
+    expect(options.admissionGuard()).toBe(true)
+    const run = hub.startRun('assistant', query, options); run.kind = 'strategy'; run.slot.status = 'running'
+    hub.emit({ type: 'strategy', run: run.id, task: { id: run.id, status: 'running', nodes: [{ nodeId: 'answer', runId: 'child', status: 'running' }], definition } })
+    hub.emit({ type: 'status', run: run.id, slot: run.slot })
+    return run
+  }
+}
+
+test('configured role workflow dispatches without Linux, freezes context and rejects mid-run steering', async () => {
+  let executions = 0
+  const { controller, hub } = await startedFixture({ workbenchConfig: roleWorkflow, configureHub: strategyFixtureHub, createExecution: async () => { executions++; throw new Error('No guest needed') } })
+  const id = await controller.sendGoal('Review this idea')
+  expect(executions).toBe(0)
+  expect(controller.getSnapshot().task).toMatchObject({ id, status: 'running', definition: roleDefinition })
+  expect(controller.getSnapshot().agents).toEqual([])
+  expect(hub.runs.get(id).context.workflow.strategy).toBeUndefined()
+  expect(hub.runs.get(id).context.workflow.strategyHash).toBeUndefined()
+  expect(Object.isFrozen(hub.runs.get(id).context)).toBe(true)
+  await expect(controller.sendGoal('Change a role input')).rejects.toThrow('Role inputs are fixed')
+  hub.runs.set('child', { id: 'child', kind: 'strategy-role', taskId: id, stageId: 'answer', parent: id, agent: 'assistant', query: 'Role input', slot: { status: 'done' }, result: 'Role output', prompts: [{ snapshot: { messages: [{ role: 'user', content: 'Role input' }] } }], requests: [{ authorization: 'secret' }] })
+  hub.emit({ type: 'status', run: 'child', slot: { status: 'done' } })
+  expect(controller.getSnapshot().agents).toEqual([expect.objectContaining({ id: 'child', kind: 'strategy-role', stageId: 'answer', result: 'Role output' })])
+  const inspected = await controller.getRunDetails('child')
+  expect(inspected.result).toBe('Role output')
+  expect(inspected.prompts[0].snapshot.messages[0].content).toBe('Role input')
+  expect(JSON.stringify(inspected)).not.toContain('secret')
+})
+
+test('stop during asynchronous strategy admission invalidates the launch guard', async () => {
+  const entered = deferred(); const release = deferred(); let guard
+  const { controller, hub } = await startedFixture({ workbenchConfig: roleWorkflow, configureHub(hub) {
+    strategyFixtureHub(hub)
+    hub.startStrategy = async (_, query, options) => { guard = options.admissionGuard; entered.resolve(); await release.promise; if (!guard()) throw new Error('Admission cancelled'); return hub.startRun('assistant', query, options) }
+  } })
+  const launch = controller.sendGoal('Cancelled goal')
+  await entered.promise
+  controller.stopRun()
+  expect(guard()).toBe(false)
+  release.resolve()
+  expect(await launch).toBeNull()
+  expect(hub.runs.size).toBe(0)
+  expect(controller.getSnapshot().run.status).toBe('cancelled')
+})
+
+test('persisted role state restores interrupted without replaying roles', async () => {
+  const first = await startedFixture({ workbenchConfig: roleWorkflow, configureHub: strategyFixtureHub })
+  await first.controller.sendGoal('Pending role')
+  first.controller.stop(); controllers.delete(first.controller)
+  await new Promise(resolve => setTimeout(resolve, 0))
+  const second = await startedFixture({ sharedStore: first.files.store, workbenchConfig: roleWorkflow, configureHub: strategyFixtureHub })
+  expect(second.controller.getSnapshot().task.status).toBe('interrupted')
+  expect(second.controller.getSnapshot().task.nodes[0].status).toBe('interrupted')
+  expect(second.hub.runs.size).toBe(0)
 })

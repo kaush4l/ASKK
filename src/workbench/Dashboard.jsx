@@ -3,17 +3,18 @@
 import { useId } from 'react'
 import Icon from './Icons.jsx'
 import Markdown from './Markdown.jsx'
-import ToolCard from './ToolCard.jsx'
+import ToolCard, { toolPresentationStatus } from './ToolCard.jsx'
+import StrategyProgress from './StrategyProgress.jsx'
 import './dashboard.css'
 
-const active = status => ['starting', 'running', 'thinking', 'calling', 'waiting', 'compacting'].includes(status)
+const active = status => ['starting', 'running', 'thinking', 'calling', 'waiting', 'compacting', 'cancelling', 'verifying'].includes(status)
 const riskNames = { read: 'Read', net: 'Network', write: 'Write', exec: 'Execute' }
 const actionOf = tool => tool?.effectiveAction ?? tool?.action
 const riskOf = tool => riskNames[tool?.risk] ? tool.risk : tool?.tier === 'agent' ? 'read' : 'write'
 const titleOf = text => String(text || '').replace(/[_.]/g, ' ').replace(/^\w/, letter => letter.toUpperCase())
 const textOf = value => typeof value === 'string' ? value : value == null ? '' : JSON.stringify(value, null, 2)
 const statusOf = row => row.status || row.slot?.status || 'idle'
-const labelOf = status => ({ idle: 'Available', ready: 'Ready', starting: 'Starting', thinking: 'Thinking', calling: 'Using a tool', waiting: 'Waiting', compacting: 'Organizing context', running: 'Running', done: 'Completed', verified: 'Verified', completed: 'Completed', failed: 'Failed', cancelled: 'Stopped', interrupted: 'Interrupted', unresponsive: 'Response delayed' })[status] || titleOf(status)
+const labelOf = status => ({ idle: 'Available', ready: 'Ready', starting: 'Starting', thinking: 'Thinking', calling: 'Using a tool', waiting: 'Waiting', compacting: 'Organizing context', running: 'Running', cancelling: 'Stopping', verifying: 'Verifying application', done: 'Completed', verified: 'Verified', completed: 'Completed', failed: 'Failed', incomplete: 'Incomplete', cancelled: 'Stopped', interrupted: 'Interrupted', unresponsive: 'Response delayed' })[status] || titleOf(status)
 
 function Status({ status, children }) {
   return <span className={`dashboard-status ${active(status) ? 'is-active' : ['failed', 'unresponsive', 'error'].includes(status) ? 'is-error' : ''}`}><i aria-hidden="true"/>{children || labelOf(status)}</span>
@@ -24,25 +25,29 @@ function Capability({ icon, title, value, detail, action, actionLabel }) {
 }
 
 /** Projection only: the owner supplies live state and all operations. No runtime starts here. */
-export default function Dashboard({ state = {}, goal = '', onGoalChange, onSubmit, onOpenWorkspace, onOpenSettings, onSelectWorkflow, onToolPolicyChange, onApprove, onStopRun, onStopAgent, onInspectAgent, onOpenTool, busy = false }) {
+export default function Dashboard({ state = {}, goal = '', onGoalChange, onSubmit, onOpenWorkspace, onOpenSettings, onSelectWorkflow, onToolPolicyChange, onApprove, onStopRun, onStopAgent, onInspectAgent, onInspectRun, onOpenTool, busy = false }) {
   const formId = useId()
   const definitions = state.agentDefinitions || []
-  const runs = state.agents || []
+  const runs = (state.agents || []).filter(run => run.kind !== 'strategy')
   const workflows = state.workflows || []
   const workflow = workflows.find(row => row.id === state.selectedWorkflowId)
   const selectedAgent = definitions.find(row => row.path === workflow?.agent)
+  const graph = workflow?.strategy?.nodes?.length ? workflow.strategy : null
+  const roleGroups = graph ? graph.nodes.map(node => ({ id: node.id, label: node.label || node.id, definition: definitions.find(row => row.path === node.agent), agent: node.agent })) : [{ id: 'selected', definition: selectedAgent, agent: workflow?.agent }]
+  const task = state.task
   const policy = state.toolPolicy || {}
   const disabled = new Set(policy.disabledTools || [])
   const approvalRisks = new Set(policy.approvalRisks || [])
   const approvals = state.approvals || []
-  const working = active(state.run?.status) || runs.some(run => active(statusOf(run)))
+  const graphRunning = ['queued', 'running', 'cancelling', 'verifying'].includes(task?.status) || Boolean(graph && active(state.run?.status))
+  const working = graphRunning || active(state.run?.status) || runs.some(run => active(statusOf(run)))
   const policyLocked = working || Boolean(busy) || !state.ready
   const runtime = state.runtime || {}
   const model = state.model || {}
   const companion = state.companion || {}
   const capabilities = new Set(companion.status === 'connected' ? companion.capabilities || [] : [])
-  const tools = selectedAgent?.tools || []
-  const toolEnabled = tool => tool.available !== false && tool.selected !== false && actionOf(tool) !== 'deny' && !disabled.has(tool.name) && (tool.tier !== 'agent' || Boolean(policy.allowDelegation))
+  const tools = roleGroups.flatMap(group => group.definition?.tools || [])
+  const toolEnabled = tool => tool.available !== false && tool.selected !== false && actionOf(tool) !== 'deny' && !disabled.has(tool.name) && (tool.tier !== 'agent' || !graph && Boolean(policy.allowDelegation))
   const allTools = new Map(definitions.flatMap(agent => (agent.tools || []).map(tool => [tool.name, tool])))
   const activity = (state.messages || []).flatMap(message => (message.tools || []).map(tool => ({ ...tool, at: message.at }))).slice(-6).reverse()
   const answer = [...(state.messages || [])].reverse().find(message => message.role === 'assistant' && textOf(message.content).trim())
@@ -50,7 +55,7 @@ export default function Dashboard({ state = {}, goal = '', onGoalChange, onSubmi
   const advertisedBrowser = ['browser', 'browser-control'].some(cap => capabilities.has(cap)) && tools.some(tool => toolEnabled(tool) && /^(browser[._]|host_browser)/.test(tool.name))
   const fetchAvailable = capabilities.has('fetch')
   const delayed = runtime.status === 'unresponsive' && workflow?.workspace
-  const canSubmit = state.ready && Boolean(workflow) && Boolean(goal.trim()) && !busy && (!delayed || working)
+  const canSubmit = !graphRunning && state.ready && Boolean(workflow) && Boolean(goal.trim()) && !busy && (!delayed || working) && (!graph || policy.allowDelegation || working)
   const setPolicy = patch => onToolPolicyChange?.(patch)
   const submit = event => { event.preventDefault(); if (canSubmit) onSubmit?.() }
   const matches = (definition, run) => run.agent === definition.path || run.agent === definition.name || run.name === definition.path || run.name === definition.name
@@ -72,14 +77,16 @@ export default function Dashboard({ state = {}, goal = '', onGoalChange, onSubmi
             </div>
             <form className="dashboard-composer" onSubmit={submit}>
               <label htmlFor="dashboard-goal">Dashboard goal</label>
-              <textarea id="dashboard-goal" value={goal} onChange={event => onGoalChange?.(event.target.value)} placeholder={working ? 'Add a note to the current task…' : 'Describe the result you want…'} rows={4} onKeyDown={event => { if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') { event.preventDefault(); if (canSubmit) onSubmit?.() } }}/>
-              <div className="dashboard-composer-footer"><span>{working ? 'Your note steers the current task.' : 'Your goal stays here when you open the workspace.'}</span><div>{working && <button className="dashboard-stop" type="button" onClick={onStopRun}><Icon name="stop" size={13}/>Stop</button>}<button className="dashboard-submit" type="submit" disabled={!canSubmit}>{busy ? 'Please wait…' : working ? 'Send note' : 'Start task'}<Icon name="arrow" size={16}/></button></div></div>
+              <textarea id="dashboard-goal" value={goal} onChange={event => onGoalChange?.(event.target.value)} placeholder={graphRunning ? 'Draft a goal for the next run…' : working ? 'Add a note to the current task…' : 'Describe the result you want…'} rows={4} onKeyDown={event => { if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') { event.preventDefault(); if (canSubmit) onSubmit?.() } }}/>
+              <div className="dashboard-composer-footer"><span>{graphRunning ? 'Role inputs are fixed for this run. Stop the workflow to change the goal.' : working ? 'Your note steers the current task.' : 'Your goal stays here when you open the workspace.'}</span><div>{working && <button className="dashboard-stop" type="button" onClick={onStopRun}><Icon name="stop" size={13}/>{graphRunning ? 'Stop workflow' : 'Stop'}</button>}<button className="dashboard-submit" type="submit" disabled={!canSubmit}>{busy ? 'Please wait…' : graphRunning ? 'Run in progress' : working ? 'Send note' : 'Start task'}<Icon name="arrow" size={16}/></button></div></div>
             </form>
             {notice && <aside className="dashboard-notice" role="note"><strong>{notice.title}</strong><span>{notice.body}</span></aside>}
             {delayed && <p className="dashboard-error" role="status">Environment response delayed. Existing operations stay open while their outcomes are reconciled.</p>}
           </section>
 
           {approvals.length > 0 && <section className="dashboard-approvals" aria-label="Actions awaiting your approval"><div className="dashboard-section-heading"><h2>Your decision is needed</h2><span>{approvals.length} pending</span></div>{approvals.map(approval => <article key={approval.id} className="dashboard-approval"><div className="dashboard-approval-title"><Icon name="warning" size={16}/><h3>{titleOf(approval.tool || approval.call)}</h3><span>{riskNames[approval.risk] || 'Action'}</span></div><p>{approval.agent} · {approval.reason || 'This action requires your approval.'}</p><details><summary>Review exact input</summary><pre>{textOf(approval.args)}</pre></details><div className="dashboard-approval-actions"><button type="button" onClick={() => onApprove?.(approval.id, false)}>Deny</button><button type="button" onClick={() => onApprove?.(approval.id, true)}>Approve once</button></div></article>)}</section>}
+
+          <StrategyProgress task={task} definition={graph} agents={definitions} onInspectRun={onInspectRun}/>
 
           {answer && <section className="dashboard-answer" aria-label="Latest agent answer"><div className="dashboard-section-heading"><h2>Latest answer</h2><span>{answer.agent || 'Agent'}</span></div><Markdown text={textOf(answer.content)}/></section>}
 
@@ -98,8 +105,8 @@ export default function Dashboard({ state = {}, goal = '', onGoalChange, onSubmi
             const run = runs.find(row => row.id === tool.runId)
             const metadata = (run && definitions.find(definition => matches(definition, run))?.tools?.find(item => item.name === tool.name)) || allTools.get(tool.name)
             const risk = tool.risk || (metadata ? riskOf(metadata) : null)
-            const pending = approvals.some(approval => (!approval.run || approval.run === tool.runId) && (approval.callId ? approval.callId === tool.id : approval.call === tool.id || approval.tool === tool.name && tool.status === 'running'))
-            return <div className="dashboard-tool-event" key={tool.id || index}><div className="dashboard-tool-event-meta"><span>{riskNames[risk] || 'Tool action'}</span><span>{pending ? 'Approval needed' : actionOf(metadata) === 'ask' ? 'Approval policy applies' : 'Recorded action'}</span>{onOpenTool && <button type="button" className="dashboard-inline" onClick={() => onOpenTool(tool)}>Inspect action<Icon name="right" size={12}/></button>}</div><ToolCard tool={tool}/></div>
+            const pending = toolPresentationStatus(tool, approvals) === 'awaiting_approval'
+            return <div className="dashboard-tool-event" key={tool.id || index}><div className="dashboard-tool-event-meta"><span>{riskNames[risk] || 'Tool action'}</span><span>{pending ? 'Approval needed' : actionOf(metadata) === 'ask' ? 'Approval policy applies' : 'Recorded action'}</span>{onOpenTool && <button type="button" className="dashboard-inline" onClick={() => onOpenTool(tool)}>Inspect action<Icon name="right" size={12}/></button>}</div><ToolCard tool={tool} approvals={approvals}/></div>
           }) : <div className="dashboard-activity-empty"><Icon name="bolt" size={19}/><p>Tool calls will appear here as they happen.<span>Inputs, outcomes, and approval requests stay inspectable.</span></p></div>}</section>
         </div>
 
@@ -111,9 +118,20 @@ export default function Dashboard({ state = {}, goal = '', onGoalChange, onSubmi
             <dl className="dashboard-capability-facts"><div><dt>Host fetch relay</dt><dd>{fetchAvailable ? 'Advertised' : 'Unavailable'}</dd></div><div><dt>Browser control</dt><dd>{advertisedBrowser ? 'Advertised' : 'Unavailable'}</dd></div><div><dt>Command execution</dt><dd>{runtime.status === 'ready' ? (runtime.target === 'local' ? 'Local Bun ready' : 'Browser Linux ready') : labelOf(runtime.status || 'idle') === 'Available' ? 'Not started' : labelOf(runtime.status)}</dd></div></dl><p className="dashboard-footnote">Web research needs an available fetch tool or relay. Model access alone does not enable host commands or browser control.</p>
           </section>
 
-          <section className="dashboard-controls"><div className="dashboard-section-heading"><h2>How this task runs</h2><span>Owner controls</span></div><fieldset disabled={policyLocked}><legend>Agent loop</legend><div className="dashboard-loop-options"><label><input type="radio" name={`${formId}-loop`} checked={!policy.allowDelegation} onChange={() => setPolicy({ allowDelegation: false })}/><span><strong>Single agent</strong><small>Keep the task with the selected agent.</small></span></label><label><input type="radio" name={`${formId}-loop`} checked={Boolean(policy.allowDelegation)} onChange={() => setPolicy({ allowDelegation: true })}/><span><strong>Allow delegation</strong><small>Let available peer agents take part.</small></span></label></div></fieldset>
+          <section className="dashboard-controls"><div className="dashboard-section-heading"><h2>How this task runs</h2><span>Owner controls</span></div><fieldset disabled={policyLocked}><legend>Agent loop</legend><div className="dashboard-loop-options"><label><input type="radio" name={`${formId}-loop`} checked={!graph && !policy.allowDelegation} disabled={Boolean(graph)} onChange={() => setPolicy({ allowDelegation: false })}/><span><strong>Single agent</strong><small>{graph ? 'Choose a single-agent workflow to use this mode.' : 'Keep the task with the selected agent.'}</small></span></label><label><input type="radio" name={`${formId}-loop`} checked={Boolean(policy.allowDelegation)} onChange={() => setPolicy({ allowDelegation: true })}/><span><strong>{graph ? 'Enable role graph' : 'Allow delegation'}</strong><small>{graph ? 'Configured roles use fresh workers. Nested delegation is disabled.' : 'Let available peer agents take part.'}</small></span></label></div></fieldset>
             <fieldset disabled={policyLocked}><legend>Ask before</legend><div className="dashboard-risk-options">{Object.entries(riskNames).map(([risk, label]) => <label key={risk}><input type="checkbox" checked={approvalRisks.has(risk)} onChange={event => setPolicy({ approvalRisks: event.target.checked ? [...approvalRisks, risk] : [...approvalRisks].filter(value => value !== risk) })}/>{label}</label>)}</div></fieldset>
-            <details className="dashboard-tools"><summary><span>Available tools</span><span>{tools.filter(toolEnabled).length}/{tools.length}</span><Icon name="down" size={13}/></summary><fieldset disabled={policyLocked}><legend className="dashboard-sr-only">Tools for {selectedAgent?.name || 'selected agent'}</legend>{tools.map(tool => <label className="dashboard-tool-toggle" key={tool.name}><input type="checkbox" checked={toolEnabled(tool)} disabled={tool.available === false || tool.tier === 'agent' && !policy.allowDelegation || actionOf(tool) === 'deny' && !disabled.has(tool.name)} onChange={event => setPolicy({ disabledTools: event.target.checked ? [...disabled].filter(name => name !== tool.name) : [...disabled, tool.name] })}/><span><strong>{titleOf(tool.name)}</strong><small>{tool.description || tool.name}{tool.available === false ? ' · Unavailable' : tool.tier === 'agent' && !policy.allowDelegation ? ' · Delegation is off' : disabled.has(tool.name) ? ' · Disabled by you' : actionOf(tool) === 'deny' ? ' · Blocked by current policy' : actionOf(tool) === 'ask' ? ' · Approval required' : ''}</small></span><em>{riskNames[riskOf(tool)]}</em></label>)}{!tools.length && <p className="dashboard-empty">No tools advertised for this agent.</p>}</fieldset>{selectedAgent?.unavailable?.length > 0 && <div className="dashboard-unavailable"><strong>Unavailable tools</strong>{selectedAgent.unavailable.map(tool => <p key={tool.name}>{titleOf(tool.name)}<span>{Array.isArray(tool.missing) ? tool.missing.join(', ') : tool.missing || 'Required capability is missing'}</span></p>)}</div>}</details>
+            {graph && !policy.allowDelegation && <p className="dashboard-error" role="status">Enable the role graph to start this workflow.</p>}
+            <details className="dashboard-tools"><summary><span>{graph ? 'Tools by role' : 'Available tools'}</span><span>{tools.filter(toolEnabled).length}/{tools.length}</span><Icon name="down" size={13}/></summary>
+              {roleGroups.map(group => <div className="dashboard-role-tools" key={group.id}>
+                {graph && <div className="dashboard-role-tools-heading"><strong>{group.label}</strong><span>{group.definition?.name || group.agent}</span></div>}
+                <fieldset disabled={policyLocked}><legend className="dashboard-sr-only">Tools for {group.label || group.definition?.name || 'selected agent'}</legend>
+                  {(group.definition?.tools || []).map(tool => <label className="dashboard-tool-toggle" key={tool.name}><input type="checkbox" checked={toolEnabled(tool)} disabled={tool.available === false || tool.tier === 'agent' && (graph || !policy.allowDelegation) || actionOf(tool) === 'deny' && !disabled.has(tool.name)} onChange={event => setPolicy({ disabledTools: event.target.checked ? [...disabled].filter(name => name !== tool.name) : [...disabled, tool.name] })}/><span><strong>{titleOf(tool.name)}</strong><small>{tool.description || tool.name}{tool.available === false ? ' · Unavailable' : tool.tier === 'agent' && graph ? ' · Nested delegation is disabled' : tool.tier === 'agent' && !policy.allowDelegation ? ' · Delegation is off' : disabled.has(tool.name) ? ' · Disabled by you' : actionOf(tool) === 'deny' ? ' · Blocked by current policy' : actionOf(tool) === 'ask' ? ' · Approval required' : ''}</small></span><em>{riskNames[riskOf(tool)]}</em></label>)}
+                  {!group.definition?.tools?.length && <p className="dashboard-empty">No tools advertised for this role.</p>}
+                </fieldset>
+                {group.definition?.unavailable?.length > 0 && <div className="dashboard-unavailable"><strong>Unavailable tools</strong>{group.definition.unavailable.map(tool => <p key={tool.name}>{titleOf(tool.name)}<span>{Array.isArray(tool.missing) ? tool.missing.join(', ') : tool.missing || 'Required capability is missing'}</span></p>)}</div>}
+              </div>)}
+              {graph && <p className="dashboard-footnote">Disabling a tool name disables it for every role. Each agent's own permissions still apply.</p>}
+            </details>
             <p className="dashboard-footnote">{working ? 'Workflow and tool controls are locked while a task is active.' : 'These controls apply to the next task. Runtime permissions can still require approval or deny an action.'}</p>
           </section>
         </aside>

@@ -1,6 +1,10 @@
 # Browser Linux eager-proxy startup diagnostic
 
-**Not executed.** This is a registered, private diagnostic plan. Scheduling waits for the root agent's internal CPU/model-evaluation bracket to end; no additional user approval is required. No production runtime, image, network setting, or build command is changed by this plan.
+**Browser comparison stopped at A1; inconclusive.** The unchanged private guest reached Ready in 497.377 seconds. A1 did not reach its entry marker within the registered 180-second limit; its actual cancelled SIGTERM exit arrived at 193.595 seconds. B1, B2, and A2 were not started. Disposal checkpointing acknowledged in 1.985 seconds, with zero guest frames remaining. This establishes no proxy speedup and changes no public runtime. [Browser receipt](evidence/browser-linux-proxy-offline-chrome.json).
+
+The [native preflight](evidence/browser-linux-proxy-native.json) passed on 2026-09-29: both offline arms exited zero with different expected Undici markers and matching identity. Those native timings do not establish browser performance. The dedicated Colima profile was stopped before the browser trial.
+
+This is a registered, private diagnostic plan. Scheduling waits for the root agent's internal CPU/model-evaluation bracket to end; no additional user approval is required. No production runtime, image, network setting, or build command is changed by this plan.
 
 ## Evidence and hypothesis
 

@@ -23,7 +23,8 @@ const Terminal = dynamic(() => import('./Terminal.jsx'), { ssr: false, loading: 
 const EMPTY = { ready: false, files: [], messages: [], commands: [], artifacts: [], agents: [], plans: [], approvals: [], activity: [], runtime: { target: 'browser', status: 'idle' }, companion: { status: 'disconnected' }, model: {} }
 let singleton
 let started
-const activeStatus = status => ['running', 'thinking', 'calling', 'waiting', 'compacting', 'starting'].includes(status)
+const activeStatus = status => ['queued', 'running', 'thinking', 'calling', 'waiting', 'compacting', 'starting', 'cancelling', 'verifying'].includes(status)
+const runLabel = status => ({ verifying: 'Verifying application', interrupted: 'Interrupted', incomplete: 'Incomplete', cancelled: 'Stopped', cancelling: 'Stopping', done: 'Completed', failed: 'Failed' })[status] || status || 'Not recorded'
 const textOf = value => typeof value === 'string' ? value : value == null ? '' : JSON.stringify(value, null, 2)
 const lastName = path => path.split('/').pop()
 const safeGet = key => { try { return localStorage.getItem(key) } catch { return null } }
@@ -48,6 +49,22 @@ function useController() {
 
 function StatusDot({ status }) { return <span className={`status-dot ${['ready', 'connected', 'done', 'completed'].includes(status) ? 'ready' : activeStatus(status) ? 'busy' : ['failed', 'error', 'disconnected', 'unresponsive'].includes(status) ? 'error' : ''}`}/> }
 function ExecutionNotice({ notice }) { return notice ? <aside className="execution-notice" role="note" aria-label={notice.title}><strong>{notice.title}</strong><p>{notice.body}</p></aside> : null }
+
+export function RunInspector({ details, onClose }) {
+  const prompts = details.prompts || []
+  const error = details.error || details.slot?.error
+  return <Modal wide title={`${details.agent || 'Agent'} · Recorded run`} onClose={onClose}>
+    <p className="modal-description">This snapshot was read when you opened it. Prompts are the exact historical records for this run; current settings may differ.</p>
+    <div className="agent-inspector">
+      <h3>Status · {runLabel(details.slot?.status)}</h3><p className="mono">{details.id}</p>
+      <h3>Goal</h3><pre>{textOf(details.query) || 'No goal was recorded.'}</pre>
+      {error && <><h3>Recorded error</h3><pre>{textOf(error)}</pre></>}
+      <h3>Recorded result</h3><pre>{details.result == null ? 'No result was recorded.' : textOf(details.result)}</pre>
+      <h3>Historical prompt records</h3>
+      {prompts.length ? prompts.map((prompt, index) => <details key={index}><summary>Request {index + 1}{prompt.step != null ? ` · Step ${prompt.step}` : ''}{prompt.attempt != null ? ` · Attempt ${prompt.attempt}` : ''}</summary><pre>{textOf(prompt)}</pre></details>) : <p>No prompt records are available for this run.</p>}
+    </div>
+  </Modal>
+}
 
 function ResizeHandle({ onResize, label, vertical = false, className = '', value, min, max }) {
   return <div role="separator" tabIndex={0} aria-label={label} aria-orientation={vertical ? 'horizontal' : 'vertical'} aria-valuenow={value} aria-valuemin={min} aria-valuemax={max} className={`resize-handle ${vertical ? 'horizontal' : ''} ${className}`}
@@ -175,8 +192,9 @@ export default function Workbench() {
   }, [selected, secondaryGroup.selected, activeEditorGroup, editorWidth, groupRatio, splitEditors, surface, phoneSurface])
   const dirtyPaths = useMemo(() => new Set(Object.entries(documents).filter(([, doc]) => doc.content !== doc.baseContent).map(([path]) => path)), [documents])
   const selectedDoc = documents[editorFilePath(activeSelection)]
-  const running = activeStatus(state.run?.status)
+  const running = activeStatus(state.run?.status) || activeStatus(state.task?.status)
   const selectedWorkflow = state.workflows?.find(item => item.id === state.selectedWorkflowId)
+  const graphRunning = activeStatus(state.task?.status) || Boolean(selectedWorkflow?.strategy?.kind === 'graph' && activeStatus(state.run?.status))
   const needsWorkspace = selectedWorkflow?.workspace !== false
   const currentCommand = state.commands.find(item => item.id === selectedCommand) || state.commands.at(-1)
   const runtimeConsole = useMemo(() => state.activity
@@ -524,7 +542,7 @@ export default function Workbench() {
   }
   async function send(event) {
     event?.preventDefault()
-    if (!goal.trim() || !controller || !state.ready || !running && needsWorkspace && state.runtime.status === 'unresponsive') return
+    if (graphRunning || !goal.trim() || !controller || !state.ready || !running && needsWorkspace && state.runtime.status === 'unresponsive') return
     if (!state.model.id && !state.model.model) { setModal({ type: 'settings', tab: 'model' }); return }
     const text = goal.trim()
     setGoal(''); setFollow(true); atBottom.current = true
@@ -547,6 +565,10 @@ export default function Workbench() {
   function showCreate() { setModalValue(''); setModalError(''); setModal({ type: 'create' }) }
   async function inspectAgent(path) {
     try { const details = await perform('getAgentDetails', path); setModal({ type: 'agent', details }) }
+    catch (error) { setToast(error.message) }
+  }
+  async function inspectRun(runId) {
+    try { const details = await perform('getRunDetails', runId); setModal({ type: 'run', details }) }
     catch (error) { setToast(error.message) }
   }
   function openTool(tool) {
@@ -606,7 +628,7 @@ export default function Workbench() {
   const paletteItems = paletteQuery.startsWith('>') ? paletteActions.filter(item => item.label.toLowerCase().includes(paletteQuery.slice(1).trim().toLowerCase())) : state.files.filter(file => file.path.toLowerCase().includes(paletteQuery.toLowerCase())).map(file => ({ label: file.path, icon: 'files', run: () => openFile(file.path) }))
 
   function toolCard(tool) {
-    return <ToolCard key={tool.id || tool.name} tool={tool}
+    return <ToolCard key={tool.id || tool.name} tool={tool} approvals={state.approvals}
       fileAvailable={!!tool.path && state.files.some(file => file.path === tool.path)}
       commandAvailable={!!tool.commandId && state.commands.some(command => command.id === tool.commandId)}
       artifactAvailable={!!tool.artifactId && state.artifacts.some(artifact => artifact.id === tool.artifactId)}
@@ -657,7 +679,7 @@ export default function Workbench() {
       onOpenWorkspace={() => { setDashboardOpen(false); setSurface('workspace') }} onOpenSettings={section => openSettings(section === 'runtime' ? 'runtime' : 'model')}
       onSelectWorkflow={workflow => action('setWorkflow', workflow)} onToolPolicyChange={policy => action('setToolPolicy', policy)}
       onApprove={(...args) => action('approve', ...args)} onStopRun={() => action('stopRun')} onStopAgent={run => action('stopAgent', run)}
-      onInspectAgent={inspectAgent} onOpenTool={openTool}/>}
+      onInspectAgent={inspectAgent} onInspectRun={inspectRun} onOpenTool={openTool}/>}
     <main hidden={dashboardOpen} className="workbench-body">
       <section id="main-conversation" className="conversation-pane" aria-label="Agent conversation">
         <div className="conversation-heading"><div><span className="eyebrow">{selectedWorkflow?.label || 'YOUR AGENT'}</span><h1>Keep the work in view.</h1>{state.workflows?.length > 0 && <select className="conversation-workflow" aria-label="Conversation workflow" value={state.selectedWorkflowId} disabled={running} onChange={event => action('setWorkflow', event.target.value)}>{state.workflows.map(workflow => <option key={workflow.id} value={workflow.id}>{workflow.label}</option>)}</select>}</div><IconButton icon="more" label="Conversation options" onClick={() => { setModalValue(state.goal || ''); setModal({ type: 'goal', revision: state.goalRevision }) }}/></div>
@@ -671,10 +693,10 @@ export default function Workbench() {
             <Markdown text={textOf(message.content)}/>{message.tools?.length > 0 && <div className="tool-cards">{message.tools.map(toolCard)}</div>}
           </article>)}
           {state.approvals.map(approval => <div className="approval-card" key={approval.id}><div><Icon name="warning" size={16}/><strong>Your approval is needed</strong></div><p>{approval.description || approval.name || approval.tool || 'This action needs your approval.'}</p>{approval.args && <pre>{textOf(approval.args)}</pre>}<div className="button-row"><button className="button primary small" onClick={() => action('approve', approval.id, true)}>Allow once</button><button className="button subtle small" onClick={() => action('approve', approval.id, false)}>Deny</button></div></div>)}
-          {running && <div className="thinking-line"><span className="thinking-dots"><i/><i/><i/></span><span>{state.run?.agent || 'Agent'} {state.run?.status || 'working'}{state.run?.step ? ` · loop ${state.run.step}` : ''}</span></div>}
+          {running && <div className="thinking-line"><span className="thinking-dots"><i/><i/><i/></span><span>{state.run?.agent || 'Agent'} {runLabel(state.task?.status || state.run?.status || 'working')}{state.run?.step ? ` · loop ${state.run.step}` : ''}</span></div>}
         </div>
         <div className="composer-wrap">{state.goal && <button className="current-plan-link" onClick={() => { setModalValue(state.goal); setModal({ type: 'goal', revision: state.goalRevision }) }}><Icon name="chat" size={14}/><span><strong>Conversation goal</strong><small>{state.goal}</small></span><Icon name="right" size={12}/></button>}{currentPlan?.items?.length > 0 && <button className="current-plan-link" onClick={showAgents}><Icon name="changes" size={14}/><span><strong>Task plan · {currentPlan.items.filter(item => item.status === 'done').length}/{currentPlan.items.length}</strong><small>{currentPlan.items.find(item => item.status === 'doing')?.text || 'View recorded steps and progress'}</small></span><Icon name="right" size={12}/></button>}{needsWorkspace && state.runtime.status === 'unresponsive' && <div className="inline-error" role="status"><Icon name="warning" size={14}/><span><strong>Environment response delayed.</strong> Outstanding actions may still complete. New work is paused; processes and terminals are preserved.</span></div>}{state.error && <div className="inline-error"><Icon name="warning" size={14}/><span>{state.error}</span></div>}
-          <form className="composer" onSubmit={send}><textarea ref={composer} id="conversation-input" value={goal} onChange={event => setGoal(event.target.value)} placeholder={running ? 'Steer this task…' : 'What would you like to accomplish?'} rows={3} aria-label="Your goal" onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); send() } }}/><div className="composer-actions"><button type="button" className="model-picker" onClick={() => openSettings('model')}><Icon name="spark" size={13}/><span>{state.model.id || state.model.model || 'Connect a model'}</span><Icon name="down" size={12}/></button>{running ? <IconButton icon="stop" label="Stop current task" className="stop-button" onClick={() => action('stopRun')}/> : null}<button type="submit" className="send-button" aria-label={running ? 'Send note' : 'Send goal'} disabled={!goal.trim() || !controller || !state.ready || !running && needsWorkspace && state.runtime.status === 'unresponsive'}><Icon name="arrow" size={18}/></button></div></form>
+          {graphRunning && <p className="composer-hint" role="status">Role inputs are fixed for this run. Stop the workflow to change the goal.</p>}<form className="composer" onSubmit={send}><textarea ref={composer} id="conversation-input" value={goal} onChange={event => setGoal(event.target.value)} placeholder={graphRunning ? 'Draft a goal for the next run…' : running ? 'Steer this task…' : 'What would you like to accomplish?'} rows={3} aria-label="Your goal" onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); send() } }}/><div className="composer-actions"><button type="button" className="model-picker" onClick={() => openSettings('model')}><Icon name="spark" size={13}/><span>{state.model.id || state.model.model || 'Connect a model'}</span><Icon name="down" size={12}/></button>{running ? <IconButton icon="stop" label="Stop current task" className="stop-button" onClick={() => action('stopRun')}/> : null}<button type="submit" className="send-button" aria-label={graphRunning ? 'Run in progress' : running ? 'Send note' : 'Send goal'} disabled={graphRunning || !goal.trim() || !controller || !state.ready || !running && needsWorkspace && state.runtime.status === 'unresponsive'}><Icon name="arrow" size={18}/></button></div></form>
           <div className="composer-foot"><span><Icon name="changes" size={12}/> {state.agents.length ? `${state.agents.length} agents` : 'Your agents, your tools'}</span><span>Shift ↵ for a new line</span></div>
         </div>
       </section>
@@ -719,7 +741,8 @@ export default function Workbench() {
     }}/><kbd>esc</kbd></div><div ref={paletteResultsNode} id="palette-results" role="listbox" aria-label="Matching files and commands" className="palette-results">{paletteResults.map((item, index) => <button role="option" tabIndex={-1} id={`palette-option-${index}`} data-palette-index={index} aria-selected={index === paletteSelection} className={index === paletteSelection ? 'highlighted' : ''} key={item.label} onClick={() => { setPalette(false); item.run() }}><Icon name={item.icon}/><span>{item.label}</span><Icon name="right" size={13}/></button>)}{!paletteResults.length && <p>{paletteQuery.startsWith('>') ? 'No matching commands.' : 'No matching files. Type > to find a command.'}</p>}</div><div className="palette-hint"><kbd>↵</kbd> open selected result <span>{paletteItems.length > paletteResults.length ? 'First 30 matches. Type more to narrow results.' : 'Files and commands, one place.'}</span></div></Modal>}
     {modal?.type === 'goal' && <Modal title="Conversation goal" onClose={() => setModal(null)}><p className="modal-description">Keep a goal in context across messages and agent runs. Saving updates the next prompt; the composer remains available for individual requests.</p><label className="field-label" htmlFor="saved-goal">Saved goal</label><textarea id="saved-goal" className="form-input" rows={6} maxLength={12000} value={modalValue} onChange={event => setModalValue(event.target.value)}/><div className="modal-footer"><button className="button subtle" onClick={() => setModal(null)}>Cancel</button><button className="button subtle" disabled={!!busy || !state.goal} onClick={async () => { try { await perform('setConversationGoal', '', modal.revision); setModal(null) } catch (error) { setToast(error.message) } }}>Clear goal</button><button className="button primary" disabled={!!busy || modalValue.trim() === state.goal} onClick={async () => { try { await perform('setConversationGoal', modalValue, modal.revision); setModal(null) } catch (error) { setToast(error.message) } }}>Save goal</button></div></Modal>}
     {modal?.type === 'agent' && <AgentInspector details={modal.details} onClose={() => setModal(null)}/>}
-    {modal?.type === 'tool' && <Modal wide title="Recorded tool action" onClose={() => setModal(null)}><ToolCard tool={modal.tool}/></Modal>}
+    {modal?.type === 'run' && <RunInspector details={modal.details} onClose={() => setModal(null)}/>}
+    {modal?.type === 'tool' && <Modal wide title="Recorded tool action" onClose={() => setModal(null)}><ToolCard tool={state.messages.flatMap(message => message.tools || []).find(tool => tool.id === modal.tool.id && tool.runId === modal.tool.runId) || modal.tool} approvals={state.approvals}/></Modal>}
     {modal?.type === 'settings' && <Settings state={state} initialTab={modal.tab} theme={theme} setTheme={setTheme} perform={perform} onClose={() => setModal(null)} onError={setToast}/>}
     {(modal?.type === 'create' || modal?.type === 'rename') && <Modal title={modal.type === 'create' ? 'Create a file' : 'Rename file'} onClose={() => setModal(null)}><form onSubmit={submitFileAction}><label className="field-label" htmlFor="file-path">Path relative to your project</label><input id="file-path" className="form-input" autoFocus placeholder="src/app.js" value={modalValue} onChange={event => setModalValue(event.target.value)}/>{modalError && <p className="form-error">{modalError}</p>}<div className="modal-footer"><button type="button" className="button subtle" onClick={() => setModal(null)}>Cancel</button><button className="button primary" disabled={!!busy}>{modal.type === 'create' ? 'Create file' : 'Rename'}</button></div></form></Modal>}
     {modal?.type === 'fileMenu' && <Modal title={lastName(modal.path)} onClose={() => setModal(null)}><p className="modal-description mono">{modal.path}</p><div className="menu-actions">{readGroup(modal.groupId || activeEditorGroupRef.current).temporaryTab === modal.path && <button onClick={() => { pinTab(modal.path, modal.groupId || activeEditorGroupRef.current); setModal(null) }}><Icon name="pin"/>Keep file open</button>}<button onClick={() => setModal({ ...modal, type: 'rename' })}><Icon name="files"/>Rename file</button><button onClick={() => { navigator.clipboard?.writeText(modal.path).then(() => setToast('Path copied.')); setModal(null) }}><Icon name="code"/>Copy path</button><button className="danger-text" onClick={() => setModal({ ...modal, type: 'delete' })}><Icon name="close"/>Delete file</button></div></Modal>}
