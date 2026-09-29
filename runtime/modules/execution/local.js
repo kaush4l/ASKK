@@ -1,7 +1,8 @@
 /** Authenticated client for the owner's optional Bun companion. */
 export class LocalExecution {
-  constructor({ url = 'https://127.0.0.1:7717', token = '', onEvent = () => {} } = {}) {
+  constructor({ url = 'https://127.0.0.1:7717', token = '', onEvent = () => {}, createSocket = address => new WebSocket(address) } = {}) {
     this.url = url.replace(/\/$/, ''); this.token = token; this.onEvent = onEvent; this.terminals = new Map(); this.jobs = new Map()
+    this.createSocket = createSocket
   }
   async request(path, body, { signal } = {}) {
     const response = await fetch(`${this.url}${path}`, { method: 'POST', credentials: 'omit', headers: { authorization: `Bearer ${this.token}`, 'content-type': 'application/json' }, body: JSON.stringify({ ...(body ?? {}), ...(this.health?.runtimeId ? { runtimeId: this.health.runtimeId } : {}) }), signal })
@@ -41,20 +42,56 @@ export class LocalExecution {
   async openTerminal({ cols = 80, rows = 24 } = {}) {
     const { id, ticket } = await (await this.request('/terminals/open', { cols, rows })).json()
     const address = new URL(`${this.url}/terminals/socket`); address.protocol = address.protocol === 'https:' ? 'wss:' : 'ws:'; address.searchParams.set('ticket', ticket)
-    const socket = new WebSocket(address); const listeners = new Set(); const session = { socket, listeners, backlog: [] }; this.terminals.set(id, session)
-    socket.onmessage = event => { const message = JSON.parse(event.data); session.backlog.push(message); if (session.backlog.length > 200) session.backlog.shift(); for (const listener of listeners) listener(message) }
+    const socket = this.createSocket(address); const listeners = new Set(); const session = { socket, listeners, backlog: [] }; this.terminals.set(id, session)
+    const emit = message => { session.backlog.push(message); if (session.backlog.length > 200) session.backlog.shift(); for (const listener of listeners) listener(message) }
+    const disconnected = () => {
+      if (session.exited || session.disconnected) return
+      if (session.closing) { session.disconnectedDuringClose = true; return }
+      session.disconnected = true
+      emit({ type: 'error', code: 'TERMINAL_DISCONNECTED', error: 'Terminal connection lost. Output is retained; reconnect the companion and open a new terminal. The remote process exit is unknown.' })
+    }
+    session.reportDisconnect = disconnected
+    socket.onmessage = event => {
+      let message
+      try { message = JSON.parse(event.data); if (!message || typeof message.type !== 'string' || message.type === 'exit' && !Number.isInteger(message.code)) throw new Error('Invalid terminal receipt') }
+      catch { disconnected(); socket.close(); return }
+      if (message.type === 'exit') session.exited = true
+      emit(message)
+    }
     try {
       await new Promise((resolve, reject) => {
         const timer = setTimeout(() => reject(new Error('The terminal connection timed out')), 10000)
         const fail = () => { clearTimeout(timer); reject(new Error('The terminal connection could not be established')) }
-        socket.onopen = () => { clearTimeout(timer); resolve() }; socket.onerror = fail; socket.onclose = fail
+        socket.onopen = () => { clearTimeout(timer); socket.onerror = disconnected; socket.onclose = disconnected; resolve() }; socket.onerror = fail; socket.onclose = fail
       })
+      if (socket.readyState !== 1 || session.disconnected) throw new Error('The terminal connection closed during setup')
     } catch (error) { socket.close(); this.terminals.delete(id); await this.request('/terminals/close', { id }).catch(() => {}); throw error }
     return { id }
   }
   subscribeTerminal(id, listener) { const session = this.terminals.get(id); if (!session) throw new Error('Terminal is not open'); for (const event of session.backlog) listener(event); session.listeners.add(listener); return () => session.listeners.delete(listener) }
-  terminalInput(id, data) { this.terminals.get(id)?.socket.send(JSON.stringify({ type: 'input', data })) }
-  resizeTerminal(id, cols, rows) { this.terminals.get(id)?.socket.send(JSON.stringify({ type: 'resize', cols, rows })) }
-  async closeTerminal(id) { this.terminals.get(id)?.socket.close(); this.terminals.delete(id); await this.request('/terminals/close', { id }) }
-  async dispose() { const work = []; for (const [id, abort] of this.jobs) { abort.abort(); work.push(this.cancelJob(id)) } for (const id of [...this.terminals.keys()]) work.push(this.closeTerminal(id)); await Promise.allSettled(work) }
+  terminalSocket(id) {
+    const session = this.terminals.get(id)
+    if (!session || session.socket.readyState !== 1 || session.disconnected || session.exited || session.closing) throw Object.assign(new Error('Terminal is not connected. Reconnect the companion and open a new terminal.'), { code: 'TERMINAL_DISCONNECTED' })
+    return session.socket
+  }
+  terminalInput(id, data) { this.terminalSocket(id).send(JSON.stringify({ type: 'input', data })) }
+  resizeTerminal(id, cols, rows) { this.terminalSocket(id).send(JSON.stringify({ type: 'resize', cols, rows })) }
+  async closeTerminal(id) {
+    const session = this.terminals.get(id)
+    if (session?.closePromise) return session.closePromise
+    if (session) session.closing = true
+    const close = this.request('/terminals/close', { id }).then(() => { session?.socket.close(); if (this.terminals.get(id) === session) this.terminals.delete(id) }).catch(error => {
+      if (session) { session.closing = false; session.closePromise = null; if (session.disconnectedDuringClose || session.socket.readyState !== 1) session.reportDisconnect() }
+      throw error
+    })
+    if (session) session.closePromise = close
+    return close
+  }
+  async dispose() {
+    const work = []
+    for (const [id, abort] of this.jobs) { abort.abort(); work.push(this.cancelJob(id)) }
+    for (const id of [...this.terminals.keys()]) work.push(this.closeTerminal(id))
+    const failures = (await Promise.allSettled(work)).filter(result => result.status === 'rejected').map(result => result.reason)
+    if (failures.length) throw Object.assign(new AggregateError(failures, `${failures.length} companion shutdown operation(s) could not be confirmed; remote process state is unknown.`), { code: 'EXECUTION_SHUTDOWN_UNCONFIRMED' })
+  }
 }

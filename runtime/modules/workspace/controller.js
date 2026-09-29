@@ -555,7 +555,7 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
       notify({ commands: [...state.commands, { id: jobId, command, cwd: jobBinding.root, actor, runId, runtime: state.runtime.target, binding: jobBinding, revision: jobRevision, status: 'running', output: '', outputLength: 0, at: Date.now() }] })
       let receivedExit
       try {
-        const result = await executor.startJob({ id: jobId, program: '/bin/sh', args: ['-lc', command], cwd: '.', signal: abort.signal, onOutput(event) { const row = state.commands.find(row => row.id === jobId); const chunk = String(event.data ?? event.text ?? ''); commandUpdate(jobId, { output: `${row?.output ?? ''}${chunk}`.slice(-500000), outputLength: (row?.outputLength ?? 0) + chunk.length }) } })
+        const result = await executor.startJob({ id: jobId, program: '/bin/sh', args: [jobRuntime === 'local' ? '-c' : '-lc', command], cwd: '.', signal: abort.signal, onOutput(event) { const row = state.commands.find(row => row.id === jobId); const chunk = String(event.data ?? event.text ?? ''); commandUpdate(jobId, { output: `${row?.output ?? ''}${chunk}`.slice(-500000), outputLength: (row?.outputLength ?? 0) + chunk.length }) } })
         assertBound(jobBinding)
         if (result.runtimeId && result.runtimeId !== jobBinding.runtimeId) throw new Error('The command receipt came from a different runtime session')
         const code = result.code ?? result.exitCode
@@ -578,7 +578,7 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
       const inputFingerprint = await fingerprint()
       const packageFile = await files.read('package.json'); if (!packageFile) throw new Error('Create a package.json with a build script first')
       const manifest = JSON.parse(packageFile.content); if (!manifest.scripts?.build) throw new Error('package.json does not define a build script')
-      const result = await controller.runCommand(state.runtime.target === 'browser' ? 'rm -rf -- out && npm run build' : 'rm -rf -- out && bun run build', options)
+      const result = await controller.runCommand(state.runtime.target === 'browser' ? 'rm -rf -- out && npm run build' : 'rm -rf -- out && bun --bun run build', options)
       if (result.cancelled || (result.code ?? result.exitCode) !== 0) throw new Error(result.cancelled ? 'Build was cancelled. The last successful preview is preserved.' : 'Build failed. Open Commands for the actual output.')
       const revision = result.revision; const target = result.runtime; const buildExecutor = executor; const sourceFingerprint = await fingerprint()
       if (sourceFingerprint !== inputFingerprint) throw new Error('Source files changed during the build. Review the saved files and build again; the last successful preview is preserved.')
