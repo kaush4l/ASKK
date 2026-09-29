@@ -87,8 +87,8 @@ export const CONTEXTS = {
       const host = engine.ctx?.host
       const reach = host
         ? `The companion grants only these capabilities: ${(host.capabilities ?? []).join(', ') || 'none'}. Pairing for model or network relay does not grant native execution. Consult the workspace binding for file and command execution.`
-        : 'No host companion is paired. Browser execution, when available, is described by the workspace binding.'
-      return `You run inside a browser tab, in a thread of your own. ${reach}`
+        : 'No general host tools are paired through the desk connection. Workspace files and commands use their separately selected execution binding.'
+      return `This agent runs in its own worker. ${reach}`
     },
   }),
 

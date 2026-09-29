@@ -91,12 +91,25 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
     if (modelCheck) throw new Error('Cancel or finish the current model check first')
     const check = { kind, epoch: ++modelEpoch, abort: new AbortController(), startedAt: Date.now() }
     modelCheck = check
-    notify({ model: { ...state.model, status: 'checking', error: '', errorCode: null, checkedAt: null, probe: null, check: { kind, startedAt: check.startedAt, status: 'checking' } } })
+    notify({ model: { ...state.model, status: 'checking', error: '', errorCode: null, checkedAt: null, probe: null, ...(kind === 'listing' ? { discovery: null } : {}), check: { kind, startedAt: check.startedAt, status: 'checking' } } })
     try {
       const result = await hub.models[kind === 'reply' ? 'probe' : 'refresh']('workbench', { signal: check.abort.signal })
       if (check.epoch !== modelEpoch) throw check.abort.signal.reason ?? new Error('The model connection changed during this check. Test the current connection again.')
       if (result.error) throw Object.assign(new Error(result.error), { code: result.errorCode })
-      if (kind === 'listing' && (!Array.isArray(result.ids) || !result.ids.includes(state.model.id))) throw Object.assign(new Error(`The server answered, but did not list model ${state.model.id}. Available: ${(result.ids ?? []).slice(0, 12).join(', ')}`), { code: 'MODEL_NOT_LISTED' })
+      if (kind === 'listing') {
+        if (!Array.isArray(result.ids)) throw Object.assign(new Error('The server returned an invalid model list.'), { code: 'MODEL_INVALID_LIST' })
+        const validId = value => typeof value === 'string' && value.length > 0 && value.length <= 256 && value.trim() === value && !/[\u0000-\u001f\u007f]/.test(value)
+        const ids = []; const seen = new Set(); let truncated = false; let selectedListed = false
+        for (const value of result.ids) {
+          if (!validId(value)) continue
+          if (value === state.model.id) selectedListed = true
+          if (seen.has(value)) continue
+          if (ids.length === 100) { truncated = true; continue }
+          seen.add(value); ids.push(value)
+        }
+        notify({ model: { ...state.model, discovery: { ids, truncated, at: result.at, baseUrl: state.model.baseUrl, via: state.model.via } } })
+        if (!selectedListed) throw Object.assign(new Error(`The server answered, but did not list model ${state.model.id}. Choose an available model below or check its ID.`), { code: 'MODEL_NOT_LISTED' })
+      }
       if (kind === 'reply' && (typeof result.text !== 'string' || !result.text.trim() || result.receipt?.status !== 'completed' || result.receipt.errorCode)) throw Object.assign(new Error('The model check returned no completed reply receipt.'), { code: 'MODEL_INCOMPLETE_REPLY' })
       notify({ model: { ...state.model, status: kind === 'reply' ? 'verified' : 'listed', error: '', errorCode: null, checkedAt: result.at, probe: kind === 'reply' ? snapshot(result) : null, check: { kind, startedAt: check.startedAt, status: 'done' } } })
       return result
@@ -354,7 +367,7 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
       if (changed && state.model.via === 'bridge') {
         invalidateModelCheck()
         const available = connected && canRelayModels(nextCompanion)
-        notify({ model: { ...state.model, status: available ? 'configured' : 'failed', checkedAt: null, check: null, probe: null, errorCode: available ? null : connected ? 'MODEL_RELAY_DENIED' : 'MODEL_RELAY_UNAVAILABLE', error: available ? '' : connected ? 'The companion does not grant model relay access.' : message.state.error || 'The model relay is unavailable.' } })
+        notify({ model: { ...state.model, status: available ? 'configured' : 'failed', checkedAt: null, check: null, probe: null, discovery: null, errorCode: available ? null : connected ? 'MODEL_RELAY_DENIED' : 'MODEL_RELAY_UNAVAILABLE', error: available ? '' : connected ? 'The companion does not grant model relay access.' : message.state.error || 'The model relay is unavailable.' } })
       }
     }
     if (message.type === 'boot' && message.stage === 'ready' && !state.pageLifecycle) { refreshPackages(); refreshDefinitions() }
