@@ -89,7 +89,8 @@ const projectReceipt = ({ text: raw, ok, name }) => {
   catch { return raw }
 }
 const projectWrite = value => {
-  const receipt = projectReceipt(value)
+  let receipt = projectReceipt(value)
+  if (value.ok && receipt?.ok === true && receipt.contentChangedFromRead === false) receipt = { ...receipt, guidance: 'The submitted content equals the file you read. No content change was submitted. This acknowledgement is not evidence of a repair. If you intended to repair a failing check, inspect that failure and verify the necessary change before rerunning it.' }
   if (!value.ok && receipt?.conflict === true) return { ...receipt, outcome: receipt.committed === true ? 'committed_then_changed' : 'write_not_applied', recovery: 'Read this file again, reconcile your change with its saved content, then retry with observed:true or the returned exact revision. Do not use expect:0 for an existing file.' }
   if (!value.ok || !receipt || receipt.ok !== true || !Object.hasOwn(receipt, 'content')) return receipt
   const { content, ...acknowledgement } = receipt

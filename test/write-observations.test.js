@@ -58,7 +58,7 @@ test('stale CAS is preserved and a conflict revokes all references until an expl
   await expect(f.adapter.write(resolved, run)).rejects.toThrow()
   expect(f.calls()).toBe(1)
   ledger.accept('a.js', await f.adapter.read({ path: 'a.js' }, run))
-  expect(await f.adapter.write(ledger.resolve(proposal()), run)).toEqual({ ok: true, rev: 'sha:written' })
+  expect(await f.adapter.write(ledger.resolve(proposal()), run)).toEqual({ ok: true, rev: 'sha:written', contentChangedFromRead: true })
 })
 
 test('adapter uses the immutable selected read even if another read happens before execution', async () => {
@@ -144,4 +144,24 @@ test('missing observation gives exact read arguments without creating evidence o
   }
   ledger.accept(path, receipt('correct', path))
   expect(ledger.resolve(proposal(path)).expect).toBe('sha:1')
+})
+
+test('observed write receipts distinguish identical content from edits without skipping execution', async () => {
+  for (const [before, after, changed] of [['old', 'old', false], ['old', 'new', true], [null, '', true]]) {
+    let writes = 0
+    const adapter = createObservedWorkspace({ identity: () => 'runtime', read: () => before === null ? null : { content: before, rev: 'one' }, write: () => { writes++; return { ok: true, rev: 'two' } } })
+    const run = {}, ledger = createWriteObservations()
+    const receipt = await adapter.read({ path: 'a.js' }, run)
+    ledger.accept('a.js', receipt)
+    receipt.content = 'tampered'
+    const result = await adapter.write(ledger.resolve({ path: 'a.js', content: after, observed: true }), run)
+    expect(result.contentChangedFromRead).toBe(changed)
+    expect(writes).toBe(1)
+  }
+})
+
+test('observation identity cannot be reused with different observed content', () => {
+  const ledger = createWriteObservations()
+  ledger.accept('a.js', receipt())
+  expect(() => ledger.accept('a.js', { ...receipt(), content: 'replacement' })).toThrow('identity cannot be reassigned')
 })

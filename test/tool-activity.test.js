@@ -63,3 +63,15 @@ test('historical projection carries typed links and rejects cross-run or ambiguo
   expect(failure.artifactId).toBeUndefined()
   expect(failure.path).toBeUndefined()
 })
+
+test('identical observed content is a successful write but not projected as a repair', () => {
+  const value = { text: JSON.stringify({ ok: true, rev: 'r2', content: 'same', contentChangedFromRead: false }), ok: true, name: 'workspace_write' }
+  const projected = workspace_write.projectObservation(value)
+  expect(projected.ok).toBe(true)
+  expect(projected.contentChangedFromRead).toBe(false)
+  expect(projected.guidance).toContain('not evidence of a repair')
+  expect(projected.content).toBeUndefined()
+  expect(workspace_write.projectActivity({ ...value, args: { path: 'a.js' } })).toEqual({ path: 'a.js' })
+  const changed = workspace_write.projectObservation({ ...value, text: JSON.stringify({ ok: true, rev: 'r2', contentChangedFromRead: true }) })
+  expect(changed.guidance).toBeUndefined()
+})
