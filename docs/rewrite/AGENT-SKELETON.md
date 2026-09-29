@@ -9,6 +9,8 @@ The model chooses task actions. Code owns valid state transitions, permissions, 
 | Loop, retries, dispatch, cancellation and budget | `src/core/engine.js` |
 | Deterministic configured model input | `src/core/agent-prompt.js` |
 | Response contract and parsing | `src/core/responses.js` |
+| Native proposal normalization and paired history | `src/core/native-protocol.js` |
+| Native streaming descriptors and fragments | `src/core/native-tools.js`, `src/core/inference.js` |
 | Tool input validation and examples | `src/core/tool-input.js` |
 | Trusted result-to-activity projection | `src/core/tool-activity.js` |
 | Workspace adapters and their receipt validators | `src/builtin/workspace.js` |
@@ -156,4 +158,28 @@ The real-model evaluator accepts `--sampling path/to/profile.json`, with explici
 
 [Six expanded-budget and sampling trials](evidence/qwen3-capacity-sampling-loop.json) retain all outcomes. With 32,768 context and 8,192 output, the greedy script passed independent checks, the greedy scaffold exhausted output before acting, and greedy repair produced correct code but skipped the required initial failing check. The three documented-sampling trials all failed: scaffold and repair stopped on malformed responses; the script exited successfully while producing no required output. The temporary server's actual slot context was confirmed and the server was stopped. Commands used installed host runtimes; browser execution and one-shot reliability remain unproven.
 
-The next protocol experiment should preserve native provider tool-call identities and complete call/result groups, normalize only complete validated proposals into the existing dispatcher, and retain independent completion checks. Native provider support is not implemented by the JSON-envelope modes. It must not be simulated by interpreting prose as tool receipts or silently relaxing parsing.
+The native protocol below implements the next transport experiment. JSON-envelope modes remain separate; neither prose nor a model-authored tool-result claim becomes an execution receipt.
+
+
+## Optional native provider tool calls
+
+An agent folder may opt into:
+
+```yaml
+response_protocol: native
+contract_version: 3
+response_format: json
+history_format: messages
+```
+
+`json` here describes the internal single-action domain contract. The model receives native function definitions and answers in ordinary text, without the custom `do`/`act` envelope. Omitted `response_protocol` remains `envelope`; shipped agent defaults are unchanged. Template messages still use exactly one standalone conversation slot. This initial native profile supports OpenAI-compatible providers with one function call per decision; it does not claim every provider or parallel native calls. [llama-server function calling](https://github.com/ggml-org/llama.cpp/blob/master/docs/function-calling.md) requires the appropriate server/template support (`--jinja` in these trials).
+
+Schemas and tool descriptions come from the available adapter descriptors and are recorded in `PromptSnapshot.nativeTools` and the exact transmitted request. Legacy parameter descriptions remain visible without inventing local validation constraints. Request budgeting includes the native definitions. Credentials and endpoint configuration remain desk-owned. Native mode rejects conflicting structured output and manually supplied native or legacy function declarations.
+
+The stream accumulator exposes partial fragments only as unexecuted data. It yields a proposal after a complete stream, a supported finish reason, a unique provider ID, a known function and object-shaped JSON arguments. Truncation, cancellation, multiple calls and malformed arguments cannot dispatch. Completed proposals normalize into the existing action contract, then use the existing permission, argument, revision and completion checks. No transparent retry occurs after a streamed fragment. Plain-text answers still need configured completion evidence.
+
+Accepted history retains the provider's original argument string and pairs the assistant call with one actual result carrying its provider ID. It never parses arbitrary history text into calls. Compaction keeps call/result pairs together and carries used-ID metadata through restoration. Interrupted incomplete records are rejected rather than filled with fabricated results. Tool cards retain the independent engine call ID and show the provider call ID only in expanded details; receipt pairing remains keyed by engine identity. The model supplies no UI navigation actions.
+
+The evaluator accepts `--response-protocol native --contract-version 3 --history-format messages`. A deterministic provider fixture exercises the production folder, worker, model broker, actual workspace writes, a real host command and independent script checks. This fixture establishes integration, not model competence or browser execution.
+
+[Three native Qwen3 trials](evidence/qwen3-native-loop.json) produced one script pass and two failures. The script independently passed numeric, empty and invalid-input checks; the model itself ran empty-input checks after recovering from a command-not-found error. Scaffold and repair reached real tool dispatch without envelope repairs but produced or retained incorrect code, repeated unsuccessful commands, and exhausted the step budget. Their completion claims remained unverified/incomplete. These results establish one native script-loop smoke pass, not general task reliability, thorough model self-verification, or Browser Linux support. The temporary model server was stopped.

@@ -136,3 +136,17 @@ test('only typed local input rejection is projected as not run', () => {
     [false, undefined, { failureKind: 'invalid_input' }, 'failed'],
   ]) expect(view([call('typed'), result('typed', 'read', value, ok, { failureKind })]).tools[0].status).toBe(status)
 })
+
+test('provider call IDs remain diagnostic while engine IDs determine receipt linkage', () => {
+  const { tools, unpaired } = view([
+    call('engine-a', 'read', {}, { providerCallId: 'provider-shared' }),
+    call('engine-b', 'read', {}, { providerCallId: 'provider-shared' }),
+    result('engine-b', 'read', 'second', true, { providerCallId: 'provider-shared' }),
+    result('engine-a', 'read', 'first', true, { providerCallId: 'provider-shared' }),
+  ])
+  expect(unpaired).toEqual([])
+  expect(tools.map(tool => [tool.id, tool.providerCallId, tool.summary])).toEqual([
+    ['engine-a', 'provider-shared', 'first'], ['engine-b', 'provider-shared', 'second'],
+  ])
+  expect(view([call('legacy'), result('legacy')]).tools[0]).not.toHaveProperty('providerCallId')
+})

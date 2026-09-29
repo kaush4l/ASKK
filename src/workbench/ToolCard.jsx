@@ -37,6 +37,7 @@ export default function ToolCard({ tool, approvals, recorded = false, fileAvaila
       <Icon name="down" size={12} className="tool-disclosure"/>
     </summary>
     <div className="tool-details">
+      {tool.providerCallId && <><h4>Engine call ID</h4><pre>{tool.id}</pre><h4>Provider call ID</h4><pre>{tool.providerCallId}</pre></>}
       {args && args !== '{}' && <><h4>Input</h4><pre>{args}</pre></>}
       {presentation === 'awaiting_approval' && <p className="tool-approval-note">{recorded ? 'Approval was pending when this snapshot was captured. Refresh to check for newer records.' : 'This call is waiting for your decision. It has not been approved.'}</p>}
       {presentation === 'rejected' && <p className="tool-approval-note">Input rejected before execution.</p>}

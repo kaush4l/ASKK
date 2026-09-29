@@ -110,7 +110,7 @@ describe('folder', () => {
     const spec = await readSpec('main', { index, load })
     expect(spec.soul).toBe('Careful.')
     expect(spec.body).toBe('Do the job.')
-    expect(spec.engine).toEqual({ maxSteps: 5 })
+    expect(spec.engine).toEqual({ maxSteps: 5, responseProtocol: 'envelope' })
     expect(spec.inference).toEqual({ model: 'local' })
     expect(spec.peers).toEqual(['coder'])
     expect(spec.commonTools).toEqual({ text: 'tools/text.js' })

@@ -1730,6 +1730,10 @@ test('agent inspector returns configured composition and only the selected agent
   expect(inspectedPolicy).toEqual(controller.getSnapshot().toolPolicy)
   expect(details.instructions).toBe('Configured instructions')
   expect(details.contractVersion).toBe(2)
+  expect(details.responseProtocol).toBe('envelope')
+  hub.specs.get('assistant').engine.responseProtocol = 'native'
+  hub.specs.get('assistant').engine.contractVersion = 3
+  expect((await controller.getAgentDetails('assistant')).responseProtocol).toBe('native')
   expect(details.promptTemplate).toEqual({ system: '{{job}}', user: '{{conversation}}' })
   expect(details.latestPrompt).toEqual({ messages, budget: { inputTokens: 42 }, attemptId: 'attempt3', step: 3 })
   expect(JSON.stringify(details)).not.toContain('must-not-appear')
@@ -2447,4 +2451,13 @@ test('live tool cards distinguish typed input rejection from adapter failure', a
     expect(card.summary).toEqual(value)
     expect(card.commandId).toBeUndefined()
   }
+})
+
+test('live native tools preserve provider IDs without replacing engine receipt linkage', async () => {
+  const { controller, hub } = await startedFixture()
+  for (const callId of ['engine-a', 'engine-b']) hub.emit({ type: 'event', kind: 'call', callId, providerCallId: 'provider-shared', run: 'native-run', name: 'read', args: {} })
+  hub.emit({ type: 'event', kind: 'observation', callId: 'engine-b', providerCallId: 'provider-shared', run: 'native-run', ok: true, value: 'second' })
+  const cards = controller.getSnapshot().messages.flatMap(row => row.tools ?? [])
+  expect(cards.find(card => card.id === 'engine-a')).toMatchObject({ providerCallId: 'provider-shared', status: 'running' })
+  expect(cards.find(card => card.id === 'engine-b')).toMatchObject({ providerCallId: 'provider-shared', status: 'done', summary: 'second' })
 })

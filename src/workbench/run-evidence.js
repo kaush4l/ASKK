@@ -70,6 +70,7 @@ export function projectRunTools(details = {}) {
     const status = observation ? observation.ok === true ? 'done' : observation.ok === false ? observation.failureKind === 'invalid_input' ? 'rejected' : 'failed' : 'unresolved'
       : ACTIVE.has(runStatus) ? 'running' : ['interrupted', 'cancelled'].includes(runStatus) ? 'interrupted' : 'unresolved'
     tools.push({
+      ...(validId(call.providerCallId) ? { providerCallId: call.providerCallId } : {}),
       id: callId, callId, runId, agent, name: call.name, args: call.args,
       ...(typeof call.args?.path === 'string' ? { path: call.args.path } : {}),
       ...(typeof call.args?.command === 'string' ? { command: call.args.command } : {}),

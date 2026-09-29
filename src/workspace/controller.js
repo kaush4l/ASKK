@@ -370,7 +370,7 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
     if (message.type === 'approval' || message.type === 'approved') notify({ approvals: [...hub.approvals.values()].map(({ settle, ...approval }) => approval) })
     if (message.type === 'event') {
       if (message.kind === 'call') {
-        const card = { id: message.callId ?? id('tool'), name: message.name, args: message.args, path: message.args?.path, command: message.args?.command, status: 'running', summary: message.value, runId: message.run, agent: message.agent ?? hub.runs.get(message.run)?.agent }
+        const card = { id: message.callId ?? id('tool'), ...(typeof message.providerCallId === 'string' && message.providerCallId ? { providerCallId: message.providerCallId } : {}), name: message.name, args: message.args, path: message.args?.path, command: message.args?.command, status: 'running', summary: message.value, runId: message.run, agent: message.agent ?? hub.runs.get(message.run)?.agent }
         notify({ messages: [...state.messages, { id: card.id, role: 'assistant', content: '', at: Date.now(), tools: [card] }] })
       } else if (message.kind === 'observation') {
         // A receipt belongs to one exact run/call pair. Legacy missing IDs are
@@ -683,6 +683,7 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
         soul: spec?.soul ?? composition.soul ?? '', instructions: spec?.body ?? composition.instructions ?? '',
         promptTemplate: spec?.engine.promptTemplate ?? composition.promptTemplate ?? DEFAULT_PROMPT,
         context: spec?.context ?? definition.context ?? [], responseFormat: spec?.engine.responseFormat ?? composition.responseFormat ?? 'json',
+        responseProtocol: spec?.engine.responseProtocol ?? composition.responseProtocol ?? 'envelope',
         contractVersion: spec?.engine.contractVersion ?? composition.contractVersion ?? 1,
         maxSteps: loopBudgetValue('maxSteps', spec?.engine.maxSteps ?? composition.maxSteps), tools: definition.tools ?? [], latestPrompt })
     },

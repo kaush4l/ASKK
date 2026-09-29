@@ -472,7 +472,7 @@ export class Hub {
         throw Object.assign(new Error(clean.message), { code: clean.code, metadata: clean.metadata })
       }
     }
-    if (op === 'model.start') return this.modelBroker.start(args.handle, { ...identity, messages: args.messages, maxOutputTokens: args.maxOutputTokens, strictCompletion: args.strictCompletion, responseSchema: args.responseSchema })
+    if (op === 'model.start') return this.modelBroker.start(args.handle, { ...identity, messages: args.messages, maxOutputTokens: args.maxOutputTokens, strictCompletion: args.strictCompletion, responseSchema: args.responseSchema, nativeTools: args.nativeTools })
     if (op === 'model.next') return this.modelBroker.next(args.handle, identity)
     if (op === 'model.closeStream') return this.modelBroker.closeStream(args.handle, identity)
     if (op === 'model.close') return this.modelBroker.close(args.handle, identity)
@@ -1760,6 +1760,7 @@ export class Hub {
           loop: 'react',
           session: spec.engine.session,
           responseFormat: spec.engine.responseFormat ?? 'toon',
+          responseProtocol: spec.engine.responseProtocol ?? 'envelope',
           observationFormat: spec.engine.observationFormat ?? 'legacy',
           historyFormat: spec.engine.historyFormat ?? 'transcript',
           contractVersion: spec.engine.contractVersion,

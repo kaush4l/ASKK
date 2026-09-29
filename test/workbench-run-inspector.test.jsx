@@ -133,3 +133,14 @@ test('tool card makes rejected inputs visibly distinct from failed execution in 
     expect(failed).not.toContain('Input rejected before execution.')
   }
 })
+
+test('native call identity appears only inside expanded tool details', () => {
+  const tool = { id: 'engine-1', providerCallId: 'provider-1', name: 'read', status: 'done', summary: 'receipt' }
+  const html = renderToStaticMarkup(<ToolCard tool={tool}/>)
+  expect(html).toContain('<h4>Engine call ID</h4><pre>engine-1</pre>')
+  expect(html).toContain('<h4>Provider call ID</h4><pre>provider-1</pre>')
+  expect(html.slice(0, html.indexOf('</summary>'))).not.toContain('provider-1')
+  const legacy = renderToStaticMarkup(<ToolCard tool={{ ...tool, providerCallId: undefined }}/>)
+  expect(legacy).not.toContain('Engine call ID')
+  expect(legacy).not.toContain('Provider call ID')
+})

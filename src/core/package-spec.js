@@ -88,7 +88,7 @@ export async function compileAgentPackage(pkg, { installationId, namespace = 'in
     const commonTools = Object.fromEntries(grants.filter(group => Object.hasOwn(common, group)).map(group => [group, common[group]]))
     const inference = { model: models[settings.model ?? '$default'] }
     for (const [authored, key] of Object.entries(INFERENCE)) if (settings[authored] !== undefined) inference[key] = settings[authored]
-    const engine = { contractVersion: agent.contractVersion, responseFormat: agent.responseFormat, session: settings.session ?? (settings.remembers ? 'agent' : 'task') }
+    const engine = { responseProtocol: settings.response_protocol ?? 'envelope', contractVersion: agent.contractVersion, responseFormat: agent.responseFormat, session: settings.session ?? (settings.remembers ? 'agent' : 'task') }
     for (const [authored, key] of Object.entries(ENGINE)) if (settings[authored] !== undefined) engine[key] = settings[authored]
     const packageResources = Object.fromEntries(await Promise.all(agent.references.map(async path => [path, await read(path)])))
     if (settings.prompt_template) {

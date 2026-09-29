@@ -65,10 +65,10 @@ async function llm() {
     calibrationKey: descriptor.calibrationKey,
     settings: descriptor.settings,
     context: async () => descriptor.contextLength,
-    async *stream(messages, { signal, onRequest, onFinish, maxOutputTokens, strictCompletion, responseSchema } = {}) {
+    async *stream(messages, { signal, onRequest, onFinish, maxOutputTokens, strictCompletion, responseSchema, nativeTools } = {}) {
       const handle = descriptor.handle
       if (signal?.aborted) throw new Error('stopped by the owner')
-      await request('model.start', { handle, messages, maxOutputTokens, strictCompletion, responseSchema })
+      await request('model.start', { handle, messages, maxOutputTokens, strictCompletion, responseSchema, nativeTools })
       try {
         while (true) {
           if (signal?.aborted) throw new Error('stopped by the owner')
@@ -216,6 +216,7 @@ async function build(message) {
     responseFormat: spec.engine.responseFormat ?? 'toon',
     observationFormat: spec.engine.observationFormat,
     historyFormat: spec.engine.historyFormat,
+    responseProtocol: spec.engine.responseProtocol,
     contractVersion: spec.engine.contractVersion,
     promptTemplate: spec.engine.promptTemplate,
     outputReserve: spec.engine.outputReserve,

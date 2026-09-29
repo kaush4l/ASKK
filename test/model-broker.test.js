@@ -19,7 +19,7 @@ test('broker freezes credentials on desk and preserves ordered receipts, deltas 
   const settings = { provider: 'openai', model: 'local', contextLength: 4000, apiKey: 'secret-key', headers: { 'x-token': 'private-header' }, maxOutputTokens: 123 }
   const descriptor = await broker.open({ ...id, settings, transport: { fetch: async (url, init) => { seen.push(init); return sse('reply') } } })
   settings.apiKey = 'changed'
-  expect(descriptor).toEqual({ handle: expect.any(String), calibrationKey: expect.any(String), model: 'local', contextLength: 4000, settings: { maxOutputTokens: 123 } })
+  expect(descriptor).toEqual({ handle: expect.any(String), calibrationKey: expect.any(String), model: 'local', contextLength: 4000, settings: { provider: 'openai', maxOutputTokens: 123 } })
   for (let index = 0; index < 2; index++) {
     broker.start(descriptor.handle, { ...id, messages })
     const result = await drain(broker, descriptor.handle, id)
@@ -167,5 +167,22 @@ test('context fallback is cached but an aborted discovery does not populate the 
   controller.abort()
   await expect(pending).rejects.toMatchObject({ code: 'aborted' })
   expect(broker.contexts.size).toBe(0)
+  broker.closeAll()
+})
+
+test('broker snapshots native tool declarations before the provider stream reads them', async () => {
+  const broker = new ModelBroker(), id = identity()
+  let body
+  const descriptor = await broker.open({ ...id, settings: { provider: 'openai', contextLength: 4000 }, transport: { fetch: async (_, init) => { body = JSON.parse(init.body); return sse('done') } } })
+  const nativeTools = [{ type: 'function', function: { name: 'lookup', description: 'Original description', parameters: { type: 'object', properties: { query: { type: 'string' } } } } }]
+  broker.start(descriptor.handle, { ...id, messages, nativeTools })
+  nativeTools[0].function.name = 'mutated'
+  nativeTools[0].function.parameters.properties.query.type = 'number'
+  const result = await drain(broker, descriptor.handle, id)
+  expect(result.error).toBeFalsy()
+  expect(body.tools[0].function.name).toBe('lookup')
+  expect(body.tools[0].function.parameters.properties.query.type).toBe('string')
+  expect(body.parallel_tool_calls).toBe(false)
+  expect(body.tool_choice).toBe('auto')
   broker.closeAll()
 })
