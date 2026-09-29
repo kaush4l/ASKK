@@ -1,5 +1,5 @@
 {
-  "build": "fe931af4a8",
+  "build": "baeba11881",
   "files": {
     "agents/assistant/agent.md": "6eb458313e",
     "agents/coder/agent.md": "3afbea3eaa",
@@ -145,7 +145,7 @@
     "runtime/modules/core/tool-activity.js": "2a90678bad",
     "runtime/modules/core/tool-input.js": "3d3e6ffb6d",
     "runtime/modules/core/tools.js": "d30bfd499c",
-    "runtime/modules/core/write-observations.js": "4030e8ecd0",
+    "runtime/modules/core/write-observations.js": "d12cf937b1",
     "runtime/modules/execution/browser-linux.js": "9ada42365b",
     "runtime/modules/execution/local.js": "442378fd41",
     "runtime/modules/execution/toolchain.js": "69672a1789",
