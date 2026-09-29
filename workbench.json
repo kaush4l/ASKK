@@ -35,5 +35,27 @@
         "cpus": 1
       }
     }
+  },
+  "defaultWorkflow": "assistant",
+  "workflows": [
+    {
+      "id": "assistant",
+      "label": "General assistant",
+      "description": "Research, plan, reason, and coordinate agents without starting a workspace runtime.",
+      "agent": "assistant",
+      "workspace": false
+    },
+    {
+      "id": "coding",
+      "label": "Build an app",
+      "description": "Create files, run commands, and verify an application in the selected workspace.",
+      "agent": "main",
+      "workspace": true
+    }
+  ],
+  "toolPolicy": {
+    "disabledTools": [],
+    "approvalRisks": [],
+    "allowDelegation": true
   }
 }

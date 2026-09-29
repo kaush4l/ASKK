@@ -22,8 +22,9 @@ import { Engine } from '../core/engine.js'
 import { versioned } from '../core/folder.js'
 import { inference } from '../core/inference.js'
 import { resolve } from '../core/models.js'
-import { decide } from '../core/permissions.js'
+import { snapshot } from '../core/prompt.js'
 import { fromModule, tool, toolbox } from '../core/tools.js'
+import { hasToolRequirement, normalizeToolPolicy, scopedToolDecision, toolSelected } from './tool-policy.js'
 
 const BUILTINS = ['board', 'files', 'host', 'web', 'skill', 'memory', 'sessions', 'todo', 'schedule', 'workspace']
 
@@ -33,6 +34,8 @@ let catalogue = { models: {} }
 let policy = {}
 let host = null
 let controller = null
+let fullTools = []
+let runToolPolicy = null
 const pending = new Map()
 let nextRequest = 1
 const models = new Map()
@@ -90,14 +93,20 @@ function guarded(item) {
   return {
     ...item,
     run: async (args, ctx) => {
-      const verdict = decide(item, args, { policy, agent: spec.path })
+      const verdict = scopedToolDecision(item, args, { policy, agent: spec.path, toolPolicy: runToolPolicy })
+      const missing = item.requires.filter(need => !hasToolRequirement(need, host))
+      if (missing.length) throw new Error(`tool unavailable: requires ${missing.join(', ')}`)
       if (verdict.action === 'deny') throw new Error(`refused by policy: ${verdict.reason}`)
+      if (ctx.signal?.aborted) throw new Error('stopped by the owner')
       if (verdict.action === 'ask') {
         engine?.emit('approval', item.name, ctx.call, { risk: verdict.risk, reason: verdict.reason })
-        const answer = await request('approve', { tool: item.name, call: ctx.call, risk: verdict.risk, reason: verdict.reason, args })
+        const answer = await request('approve', { tool: item.name, call: ctx.call, callId: ctx.callId, risk: verdict.risk, reason: verdict.reason, args })
         engine?.emit('approved', item.name, answer.approved ? 'approved' : 'denied', { note: answer.note ?? '' })
         if (!answer.approved) throw new Error(`the owner refused this call${answer.note ? `: ${answer.note}` : '.'} Do not retry it unchanged.`)
       }
+      if (ctx.signal?.aborted) throw new Error('stopped by the owner')
+      const latest = scopedToolDecision(item, args, { policy, agent: spec.path, toolPolicy: runToolPolicy })
+      if (latest.action === 'deny') throw new Error(`refused by policy: ${latest.reason}`)
       return run(args, ctx)
     },
   }
@@ -172,7 +181,9 @@ async function build(message) {
     return item
   })
 
-  const { tools, shadowed, unavailable } = toolbox([local, common, builtins, mcpTools, agents], { has: (need) => (need === 'host' ? Boolean(host) : true) })
+  const candidates = [local, common, builtins, mcpTools, agents]
+  const { tools, shadowed, unavailable } = toolbox(candidates, { has: need => hasToolRequirement(need, host) })
+  fullTools = tools.map(guarded)
 
   const ctx = {
     request,
@@ -198,14 +209,14 @@ async function build(message) {
     promptTemplate: spec.engine.promptTemplate,
     outputReserve: spec.engine.outputReserve,
     verifyCompletion: spec.engine.requireVerification ? () => request('workspace.acceptance') : null,
-    tools: tools.map(guarded),
+    tools: fullTools,
     context: contexts(spec.context, notes),
     history: message.history ?? [],
     maxSteps: spec.engine.maxSteps ?? 10,
     repairs: spec.engine.repairs ?? 2,
     compactAt: spec.engine.compactAt ?? 0.9,
     keep: spec.engine.keep ?? 4,
-    summarise: message.compactor ? (text) => request('call', { agent: message.compactor, query: text, call: 'compactor(history)' }) : null,
+    summarise: message.compactor ? (text) => request('call', { agent: message.compactor, query: text, call: 'compactor(history)', infrastructure: 'compaction' }) : null,
     ctx,
     onHistory: (turns) => post({ type: 'history', turns }),
   })
@@ -219,28 +230,34 @@ async function build(message) {
     if (slot) post({ type: 'status', slot })
   })
 
+  const describe = item => {
+    const verdict = scopedToolDecision(item, {}, { policy, agent: spec.path })
+    const missing = item.requires.filter(need => !hasToolRequirement(need, host))
+    return { name: item.name, tier: item.tier, source: item.source, description: item.description, parameters: item.parameters, risk: verdict.risk, effectiveAction: verdict.action, actionReason: verdict.reason, requires: item.requires, missing, available: missing.length === 0, writes: item.writes, cacheable: item.cacheable }
+  }
   post({
     type: 'ready',
-    tools: tools.map((item) => ({
-      name: item.name,
-      tier: item.tier,
-      source: item.source,
-      description: item.description,
-      parameters: item.parameters,
-      risk: decide(item, {}, { policy, agent: spec.path }).risk,
-    })),
+    tools: tools.map(describe),
     shadowed,
-    unavailable,
+    unavailable: unavailable.map(row => ({ ...describe(candidates.flat().find(item => item.name === row.name && item.tier === row.tier)), ...row })),
     notes,
   })
 }
 
 async function run(query, context) {
+  runToolPolicy = normalizeToolPolicy(context?.toolPolicy)
   controller = new AbortController()
-  engine.ctx.runContext = context ?? null
-  const text = await engine.invoke(query, { signal: controller.signal })
-  controller = null
-  post({ type: 'answer', text, ok: engine.status === 'done', slot: engine.progress() })
+  engine.ctx.runContext = snapshot(context ?? null)
+  engine.tools = fullTools.filter(item => toolSelected(item, runToolPolicy))
+  try {
+    const text = await engine.invoke(query, { signal: controller.signal })
+    post({ type: 'answer', text, ok: engine.status === 'done', slot: engine.progress() })
+  } finally {
+    controller = null
+    runToolPolicy = null
+    engine.tools = fullTools
+    engine.ctx.runContext = null
+  }
 }
 
 self.onmessage = async ({ data }) => {

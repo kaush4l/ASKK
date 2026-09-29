@@ -34,34 +34,38 @@ const fence = (url, text) => {
 }
 
 export const web_fetch = {
-  description: 'Fetch a web page and return its readable text. Uses the host bridge when the site blocks browsers.',
+  description: 'Fetch a web page and return its readable text. Browser access requires CORS; a paired host with the fetch capability can read other sites.',
   parameters: { url: 'string' },
   risk: 'net',
   run: async ({ url }, ctx) => {
+    let response
     try {
-      const response = await fetch(url, { signal: ctx.signal })
-      const body = await response.text()
-      const type = response.headers.get('content-type') ?? ''
-      return `HTTP ${response.status}\n${fence(url, type.includes('html') ? _text(body) : body)}`
+      response = await fetch(url, { signal: ctx.signal })
     } catch (error) {
-      if (!ctx.host) {
-        return `the browser could not read ${url} (${error.message}); the site probably blocks cross-origin reads. Pairing the host bridge lets it be fetched from the machine.`
+      if (ctx.signal?.aborted || error?.name === 'AbortError') throw error
+      if (!ctx.host?.capabilities?.includes('fetch')) {
+        throw new Error(`the browser could not read ${url} (${error.message}); cross-origin access may be blocked. No paired host with the fetch capability is available.`)
       }
       const { status, text } = await ctx.request('host', { endpoint: '/fetch', body: { url } })
+      if (status < 200 || status >= 300) throw new Error(`HTTP ${status} (via host) while fetching ${url}`)
       return `HTTP ${status} (via host)\n${fence(url, /<html/i.test(text) ? _text(text) : text)}`
     }
+    if (!response.ok) throw new Error(`HTTP ${response.status} while fetching ${url}`)
+    const body = await response.text()
+    const type = response.headers.get('content-type') ?? ''
+    return `HTTP ${response.status}\n${fence(url, type.includes('html') ? _text(body) : body)}`
   },
 }
 
 export const web_search = {
   description: 'Search the web and return the top results as title, link and snippet.',
   parameters: { query: 'string' },
-  requires: ['host'],
+  requires: ['host:fetch'],
   risk: 'net',
   run: async ({ query }, ctx) => {
     const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`
     const { status, text } = await ctx.request('host', { endpoint: '/fetch', body: { url, headers: { 'user-agent': 'Mozilla/5.0 harness' } } })
-    if (status !== 200) return `search answered HTTP ${status}`
+    if (status !== 200) throw new Error(`search answered HTTP ${status}`)
     const results = []
     const pattern = /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g
     for (const match of text.matchAll(pattern)) {
