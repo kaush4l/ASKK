@@ -1,0 +1,53 @@
+{
+  "source": "8a3c14bb",
+  "deployment": "b1673398ac912749caeaa14e338dc083290a26f9",
+  "workflow": "https://github.com/kaush4l/ASKK/actions/runs/36586201655",
+  "workflowConclusion": "success",
+  "export": {
+    "version": 1,
+    "basePath": "/ASKK",
+    "totalBytes": 879673619,
+    "fileCount": 217,
+    "runtimeId": "c2w-node24-38d093f4a38002db",
+    "artifactHash": "43f5ee9a5cc24768ae0f88e5742b67328ac70ee8c2d0bebf34aabea45f9acb45"
+  },
+  "checks": [
+    {
+      "path": "index.html",
+      "status": 200,
+      "sha256": "cfd70e342869a8a3cf961309c02f99c45bb8c596dd63f6627e197e9977be15fd",
+      "matches": true
+    },
+    {
+      "path": "_next/static/chunks/app/page-40c4bc2fcf9d9aa3.js",
+      "status": 200,
+      "sha256": "5e78d3cf81b914dcb5943f856d7246d7bcb7dd535dd8144bed56105ba67231be",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/core/engine.js",
+      "status": 200,
+      "sha256": "8e894715fcd147931795249f2d29e3885898d8746dbd9cbb246755b3a366bdfb",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/core/context.js",
+      "status": 200,
+      "sha256": "3fbb3a5802bdd444f681076fc620eecabf610d465900c92fe0ed35071b9d73d2",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/core/command-reference.js",
+      "status": 200,
+      "sha256": "b7dc0a1028b52b936d40a2b57b0286532448235f8cccc0f82d6c2c1b17cba61c",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/builtin/workspace.js",
+      "status": 200,
+      "sha256": "e3e61e03c958be8d2ad8f1f93d5549c080bf8b461b9faf5e5956e51d8054c66e",
+      "matches": true
+    }
+  ],
+  "scope": "Hosted byte checks and automated component regressions. No live browser interaction, Safari, iPhone, VoiceOver, or Browser Linux acceptance inferred."
+}

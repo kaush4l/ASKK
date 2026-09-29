@@ -1,10 +1,24 @@
 # Implementation status
 
-Latest publication: source **`df09f5e1`**, deployment **`b47a859b`**, [successful Pages workflow](https://github.com/kaush4l/ASKK/actions/runs/36584853860). [Hosted evidence](evidence/check-reference-pages.json) confirms 11 page, UI, runtime and index files match the tested export. Export: **879,673,513 bytes / 217 files**.
+Latest publication: source **`8a3c14bb`**, deployment **`b1673398`**, [successful Pages workflow](https://github.com/kaush4l/ASKK/actions/runs/36586201655). [Hosted evidence](evidence/scaffold-reference-pages.json) confirms six page, UI and runtime files match the tested export. Export: **879,673,619 bytes / 217 files**.
+
+Historical publication: source **`df09f5e1`**, deployment **`b47a859b`**, [successful Pages workflow](https://github.com/kaush4l/ASKK/actions/runs/36584853860). [Hosted evidence](evidence/check-reference-pages.json) confirms 11 page, UI, runtime and index files match the tested export. Export: **879,673,513 bytes / 217 files**.
 
 Historical publication: source **`b9ae8ecc`**, deployment **`830fcc8a`**, [successful Pages workflow](https://github.com/kaush4l/ASKK/actions/runs/36581450992). [Hosted evidence](evidence/expected-checks-pages.json) confirms the page, workbench chunk, completion module and agent index match the tested export. Export: **879,666,452 bytes / 216 files**.
 
 Historical publication: source **`e7e19081`**, deployment **`d02543f1`**, [successful Pages workflow](https://github.com/kaush4l/ASKK/actions/runs/36578773412). [Hosted evidence](evidence/model-discovery-pages.json) confirms the page, workbench chunk, runtime context, workspace controller and agent index match the tested export. Export: **879,666,446 bytes / 216 files**.
+
+## Latest verification and scaffold diagnostic
+
+Verification inspection now displays newest receipts first, labels the latest, and retains original attempt numbers. The existing twelve-receipt initial limit and expansion remain. Regression covers more than twelve attempts with both latest success and latest failure, unchanged recorded data and unchanged run status. Full validation: **1,007 passed, 1 skipped, 0 failed**, 7,536 assertions across 98 files; Pages export built successfully.
+
+[Scaffold reference trial](evidence/scaffold-reference-model.json): the 4B model used the shipped builder prompt, native/messages v3, the same seed-42 sampling profile and [configured project checks](evidence/scaffold-reference-checks.json). It failed acceptance. Its implementation passed withheld function behavior, but package `scripts.test` recursively invoked `bun run test`, no test files were created, and an attempted manifest replacement was rejected because it supplied stale revision zero. The four-minute evaluator deadline cancelled the run after eleven requests and seven tool calls. The independent package check timed out and test discovery failed. No checks were relaxed. Temporary model and trial processes exited; observed recursive test processes were gone. This is a Local Bun diagnostic, not Browser Linux or browser acceptance.
+
+Next work identified by fresh planner review:
+
+- Supply adapter-owned toolchain command facts through dynamic environment context; keep agent instructions generic.
+- Add and validate host resource containment separately from timeouts. Current process-group cancellation does not bound process growth, memory or CPU; leader closure alone is not proof all descendants have exited.
+- Consider bounded repair only for fully completed malformed native candidates. Partial streams, cancellation and transport errors must remain distinct; malformed actions must never execute.
 
 ## Required-check references
 
@@ -30,7 +44,7 @@ The dashboard now says **Required commands passed · only configured checks cove
 
 [Fresh script diagnostics](evidence/expected-script-checks.json) retain four attempts, including a preliminary 4B run before signal rejection was tightened. The final 4B run completed all configured checks but failed withheld numeric-prefix behavior. The final 1.7B run hit the 240-second deadline, retained incorrect string-concatenation code and failed acceptance. This bounded failure is not a capability ceiling or a timing benchmark.
 
-A further 4B trial used an [additional visible `7bad` assertion](evidence/script-prefix-required-checks.json), with the same agent instructions, engine and withheld checks. It generated source that passed every withheld case, but changed a required negative-input command’s string arguments into numeric arguments, omitted required checks and exhausted its steps. It remains incomplete, not a success. These results motivate selecting configured checks by reference through the existing permission path; the design is documented in [AGENT-SKELETON.md](AGENT-SKELETON.md#next-experiment-selecting-required-checks-by-reference-not-implemented). That interface is not implemented yet. Both temporary model servers exited, and the local model assets were not deployed.
+A further 4B trial used an [additional visible `7bad` assertion](evidence/script-prefix-required-checks.json), with the same agent instructions, engine and withheld checks. It generated source that passed every withheld case, but changed a required negative-input command’s string arguments into numeric arguments, omitted required checks and exhausted its steps. It remains incomplete, not a success. These historical results motivated selecting configured checks by reference through the existing permission path. That interface is now implemented; see [AGENT-SKELETON.md](AGENT-SKELETON.md#selecting-required-checks-by-reference) and the newer results above. Both temporary model servers exited, and the local model assets were not deployed.
 
 ## Frozen small-model comparison
 
