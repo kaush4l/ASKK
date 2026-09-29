@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "evaluation": "immutable-repair-v1",
+  "scope": "One bounded local-Qwen verification-repair diagnostic on a frozen native-built artifact. Not a fresh application-generation run.",
+  "startedAt": "2026-09-29T00:48:27.252Z",
+  "completedAt": "2026-09-29T00:55:25.754Z",
+  "rawReceiptSha256": "1469fecce88d15ce79f058d73216ae896f5a65dba20cc4df372d2ad26de256ff",
+  "rawReceiptLocation": "Retained privately in .cache/evals/repair-20260929-0047/runs/025ab527-0e82-406f-98bc-abc77bcfd44d/receipt.json (mode 0600).",
+  "counts": {
+    "main": 6,
+    "compactor": 1,
+    "inspections": 2
+  },
+  "assessment": {
+    "passed": false,
+    "status": "failed",
+    "checks": {
+      "baselineReproduced": true,
+      "realRepairPassed": false,
+      "changedPlan": true,
+      "oneCompaction": true,
+      "mainCompleted": false,
+      "withinBudget": true,
+      "sourcePreserved": true
+    },
+    "reviewRequired": [
+      "Summary retains failed index, Active filter, expected Buy groceries and actual Write report without inventing passed states.",
+      "The repaired plan targets the intended tasks by stable identity and covers Active, Completed, and reload restoration; a trivial passing assertion is insufficient.",
+      "No owner steering or application mutation occurred. This is verification repair, not fresh application generation."
+    ]
+  },
+  "compactorSummary": "Evaluator fixture observations were provided for the Daylight task board app. Source files were read: app/page.js (rev fb449f86, 8484 bytes), app/globals.css (rev 8348d59d, 5537 bytes), app/layout.js (rev af46a6a5, 261 bytes), package.json (rev 811f0cfb, 245 bytes, next 16.3.6/react 19.3.0), and next.config.js (rev ef56b1f3, 177 bytes, output export). A workspace_check was run with 37 assertions covering add, toggle, filter, edit, delete, reload persistence, and clear-completed. The check failed (ok:false) at step 15 of 37: expected text \"Buy groceries\" at .task-title but actual was \"Write report\". 8 outcome assertions passed before the failure. The check ran in 15546ms against artifact-81748367-eb89-43b4-b4e4-f483398a6a85 revision 26, buildId eaa1b35725bab4d7cf2b3d91f566af834fbdf1af1d199fbb2196bec8fe4e22b1. The remaining 22 steps (including reload persistence and clear-completed) were not reached and remain unverified.",
+  "checks": [
+    {
+      "phase": "baseline",
+      "ok": false,
+      "steps": 37,
+      "executedSteps": 15,
+      "errors": [
+        "Expected text \"Buy groceries\" at .task-title; actual text \"Write report\""
+      ]
+    },
+    {
+      "phase": "main",
+      "ok": false,
+      "steps": 39,
+      "executedSteps": 28,
+      "errors": [
+        "No element at .task-list .task-item:nth-child(3) .task-title; expected text \"Buy groceries\""
+      ]
+    }
+  ],
+  "independentReview": {
+    "reviewer": "root agent, inspecting retained raw summary and full repaired plan",
+    "passed": false,
+    "summaryFaithful": false,
+    "stableIdentity": false,
+    "activeCompletedReloadCovered": false,
+    "noOwnerSteering": true,
+    "summaryEvidence": "The summary preserved the failed index 15, expected Buy groceries and actual Write report, without claiming the later checks passed. It omitted the required Active-filter label; the full summary criterion is not satisfied.",
+    "coverageEvidence": "The 39-step repaired plan used positional nth-child selectors throughout. It passed 28 steps but failed index 28 because the target task title element was missing. Active/Completed checks were reached; reload at index 34 and its restored-state outcomes were not.",
+    "limits": "The real inspector used programmatic DOM events. Native build, forced compaction, immutable-source restrictions and explicit repair goal differ from fresh application generation. The budget prevented extra inspections; no successful repair or general reliability claim."
+  }
+}

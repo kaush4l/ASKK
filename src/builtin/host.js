@@ -1,8 +1,9 @@
 /**
  * Built-in `host` — the owner's machine, through the host bridge (host/bridge.js).
  *
- * These tools exist only when the bridge is paired (`requires: ['host']`); otherwise they are
- * left out of the prompt and listed as unavailable. Every path is confined to the bridge's
+ * Each tool requires its advertised host capability. Legacy file/command endpoints also
+ * require the legacy bridge protocol; the Bun companion's workspace endpoints are separate.
+ * Missing requirements keep tools out of the prompt. Every path is confined to the bridge's
  * root by the bridge itself, not by this file. The hub makes the call, from the page, because
  * the page is where the browser's local-network permission was granted.
  */
@@ -14,7 +15,7 @@ export const host_exec = {
     'Run a shell command on the owner machine, inside the bridge root. Returns the exit code, stdout and stderr. ' +
     'Long output is cut. Use it to build, test and inspect.',
   parameters: { command: 'string', cwd: 'string (optional, relative to the root)', timeout: 'seconds (optional, default 120)' },
-  requires: ['host'],
+  requires: ['host:legacy-bridge', 'host:exec'],
   risk: 'exec',
   run: async ({ command, cwd, timeout }, ctx) => {
     const result = await bridge(ctx, '/exec', { command, cwd, timeout })
@@ -26,7 +27,7 @@ export const host_exec = {
 export const host_list = {
   description: 'List a directory under the bridge root. Directories end with /.',
   parameters: { path: 'string (relative to the root, default ".")' },
-  requires: ['host'],
+  requires: ['host:legacy-bridge', 'host:fs'],
   risk: 'read',
   run: async ({ path = '.' }, ctx) => {
     const { entries } = await bridge(ctx, '/fs/list', { path })
@@ -37,7 +38,7 @@ export const host_list = {
 export const host_read = {
   description: 'Read a text file under the bridge root. Large files are cut; pass start and lines to read a window.',
   parameters: { path: 'string', start: 'line number (optional)', lines: 'count (optional)' },
-  requires: ['host'],
+  requires: ['host:legacy-bridge', 'host:fs'],
   risk: 'read',
   run: async ({ path, start, lines }, ctx) => {
     const { content, truncated } = await bridge(ctx, '/fs/read', { path, start, lines })
@@ -48,7 +49,7 @@ export const host_read = {
 export const host_write = {
   description: 'Write a whole text file under the bridge root, creating folders as needed. Read it first if it exists.',
   parameters: { path: 'string', content: 'string' },
-  requires: ['host'],
+  requires: ['host:legacy-bridge', 'host:fs'],
   risk: 'write',
   writes: true,
   run: async ({ path, content }, ctx) => {
@@ -60,7 +61,7 @@ export const host_write = {
 export const host_fetch = {
   description: 'Fetch a URL from the owner machine, for sites a browser page cannot reach. Returns text, cut when long.',
   parameters: { url: 'string' },
-  requires: ['host'],
+  requires: ['host:fetch'],
   risk: 'net',
   run: async ({ url }, ctx) => {
     const { status, text } = await bridge(ctx, '/fetch', { url })
@@ -86,7 +87,7 @@ export const host_agent = {
     'It reads and edits files in the bridge root with its own tools and returns its final report. ' +
     'Give it everything it needs in the task: it sees nothing of this conversation. Slow: minutes, not seconds.',
   parameters: { agent: 'claude | codex | gemini', task: 'string', cwd: 'string (optional, relative to the root)', timeout: 'seconds (optional, default 900)' },
-  requires: ['host'],
+  requires: ['host:legacy-bridge', 'host:cli'],
   risk: 'exec',
   run: async ({ agent = 'claude', task, cwd, timeout = 900 }, ctx) => {
     const args = AGENTS[agent]

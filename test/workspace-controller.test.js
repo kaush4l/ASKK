@@ -2,6 +2,8 @@ import { afterEach, expect, test } from 'bun:test'
 import { createWorkbenchController } from '../src/workspace/controller.js'
 import { ProjectFiles } from '../src/workspace/files.js'
 import { openStore } from '../src/runtime/store.js'
+import { inference } from '../src/core/inference.js'
+import { resolve } from '../src/core/models.js'
 
 const controllers = new Set()
 const cleanups = []
@@ -155,6 +157,8 @@ async function startedFixture({ restoredBridge = false, modelProfile = {}, workb
     stop() {}, manifest: () => [], roster: () => new Map(),
     settings: { get: () => ({ catalogue }), set: async patch => { catalogue = patch.catalogue ?? catalogue } },
     ask(query, options) { const id = `run-${++serial}`; this.asks.push({ id, query, ...options }); this.runs.set(id, { id, agent: 'main', context: options.context, children: [], slot: { status: 'idle' } }); return id },
+    startRun(agent, query, options) { const id = this.ask(query, options); const run = this.runs.get(id); run.agent = agent; return run },
+    runsApi: { get: async id => hub.runs.get(id) },
     traces: { export: async id => ({ trace: id, runs: [] }) },
   }
   const row = await fixture({ createHub: () => hub, createCompanion, createExecution, inspectArtifact })
@@ -1279,4 +1283,142 @@ test('stopping a task observes late cancellation rejection without inventing a c
   finished.resolve({ code: 0, cancelled: false })
   await command
   expect(controller.getSnapshot().commands.at(-1)).toMatchObject({ status: 'done', exitCode: 0, cancelled: false })
+})
+
+const generalWorkflows = {
+  defaultWorkflow: 'assistant',
+  workflows: [
+    { id: 'assistant', label: 'General assistant', description: 'Research and plan', agent: 'assistant', workspace: false },
+    { id: 'coding', label: 'Build an app', description: 'Build and verify', agent: 'main', workspace: true },
+  ],
+}
+
+test('general workflow starts its agent without a workspace and keeps tool scope frozen', async () => {
+  let executions = 0
+  const { controller, hub } = await startedFixture({ workbenchConfig: generalWorkflows, createExecution: async () => { executions++; throw new Error('General work must not boot Linux') } })
+  await controller.setConversationGoal('Compare primary sources')
+  const supplied = { disabledTools: ['web_fetch'], approvalRisks: ['net'], allowDelegation: false }
+  await controller.setToolPolicy(supplied)
+  supplied.disabledTools.push('later_mutation')
+  const id = await controller.sendGoal('Research the question')
+  const run = hub.runs.get(id)
+  expect(executions).toBe(0)
+  expect(run.agent).toBe('assistant')
+  expect(run.context.binding).toBeUndefined()
+  expect(run.context.workflow).toEqual(generalWorkflows.workflows[0])
+  expect(run.context.toolPolicy.disabledTools).toEqual(['web_fetch'])
+  expect(Object.isFrozen(run.context.toolPolicy)).toBe(true)
+  expect(run.context.savedGoal.text).toBe('Compare primary sources')
+  expect(await hub.externalOps['workspace.goal']({}, run)).toEqual({ text: 'Compare primary sources', revision: 1 })
+  expect(() => hub.externalOps['workspace.read']({ path: 'app/page.js' }, run)).toThrow('no pinned workspace')
+  expect(controller.getSnapshot().runtime.status).toBe('idle')
+  expect(controller.getSnapshot().agents[0]).toMatchObject({ id, agent: 'assistant', parent: null })
+  await expect(controller.setWorkflow('coding')).rejects.toThrow('active work')
+  await expect(controller.setToolPolicy({ allowDelegation: true })).rejects.toThrow('active work')
+})
+
+test('workflow selection and policy persist without restoring running processes', async () => {
+  const first = await startedFixture({ workbenchConfig: generalWorkflows })
+  await first.controller.setWorkflow('coding')
+  await first.controller.setToolPolicy({ approvalRisks: ['write'], allowDelegation: false })
+  const firstRun = await first.controller.sendGoal('Create a file')
+  first.hub.runs.get(firstRun).slot.status = 'thinking'
+  first.hub.emit({ type: 'status', run: firstRun, slot: { status: 'thinking', steps: 1 } })
+  first.controller.stop(); controllers.delete(first.controller)
+  await new Promise(resolve => setTimeout(resolve, 0))
+  const second = await startedFixture({ sharedStore: first.files.store, workbenchConfig: generalWorkflows })
+  expect(second.controller.getSnapshot().selectedWorkflowId).toBe('coding')
+  expect(second.controller.getSnapshot().toolPolicy).toEqual({ disabledTools: [], approvalRisks: ['write'], allowDelegation: false })
+  expect(second.controller.getSnapshot().run.status).toBe('interrupted')
+  expect(second.controller.getSnapshot().agents).toEqual([])
+  expect(second.hub.runs.size).toBe(0)
+  expect(second.controller.getSnapshot().runtime.status).toBe('idle')
+  await second.controller.setWorkflow('assistant')
+  expect(second.controller.getSnapshot().selectedWorkflowId).toBe('assistant')
+})
+
+test('invalid workflow or tool policy cannot dispatch or replace the configured selection', async () => {
+  const { controller, hub } = await startedFixture({ workbenchConfig: generalWorkflows })
+  await expect(controller.setWorkflow('invented')).rejects.toThrow('Unknown workflow')
+  await expect(controller.setToolPolicy({ approvalRisks: ['admin'] })).rejects.toThrow('Invalid run tool policy')
+  await expect(controller.setToolPolicy({ arbitrary: true })).rejects.toThrow('Invalid run tool policy')
+  expect(controller.getSnapshot().selectedWorkflowId).toBe('assistant')
+  expect(controller.getSnapshot().toolPolicy.allowDelegation).toBe(true)
+  expect(hub.runs.size).toBe(0)
+})
+
+test('definitions remain a catalogue while live parent and child status project separately', async () => {
+  const { controller, hub } = await startedFixture({ workbenchConfig: generalWorkflows })
+  const definitions = [{ path: 'assistant', name: 'Assistant', tools: [] }, { path: 'researcher', name: 'Researcher', tools: [] }]
+  hub.manifest = () => definitions
+  hub.emit({ type: 'ready' })
+  hub.runs.set('owner', { id: 'owner', agent: 'assistant', query: 'Question', slot: { status: 'waiting', steps: 2, maxSteps: 24, current: 'researcher' } })
+  hub.runs.set('child', { id: 'child', agent: 'researcher', parent: 'owner', query: 'Read source', slot: { status: 'thinking', steps: 1, maxSteps: 10 } })
+  hub.emit({ type: 'status', run: 'child', slot: { status: 'thinking', steps: 1 } })
+  expect(controller.getSnapshot().agentDefinitions).toEqual(definitions)
+  expect(controller.getSnapshot().agents).toEqual([
+    expect.objectContaining({ id: 'owner', agent: 'assistant', parent: null, status: 'waiting', current: 'researcher', maxSteps: 24 }),
+    expect.objectContaining({ id: 'child', agent: 'researcher', parent: 'owner', status: 'thinking' }),
+  ])
+})
+
+test('agent inspector returns configured composition and only the selected agent latest exact prompt', async () => {
+  const { controller, hub } = await startedFixture({ workbenchConfig: generalWorkflows })
+  hub.specs = new Map([['assistant', { soul: 'Shared identity', body: 'Configured instructions', context: ['goal'], engine: { contractVersion: 2, responseFormat: 'json', maxSteps: 24, promptTemplate: { system: '{{job}}', user: '{{conversation}}' } }, inference: { api_key: 'must-not-appear' } }]])
+  let inspectedPolicy
+  hub.manifest = options => { inspectedPolicy = options.toolPolicy; return [{ path: 'assistant', name: 'Assistant', description: 'General', tools: [{ name: 'web_fetch', requires: ['network'] }] }] }
+  const messages = [{ role: 'system', content: 'Actual recorded instructions' }, { role: 'user', content: 'Actual task' }]
+  hub.runs.set('selected', { id: 'selected', agent: 'assistant', at: 2, prompts: [{ step: 3, attemptId: 'attempt3', snapshot: { messages, budget: { inputTokens: 42 } } }], requests: [{ authorization: 'must-not-appear' }] })
+  hub.runs.set('other', { id: 'other', agent: 'main', at: 3, prompts: [{ snapshot: { messages: [{ role: 'user', content: 'Wrong agent history' }] } }] })
+  const details = await controller.getAgentDetails('assistant')
+  expect(inspectedPolicy).toEqual(controller.getSnapshot().toolPolicy)
+  expect(details.instructions).toBe('Configured instructions')
+  expect(details.contractVersion).toBe(2)
+  expect(details.promptTemplate).toEqual({ system: '{{job}}', user: '{{conversation}}' })
+  expect(details.latestPrompt).toEqual({ messages, budget: { inputTokens: 42 }, attemptId: 'attempt3', step: 3 })
+  expect(JSON.stringify(details)).not.toContain('must-not-appear')
+  expect(JSON.stringify(details)).not.toContain('Wrong agent history')
+  expect(Object.isFrozen(details.latestPrompt.messages)).toBe(true)
+  await expect(controller.getAgentDetails('unknown')).rejects.toThrow('Unknown agent')
+})
+
+
+test('explicit null policy in configuration or restored preferences fails closed', async () => {
+  await expect(startedFixture({ workbenchConfig: { ...generalWorkflows, toolPolicy: null } })).rejects.toThrow('Invalid run tool policy')
+  const files = new ProjectFiles()
+  files.store = await openStore(`invalid-restored-policy-${crypto.randomUUID()}`)
+  files.store.durable = true
+  await files.store.put('settings', { key: 'workbench-state', value: { toolPolicy: null } })
+  await expect(startedFixture({ sharedStore: files.store, workbenchConfig: generalWorkflows })).rejects.toThrow('Invalid run tool policy')
+})
+
+
+test('explicit direct model transport escapes a disconnected relay and works independently of delayed Linux', async () => {
+  const runtime = healthFixturePort()
+  const { controller, hub } = await startedFixture({ workbenchConfig: generalWorkflows, createExecution: runtime.createExecution })
+  await controller.startRuntime()
+  runtime.delayed([{ id: 'old-read', method: 'fs.list', path: '/' }])
+  expect(controller.getSnapshot().runtime.status).toBe('unresponsive')
+  const requested = []
+  hub.models = { refresh: async alias => {
+    try {
+      const settings = resolve({ model: alias }, hub.settings.get().catalogue)
+      const models = await inference(settings, { bridge: null, fetch: async url => { requested.push(url); return Response.json({ data: [{ id: 'fixture-model' }] }) } }).models()
+      return { ids: models.map(model => model.id), at: 1 }
+    } catch (error) { return { error: error.message, at: 1 } }
+  } }
+  await controller.setModel({ model: 'fixture-model', baseUrl: 'https://model.invalid/v1', via: 'bridge' })
+  await expect(controller.testModel()).rejects.toThrow('model relay is disconnected')
+  expect(requested).toEqual([])
+  await controller.setModel({ model: 'fixture-model', baseUrl: 'https://model.invalid/v1', via: 'direct' })
+  const checked = await controller.testModel()
+  expect(checked.ids).toEqual(['fixture-model'])
+  expect(requested).toEqual(['https://model.invalid/v1/models'])
+  expect(hub.settings.get().catalogue.models.workbench.via).toBe('direct')
+  expect(controller.getSnapshot().model).toMatchObject({ via: 'direct', status: 'connected' })
+  expect(controller.getSnapshot().runtime.status).toBe('unresponsive')
+  const runId = await controller.sendGoal('Explain this without executing files')
+  expect(hub.runs.get(runId).agent).toBe('assistant')
+  expect(hub.runs.get(runId).context.binding).toBeUndefined()
+  expect(controller.getSnapshot().runtime.status).toBe('unresponsive')
 })

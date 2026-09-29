@@ -1,6 +1,6 @@
 # ASKK
 
-A browser-owned agent workbench: describe a goal, inspect actual tool calls, edit files, run commands, and verify a generated application beside the conversation.
+A browser-owned agent dashboard and workbench: choose a workflow, select tools, approve actions, and follow each agent's actual work. Coding adds live files, commands, and artifact previews to the same application.
 
 The UI is a Next.js static export written in JavaScript/JSX. Agents run in Web Workers. Commands use an explicitly selected runtime: a container2wasm Linux guest with Node/npm in the browser, or an optional Bun companion on your computer. **Chrome has passed guest boot, real Node commands, filesystem checks, and acknowledged-file recovery after reload. A private candidate also installed and executed an uncached npm package with both companions stopped. Next builds and current Safari acceptance remain unverified.** The first candidate Next build exceeded its 15-minute bound; the public site still uses the earlier image, and Browser Linux remains an engineering preview.
 
@@ -10,6 +10,18 @@ A local Qwen model completed a native task-board verification with 37 passing ch
 - [Measured status and remaining gates](docs/rewrite/IMPLEMENTATION-STATUS.md)
 - [Remote behavior reconciliation](docs/rewrite/REMOTE-RECONCILIATION.md)
 - [Browser Linux build/provenance](scripts/browser-linux/README.md)
+
+## Try the dashboard
+
+Open [ASKK on GitHub Pages](https://kaush4l.github.io/ASKK/). The dashboard is the entry point; use the Workspace navigation to return to files and conversation without losing the goal draft.
+
+1. Configure a model, choose **Direct from this browser** or **Through HTTPS companion**, save, and test the connection. Direct access requires browser networking permission and endpoint CORS; Safari needs a trusted HTTPS companion for the local HTTP model. A disconnected saved relay must be reconnected or explicitly changed to Direct. The browser runs the agent loop; the endpoint performs inference.
+2. Choose **General assistant** for research, planning, or questions. This starts browser agent workers without downloading or booting Browser Linux. Web fetch is subject to CORS; search requires a companion that explicitly advertises `fetch`. Browser control is unavailable unless an actual tool and its required capability are supplied.
+3. Choose **Single agent** or **Allow delegation**, enable the tools you want, and select which effect classes require approval. These choices are pinned for the next task and inherited by its subagents. Existing denials still apply. The internal context compactor is runtime infrastructure, not task delegation.
+4. Inspect agents, pending approvals, and tool inputs/results as work runs. **View instructions** separates soul/agent instructions, dynamic context and tool descriptions, and the most recently recorded prompt. A recorded prompt describes that historical request, not a preview of a future request.
+5. Choose **Build an app** for the coding workflow. Its file commits update the editor; command and artifact cards open their corresponding surfaces. Browser Linux remains experimental. Select Local Bun explicitly for native execution; model pairing alone never selects it.
+
+The published build is an engineering preview. General browser-control tooling, reliable browser-contained Next builds, current Safari/VoiceOver acceptance, and unattended one-shot application generation remain incomplete. See the measured status for the exact tested build and receipts. The optional [Apple Silicon Bun directory package](scripts/companion/README.md) has separate native acceptance; it is not a signed installer.
 
 ## Develop the workbench
 

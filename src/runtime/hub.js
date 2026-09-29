@@ -27,6 +27,7 @@ import { merge, resolve } from '../core/models.js'
 import { DEFAULT_POLICY, withAgentRules } from '../core/permissions.js'
 import { snapshot } from '../core/prompt.js'
 import { openStore } from './store.js'
+import { hasToolRequirement, normalizeToolPolicy, scopedToolDecision, toolSelected } from './tool-policy.js'
 
 const LIMITS = { depth: 3, outstanding: 3 }
 const KEEP_RUNS = 200
@@ -327,7 +328,7 @@ export class Hub {
   hostInfo() {
     const bridge = this.bridgeState
     if (bridge.status !== 'answering') return null
-    return { url: bridge.url, token: bridge.token, root: bridge.health?.root, capabilities: bridge.health?.capabilities ?? [] }
+    return { name: bridge.health?.name, url: bridge.url, token: bridge.token, root: bridge.health?.root, capabilities: bridge.health?.capabilities ?? [] }
   }
 
   /** A resident thread, started if it is not running. */
@@ -406,6 +407,8 @@ export class Hub {
   startRun(path, query, { parent = null, call = '', kind = 'task', context = null, resume = null } = {}) {
     const spec = this.specs.get(path)
     const up = parent ? this.runs.get(parent) : null
+    const contextSnapshot = snapshot(up?.context ?? context)
+    normalizeToolPolicy(contextSnapshot?.toolPolicy)
     const id = `r${Date.now().toString(36)}${(this.nextRun++).toString(36)}`
     const run = {
       id,
@@ -420,7 +423,7 @@ export class Hub {
       resumeAttempt: resume ? (resume.resumeAttempt ?? 0) + 1 : 0,
       originalQuery: resume?.originalQuery ?? resume?.query ?? query,
       todo: resume ? snapshot((Array.isArray(resume.todo) ? resume.todo : []).slice(0, 50)) : [],
-      context: snapshot(up?.context ?? context),
+      context: contextSnapshot,
       call,
       turns: [],
       prompts: [],
@@ -782,8 +785,11 @@ export class Hub {
   }
 
   ops = {
-    async call({ agent, query, call }, run) {
+    async call({ agent, query, call, infrastructure }, run) {
       if (!run) throw new Error('no run is active on this thread')
+      const toolPolicy = normalizeToolPolicy(run.context?.toolPolicy)
+      const internalCompaction = infrastructure === 'compaction' && agent === 'compactor' && call === 'compactor(history)'
+      if (toolPolicy?.allowDelegation === false && !internalCompaction) throw new Error('delegation is disabled for this run')
       if (run.depth + 1 > LIMITS.depth) throw new Error(`calls may nest ${LIMITS.depth} deep; ${agent} would be deeper`)
       for (let up = run; up; up = up.parent ? this.runs.get(up.parent) : null) {
         if (up.agent === agent) throw new Error(`${agent} is already working on this chain; calling it again would loop`)
@@ -957,11 +963,20 @@ export class Hub {
     },
 
     host({ endpoint, body }) {
+      // Recheck at dispatch: a paired endpoint can revoke a grant while its worker
+      // is busy and waiting to rebuild. Model relay alone never authorizes web tools.
+      const requirements = endpoint === '/fetch' ? ['host:fetch']
+        : endpoint === '/exec' ? ['host:legacy-bridge', 'host:exec']
+          : endpoint === '/run' ? ['host:legacy-bridge', 'host:cli']
+            : ['/fs/list', '/fs/read', '/fs/write'].includes(endpoint) ? ['host:legacy-bridge', 'host:fs'] : null
+      if (!requirements) throw new Error(`unsupported host tool endpoint: ${endpoint}`)
+      const missing = requirements.filter(need => !hasToolRequirement(need, this.hostInfo()))
+      if (missing.length) throw new Error(`host tool unavailable: requires ${missing.join(', ')}`)
       return this.bridgeCall(endpoint, body)
     },
 
-    approve({ tool, call, risk, reason, args }, run) {
-      const approval = { id: this.nextApproval++, run: run?.id, agent: run?.agent ?? '?', trace: run?.trace, tool, call, risk, reason, args, at: Date.now() }
+    approve({ tool, call, callId, risk, reason, args }, run) {
+      const approval = { id: this.nextApproval++, run: run?.id, agent: run?.agent ?? '?', trace: run?.trace, tool, call, callId, risk, reason, args, at: Date.now() }
       return new Promise((settle) => {
         approval.settle = settle
         this.approvals.set(approval.id, approval)
@@ -1198,17 +1213,20 @@ export class Hub {
 
   async bridgeCheck(url, token) {
     const base = String(url).trim().replace(/\/+$/, '')
-    const was = this.bridgeState.status
+    const previous = this.bridgeState
+    const was = previous.status
     try {
       const health = await (await this.fetch(`${base}/health`)).json()
       const check = await this.fetch(`${base}/whoami`, { method: 'POST', headers: { authorization: `Bearer ${token}` } })
       if (check.status === 401) throw new Error('the bridge refused the token')
       if (check.status === 403) throw new Error('the bridge refused this page’s origin; start it with --allow-origin')
       if (!check.ok) throw new Error(`the bridge answered ${check.status}`)
+      const identity = value => JSON.stringify({ name: value?.name, version: value?.version, runtimeId: value?.runtimeId, root: value?.root, capabilities: [...(value?.capabilities ?? [])].sort(), mcp: [...(value?.mcp ?? [])].sort(), clis: value?.clis })
+      const changed = previous.url !== base || previous.token !== token || identity(previous.health) !== identity(health)
       this.bridgeState = { url: base, token, health, status: 'answering', since: was === 'answering' ? this.bridgeState.since : Date.now(), error: '' }
-      if (was !== 'answering') {
+      if (was !== 'answering' || changed) {
         await this.mcpRefresh({ restart: false })
-        this.hostChanged('the bridge is answering')
+        this.hostChanged(was === 'answering' ? 'the bridge identity or capabilities changed' : 'the bridge is answering')
       }
     } catch (error) {
       this.bridgeState = { ...this.bridgeState, url: base, token, status: 'down', since: was === 'down' ? this.bridgeState.since : Date.now(), error: String(error.message) }
@@ -1300,11 +1318,20 @@ export class Hub {
     if (thread && !thread.busy) await this.restart(thread, 'the conversation was cleared')
   }
 
-  manifest() {
+  manifest({ toolPolicy: requestedPolicy } = {}) {
+    const toolPolicy = normalizeToolPolicy(requestedPolicy)
     const catalogue = this.catalogue()
     const rows = [...this.specs.values()].map((spec) => {
       const info = this.readyInfo.get(spec.path) ?? {}
       const model = resolve(spec.inference, catalogue)
+      const policy = withAgentRules(this.saved.policy ?? DEFAULT_POLICY, spec.path, spec.permissions)
+      const describe = item => {
+        const verdict = scopedToolDecision(item, {}, { policy, agent: spec.path, toolPolicy })
+        const missing = (item.requires ?? []).filter(need => !hasToolRequirement(need, this.hostInfo()))
+        // Old unavailable entries cannot become available until a fresh worker has
+        // actually loaded them; revoked requirements take effect immediately.
+        return { ...item, missing, available: item.available !== false && missing.length === 0, effectiveAction: verdict.action, actionReason: verdict.reason, selected: toolSelected(item, toolPolicy) }
+      }
       return {
         path: spec.path,
         name: spec.name,
@@ -1317,12 +1344,28 @@ export class Hub {
         owned: spec.owned,
         grants: spec.grants,
         context: spec.context,
+        composition: {
+          loop: 'react',
+          responseFormat: spec.engine.responseFormat ?? 'toon',
+          observationFormat: spec.engine.observationFormat ?? 'legacy',
+          contractVersion: spec.engine.contractVersion,
+          maxSteps: spec.engine.maxSteps ?? 10,
+          repairs: spec.engine.repairs ?? 2,
+          compactAt: spec.engine.compactAt ?? 0.9,
+          keep: spec.engine.keep ?? 4,
+          requireVerification: Boolean(spec.engine.requireVerification),
+          context: snapshot(spec.context ?? []),
+          // readSpec resolves the published template; no source path survives that load.
+          promptTemplate: spec.engine.promptTemplate ? snapshot(spec.engine.promptTemplate) : null,
+          instructions: spec.body,
+          soul: spec.soul,
+        },
         permissions: spec.permissions,
         soulFrom: spec.soulFrom,
         files: Object.keys(this.index.files).filter((file) => file.startsWith(`agents/${spec.path}/`) && !file.slice(`agents/${spec.path}/`.length).includes('/')),
-        tools: info.tools ?? [],
+        tools: (info.tools ?? []).map(describe),
         shadowed: info.shadowed ?? [],
-        unavailable: info.unavailable ?? [],
+        unavailable: (info.unavailable ?? []).map(describe),
         notes: [...new Set([...(spec.notes ?? []), ...(info.notes ?? [])])],
         error: info.error ?? '',
         changed: this.changed.get(spec.path) ?? [],
