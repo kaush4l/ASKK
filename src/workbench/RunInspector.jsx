@@ -4,6 +4,8 @@ import Modal from './Modal.jsx'
 import ToolCard, { toolPresentationStatus } from './ToolCard.jsx'
 import { projectRunTools } from './run-evidence.js'
 import { completionCheckLabel } from './completion-label.js'
+import { projectCompletionEvidence } from '../core/completion-evidence.js'
+import AnswerOutcome from './AnswerOutcome.jsx'
 import './run-inspector.css'
 
 const textOf = value => typeof value === 'string' ? value : value == null ? '' : JSON.stringify(value, null, 2)
@@ -79,7 +81,7 @@ export default function RunInspector({ details, onClose, onRefresh, onInspectRun
       {details.package && <Record title="Pinned agent package" value={details.package}/>}
       <h3>Assigned task</h3><pre>{textOf(details.query) || 'No task was recorded.'}</pre>
       {runError && <><h3>Recorded error</h3><pre>{textOf(runError)}</pre></>}
-      <h3>Recorded result</h3><pre>{details.result == null ? 'No result was recorded.' : textOf(details.result)}</pre>
+      <h3>Recorded result</h3><AnswerOutcome status={details.slot?.status || details.status} terminationReason={details.slot?.terminationReason || details.terminationReason} completionEvidence={projectCompletionEvidence(details)}/><pre>{details.result == null ? 'No result was recorded.' : textOf(details.result)}</pre>
       <CompletionEvidence completion={details.completion} receipts={details.completionReceipts}/>
       <ReplyRejections records={details.replyRejections ?? (details.log ?? []).filter(event => ['repair', 'rejected'].includes(event.kind))}/>
       <section className="run-record-section"><h3>Tool activity <span>{tools.length}</span></h3>

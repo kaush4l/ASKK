@@ -2719,3 +2719,19 @@ test('observed absence uses durable create and preserves an intervening owner cr
     expect((await controller.readFile(path)).content).toBe(ownerCreates ? 'owner content' : 'agent content')
   }
 })
+
+test('terminal conversation answers retain authoritative incomplete outcome across reload', async () => {
+  const first = await startedFixture({ workbenchConfig: generalWorkflows })
+  const runId = await first.controller.sendGoal('Do the task')
+  const run = first.hub.runs.get(runId)
+  run.slot = { status: 'incomplete', terminationReason: 'step_budget', steps: 48, maxSteps: 48 }
+  run.completionReceipts = [{ ok: false, checks: [{ ok: false, capability: 'workspace.commands' }] }]
+  first.hub.emit({ type: 'answer', run: runId, ok: false, text: 'All checks passed.' })
+  const answer = first.controller.getSnapshot().messages.at(-1)
+  expect(answer.content).toBe('All checks passed.')
+  expect(answer.answerOutcome).toMatchObject({ status: 'incomplete', terminationReason: 'step_budget', completionEvidence: { outcome: 'failed' } })
+  first.controller.stop(); controllers.delete(first.controller)
+  await new Promise(resolve => setTimeout(resolve, 0))
+  const restored = await startedFixture({ sharedStore: first.files.store, workbenchConfig: generalWorkflows })
+  expect(restored.controller.getSnapshot().messages.at(-1).answerOutcome).toEqual(answer.answerOutcome)
+})

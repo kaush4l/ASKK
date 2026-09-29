@@ -382,7 +382,9 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
       refreshAgents()
     }
     if (message.type === 'answer' && message.run === activeRun && !hub.runs.get(message.run)?.parent) {
-      notify({ messages: [...state.messages, { id: id('message'), role: 'assistant', content: message.text, at: Date.now(), runId: message.run }], run: { ...(state.run ?? {}), status: message.ok ? (hub.runs.get(message.run)?.context?.workflow?.workspace !== false && currentArtifact?.verified && !currentArtifact.stale ? 'verified' : 'done') : (hub.runs.get(message.run)?.slot.status ?? 'failed') } })
+      const answeredRun = hub.runs.get(message.run)
+      const answerOutcome = { status: answeredRun?.slot?.status ?? (message.ok ? 'done' : 'failed'), terminationReason: answeredRun?.slot?.terminationReason, completionEvidence: projectCompletionEvidence(answeredRun) }
+      notify({ messages: [...state.messages, { id: id('message'), role: 'assistant', content: message.text, at: Date.now(), runId: message.run, answerOutcome }], run: { ...(state.run ?? {}), status: message.ok ? (hub.runs.get(message.run)?.context?.workflow?.workspace !== false && currentArtifact?.verified && !currentArtifact.stale ? 'verified' : 'done') : (hub.runs.get(message.run)?.slot.status ?? 'failed') } })
     }
     if (message.type === 'approval' || message.type === 'approved') notify({ approvals: [...hub.approvals.values()].map(({ settle, ...approval }) => approval) })
     if (message.type === 'event') {

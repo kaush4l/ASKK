@@ -15,6 +15,7 @@ import CompanionSetup from './CompanionSetup.jsx'
 import CompanionCapabilities from './CompanionCapabilities.jsx'
 import AgentInspector from './AgentInspector.jsx'
 import RunInspector from './RunInspector.jsx'
+import AnswerOutcome from './AnswerOutcome.jsx'
 import CommandEvidence, { commandStatusLabel } from './CommandEvidence.jsx'
 export { default as RunInspector } from './RunInspector.jsx'
 import { modelStatusLabel, modelDraftChanged, canCheckModel, modelCheckCancelled, modelRelayAvailable as relayCanModel } from './model-ui.js'
@@ -729,7 +730,7 @@ export default function Workbench() {
             ['code', 'Start with my own idea', ''],
           ].map(([icon, title, prompt]) => <button key={title} onClick={() => { setGoal(prompt); const coding = state.workflows?.find(item => item.workspace); if (coding && !running) action('setWorkflow', coding.id); composer.current?.focus() }}><Icon name={icon} size={16}/><span>{title}</span><Icon name="right" size={14}/></button>)}</div></div> : state.messages.map((message, index) => <article key={message.id || index} className={`message message-${message.role || 'assistant'}`}>
             <div className="message-meta"><span className={`message-avatar ${message.role === 'user' ? 'user' : ''}`}>{message.role === 'user' ? 'Y' : <Icon name="spark" size={13}/>}</span><strong>{message.role === 'user' ? 'You' : message.agent || 'ASKK'}</strong>{message.at && <time>{new Date(message.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time>}</div>
-            <Markdown text={textOf(message.content)}/>{message.tools?.length > 0 && <div className="tool-cards">{message.tools.map(toolCard)}</div>}
+            {message.role === 'assistant' && textOf(message.content).trim() && <AnswerOutcome {...message.answerOutcome}/>}<Markdown text={textOf(message.content)}/>{message.tools?.length > 0 && <div className="tool-cards">{message.tools.map(toolCard)}</div>}
           </article>)}
           {state.approvals.map(approval => <div className="approval-card" key={approval.id}><div><Icon name="warning" size={16}/><strong>Your approval is needed</strong></div><p>{approval.description || approval.name || approval.tool || 'This action needs your approval.'}</p>{approval.args && <pre>{textOf(approval.args)}</pre>}<div className="button-row"><button className="button primary small" onClick={() => action('approve', approval.id, true)}>Allow once</button><button className="button subtle small" onClick={() => action('approve', approval.id, false)}>Deny</button></div></div>)}
           {running && <div className="thinking-line"><span className="thinking-dots"><i/><i/><i/></span><span>{state.run?.agent || 'Agent'} {runLabel(state.task?.status || state.run?.status || 'working')}{state.run?.step ? ` · loop ${state.run.step}` : ''}</span></div>}
