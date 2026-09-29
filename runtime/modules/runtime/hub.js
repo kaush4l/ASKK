@@ -1464,6 +1464,18 @@ export class Hub {
   }
 
   runsApi = {
+    // Restore the desk's instance roster without loading tool-event archives.
+    // Full receipts remain available only when a run is inspected or exported.
+    summaries: async () => {
+      const byId = new Map((await this.store.all('runs')).map(record => [record.id, record]))
+      for (const run of this.runs.values()) byId.set(run.id, run)
+      return [...byId.values()].sort((a, b) => a.at - b.at).map(run => snapshot({
+        id: run.id, trace: run.trace ?? run.id, taskId: run.taskId ?? run.id,
+        kind: run.kind, stageId: run.stageId ?? null, parent: run.parent ?? null,
+        agent: run.agent, at: run.at, query: run.query, result: run.result,
+        slot: run.slot, ended: run.ended,
+      }))
+    },
     get: async (id) => this.run(id) ?? await this.storedRun(await this.store.get('runs', id)) ?? null,
     list: async () => {
       const byId = new Map((await this.store.all('runs')).map((record) => [record.id, record]))
