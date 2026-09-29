@@ -14,13 +14,12 @@ const context = { workflow: { workspace: false }, toolPolicy: { disabledTools: [
 async function fixture() {
   const site = await mkdtemp(join(tmpdir(), 'askk-strategy-'))
   for (const name of ['agents', 'prompts', 'strategies']) await mkdir(join(site, name), { recursive: true })
-  for (const name of ['planner', 'critic', 'synthesizer']) await cp(join(import.meta.dir, '../public/agents', name), join(site, 'agents', name), { recursive: true })
-  await cp(join(import.meta.dir, '../public/agents/soul.md'), join(site, 'agents/soul.md'))
-  await cp(join(import.meta.dir, '../public/prompts/workbench.md'), join(site, 'prompts/workbench.md'))
+  for (const name of ['packages', 'tools']) await cp(join(import.meta.dir, '../public', name), join(site, name), { recursive: true })
+  await cp(join(import.meta.dir, '../public/desk.json'), join(site, 'desk.json'))
   await cp(join(import.meta.dir, '../public/prompts/strategies'), join(site, 'prompts/strategies'), { recursive: true })
   await cp(join(import.meta.dir, '../public/strategies/parallel-review.json'), join(site, 'strategies/parallel-review.json'))
-  const path = join(site, 'agents/planner/agent.md')
-  await writeFile(path, (await readFile(path, 'utf8')).replace('remembers: false', 'remembers: true'))
+  const path = join(site, 'packages/starter/agents/planner/agent.md')
+  await writeFile(path, (await readFile(path, 'utf8')).replace('session: "task"', 'session: "agent"'))
   await writeFile(join(site, 'models.json'), JSON.stringify({ default: 'fixture', models: { fixture: { provider: 'scripted', model: 'fixture', max_output_tokens: 512, delay: 20, script: { planner: [done('approach-result')], critic: [done('risk-result')], synthesizer: [done('combined-result')] } } } }))
   await writeFile(join(site, 'agents/index.json'), JSON.stringify(await listing(site)))
   const hub = new Hub({ base: `${pathToFileURL(site).href}/`, storeName: `strategy-${crypto.randomUUID()}` })
@@ -30,10 +29,10 @@ async function fixture() {
 
 test('real graph workers run concurrently, isolate resident history, and fan in exact declared outputs', async () => {
   const hub = await fixture()
-  const resident = hub.startRun('planner', 'private-resident-marker', { context }); await resident.answer
-  const saved = await hub.store.get('sessions', 'planner')
+  const resident = hub.startRun('bundled/starter/planner', 'private-resident-marker', { context }); await resident.answer
+  const saved = await hub.store.get('sessions', 'bundled/starter/planner')
   const definition = (await hub.loadStrategy('strategies/parallel-review.json')).definition
-  const sameRole = structuredClone(definition); sameRole.nodes[1].agent = 'planner'
+  const sameRole = structuredClone(definition); sameRole.nodes[1].agent = 'bundled/starter/planner'
   const observed = []; hub.subscribe(event => { if (event.type === 'strategy') observed.push(event.task) })
   const run = await hub.startStrategy(sameRole, 'owner-goal', { context })
   expect(await run.answer).toBe('combined-result')
@@ -52,7 +51,7 @@ test('real graph workers run concurrently, isolate resident history, and fan in 
   }
   expect(final.query).toContain('approach-result'); expect(final.query).toContain('owner-goal')
   expect((final.query.match(/approach-result/g) ?? []).length).toBe(2)
-  expect(await hub.store.get('sessions', 'planner')).toEqual(saved)
+  expect(await hub.store.get('sessions', 'bundled/starter/planner')).toEqual(saved)
   const trace = await hub.traces.export(run.id)
   expect(trace.runs).toHaveLength(4)
   expect(trace.runs.find(row => row.id === run.id).strategyDefinition).toEqual(sameRole)

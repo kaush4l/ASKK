@@ -31,6 +31,11 @@ export function matchesAgentDefinition(definition, run) {
   return identity ? identity === definition.path : run.name === definition.path || run.name === definition.name
 }
 
+export function SessionBoundaryNotice({ boundary }) {
+  if (!boundary) return null
+  return <aside className="session-boundary-notice" role="note"><strong>Agent session: {boundary.label || 'Selected agent'}</strong><span>Earlier conversation remains saved for review and is not automatically transferred.</span></aside>
+}
+
 /** Projection only: the owner supplies live state and all operations. No runtime starts here. */
 export default function Dashboard({ state = {}, goal = '', onGoalChange, onSubmit, onOpenWorkspace, onOpenSettings, onSelectWorkflow, onToolPolicyChange, onApprove, onStopRun, onStopAgent, onInspectAgent, onInspectRun, onOpenTool, onImportAgent, importDisabled = false, busy = false }) {
   const formId = useId()
@@ -84,6 +89,7 @@ export default function Dashboard({ state = {}, goal = '', onGoalChange, onSubmi
             {state.ready && state.selectedWorkflowId && !workflow && <p className="dashboard-error" role="status">The saved workflow is unavailable. Choose a workflow explicitly; your goal has been kept.</p>}
             {workflow?.package && <p className="dashboard-agent-model">Agent model: <strong>{workflow.leadModel || 'Binding unavailable'}</strong><span>Connection checks below apply to the desk default profile.</span></p>}
             {workflow?.disabled && <p className="dashboard-error" role="status">{workflow.unavailableReason || 'This workflow is unavailable. Its saved definition has been preserved.'}</p>}
+            <SessionBoundaryNotice boundary={state.sessionBoundary}/>
             <form className="dashboard-composer" onSubmit={submit}>
               <label htmlFor="dashboard-goal">Dashboard goal</label>
               <textarea id="dashboard-goal" value={goal} onChange={event => onGoalChange?.(event.target.value)} placeholder={graphRunning ? 'Draft a goal for the next run…' : working ? 'Add a note to the current task…' : 'Describe the result you want…'} rows={4} onKeyDown={event => { if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') { event.preventDefault(); if (canSubmit) onSubmit?.() } }}/>

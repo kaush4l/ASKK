@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test'
 import { importAgentPackage, restoreAgentPackage } from '../src/core/agent-package.js'
 import { compileAgentPackage } from '../src/core/package-spec.js'
 import { BUILTIN_TOOL_GROUPS, SUPPORTED_BUILTIN_GROUPS, IMPORTABLE_TOOL_GROUPS } from '../src/core/builtin-registry.js'
+import { resolve } from '../src/core/models.js'
 
 const file = (path, content) => ({ path, content })
 const root = (extra = '', body = 'Keep the exact body.\n') => `---\npackage_id: example.portable\npackage_version: 1.2.3\nid: entry\n${extra}---\n${body}`
@@ -23,7 +24,7 @@ test('validated source compiles exact body into frozen serializable isolated spe
   expect(spec.path).toBe('installed/desk-one/entry')
   expect(spec.body).toBe(body)
   expect(spec.name).toBe('Arbitrary display')
-  expect(spec.package).toEqual({ installationId: 'desk-one', packageId: 'example.portable', packageVersion: '1.2.3', revisionDigest: imported.data.revisionDigest, agentId: 'entry' })
+  expect(spec.package).toEqual({ namespace: 'installed', installationId: 'desk-one', packageId: 'example.portable', packageVersion: '1.2.3', revisionDigest: imported.data.revisionDigest, agentId: 'entry' })
   expect(spec.inference).toEqual({ model: 'desk-fast' })
   expect(spec.engine).toEqual({ contractVersion: 2, responseFormat: 'json', session: 'task' })
   expect(spec.context).toEqual({ goal: true, budget: { enabled: true } })
@@ -178,4 +179,51 @@ test('desk bindings and common-tool hashes are captured before asynchronous sour
   expect(changed[0].hash).not.toBe(expected[0].hash)
   expect(changed[0].inference.model).toBe('desk-deep')
   expect(changed[0].grants).toEqual(['trusted', 'web'])
+})
+
+test('shipped and imported packages share all semantics except their explicit isolated identity', async () => {
+  const imported = await pkg('agents: {review: specialist}\nservices: {compaction: concise, retrospective: reflect}\n', [
+    file('review/agent.md', child('specialist', 'tools: [web]\n')),
+    file('services/summary/agent.md', child('concise', 'tools: []\nagents: []\nmax_steps: 1\n')),
+    file('services/review/agent.md', child('reflect', 'tools: [memory]\n')),
+  ])
+  const configured = options({ bindings: { models: { $default: '$default' }, tools: ['web'] } })
+  const installed = await compileAgentPackage(imported, configured)
+  const bundled = await compileAgentPackage(imported, { ...configured, namespace: 'bundled' })
+  const normalize = specs => specs.map(({ hash, ...spec }) => JSON.parse(JSON.stringify(spec).replaceAll('installed/', 'namespace/').replaceAll('bundled/', 'namespace/').replace(/"namespace":"(?:installed|bundled)"/g, '"namespace":"namespace"')))
+  expect(normalize(bundled)).toEqual(normalize(installed))
+  expect(bundled[0].services).toEqual({ compaction: 'bundled/desk-one/concise', retrospective: 'bundled/desk-one/reflect' })
+  expect(installed[0].services.compaction).toBe('installed/desk-one/concise')
+  expect(bundled.every((spec, index) => spec.hash !== installed[index].hash && spec.package.namespace === 'bundled')).toBe(true)
+  expect(Object.isFrozen(bundled[0].services)).toBe(true)
+  expect(bundled.find(spec => spec.package.agentId === 'reflect').grants).toEqual([])
+  expect(bundled[0].delegates).toEqual([{ name: 'review', path: 'bundled/desk-one/specialist', description: '' }])
+  await rejects(compileAgentPackage(imported, { ...configured, namespace: 'legacy' }), 'PACKAGE_COMPILE_ID')
+})
+
+test('explicit follow-default binding follows desk changes while pinned aliases stay pinned', async () => {
+  const source = await pkg()
+  const current = structuredClone(catalogue)
+  const [following] = await compileAgentPackage(source, options({ catalogue: current, bindings: { models: { $default: '$default' }, tools: [] } }))
+  const [pinned] = await compileAgentPackage(source, options({ catalogue: current }))
+  expect(following.inference).toEqual({ model: '$default' })
+  expect(resolve(following.inference, current).alias).toBe('desk-fast')
+  current.default = 'desk-deep'
+  expect(resolve(following.inference, current)).toMatchObject({ alias: 'desk-deep', model: 'actual-provider-model' })
+  expect(resolve(pinned.inference, current).alias).toBe('desk-fast')
+  expect((await compileAgentPackage(source, options({ catalogue: current, bindings: { models: { $default: '$default' }, tools: [] } })))[0].hash).toBe(following.hash)
+  delete current.models['desk-deep']
+  expect(() => resolve(following.inference, current)).toThrow('default model profile')
+  await rejects(compileAgentPackage(source, options({ catalogue: current, bindings: { models: { $default: '$default' }, tools: [] } })), 'PACKAGE_COMPILE_MODEL')
+})
+
+test('renamed service IDs resolve from authored IDs and are included in revision fingerprints', async () => {
+  const first = await pkg('services: {compaction: short_notes}\n', [file('arbitrary/agent.md', child('short_notes', 'name: Not a filename\n'))])
+  const renamed = await pkg('services: {compaction: digest}\n', [file('arbitrary/agent.md', child('digest', 'name: Not a filename\n'))])
+  const [before] = await compileAgentPackage(first, options())
+  const [after] = await compileAgentPackage(renamed, options())
+  expect(before.services.compaction).toBe('installed/desk-one/short_notes')
+  expect(after.services.compaction).toBe('installed/desk-one/digest')
+  expect(after.hash).not.toBe(before.hash)
+  expect(after.body).toBe(before.body)
 })

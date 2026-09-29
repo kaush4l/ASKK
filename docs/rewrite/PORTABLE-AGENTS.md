@@ -5,6 +5,11 @@ current browser. The definition, model mapping, selected lead, and approved tool
 groups are saved in IndexedDB before activation. Installation does not run an
 agent task. Imported JavaScript and other executable source are rejected.
 
+The current source also compiles the shipped catalogue through this validator and
+compiler. [Unified agent packages](UNIFIED-AGENT-PACKAGES.md) describes the exact
+desk configuration, service lifecycle and migration boundary; release-specific
+build and browser evidence is recorded separately.
+
 1. Configure and test the desk's model connection. Safari with an HTTP loopback
    model should use the trusted HTTPS model relay described in the README.
 2. Select **Import agent → Choose an agent folder**. Select a folder containing
@@ -48,13 +53,20 @@ display names do not determine identity. `agents: {review: reviewer_id}` gives a
 role a package-local delegation tool named `review`. That target must exist in
 the same folder package. The desk enforces its delegation and budget policy.
 
+Task sessions are the default; `session: agent` explicitly retains conversation
+history. Optional `services: {compaction: digest, retrospective: reflect}` refers
+to other local role IDs. Compaction targets must request no tools, delegates,
+services, skills or verification. Invalid/self/cyclic service references fail
+validation. Names such as `main` or `compactor` have no special runtime authority.
+
 Imported private memory and prior-session lookup are scoped to the installation
 and role. Imported `shared` memory is limited to the current package task, so it
 does not expose the desk's global shared notes. Scheduled work is not supported
 for imports yet because deferred tasks cannot retain all required bindings.
 
 Local `soul.md` and `learned.md` accompany the role whose folder contains them.
-`prompt_template` and explicit `skills` paths are relative to that role's folder.
+`prompt_template` and explicit `skills` paths are relative to the **package root**,
+including references authored by a nested role.
 Shared parent instructions are not inherited implicitly. Authored source remains
 unchanged and SHA-256 checked. Credentials and transport settings belong in the
 desk, never in a package.
@@ -72,8 +84,13 @@ not replay tasks. Unavailable model bindings or invalid saved definitions appear
 disabled rather than substituting a bundled agent. Files stay in this browser
 profile and origin; browser data clearing can remove them.
 
-This release adds installation and execution. In-browser source editing,
-replacement/upgrades, removal, backup export, explicit package-defined execution
-bindings, and migration of the bundled catalogue are still pending. Bundled
-application tools remain trusted desk capabilities. A package cannot create a
-new search, browser-control, or media adapter simply by naming one.
+Bundled definitions now use `bundled/<desk-id>/<role-id>`; owner installations use
+`installed/<installation-id>/<role-id>`. Old bundled session/history keys are
+preserved for review and are not silently copied into the new identities.
+
+In-browser source editing, replacement/upgrades, removal, backup export,
+package-local strategies/checks, and explicit package-defined execution bindings
+remain pending. The credential-isolating broker is also pending: package files
+cannot contain credentials, but existing workers still receive configured
+transport data. Application tools remain trusted desk capabilities. A package
+cannot create a new search, browser-control, or media adapter simply by naming one.

@@ -27,7 +27,24 @@ test('authoritative agent identity never borrows instructions or display metadat
   const calls = []
   const element = AgentInstance({ item: team.live[0], onInspectRun: id => calls.push(['run', id]), onInspectAgent: id => calls.push(['agent', id]), onStopAgent: id => calls.push(['stop', id]) })
   for (const button of buttons(element)) button.props.onClick?.()
-  expect(calls).toEqual([['run', 'isolated'], ['agent', 'installed/missing/observer'], ['stop', 'isolated']])
+  expect(calls).toEqual([['run', 'isolated'], ['stop', 'isolated']])
+  expect(team.live[0].definitionAvailable).toBe(false)
+  expect(text(render({ runs: [run('isolated', { agent: 'installed/missing/observer', name: 'Pond guide' })] }))).toContain('Definition unavailable')
+})
+
+test('old identities keep exact run inspection without redirecting instructions to a newly bundled definition', () => {
+  const definitions = [{ path: 'bundled/starter/assistant', name: 'assistant' }]
+  const runs = [run('old', { agent: 'assistant', name: 'assistant', status: 'done' }), run('current', { agent: 'bundled/starter/assistant' })]
+  const team = projectAgentTeam({ definitions, runs })
+  const calls = []
+  for (const item of [...team.live, ...team.recent]) {
+    const element = AgentInstance({ item, onInspectRun: id => calls.push(['run', id]), onInspectAgent: path => calls.push(['agent', path]) })
+    for (const button of buttons(element)) button.props.onClick?.()
+  }
+  expect(calls).toEqual([['run', 'current'], ['agent', 'bundled/starter/assistant'], ['run', 'old']])
+  const tree = render({ definitions, runs })
+  expect(all(tree, node => node.tagName === 'button' && text(node) === 'Instructions')).toHaveLength(1)
+  expect(text(tree)).toContain('Definition unavailable')
 })
 
 test('owner approval is associated only by exact run id, never by a shared name or tool', () => {

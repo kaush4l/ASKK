@@ -1,11 +1,43 @@
 import { expect, test } from 'bun:test'
-import { cp, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, rm, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { listing } from '../scripts/listing.js'
 import { Hub } from '../src/runtime/hub.js'
 import { CompactReAct, responseModel } from '../src/core/responses.js'
+import { read } from '../src/core/markdown.js'
+import { loadDeskPackages } from '../src/runtime/desk-packages.js'
+
+test('published starter validates local resources and refuses a mismatched supplied lock without rewriting it', async () => {
+  const site = await mkdtemp(join(tmpdir(), 'askk-starter-lock-'))
+  try {
+    for (const name of ['packages', 'tools']) await cp(join(import.meta.dir, '../public', name), join(site, name), { recursive: true })
+    await cp(join(import.meta.dir, '../public/desk.json'), join(site, 'desk.json'))
+    await mkdir(join(site, 'agents'), { recursive: true })
+    await mkdir(join(site, 'prompts'), { recursive: true })
+    await writeFile(join(site, 'agents/soul.md'), 'This global soul must not enter any package.')
+    await writeFile(join(site, 'prompts/workbench.md'), 'This global prompt must not enter any package.')
+    const options = {
+      base: `${pathToFileURL(site).href}/`, catalogue: { default: 'fixture', models: { fixture: { provider: 'scripted' } } },
+      fetch: async url => new Response(await readFile(fileURLToPath(url))),
+    }
+    const loaded = await loadDeskPackages({ ...options, index: await listing(site) })
+    expect(loaded.defaultAgent).toBe('bundled/starter/assistant')
+    expect(loaded.specs).toHaveLength(10)
+    for (const spec of loaded.specs) {
+      expect(spec.soul).not.toContain('global soul')
+      expect(String(JSON.stringify(spec.engine.promptTemplate))).not.toContain('global prompt')
+      expect(spec.inference.model).toBe('$default')
+    }
+    const lockPath = join(site, 'packages/starter/askk.lock.json')
+    await expect(readFile(lockPath)).rejects.toMatchObject({ code: 'ENOENT' })
+    const mismatched = '{"revisionDigest":"wrong-supplied-lock"}\n'
+    await writeFile(lockPath, mismatched)
+    await expect(loadDeskPackages({ ...options, index: await listing(site) })).rejects.toThrow('supplied lock does not match')
+    expect(await readFile(lockPath, 'utf8')).toBe(mismatched)
+  } finally { await rm(site, { recursive: true, force: true }) }
+})
 
 test('production main uses version 2 prompts and the host-owned completion gate through a real worker', async () => {
   const site = await mkdtemp(join(tmpdir(), 'askk-production-contract-'))
@@ -35,8 +67,37 @@ test('production main uses version 2 prompts and the host-owned completion gate 
     const events = []
     hub.subscribe((event) => events.push(event))
     await hub.start()
+    const roles = ['assistant', 'main', 'coder', 'coder/reviewer', 'researcher', 'planner', 'critic', 'synthesizer', 'compactor', 'dreamer']
+    const residents = new Set(['assistant', 'main', 'coder', 'reviewer'])
+    const soul = read(await readFile(join(site, 'agents/soul.md'), 'utf8')).body
+    expect(hub.specs.size).toBe(10)
+    for (const legacyPath of roles) {
+      const id = legacyPath.split('/').at(-1)
+      const spec = hub.specs.get(`bundled/starter/${id}`)
+      expect(spec.package.namespace).toBe('bundled')
+      expect(spec.package.packageId).toBe('org.askk.starter')
+      expect(spec.soul).toBe(soul)
+      expect(spec.engine.session).toBe(residents.has(id) ? 'agent' : 'task')
+      expect(spec.localTools).toEqual([])
+      if (id !== 'dreamer') expect(spec.body).toBe(read(await readFile(join(site, 'agents', legacyPath, 'agent.md'), 'utf8')).body)
+      if (!['compactor', 'dreamer'].includes(id)) expect(spec.services).toEqual({ compaction: 'bundled/starter/compactor', retrospective: 'bundled/starter/dreamer' })
+      expect(hub.specs.has(legacyPath)).toBe(false)
+    }
+    expect(hub.specs.get('bundled/starter/coder').delegates.map(row => row.path)).toEqual(['bundled/starter/reviewer'])
+    const compactor = hub.specs.get('bundled/starter/compactor')
+    expect(compactor.grants).toEqual([])
+    expect(compactor.delegates).toEqual([])
+    expect(compactor.services).toEqual({})
+    expect(compactor.engine.requireVerification).not.toBe(true)
+    const dreamer = hub.specs.get('bundled/starter/dreamer')
+    expect(dreamer.commonTools).toEqual({ reflection: 'tools/reflection.js' })
+    expect(dreamer.body).not.toContain('skill_save')
+    for (const id of ['researcher', 'reviewer', 'dreamer']) {
+      expect(hub.specs.get(`bundled/starter/${id}`).engine.contractVersion).toBe(1)
+      expect(hub.specs.get(`bundled/starter/${id}`).engine.responseFormat).toBe('toon')
+    }
     const context = { binding: { runtimeId: 'fixture-browser-session', target: 'browser' } }
-    const run = hub.startRun('main', 'Read fixture.txt to inspect the fixture environment.', { context })
+    const run = hub.startRun('bundled/starter/main', 'Read fixture.txt to inspect the fixture environment.', { context })
     context.binding.runtimeId = 'changed-after-dispatch'
     expect(await run.answer).toBe('Fixture evidence accepted')
     expect(run.slot.status).toBe('done')
@@ -51,7 +112,7 @@ test('production main uses version 2 prompts and the host-owned completion gate 
     const protocol = responseModel(CompactReAct, 'json')
     const parsed = protocol.parse(examples[1])
     expect(parsed.faults).toEqual([])
-    const mainTools = hub.manifest().find(agent => agent.path === 'main').tools
+    const mainTools = hub.manifest().find(agent => agent.path === 'bundled/starter/main').tools
     for (const call of protocol.calls(parsed.value).flat()) {
       expect(call.name).toStartWith('workspace_')
       const available = mainTools.find(tool => tool.name === call.name)
@@ -60,7 +121,7 @@ test('production main uses version 2 prompts and the host-owned completion gate 
     }
     expect(mainTools.some(tool => ['add', 'multiply', 'haiku', 'create_agent'].includes(tool.name))).toBe(false)
     expect(hub.specs.has('main/haiku')).toBe(false)
-    for (const path of ['main', 'coder']) {
+    for (const path of ['bundled/starter/main', 'bundled/starter/coder']) {
       expect(hub.specs.get(path).body).toContain('Call workspace_environment only when that context is missing or later evidence shows it may be stale')
       expect(hub.specs.get(path).body).not.toContain('Inspect workspace_environment first')
     }

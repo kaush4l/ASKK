@@ -6,6 +6,7 @@ import { commonToolFiles } from '../core/folder.js'
 import { decide } from '../core/permissions.js'
 import { snapshot } from '../core/prompt.js'
 import { scopedToolDecision } from './tool-policy.js'
+import { boundModelAvailable } from '../core/models.js'
 
 const KEY = 'agent-installations:v1'
 const STAGES = 3
@@ -22,8 +23,7 @@ const modelsFor = hub => {
 const toolsFor = hub => [...new Set([...IMPORTABLE_TOOL_GROUPS, ...Object.keys(commonToolFiles(hub.index))])].filter(name => name !== 'schedule').sort()
 const requestedTools = agent => [...new Set([...(agent.settings.tools ?? []), ...(agent.settings.skills === true || agent.settings.skills?.length ? ['skill'] : [])])]
 export function installedModelAvailable(catalogue, alias) {
-  const value = catalogue.models?.[alias]
-  return Object.hasOwn(catalogue.models ?? {}, alias) && Boolean(value && typeof value === 'object' && !Array.isArray(value) && [Object.prototype, null].includes(Object.getPrototypeOf(value)))
+  return boundModelAvailable(catalogue, alias)
 }
 const summaries = data => data.agents.map(agent => ({ id: agent.id, name: agent.settings.name ?? agent.id, description: agent.settings.description ?? '', tools: requestedTools(agent), modelAlias: agent.settings.model ?? '$default', delegates: snapshot(agent.delegates), notes: [...agent.notes] }))
 const envelope = row => {
@@ -73,7 +73,7 @@ export class AgentInstallations {
     if (!record || record.version !== 1 || !/^[a-z0-9-]{1,80}$/.test(record.id) || !Number.isFinite(record.createdAt)) fail('PACKAGE_STORAGE', 'The saved installation identity is invalid.')
     const pkg = await restoreAgentPackage(record.data)
     if (!pkg.data.agents.some(agent => agent.id === record.leadAgentId)) fail('PACKAGE_BINDING', 'The installed lead agent is missing from its verified package.')
-    return compileAgentPackage(pkg, { installationId: record.id, bindings: record.bindings, catalogue: this.hub.catalogue(), index: this.hub.index })
+    return compileAgentPackage(pkg, { installationId: record.id, namespace: 'installed', bindings: record.bindings, catalogue: this.hub.catalogue(), index: this.hub.index })
   }
   async restore() {
     return this.ordered(async () => {
@@ -120,6 +120,7 @@ export class AgentInstallations {
         this.admit(admissionGuard)
         checkModels()
         const saved = envelope(current)
+        if (saved.records.some(row => row.id === record.id) || specs.some(spec => this.hub.specs.has(spec.path))) fail('PACKAGE_STORAGE', 'The installation identity conflicts with an existing agent; it was not overwritten.')
         if (saved.records.length >= MAX_INSTALLATIONS || saved.records.reduce((sum, row) => sum + bytesOf(row.data), 0) + stage.bytes > MAX_INSTALLED_BYTES) fail('PACKAGE_LIMIT', 'The browser installation limit is reached; existing packages were preserved.')
         return { value: { key: KEY, value: { version: 1, records: [...saved.records, record] } } }
       })

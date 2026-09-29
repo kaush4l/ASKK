@@ -10,6 +10,7 @@ import { listing } from '../scripts/listing.js'
 const done = JSON.stringify({ do: 'done', act: 'Package response complete.' })
 const action = (name, args = {}) => JSON.stringify({ do: 'tool', act: [[{ name, args }]] })
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms))
+const bundled = id => `bundled/fixture/${id}`
 const records = (extra = '', child = '') => [
   { path: 'agent.md', content: `---\npackage_id: example.desk\npackage_version: 1.0.0\nid: coordinator\nname: PackageMain\nmodel: reasoning\nmax_steps: 3\n${extra}\n---\nAuthored package instructions, unchanged.\n` },
   ...(child ? [{ path: 'review/agent.md', content: `---\nid: reviewer\nname: Reviewer\nmodel: reasoning\n${child}\n---\nReview only the requested facts.\n` }] : []),
@@ -17,10 +18,14 @@ const records = (extra = '', child = '') => [
 async function fixture(script = {}, files = []) {
   const site = await mkdtemp(join(tmpdir(), 'askk-runtime-package-')); let hub
   try {
+    await mkdir(join(site, 'agents'), { recursive: true })
     for (const name of ['main', 'compactor', 'dreamer']) {
-      await mkdir(join(site, 'agents', name), { recursive: true })
-      await writeFile(join(site, 'agents', name, 'agent.md'), `---\nname: ${name}\ncontract_version: 2\nmax_steps: 1\ntools: []\n---\nDesk built-in.`)
+      const directory = join(site, 'packages/fixture', ...(name === 'main' ? [] : [name]))
+      await mkdir(directory, { recursive: true })
+      const identity = name === 'main' ? 'package_id: test.bundled\npackage_version: 1.0.0\n' : ''
+      await writeFile(join(directory, 'agent.md'), `---\n${identity}id: ${name}\nname: ${name}\ncontract_version: 2\nmax_steps: 1\ntools: []\n---\nDesk bundled fixture.`)
     }
+    await writeFile(join(site, 'desk.json'), JSON.stringify({ version: 1, defaultAgent: bundled('main'), packages: [{ id: 'fixture', path: 'packages/fixture', models: { $default: '$default' }, tools: [] }] }))
     await mkdir(join(site, 'skills'), { recursive: true })
     await writeFile(join(site, 'skills', 'check.md'), '---\nname: global-check\n---\nGLOBAL SKILL MUST NOT LEAK')
     for (const file of files) { await mkdir(join(site, file.path, '..'), { recursive: true }); await writeFile(join(site, file.path), file.content) }
@@ -28,6 +33,8 @@ async function fixture(script = {}, files = []) {
     await writeFile(join(site, 'agents/index.json'), JSON.stringify(await listing(site)))
     hub = new Hub({ base: `${pathToFileURL(site).href}/`, storeName: `packages-${crypto.randomUUID()}` })
     await hub.start()
+    expect(hub.defaultAgentPath()).toBe(bundled('main'))
+    expect([...hub.specs.values()].every(spec => spec.package.namespace === 'bundled')).toBe(true)
     // Bun has no IndexedDB here. Its acknowledged in-memory store exercises runtime
     // boundaries; a separate assertion verifies the normal non-durable refusal.
     return { hub, site, durable() { hub.store.durable = true }, close: async () => { hub.stop(); await rm(site, { recursive: true, force: true }) } }
@@ -108,9 +115,9 @@ test('real workers delegate only through package aliases and persist exact packa
     expect(root.prompts[0].sheet).toContain('- review(')
     expect(root.prompts[0].sheet).not.toContain('- Reviewer(')
     expect(f.hub.run(root.id).package).toEqual(root.package)
-    expect((await f.hub.initMessage(f.hub.specs.get(item.agentPath))).compactor).toBeNull()
-    await expect(f.hub.ops.call.call(f.hub, { agent: 'main', query: 'Escape' }, root)).rejects.toThrow('package-local')
-    await expect(f.hub.ops.call.call(f.hub, { agent: 'compactor', query: 'Escape', call: 'compactor(history)', infrastructure: 'compaction' }, root)).rejects.toThrow('package-local')
+    expect((await f.hub.initMessage(f.hub.specs.get(item.agentPath))).services).toEqual({})
+    await expect(f.hub.ops.call.call(f.hub, { agent: bundled('main'), query: 'Escape' }, root)).rejects.toThrow('package-local')
+    await expect(f.hub.ops.call.call(f.hub, { agent: bundled('compactor'), query: 'Escape', call: 'compactor(history)', infrastructure: 'compaction' }, root)).rejects.toThrow('configured service channel')
     expect(f.hub.dreamTimer).toBeNull()
     await f.hub.persist(root)
     expect((await f.hub.store.get('runs', root.id)).package.revisionDigest).toBe(item.revisionDigest)
@@ -236,7 +243,7 @@ test('installed memories isolate private agents and explicitly shared task scope
     const root = f.hub.startRun(item.agentPath, 'FIRST_PRIVATE_SESSION'); await root.answer
     const sameTask = f.hub.startRun(`installed/${item.id}/reviewer`, 'CHILD_PRIVATE_SESSION', { parent: root.id }); await sameTask.answer
     const otherTask = f.hub.startRun(item.agentPath, 'SECOND_PRIVATE_SESSION'); await otherTask.answer
-    const native = f.hub.startRun('main', 'NATIVE_PRIVATE_SESSION'); await native.answer
+    const native = f.hub.startRun(bundled('main'), 'NATIVE_PRIVATE_SESSION'); await native.answer
     const save = (run, text, scope) => f.hub.ops['memory.save'].call(f.hub, { text, scope }, run)
     const shared = await save(root, 'TASK SHARED', 'shared')
     const own = await save(root, 'PRIVATE OWNER', 'agent')
@@ -253,7 +260,7 @@ test('installed memories isolate private agents and explicitly shared task scope
     await expect(f.hub.ops['sessions.read'].call(f.hub, { id: sameTask.id }, root)).rejects.toThrow('only their own')
     expect(await f.hub.ops['sessions.read'].call(f.hub, { id: root.id }, otherTask)).toContain('FIRST_PRIVATE_SESSION')
     expect(await f.hub.ops['sessions.search'].call(f.hub, { query: 'NATIVE_PRIVATE_SESSION' }, root)).toEqual([])
-    await expect(f.hub.ops['schedule.add'].call(f.hub, { agent: 'main', query: 'escape', in_minutes: 1 }, root)).rejects.toThrow('deferred run authority')
+    await expect(f.hub.ops['schedule.add'].call(f.hub, { agent: bundled('main'), query: 'escape', in_minutes: 1 }, root)).rejects.toThrow('deferred run authority')
     expect(() => f.hub.ops['schedule.list'].call(f.hub, {}, root)).toThrow('unavailable')
     expect(() => f.hub.ops['schedule.cancel'].call(f.hub, { id: 1 }, root)).toThrow('unavailable')
     expect(f.hub.scheduled.items).toEqual([])
@@ -300,11 +307,40 @@ test('a restored package is disabled when its fresh startup worker fails initial
     restored = new Hub({ base: f.hub.base })
     restored.store = f.hub.store
     await restored.readFolders()
+    expect(restored.defaultAgentPath()).toBe(bundled('main'))
+    expect(['main', 'compactor', 'dreamer'].every(id => restored.specs.get(bundled(id))?.package.namespace === 'bundled')).toBe(true)
     expect(restored.readyInfo.has(item.agentPath)).toBe(false)
     await restored.startThreads()
     expect(restored.packages.list()[0]).toMatchObject({ id: item.id, status: 'disabled' })
     expect(restored.packages.list()[0].error).toContain('collides with a tool')
     expect(restored.runs.size).toBe(0)
     expect((await restored.store.get('settings', 'agent-installations:v1')).value.records).toHaveLength(1)
+  } finally { restored?.stop(); await f.close() }
+}, 15000)
+
+test('a new Hub restores owner packages beside bundled packages through the same desk loader', async () => {
+  const f = await fixture(); let restored
+  try {
+    const item = await install(f, records('agents: {review: reviewer}', 'tools: []'))
+    const originalBundled = f.hub.specs.get(bundled('main'))
+    const originalImported = f.hub.specs.get(item.agentPath)
+    restored = new Hub({ base: f.hub.base })
+    // Share the acknowledged store, not any compiled spec or cached worker state.
+    restored.store = f.hub.store
+    await restored.readFolders()
+    expect(restored.defaultAgentPath()).toBe(bundled('main'))
+    expect([...restored.specs.keys()].sort()).toEqual([
+      ...['main', 'compactor', 'dreamer'].map(bundled), item.agentPath, `installed/${item.id}/reviewer`,
+    ].sort())
+    expect(restored.specs.get(bundled('main'))).toEqual(originalBundled)
+    expect(restored.specs.get(item.agentPath)).toEqual(originalImported)
+    expect(restored.packages.list()[0]).toMatchObject({ id: item.id, status: 'ready' })
+    expect(restored.allThreads.size).toBe(0)
+    await restored.startThreads()
+    const ownerRun = restored.startRun(item.agentPath, 'Use the restored owner definition.')
+    const deskRun = restored.startRun(bundled('main'), 'Use the restored bundled definition.')
+    await Promise.all([ownerRun.answer, deskRun.answer])
+    expect(ownerRun.slot.status).toBe('done'); expect(deskRun.slot.status).toBe('done')
+    expect(ownerRun.package.namespace).toBe('installed'); expect(deskRun.package.namespace).toBe('bundled')
   } finally { restored?.stop(); await f.close() }
 }, 15000)

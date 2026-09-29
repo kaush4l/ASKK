@@ -46,7 +46,7 @@ export function projectAgentTeam({ runs = [], definitions = [], approvals = [], 
     const pending = live ? approvals.filter(approval => (approval.runId ?? approval.run) === run.id).length : 0
     const parent = index.get(run.parent)
     const status = pending && !['cancelling', 'unresponsive'].includes(run.status) ? 'Awaiting your approval' : LABELS[run.status] || 'Status unavailable'
-    return { run, name: nameOf(run), identity: identityOf(run), live, status, pending, selected: belongs(run), parentName: parent ? nameOf(parent) : '', parentAvailable: Boolean(parent), parentLabel: parent?.kind === 'strategy' || run.stageId || run.kind === 'strategy-role' ? 'Parent run' : 'Delegated by', tone: PROBLEM.has(run.status) ? 'problem' : SUCCESS.has(run.status) ? 'complete' : live ? 'live' : 'neutral' }
+    return { run, name: nameOf(run), identity: identityOf(run), definitionAvailable: definitions.some(definition => definition.path === identityOf(run)), live, status, pending, selected: belongs(run), parentName: parent ? nameOf(parent) : '', parentAvailable: Boolean(parent), parentLabel: parent?.kind === 'strategy' || run.stageId || run.kind === 'strategy-role' ? 'Parent run' : 'Delegated by', tone: PROBLEM.has(run.status) ? 'problem' : SUCCESS.has(run.status) ? 'complete' : live ? 'live' : 'neutral' }
   })
   // Creation order keeps live cards still as their tools/status change. Only an
   // actual terminal transition moves a card from live instances to recent runs.
@@ -55,7 +55,7 @@ export function projectAgentTeam({ runs = [], definitions = [], approvals = [], 
 }
 
 export function AgentInstance({ item, onInspectRun, onInspectAgent, onStopAgent }) {
-  const { run, name, identity, live, status, pending, selected, parentName, parentAvailable, parentLabel, tone } = item
+  const { run, name, identity, definitionAvailable, live, status, pending, selected, parentName, parentAvailable, parentLabel, tone } = item
   const initials = name.trim().split(/\s+/).slice(0, 2).map(part => [...part][0]).join('').toLocaleUpperCase()
   const activity = activityPreview(text(run.current).trim() || text(run.description).trim())
   const hasResult = run.result !== undefined && run.result !== null && run.result !== ''
@@ -72,7 +72,8 @@ export function AgentInstance({ item, onInspectRun, onInspectAgent, onStopAgent 
     </div>
     <div className="agent-instance-tags">{selected && <span>Selected task</span>}{pending > 0 && <span className="agent-instance-approval">{pending} pending {pending === 1 ? 'decision' : 'decisions'}</span>}{hasResult && !live && <span>Result recorded</span>}</div>
     <div className="agent-instance-actions">
-      {identity && onInspectAgent && <button type="button" onClick={() => onInspectAgent(identity)}>Instructions<Icon name="right" size={12}/></button>}
+      {identity && definitionAvailable && onInspectAgent && <button type="button" onClick={() => onInspectAgent(identity)}>Instructions<Icon name="right" size={12}/></button>}
+      {identity && !definitionAvailable && <span className="agent-instance-saved">Definition unavailable</span>}
       {live && onStopAgent && <button type="button" className="agent-instance-stop" disabled={run.status === 'cancelling'} onClick={() => onStopAgent(run.id)} aria-label={`Stop ${name} run ${run.id}`}><Icon name="stop" size={12}/>{run.status === 'cancelling' ? 'Stopping…' : 'Stop run'}</button>}
     </div>
   </li>

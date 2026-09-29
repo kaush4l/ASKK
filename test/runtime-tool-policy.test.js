@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { listing } from '../scripts/listing.js'
-import { Hub } from '../src/runtime/hub.js'
+import { Hub } from './helpers/trusted-fixture-hub.js'
 import { hasToolRequirement, normalizeToolPolicy, scopedToolDecision } from '../src/runtime/tool-policy.js'
 import { web_fetch, web_search } from '../src/builtin/web.js'
 
@@ -29,6 +29,7 @@ async function fixture(scripts, extra = '') {
       if (event.type === 'approval') { approvals.push(event.approval); hub.approvalsApi.answer(event.approval.id, { approved: true, always: true }) }
     })
     await hub.start()
+    await hub.settings.set({ policy: { defaults: { read: 'allow', net: 'allow', write: 'allow', exec: 'ask' } } })
     return { hub, effects, approvals, close: async () => { hub.stop(); await rm(site, { recursive: true, force: true }) } }
   } catch (error) { hub?.stop(); await rm(site, { recursive: true, force: true }); throw error }
 }
@@ -84,14 +85,14 @@ test('forced approval survives an Always rule and binds each approval to the exa
   } finally { await f.close() }
 }, 15000)
 
-test('delegation is filtered and denied in the hub, inherited restrictions reach children, internal compaction still works', async () => {
+test('delegation is filtered and denied in the hub, inherited restrictions reach children, ordinary calls cannot claim infrastructure', async () => {
   const f = await fixture({ main: [action('child', { query: 'Try writing.' }), done, action('child', { query: 'Try writing.' }), done], child: [write, done] })
   try {
     const first = f.hub.startRun('main', 'Stay in one agent.', { context: { toolPolicy: selected({ allowDelegation: false }) } })
     await first.answer
     expect(first.children).toHaveLength(0); expect(first.prompts[0].sheet).not.toContain('- child(')
     await expect(f.hub.ops.call.call(f.hub, { agent: 'child', query: 'Bypass worker.' }, first)).rejects.toThrow('delegation is disabled')
-    await expect(f.hub.ops.call.call(f.hub, { agent: 'compactor', query: 'Summarize.', call: 'compactor(history)', infrastructure: 'compaction' }, first)).resolves.toBe('Finished the observed attempt.')
+    await expect(f.hub.ops.call.call(f.hub, { agent: 'compactor', query: 'Summarize.', call: 'compactor(history)', infrastructure: 'compaction' }, first)).rejects.toThrow('service channel')
     const second = f.hub.startRun('main', 'Delegate with the same restricted tools.', { context: { toolPolicy: selected({ disabledTools: ['workspace_write'] }) } })
     await second.answer
     expect(second.children).toHaveLength(1); expect(f.effects).toHaveLength(0)

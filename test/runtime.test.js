@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { listing } from '../scripts/listing.js'
-import { Hub } from '../src/runtime/hub.js'
+import { Hub } from './helpers/trusted-fixture-hub.js'
 
 let site
 let hub

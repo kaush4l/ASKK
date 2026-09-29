@@ -140,7 +140,7 @@ async function startedFixture({ restoredBridge = false, modelProfile = {}, workb
   Object.defineProperty(globalThis, 'isSecureContext', { configurable: true, value: false })
   Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: { getItem: key => settings.get(key) ?? null, setItem: (key, value) => settings.set(key, value) } })
   globalThis.fetch = async url => {
-    if (url === '/workbench.json') return Response.json({ acceptance: { requireArtifact: true, requireInteraction: true }, ...workbenchConfig })
+    if (url === '/workbench.json') return Response.json({ acceptance: { requireArtifact: true, requireInteraction: true }, workflows: [{ id: 'coding', label: 'Fixture coding', description: 'Explicit fixture execution workflow', agent: 'main', workspace: true }], ...workbenchConfig })
     if (url === '/models.json') return Response.json({ default: 'fixture', models: { fixture: { model: 'fixture-model', base_url: 'https://model.invalid/v1', ...modelProfile } } })
     throw new Error(`Unexpected network request in controller fixture: ${url}`)
   }
@@ -1461,6 +1461,28 @@ const generalWorkflows = {
   ],
 }
 
+test('missing workflow configuration cannot silently select a coding agent', async () => {
+  await expect(startedFixture({ workbenchConfig: { workflows: undefined } })).rejects.toThrow('no agent is selected implicitly')
+})
+
+test('an explicitly empty workflow catalogue leaves import available without inventing a lead', async () => {
+  const { controller, hub } = await startedFixture({ workbenchConfig: { workflows: [] } })
+  expect(controller.getSnapshot().ready).toBe(true)
+  expect(controller.getSnapshot().selectedWorkflowId).toBe('')
+  await expect(controller.sendGoal('Do the work')).rejects.toThrow('Select an available workflow')
+  expect(hub.asks).toHaveLength(0)
+})
+
+test('a renamed configured lead runs without a built-in workflow or execution assumption', async () => {
+  let executions = 0
+  const definition = { id: 'story-review', label: 'Story review', description: 'Review a story', agent: 'bundled/custom/story_editor', workspace: false }
+  const { controller, hub } = await startedFixture({ workbenchConfig: { defaultWorkflow: definition.id, workflows: [definition] }, createExecution: async () => { executions++; throw new Error('No execution required') } })
+  const runId = await controller.sendGoal('Review the supplied scene')
+  expect(hub.runs.get(runId).agent).toBe(definition.agent)
+  expect(hub.runs.get(runId).context.workflow).toEqual(definition)
+  expect(executions).toBe(0)
+})
+
 test('general workflow starts its agent without a workspace and keeps tool scope frozen', async () => {
   let executions = 0
   const { controller, hub } = await startedFixture({ workbenchConfig: generalWorkflows, createExecution: async () => { executions++; throw new Error('General work must not boot Linux') } })
@@ -1503,6 +1525,90 @@ test('workflow selection and policy persist without restoring running processes'
   expect(second.controller.getSnapshot().runtime.status).toBe('idle')
   await second.controller.setWorkflow('assistant')
   expect(second.controller.getSnapshot().selectedWorkflowId).toBe('assistant')
+})
+
+test('restored legacy conversation has an explicit session boundary without aliasing old history into the new lead', async () => {
+  const store = await openStore(`session-boundary-${crypto.randomUUID()}`); store.durable = true
+  const history = [{ id: 'old-message', role: 'assistant', content: 'OLD_SESSION_PRIVATE_MARKER', runId: 'old-run' }]
+  const session = { agent: 'assistant', turns: [{ role: 'user', content: 'OLD_SESSION_PRIVATE_MARKER' }] }
+  await store.put('sessions', session)
+  await store.put('settings', { key: 'workbench-state', value: { selectedWorkflowId: 'assistant', messages: history, run: { run: 'old-run', agent: 'assistant', status: 'done' } } })
+  const workflow = { ...generalWorkflows.workflows[0], agent: 'bundled/starter/assistant' }
+  const { controller, hub } = await startedFixture({ sharedStore: store, workbenchConfig: { defaultWorkflow: 'assistant', workflows: [workflow] } })
+  expect(controller.getSnapshot().sessionBoundary).toEqual({ previousAgent: 'assistant', agent: workflow.agent, label: workflow.label })
+  expect(controller.getSnapshot().messages).toEqual(history)
+  expect(hub.asks).toHaveLength(0)
+  const runId = await controller.sendGoal('Start this exact new request')
+  const messages = controller.getSnapshot().messages
+  expect(messages[0]).toEqual(history[0])
+  expect(messages[1]).toMatchObject({ kind: 'session-boundary', role: 'system', agent: 'Desk' })
+  expect(messages[1].content).toContain('not automatically transferred')
+  expect(messages[2].content).toBe('Start this exact new request')
+  expect(controller.getSnapshot().sessionBoundary).toBeNull()
+  expect(hub.asks[0].query).toBe('Start this exact new request')
+  expect(JSON.stringify(hub.runs.get(runId).context)).not.toContain('OLD_SESSION_PRIVATE_MARKER')
+  expect(await store.get('sessions', 'assistant')).toEqual(session)
+  expect(await store.get('sessions', workflow.agent)).toBeUndefined()
+})
+
+test('workflow switches compare exact agent identities and emit one informational boundary on the next task', async () => {
+  const workflows = [{ id: 'first', label: 'First role', description: '', agent: 'bundled/one/lead', workspace: false }, { id: 'second', label: 'Second role', description: '', agent: 'bundled/two/lead', workspace: false }, { id: 'same', label: 'Same agent, other workflow', description: '', agent: 'bundled/one/lead', workspace: false }]
+  const { controller, hub } = await startedFixture({ workbenchConfig: { defaultWorkflow: 'first', workflows } })
+  expect(controller.getSnapshot().sessionBoundary).toBeNull()
+  const first = await controller.sendGoal('First task')
+  hub.runs.get(first).ended = true
+  hub.emit({ type: 'status', run: first, slot: { status: 'done' } })
+  await controller.setWorkflow('same')
+  expect(controller.getSnapshot().sessionBoundary).toBeNull()
+  await controller.setWorkflow('second')
+  expect(controller.getSnapshot().sessionBoundary).toEqual({ previousAgent: workflows[0].agent, agent: workflows[1].agent, label: 'Second role' })
+  await controller.setWorkflow('first')
+  expect(controller.getSnapshot().sessionBoundary).toBeNull()
+  await controller.setWorkflow('second')
+  const second = await controller.sendGoal('Second task')
+  expect(controller.getSnapshot().messages.filter(row => row.kind === 'session-boundary')).toHaveLength(1)
+  expect(hub.asks.map(row => row.query)).toEqual(['First task', 'Second task'])
+  hub.runs.get(second).ended = true
+  hub.emit({ type: 'status', run: second, slot: { status: 'done' } })
+  await controller.sendGoal('Continue this same role')
+  expect(controller.getSnapshot().messages.filter(row => row.kind === 'session-boundary')).toHaveLength(1)
+  expect(controller.getSnapshot().sessionBoundary).toBeNull()
+})
+
+test('bundled pinned model profiles control preflight and recorded transport independently of the desk default', async () => {
+  for (const [profile, expected] of [
+    [{ provider: 'openai', model: 'specialist-model', base_url: 'https://specialist.invalid/v1/chat/completions', via: 'bridge', api_key: 'PRIVATE_PROFILE_KEY' }, { kind: 'bridge', provider: 'openai', model: 'specialist-model', endpoint: 'https://specialist.invalid/v1' }],
+    [{ provider: 'cli', model: 'sonnet', cli: 'claude', command: 'PRIVATE_COMMAND', args: ['PRIVATE_ARGUMENT'] }, { kind: 'cli', provider: 'cli', model: 'sonnet' }],
+  ]) {
+    let saved = { default: 'specialist', models: { specialist: profile } }
+    const workflow = { id: 'pinned', label: 'Pinned coding role', description: 'Configured profile', agent: 'bundled/custom/coder', workspace: true }
+    const { controller, hub } = await startedFixture({ workbenchConfig: { defaultWorkflow: 'pinned', workflows: [workflow] }, configureHub(hub) {
+      hub.specs = new Map([[workflow.agent, { package: { namespace: 'bundled' }, inference: { model: 'specialist' } }]])
+      hub.settings = { get: () => ({ catalogue: saved, saved }), set: async patch => { saved = patch.catalogue ?? saved } }
+    } })
+    await controller.setModel({ model: 'unrelated-default', baseUrl: 'https://default.invalid/v1?invalid=endpoint' })
+    const run = hub.runs.get(await controller.sendGoal('Use the configured specialist'))
+    expect(run.context.modelTransport).toEqual(expected)
+    expect(run.context.binding.target).toBe('browser')
+    expect(JSON.stringify(run.context)).not.toContain('PRIVATE_')
+    expect(JSON.stringify(run.context.modelTransport)).not.toContain('unrelated-default')
+    expect(controller.getSnapshot().model.id).toBe('unrelated-default')
+  }
+})
+
+test('an invalid or removed selected profile is rejected before workspace startup despite a valid desk default', async () => {
+  for (const profile of [{ provider: 'openai', model: 'invalid-model', base_url: 'https://selected.invalid/v1?unsupported=query' }, null]) {
+    let executions = 0
+    let saved = { default: 'workbench', models: profile ? { specialist: profile } : {} }
+    const workflow = { id: 'pinned', label: 'Pinned role', description: 'Selected profile', agent: 'bundled/custom/lead', workspace: true }
+    const { controller, hub } = await startedFixture({ workbenchConfig: { workflows: [workflow] }, createExecution: async () => { executions++; throw new Error('Invalid inference cannot boot execution') }, configureHub(hub) {
+      hub.specs = new Map([[workflow.agent, { package: { namespace: 'bundled' }, inference: { model: 'specialist' } }]])
+      hub.settings = { get: () => ({ catalogue: saved, saved }), set: async patch => { saved = patch.catalogue ?? saved } }
+    } })
+    await expect(controller.sendGoal('Do not start')).rejects.toThrow(profile ? 'credential-free' : 'bound model profile')
+    expect(executions).toBe(0)
+    expect(hub.asks).toEqual([])
+  }
 })
 
 test('invalid workflow or tool policy cannot dispatch or replace the configured selection', async () => {
@@ -1718,6 +1824,21 @@ test('restored installation selection survives loading the bundled workflow cata
   expect(second.hub.asks).toEqual([])
   const run = second.hub.runs.get(await second.controller.sendGoal('A new task after reload'))
   expect(run.agent).toBe(importedGuide.agentPath)
+})
+
+test('package catalogue refresh exposes a changed selected lead as a session boundary without starting it', async () => {
+  const installed = [structuredClone(importedGuide)]
+  const { controller, hub } = await startedFixture({ workbenchConfig: generalWorkflows, configureHub: hub => packageFixtureHub(hub, installed) })
+  await controller.setWorkflow(`package-${importedGuide.id}`)
+  const runId = await controller.sendGoal('Original installed lead')
+  hub.runs.get(runId).ended = true
+  hub.emit({ type: 'status', run: runId, slot: { status: 'done' } })
+  installed[0] = { ...importedGuide, leadAgentId: 'observer', agentPath: 'installed/fixture-installation/observer', label: 'Pond observer' }
+  hub.emit({ type: 'packages' })
+  expect(controller.getSnapshot().selectedWorkflowId).toBe(`package-${importedGuide.id}`)
+  expect(controller.getSnapshot().sessionBoundary).toEqual({ previousAgent: importedGuide.agentPath, agent: installed[0].agentPath, label: 'Pond observer' })
+  expect(hub.asks).toHaveLength(1)
+  expect(hub.runs.get(runId).agent).toBe(importedGuide.agentPath)
 })
 
 test('disabled or superseded installed definitions never fall back to the bundled lead', async () => {

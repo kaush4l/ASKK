@@ -31,17 +31,17 @@ test('production compactor uses a bounded version 2 summary prompt through a rea
   const summary = 'The owner requested a task list. app/page.js was read. The build failed because globals.css was missing; no successful build or verification was observed.'
   const { hub, events, effects, close } = await fixture({ do: 'done', act: summary })
   try {
-    const spec = hub.specs.get('compactor')
+    const spec = hub.specs.get('bundled/starter/compactor')
     expect(spec.engine.contractVersion).toBe(2)
     expect(spec.inference.maxOutputTokens).toBe(2048)
     expect(spec.notes.some(note => note.includes('unknown key'))).toBe(false)
     expect(spec.grants).toEqual([])
     expect(spec.peers).toEqual([])
-    const run = hub.startRun('compactor', source)
+    const run = hub.startRun('bundled/starter/compactor', source)
     expect(await run.answer).toBe(summary)
     expect(run.slot.status).toBe('done')
     expect(effects).toEqual([])
-    const prompts = events.filter(event => event.kind === 'prompt' && event.agent === 'compactor')
+    const prompts = events.filter(event => event.kind === 'prompt' && event.agent === 'bundled/starter/compactor')
     expect(prompts.length).toBe(1)
     expect(prompts[0].requestSnapshot.contractVersion).toBe(2)
     expect(prompts[0].requestSnapshot.budget.outputReserve).toBe(2048)
@@ -60,7 +60,7 @@ test('production compactor uses a bounded version 2 summary prompt through a rea
 test('a compactor that repeats a historical tool call has no capability and remains incomplete', async () => {
   const { hub, effects, close } = await fixture({ do: 'tool', act: [[{ name: 'workspace_read', args: { path: 'app/page.js' } }]] })
   try {
-    const run = hub.startRun('compactor', source)
+    const run = hub.startRun('bundled/starter/compactor', source)
     expect(await run.answer).toContain('Stopped at the step limit')
     expect(run.slot.status).toBe('incomplete')
     expect(effects).toEqual([])
@@ -74,12 +74,12 @@ test('an incomplete real compactor child cannot replace its parent history with 
   try {
     // Only the parent's compaction threshold and external capabilities are fixture settings.
     // The child uses the published compactor configuration and a real worker throughout.
-    hub.retire(hub.threads.get('main'))
-    const spec = hub.specs.get('main')
-    hub.specs.set('main', { ...spec, context: [], grants: [], localTools: [], commonTools: {}, peers: [], owned: [], engine: { ...spec.engine, requireVerification: false, compactAt: 0.001, keep: 1 } })
+    hub.retire(hub.threads.get('bundled/starter/main'))
+    const spec = hub.specs.get('bundled/starter/main')
+    hub.specs.set('bundled/starter/main', { ...spec, context: [], grants: [], localTools: [], commonTools: {}, peers: [], owned: [], engine: { ...spec.engine, requireVerification: false, compactAt: 0.001, keep: 1 } })
     const history = Array.from({ length: 6 }, (_, index) => ({ role: index % 2 ? 'observation' : 'user', content: `Original evidence ${index}: ${'Important historical fact. '.repeat(30)}`, at: index + 1 }))
-    await hub.store.put('sessions', { agent: 'main', turns: history })
-    const run = hub.startRun('main', 'Continue using the original evidence.')
+    await hub.store.put('sessions', { agent: 'bundled/starter/main', turns: history })
+    const run = hub.startRun('bundled/starter/main', 'Continue using the original evidence.')
     expect(await run.answer).toBe('Parent still has the original evidence.')
     expect(run.slot.status).toBe('done')
     expect(run.children).toHaveLength(1)
@@ -88,12 +88,12 @@ test('an incomplete real compactor child cannot replace its parent history with 
     expect(child.result).toContain('Stopped at the step limit')
     expect(child.turns.some(turn => turn.role === 'observation' && /no tool named/.test(turn.content))).toBe(true)
     expect(effects).toEqual([])
-    const saved = await hub.store.get('sessions', 'main')
+    const saved = await hub.store.get('sessions', 'bundled/starter/main')
     expect(saved.turns.slice(0, history.length)).toEqual(history)
     expect(saved.turns.some(turn => turn.role === 'summary')).toBe(false)
-    const parentPrompt = events.find(event => event.kind === 'prompt' && event.agent === 'main')
+    const parentPrompt = events.find(event => event.kind === 'prompt' && event.agent === 'bundled/starter/main')
     for (const turn of history) expect(parentPrompt.value).toContain(turn.content)
     expect(parentPrompt.value).not.toContain('Stopped at the step limit')
-    expect(events.some(event => event.kind === 'compaction_failed' && event.agent === 'main' && /incomplete/.test(event.value))).toBe(true)
+    expect(events.some(event => event.kind === 'compaction_failed' && event.agent === 'bundled/starter/main' && /incomplete/.test(event.value))).toBe(true)
   } finally { await close() }
 }, 15000)

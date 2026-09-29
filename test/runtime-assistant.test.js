@@ -10,10 +10,8 @@ test('production general assistant preserves conversation in its worker and afte
   const site = await mkdtemp(join(tmpdir(), 'askk-assistant-session-')); let hub
   try {
     await mkdir(join(site, 'agents'), { recursive: true })
-    await mkdir(join(site, 'prompts'), { recursive: true })
-    await cp(join(import.meta.dir, '../public/agents/assistant'), join(site, 'agents/assistant'), { recursive: true })
-    await cp(join(import.meta.dir, '../public/agents/soul.md'), join(site, 'agents/soul.md'))
-    await cp(join(import.meta.dir, '../public/prompts/workbench.md'), join(site, 'prompts/workbench.md'))
+    for (const name of ['packages', 'tools']) await cp(join(import.meta.dir, '../public', name), join(site, name), { recursive: true })
+    await cp(join(import.meta.dir, '../public/desk.json'), join(site, 'desk.json'))
     const initial = 'I will remember that the marker is violet.'
     const followup = 'The marker from your previous message is violet.'
     const model = { provider: 'scripted', max_output_tokens: 512, script: { assistant: [JSON.stringify({ do: 'done', act: initial }), JSON.stringify({ do: 'done', act: followup })] } }
@@ -23,26 +21,29 @@ test('production general assistant preserves conversation in its worker and afte
     // General context can read the owner goal. No workspace execution port is provided.
     hub.externalOps = { 'workspace.goal': () => ({ text: '', revision: 0 }) }
     await hub.start()
-    const spec = hub.specs.get('assistant')
+    const agent = 'bundled/starter/assistant'
+    const spec = hub.specs.get(agent)
     expect(spec.engine.remembers).toBe(true)
+    expect(spec.engine.session).toBe('agent')
+    expect(spec.package.namespace).toBe('bundled')
     expect(spec.engine.requireVerification).toBe(false)
     expect(spec.grants).not.toContain('workspace')
     expect(spec.context).not.toContain('workspace')
     const context = { workflow: { id: 'assistant', workspace: false }, toolPolicy: { disabledTools: [], approvalRisks: [], allowDelegation: true } }
-    const thread = hub.threads.get('assistant')
+    const thread = hub.threads.get(agent)
     expect(thread?.resident).toBe(true)
-    const first = hub.startRun('assistant', 'Remember the marker: violet.', { context })
+    const first = hub.startRun(agent, 'Remember the marker: violet.', { context })
     expect(await first.answer).toBe(initial)
-    const second = hub.startRun('assistant', 'Which marker did I give you?', { context })
+    const second = hub.startRun(agent, 'Which marker did I give you?', { context })
     expect(await second.answer).toBe(followup)
-    expect(hub.threads.get('assistant')).toBe(thread)
+    expect(hub.threads.get(agent)).toBe(thread)
     expect(second.prompts[0].sheet).toContain('Remember the marker: violet.')
     expect(second.prompts[0].sheet).toContain(initial)
-    const saved = await hub.store.get('sessions', 'assistant')
+    const saved = await hub.store.get('sessions', agent)
     expect(saved.turns.some(turn => turn.role === 'assistant' && turn.content.includes(followup))).toBe(true)
     await hub.restart(thread, 'fixture restoration of the saved conversation')
-    expect(hub.threads.get('assistant')).not.toBe(thread)
-    const third = hub.startRun('assistant', 'Recall it again after restarting the worker.', { context })
+    expect(hub.threads.get(agent)).not.toBe(thread)
+    const third = hub.startRun(agent, 'Recall it again after restarting the worker.', { context })
     await third.answer
     const prompt = third.prompts[0].sheet
     for (const prior of ['Remember the marker: violet.', initial, 'Which marker did I give you?', followup]) expect(prompt).toContain(prior)

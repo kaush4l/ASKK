@@ -10,6 +10,37 @@ const sha = value => createHash('sha256').update(value).digest('hex')
 const recordsFrom = async result => Promise.all((await result.source.list()).map(async row => file(row.path, await result.source.read(row.path, { as: 'bytes' }))))
 const code = async (promise, expected) => { try { await promise; throw new Error('Import unexpectedly succeeded') } catch (error) { expect(error.code).toBe(expected); return error } }
 
+test('service references are package-local IDs with strict shape and no self, missing or cyclic references', async () => {
+  for (const services of ['[]', '{unknown: worker}', '{compaction: 4}', '{retrospective: ../worker}']) await code(importAgentPackage(basic(`services: ${services}\n`)), 'PACKAGE_SCHEMA')
+  for (const services of ['{compaction: lead}', '{retrospective: absent}']) await code(importAgentPackage(basic(`services: ${services}\n`)), 'PACKAGE_REFERENCE')
+  const cycle = await code(importAgentPackage([
+    ...basic('services: {retrospective: second}\n'),
+    file('two/agent.md', child('second', 'services: {retrospective: third}\n')),
+    file('three/agent.md', child('third', 'services: {retrospective: lead}\n')),
+  ]), 'PACKAGE_REFERENCE')
+  expect(cycle.message).toContain('cyclic')
+  const valid = await importAgentPackage([
+    ...basic('services: {compaction: short_notes, retrospective: review}\n'),
+    file('summary/agent.md', child('short_notes')),
+    file('review/agent.md', child('review', 'tools: [memory]\n')),
+  ])
+  expect(valid.data.agents[0].settings.services).toEqual({ compaction: 'short_notes', retrospective: 'review' })
+  expect(valid.data.agents[0].notes).toEqual([])
+  expect((await restoreAgentPackage(JSON.parse(JSON.stringify(valid.data)))).data).toEqual(valid.data)
+})
+
+test('compaction services cannot request effects or further work even if bindings would deny them', async () => {
+  for (const extra of ['tools: [web]\n', 'agents: [lead]\n', 'services: {retrospective: extra}\n', 'skills: true\n', 'skills: [guide.md]\n', 'require_verification: true\n']) {
+    const error = await code(importAgentPackage([
+      ...basic('services: {compaction: summary}\n'), file('summary/agent.md', child('summary', extra)),
+      file('extra/agent.md', child('extra')), file('guide.md', '# A procedure'),
+    ]), 'PACKAGE_REFERENCE')
+    expect(error.message).toContain('compaction service')
+  }
+  const empty = await importAgentPackage([...basic('services: {compaction: summary}\n'), file('summary/agent.md', child('summary', 'tools: []\nagents: []\nservices: {}\nskills: false\nrequire_verification: false\n'))])
+  expect(empty.data.agents.find(agent => agent.id === 'summary').settings.services).toEqual({})
+})
+
 test('minimal authored agent generates a complete immutable portable inventory without rewriting its bytes', async () => {
   const source = root('x_owner_note: Keep this unknown setting.\n', 'One  line.\nAnother line.\n\n  Indented text.  \n').replaceAll('\n', '\r\n')
   const result = await importAgentPackage([file('agent.md', source)])

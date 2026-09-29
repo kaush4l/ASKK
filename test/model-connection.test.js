@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { Hub } from '../src/runtime/hub.js'
+import { Hub } from './helpers/trusted-fixture-hub.js'
 import { assertModelRelay } from '../src/core/inference.js'
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'

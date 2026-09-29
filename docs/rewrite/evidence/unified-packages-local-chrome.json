@@ -1,0 +1,67 @@
+{
+  "at": "2026-09-29T06:23:37.990635+00:00",
+  "url": "http://127.0.0.1:5193/ASKK/",
+  "scope": "Actual Chrome UI against the final local Pages export; restored pre-existing imported agent, ran imported and bundled todo_read tasks, inspected exact run records, downloaded bundled trace and reloaded.",
+  "build": {
+    "version": 1,
+    "basePath": "/ASKK",
+    "totalBytes": 803252248,
+    "fileCount": 182,
+    "runtimeId": "c2w-node24-38d093f4a38002db",
+    "artifactHash": "85f6fa8da09231c1b3dc6f483aa59800829090c97319e1adb5d44ee3f9b7b3db"
+  },
+  "checks": {
+    "restoredInstallation": "73915cf4-b868-4875-9d35-05ddc5dff0a1",
+    "importedRun": "rmumag0hl1",
+    "importedResult": "The plan is empty.",
+    "importedPrompts": 2,
+    "importedRequests": 2,
+    "importedCompletions": 2,
+    "sessionBoundaryVisible": true,
+    "oldDefinitionsUnavailableLabeled": true,
+    "bundledRun": "rmumagmve2",
+    "agent": "bundled/starter/assistant",
+    "package": {
+      "namespace": "bundled",
+      "installationId": "starter",
+      "packageId": "org.askk.starter",
+      "packageVersion": "1.0.0",
+      "revisionDigest": "sha256:4a663935961be1a656e6a094861d714e316b9262a06378064f3725c7b2348605",
+      "agentId": "assistant",
+      "specHash": "sha256:77e7e44ddcc369efad83d40b267f45af23718dd77170acafa15d2abeed161089",
+      "modelAlias": "$default",
+      "toolGroups": [
+        "web",
+        "board",
+        "memory",
+        "todo"
+      ]
+    },
+    "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+    "result": "The task plan is empty.",
+    "seconds": 14.6,
+    "prompts": 2,
+    "requests": 2,
+    "completions": 2,
+    "toolEvents": 2,
+    "commands": 0,
+    "artifacts": 0,
+    "reloadKeptRun": true,
+    "reloadKeptDraft": "Folder migration checkpoint \u2014 preserve this draft.",
+    "reloadActiveRuns": 0,
+    "execution": "Not started",
+    "modelRoute": "Direct from this browser"
+  },
+  "export": {
+    "bytes": 56377,
+    "sha256": "e38ef7c9b5a454e680574e76f90d3bda4d4fbeb3faebacd4c540560a9017d0ca",
+    "trace": "rmumagmve2",
+    "runs": 1,
+    "rawFileKeptLocal": true
+  },
+  "limitations": [
+    "This check does not exercise Browser Linux, native execution, workflow graph concurrency, compaction or retrospectives.",
+    "One browser-control read timed out before any task action; the next DOM snapshot succeeded.",
+    "No performance claim is derived from one short model task."
+  ]
+}
