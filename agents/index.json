@@ -1,5 +1,5 @@
 {
-  "build": "a69d1e595d",
+  "build": "a0b1c51d5e",
   "files": {
     "agents/assistant/agent.md": "6eb458313e",
     "agents/coder/agent.md": "3afbea3eaa",
@@ -119,7 +119,7 @@
     "runtime/modules/core/completion.js": "f1a99e6856",
     "runtime/modules/core/context.js": "c43ffa8372",
     "runtime/modules/core/draft-backup.js": "ae0630bd19",
-    "runtime/modules/core/engine.js": "89ab8f56dc",
+    "runtime/modules/core/engine.js": "ea3324bab7",
     "runtime/modules/core/folder.js": "bfae11dd01",
     "runtime/modules/core/inference.js": "6123ca5567",
     "runtime/modules/core/markdown.js": "43ff2bfeca",
@@ -131,7 +131,7 @@
     "runtime/modules/core/package-workflows.js": "b4fed62b21",
     "runtime/modules/core/permissions.js": "b9ba873cf5",
     "runtime/modules/core/prompt.js": "95de38614d",
-    "runtime/modules/core/responses.js": "5849719a48",
+    "runtime/modules/core/responses.js": "7c214c5fc9",
     "runtime/modules/core/strategy.js": "651b1d10a0",
     "runtime/modules/core/token-budget.js": "50a492499e",
     "runtime/modules/core/tool-activity.js": "2a90678bad",

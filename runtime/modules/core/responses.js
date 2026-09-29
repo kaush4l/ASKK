@@ -129,28 +129,30 @@ export function responseModel(shape = ReAct, format = 'toon') {
   }
 
   const json = (text) => {
-    const source = String(text)
-    if (shape.version === 2) {
-      try {
-        const value = JSON.parse(source)
-        return value && typeof value === 'object' && !Array.isArray(value) ? value : null
-      } catch { return null }
+    let source = String(text)
+    if (shape.version !== 2) {
+      const start = source.indexOf('{')
+      const end = source.lastIndexOf('}')
+      if (start === -1 || end <= start) return { value: null, faults: [] }
+      source = source.slice(start, end + 1)
     }
-    const start = source.indexOf('{')
-    const end = source.lastIndexOf('}')
-    if (start === -1 || end <= start) return null
     try {
-      const value = JSON.parse(source.slice(start, end + 1))
-      return value && typeof value === 'object' && !Array.isArray(value) ? value : null
-    } catch {
-      return null
+      const value = JSON.parse(source)
+      if (value && typeof value === 'object' && !Array.isArray(value)) return { value, faults: [] }
+      const type = value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value
+      return { value: null, faults: [`reply: expected a JSON object, received ${type}`] }
+    } catch (error) {
+      // Engines may quote model output in SyntaxError messages. Keep punctuation and
+      // location hints, but remove quoted excerpts and bound the repair diagnostic.
+      const detail = String(error.message).replace(/(["'])(?:\\.|(?!\1)[\s\S])*\1/g, match => match.length > 3 ? '[text]' : match).replace(/\s+/g, ' ').slice(0, 180)
+      return { value: null, faults: [`reply: invalid JSON — ${detail}`] }
     }
   }
 
   const read = (text) => {
-    if (format === 'json') return json(text) ?? (shape.version === 2 ? {} : toon(text))
+    if (format === 'json') return json(text).value ?? (shape.version === 2 ? {} : toon(text))
     const found = toon(text)
-    return Object.keys(found).length ? found : (json(text) ?? {})
+    return Object.keys(found).length ? found : (json(text).value ?? {})
   }
 
   return {
@@ -160,6 +162,11 @@ export function responseModel(shape = ReAct, format = 'toon') {
 
     /** The whole reply, validated: `{ value, faults }`. Faults are what the repair shows the model. */
     parse(text) {
+      if (format === 'json' && shape.version === 2) {
+        const parsed = json(text)
+        if (parsed.faults.length) return { value: {}, faults: parsed.faults }
+        return { value: parsed.value, faults: shape.validate(parsed.value) }
+      }
       const value = read(text)
       const faults = Object.keys(value).length ? shape.validate(value) : ['reply: no fields found — use the format above']
       return { value, faults }
@@ -170,7 +177,7 @@ export function responseModel(shape = ReAct, format = 'toon') {
      * written, so it is held back until the stream ends. JSON cannot be read until it closes.
      */
     fields(text, complete = false) {
-      if (format === 'json') return json(text) ?? {}
+      if (format === 'json') return json(text).value ?? {}
       const found = Object.entries(toon(text))
       return Object.fromEntries(complete ? found : found.slice(0, -1))
     },
