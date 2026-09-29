@@ -5,7 +5,7 @@ import { normalizeToolPolicy } from '../runtime/tool-policy.js'
 import { DEFAULT_PROMPT, snapshot } from '../core/prompt.js'
 import { createWorkspaceBinding, assertWorkspaceBinding, assertWorkspacePort, assertExecutionPort, createArtifactManifest, assertArtifactManifest, createBoundRunSnapshot } from './contracts.js'
 
-const active = status => ['thinking', 'calling', 'waiting', 'compacting', 'running', 'starting'].includes(status)
+const active = status => ['thinking', 'calling', 'waiting', 'compacting', 'running', 'starting', 'cancelling', 'verifying'].includes(status)
 const id = prefix => `${prefix}-${crypto.randomUUID()}`
 const readSaved = key => { try { return JSON.parse(localStorage.getItem(key) ?? 'null') } catch { return null } }
 const LEGACY_WORKFLOW = Object.freeze({ id: 'coding', label: 'Build an app', description: 'Create and verify an application in the selected workspace.', agent: 'main', workspace: true })
@@ -16,7 +16,8 @@ function workflowsFrom(configuration) {
   const seen = new Set()
   return configuration.workflows.map(row => {
     if (!row || typeof row.id !== 'string' || !/^[a-z][a-z0-9-]{0,63}$/.test(row.id) || seen.has(row.id) || typeof row.label !== 'string' || !row.label.trim() || typeof row.description !== 'string' || typeof row.agent !== 'string' || !/^[a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_-]+)*$/.test(row.agent) || typeof row.workspace !== 'boolean') throw new Error('Invalid workbench workflow')
-    seen.add(row.id); return Object.freeze({ id: row.id, label: row.label, description: row.description, agent: row.agent, workspace: row.workspace })
+    if (row.strategy !== undefined && (typeof row.strategy !== 'string' || !/^strategies\/[A-Za-z0-9_/-]+\.json$/.test(row.strategy))) throw new Error('Invalid workflow strategy reference')
+    seen.add(row.id); return Object.freeze({ ...(row.strategy ? { strategyRef: row.strategy } : {}), id: row.id, label: row.label, description: row.description, agent: row.agent, workspace: row.workspace })
   })
 }
 const saveSetting = (key, value) => { try { localStorage.setItem(key, JSON.stringify(value)) } catch {} }
@@ -25,7 +26,7 @@ const saveSetting = (key, value) => { try { localStorage.setItem(key, JSON.strin
 export function createWorkbenchController({ onChange, basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? '', workspace: workspaceOverride, createExecution: executionFactory, createCompanion = options => new LocalExecution(options), createHub: hubFactory, inspectArtifact: inspectOverride } = {}) {
   const listeners = new Set(onChange ? [onChange] : []); const running = new Map(); const terminalListeners = new Map(); const terminals = new Set()
   const base = `${basePath.replace(/\/$/, '')}/`
-  let state = { ready: false, error: '', project: { name: 'Untitled workspace', id: 'default' }, goal: '', goalRevision: 0, files: [], messages: [], run: null, runtime: { target: 'browser', status: 'idle', phase: 'Not started', capabilities: [] }, companion: { status: 'disconnected', url: 'https://127.0.0.1:7717' }, model: { status: 'unconfigured', id: '', baseUrl: '' }, commands: [], artifacts: [], agents: [], agentDefinitions: [], workflows: [], selectedWorkflowId: 'assistant', toolPolicy: DEFAULT_TOOL_POLICY, plans: [], approvals: [], activity: [] }
+  let state = { ready: false, error: '', project: { name: 'Untitled workspace', id: 'default' }, goal: '', goalRevision: 0, files: [], messages: [], run: null, task: null, runtime: { target: 'browser', status: 'idle', phase: 'Not started', capabilities: [] }, companion: { status: 'disconnected', url: 'https://127.0.0.1:7717' }, model: { status: 'unconfigured', id: '', baseUrl: '' }, commands: [], artifacts: [], agents: [], agentDefinitions: [], workflows: [], selectedWorkflowId: 'assistant', toolPolicy: DEFAULT_TOOL_POLICY, plans: [], approvals: [], activity: [] }
   let hub; let local; let executor; let browser; let started; let disposed = false; let activeRun; let projectRevision = 0; let taskStartRevision = 0; let currentArtifact; let unsubscribe; let runtimeBoot; let taskArtifactId; let watcher; let watched = ''; let acceptance = { requireArtifact: true, requireInteraction: true }
   let uiLoaded = false; let persistTimer; let savingUI = Promise.resolve()
   let binding; let workspaceLocation = null; let locationLoaded = false; let legacyNative = false; let modelProfiles = []; let modelEpoch = 0; let launchEpoch = 0; const runBindings = new Map()
@@ -39,11 +40,11 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
   const persistUI = ({ strict = false } = {}) => {
     clearTimeout(persistTimer)
     if (!uiLoaded || !files.store?.durable) return Promise.resolve()
-    const value = { projectRevision, messages: state.messages.slice(-500), run: state.run, plans: state.plans, target: state.runtime.target, commands: state.commands.slice(-100), artifacts: state.artifacts.slice(-3).map(({ url, ...record }) => record), activeArtifactId: state.activeArtifactId, selectedWorkflowId: state.selectedWorkflowId, toolPolicy: state.toolPolicy }
+    const value = { projectRevision, messages: state.messages.slice(-500), run: state.run, task: state.task, plans: state.plans, target: state.runtime.target, commands: state.commands.slice(-100), artifacts: state.artifacts.slice(-3).map(({ url, ...record }) => record), activeArtifactId: state.activeArtifactId, selectedWorkflowId: state.selectedWorkflowId, toolPolicy: state.toolPolicy }
     savingUI = savingUI.catch(() => {}).then(() => files.store.put('settings', { key: 'workbench-state', value })).catch(error => { notify({ error: `Workspace history could not be saved: ${error.message}` }); if (strict) throw error })
     return savingUI
   }
-  const notify = patch => { if (disposed) return; state = { ...state, ...patch }; for (const listener of listeners) listener(); if (uiLoaded && ['messages', 'run', 'plans', 'commands', 'artifacts', 'selectedWorkflowId', 'toolPolicy'].some(key => key in patch)) { clearTimeout(persistTimer); persistTimer = setTimeout(persistUI, 200) } }
+  const notify = patch => { if (disposed) return; state = { ...state, ...patch }; for (const listener of listeners) listener(); if (uiLoaded && ['messages', 'run', 'task', 'plans', 'commands', 'artifacts', 'selectedWorkflowId', 'toolPolicy'].some(key => key in patch)) { clearTimeout(persistTimer); persistTimer = setTimeout(persistUI, 200) } }
   const report = error => { notify({ error: error?.message ?? String(error) }); return error }
   const requestCancellation = key => { try { Promise.resolve(executor?.cancelJob?.(key)).catch(report) } catch (error) { report(error) } }
   const activity = event => notify({ activity: [...state.activity.slice(-199), { id: id('event'), at: Date.now(), ...event }] })
@@ -229,9 +230,10 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
   }
 
   const refreshDefinitions = () => notify({ agentDefinitions: hub?.manifest({ toolPolicy: state.toolPolicy }) ?? [] })
-  const refreshAgents = () => notify({ agents: [...(hub?.runs.values() ?? [])].map(run => ({ id: run.id, path: run.agent, agent: run.agent, name: state.agentDefinitions.find(row => row.path === run.agent)?.name ?? run.agent, current: run.slot?.current ?? '', maxSteps: run.slot?.maxSteps, steps: run.slot?.steps ?? 0, parent: run.parent ?? null, status: run.slot?.status ?? 'starting', description: run.query, at: run.at })) })
+  const refreshAgents = () => notify({ agents: [...(hub?.runs.values() ?? [])].filter(run => run.kind !== 'strategy').map(run => ({ id: run.id, kind: run.kind, taskId: run.taskId, stageId: run.stageId, result: run.result, error: run.slot?.error, path: run.agent, agent: run.agent, name: state.agentDefinitions.find(row => row.path === run.agent)?.name ?? run.agent, current: run.slot?.current ?? '', maxSteps: run.slot?.maxSteps, steps: run.slot?.steps ?? 0, parent: run.parent ?? null, status: run.slot?.status ?? 'starting', description: run.query, at: run.at })) })
 
   function onHub(message) {
+    if (message.type === 'strategy') notify({ task: message.task })
     if (message.type === 'persistence-error') notify({ error: message.error })
     if (message.type === 'bridge') {
       refreshDefinitions()
@@ -295,6 +297,7 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
         const savedUI = (await files.store.get('settings', 'workbench-state'))?.value
         if (savedUI) {
           projectRevision = (savedUI.projectRevision ?? 0) + 1
+          if (savedUI.task) notify({ task: { ...savedUI.task, ...(active(savedUI.task.status) || savedUI.task.status === 'queued' ? { status: 'interrupted', reason: 'The page stopped; no role was restarted.', nodes: savedUI.task.nodes.map(node => ['queued', 'running', 'cancelling'].includes(node.status) ? { ...node, status: 'interrupted', waiting: null } : node) } : {}) } })
           const artifacts = (savedUI.artifacts ?? []).map(artifact => ({ ...artifact, stale: true, verified: false, url: URL.createObjectURL(new Blob([artifact.html], { type: 'text/html' })) }))
           currentArtifact = artifacts.at(-1)
           notify({ messages: (savedUI.messages ?? []).map(row => ({ ...row, tools: row.tools?.map(tool => ({ ...tool, status: tool.status === 'running' ? 'interrupted' : tool.status })) })), run: savedUI.run ? { ...savedUI.run, status: active(savedUI.run.status) ? 'interrupted' : savedUI.run.status } : null, plans: savedUI.plans ?? [], commands: (savedUI.commands ?? []).map(command => ({ ...command, status: command.status === 'running' ? 'interrupted' : command.status })), artifacts, activeArtifactId: savedUI.activeArtifactId, runtime: { ...state.runtime, target: savedUI.target ?? 'browser' } })
@@ -346,6 +349,14 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
         }
         unsubscribe = hub.subscribe(onHub); await hub.start()
         if (disposed) { hub.stop(); return }
+        const resolvedWorkflows = await Promise.all(workflows.map(async row => {
+          if (!row.strategyRef) return row
+          const loaded = await hub.loadStrategy(row.strategyRef)
+          const outputAgent = loaded.definition.kind === 'agent' ? loaded.definition.agent : loaded.definition.nodes.find(node => node.id === loaded.definition.output)?.agent
+          if (outputAgent !== row.agent) throw new Error(`Workflow ${row.id} must name its strategy output agent`)
+          return Object.freeze({ ...row, strategy: loaded.definition, strategyHash: loaded.definitionHash, strategyFiles: loaded.files })
+        }))
+        notify({ workflows: Object.freeze(resolvedWorkflows) })
         if (hub.bridgeState.status === 'answering') local = new LocalExecution({ url: hub.bridgeState.url, token: hub.bridgeState.token })
         await controller.setModel({ baseUrl: state.model.baseUrl, model: state.model.id, apiKey: hub.settings.get().catalogue.models?.workbench?.api_key ?? '' })
         refreshDefinitions(); refreshAgents(); notify({ ready: true })
@@ -381,7 +392,7 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
         return { value: { key, value: { text: text.trim(), revision: current.revision + 1 } }, revision: current.revision + 1 }
       })
       notify({ goal: text.trim(), goalRevision: result.revision })
-      if (activeRun && active(state.run?.status)) hub.send(activeRun, { type: 'nudge', text: text.trim() ? 'The owner updated the saved conversation goal. Read its current context before the next action.' : 'The owner cleared the saved conversation goal. Continue with the current task and steering.' })
+      if (activeRun && active(state.run?.status) && hub.runs.get(activeRun)?.kind !== 'strategy') hub.send(activeRun, { type: 'nudge', text: text.trim() ? 'The owner updated the saved conversation goal. Read its current context before the next action.' : 'The owner cleared the saved conversation goal. Continue with the current task and steering.' })
       return { ok: true, revision: result.revision }
     },
     async reviewOfflineConflict(path) {
@@ -437,6 +448,7 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
       const workflow = state.workflows.find(row => row.id === state.selectedWorkflowId) ?? LEGACY_WORKFLOW
       if (workflow.workspace) requireWritable({ allowReconciledSetup: active(state.run?.status) })
       if (active(state.run?.status)) {
+        if (workflow.strategy?.kind === 'graph') throw new Error('Role inputs are fixed for this run. Stop the workflow to change the goal.')
         if (!activeRun) throw new Error('The current task cannot receive steering yet')
         hub.send(activeRun, { type: 'nudge', text })
         notify({ messages: [...state.messages, { id: id('message'), role: 'user', content: text, steering: true, at: Date.now(), runId: activeRun }] })
@@ -446,11 +458,12 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
       const policy = normalizeToolPolicy(state.toolPolicy)
       taskStartRevision = projectRevision; taskArtifactId = currentArtifact?.id
       const launch = ++launchEpoch; activeRun = null
-      notify({ error: '', messages: [...state.messages, { id: id('message'), role: 'user', content: text, at: Date.now() }], run: { status: 'starting', agent: workflow.agent } })
+      notify({ error: '', task: null, messages: [...state.messages, { id: id('message'), role: 'user', content: text, at: Date.now() }], run: { status: 'starting', agent: workflow.agent } })
       try {
         const endpoint = new URL(state.model.baseUrl)
         if (!['https:', 'http:'].includes(endpoint.protocol) || endpoint.username || endpoint.password || endpoint.search || endpoint.hash || !state.model.id.trim()) throw new Error('The model requires a credential-free HTTP(S) endpoint and a model name')
-        let context = snapshot({ workflow, toolPolicy: policy, savedGoal: { text: state.goal, revision: state.goalRevision } })
+        const { strategy, strategyHash, strategyFiles, ...runtimeWorkflow } = workflow
+        let context = snapshot({ workflow: runtimeWorkflow, toolPolicy: policy, savedGoal: { text: state.goal, revision: state.goalRevision } })
         if (workflow.workspace) {
           await controller.startRuntime(); requireWritable(); assertBound()
           if (launch !== launchEpoch) return null
@@ -459,7 +472,8 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
           const { runId, ...bound } = createBoundRunSnapshot({ runId: id('handoff'), binding, sourceRevision: projectRevision, sourceFingerprint, modelTransport: { kind: state.model.via ?? 'direct', provider: hub.settings.get().catalogue.models?.workbench?.provider ?? 'openai', model: state.model.id, endpoint: state.model.baseUrl } })
           context = snapshot({ ...bound, ...context })
         }
-        const run = hub.startRun ? hub.startRun(workflow.agent, text, { context }) : hub.ask(text, { context })
+        const run = strategy ? await hub.startStrategy(strategy, text, { context, definitionHash: strategyHash, admissionGuard: () => launch === launchEpoch && !disposed, ...(workflow.workspace ? { verifyCompletion: run => hub.externalOps['workspace.acceptance']({}, run) } : {}) }) : hub.startRun ? hub.startRun(workflow.agent, text, { context }) : hub.ask(text, { context })
+        if (launch !== launchEpoch || disposed) { if (run && typeof run !== 'string' && !run.ended) hub.abort(run); return null }
         activeRun = typeof run === 'string' ? run : run.id
         if (workflow.workspace) runBindings.set(activeRun, createBoundRunSnapshot({ runId: activeRun, ...context }))
         refreshAgents()
@@ -476,6 +490,7 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
     },
     approve: (approvalId, approved, always = false) => hub.answerApproval(approvalId, { approved, always }),
     async setModel({ baseUrl, model, apiKey, via }) {
+      if (active(state.run?.status)) throw new Error('Finish or stop active work before changing its model')
       modelEpoch++
       const previous = hub?.settings.get().catalogue.models?.workbench ?? {}
       const configured = modelProfiles.find(profile => profile.model === model && profile.base_url === baseUrl) ?? { provider: 'openai' }
@@ -571,6 +586,11 @@ export function createWorkbenchController({ onChange, basePath = process.env.NEX
         await browser?.setNetworkRelay(enabled ? { url: local.url, token: local.token } : null)
         notify({ runtime: { ...state.runtime, networkRelay: Boolean(enabled), network: enabled ? 'companion-network-relay' : 'browser-fetch-cors' } })
       } finally { connecting = false }
+    },
+    async getRunDetails(runId) {
+      const run = await hub.runsApi.get(runId)
+      if (!run) throw new Error('This run is no longer available')
+      return { id: run.id, agent: run.agent, query: run.query, slot: run.slot, result: run.result, error: run.slot?.error, prompts: run.prompts ?? [] }
     },
     async exportRunEvidence() {
       if (!activeRun) throw new Error('Start a task to record model requests and execution receipts')

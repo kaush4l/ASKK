@@ -26,6 +26,7 @@ import { read } from '../core/markdown.js'
 import { merge, resolve } from '../core/models.js'
 import { DEFAULT_POLICY, withAgentRules } from '../core/permissions.js'
 import { snapshot } from '../core/prompt.js'
+import { loadStrategy, startHubStrategy, strategyChildState } from './strategy-hub.js'
 import { openStore } from './store.js'
 import { hasToolRequirement, normalizeToolPolicy, scopedToolDecision, toolSelected } from './tool-policy.js'
 
@@ -34,7 +35,7 @@ const KEEP_RUNS = 200
 const TICK_MS = 20000
 const READY_TIMEOUT = 10000
 const DREAM_AFTER = 20000
-const ACTIVE = new Set(['thinking', 'calling', 'waiting', 'compacting'])
+const ACTIVE = new Set(['thinking', 'calling', 'waiting', 'compacting', 'starting', 'running', 'cancelling', 'verifying'])
 const WRITERS = new Set(['host', 'files', 'workspace'])
 const HOSTED = new Set(['host', 'web', 'mcp'])
 const TOOL_EVENT_STORAGE = 'separate-v1'
@@ -136,6 +137,7 @@ export class Hub {
   }
 
   publish(message) {
+    if (message.type === 'approval' || message.type === 'approved') strategyChildState(this, this.runs.get(message.approval?.run ?? message.run))
     for (const listener of this.listeners) {
       try {
         listener(message)
@@ -236,6 +238,7 @@ export class Hub {
       this.abort(run)
       // The page is about to terminate its workers, so their abort replies cannot be relied on.
       const status = why === 'the tab closed' ? 'interrupted' : 'cancelled'
+      if (run.strategyState) run.strategyState = snapshot({ ...run.strategyState, status, reason: why, nodes: run.strategyState.nodes.map(node => ['queued', 'running', 'waiting', 'cancelling'].includes(node.status) ? { ...node, status, waiting: null, reason: why } : node) })
       this.end(run, `(${status}: ${why})`, false, why, { status, terminationReason: status })
     }
     for (const thread of this.allThreads) thread.worker.terminate()
@@ -250,6 +253,7 @@ export class Hub {
     for (const record of await this.store.all('runs')) {
       if (ACTIVE.has(record.slot?.status) || record.slot?.status === 'idle') {
         record.slot = { ...record.slot, status: 'interrupted', terminationReason: 'interrupted' }
+        if (record.strategyState) record.strategyState = { ...record.strategyState, status: 'interrupted', reason: 'The page stopped; no role was restarted.', nodes: record.strategyState.nodes.map(node => ['pending', 'queued', 'running', 'waiting', 'cancelling'].includes(node.status) ? { ...node, status: 'interrupted', waiting: null, reason: 'The page stopped; no role was restarted.' } : node) }
         await this.store.put('runs', record)
       }
     }
@@ -403,11 +407,12 @@ export class Hub {
     return this.startRun('main', query, options).id
   }
 
-  /** Start a run of an agent. Resident agents queue; any other agent gets a fresh thread. */
-  startRun(path, query, { parent = null, call = '', kind = 'task', context = null, resume = null } = {}) {
+  /** Allocate one observable run before dispatch; strategy roots own no model worker. */
+  createRun(path, query, { parent = null, call = '', kind = 'task', context = null, resume = null, stageId = null, strategyDefinition = null, strategyDefinitionHash = null } = {}) {
     const spec = this.specs.get(path)
     const up = parent ? this.runs.get(parent) : null
-    const contextSnapshot = snapshot(up?.context ?? context)
+    const inherited = up?.context ?? context
+    const contextSnapshot = snapshot(up?.kind === 'strategy' ? { ...inherited, toolPolicy: { disabledTools: [], approvalRisks: [], ...normalizeToolPolicy(inherited?.toolPolicy), allowDelegation: false } } : inherited)
     normalizeToolPolicy(contextSnapshot?.toolPolicy)
     const id = `r${Date.now().toString(36)}${(this.nextRun++).toString(36)}`
     const run = {
@@ -417,8 +422,12 @@ export class Hub {
       parent,
       depth: up ? up.depth + 1 : 0,
       kind,
+      ended: false,
       query,
-      taskId: resume?.taskId ?? id,
+      taskId: up?.taskId ?? resume?.taskId ?? id,
+      stageId,
+      strategyDefinition,
+      strategyDefinitionHash,
       resumedFrom: resume?.id ?? null,
       resumeAttempt: resume ? (resume.resumeAttempt ?? 0) + 1 : 0,
       originalQuery: resume?.originalQuery ?? resume?.query ?? query,
@@ -464,17 +473,29 @@ export class Hub {
     this.persist(run)
     clearTimeout(this.dreamTimer)
 
+    return run
+  }
+
+  loadStrategy(reference) { return loadStrategy(this, reference) }
+
+  startStrategy(definition, query, options = {}) { return startHubStrategy(this, definition, query, options) }
+
+  /** Resident agents queue; explicit fresh role invocations never read/write resident history. */
+  startRun(path, query, options = {}) {
+    const spec = this.specs.get(path)
+    const run = this.createRun(path, query, options)
+    const { id } = run
     if (!spec) {
       this.end(run, `(failed: no agent at agents/${path})`, false, `no agent at agents/${path}`)
       return run
     }
     const begin = async () => {
-      const thread = this.isResident(spec) ? await this.thread(path) : await this.spawn(spec, { key: `call:${id}`, resident: false })
+      const thread = !options.fresh && this.isResident(spec) ? await this.thread(path) : await this.spawn(spec, { key: `call:${id}`, resident: false })
       if (thread.dead) {
         this.retire(thread)
         return this.end(run, `(failed: ${thread.dead})`, false, thread.dead)
       }
-      if (run.ended) return
+      if (run.ended) { if (!thread.resident) this.retire(thread); return }
       thread.queue.push(run)
       this.pump(thread)
     }
@@ -499,6 +520,7 @@ export class Hub {
         if (!run) return
         run.slot = { ...run.slot, ...message.slot, run: run.id, agent: run.agent, parent: run.parent, depth: run.depth, trace: run.trace, startedAt: run.slot.startedAt }
         this.publish({ type: 'status', run: run.id, slot: run.slot })
+        strategyChildState(this, run)
         return
       case 'event':
         if (run) this.record(run, message)
@@ -594,7 +616,7 @@ export class Hub {
     for (const approval of [...this.approvals.values()]) if (approval.run === run.id) this.answerApproval(approval.id, { approved: false, note: 'the run ended', by: 'system' })
     this.persist(run)
     run.finish(text)
-    if (!run.parent) this.finishTask(run)
+    if (!run.parent && run.kind !== 'strategy') this.finishTask(run)
   }
 
   idle(thread) {
@@ -651,7 +673,17 @@ export class Hub {
   async retainRuns() {
     const all = await this.store.all('runs')
     if (all.length <= KEEP_RUNS) return
-    const old = all.filter(record => ['done', 'failed', 'incomplete', 'cancelled', 'interrupted'].includes(record.slot?.status)).sort((a, b) => a.at - b.at).slice(0, all.length - KEEP_RUNS)
+    // Keep an entire strategy trace together; never retain a coordinator whose role evidence
+    // was independently evicted, or remove finished siblings while another role is active.
+    const groups = new Map()
+    for (const record of all) { const key = record.trace || record.id; if (!groups.has(key)) groups.set(key, []); groups.get(key).push(record) }
+    const terminal = record => ['done', 'failed', 'incomplete', 'cancelled', 'interrupted'].includes(record.slot?.status) && this.runs.get(record.id)?.ended !== false
+    const candidates = [...groups.values()].filter(records => records.every(terminal)).sort((a, b) => Math.min(...a.map(row => row.at)) - Math.min(...b.map(row => row.at)))
+    const old = []; let remaining = all.length
+    for (const records of candidates) {
+      if (remaining <= KEEP_RUNS || records.length === remaining) break
+      old.push(...records); remaining -= records.length
+    }
     for (const stale of old) {
       // Reserve synchronously: subsequent appends/metadata retries wait outside
       // this drain, then observe eviction or resume if deletion failed.
@@ -719,7 +751,7 @@ export class Hub {
   }
 
   describe(run) {
-    return { id: run.id, trace: run.trace, taskId: run.taskId ?? run.id, resumedFrom: run.resumedFrom ?? null, resumeAttempt: run.resumeAttempt ?? 0, originalQuery: run.originalQuery ?? run.query, agent: run.agent, parent: run.parent, depth: run.depth, kind: run.kind, query: run.query, context: run.context, call: run.call, children: [...run.children], slot: run.slot, at: run.at }
+    return { id: run.id, trace: run.trace, taskId: run.taskId ?? run.id, resumedFrom: run.resumedFrom ?? null, resumeAttempt: run.resumeAttempt ?? 0, originalQuery: run.originalQuery ?? run.query, agent: run.agent, parent: run.parent, depth: run.depth, kind: run.kind, stageId: run.stageId ?? null, strategyDefinition: run.strategyDefinition ?? null, strategyDefinitionHash: run.strategyDefinitionHash ?? null, strategyState: run.strategyState ?? null, query: run.query, context: run.context, call: run.call, children: [...run.children], slot: run.slot, at: run.at }
   }
 
   // ─── what the page may send to a run ───────────────────────────────────────
@@ -742,6 +774,7 @@ export class Hub {
   }
 
   abort(run) {
+    if (run.cancelStrategy && !run.ended) { run.cancelStrategy(); return }
     for (const child of run.children) {
       const below = this.runs.get(child)
       if (below && !below.ended) this.abort(below)
@@ -764,6 +797,7 @@ export class Hub {
   async resume(id) {
     const record = this.runs.get(id) ?? (await this.store.get('runs', id))
     if (!record) return null
+    if (record.kind === 'strategy') throw new Error('Start a new configured workflow; prior role actions are never replayed.')
     if (ACTIVE.has(record.slot?.status) || record.slot?.status === 'idle') throw new Error('Stop the active run before starting a new continuation.')
     // A continuation is an explicit new attempt. It does not restore processes, replay tools,
     // inherit verification, or overwrite the original evidence. Keep the summary bounded.
@@ -1553,6 +1587,8 @@ export class Hub {
       const selected = snapshot([...byId.values()].filter(run => run.trace === trace).sort((a, b) => b.at - a.at))
       const runs = await Promise.all(selected.map(record => this.runs.has(record.id) ? record : this.storedRun(record)))
       await Promise.all(runs.filter(run => this.runs.has(run.id)).map(async run => { await this.flushToolEvents(run.id, run.toolEvents.length); await this.flushRunRecord(run.id, run.toolEvents.length) }))
+      const included = new Set(runs.map(run => run.id))
+      for (const run of runs) if (run.kind === 'strategy') for (const childId of run.children ?? []) if (!included.has(childId)) throw new Error(`Strategy evidence is incomplete: missing role run ${childId}`)
       const evidence = runs.map(run => ({ ...run, toolEventPersistence: this.evictedEvidence.has(run.id) ? 'retention-evicted' : this.store.durable ? 'committed' : 'memory-only' }))
       return { harness: 'trace', version: 1, trace, exported: new Date().toISOString(), build: this.index.build ?? '', runs: evidence, usage: traceUsage(runs) }
     })(), timeoutMs),
