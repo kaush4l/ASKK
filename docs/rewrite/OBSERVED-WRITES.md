@@ -14,3 +14,5 @@ The same shared adapter wraps the workbench and evaluation environment. The scaf
 Model-facing conflict feedback preserves the receipt and adds a recovery instruction. It distinguishes an ordinary uncommitted conflict from the existing committed-then-changed race; it never labels the latter as “nothing saved.”
 
 Automated coverage includes cross-run/path/runtime rejection, immutable observation selection, stale writes, conflict invalidation, approval refusal, owner edits during approval, and runtime replacement during an awaited read. Live model results remain separate from those contract guarantees.
+
+A missing observation rejects the write before execution and names the exact `workspace_read` arguments needed for that path. This is recovery guidance, not an automatically executed read or evidence that the file exists. Repeating the rejected write cannot mint an observation.

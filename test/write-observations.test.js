@@ -130,3 +130,18 @@ test('undefined, failed, and contradictory reads cannot mint absence observation
   const ledger = createWriteObservations()
   for (const value of [{ ...receipt(), found: false }, { ...receipt(), found: false, content: null }, { ...receipt('zero', 'a.js', 0), found: false, content: '' }]) expect(() => ledger.accept('a.js', value)).toThrow()
 })
+
+test('missing observation gives exact read arguments without creating evidence or executing work', () => {
+  const ledger = createWriteObservations(), path = 'notes "quoted".txt'
+  ledger.accept('other.txt', receipt('other', 'other.txt'))
+  for (let attempt = 0; attempt < 2; attempt++) {
+    let error
+    try { ledger.resolve(proposal(path)) } catch (value) { error = value }
+    expect(error.code).toBe('WRITE_OBSERVATION')
+    expect(error.message).toContain(`No write performed for ${JSON.stringify(path)}`)
+    expect(error.message).toContain(`Call workspace_read with ${JSON.stringify({ path })}`)
+    expect(error.message).toContain('Do not repeat this write before reading.')
+  }
+  ledger.accept(path, receipt('correct', path))
+  expect(ledger.resolve(proposal(path)).expect).toBe('sha:1')
+})

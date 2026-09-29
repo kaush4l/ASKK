@@ -29,7 +29,7 @@ export function createWriteObservations() {
       }
       if (!resolved && hasExpect) fail('supply exactly one of expect or observed:true')
       const record = resolved ? records.get(args.observationId) : latest.get(args.path)
-      if (!record || record.path !== args.path) fail('read this file in the current run before using observed:true')
+      if (!record || record.path !== args.path) fail(`No write performed for ${JSON.stringify(args.path)}. Call workspace_read with ${JSON.stringify({ path: args.path })} and inspect its result before retrying workspace_write for that path with observed:true. Reading another path or listing files does not satisfy this requirement. Do not repeat this write before reading.`)
       if (resolved && (!hasExpect || args.expect !== record.revision || args.observationId !== record.id)) fail('resolved revision does not match its read observation')
       return Object.freeze({ path: args.path, content: args.content, observed: true, expect: record.revision, observationId: record.id })
     },

@@ -6,7 +6,6 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { listing } from '../scripts/listing.js'
 import { Hub } from '../src/runtime/hub.js'
 import { CompactReAct, responseModel } from '../src/core/responses.js'
-import { read } from '../src/core/markdown.js'
 import { loadDeskPackages } from '../src/runtime/desk-packages.js'
 
 test('published starter validates local resources and refuses a mismatched supplied lock without rewriting it', async () => {
@@ -79,7 +78,11 @@ test('production main uses version 2 prompts and the host-owned completion gate 
       expect(spec.soulFrom).toBe(id === 'assistant' ? 'soul.md' : `agents/${legacyPath}/soul.md`)
       expect(spec.engine.session).toBe(residents.has(id) ? 'agent' : 'task')
       expect(spec.localTools).toEqual([])
-      expect(spec.body.trim()).toBe(read(await readFile(join(site, 'packages/starter', id === 'assistant' ? 'agent.md' : `agents/${legacyPath}/agent.md`), 'utf8')).body.trim())
+      const authored = await readFile(join(site, 'packages/starter', id === 'assistant' ? 'agent.md' : `agents/${legacyPath}/agent.md`), 'utf8')
+      const bodyStart = authored.indexOf('\n---\n', 4) + '\n---\n'.length
+      // Packages preserve authored whitespace; the legacy Markdown reader unwraps it.
+      expect(bodyStart).toBeGreaterThan(4)
+      expect(spec.body).toBe(authored.slice(bodyStart))
       if (!['compactor', 'dreamer', 'builder'].includes(id)) expect(spec.services).toEqual({ compaction: 'bundled/starter/compactor', retrospective: 'bundled/starter/dreamer' })
       expect(hub.specs.has(legacyPath)).toBe(false)
     }
