@@ -24,13 +24,51 @@ test('version 2 malformed tool arguments never reach the side-effect handler and
 test('schema defines advertised parameters and is isolated from later caller mutation', () => {
   const schema = structuredClone(inputSchema)
   const item = tool({ name: 'commit', parameters: { unrelated: 'boolean' }, inputSchema: schema, run() {} })
-  expect(item.parameters).toEqual({ path: 'string', revision: 'string or integer (optional)' })
+  expect(item.parameters).toEqual({ path: 'string [minLength: 1]', revision: 'string or integer (optional)' })
   expect(instructions(item)).toContain('revision')
   expect(instructions(item)).not.toContain('unrelated')
   schema.properties.path.type = 'number'
   schema.required.length = 0
   expect(validateToolInput(item.inputSchema, {})).toEqual(['args.path is required'])
   expect(validateToolInput(item.inputSchema, { path: 'app.js', revision: 0 })).toEqual([])
+})
+
+test('advertised schema explains nested inputs and the constraints dispatch enforces', async () => {
+  const schema = {
+    type: 'object', required: ['jobs'], additionalProperties: false,
+    properties: {
+      jobs: {
+        type: 'array', minItems: 1, maxItems: 2, description: 'Jobs to process',
+        items: {
+          type: 'object', required: ['mode', 'label'], additionalProperties: false,
+          properties: {
+            mode: { type: 'string', enum: ['fast', 'careful'], description: 'Execution mode' },
+            label: { type: 'string', minLength: 2, maxLength: 8 },
+            retry: { type: ['integer', 'null'] },
+          },
+        },
+      },
+    },
+  }
+  let calls = 0
+  const item = tool({ name: 'process', inputSchema: schema, run: () => { calls++; return 'processed' } })
+  const prompt = instructions(item)
+  for (const text of ['array<object {', '"mode": string [one of "fast" | "careful"] — Execution mode', '"label": string [minLength: 2, maxLength: 8]', '"retry": integer or null (optional)', 'no other keys', 'minItems: 1, maxItems: 2', 'Jobs to process']) expect(prompt).toContain(text)
+  const valid = { mode: 'fast', label: 'demo' }
+  for (const args of [
+    { jobs: [] }, { jobs: [valid, valid, valid] },
+    { jobs: [{ ...valid, mode: 'unknown' }] },
+    { jobs: [{ ...valid, label: 'x' }] }, { jobs: [{ ...valid, label: 'too long label' }] },
+    { jobs: [{ label: 'demo' }] }, { jobs: [{ ...valid, unexpected: true }] },
+  ]) expect((await runToolResult(item, args, {})).ok).toBe(false)
+  expect(calls).toBe(0)
+  expect((await runToolResult(item, { jobs: [valid, { ...valid, retry: null }] }, {})).ok).toBe(true)
+  expect(calls).toBe(1)
+})
+
+test('unconstrained schema parameters retain concise signatures', () => {
+  const item = tool({ name: 'simple', inputSchema: { type: 'object', required: ['text'], properties: { text: { type: 'string' }, count: { type: 'integer' } } }, run() {} })
+  expect(item.parameters).toEqual({ text: 'string', count: 'integer (optional)' })
 })
 
 test('legacy tools retain adapter-level inputs without gaining a schema', async () => {

@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react'
 import Modal from './Modal.jsx'
 import ToolCard from './ToolCard.jsx'
 import { projectRunTools } from './run-evidence.js'
+import { completionCheckLabel } from './completion-label.js'
 import './run-inspector.css'
 
 const textOf = value => typeof value === 'string' ? value : value == null ? '' : JSON.stringify(value, null, 2)
@@ -16,6 +17,25 @@ function Record({ title, value }) {
 function Records({ title, records, label, empty }) {
   const [limit, setLimit] = useState(12)
   return <section className="run-record-section"><h3>{title} <span>{records.length}</span></h3>{records.length ? <>{records.slice(0, limit).map((record, index) => <Record key={index} title={label(record, index)} value={record}/>)}{records.length > limit && <button type="button" className="button subtle small" onClick={() => setLimit(previous => previous + 12)}>Show more {title.toLowerCase()}</button>}</> : <p>{empty}</p>}</section>
+}
+
+const checkOutcome = ok => ok === true ? 'Passed' : ok === false ? 'Did not pass' : 'Outcome not recorded'
+function CompletionEvidence({ completion, receipts }) {
+  const [limit, setLimit] = useState(12)
+  const checks = Array.isArray(completion?.checks) ? completion.checks : null
+  const recorded = Array.isArray(receipts) ? receipts : []
+  return <section className="run-record-section run-completion"><h3>Completion verification</h3>
+    {checks ? checks.length ? <><p>Configured checks for this run:</p><ul>{checks.map((check, index) => <li key={index}>{completionCheckLabel(check)}</li>)}</ul></> : <p>No independent completion checks were configured.</p> : <p>No completion configuration was recorded.</p>}
+    {completion !== undefined && <Record title="Exact completion configuration" value={completion}/>}
+    <p>These receipts record independent checks. The agent’s answer and a completed tool call do not establish that these checks passed.</p>
+    {!recorded.length ? <p>No completion verification receipts were recorded.</p> : recorded.slice(0, limit).map((receipt, index) => <div className="run-completion-receipt" key={index}>
+      <h4>Verification attempt {index + 1} · {Array.isArray(receipt?.checks) && receipt.checks.length === 0 ? 'No checks performed' : checkOutcome(receipt?.ok)}</h4>
+      {receipt?.reason != null && <p>{textOf(receipt.reason)}</p>}
+      {Array.isArray(receipt?.checks) && receipt.checks.length > 0 && <ul>{receipt.checks.map((check, checkIndex) => <li key={checkIndex}>{completionCheckLabel(check)} · {checkOutcome(check.ok)}{check.evidence?.reason != null && <p>{textOf(check.evidence.reason)}</p>}</li>)}</ul>}
+      <Record title={`Exact verification receipt ${index + 1}`} value={receipt}/>
+    </div>)}
+    {recorded.length > limit && <button type="button" className="button subtle small" onClick={() => setLimit(previous => previous + 12)}>Show more verification receipts</button>}
+  </section>
 }
 
 export default function RunInspector({ details, onClose, onRefresh, onInspectRun, onExport }) {
@@ -44,6 +64,7 @@ export default function RunInspector({ details, onClose, onRefresh, onInspectRun
       <h3>Assigned task</h3><pre>{textOf(details.query) || 'No task was recorded.'}</pre>
       {runError && <><h3>Recorded error</h3><pre>{textOf(runError)}</pre></>}
       <h3>Recorded result</h3><pre>{details.result == null ? 'No result was recorded.' : textOf(details.result)}</pre>
+      <CompletionEvidence completion={details.completion} receipts={details.completionReceipts}/>
       <section className="run-record-section"><h3>Tool activity <span>{tools.length}</span></h3>
         <p>Results pair only with their recorded call identities. A parent link identifies a run relationship, not a message delivery acknowledgement.</p>
         {tools.length ? tools.slice(0, toolLimit).map((tool, index) => <div className="run-recorded-tool" key={`${tool.id}:${index}`}><ToolCard tool={tool}/><Record title="Exact tool records" value={tool.raw}/></div>) : <p>No tool calls were recorded for this instance.</p>}

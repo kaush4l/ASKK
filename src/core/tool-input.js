@@ -26,7 +26,27 @@ export function validateToolInput(schema, value, path = 'args') {
   return faults
 }
 export function schemaParameters(schema) {
-  return Object.fromEntries(Object.entries(schema.properties ?? {}).map(([name, field]) => [name, `${Array.isArray(field.type) ? field.type.join(' or ') : field.type}${schema.required?.includes(name) ? '' : ' (optional)'}`]))
+  return Object.fromEntries(Object.entries(schema.properties ?? {}).map(([name, field]) => [name, describeInput(field, !schema.required?.includes(name))]))
+}
+
+/** Advertise the same small schema vocabulary that validateToolInput enforces. */
+function describeInput(schema, optional = false) {
+  const types = Array.isArray(schema.type) ? schema.type : [schema.type]
+  const shape = types.map(type => {
+    if (type === 'array' && schema.items) return `array<${describeInput(schema.items)}>`
+    if (type === 'object' && (schema.properties || schema.additionalProperties === false)) {
+      const fields = Object.entries(schemaParameters(schema)).map(([name, description]) => `${JSON.stringify(name)}: ${description}`)
+      if (schema.additionalProperties === false) fields.push('no other keys')
+      return `object {${fields.join(', ')}}`
+    }
+    return type
+  }).join(' or ')
+  const constraints = []
+  if (schema.enum) constraints.push(`one of ${schema.enum.map(value => JSON.stringify(value)).join(' | ')}`)
+  for (const key of ['minLength', 'maxLength', 'minItems', 'maxItems']) {
+    if (schema[key] != null) constraints.push(`${key}: ${schema[key]}`)
+  }
+  return `${shape}${optional ? ' (optional)' : ''}${constraints.length ? ` [${constraints.join(', ')}]` : ''}${schema.description ? ` — ${String(schema.description).trim()}` : ''}`
 }
 
 /** Contract examples come from the same descriptor used before dispatch. */

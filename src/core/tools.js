@@ -28,6 +28,7 @@ export function tool(spec, defaults = {}) {
     description: String(spec.description ?? '').trim(),
     parameters: spec.inputSchema ? schemaParameters(spec.inputSchema) : { ...(spec.parameters ?? {}) },
     inputSchema: spec.inputSchema ? snapshot(spec.inputSchema) : null,
+    providerInputSchema: spec.providerInputSchema ? snapshot(spec.providerInputSchema) : null,
     requires: [...(spec.requires ?? [])],
     risk: spec.risk ?? defaults.risk ?? '',
     repeatable: spec.repeatable !== false,
@@ -62,6 +63,7 @@ export function fromModule(exports, { tier = 'local', source = '' } = {}) {
 
 /** The line the model reads: `- name(a: number, b: string): description`. */
 export function instructions(item) {
+  if (item.providerInputSchema) return `- ${item.name}(args: JSON object): ${item.description}\n  Input JSON Schema: ${JSON.stringify(item.providerInputSchema)}`
   const args = Object.entries(item.parameters)
     .map(([key, type]) => `${key}: ${type}`)
     .join(', ')

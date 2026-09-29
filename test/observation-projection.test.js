@@ -3,7 +3,7 @@ import { Engine } from '../src/core/engine.js'
 import { inference } from '../src/core/inference.js'
 import { readSpec } from '../src/core/folder.js'
 import { tool } from '../src/core/tools.js'
-import { workspace_check } from '../src/builtin/workspace.js'
+import { workspace_check, workspace_read, workspace_write, workspace_run } from '../src/builtin/workspace.js'
 
 const plan = [{ action: 'click', selector: '#add' }, { action: 'assertText', selector: '#title', value: 'Expected task' }]
 const receipt = (ok = true) => ({ ok, artifactId: 'artifact-1', buildId: 'build-1', revision: 7, checkedAt: 123, interactionMode: 'programmatic-dom', assertions: structuredClone(plan), results: plan.slice(0, ok ? 2 : 1).map((step, index) => ({ index, action: step.action, ok: true, frame: 0 })), errors: ok ? [] : ['Expected text "Expected task" at #title; actual text "Other task"'], timing: { budgetMs: 12000, elapsedMs: 180 } })
@@ -38,6 +38,30 @@ test('legacy history remains the default and never invokes a model projector', a
   const { engine } = setup({ tools: [tool({ name: 'echo', run: () => 'actual', projectObservation() { projections++; return 'projected' } })] })
   expect(await engine.act({ do: 'tool', act: [[{ name: 'echo', args: { note: 'full args' } }]] })).toBe('echo({"note":"full args"}) -> actual')
   expect(projections).toBe(0)
+})
+
+test('workspace model observations decode receipts once and retain exact read content and raw write evidence', async () => {
+  const content = 'export const data = "line\\nquoted";\n'.repeat(60)
+  const read = { path: 'data.js', content, rev: 'r1' }
+  const written = { path: 'data.js', content, rev: 'r2', ok: true }
+  const { engine, events } = setup({ observationFormat: 'compact', tools: [tool(workspace_read, { name: 'read' }), tool(workspace_write, { name: 'write' })], ctx: { request: async op => op === 'workspace.read' ? read : written } })
+  const output = JSON.parse(await engine.act({ do: 'tool', act: [[{ name: 'read', args: { path: 'data.js' } }], [{ name: 'write', args: { path: 'data.js', content, expect: 'r1' } }]] }))
+  expect(output.stages[0][0].result).toEqual(read)
+  expect(output.stages[1][0].result).toEqual({ path: 'data.js', rev: 'r2', ok: true, contentOmitted: true })
+  expect(JSON.parse(events.filter(row => row.kind === 'observation')[1].value)).toEqual(written)
+  expect(written.content).toBe(content)
+})
+
+test('failed commands and conflicts remain structured failures with their complete diagnostics', async () => {
+  for (const [spec, args, receipt] of [
+    [workspace_run, { command: 'bun test' }, { id: 'c1', code: 1, output: 'Expected 5; received 0\n' }],
+    [workspace_write, { path: 'a', content: 'new', expect: 'old' }, { conflict: true, content: 'owner draft', rev: 'current' }],
+  ]) {
+    const { engine } = setup({ observationFormat: 'compact', tools: [tool(spec, { name: 'task' })], ctx: { request: async () => receipt } })
+    const row = JSON.parse(await engine.act({ do: 'tool', act: [[{ name: 'task', args }]] })).stages[0][0]
+    expect(row.ok).toBe(false)
+    expect(row.result).toEqual(receipt)
+  }
 })
 
 test('compact check success keeps complete raw proof and omits duplicated plans/results only from model input', async () => {

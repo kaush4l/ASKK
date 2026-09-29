@@ -37,6 +37,12 @@ The opt-in runner uses the production folder, worker and model broker, with a sc
 bun scripts/evals/project-loop.js --run --model MODEL_ID --base-url http://127.0.0.1:8873/v1 --directory .cache/project-loop/my-script-attempt --case script
 ```
 
-Cases are `script`, `project` and `repair`. Evidence retains exact prompts, transmitted requests, command receipts, checks and timings. [Recorded results](evidence/project-loop-local.json) include the initial evaluator permission-setup failure; corrected script, project and repair attempts passed on the local Qwen 27B profile. These are individual smoke checks, not proof that any small model succeeds. Repair passed independent checks but did not first execute a failing test, so it does not prove a failure-driven repair cycle.
+Cases are `script`, `project` and `repair`. Evidence retains exact prompts, transmitted requests, command receipts, checks and timings. [Recorded results](evidence/project-loop-local.json) include the initial evaluator permission-setup failure; corrected script, project and repair attempts passed on the local Qwen 27B profile. These are individual smoke checks, not proof that any small model succeeds. The first repair attempt did not first execute a failing test. Subsequent repair-02 and repair-03 passed a stricter trace check: failed command, acknowledged edit, then a newly started successful command, followed by independent withheld inputs.
 
 Fresh planner and UX contexts split prompt compilation from activity projection; an independent reviewer identified the concurrent-edit verification flaw and added its regression.
+
+## Context and verification follow-up
+
+Supported tool schemas now advertise nested shapes, enum choices, descriptions and bounds that the validator enforces. Workspace observations decode their own JSON receipts into structured model context; successful writes omit duplicated source content while preserving the complete raw receipt. Conflicts and failed commands retain their diagnostics. Replaying the same six repair-02 receipts reduced their serialized result payload from 2,487 to 1,935 characters; this is not a latency or token benchmark.
+
+MCP schemas are retained separately as `providerInputSchema`: full JSON Schema is shown to the model; validation remains the provider’s responsibility rather than being passed through the limited local validator. Provider-only tool catalogues omit fabricated argument examples. MCP `isError` results now become failed tool observations rather than successful text. Completion configuration and each verification attempt are visible in the run inspector; no configuration or receipt is labeled explicitly, rather than being inferred from the agent's answer or Completed status.

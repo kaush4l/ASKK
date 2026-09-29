@@ -81,7 +81,8 @@ export function mcp({ url, headers = {} }, { fetch: fetcher = globalThis.fetch?.
         .map((part) => (part.type === 'text' ? part.text : part.type === 'resource' ? (part.resource?.text ?? `[resource ${part.resource?.uri}]`) : `[${part.type}${part.mimeType ? ` ${part.mimeType}` : ''}]`))
         .join('\n')
       const shown = text || (result?.structuredContent ? JSON.stringify(result.structuredContent) : '')
-      return result?.isError ? `error from ${name}: ${shown}` : shown
+      if (result?.isError) throw new McpError(`error from ${name}: ${shown}`)
+      return shown
     },
     reset() {
       session = ''
@@ -102,6 +103,8 @@ export function describeTool(server, tool) {
     name: `${server}__${tool.name}`.replace(/[^A-Za-z0-9_]/g, '_'),
     description: `[mcp ${server}] ${tool.description ?? tool.name}`.slice(0, 600),
     parameters,
+    // MCP accepts full JSON Schema, beyond the harness's local validator vocabulary.
+    providerInputSchema: schema,
     // Only a tool that says it changes nothing runs without asking.
     risk: hints.readOnlyHint ? 'read' : 'write',
     server,

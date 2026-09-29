@@ -171,12 +171,132 @@
       "attempt": "repair-01",
       "evidenceSha256": "f18f1fc6d73efa5d52e144ae93b605f03c5aa00ff5eac578511b9eabfc5403de",
       "scope": "Production folder/worker/broker with evaluator workspace adapter; independent post-run checks. Not a browser UI or Browser Linux run."
+    },
+    {
+      "caseName": "repair",
+      "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+      "runtime": "Local Bun (not Browser Linux)",
+      "elapsedMs": 55495,
+      "status": "done",
+      "passed": true,
+      "checks": [
+        {
+          "args": [
+            "-e",
+            "import {total} from './src/total.js';if(total([19,-7,0.5])!==12.5||total([])!==0)process.exit(2);for(const v of [['x'],[NaN],[Infinity]]){let failed=false;try{total(v)}catch{failed=true}if(!failed)process.exit(3)}console.log('withheld passed')"
+          ],
+          "code": 0,
+          "output": "withheld passed",
+          "passed": true
+        },
+        {
+          "name": "observed failure-driven repair cycle",
+          "passed": true,
+          "failedCallId": "9f095cc2-7f18-470c-90f6-3c3bed481740:2:1:call:4",
+          "editCallId": "9f095cc2-7f18-470c-90f6-3c3bed481740:3:1:call:5",
+          "passedCallId": "9f095cc2-7f18-470c-90f6-3c3bed481740:4:1:call:6"
+        }
+      ],
+      "metrics": {
+        "promptCount": 5,
+        "repairs": 0,
+        "toolCalls": 6,
+        "inputTokensEstimated": [
+          1140,
+          1616,
+          1850,
+          2190,
+          2397
+        ]
+      },
+      "attempt": "repair-02",
+      "evidenceSha256": "ee24e03e76a504be84d0c235fbc80630105b8f0ea19c7e95b969ace8268233bc",
+      "scope": "Production folder/worker/broker with evaluator workspace adapter; independent post-run checks. Not a browser UI or Browser Linux run."
+    },
+    {
+      "caseName": "repair",
+      "model": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+      "runtime": "Local Bun (not Browser Linux)",
+      "elapsedMs": 54189,
+      "status": "done",
+      "passed": true,
+      "checks": [
+        {
+          "args": [
+            "-e",
+            "import {total} from './src/total.js';if(total([19,-7,0.5])!==12.5||total([])!==0)process.exit(2);for(const v of [['x'],[NaN],[Infinity]]){let failed=false;try{total(v)}catch{failed=true}if(!failed)process.exit(3)}console.log('withheld passed')"
+          ],
+          "code": 0,
+          "output": "withheld passed",
+          "passed": true
+        },
+        {
+          "name": "observed failure-driven repair cycle",
+          "passed": true,
+          "failedCallId": "3c31b110-13a7-4704-ac91-f92ce823cf79:2:1:call:4",
+          "editCallId": "3c31b110-13a7-4704-ac91-f92ce823cf79:3:1:call:5",
+          "passedCallId": "3c31b110-13a7-4704-ac91-f92ce823cf79:4:1:call:6"
+        }
+      ],
+      "metrics": {
+        "promptCount": 5,
+        "repairs": 0,
+        "toolCalls": 6,
+        "inputTokensEstimated": [
+          1159,
+          1594,
+          1798,
+          2036,
+          2221
+        ]
+      },
+      "attempt": "repair-03",
+      "evidenceSha256": "b15baacb14b4f2365f1ba13182f1bd14cf2daaadbd0ae1e57b2e950e4bbe54cb",
+      "scope": "Production folder/worker/broker with evaluator workspace adapter; independent post-run checks. Not a browser UI or Browser Linux run."
     }
   ],
   "limitations": [
     "No identified small-model endpoint tested.",
-    "Repair case passed but did not demonstrate an observed failing-command-to-repair cycle.",
+    "repair-01 did not reproduce the failure; repair-02 and repair-03 include observed failed command, acknowledged edit and successful new command.",
     "Single attempts are not a reliability benchmark.",
     "Raw prompt/request/receipt records remain in .cache/project-loop/<attempt>/evidence.json."
-  ]
+  ],
+  "receiptProjectionReplay": {
+    "sourceAttempt": "repair-02",
+    "observations": [
+      {
+        "tool": "workspace_read",
+        "beforeCharacters": 262,
+        "afterCharacters": 241
+      },
+      {
+        "tool": "workspace_read",
+        "beforeCharacters": 342,
+        "afterCharacters": 321
+      },
+      {
+        "tool": "workspace_read",
+        "beforeCharacters": 297,
+        "afterCharacters": 256
+      },
+      {
+        "tool": "workspace_run",
+        "beforeCharacters": 557,
+        "afterCharacters": 485
+      },
+      {
+        "tool": "workspace_write",
+        "beforeCharacters": 569,
+        "afterCharacters": 217
+      },
+      {
+        "tool": "workspace_run",
+        "beforeCharacters": 460,
+        "afterCharacters": 415
+      }
+    ],
+    "beforeCharacters": 2487,
+    "afterCharacters": 1935,
+    "scope": "JSON-serialized result payload characters on the same six recorded observations, not total prompt tokens or a performance benchmark."
+  }
 }

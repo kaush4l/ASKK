@@ -1,6 +1,6 @@
 /** Opt-in real-model evaluation. Agents use the production folder, worker, desk broker,
  * workspace adapters and real Local Bun commands. Independent checks never use LLM judgments. */
-import { cp, mkdir, writeFile, readFile } from 'node:fs/promises'
+import { cp, mkdir, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { Hub } from '../../src/runtime/hub.js'
@@ -22,6 +22,29 @@ const cases = {
     seed: { 'src/total.js': 'export function total(values) { return 0 }\n', 'package.json': '{"type":"module","scripts":{"test":"bun test"}}\n', 'total.test.js': "import {test,expect} from 'bun:test';import {total} from './src/total.js';test('adds',()=>expect(total([2,3])).toBe(5));\n" },
     checks: [['-e', "import {total} from './src/total.js';if(total([19,-7,0.5])!==12.5||total([])!==0)process.exit(2);for(const v of [['x'],[NaN],[Infinity]]){let failed=false;try{total(v)}catch{failed=true}if(!failed)process.exit(3)}console.log('withheld passed')"]], expected: ['withheld passed'],
   },
+}
+
+/** Require an observed failure, an acknowledged edit, then a newly started check.
+ * A repaired file alone does not establish a failure-driven agent loop. */
+export function repairCycle(events, commands) {
+  const uniqueCall = id => {
+    const matches = events.filter(row => row.kind === 'call' && row.callId === id)
+    return matches.length === 1 ? matches[0] : null
+  }
+  const outcomes = events.filter(row => row.kind === 'observation').map(row => {
+    const call = uniqueCall(row.callId)
+    const receipts = commands.filter(command => command.id === row.activity?.commandId)
+    return { row, call, receipt: receipts.length === 1 ? receipts[0] : null }
+  })
+  for (const failed of outcomes) {
+    if (failed.call?.name !== 'workspace_run' || failed.row.ok !== false || !Number.isInteger(failed.receipt?.code) || failed.receipt.code === 0 || failed.receipt.cancelled) continue
+    for (const edit of outcomes) {
+      if (edit.call?.name !== 'workspace_write' || edit.row.ok !== true || !edit.row.activity?.path || !(edit.call.sequence > failed.row.sequence)) continue
+      const passed = outcomes.find(check => check.call?.name === 'workspace_run' && check.row.ok === true && check.receipt?.code === 0 && !check.receipt.cancelled && check.call.sequence > edit.row.sequence)
+      if (passed) return { passed: true, failedCallId: failed.row.callId, editCallId: edit.row.callId, passedCallId: passed.row.callId }
+    }
+  }
+  return { passed: false, reason: 'No ordered failed command → acknowledged edit → new successful command was observed.' }
 }
 
 export async function evaluateProjectLoop({ baseUrl, model, directory, caseName = 'script', timeoutMs = 240000 }) {
@@ -71,6 +94,7 @@ export async function evaluateProjectLoop({ baseUrl, model, directory, caseName 
       try { const pkg = JSON.parse((await execution.read('package.json')).content); valid = typeof pkg.scripts?.test === 'string' && commands.some(row => row.code === 0 && row.output.includes('pass')) } catch {}
       checks.push({ name: 'declared and executed test suite', passed: valid })
     }
+    if (caseName === 'repair') checks.push({ name: 'observed failure-driven repair cycle', ...repairCycle(run.toolEvents, commands) })
     const evidence = { version: 1, caseName, model, baseUrl, runtime: 'Local Bun (not Browser Linux)', startedAt, elapsedMs: Date.now() - startedAt, result: run.result, status: run.slot.status, passed: run.slot.status === 'done' && checks.every(row => row.passed), checks, commands, prompts: run.prompts, requests: run.requests, completions: run.completions, tools: run.toolEvents, files: await execution.list(), metrics: { promptCount: run.prompts.length, repairs: run.log.filter(row => row.kind === 'repair').length, toolCalls: run.toolEvents.filter(row => row.kind === 'call').length, inputTokensEstimated: run.prompts.map(row => row.snapshot?.budget?.inputTokens) } }
     await writeFile(join(root, 'evidence.json'), JSON.stringify(evidence, null, 2))
     return { caseName, passed: evidence.passed, status: evidence.status, checks, elapsedMs: evidence.elapsedMs, metrics: evidence.metrics, evidence: join(root, 'evidence.json') }

@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test'
 import { renderToStaticMarkup } from 'react-dom/server'
 import RunInspector from '../src/workbench/RunInspector.jsx'
 import ToolCard from '../src/workbench/ToolCard.jsx'
+import { evaluateCompletion, normalizeCompletion } from '../src/core/completion.js'
 
 const base = {
   id: 'instance-one', agent: 'installed/example/observer', name: 'Observer', trace: 'task-one', parent: 'lead-instance',
@@ -47,4 +48,40 @@ test('initial historical prompt rendering is bounded with explicit access to fur
   const html = renderToStaticMarkup(<RunInspector details={details} onClose={() => {}}/>)
   expect(html).toContain('Prompt 12 · Step 11'); expect(html).not.toContain('Prompt 13 · Step 12')
   expect(html).toContain('Show more historical prompts')
+})
+
+test('completion verification displays stored adapter outcomes separately from the agent answer', async () => {
+  const completion = normalizeCompletion({ checks: [{ capability: 'workspace.command' }] })
+  // Same receipt and persistence envelope as Hub.verifyCompletion/runRecord.
+  const completionReceipts = []
+  for (const evidence of [{ ok: false, reason: 'Command checked an older source revision.' }, { ok: true, commandId: 'retained-command-secret', revision: 3 }]) {
+    completionReceipts.push({ ...await evaluateCompletion(completion, { 'workspace.command': () => evidence }), runId: base.id, at: 100 })
+  }
+  const html = renderToStaticMarkup(<RunInspector details={{ ...base, completion, completionReceipts }} onClose={() => {}}/>)
+  for (const value of ['Completion verification', 'current source checked in this task', 'functional correctness needs task-specific checks', 'Verification attempt 1 · Did not pass', 'Command checked an older source revision.', 'Verification attempt 2 · Passed', 'Exact completion configuration', 'Exact verification receipt 1', 'Exact verification receipt 2']) expect(html).toContain(value)
+  expect(html).not.toContain('retained-command-secret')
+})
+
+test('completion configuration absence and unperformed verification never imply passed checks', async () => {
+  const render = details => renderToStaticMarkup(<RunInspector details={{ ...base, ...details }} onClose={() => {}}/>)
+  const missing = render({})
+  expect(missing).toContain('No completion configuration was recorded.')
+  expect(missing).toContain('No completion verification receipts were recorded.')
+  const completion = normalizeCompletion({ checks: [] })
+  const unchecked = render({ completion, completionReceipts: [{ ...await evaluateCompletion(completion), runId: base.id, at: 100 }] })
+  expect(unchecked).toContain('No independent completion checks were configured.')
+  expect(unchecked).toContain('Verification attempt 1 · No checks performed')
+  expect(unchecked).not.toContain('· Passed')
+  const configured = render({ completion: normalizeCompletion({ checks: [{ capability: 'workspace.command' }] }) })
+  expect(configured).toContain('No completion verification receipts were recorded.')
+  expect(configured).not.toContain('· Passed')
+  const unknown = render({ completion, completionReceipts: [{ reason: 'Legacy receipt with no explicit outcome' }] })
+  expect(unknown).toContain('Verification attempt 1 · Outcome not recorded')
+})
+
+test('verification receipt rendering stays bounded without discarding later attempts', () => {
+  const html = renderToStaticMarkup(<RunInspector details={{ ...base, completionReceipts: Array.from({ length: 14 }, () => ({ ok: false, checks: [], reason: 'No checks' })) }} onClose={() => {}}/>)
+  expect(html).toContain('Verification attempt 12')
+  expect(html).not.toContain('Verification attempt 13')
+  expect(html).toContain('Show more verification receipts')
 })
