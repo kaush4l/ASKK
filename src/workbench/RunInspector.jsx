@@ -24,15 +24,16 @@ function CompletionEvidence({ completion, receipts }) {
   const [limit, setLimit] = useState(12)
   const checks = Array.isArray(completion?.checks) ? completion.checks : null
   const recorded = Array.isArray(receipts) ? receipts : []
+  const newestFirst = recorded.map((receipt, index) => ({ receipt, attempt: index + 1 })).reverse()
   return <section className="run-record-section run-completion"><h3>Completion verification</h3>
     {checks ? checks.length ? <><p>Configured checks for this run:</p><ul>{checks.map((check, index) => <li key={index}>{completionCheckLabel(check)}</li>)}</ul></> : <p>No independent completion checks were configured.</p> : <p>No completion configuration was recorded.</p>}
     {completion !== undefined && <Record title="Exact completion configuration" value={completion}/>}
     <p>These receipts record independent checks. The agent’s answer and a completed tool call do not establish that these checks passed.</p>
-    {!recorded.length ? <p>No completion verification receipts were recorded.</p> : recorded.slice(0, limit).map((receipt, index) => <div className="run-completion-receipt" key={index}>
-      <h4>Verification attempt {index + 1} · {Array.isArray(receipt?.checks) && receipt.checks.length === 0 ? 'No checks performed' : checkOutcome(receipt?.ok)}</h4>
+    {!recorded.length ? <p>No completion verification receipts were recorded.</p> : newestFirst.slice(0, limit).map(({ receipt, attempt }) => <div className="run-completion-receipt" key={attempt}>
+      <h4>Verification attempt {attempt} · {Array.isArray(receipt?.checks) && receipt.checks.length === 0 ? 'No checks performed' : checkOutcome(receipt?.ok)}{attempt === recorded.length ? ' · Latest recorded' : ''}</h4>
       {receipt?.reason != null && <p>{textOf(receipt.reason)}</p>}
       {Array.isArray(receipt?.checks) && receipt.checks.length > 0 && <ul>{receipt.checks.map((check, checkIndex) => <li key={checkIndex}>{completionCheckLabel(check)} · {checkOutcome(check.ok)}{check.evidence?.reason != null && <p>{textOf(check.evidence.reason)}</p>}</li>)}</ul>}
-      <Record title={`Exact verification receipt ${index + 1}`} value={receipt}/>
+      <Record title={`Exact verification receipt ${attempt}`} value={receipt}/>
     </div>)}
     {recorded.length > limit && <button type="button" className="button subtle small" onClick={() => setLimit(previous => previous + 12)}>Show more verification receipts</button>}
   </section>

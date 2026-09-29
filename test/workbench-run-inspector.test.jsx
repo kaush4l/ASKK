@@ -97,11 +97,22 @@ test('completion configuration absence and unperformed verification never imply 
   expect(unknown).toContain('Verification attempt 1 · Outcome not recorded')
 })
 
-test('verification receipt rendering stays bounded without discarding later attempts', () => {
-  const html = renderToStaticMarkup(<RunInspector details={{ ...base, completionReceipts: Array.from({ length: 14 }, () => ({ ok: false, checks: [], reason: 'No checks' })) }} onClose={() => {}}/>)
-  expect(html).toContain('Verification attempt 12')
-  expect(html).not.toContain('Verification attempt 13')
-  expect(html).toContain('Show more verification receipts')
+test('verification receipts show the latest outcome first with original attempt numbers and bounded history', () => {
+  for (const latestPassed of [true, false]) {
+    const completionReceipts = Array.from({ length: 14 }, (_, index) => ({ ok: index === 13 ? latestPassed : !latestPassed, checks: [{ capability: 'workspace.command', ok: index === 13 ? latestPassed : !latestPassed }], reason: `Recorded reason ${index + 1}` }))
+    const original = structuredClone(completionReceipts)
+    const html = renderToStaticMarkup(<RunInspector details={{ ...base, completionReceipts }} onClose={() => {}}/>)
+    expect(html).toContain(`Verification attempt 14 · ${latestPassed ? 'Passed' : 'Did not pass'} · Latest recorded`)
+    expect(html).toContain(`Verification attempt 13 · ${latestPassed ? 'Did not pass' : 'Passed'}`)
+    expect(html.indexOf('Verification attempt 14')).toBeLessThan(html.indexOf('Verification attempt 13'))
+    expect(html).toContain('Exact verification receipt 14')
+    expect(html).toContain('Recorded reason 14')
+    expect(html).toContain('Verification attempt 3 ·')
+    expect(html).not.toContain('Verification attempt 2 ·')
+    expect(html).toContain('Show more verification receipts')
+    expect(html).toContain('<dt>Status</dt><dd>Completed</dd>')
+    expect(completionReceipts).toEqual(original)
+  }
 })
 
 test('inspector shares result renderer with captured approvals and current-file semantics', () => {

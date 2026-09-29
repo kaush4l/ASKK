@@ -1,0 +1,15 @@
+{
+  "checks": [
+    {
+      "capability": "workspace.commands",
+      "options": {
+        "requireFresh": true,
+        "commands": [
+          "bun run test",
+          "bun test",
+          "bun -e 'import {total} from \"./src/total.js\"; if(total([2,3])!==5||total([-2,-3])!==-5||total([])!==0)throw new Error(\"total must sum finite numbers and return zero for empty input\"); for(const values of [[\"invalid\"],[NaN],[Infinity]]){let rejected=false;try{total(values)}catch{rejected=true}if(!rejected)throw new Error(\"total must reject nonnumeric and nonfinite entries\")} console.log(\"configured behavior checks passed\")'"
+        ]
+      }
+    }
+  ]
+}
