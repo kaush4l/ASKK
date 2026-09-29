@@ -200,7 +200,7 @@ for (const variant of ['valid', 'numeric-prefix', 'numeric-prefix-signal', 'miss
     if (!step) {
       const context = body.messages.find(message => message.content?.includes('Workspace environment:\n')).content
       const environment = JSON.parse(context.split('Workspace environment:\n')[1].split('\n')[0])
-      required = environment.run.workflow.completion.checks[0].options.commands
+      required = environment.referenceCompletion.checks[0].options.commands
     }
     const calls = [
       { name: 'workspace_write', args: { path: 'total.js', content: source, expect: 0 } },

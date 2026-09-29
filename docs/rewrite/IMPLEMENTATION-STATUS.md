@@ -8,9 +8,11 @@ Historical publication: source **`e7e19081`**, deployment **`d02543f1`**, [succe
 
 The existing `workspace_run` tool now accepts a zero-based `requiredCheck` reference instead of requiring the model to copy a shell command. Its trusted resolver uses the frozen run completion contract before command guardrails, permission checks and approval. The desk independently checks the command/reference pair before normal execution. Raw command support, exact receipts, freshness and cancellation remain unchanged; no task-specific agent branch was added.
 
+Current-run references are advertised under `referenceCompletion`; inherited different requirements are separately labeled `overallTaskCompletion`. Root commands are not duplicated when normalization adds defaults. This preserves empty child completion requirements and avoids advertising parent checks as executable child references.
+
 The generic tool dispatcher retains proposed input separately from resolved arguments. Approval shows the actual command, and live cards plus recorded inspection expose both forms. Invalid references are rejected before execution. Native-worker and controller fixtures cover exact command preservation, allow/ask/refuse/deny behavior, forbidden shell text, invalid references, configuration mutation, mismatched adapter pairs, source changes and scoped UI evidence.
 
-Validation: **1,005 passed, 1 skipped, 0 failed**, 7,497 assertions across 98 files. Static export built successfully. Model and browser results follow separately; no Safari/iPhone or Browser Linux acceptance is inferred from these tests.
+Validation: **1,007 passed, 1 skipped, 0 failed**, 7,519 assertions across 98 files. Static export built successfully. Model and browser results follow separately; no Safari/iPhone or Browser Linux acceptance is inferred from these tests.
 
 ## Expected rejection and configured assertions
 

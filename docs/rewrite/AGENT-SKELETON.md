@@ -226,7 +226,7 @@ Raw observation events and command receipts remain unchanged for inspection and 
 
 ### Selecting required checks by reference
 
-`workspace_run` accepts exactly one input form: `{command: "…"}` or `{requiredCheck: 0}`. The zero-based index addresses the run's configured `workspace.commands.options.commands` array. The tool resolves that reference from the immutable completion snapshot before existing command guardrails, permissions and approval. It does not add permission or change execution location.
+`workspace_run` accepts exactly one input form: `{command: "…"}` or `{requiredCheck: 0}`. The zero-based index addresses the run's configured `workspace.commands.options.commands` array, advertised under workspace environment `referenceCompletion`. Inherited parent requirements appear separately as `overallTaskCompletion`; they do not grant child references. Equivalent root requirements are not duplicated in the prompt. The tool resolves that reference from the immutable completion snapshot before existing command guardrails, permissions and approval. It does not add permission or change execution location.
 
 Trusted tools may provide a synchronous `resolveArguments` hook. The generic dispatcher validates the proposed input, resolves and snapshots actual arguments, then invokes the guarded tool. Invalid references are rejected before execution. The desk and evaluation adapters independently require the resolved command to equal the indexed command in their authoritative run contract. Raw commands remain available. Receipt matching, source freshness, runtime identity, cancellation and completion checks are unchanged.
 

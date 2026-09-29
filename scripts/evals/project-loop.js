@@ -161,7 +161,7 @@ export async function evaluateProjectLoop({ baseUrl, model, directory, caseName 
     hub.completionAdapters = { 'workspace.command': (options, run) => workspace.check(options, run), 'workspace.commands': (options, run) => workspace.checkRequired(options, run) }
     await hub.start()
     await hub.settings.set({ policy: { defaults: { read: 'allow', net: 'deny', write: 'allow', exec: 'allow' } } })
-    const goal = definition.goal + (completionContract.checks.some(check => check.capability === 'workspace.commands') ? '\nRun every configured command in workflow.completion through workspace_run after saving the final source. You may select each by its zero-based requiredCheck index instead of copying the command text. Each required command must itself exit zero.' : '')
+    const goal = definition.goal + (completionContract.checks.some(check => check.capability === 'workspace.commands') ? '\nRun every configured command in workspace environment referenceCompletion through workspace_run after saving the final source. You may select each by its zero-based requiredCheck index instead of copying the command text. Each required command must itself exit zero.' : '')
     const run = hub.startRun('bundled/starter/builder', goal, { context: { workflow: { completion: completionContract } } })
     timer = setTimeout(() => { workspace.stop(); hub.abort(run) }, timeoutMs)
     await run.answer

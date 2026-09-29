@@ -1,5 +1,7 @@
 import { test, expect } from 'bun:test'
 import { contexts } from '../src/core/context.js'
+import { normalizeCompletion } from '../src/core/completion.js'
+import { resolveCommandReference } from '../src/core/command-reference.js'
 
 test('configured goal context reads the latest owner record every attempt and omits cleared goals', async () => {
   let current = { text: '', revision: 0 }
@@ -25,6 +27,53 @@ test('workspace context bounds the configured file listing and reports omissions
   expect(rendered).toContain('"fileCount":3')
   expect(rendered).toContain('"filesOmitted":1')
   expect(rendered).not.toContain('c.js')
+})
+
+test('workspace reference availability follows own completion rather than inherited task requirements', async () => {
+  const [piece] = contexts(['workspace'])
+  const command = '  npm test\n'
+  const parentCompletion = normalizeCompletion({ checks: [{ capability: 'workspace.commands', options: { commands: [command] } }] })
+  const runContext = { workflow: { completion: parentCompletion } }
+  const request = async () => ({ files: [], status: 'ready' })
+  for (const completion of [parentCompletion, normalizeCompletion({ checks: [] })]) {
+    const rendered = await piece.render({ ctx: { runContext, completion, request } })
+    const advertised = JSON.parse(rendered.split('\n')[1])
+    expect(advertised.run.workflow.completion).toBeUndefined()
+    expect(advertised.referenceCompletion).toEqual(completion)
+    expect(rendered).toContain('use only the workspace.commands list in referenceCompletion')
+    if (completion === parentCompletion) {
+      expect(advertised.overallTaskCompletion).toBeUndefined()
+      expect(rendered.split(JSON.stringify(command))).toHaveLength(2)
+      expect(resolveCommandReference({ requiredCheck: 0 }, advertised.referenceCompletion)).toEqual({ command, requiredCheck: 0 })
+    } else {
+      expect(advertised.overallTaskCompletion).toEqual(parentCompletion)
+      expect(rendered).toContain("overall task requirements, not this run's reference availability")
+      expect(() => resolveCommandReference({ requiredCheck: 0 }, advertised.referenceCompletion)).toThrow()
+    }
+  }
+  const missing = JSON.parse((await piece.render({ ctx: { runContext, request } })).split('\n')[1])
+  expect(missing.referenceCompletion).toEqual({ checks: [] })
+  expect(runContext.workflow.completion).toBe(parentCompletion)
+  expect(Object.isFrozen(parentCompletion.checks[0].options.commands)).toBe(true)
+})
+
+test('workspace context deduplicates normalized defaults without granting malformed inherited requirements authority', async () => {
+  const [piece] = contexts(['workspace'])
+  const command = 'npm run exact-test'
+  const raw = { checks: [{ capability: 'workspace.commands', options: { commands: [command] } }] }
+  const completion = normalizeCompletion(raw)
+  const request = async () => ({ files: [], status: 'ready' })
+  const rendered = await piece.render({ ctx: { runContext: { workflow: { completion: raw } }, completion, request } })
+  const advertised = JSON.parse(rendered.split('\n')[1])
+  expect(advertised.overallTaskCompletion).toBeUndefined()
+  expect(advertised.referenceCompletion).toEqual(completion)
+  expect(rendered.split(JSON.stringify(command))).toHaveLength(2)
+  expect(raw.checks[0].options.requireFresh).toBeUndefined()
+  const malformed = { checks: [{ capability: 'workspace.commands', options: { commands: [command], requireFresh: false } }] }
+  const child = JSON.parse((await piece.render({ ctx: { runContext: { workflow: { completion: malformed } }, completion: normalizeCompletion({ checks: [] }), request } })).split('\n')[1])
+  expect(child.overallTaskCompletion).toEqual(malformed)
+  expect(child.referenceCompletion).toEqual({ checks: [] })
+  expect(() => resolveCommandReference({ requiredCheck: 0 }, child.referenceCompletion)).toThrow()
 })
 
 test('runtime context distinguishes general host tools from separately bound workspace execution', async () => {
