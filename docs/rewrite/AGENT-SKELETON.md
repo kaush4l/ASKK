@@ -205,7 +205,9 @@ The desk selects the latest task-owned receipt for every configured command. All
 
 A passed suite proves only the assertions its commands actually execute. It does not make model-authored tests independent or comprehensive. The existing `workspace.command` option still means one successful command, while `workspace.artifact` retains its artifact-specific checks. Dashboard cards separate **Agent finished** from the scope and outcome of the latest recorded completion evidence. Full configuration and receipts remain in the inspector.
 
-The real-model evaluator accepts `--completion path/to/contract.json`; omitted configuration preserves its previous baseline. Withheld behavior checks remain outside the model's repair feedback. The native production-worker fixture tests completion rejection for a missing required command, normal guarded execution, and accepted receipts after all commands run.
+Expected program rejection is a test result, not automatically a failed assertion. Put the expected exit/output in a trusted assertion command that exits zero only when the observed behavior matches. Require that exact command through `workspace.commands`; do not reinterpret an arbitrary nonzero receipt from the model as success. An unrelated successful command cannot replace a missing required check. Keep cancellation, signal termination and timeout distinct from expected rejection.
+
+The real-model evaluator accepts `--completion path/to/contract.json`. Its script case now defaults to configured assertion commands for positive, negative, empty and invalid inputs; project and repair retain their prior completion configuration. Withheld behavior checks remain outside the model's repair feedback. The native production-worker fixture tests completion rejection for a missing required command, normal guarded execution, and accepted receipts after all commands run.
 
 ### Local evaluation boundaries
 
@@ -213,7 +215,7 @@ Project-loop trials execute in a fresh OS temporary directory outside the harnes
 
 `execution-environment.json` and the evaluation record retain the actual runtime identity/root. After shutdown, final files are copied to the requested evidence directory's `project` archive before the temporary root is removed. Archive failure retains the temporary source for recovery. Agent commands use a 30-second deadline; independent checks use 10 seconds, matching the execution API's seconds contract.
 
-Cancellation during an active command and overlap with subsequent independent checks still need a dedicated lifecycle audit. Existing cancellation archival coverage does not prove that ordering. Do not treat aborted or manually interrupted trials as quality comparisons.
+The evaluator stops admission and drains active commands and writes before independent checks. Regression coverage records cancellation exits and termination-handler writes before archival; missing exit receipts fail the lifecycle explicitly. This does not establish containment of arbitrary detached native descendants. Do not treat aborted or manually interrupted trials as quality comparisons.
 
 
 ## Bounded command observations

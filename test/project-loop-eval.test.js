@@ -35,6 +35,7 @@ test('repair evaluation rejects unrelated, missing, ambiguous, stale or unacknow
     f => { f.events[5].activity = {} },
     f => { f.commands[0].cancelled = true },
     f => { f.commands[0].timedOut = true },
+    f => { f.commands[0].code = -1; f.commands[0].signal = 'SIGTERM' },
     f => { f.events.push({ ...f.events[4] }) },
     f => { f.events[7].ok = false },
     f => { f.events[7].activity.path = 'total.test.js' },
@@ -43,6 +44,7 @@ test('repair evaluation rejects unrelated, missing, ambiguous, stale or unacknow
     f => { f.commands[1].completedRevision = 'old-source' },
     f => { f.commands[1].sourceUnchanged = false },
     f => { f.commands[1].timedOut = true },
+    f => { f.commands[1].signal = 'SIGTERM' },
     f => { f.commands[1].stage = 'running' },
   ]) {
     const fixture = trace(); mutate(fixture)
@@ -183,5 +185,63 @@ for (const testMode of ['real', 'skipped', 'empty']) test(`repair fixture indepe
     expect(evidence.checks.find(check => check.name === 'independent Bun test discovery')?.passed).toBe(testMode === 'real')
     expect(evidence.checks.find(check => check.name === 'observed failure-driven repair cycle')?.passed).toBe(true)
     expect(result.passed).toBe(testMode === 'real')
+  } finally { server.stop(true); await rm(root, { recursive: true, force: true }) }
+}, 15000)
+
+for (const variant of ['valid', 'numeric-prefix', 'numeric-prefix-signal', 'missing-newline', 'missing-assertion']) test(`script completion and withheld assertions: ${variant}`, async () => {
+  const root = await mkdtemp(join(tmpdir(), 'askk-eval-script-'))
+  let step = 0, required = []
+  const conversion = variant === 'numeric-prefix' ? 'parseFloat(arg)' : 'Number(arg)'
+  const print = variant === 'missing-newline' ? 'process.stdout.write(String(sum))' : 'console.log(sum)'
+  const signalPrefix = variant === 'numeric-prefix-signal' ? 'if(process.argv.includes("12oops"))process.kill(process.pid,"SIGTERM");' : ''
+  const source = `${signalPrefix}let sum=0;for(const arg of process.argv.slice(2)){const n=${conversion};if(!Number.isFinite(n))process.exit(1);sum+=n}${print}\n`
+  const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: async request => {
+    const body = await request.json()
+    if (!step) {
+      const context = body.messages.find(message => message.content?.includes('Workspace environment:\n')).content
+      const environment = JSON.parse(context.split('Workspace environment:\n')[1].split('\n')[0])
+      required = environment.run.workflow.completion.checks[0].options.commands
+    }
+    const calls = [
+      { name: 'workspace_write', args: { path: 'total.js', content: source, expect: 0 } },
+      ...required.slice(0, variant === 'missing-assertion' ? -1 : undefined).map(command => ({ name: 'workspace_run', args: { command } })),
+      // A legitimate expected failure can be the last command; completion must
+      // use all configured assertions rather than the last command's exit code.
+      { name: 'workspace_run', args: { command: 'bun total.js invalid' } },
+    ]
+    const call = calls[step++]
+    const delta = call ? { tool_calls: [{ index: 0, id: `script${step}`, type: 'function', function: { name: call.name, arguments: JSON.stringify(call.args) } }] } : { content: 'Finished fixture.' }
+    return new Response(`data: ${JSON.stringify({ choices: [{ delta, finish_reason: call ? 'tool_calls' : 'stop' }] })}\n\ndata: [DONE]\n\n`, { headers: { 'content-type': 'text/event-stream' } })
+  } })
+  try {
+    const result = await evaluateProjectLoop({ baseUrl: `http://127.0.0.1:${server.port}/v1`, model: 'fixture', directory: join(root, 'attempt'), responseProtocol: 'native', contractVersion: 3, historyFormat: 'messages' })
+    const evidence = JSON.parse(await readFile(result.evidence, 'utf8'))
+    expect(required).toHaveLength(4)
+    expect(evidence.completion.checks[0].capability).toBe('workspace.commands')
+    expect(evidence.commands.at(-1).code).toBe(1)
+    expect(evidence.commands.at(-1).sourceUnchanged).toBe(true)
+    expect(result.passed).toBe(variant === 'valid')
+    expect(evidence.agentCompleted).toBe(['valid', 'numeric-prefix', 'numeric-prefix-signal'].includes(variant))
+    expect(evidence.independentChecksPassed).toBe(['valid', 'missing-assertion'].includes(variant))
+    if (variant === 'numeric-prefix') {
+      for (const args of [['total.js', '12oops'], ['total.js', '3.5junk'], ['total.js', '1e'], ['total.js', '2', '1oops', '3']]) {
+        const check = evidence.checks.find(check => JSON.stringify(check.args) === JSON.stringify(args))
+        expect(check.code).toBe(0)
+        expect(check.passed).toBe(false)
+      }
+    }
+    if (variant === 'numeric-prefix-signal') {
+      const check = evidence.checks.find(check => check.args?.[1] === '12oops')
+      expect(check.code).toBe(-1)
+      expect(check.signal).toBe('SIGTERM')
+      expect(check.cancelled).toBe(false)
+      expect(check.timedOut).toBe(false)
+      expect(check.passed).toBe(false)
+    }
+    if (variant === 'missing-newline') {
+      expect(evidence.checks[0].output).toBe('12.5')
+      expect(evidence.checks[0].passed).toBe(false)
+    }
+    if (variant === 'valid') expect(evidence.checks[0].output).toBe('12.5\n')
   } finally { server.stop(true); await rm(root, { recursive: true, force: true }) }
 }, 15000)

@@ -13,10 +13,25 @@ import { listing } from '../listing.js'
 import { createEvaluationWorkspace, ranDeclaredTests, bunTestReport } from './workspace-evidence.js'
 const INDEPENDENT_CHECK_TIMEOUT_SECONDS = 10
 
+// Expected failures belong inside assertions: the assertion succeeds only when
+// the child rejects input. These are task configuration, not engine behavior.
+const scriptCommands = [
+  { args: ['2', '3'], output: '5\n' },
+  { args: ['-2', '-3'], output: '-5\n' },
+  { args: [], output: '0\n' },
+  { args: ['invalid'], output: null },
+].map(({ args, output }) => {
+  const assertion = output === null
+    ? 'Number.isInteger(r.exitCode)&&r.exitCode!==0&&!r.signalCode&&!r.error'
+    : `r.exitCode===0&&!r.signalCode&&!r.error&&r.stdout.toString()===${JSON.stringify(output)}`
+  return `bun -e 'const r=Bun.spawnSync([process.execPath,"total.js",...${JSON.stringify(args)}],{timeout:5000});if(!(${assertion}))process.exit(1)'`
+})
+
 const cases = {
   script: {
     goal: 'Create total.js in this workspace. It is a dependency-free CLI run with bun total.js followed by numeric arguments. Print their sum as one number and a newline; no arguments prints 0. Reject any nonnumeric argument with a nonzero exit code. Run concrete checks for positive and negative inputs, empty input, and invalid input. Do not create a web app.',
-    checks: [['total.js', '19', '-7', '0.5'], ['total.js'], ['total.js', 'invalid']], expected: ['12.5', '0', null],
+    completion: { checks: [{ capability: 'workspace.commands', options: { commands: scriptCommands, requireFresh: true } }] },
+    checks: [['total.js', '19', '-7', '0.5'], ['total.js', '-8', '-2.25'], ['total.js'], ['total.js', 'invalid'], ['total.js', '12oops'], ['total.js', '3.5junk'], ['total.js', '1e'], ['total.js', '2', '1oops', '3']], expected: ['12.5\n', '-10.25\n', '0\n', null, null, null, null, null], exactOutput: true,
   },
   project: {
     goal: 'Scaffold a minimal dependency-free Bun JavaScript project. Export total(values) from src/total.js: sum finite numbers in an array, returning 0 for an empty array, throwing for nonnumeric or nonfinite entries. Include package.json with a test script and real bun:test tests. Run the test script with bun run test and check its results. Do not create a web app.',
@@ -42,7 +57,7 @@ export function repairCycle(events, commands, deliveredRevision) {
     return { row, call, receipt: receipts.length === 1 ? receipts[0] : null }
   }).filter(({ row, call }) => call && row.sequence > call.sequence)
   const testCommand = receipt => ['bun test', 'bun run test'].includes(receipt?.command?.trim())
-  const completed = receipt => receipt?.stage === 'complete' && Number.isInteger(receipt.code) && !receipt.cancelled && !receipt.timedOut
+  const completed = receipt => receipt?.stage === 'complete' && Number.isInteger(receipt.code) && !receipt.cancelled && !receipt.timedOut && !receipt.signal
   for (const failed of outcomes) {
     if (failed.call.name !== 'workspace_run' || failed.row.ok !== false || !completed(failed.receipt) || failed.receipt.code === 0 || !testCommand(failed.receipt)) continue
     const readRequired = ['src/total.js', 'total.test.js'].every(path => outcomes.some(read => read.call.name === 'workspace_read' && read.row.ok === true && read.row.activity?.path === path && read.row.sequence < failed.call.sequence))
@@ -74,7 +89,8 @@ export async function evaluateProjectLoop({ baseUrl, model, directory, caseName 
   if (responseProtocol !== undefined && !['envelope', 'native'].includes(responseProtocol)) throw new Error('Unsupported responseProtocol')
   if (responseProtocol === 'native' && (contractVersion !== 3 || historyFormat !== 'messages')) throw new Error('Native evaluation requires contractVersion 3 and historyFormat messages')
   if (instructions !== undefined && (typeof instructions !== 'string' || !instructions.trim() || instructions.length > 32000)) throw new Error('Evaluation instructions must be nonempty text of at most 32000 characters')
-  const completionContract = normalizeCompletion(completion ?? { checks: [{ capability: 'workspace.command', options: { requireFresh: true } }] })
+  if (!cases[caseName]) throw new Error(`Choose one of ${Object.keys(cases).join(', ')}`)
+  const completionContract = normalizeCompletion(completion ?? cases[caseName].completion ?? { checks: [{ capability: 'workspace.command', options: { requireFresh: true } }] })
   const resolvedSampling = evaluationSampling(sampling)
   const { temperature, ...samplingParams } = resolvedSampling
   if (!Number.isSafeInteger(contextLength) || contextLength < 4096) throw new Error('Evaluation context length must be an integer of at least 4096 tokens')
@@ -83,7 +99,6 @@ export async function evaluateProjectLoop({ baseUrl, model, directory, caseName 
   if (contractVersion !== undefined && ![2, 3].includes(contractVersion)) throw new Error('Evaluation contractVersion must be 2 or 3')
   if (typeof structuredOutput !== 'boolean' || structuredOutput && jsonOutput) throw new Error('structuredOutput must be boolean and cannot be combined with jsonOutput')
   if (historyFormat !== undefined && !['transcript', 'messages'].includes(historyFormat)) throw new Error('Unsupported historyFormat')
-  if (!cases[caseName]) throw new Error(`Choose one of ${Object.keys(cases).join(', ')}`)
   const evaluatorHashes = {}
   for (const name of ['project-loop.js', 'workspace-evidence.js']) evaluatorHashes[name] = createHash('sha256').update(await readFile(new URL(name, import.meta.url))).digest('hex')
   const definition = cases[caseName], root = resolve(directory), site = join(root, 'site'), project = join(root, 'project')
@@ -145,7 +160,8 @@ export async function evaluateProjectLoop({ baseUrl, model, directory, caseName 
     hub.completionAdapters = { 'workspace.command': (options, run) => workspace.check(options, run), 'workspace.commands': (options, run) => workspace.checkRequired(options, run) }
     await hub.start()
     await hub.settings.set({ policy: { defaults: { read: 'allow', net: 'deny', write: 'allow', exec: 'allow' } } })
-    const run = hub.startRun('bundled/starter/builder', definition.goal, { context: { workflow: { completion: completionContract } } })
+    const goal = definition.goal + (completionContract.checks.some(check => check.capability === 'workspace.commands') ? '\nRun every exact command in workflow.completion through workspace_run after saving the final source. Each required command must itself exit zero.' : '')
+    const run = hub.startRun('bundled/starter/builder', goal, { context: { workflow: { completion: completionContract } } })
     timer = setTimeout(() => { workspace.stop(); hub.abort(run) }, timeoutMs)
     await run.answer
     clearTimeout(timer)
@@ -162,7 +178,7 @@ export async function evaluateProjectLoop({ baseUrl, model, directory, caseName 
         if (event.stream === 'stderr') stderr += text
         else output += text
       } })
-      checks.push({ args, code: result.code, cancelled: result.cancelled, timedOut: result.timedOut, output: output.trim(), stderr, passed: !result.cancelled && !result.timedOut && (definition.expected[index] === null ? Number.isInteger(result.code) && result.code !== 0 && checks.every(check => check.passed) : result.code === 0 && output.trim() === definition.expected[index]) })
+      checks.push({ args, code: result.code, signal: result.signal, cancelled: result.cancelled, timedOut: result.timedOut, output: definition.exactOutput ? output : output.trim(), stderr, passed: !result.signal && !result.cancelled && !result.timedOut && (definition.expected[index] === null ? Number.isInteger(result.code) && result.code !== 0 && checks.every(check => check.passed) : result.code === 0 && (definition.exactOutput ? output : output.trim()) === definition.expected[index]) })
     }
     if (caseName === 'project' || caseName === 'repair') {
       let declared = false
@@ -180,7 +196,7 @@ export async function evaluateProjectLoop({ baseUrl, model, directory, caseName 
         let output = ''
         const result = await execution.startJob({ program: process.execPath, args, timeout: INDEPENDENT_CHECK_TIMEOUT_SECONDS, onOutput: event => { output += event.data ?? event.text ?? '' } })
         const report = args[0] === 'test' ? bunTestReport(await readFile(reportPath, 'utf8').catch(() => '')) : null
-        checks.push({ name: args[0] === 'run' ? 'independent package test script' : 'independent Bun test discovery', args, code: result.code, output, report, passed: result.code === 0 && !result.cancelled && !result.timedOut && (report === null || report.passed) })
+        checks.push({ name: args[0] === 'run' ? 'independent package test script' : 'independent Bun test discovery', args, code: result.code, signal: result.signal, output, report, passed: result.code === 0 && !result.signal && !result.cancelled && !result.timedOut && (report === null || report.passed) })
       }
     }
     if (caseName === 'repair') checks.push({ name: 'observed failure-driven repair cycle', ...repairCycle(run.toolEvents, commands, deliveredRevision) })

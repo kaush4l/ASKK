@@ -2,6 +2,14 @@
 
 Latest publication: source **`e7e19081`**, deployment **`d02543f1`**, [successful Pages workflow](https://github.com/kaush4l/ASKK/actions/runs/36578773412). [Hosted evidence](evidence/model-discovery-pages.json) confirms the page, workbench chunk, runtime context, workspace controller and agent index match the tested export. Export: **879,666,446 bytes / 216 files**.
 
+## Expected rejection and configured assertions
+
+The script evaluator now supplies four exact assertion commands through the existing `workspace.commands` capability. Commands assert positive, negative, empty and invalid inputs; a later raw invalid-input command may exit nonzero without invalidating successful required assertions. No agent-engine branch was added. Missing required receipts still reject completion, and project/repair criteria retain their prior scope.
+
+Independent script checks now require exact newline output and reject numeric prefixes, malformed exponents and mixed invalid arguments. Independent checks retain signal evidence and reject signal termination; a real companion probe confirmed signal exits otherwise appear as code -1. Repair-cycle checks reject signaled receipts too. Native-worker fixtures cover valid source, missing assertions, missing newline, permissive parsing and signal termination.
+
+The dashboard now says **Required commands passed · only configured checks covered** for required-command receipts, while retaining the raw-command warning. Validation: **986 passed, 1 skipped, 0 failed**, 7,353 assertions across 96 files. The static export built successfully. No new Safari/iPhone or Browser Linux acceptance is claimed.
+
 ## Frozen small-model comparison
 
 [Six fresh trials](evidence/qwen3-size-comparison.json) compared official Qwen3-1.7B and Qwen3-4B Q8_0 weights with identical harness/prompt source hashes, shipped builder instructions, native tools, seed 42, 32K context and unchanged independent checks. **No trial passed full acceptance.** One trial per task/model is diagnostic, not a reliability estimate or capability ceiling; timings are not benchmarks.

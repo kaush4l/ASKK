@@ -37,13 +37,13 @@ test('current terminal model text is displayed with the actual failed check, reg
 })
 
 test('strategy fallback uses coordinator identity, excluding child output and unrelated tasks', () => {
-  const output = answerText({ task: { id: 'coordinator', status: 'done' }, agents: [{ id: 'coordinator', kind: 'strategy', status: 'done', completionEvidence: { outcome: 'passed', label: 'Latest recorded: Required command checks passed · behavior not verified' } }], messages: [
+  const output = answerText({ task: { id: 'coordinator', status: 'done' }, agents: [{ id: 'coordinator', kind: 'strategy', status: 'done', completionEvidence: { outcome: 'passed', label: 'Latest recorded: Required commands passed · only configured checks covered' } }], messages: [
     { role: 'assistant', runId: 'coordinator', content: 'Combined model answer.' },
     { role: 'assistant', runId: 'child', content: 'Child answer.' }, oldAnswer,
   ] })
   expect(output).toContain('Combined model answer.')
   expect(output).toContain('Run finished')
-  expect(output).toContain('behavior not verified')
+  expect(output).toContain('Required commands passed · only configured checks covered')
   expect(output).not.toContain('Child answer.')
   expect(output).not.toContain(oldAnswer.content)
 })

@@ -11,7 +11,7 @@ export function projectCompletionEvidence(run = {}) {
   if (receipt.ok !== true || checks.some(check => check.ok !== true)) return { outcome: 'unknown', label: `${prefix}outcome not recorded` }
   const capabilities = checks.map(check => check.capability)
   const scope = capabilities.every(capability => capability === 'workspace.command') ? 'Command check passed · behavior not verified'
-    : capabilities.every(capability => capability === 'workspace.commands') ? 'Required command checks passed · behavior not verified'
+    : capabilities.every(capability => capability === 'workspace.commands') ? 'Required commands passed · only configured checks covered'
       : 'Scoped checks passed · only recorded requirements checked'
   return { outcome: 'passed', label: `Latest recorded: ${scope}` }
 }
