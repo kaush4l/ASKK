@@ -1,0 +1,46 @@
+{
+  "source": "899cac2",
+  "deployment": "6c2cb2a6c0a41534d965703ed215c88382a720c0",
+  "workflow": "https://github.com/kaush4l/ASKK/actions/runs/36553003287",
+  "checks": [
+    {
+      "path": "index.html",
+      "status": 200,
+      "matches": true,
+      "sha256": "bd24d7180ed33c8eb3151337e5bd1da7725b0a981b24fea89f18f211fa7af7dd"
+    },
+    {
+      "path": "runtime/modules/core/token-budget.js",
+      "status": 200,
+      "matches": true,
+      "sha256": "ec496a59e4c5566f3eba437f36ae005475cb789abe72b32eb34497325f5e7ff7"
+    },
+    {
+      "path": "runtime/modules/core/engine.js",
+      "status": 200,
+      "matches": true,
+      "sha256": "5c18d068b4a6d98f016439f2ed61f8e98ec409b4494d267b5b7af41ea3865750"
+    },
+    {
+      "path": "runtime/modules/runtime/model-broker.js",
+      "status": 200,
+      "matches": true,
+      "sha256": "858b0b3eb0e196dd9935b36e48ae101c4cd4cf90abb3f52b1ad761fb0166b927"
+    },
+    {
+      "path": "runtime/modules/workspace/controller.js",
+      "status": 200,
+      "matches": true,
+      "sha256": "fe706dba72fa951743543011f6346363ac99deabc0b8fef37c3ec1962af94e98"
+    }
+  ],
+  "browser": {
+    "name": "Chrome",
+    "scope": "Published page reload only; no new inference or guest/native command.",
+    "draftPreserved": true,
+    "workflowPreserved": "Scripts and projects",
+    "companion": "Connected, one advertised capability",
+    "commandExecution": "Not started",
+    "screenshot": "token-budget-pages.png"
+  }
+}
