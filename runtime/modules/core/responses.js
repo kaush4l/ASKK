@@ -82,19 +82,21 @@ export function responseModel(shape = ReAct, format = 'toon') {
 
   const instructions = ({ tools = [], finalOnly = tools.length === 0 } = {}) => {
     finalOnly ||= tools.length === 0
-    const name = tools[0]?.name
-    const args = tools[0]?.inputSchema ? exampleToolInput(tools[0].inputSchema) : Object.fromEntries(Object.entries(tools[0]?.parameters ?? {}).map(([key, type]) => [key,
+    // Do not invent arguments for arbitrary provider JSON Schema ($ref, oneOf, etc.).
+    const exampleTool = finalOnly ? null : tools.find(tool => !tool.providerInputSchema)
+    const name = exampleTool?.name
+    const args = exampleTool?.inputSchema ? exampleToolInput(exampleTool.inputSchema) : Object.fromEntries(Object.entries(exampleTool?.parameters ?? {}).map(([key, type]) => [key,
       /number|integer/.test(String(type)) ? 1 : /boolean/.test(String(type)) ? false : /array/.test(String(type)) ? [] : /object/.test(String(type)) ? {} : 'value',
     ]))
-    const toolExample = finalOnly ? '' : `[[${name}(${JSON.stringify(args)})]]`
+    const toolExample = exampleTool ? `[[${name}(${JSON.stringify(args)})]]` : ''
     const fields = finalOnly ? shape.fields.map(field => field.name === 'do' ? { ...field, description: 'exactly done; no tools are available for this response', example: 'done' } : field.name === 'act' ? { ...field, kind: 'text', description: 'a non-empty final answer string', example: 'The result and any unfinished work.' } : field) : shape.fields
     const lines = fields.map((field) => `- ${field.name} (${field.kind}): ${field.description}`)
     if (format === 'json') {
       if (finalOnly) return `## RESPONSE FORMAT\n\nContract version ${shape.version ?? 1}. Reply with a single JSON object, no markdown fences, with these fields:\n\n${lines.join('\n')}\n\nFinal example: {"do":"done","act":"The result and any unfinished work."}\n`
       const act = shape.version === 2 ? [[{ name, args }]] : `[[${name}(${JSON.stringify(args)})]]`
-      return `## RESPONSE FORMAT\n\nContract version ${shape.version ?? 1}. Reply with a single JSON object, no markdown fences, with these fields:\n\n${lines.join('\n')}\n\nTool example: ${JSON.stringify({ do: 'tool', act })}\nFinal example: {"do":"done","act":"The verified result."}\n`
+      return `## RESPONSE FORMAT\n\nContract version ${shape.version ?? 1}. Reply with a single JSON object, no markdown fences, with these fields:\n\n${lines.join('\n')}\n\n${exampleTool ? `Tool example: ${JSON.stringify({ do: 'tool', act })}\n` : ''}Final example: {"do":"done","act":"The verified result."}\n`
     }
-    const example = fields.map((field) => `${field.name}: ${!finalOnly && field.name === 'act' ? toolExample : !finalOnly && field.name === 'do' ? 'tool' : field.example ?? sample(field)}`)
+    const example = fields.map((field) => `${field.name}: ${field.name === 'act' ? toolExample || 'The result and any unfinished work.' : field.name === 'do' ? exampleTool ? 'tool' : 'done' : field.example ?? sample(field)}`)
     return (
       '## RESPONSE FORMAT\n\n' +
       'Reply in TOON: one `field: value` per block, blank line between blocks.\n' +
