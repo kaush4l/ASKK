@@ -1,0 +1,426 @@
+{
+  "version": 1,
+  "startedAt": "2026-09-28T23:46:37.564Z",
+  "completedAt": "2026-09-28T23:50:34.066Z",
+  "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36",
+  "origin": "http://127.0.0.1:5209",
+  "checks": [
+    {
+      "name": "real pointer click delivers Ctrl+C to existing delayed terminal",
+      "passed": true
+    },
+    {
+      "name": "interrupt retains session and mounted terminal; close remains separate",
+      "passed": true
+    },
+    {
+      "name": "rejected interrupt displays error without unhandled rejection",
+      "passed": true
+    },
+    {
+      "name": "390x844 and320x400 delayed notice and composer fit without horizontal overflow",
+      "passed": true
+    },
+    {
+      "name": "Enter while delayed preserves goal and dispatches no new task",
+      "passed": true
+    },
+    {
+      "name": "phone terminal tabs and interrupt actions occupy separate visible rows",
+      "passed": true
+    }
+  ],
+  "pointer": {
+    "sameTerminal": true,
+    "fixture": {
+      "state": {
+        "ready": true,
+        "storageDurable": true,
+        "project": {
+          "id": "synthetic-health-fixture",
+          "name": "Delayed response component QA"
+        },
+        "files": [
+          {
+            "path": "draft.js",
+            "rev": 1,
+            "size": 30
+          }
+        ],
+        "messages": [],
+        "commands": [],
+        "artifacts": [],
+        "agents": [],
+        "plans": [],
+        "approvals": [],
+        "activity": [],
+        "runtime": {
+          "target": "browser",
+          "status": "unresponsive",
+          "phase": "Response delayed",
+          "capabilities": [
+            "files",
+            "shell",
+            "pty"
+          ],
+          "health": "unresponsive",
+          "detail": "The environment is taking longer to respond. Outstanding operations may still complete; their outcomes are unknown. Existing processes and terminals are preserved. New work is paused and no requests will be replayed."
+        },
+        "companion": {
+          "status": "disconnected"
+        },
+        "model": {
+          "id": "fixture-model",
+          "status": "configured"
+        },
+        "goal": ""
+      },
+      "calls": [
+        {
+          "method": "openTerminal"
+        },
+        {
+          "method": "resizeTerminal",
+          "id": "controlled-terminal",
+          "cols": 36,
+          "rows": 8
+        },
+        {
+          "method": "resizeTerminal",
+          "id": "controlled-terminal",
+          "cols": 36,
+          "rows": 8
+        },
+        {
+          "method": "terminalInput",
+          "id": "controlled-terminal",
+          "data": "\u0003"
+        }
+      ],
+      "terminalSubscriptions": 1,
+      "errors": []
+    }
+  },
+  "failure": {
+    "sameTerminal": true,
+    "fixture": {
+      "state": {
+        "ready": true,
+        "storageDurable": true,
+        "project": {
+          "id": "synthetic-health-fixture",
+          "name": "Delayed response component QA"
+        },
+        "files": [
+          {
+            "path": "draft.js",
+            "rev": 1,
+            "size": 30
+          }
+        ],
+        "messages": [],
+        "commands": [],
+        "artifacts": [],
+        "agents": [],
+        "plans": [],
+        "approvals": [],
+        "activity": [],
+        "runtime": {
+          "target": "browser",
+          "status": "unresponsive",
+          "phase": "Response delayed",
+          "capabilities": [
+            "files",
+            "shell",
+            "pty"
+          ],
+          "health": "unresponsive",
+          "detail": "The environment is taking longer to respond. Outstanding operations may still complete; their outcomes are unknown. Existing processes and terminals are preserved. New work is paused and no requests will be replayed."
+        },
+        "companion": {
+          "status": "disconnected"
+        },
+        "model": {
+          "id": "fixture-model",
+          "status": "configured"
+        },
+        "goal": ""
+      },
+      "calls": [
+        {
+          "method": "openTerminal"
+        },
+        {
+          "method": "resizeTerminal",
+          "id": "controlled-terminal",
+          "cols": 36,
+          "rows": 8
+        },
+        {
+          "method": "resizeTerminal",
+          "id": "controlled-terminal",
+          "cols": 36,
+          "rows": 8
+        },
+        {
+          "method": "terminalInput",
+          "id": "controlled-terminal",
+          "data": "\u0003"
+        },
+        {
+          "method": "terminalInput",
+          "id": "controlled-terminal",
+          "data": "\u0003"
+        }
+      ],
+      "terminalSubscriptions": 1,
+      "errors": []
+    },
+    "toast": "Synthetic interrupt failed: terminal receipt unavailable"
+  },
+  "sizes": [
+    {
+      "width": 320,
+      "height": 400,
+      "scrollWidth": 320,
+      "notice": {
+        "top": 212,
+        "bottom": 275,
+        "left": 13,
+        "right": 307,
+        "height": 63
+      },
+      "composer": {
+        "top": 284,
+        "bottom": 392,
+        "left": 13,
+        "right": 307,
+        "height": 108
+      },
+      "input": {
+        "top": 285,
+        "bottom": 345,
+        "left": 14,
+        "right": 306,
+        "height": 60
+      },
+      "goal": "Keep this goal while the guest responds"
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "scrollWidth": 390,
+      "notice": {
+        "top": 600.5,
+        "bottom": 663.5,
+        "left": 13,
+        "right": 377,
+        "height": 63
+      },
+      "composer": {
+        "top": 672.5,
+        "bottom": 810.5,
+        "left": 13,
+        "right": 377,
+        "height": 138
+      },
+      "input": {
+        "top": 673.5,
+        "bottom": 763.5,
+        "left": 14,
+        "right": 376,
+        "height": 90
+      },
+      "goal": "Keep this goal while the guest responds"
+    }
+  ],
+  "toolbars": [
+    {
+      "width": 320,
+      "height": 400,
+      "scrollWidth": 320,
+      "buttons": [
+        {
+          "label": "commands",
+          "left": 50,
+          "right": 102.171875,
+          "top": 104,
+          "bottom": 139
+        },
+        {
+          "label": "terminal",
+          "left": 128.9375,
+          "right": 173.0546875,
+          "top": 104,
+          "bottom": 139
+        },
+        {
+          "label": "problems",
+          "left": 199.8203125,
+          "right": 247.0078125,
+          "top": 104,
+          "bottom": 139
+        },
+        {
+          "label": "output",
+          "left": 273.7734375,
+          "right": 310,
+          "top": 104,
+          "bottom": 139
+        },
+        {
+          "label": "Interrupt terminal (Ctrl+C)",
+          "left": 169.2890625,
+          "right": 254,
+          "top": 146.75,
+          "bottom": 166.25
+        },
+        {
+          "label": "Close terminal session",
+          "left": 254,
+          "right": 282,
+          "top": 142.5,
+          "bottom": 170.5
+        },
+        {
+          "label": "Close terminal panel",
+          "left": 282,
+          "right": 310,
+          "top": 142.5,
+          "bottom": 170.5
+        }
+      ]
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "scrollWidth": 390,
+      "buttons": [
+        {
+          "label": "commands",
+          "left": 50,
+          "right": 102.171875,
+          "top": 175,
+          "bottom": 210
+        },
+        {
+          "label": "terminal",
+          "left": 152.2734375,
+          "right": 196.390625,
+          "top": 175,
+          "bottom": 210
+        },
+        {
+          "label": "problems",
+          "left": 246.484375,
+          "right": 293.671875,
+          "top": 175,
+          "bottom": 210
+        },
+        {
+          "label": "output",
+          "left": 343.7734375,
+          "right": 380,
+          "top": 175,
+          "bottom": 210
+        },
+        {
+          "label": "Interrupt terminal (Ctrl+C)",
+          "left": 239.2890625,
+          "right": 324,
+          "top": 217.75,
+          "bottom": 237.25
+        },
+        {
+          "label": "Close terminal session",
+          "left": 324,
+          "right": 352,
+          "top": 213.5,
+          "bottom": 241.5
+        },
+        {
+          "label": "Close terminal panel",
+          "left": 352,
+          "right": 380,
+          "top": 213.5,
+          "bottom": 241.5
+        }
+      ]
+    }
+  ],
+  "beforeFix": [
+    {
+      "width": 390,
+      "height": 844,
+      "scrollWidth": 390,
+      "notice": {
+        "top": 600.5,
+        "bottom": 663.5,
+        "left": 13,
+        "right": 377,
+        "height": 63
+      },
+      "composer": {
+        "top": 672.5,
+        "bottom": 810.5,
+        "left": 13,
+        "right": 377,
+        "height": 138
+      },
+      "input": {
+        "top": 673.5,
+        "bottom": 763.5,
+        "left": 14,
+        "right": 376,
+        "height": 90
+      },
+      "goal": "Keep this goal while the guest responds"
+    },
+    {
+      "width": 320,
+      "height": 400,
+      "scrollWidth": 320,
+      "notice": {
+        "top": 197.5,
+        "bottom": 260.5,
+        "left": 13,
+        "right": 307,
+        "height": 63
+      },
+      "composer": {
+        "top": 269.5,
+        "bottom": 407.5,
+        "left": 13,
+        "right": 307,
+        "height": 138
+      },
+      "input": {
+        "top": 270.5,
+        "bottom": 360.5,
+        "left": 14,
+        "right": 306,
+        "height": 90
+      },
+      "goal": "Keep this goal while the guest responds"
+    }
+  ],
+  "limitations": [
+    "Production Workbench and Terminal/xterm components; synthetic controller and backend",
+    "Real locator pointer click delivered terminalInput with U+0003; no guest or process was started",
+    "Native keyboard Ctrl+C remains unverified; this visible button is the tested alternative",
+    "Tab-local viewport overrides only; no global browser resizing",
+    "Concurrent runtime diagnostic startup may overlap; this is not a performance benchmark",
+    "390x844 and320x400 checks used desktop/fine-pointer viewport emulation only, not coarse-pointer touch emulation. Recorded 8px toolbar labels and sub44px controls are baseline measurements, not touch-target acceptance; a later source patch enlarges them and requires its own visual check."
+  ],
+  "cleanup": {
+    "ownedTabClosed": true,
+    "tabClosedAt": "2026-09-28T23:50:34.090Z",
+    "fixtureServerStopped": true,
+    "tabLocalOverrideCleared": true
+  },
+  "sourceHashes": {
+    "src/workbench/Workbench.jsx": "d247ff70ac001fd84d58ff68ad4d1cab97e5e90146a594a2da36e707789fbcec",
+    "src/workbench/workbench.css": "6778cae7ddc3b9403f8d6b76d09c994235ff200fb2ac5ccae823f035b5a72ae9",
+    "src/workbench/Terminal.jsx": "d12ef4a35975c1da9c54d1445b3f80059080ad0c79e7e14a8c4549849bafdc75"
+  }
+}

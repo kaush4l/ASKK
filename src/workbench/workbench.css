@@ -305,6 +305,8 @@
   .bottom-panel { flex: 0 0 var(--panel-height); height: var(--panel-height); min-height: 0; display: flex; flex-direction: column; background: var(--editor); overflow: hidden; }
   .panel-toolbar { height: 35px; flex: 0 0 35px; display: flex; align-items: center; justify-content: space-between; padding: 0 9px 0 15px; gap: 10px; border-bottom: 1px solid var(--line); }
   .panel-toolbar>div:last-child { display: flex; }
+  .terminal-interrupt { display: flex; align-items: center; gap: 5px; padding: 0 7px; font-size: 10px; color: var(--secondary); white-space: nowrap; }
+  .terminal-interrupt:hover { color: var(--text); background: var(--hover); border-radius: 4px; }
   .panel-tabs { display: flex; gap: 17px; height: 100%; min-width: 0; overflow-x: auto; scrollbar-width: none; }
   .panel-tabs>button { flex-shrink: 0; }
   .panel-tabs>button { position: relative; color: var(--muted); font-size: 9px; text-transform: uppercase; letter-spacing: .7px; padding: 0; display: flex; align-items: center; gap: 5px; }
@@ -474,6 +476,13 @@
   @media (max-height: 730px) and (min-width: 1024px) {
     .conversation-welcome { padding-top: 3px; }.welcome-orbit { margin-bottom: 17px; width: 43px; height: 43px; }.conversation-welcome h2 { font-size: 24px; }.starter-prompts { margin-top: 19px; }.getting-started { padding-top: 28px; }.workspace-watermark { width: 50px; height: 50px; margin-bottom: 18px; }.welcome-heading h2 { font-size: 32px; }.setup-list { margin-top: 15px; }.setup-item { padding-block: 11px; }.workspace-footnote { padding-top: 20px; }
   }
+  @media (max-height: 500px) and (max-width: 600px) {
+    .conversation-heading { padding: 8px 18px 6px; }
+    .conversation-heading .eyebrow { display: none; }
+    .composer-wrap { padding-top: 6px; padding-bottom: calc(8px + env(safe-area-inset-bottom)); }
+    .composer textarea { min-height: 60px; height: 60px; }
+    .composer-foot { display: none; }
+  }
   @media (pointer: coarse) { .icon-button { min-width: 44px; min-height: 44px; }.activity-bar { flex-basis: 44px; }.activity-bar .icon-button { height: 44px; }.explorer { left: 44px; }.file-row { min-height: 44px; }.starter-prompts button { min-height: 46px; }.button, .model-picker, .runtime-pill, .compact-switch, .editor-tabs { min-height: 44px; }.editor-tabs { flex-basis: 44px; }.send-button { width: 44px; height: 44px; }.setup-item { min-height: 60px; }.form-input, .sidebar-search input, .command-input input { font-size: 16px; }.file-tab .icon-button { opacity: 1; }.editor-breadcrumb, .explorer-heading { min-height: 44px; }.header-actions { gap: 0; }.app-header { gap: 4px; } }
   @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
 }
@@ -509,10 +518,13 @@
     .phone-surface-commands .editor-tabs, .phone-surface-commands .editor-surface,
     .phone-surface-commands .editor-stack>.resize-handle { display: none; }
     .phone-surface-commands .bottom-panel { display: flex; flex: 1; height: auto; }
-    .phone-surface-commands .panel-toolbar { padding-inline: 10px; }
-    .phone-surface-commands .panel-tabs { flex: 1; justify-content: space-between; gap: 8px; }
-    .phone-surface-commands .panel-tabs>button { font-size: 8px; letter-spacing: .3px; }
-    .phone-surface-commands .panel-toolbar>div:last-child { margin-left: 7px; }
+    .phone-surface-commands .panel-toolbar { padding-inline: 10px; height: auto; flex-basis: auto; flex-wrap: wrap; gap: 0; }
+    .phone-surface-commands .panel-tabs { flex: 1 0 100%; height: 44px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
+    .phone-surface-commands .panel-tabs>button { min-width: 44px; min-height: 44px; font-size: 12px; letter-spacing: 0; text-transform: capitalize; flex-direction: column; justify-content: center; gap: 1px; }
+    .phone-surface-commands .panel-tabs>button>span { font-size: 10px; line-height: 12px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+    .phone-surface-commands .panel-toolbar>div:last-child { margin-left: auto; min-height: 44px; align-items: center; }
+    .phone-surface-commands .panel-toolbar .icon-button { min-width: 44px; min-height: 44px; }
+    .phone-surface-commands .terminal-interrupt { min-width: 44px; min-height: 44px; font-size: 12px; }
   }
 }
 

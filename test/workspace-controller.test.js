@@ -91,6 +91,16 @@ class ControlledExecution {
 const source = { 'package.json': JSON.stringify({ scripts: { build: 'next build --webpack' } }), 'app/page.jsx': 'export default function Page() { return "original" }' }
 const assertions = [{ action: 'click', selector: 'button' }, { action: 'assertText', selector: 'output', value: '1' }]
 
+test('explicit native transfer builds with Bun without a login shell replacing its PATH', async () => {
+  const { controller, browser, local } = await fixture()
+  await controller.buildPreview()
+  expect(browser.jobs.at(-1).args).toEqual(['-lc', 'rm -rf -- out && npm run build'])
+  await controller.setExecutionTarget('local', { transfer: true })
+  await controller.buildPreview()
+  expect(local.jobs.at(-1).args).toEqual(['-c', 'rm -rf -- out && bun --bun run build'])
+  expect(controller.getSnapshot().runtime.target).toBe('local')
+})
+
 test('command output tracks repeated chunks after the retained tail becomes identical', async () => {
   const { controller, browser } = await fixture()
   const observed = []

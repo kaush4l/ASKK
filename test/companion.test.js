@@ -7,9 +7,9 @@ import { LocalExecution } from '../src/execution/local.js'
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 async function until(check, ms = 5000) { const end = Date.now() + ms; while (Date.now() < end) { if (await check()) return; await sleep(15) } throw new Error('Fixture condition did not become true') }
-async function fixture(run) {
+async function fixture(run, options = {}) {
   const root = await mkdtemp(join(tmpdir(), 'askk-companion-'))
-  const companion = await createCompanion({ root, port: 0, origins: ['https://owner.example'], shell: '/bin/sh', shellArgs: [] })
+  const companion = await createCompanion({ root, port: 0, origins: ['https://owner.example'], shell: '/bin/sh', shellArgs: [], ...options })
   const local = new LocalExecution({ url: companion.url, token: companion.token })
   const call = (path, body, extra = {}) => fetch(`${companion.url}${path}`, { method: 'POST', headers: { authorization: `Bearer ${companion.token}`, 'content-type': 'application/json', ...extra }, body: JSON.stringify(body ?? {}) })
   try { await run({ root, companion, local, call }) }
@@ -17,6 +17,23 @@ async function fixture(run) {
 }
 
 describe('Bun companion contracts', () => {
+  test('an explicit child environment is shared by commands and non-login PTYs without inheriting caller variables', async () => {
+    const previous = process.env.ASKK_PACKAGE_PARENT_ONLY
+    process.env.ASKK_PACKAGE_PARENT_ONLY = 'must-not-inherit'
+    try { await fixture(async ({ root, local }) => {
+    let output = ''
+    const command = await local.startJob({ program: '/bin/sh', args: ['-c', 'printf "%s\\n%s\\n%s" "$PATH" "$ASKK_ENV_FIXTURE" "${ASKK_PACKAGE_PARENT_ONLY-unset}"'], onOutput: event => { if (event.stream === 'stdout') output += event.data } })
+    expect(command.code).toBe(0)
+    expect(output).toBe('/usr/bin:/bin\nselected-only\nunset')
+    const terminal = await local.openTerminal()
+    local.terminalInput(terminal.id, 'printf "%s\\n%s\\n%s" "$PATH" "$ASKK_ENV_FIXTURE" "${ASKK_PACKAGE_PARENT_ONLY-unset}" > environment.txt\n')
+    await until(async () => await readFile(join(root, 'environment.txt'), 'utf8').catch(() => '') === '/usr/bin:/bin\nselected-only\nunset')
+    expect(await readFile(join(root, 'environment.txt'), 'utf8')).toBe('/usr/bin:/bin\nselected-only\nunset')
+    await local.closeTerminal(terminal.id)
+    }, { childEnv: { PATH: '/usr/bin:/bin', ASKK_ENV_FIXTURE: 'selected-only' } }) }
+    finally { if (previous === undefined) delete process.env.ASKK_PACKAGE_PARENT_ONLY; else process.env.ASKK_PACKAGE_PARENT_ONLY = previous }
+  })
+
   test('a paired client cannot execute against a replacement runtime identity', async () => fixture(async ({ local, call }) => {
     const health = await local.prepare()
     expect(health.runtimeId).toMatch(/^local-bun:/)

@@ -1,0 +1,361 @@
+{
+  "schema": 1,
+  "kind": "native-companion-package-acceptance",
+  "startedAt": "2026-09-29T00:11:38.583Z",
+  "timingScope": "Functional acceptance, not an isolated performance measurement",
+  "checks": [
+    {
+      "name": "relocated package manifest verified",
+      "ok": true,
+      "files": 11,
+      "bytes": 61935041
+    },
+    {
+      "name": "clean-PATH launcher help",
+      "ok": true
+    },
+    {
+      "name": "TLS relay-only authority and origin rejection",
+      "ok": true,
+      "capabilities": [
+        "model-relay",
+        "network-relay"
+      ]
+    },
+    {
+      "name": "relay shutdown and pairing cleanup",
+      "ok": true
+    },
+    {
+      "name": "native Unicode file acknowledgement and stale CAS refusal",
+      "ok": true,
+      "revision": "68d40982398d1ba653fe40f4574c496091ef78c6984a7a5b290feab018cf8fa8"
+    },
+    {
+      "name": "job uses packaged Bun with no Node/npm on PATH",
+      "ok": true,
+      "runtimeVersion": "1.4.2",
+      "code": 0
+    },
+    {
+      "name": "streamed actual nonzero exit",
+      "ok": true,
+      "code": 7
+    },
+    {
+      "name": "PTY input resize and packaged runtime",
+      "ok": true,
+      "rows": 37,
+      "cols": 103
+    },
+    {
+      "name": "process group cancellation has actual exit",
+      "ok": true,
+      "exit": {
+        "type": "exit",
+        "code": -1,
+        "signal": "SIGTERM",
+        "cancelled": true,
+        "timedOut": false,
+        "jobId": "cf57cc75-a412-4deb-8f2f-163ea2582d71",
+        "runtimeId": "local-bun:158c5e59-0095-4bce-956b-f61a78fe0097",
+        "sequence": 3
+      }
+    },
+    {
+      "name": "actual Next App Router webpack static export",
+      "ok": true,
+      "milliseconds": 2663.8702919999996,
+      "outputSHA256": "2081631a384018f72997c27c0cf335e5128d6347713bd1ad596e7a3a73bd4e80",
+      "next": "16.3.6"
+    },
+    {
+      "name": "native shutdown and pairing cleanup",
+      "ok": true
+    }
+  ],
+  "limitations": [
+    "Native HTTPS API/PTY/Next proof only; no browser UI or browser trust proof",
+    "Uses existing pinned dependencies, not a fresh install",
+    "Package is unsigned and not notarized"
+  ],
+  "manifest": {
+    "schema": 1,
+    "name": "askk-local-companion",
+    "target": "darwin-arm64",
+    "runtime": {
+      "target": "darwin-arm64",
+      "version": "1.4.2",
+      "revision": "744846f844374847c902b5e7fd59b4342a51ef99",
+      "sha256": "35d20dd0263e5c950194434b925454fdfa9ba6e4467da960410fa05b08a7a5b5",
+      "upstream": "https://github.com/oven-sh/bun/tree/bun-v1.4.2",
+      "license": "https://github.com/oven-sh/bun/blob/bun-v1.4.2/LICENSE.md",
+      "pinOrigin": "Installed Darwin ARM64 Bun executable, measured 2026-09-28; not an independently authenticated release download"
+    },
+    "sourceRevision": null,
+    "files": [
+      {
+        "path": "host/companion.js",
+        "mode": 420,
+        "size": 21278,
+        "sha256": "598518006608ee35c5a6a3a062437fe9a5a5ae272f70ed1cd420ca14681ff251"
+      },
+      {
+        "path": "scripts/companion/launch.js",
+        "mode": 420,
+        "size": 4736,
+        "sha256": "90f431cf57eb224d48050a19caf5391ed691508e92941b751fbec3dba85dfd70"
+      },
+      {
+        "path": "scripts/companion/options.js",
+        "mode": 420,
+        "size": 4288,
+        "sha256": "325eb6a271f9d860682a291435dff7c8a62751ad5c08481a3a34e693fbccabd3"
+      },
+      {
+        "path": "scripts/companion/package.js",
+        "mode": 420,
+        "size": 5509,
+        "sha256": "7c91494302daa14cbe6d77a050fdfe0ff5074f3cb9cab5bb307db019babbc853"
+      },
+      {
+        "path": "scripts/companion/runtime-pin.json",
+        "mode": 420,
+        "size": 459,
+        "sha256": "ab6259aaa031cbd71578f7164b9b9c879f60f55ac9de8c95ac61cf02e9d23ed9"
+      },
+      {
+        "path": "licenses/BUN-LICENSE.md",
+        "mode": 420,
+        "size": 5613,
+        "sha256": "b9caf52728691b4057e371232c221a132883198be2f3d2ddf92c90404c984b1a"
+      },
+      {
+        "path": "README.md",
+        "mode": 420,
+        "size": 8132,
+        "sha256": "c71a0554d543d9ecd5b3218241fb80b271b67cb0d778dda72df002b1916f4755"
+      },
+      {
+        "path": "askk-companion",
+        "mode": 493,
+        "size": 342,
+        "sha256": "f59e781267af2c8ea9c1e64d363a0c72dd33dcd539c856621df59def879eee3d"
+      },
+      {
+        "path": "bin/bun",
+        "mode": 493,
+        "size": 139,
+        "sha256": "79ded42c8ead54748766c67070fe8d9f7c3bb7876bb0e8f16ea3db0c4aba9a96"
+      },
+      {
+        "path": "bunfig.toml",
+        "mode": 420,
+        "size": 81,
+        "sha256": "9c0914ce67e33c18fbca030ee7a969e6ec416ae45b84979b083d8680c6c4bfbd"
+      },
+      {
+        "path": "runtime/bun",
+        "mode": 493,
+        "size": 61884464,
+        "sha256": "35d20dd0263e5c950194434b925454fdfa9ba6e4467da960410fa05b08a7a5b5"
+      }
+    ],
+    "policy": {
+      "capabilities": "explicit-at-launch",
+      "tls": "external-owner-trusted-certificate",
+      "runtimeSelection": "explicit-in-workbench",
+      "packageFormat": "directory",
+      "signed": false
+    }
+  },
+  "next": {
+    "id": "fa619891-ccc2-4471-9f3f-2db2519d1852",
+    "stdout": "▲ Next.js 16.3.6 (webpack)\n✓ Running next.config.mjs took 5ms\n- Experiments (use with caution):\n  · cpus: 1\n\n  Creating an optimized production build ...\n✓ Compiled successfully in 1276ms\n  Running TypeScript ...\n  Finished TypeScript in 1ms ...\n  Collecting page data using 1 worker ...\n  Generating static pages using 1 worker (0/3) ...\n✓ Generating static pages using 1 worker (3/3) in 130ms\n  Finalizing page optimization ...\n  Collecting build traces ...\n\nRoute (app)\n┌ ○ /\n└ ○ /_not-found\n\n\n○  (Static)  prerendered as static content\n\n",
+    "stderr": "$ next build --webpack\n⚠ Warning: Next.js ignored bun.lock in <HOME>/Downloads/Dev/ASKK because it would include your home directory (<HOME>/Downloads/Dev/ASKK/.cache/companion/acceptance-20260929-0011/clean-home).\n To use this directory, set `outputFileTracingRoot` in your Next.js config.\n\n",
+    "exit": {
+      "type": "exit",
+      "code": 0,
+      "signal": null,
+      "cancelled": false,
+      "timedOut": false,
+      "jobId": "fa619891-ccc2-4471-9f3f-2db2519d1852",
+      "runtimeId": "local-bun:158c5e59-0095-4bce-956b-f61a78fe0097",
+      "sequence": 19
+    },
+    "events": [
+      {
+        "type": "started",
+        "pid": 4663,
+        "jobId": "fa619891-ccc2-4471-9f3f-2db2519d1852",
+        "runtimeId": "local-bun:158c5e59-0095-4bce-956b-f61a78fe0097",
+        "sequence": 1
+      },
+      {
+        "type": "output",
+        "stream": "stderr",
+        "data": "$ next build --webpack\n",
+        "jobId": "fa619891-ccc2-4471-9f3f-2db2519d1852",
+        "runtimeId": "local-bun:158c5e59-0095-4bce-956b-f61a78fe0097",
+        "sequence": 2
+      },
+      {
+        "type": "output",
+        "stream": "stdout",
+        "data": "▲ Next.js 16.3.6 (webpack)\n",
+        "jobId": "fa619891-ccc2-4471-9f3f-2db2519d1852",
+        "runtimeId": "local-bun:158c5e59-0095-4bce-956b-f61a78fe0097",
+        "sequence": 3
+      },
+      {
+        "type": "output",
+        "stream": "stderr",
+        "data": "⚠ Warning: Next.js ignored bun.lock in <HOME>/Downloads/Dev/ASKK because it would include your home directory (<HOME>/Downloads/Dev/ASKK/.cache/companion/acceptance-20260929-0011/clean-home).\n To use this directory, set `outputFileTracingRoot` in your Next.js config.\n\n",
+        "jobId": "fa619891-ccc2-4471-9f3f-2db2519d1852",
+        "runtimeId": "local-bun:158c5e59-0095-4bce-956b-f61a78fe0097",
+        "sequence": 4
+      },
+      {
+        "type": "output",
+        "stream": "stdout",
+        "data": "✓ Running next.config.mjs took 5ms\n",
+        "jobId": "fa619891-ccc2-4471-9f3f-2db2519d1852",
+        "runtimeId": "local-bun:158c5e59-0095-4bce-956b-f61a78fe0097",
+        "sequence": 5
+      },
+      {
+        "type": "output",
+        "stream": "stdout",
+        "data": "- Experiments (use with caution):\n",
+        "jobId": "fa619891-ccc2-4471-9f3f-2db2519d1852",
+        "runtimeId": "local-bun:158c5e59-0095-4bce-956b-f61a78fe0097",
+        "sequence": 6
+      },
+      {
+        "type": "output",
+        "stream": "stdout",
+        "data": "  · cpus: 1\n\n",
+        "jobId": "fa619891-ccc2-4471-9f3f-2db2519d1852",
+        "runtimeId": "local-bun:158c5e59-0095-4bce-956b-f61a78fe0097",
+        "sequence": 7
+      },
+      {
+        "type": "output",
+        "stream": "stdout",
+        "data": "  Creating an optimized production build ...\n",
+        "jobId": "fa619891-ccc2-4471-9f3f-2db2519d1852",
+        "runtimeId": "local-bun:158c5e59-0095-4bce-956b-f61a78fe0097",
+        "sequence": 8
+      },
+      {
+        "type": "output",
+        "stream": "stdout",
+        "data": "✓ Compiled successfully in 1276ms\n",
+        "jobId": "fa619891-ccc2-4471-9f3f-2db2519d1852",
+        "runtimeId": "local-bun:158c5e59-0095-4bce-956b-f61a78fe0097",
+        "sequence": 9
+      },
+      {
+        "type": "output",
+        "stream": "stdout",
+        "data": "  Running TypeScript ...\n",
+        "jobId": "fa619891-ccc2-4471-9f3f-2db2519d1852",
+        "runtimeId": "local-bun:158c5e59-0095-4bce-956b-f61a78fe0097",
+        "sequence": 10
+      },
+      {
+        "type": "output",
+        "stream": "stdout",
+        "data": "  Finished TypeScript in 1ms ...\n",
+        "jobId": "fa619891-ccc2-4471-9f3f-2db2519d1852",
+        "runtimeId": "local-bun:158c5e59-0095-4bce-956b-f61a78fe0097",
+        "sequence": 11
+      },
+      {
+        "type": "output",
+        "stream": "stdout",
+        "data": "  Collecting page data using 1 worker ...\n",
+        "jobId": "fa619891-ccc2-4471-9f3f-2db2519d1852",
+        "runtimeId": "local-bun:158c5e59-0095-4bce-956b-f61a78fe0097",
+        "sequence": 12
+      },
+      {
+        "type": "output",
+        "stream": "stdout",
+        "data": "  Generating static pages using 1 worker (0/3) ...\n",
+        "jobId": "fa619891-ccc2-4471-9f3f-2db2519d1852",
+        "runtimeId": "local-bun:158c5e59-0095-4bce-956b-f61a78fe0097",
+        "sequence": 13
+      },
+      {
+        "type": "output",
+        "stream": "stdout",
+        "data": "✓ Generating static pages using 1 worker (3/3) in 130ms\n",
+        "jobId": "fa619891-ccc2-4471-9f3f-2db2519d1852",
+        "runtimeId": "local-bun:158c5e59-0095-4bce-956b-f61a78fe0097",
+        "sequence": 14
+      },
+      {
+        "type": "output",
+        "stream": "stdout",
+        "data": "  Finalizing page optimization ...\n  Collecting build traces ...\n",
+        "jobId": "fa619891-ccc2-4471-9f3f-2db2519d1852",
+        "runtimeId": "local-bun:158c5e59-0095-4bce-956b-f61a78fe0097",
+        "sequence": 15
+      },
+      {
+        "type": "output",
+        "stream": "stdout",
+        "data": "\n",
+        "jobId": "fa619891-ccc2-4471-9f3f-2db2519d1852",
+        "runtimeId": "local-bun:158c5e59-0095-4bce-956b-f61a78fe0097",
+        "sequence": 16
+      },
+      {
+        "type": "output",
+        "stream": "stdout",
+        "data": "Route (app)\n┌ ○ /\n└ ○ /_not-found\n\n\n",
+        "jobId": "fa619891-ccc2-4471-9f3f-2db2519d1852",
+        "runtimeId": "local-bun:158c5e59-0095-4bce-956b-f61a78fe0097",
+        "sequence": 17
+      },
+      {
+        "type": "output",
+        "stream": "stdout",
+        "data": "○  (Static)  prerendered as static content\n\n",
+        "jobId": "fa619891-ccc2-4471-9f3f-2db2519d1852",
+        "runtimeId": "local-bun:158c5e59-0095-4bce-956b-f61a78fe0097",
+        "sequence": 18
+      },
+      {
+        "type": "exit",
+        "code": 0,
+        "signal": null,
+        "cancelled": false,
+        "timedOut": false,
+        "jobId": "fa619891-ccc2-4471-9f3f-2db2519d1852",
+        "runtimeId": "local-bun:158c5e59-0095-4bce-956b-f61a78fe0097",
+        "sequence": 19
+      }
+    ],
+    "milliseconds": 2663.8702919999996
+  },
+  "ok": true,
+  "finishedAt": "2026-09-29T00:11:44.680Z",
+  "_redaction": {
+    "version": 1,
+    "at": "2026-09-29T00:13:44.676794+00:00",
+    "publicTextIsExactOriginal": false,
+    "rules": [
+      {
+        "kind": "home-directory-prefix",
+        "replacement": "<HOME>",
+        "occurrences": 4
+      }
+    ],
+    "originalSha256": "176211c3162a42957781b105814fae50240779f7629c6f653648372e3c337bc8",
+    "originalBytes": 11955,
+    "rawOriginalLocation": ".cache/evidence/raw/companion-package-darwin-arm64.json",
+    "notice": "Public output and path strings have home-directory prefixes redacted and are not exact original bytes. Recorded hashes, sizes, exit receipts and timings remain original pre-redaction measurements. The raw receipt is retained locally with mode0600 outside the published source tree."
+  }
+}

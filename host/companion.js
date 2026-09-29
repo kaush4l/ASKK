@@ -17,6 +17,7 @@ export async function createCompanion(options = {}) {
   const token = options.token ?? randomBytes(32).toString('base64url')
   const origins = new Set(options.origins ?? ['https://kaush4l.github.io', 'http://localhost:5187', 'http://127.0.0.1:5187'])
   const capabilities = options.capabilities ?? ['fs', 'exec', 'terminal', 'fetch', 'model-relay', 'network-relay']
+  const childEnv = options.childEnv === undefined ? process.env : { ...options.childEnv }
   const runtimeId = `local-bun:${crypto.randomUUID()}`
   const jobs = new Map(); const terminals = new Map(); const tickets = new Map(); const locks = new Map()
   let closing = false
@@ -65,7 +66,7 @@ export async function createCompanion(options = {}) {
     if (!Number.isFinite(seconds) || seconds <= 0) throw failure('Command timeout must be a positive number of seconds')
     return inside(body.cwd ?? '.').then(cwd => {
       const id = String(body.id ?? crypto.randomUUID()); if (jobs.has(id)) throw failure('Command identity is already in use', 409)
-      const child = spawn(body.program, body.args ?? [], { cwd, detached: true, env: process.env, stdio: ['ignore', 'pipe', 'pipe'] })
+      const child = spawn(body.program, body.args ?? [], { cwd, detached: true, env: childEnv, stdio: ['ignore', 'pipe', 'pipe'] })
       const job = { id, child, pid: child.pid, exited: false, cancelled: false }; jobs.set(id, job)
       let settle; job.closed = new Promise(resolve => { settle = resolve })
       let sequence = 0; let bytes = 0; let closed = false; let sink
@@ -151,7 +152,7 @@ export async function createCompanion(options = {}) {
         const decoder = new TextDecoder()
         const terminal = { backlog, emit(event) { const data = JSON.stringify(event); backlog.push(data); while (backlog.length > 1000) backlog.shift(); if (socket) socket.send(data) }, attach(ws) { socket = ws; for (const line of backlog) ws.send(line); clearTimeout(terminal.expiry) }, detach() { socket = null; terminal.expiry = setTimeout(() => closeTerminal(id), 10 * 60 * 1000); terminal.expiry.unref?.() }, closeSocket() { socket?.close(1000, 'Terminal closed'); socket = null } }
         const shell = options.shell ?? process.env.SHELL ?? '/bin/zsh'
-        terminal.process = Bun.spawn([shell, ...(options.shellArgs ?? ['-l'])], { cwd: root, env: { ...process.env, TERM: 'xterm-256color' }, terminal: { cols: Math.max(20, Math.min(Number(body.cols) || 80, 400)), rows: Math.max(5, Math.min(Number(body.rows) || 24, 200)), data(_, bytes) { const data = decoder.decode(bytes, { stream: true }); if (data) terminal.emit({ type: 'output', data }) } } })
+        terminal.process = Bun.spawn([shell, ...(options.shellArgs ?? ['-l'])], { cwd: root, env: { ...childEnv, TERM: 'xterm-256color' }, terminal: { cols: Math.max(20, Math.min(Number(body.cols) || 80, 400)), rows: Math.max(5, Math.min(Number(body.rows) || 24, 200)), data(_, bytes) { const data = decoder.decode(bytes, { stream: true }); if (data) terminal.emit({ type: 'output', data }) } } })
         terminals.set(id, terminal); terminal.process.exited.then(code => { const data = decoder.decode(); if (data) terminal.emit({ type: 'output', data }); terminal.emit({ type: 'exit', code }); closeTerminal(id, false) })
         terminal.expiry = setTimeout(() => closeTerminal(id), 30000); terminal.expiry.unref?.()
         const ticket = randomBytes(24).toString('base64url'); tickets.set(ticket, { id, expires: Date.now() + 30000, origin })

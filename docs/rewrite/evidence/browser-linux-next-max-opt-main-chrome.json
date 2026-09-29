@@ -1,0 +1,397 @@
+{
+  "preparedAt": "2026-09-28T23:52:25.946Z",
+  "runtime": {
+    "runtimeId": "browser-linux:cua-prepared-template-proof:c2w-node24-8f08d6cef80797be:33e1ffc5-a609-4c0a-bc5a-a13dc73d1447",
+    "root": "/workspaces/cua-prepared-template-proof",
+    "imageId": "c2w-node24-8f08d6cef80797be",
+    "bootId": "33e1ffc5-a609-4c0a-bc5a-a13dc73d1447",
+    "kind": "browser-linux",
+    "state": "ready",
+    "health": "responsive",
+    "unresolvedRequests": [],
+    "ready": true,
+    "toolchain": {
+      "kind": "node",
+      "version": "24.21.0",
+      "packageManager": "npm",
+      "preparedTemplate": {
+        "id": "next-default-72013276c996cd10",
+        "dependencies": {
+          "next": "16.3.6",
+          "react": "19.3.0",
+          "react-dom": "19.3.0"
+        },
+        "lockSha256": "72013276c996cd104fc0f6c7883e74ec9073e0385ea61412f13b03eba62006f0",
+        "prepareSha256": "01f761ac1f0350adc4aa1102c0fc0f58d01b3f7f45aeda981d03389ccf3d573c",
+        "npmGuardSha256": "2ce131db3a3a9c1349bf3808ed1645b0b7f9bdf427a14c5e9107c9337884b9d5",
+        "prepareCommand": [
+          "node",
+          "/opt/harness/prepare-template.js"
+        ],
+        "detachCommand": [
+          "node",
+          "/opt/harness/prepare-template.js",
+          "--detach"
+        ],
+        "npmTarballCacheIncluded": false
+      }
+    },
+    "filesystem": true,
+    "shell": true,
+    "pty": true,
+    "persistentProcesses": true,
+    "persistence": "idbfs",
+    "capabilities": [
+      "files",
+      "shell",
+      "pty",
+      "node",
+      "npm",
+      "static-export",
+      "browser-network",
+      "prepared-template"
+    ],
+    "network": "browser-fetch-cors",
+    "preview": [
+      "next-static-export"
+    ],
+    "requiresCrossOriginIsolation": true
+  },
+  "scope": "Combined private supervisor --max-opt=0 and main Next/webpack --max-opt=0; separate Next worker processes retain default tiers; normal WebAssembly and RegExp code generation retained.",
+  "sourceBefore": [
+    {
+      "path": "assets/proof.bin",
+      "kind": "file",
+      "size": 5,
+      "editable": true,
+      "revision": "b0874e92cddcf0a9556f1b2e0764ddafd5dfbd51e4a35f62ab8450244eac69b5"
+    },
+    {
+      "path": "next.config.mjs",
+      "kind": "file",
+      "size": 105,
+      "editable": true,
+      "revision": "a2a2ec4d0296bab449cd789f3d3aba45ea7492d390777c1f4a0e268d9b675fc6"
+    },
+    {
+      "path": "package-lock.json",
+      "kind": "file",
+      "size": 31690,
+      "editable": true,
+      "revision": "72013276c996cd104fc0f6c7883e74ec9073e0385ea61412f13b03eba62006f0"
+    },
+    {
+      "path": "package.json",
+      "kind": "file",
+      "size": 130,
+      "editable": true,
+      "revision": "d1d4b25a56d04dae202f206536be2dbcff3bded86f703d76f5d384689776f57a"
+    },
+    {
+      "path": "pages/index.js",
+      "kind": "file",
+      "size": 125,
+      "editable": true,
+      "revision": "f9b45f61f4d44190cad0dba01f260cc1f4ac7d2bae2583c45d7702ae941bfe9b"
+    },
+    {
+      "path": "persisted.txt",
+      "kind": "file",
+      "size": 26,
+      "editable": true,
+      "revision": "63656286c99aeff811c289d6277cba1f23de3dc528e1d1ae8edeb7f7d03a8e3f"
+    }
+  ],
+  "supervisorCoreReceipt": ".cache/browser-linux/chrome-20260928-supervisor-max-opt-core-passed.json",
+  "nativePreflight": ".cache/browser-linux/max-opt-main-native-receipt.json",
+  "warmState": "Fresh private supervisor-profile boot; verified small filesystem operations; no earlier Next build in this VM. Only generated .next/out directories cleared before this run.",
+  "deadlineMilliseconds": 900000,
+  "compileCache": "disabled",
+  "cpuProfiler": false,
+  "concurrentWork": "RootSafari staticPageUI; nootherVM; UXfixtureclosed23:50:34Z; noheavyhosttests/builds",
+  "preloadSource": "const before=process.execArgv.slice();const tagBefore=require(\"node:v8\").cachedDataVersionTag();const i=process.execArgv.indexOf(\"--max-opt=0\");if(i>=0)process.execArgv.splice(i,1);console.error(\"ASKK_PROFILE_SCOPE \"+JSON.stringify({pid:process.pid,role:i>=0?\"main-interpreter-tier\":\"child-default-tiers\",before,after:process.execArgv,tagBefore,tagAfter:require(\"node:v8\").cachedDataVersionTag()}));",
+  "preload": {
+    "path": ".cache/harness-diag/max-opt-main.cjs",
+    "revision": "0b500f74e33e6329506e502eb0c72296bfd4ac028510e00c6df16a503b55916a",
+    "size": 399,
+    "content": "const before=process.execArgv.slice();const tagBefore=require(\"node:v8\").cachedDataVersionTag();const i=process.execArgv.indexOf(\"--max-opt=0\");if(i>=0)process.execArgv.splice(i,1);console.error(\"ASKK_PROFILE_SCOPE \"+JSON.stringify({pid:process.pid,role:i>=0?\"main-interpreter-tier\":\"child-default-tiers\",before,after:process.execArgv,tagBefore,tagAfter:require(\"node:v8\").cachedDataVersionTag()}));",
+    "rev": "0b500f74e33e6329506e502eb0c72296bfd4ac028510e00c6df16a503b55916a",
+    "conflict": false
+  },
+  "preflight": {
+    "id": "max-opt-preflight",
+    "runtimeId": "browser-linux:cua-prepared-template-proof:c2w-node24-8f08d6cef80797be:33e1ffc5-a609-4c0a-bc5a-a13dc73d1447",
+    "code": 0,
+    "signal": null,
+    "cancelled": false,
+    "stdout": "node\u0000--max-opt=0\u0000/harness-control/supervisor.js\u0000",
+    "stderr": "",
+    "outputTruncated": false
+  },
+  "prepared": true,
+  "monitorBefore": {
+    "at": "2026-09-28T23:52:50.149Z",
+    "logOffset": 117,
+    "raw": "QEMU 8.2.0 monitor - type 'help' for more information\r\r\n(qemu) i\u001b[K\u001b[Din\u001b[K\u001b[D\u001b[Dinf\u001b[K\u001b[D\u001b[D\u001b[Dinfo\u001b[K\u001b[D\u001b[D\u001b[D\u001b[Dinfo \u001b[K\u001b[D\u001b[D\u001b[D\u001b[D\u001b[Dinfo j\u001b[K\u001b[D\u001b[D\u001b[D\u001b[D\u001b[D\u001b[Dinfo ji\u001b[K\u001b[D\u001b[D\u001b[D\u001b[D\u001b[D\u001b[D\u001b[Dinfo jit\u001b[K\r\r\nAccelerator settings:\r\r\none-insn-per-tb: off\r\r\n\r\r\nTranslation buffer state:\r\r\ngen code size       111967712/134151168\r\r\nTB count            77566\r\r\nTB avg target size  19 max=692 bytes\r\r\nTB avg host size    1260 bytes (expansion ratio: 64.6)\r\r\ncross page TB count 0 (0%)\r\r\ndirect jump count   47130 (60%) (2 jumps=36163 46%)\r\r\nTB hash buckets     29679/32768 (90.57% head buckets used)\r\r\nTB hash occupancy   38.83% avg chain occ. Histogram: [0,10)%|▃▆ █ ▆▄▁▂▁|[90,100]%\r\r\nTB hash avg chain   1.011 buckets. Histogram: 1|█▁|2\r\r\n\r\r\nStatistics:\r\r\nTB flush count      4\r\r\nTB invalidate count 28567\r\r\nTLB full flushes    0\r\r\nTLB partial flushes 286455\r\r\nTLB elided flushes  1418563\r\r\n[TCG profiler not compiled]\r\r\n(qemu) ",
+    "completedAt": "2026-09-28T23:53:03.594Z"
+  },
+  "command": {
+    "program": "env",
+    "args": [
+      "NODE_ENV=production",
+      "NEXT_TELEMETRY_DISABLED=1",
+      "NODE_DISABLE_COMPILE_CACHE=1",
+      "DEBUG=next:build:webpack-build",
+      "node",
+      "--max-opt=0",
+      "--require",
+      "/workspaces/cua-prepared-template-proof/.cache/harness-diag/max-opt-main.cjs",
+      "node_modules/next/dist/bin/next",
+      "build",
+      "--webpack"
+    ],
+    "cwd": "."
+  },
+  "output": [
+    {
+      "at": "2026-09-28T23:53:35.034Z",
+      "stream": "stderr",
+      "data": "ASKK_PROFILE_SCOPE {\"pid\":21,\"role\":\"main-interpreter-tier\",\"before\":[\"--max-opt=0\",\"--require\",\"/workspaces/cua-prepared-template-proof/.cache/harness-diag/max-opt-main.cjs\"],\"after\":[\"--require\",\"/workspaces/cua-prepared-template-proof/.cache/harness-diag/max-opt-main.cjs\"],\"tagBefore\":2292197379,\"tagAfter\":2292197379}\n"
+    },
+    {
+      "at": "2026-09-28T23:56:23.515Z",
+      "stream": "stdout",
+      "data": "▲ Next.js 16.3.6 (webpack)\n"
+    },
+    {
+      "at": "2026-09-28T23:56:30.375Z",
+      "stream": "stdout",
+      "data": "✓ Running next.config.mjs took 6.7s\n"
+    },
+    {
+      "at": "2026-09-28T23:56:38.215Z",
+      "stream": "stdout",
+      "data": "- Experiments (use with caution):\n"
+    },
+    {
+      "at": "2026-09-28T23:56:38.455Z",
+      "stream": "stdout",
+      "data": "  ⨯ webpackBuildWorker\n\n"
+    },
+    {
+      "at": "2026-09-28T23:56:47.755Z",
+      "stream": "stdout",
+      "data": "  Running TypeScript ...\n"
+    },
+    {
+      "at": "2026-09-28T23:56:48.235Z",
+      "stream": "stdout",
+      "data": "  Finished TypeScript in 474ms ...\n"
+    },
+    {
+      "at": "2026-09-28T23:56:48.895Z",
+      "stream": "stdout",
+      "data": "  Creating an optimized production build ...\n"
+    },
+    {
+      "at": "2026-09-28T23:56:49.735Z",
+      "stream": "stderr",
+      "data": "2026-09-28T23:55:21.256Z next:build:webpack-build building all compilers in same process\n"
+    },
+    {
+      "at": "2026-09-28T23:59:07.335Z",
+      "stream": "stderr",
+      "data": "2026-09-28T23:57:38.959Z next:build:webpack-build starting compiler null\n"
+    },
+    {
+      "at": "2026-09-28T23:59:07.555Z",
+      "stream": "stderr",
+      "data": "2026-09-28T23:57:39.139Z next:build:webpack-build starting server compiler\n"
+    }
+  ],
+  "startedAt": "2026-09-28T23:53:26.128Z",
+  "startedMs": 584572.5150000155,
+  "deadlineAt": "2026-09-29T00:08:26.128Z",
+  "overlaps": [
+    {
+      "kind": "packaging-tests",
+      "start": "2026-09-28T23:53Z",
+      "end": "2026-09-28T23:55Z",
+      "description": "Five synthetic packaging tests / 42 assertions, latest run 63ms; no real build, server, process, or model."
+    },
+    {
+      "kind": "package-dry-run",
+      "at": "2026-09-28T23:55Z",
+      "description": "Approximately 0.2s pinned 60MiB Bun/source hash validation; no compilation or server."
+    },
+    {
+      "kind": "safari-native-ui",
+      "approximateStart": "2026-09-28T23:52Z–23:53Z",
+      "end": "2026-09-28T23:57:23.903Z",
+      "description": "Owned Safari page/Inspector diagnosis, no VM/model; native focus overlap. Original user tabs retained."
+    },
+    {
+      "kind": "controlled-local-adapter-tests",
+      "approximateAt": "2026-09-29T00:03Z",
+      "description": "Four controlled LocalExecution tests, 7ms; no real sockets, servers, models, or builds."
+    }
+  ],
+  "deadlineObservation": {
+    "at": "2026-09-29T00:09:32.393Z",
+    "elapsedMilliseconds": 966262.3050000072,
+    "pending": [
+      {
+        "request": {
+          "id": "a498ff4f-3c2f-4a21-a5fb-44243415cd00",
+          "method": "job.cancel",
+          "jobId": "next-main-max-opt-zero"
+        },
+        "timedOut": true
+      }
+    ],
+    "visibility": {
+      "top": "visible",
+      "iframe": "visible"
+    }
+  },
+  "monitorAfter": {
+    "requestedAt": "2026-09-29T00:09:32.394Z",
+    "observedAt": "2026-09-29T00:10:15.986Z",
+    "raw": "",
+    "status": "No QEMU monitor prompt arrived during the recorded interval; no info jit command was sent."
+  },
+  "disposal": {
+    "requestedAt": "2026-09-29T00:10:15.986Z",
+    "boundMilliseconds": 30000,
+    "reason": "Diagnostic build deadline exceeded; cancellation control receipt still pending; explicitly ending sole owned VM.",
+    "result": "checkpoint-unacknowledged",
+    "error": {
+      "message": "Shutdown checkpoint was not acknowledged before disposal; persistence is unknown.",
+      "code": "PERSISTENCE_UNKNOWN"
+    },
+    "completedAt": "2026-09-29T00:10:46.005Z",
+    "remainingFrames": 0
+  },
+  "finalBeforeDisposal": {
+    "runtime": {
+      "runtimeId": "browser-linux:cua-prepared-template-proof:c2w-node24-8f08d6cef80797be:33e1ffc5-a609-4c0a-bc5a-a13dc73d1447",
+      "root": "/workspaces/cua-prepared-template-proof",
+      "imageId": "c2w-node24-8f08d6cef80797be",
+      "bootId": "33e1ffc5-a609-4c0a-bc5a-a13dc73d1447",
+      "kind": "browser-linux",
+      "state": "ready",
+      "health": "unresponsive",
+      "unresolvedRequests": [
+        {
+          "id": "a498ff4f-3c2f-4a21-a5fb-44243415cd00",
+          "method": "job.cancel",
+          "jobId": "next-main-max-opt-zero"
+        }
+      ],
+      "ready": false,
+      "toolchain": {
+        "kind": "node",
+        "version": "24.21.0",
+        "packageManager": "npm",
+        "preparedTemplate": {
+          "id": "next-default-72013276c996cd10",
+          "dependencies": {
+            "next": "16.3.6",
+            "react": "19.3.0",
+            "react-dom": "19.3.0"
+          },
+          "lockSha256": "72013276c996cd104fc0f6c7883e74ec9073e0385ea61412f13b03eba62006f0",
+          "prepareSha256": "01f761ac1f0350adc4aa1102c0fc0f58d01b3f7f45aeda981d03389ccf3d573c",
+          "npmGuardSha256": "2ce131db3a3a9c1349bf3808ed1645b0b7f9bdf427a14c5e9107c9337884b9d5",
+          "prepareCommand": [
+            "node",
+            "/opt/harness/prepare-template.js"
+          ],
+          "detachCommand": [
+            "node",
+            "/opt/harness/prepare-template.js",
+            "--detach"
+          ],
+          "npmTarballCacheIncluded": false
+        }
+      },
+      "filesystem": true,
+      "shell": true,
+      "pty": true,
+      "persistentProcesses": true,
+      "persistence": "idbfs",
+      "capabilities": [
+        "files",
+        "shell",
+        "pty",
+        "node",
+        "npm",
+        "static-export",
+        "browser-network",
+        "prepared-template"
+      ],
+      "network": "browser-fetch-cors",
+      "preview": [
+        "next-static-export"
+      ],
+      "requiresCrossOriginIsolation": true
+    },
+    "pending": [
+      {
+        "request": {
+          "id": "a498ff4f-3c2f-4a21-a5fb-44243415cd00",
+          "method": "job.cancel",
+          "jobId": "next-main-max-opt-zero"
+        },
+        "timedOut": true
+      }
+    ],
+    "jobs": [
+      "next-main-max-opt-zero"
+    ]
+  },
+  "error": "Error: Browser Linux was disposed",
+  "elapsedMs": 1039873.7549999952,
+  "endedAt": "2026-09-29T00:10:46.005Z",
+  "finalStatus": "FAILED: no successful Next build; deadline cancellation did not yield an exit receipt before explicit disposal",
+  "evidence": {
+    "privateReceiptSha256": "dd8138660073a7bdabfb929e2e6b90965e9e406eb16478c3ed63afe264e230fa",
+    "capture": "Actual Chrome CUA/CDP observation of a private diagnostic fixture; no host execution or relay authorized to this guest."
+  },
+  "loadedProfile": {
+    "imageId": "c2w-node24-8f08d6cef80797be",
+    "manifestSha256": "3d9b22df5005ca31dff046075f9078ae5674e2ffc9c80e929923e751bdcba094",
+    "runtimeWrapperSha256": "72e7a767ecff286e3f5601e944490d0d80271d70f9bd6af3a45e5b0c1d325f32",
+    "originalRuntimeWrapperSha256": "c865954dde97cdcf8470b40a5da0ba66a012a3bd831eb6fa1648ed2cbcf12e7a",
+    "browserAdapterSha256": "f9366a33b492a785b4d2b6d98870e56ed41be4d191e2461759e3375e50dd6281",
+    "fixtureSha256": "dcd06fc892d7da613a6c0c743b2d0443b371d8ed74fa4ec989761f2dbe56804e",
+    "preloadSha256": "0b500f74e33e6329506e502eb0c72296bfd4ac028510e00c6df16a503b55916a",
+    "supervisorCommand": [
+      "node",
+      "--max-opt=0",
+      "/harness-control/supervisor.js"
+    ],
+    "mainCachedDataVersionTag": 2292197379,
+    "nativeDefaultChildCachedDataVersionTag": 2521476671,
+    "nativePreflightSha256": "093e353087645495f30508e5fe8eccde7e5a99d995397e6d3822400400c9f4fe"
+  },
+  "characterization": {
+    "status": "failed",
+    "actualExitReceipt": false,
+    "exitCode": null,
+    "signal": null,
+    "successfulArtifact": false,
+    "terminationEvidence": "The build deadline requested cancellation. Neither a job exit nor cancellation receipt arrived before explicit VM disposal. Removing the iframe ended this runtime session; no SIGKILL or guest process exit is claimed.",
+    "persistence": "unknown: shutdown checkpoint was not acknowledged before disposal",
+    "lastObservedBuildStage": "server compiler started; no compiler completion logged",
+    "lastObservedStageAt": "2026-09-28T23:59:07.555Z",
+    "totalUntilDisposalMilliseconds": 1039873.7549999952,
+    "comparisonLimits": [
+      "Supervisor optimization tier and fresh boot state also changed, so this is not an isolated main-process flag performance comparison.",
+      "Native Safari UI focus and lightweight test/hash work overlapped; exact intervals are listed.",
+      "No valid post-build QEMU counters were obtained, so no translation-buffer delta or causal attribution is available.",
+      "Source and output snapshots after the run were not requested from the unresponsive runtime.",
+      "The minimal Pages Router fixture is not the representative App Router task-board milestone."
+    ]
+  }
+}

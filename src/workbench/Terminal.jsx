@@ -30,7 +30,11 @@ export default function Terminal({ controller, sessionId, output = '', outputLen
     observer.observe(node.current)
     resize()
     const input = terminal.onData(data => { if (interactive && sessionId) send(() => controller?.terminalInput?.(sessionId, data)) })
-    const unsubscribe = interactive && sessionId ? controller?.subscribeTerminal?.(sessionId, chunk => terminal.write(typeof chunk === 'string' ? chunk : chunk.data || chunk.output || '')) : null
+    const unsubscribe = interactive && sessionId ? controller?.subscribeTerminal?.(sessionId, chunk => {
+      if (chunk?.type === 'error') { const message = chunk.error || 'Terminal connection failed'; terminal.writeln(`\r\n[${message}]`); terminal.options.disableStdin = true; errors.current?.(message) }
+      else if (chunk?.type === 'exit' || chunk?.type === 'terminal.exit') { terminal.writeln(`\r\n[Terminal exited${Number.isInteger(chunk.code) ? ` with code ${chunk.code}` : ''}]`); terminal.options.disableStdin = true }
+      else terminal.write(typeof chunk === 'string' ? chunk : chunk.data || chunk.output || '')
+    }) : null
     return () => { live = false; observer.disconnect(); input.dispose(); unsubscribe?.(); delivery?.dispose(); terminal.dispose(); writer.current = null; instance.current = null }
   }, [controller, sessionId, interactive, theme])
   useEffect(() => {

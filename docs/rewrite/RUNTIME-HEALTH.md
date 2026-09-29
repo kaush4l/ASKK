@@ -56,6 +56,23 @@ This contract does not promise progress in a crashed, suspended or indefinitely
 slow guest. It preserves uncertainty and tracking so the UI cannot turn that
 condition into false success or silently execute the same action twice.
 
+## Local terminal channel loss
+
+The optional companion's terminal channel also distinguishes a process exit
+from a disconnected socket. Only a valid exit receipt supplies an exit code.
+Connection loss retains output and displays that the remote process exit is
+unknown. Input and resize reject when the socket is closed, the session exited,
+or explicit closure is pending; WebSocket's silent discard in the closed state
+must not look like delivered input. The visible Interrupt button uses this same
+admission path.
+
+Terminal closure is single-flight. A failed close receipt leaves the session
+tracked for explicit retry. Disposal attempts every owned cancellation and
+terminal closure, then rejects with `EXECUTION_SHUTDOWN_UNCONFIRMED` if any
+receipt failed. It does not claim that disconnected remote processes stopped.
+The adapter regressions use controlled sockets; real companion and browser
+checks remain separate evidence.
+
 ## Evidence boundaries
 
 The [actual Chrome MessageChannel receipt](evidence/runtime-health-message-channel-chrome.json)
