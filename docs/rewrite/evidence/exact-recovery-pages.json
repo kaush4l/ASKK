@@ -1,0 +1,68 @@
+{
+  "source": "ebd56b2d",
+  "deployment": "e768f5431159978598650d5b953314717b27127d",
+  "workflow": "https://github.com/kaush4l/ASKK/actions/runs/36598975970",
+  "workflowConclusion": "success",
+  "tests": {
+    "fullSuite": {
+      "passed": 1076,
+      "skipped": 1,
+      "failed": 0,
+      "assertions": 8197,
+      "files": 106
+    }
+  },
+  "export": {
+    "version": 1,
+    "basePath": "/ASKK",
+    "totalBytes": 905103990,
+    "fileCount": 220,
+    "runtimeId": "c2w-node24-38d093f4a38002db",
+    "artifactHash": "340653a37c6d1e87fe4e12aa3328f10bde787ed2e180393a28da63e664a55c57"
+  },
+  "checks": [
+    {
+      "path": "index.html",
+      "status": 200,
+      "sha256": "650f9859316f4d524b07172ca845c4e4b105dd80862f40b9c915a9e3cd69378b",
+      "matches": true
+    },
+    {
+      "path": "_next/static/chunks/app/page-e22877133f25833c.js",
+      "status": 200,
+      "sha256": "53cdad48f4d523654d0ba5fb79e4c4dc05f2e5a7e5d1657b6e0123df0dbfb145",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/core/write-observations.js",
+      "status": 200,
+      "sha256": "c55be100be9425e40ca5b9751b6845dc32c21081edc988338b5503911cbc1c55",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/builtin/workspace.js",
+      "status": 200,
+      "sha256": "7871f310db8d1d6e218a3fd919f0f3dad429a59ff2c4577b0b88ec62ac78b6ef",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/runtime/agent.worker.js",
+      "status": 200,
+      "sha256": "78a58b8e68221ec2f2caffddd77ff6a8c8016ecd52402a4cfb7efce24557faf2",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/workspace/controller.js",
+      "status": 200,
+      "sha256": "97b1a20d4de5d6a5f81e1e991a60a9dc3849f1c134d63a8da0ee0630faa27547",
+      "matches": true
+    },
+    {
+      "path": "packages/starter/agents/builder/agent.md",
+      "status": 200,
+      "sha256": "36a8f455d58221b3d079807650972b892e1c27acb82478b9cb43bec2f89135ea",
+      "matches": true
+    }
+  ],
+  "scope": "Hosted byte checks and full automated suite. Actual 4B model recovered from missing-read rejections and produced passing source/tests, but overall run was incomplete: not all required checks were rerun after the final source change. No general reliability, Safari, iPhone, VoiceOver, or Browser Linux acceptance."
+}
