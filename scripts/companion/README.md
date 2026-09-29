@@ -58,6 +58,8 @@ The URL and token are written to the exclusive mode 0600 pairing file. Console o
 
 The process remains in the foreground. Ctrl+C or SIGTERM closes its server, cancels owned jobs and terminals, and removes its own unchanged pairing file. No auto-restart occurs. A crash/SIGKILL can leave a stale pairing file; after confirming the old process has stopped, remove that specific file before starting again. Each start creates a fresh token and runtime session; previous build verification does not transfer to it.
 
+Command jobs own their original POSIX process group. When the command leader exits or cancellation begins, the companion terminates remaining members before acknowledging completion. Keep a long-running command in the foreground, or use a separate terminal session; backgrounding work does not extend a completed job's lifetime. Cleanup is bounded and an unconfirmed cleanup produces an error, not a successful command receipt. Descendants that leave the original group are outside this guarantee. There are no process-count, memory or CPU quotas; native execution retains your user's host privileges.
+
 ## Owned command runtime
 
 The launcher calls the packaged `runtime/bun` by absolute path with automatic `.env` loading disabled, a fixed package Bun configuration and no automatic package install. Child jobs and PTYs receive a deliberately selected environment, with package `bin` before macOS system paths. Provider secrets, inherited pairing tokens and Node/Bun preload flags are omitted. The native controller uses a non-login `/bin/sh -c`; the PTY uses non-login `/bin/sh`, so shell profiles do not reorder that PATH.

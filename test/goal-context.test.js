@@ -2,6 +2,22 @@ import { test, expect } from 'bun:test'
 import { contexts } from '../src/core/context.js'
 import { normalizeCompletion } from '../src/core/completion.js'
 import { resolveCommandReference } from '../src/core/command-reference.js'
+import { describeToolchain } from '../src/execution/toolchain.js'
+
+test('workspace context refreshes adapter command facts without treating them as verification', async () => {
+  const [piece] = contexts(['workspace'])
+  let current = { target: 'local', toolchain: describeToolchain({ kind: 'bun', version: 'fixture' }) }
+  const engine = { ctx: { request: async () => current } }
+  const first = await piece.render(engine)
+  expect(first).toContain('bun test')
+  expect(first).toContain('bun run <name>')
+  expect(first).toContain('"executionVerified":false')
+  current = { target: 'browser', toolchain: describeToolchain({ kind: 'node', packageManager: 'npm' }) }
+  const next = await piece.render(engine)
+  expect(next).toContain('npm run <name>')
+  expect(next).not.toContain('bun test')
+  expect(JSON.parse(next.split('\n')[1]).referenceCompletion).toEqual({ checks: [] })
+})
 
 test('configured goal context reads the latest owner record every attempt and omits cleared goals', async () => {
   let current = { text: '', revision: 0 }

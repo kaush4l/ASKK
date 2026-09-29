@@ -5,6 +5,7 @@ import { dirname, join, resolve } from 'node:path'
 
 export const payload = Object.freeze([
   ['host/companion.js', 'host/companion.js', 0o644],
+  ['host/process-group.js', 'host/process-group.js', 0o644],
   ['src/core/companion-manifest.js', 'src/core/companion-manifest.js', 0o644],
   ['scripts/companion/launch.js', 'scripts/companion/launch.js', 0o644],
   ['scripts/companion/options.js', 'scripts/companion/options.js', 0o644],

@@ -2576,10 +2576,11 @@ test('required command completion rejects replaced evidence during fingerprintin
 
 test('cancelled or timed out required commands cannot pass even with zero exit codes', async () => {
   const { controller, browser, run, check } = await requiredCommandFixture(['bun run test'])
-  for (const flags of [{ cancelled: true }, { timedOut: true }]) {
+  for (const flags of [{ cancelled: true }, { timedOut: true }, { cancelled: true, timedOut: true }]) {
     browser.onJob = async () => ({ code: 0, ...flags })
     await controller.runCommand('bun run test', { runId: run.id })
     expect((await check()).ok).toBe(false)
+    expect(controller.getSnapshot().commands.at(-1)).toMatchObject({ status: flags.timedOut ? 'failed' : 'cancelled', timedOut: flags.timedOut === true, exitCode: 0 })
   }
 })
 
@@ -2653,4 +2654,13 @@ test('relay identity changes clear discovered model choices', async () => {
   expect(controller.getSnapshot().model.discovery.ids).toEqual(['fixture-model', 'small-model'])
   hub.emit({ type: 'bridge', state: { status: 'down', url: 'https://127.0.0.1:7717', error: 'Relay stopped' } })
   expect(controller.getSnapshot().model.discovery).toBeNull()
+})
+
+
+test('a timed out cancellation retains its cause and exit when workspace reconciliation fails', async () => {
+  const { controller, browser, files } = await fixture()
+  browser.onJob = async () => ({ code: -1, signal: 'SIGTERM', cancelled: true, timedOut: true })
+  files.checkpoint = async () => { throw new Error('snapshot unavailable') }
+  await expect(controller.runCommand('fixture command')).rejects.toThrow('snapshot unavailable')
+  expect(controller.getSnapshot().commands.at(-1)).toMatchObject({ status: 'failed', stage: 'reconciliation-failed', exitCode: -1, signal: 'SIGTERM', cancelled: true, timedOut: true, executionEnded: true })
 })

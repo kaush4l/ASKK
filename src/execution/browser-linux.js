@@ -1,4 +1,5 @@
 /** Browser Linux execution adapter. Trusted runtime frame, one persistent guest per project. */
+import { describeToolchain } from './toolchain.js'
 const uid = () => globalThis.crypto.randomUUID()
 const failure = (message, code = 'BROWSER_RUNTIME_ERROR') => Object.assign(new Error(message), { code })
 const readOnlyRequests = new Set(['fs.list', 'fs.read', 'fs.snapshot', 'runtime.metrics'])
@@ -26,7 +27,7 @@ export class BrowserLinuxExecution {
 
   describeCapabilities() {
     return { runtimeId: this.runtimeId, root: this.info?.workspace ?? `/workspaces/${this.projectId}`, imageId: this.info?.imageId ?? null, bootId: this.info?.instanceId ?? null, kind: 'browser-linux', state: this.state, health: this.health, unresolvedRequests: this.unresolvedRequests(), ready: this.state === 'ready' && this.health === 'responsive',
-      toolchain: { kind: 'node', version: this.info?.node ?? null, packageManager: 'npm', preparedTemplate: this.info?.preparedTemplate ?? null },
+      toolchain: describeToolchain({ kind: 'node', version: this.info?.node ?? null, packageManager: 'npm', preparedTemplate: this.info?.preparedTemplate ?? null }),
       filesystem: true, shell: true, pty: true, persistentProcesses: true, persistence: 'idbfs',
       capabilities: ['files', 'shell', 'pty', 'node', 'npm', 'static-export', 'browser-network', ...(this.info?.preparedTemplate ? ['prepared-template'] : [])],
       network: this.networkRelay ? 'companion-network-relay' : this.state === 'ready' ? 'browser-fetch-cors' : 'unavailable', preview: ['next-static-export'], requiresCrossOriginIsolation: true }

@@ -1,6 +1,22 @@
 import { expect, test } from 'bun:test'
 import { LocalExecution } from '../src/execution/local.js'
 
+test('command cleanup errors reject the job even if a zero exit follows', async () => {
+  const local = new LocalExecution()
+  const requests = []
+  local.request = async (path, body) => {
+    requests.push(path)
+    if (path === '/jobs/cancel') return Response.json({ ok: false })
+    return new Response([
+      { type: 'error', jobId: body.id, error: 'Original process group cleanup unconfirmed', code: 'PROCESS_CLEANUP_UNCONFIRMED', cleanup: { ok: false } },
+      { type: 'exit', jobId: body.id, code: 0 },
+    ].map(row => JSON.stringify(row)).join('\n'))
+  }
+  await expect(local.startJob({ id: 'cleanup', program: 'fixture' })).rejects.toMatchObject({ code: 'PROCESS_CLEANUP_UNCONFIRMED', cleanup: { ok: false } })
+  expect(requests).toEqual(['/jobs/run', '/jobs/cancel'])
+  expect(local.jobs.size).toBe(0)
+})
+
 function fixture() {
   const sockets = [], requests = []
   const local = new LocalExecution({ createSocket() {

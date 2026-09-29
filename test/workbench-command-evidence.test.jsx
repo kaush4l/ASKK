@@ -34,3 +34,16 @@ test('selected command error text is escaped and bounded without changing ordina
   expect(renderToStaticMarkup(<CommandEvidence command={{ status: 'done', stage: 'complete', exitCode: 0 }}/>)).toBe('')
   expect(renderToStaticMarkup(<CommandEvidence/>)).toBe('')
 })
+
+
+test('a timed out cancellation reports the time limit and recorded exit without claiming cleanup', () => {
+  const command = { status: 'failed', stage: 'complete', cancelled: true, timedOut: true, exitCode: -1 }
+  expect(commandStatusLabel(command)).toBe('Time limit reached · exit code -1')
+  const markup = renderToStaticMarkup(<CommandEvidence command={command}/>)
+  expect(markup).toContain('role="status"')
+  expect(markup).toContain('Time limit reached · exit code -1')
+  expect(markup).not.toContain('cancelled')
+  expect(markup).not.toContain('stopped')
+  expect(commandStatusLabel({ ...command, stage: 'reconciliation-failed' })).toBe('Time limit reached · exit code -1 · workspace sync failed')
+  expect(commandStatusLabel({ ...command, stage: 'outcome-unknown' })).toBe('Outcome unknown · exit unconfirmed')
+})

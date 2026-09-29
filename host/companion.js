@@ -6,6 +6,7 @@ import { resolve, relative, dirname, join, extname } from 'node:path'
 import { spawn } from 'node:child_process'
 import { StringDecoder } from 'node:string_decoder'
 import { createCompanionManifest } from '../src/core/companion-manifest.js'
+import { cleanupProcessGroup } from './process-group.js'
 
 const digest = value => createHash('sha256').update(value).digest('hex')
 const failure = (message, status = 400, code = 'request.invalid') => Object.assign(new Error(message), { status, code })
@@ -65,7 +66,7 @@ export async function createCompanion(options = {}) {
   const identity = { ok: true, root, runtimeId, capabilities, modelRelay, runtime: 'bun', version: Bun.version }
   const capabilityManifest = createCompanionManifest(identity, { os: process.platform, arch: process.arch })
   const jobs = new Map(); const terminals = new Map(); const tickets = new Map(); const locks = new Map()
-  let closing = false
+  let closing = false; let closePromise
   async function inside(path = '.') {
     if (typeof path !== 'string' || path.includes('\0')) throw failure('Path must be a string without NUL bytes')
     const wanted = resolve(root, path)
@@ -99,10 +100,9 @@ export async function createCompanion(options = {}) {
   }
   function requireCapability(capability) { if (!capabilities.includes(capability)) throw failure(`${capability} is disabled on this companion`, 403, 'capability.unavailable') }
   function kill(job) {
-    if (job.exited || job.cancelled) return
+    if (job.finished) return
     job.cancelled = true
-    try { process.kill(-job.pid, 'SIGTERM') } catch { try { job.child.kill('SIGTERM') } catch {} }
-    const timer = setTimeout(() => { try { process.kill(-job.pid, 'SIGKILL') } catch {} }, 1500); timer.unref?.()
+    job.cleanup()
   }
   function command(body, request) {
     requireCapability('exec')
@@ -113,19 +113,63 @@ export async function createCompanion(options = {}) {
       if (closing) throw failure('The companion is closing', 503)
       const id = String(body.id ?? crypto.randomUUID()); if (jobs.has(id)) throw failure('Command identity is already in use', 409)
       const child = spawn(body.program, body.args ?? [], { cwd, detached: true, env: childEnv, stdio: ['ignore', 'pipe', 'pipe'] })
-      const job = { id, child, pid: child.pid, exited: false, cancelled: false }; jobs.set(id, job)
+      const job = { id, child, pid: child.pid, finished: false, cancelled: false }; jobs.set(id, job)
       let settle; job.closed = new Promise(resolve => { settle = resolve })
+      let spawned; const ready = new Promise(resolve => { spawned = resolve })
+      child.once('spawn', () => spawned(true))
+      child.once('error', () => spawned(false))
       let sequence = 0; let bytes = 0; let closed = false; let sink
       const encoder = new TextEncoder(); const emit = event => { if (!closed) { try { sink.enqueue(encoder.encode(`${JSON.stringify({ ...event, jobId: id, runtimeId, sequence: ++sequence })}\n`)) } catch { closed = true; kill(job) } } }
       const abort = () => kill(job); request.signal.addEventListener('abort', abort, { once: true })
       const timeout = setTimeout(() => { job.timedOut = true; abort() }, Math.min(seconds, 1800) * 1000)
       const stream = new ReadableStream({ start(controller) {
-        sink = controller; emit({ type: 'started', pid: child.pid })
+        sink = controller
         const decoders = { stdout: new StringDecoder('utf8'), stderr: new StringDecoder('utf8') }; let capped = false
         const output = (stream, data) => { bytes += data.length; if (bytes > 16 * 1024 * 1024) { if (!capped) emit({ type: 'output', stream: 'stderr', data: '\nOutput limit reached; command stopped.\n' }); capped = true; kill(job); return } const text = decoders[stream].write(data); if (text) emit({ type: 'output', stream, data: text }) }
         child.stdout.on('data', data => output('stdout', data)); child.stderr.on('data', data => output('stderr', data))
         child.on('error', error => emit({ type: 'output', stream: 'stderr', data: error.message }))
-        child.on('close', (code, signal) => { job.exited = true; clearTimeout(timeout); request.signal.removeEventListener('abort', abort); for (const [stream, decoder] of Object.entries(decoders)) { const data = decoder.end(); if (data && !capped) emit({ type: 'output', stream, data }) } emit({ type: 'exit', code: code ?? -1, signal, cancelled: job.cancelled, timedOut: Boolean(job.timedOut) }); if (!closed) { closed = true; controller.close() } jobs.delete(id); settle() })
+        let closeChild; const childClosed = new Promise(resolve => { closeChild = resolve })
+        job.cleanup = () => {
+          if (job.cleaning) return job.cleaning
+          clearTimeout(timeout)
+          job.cleaning = (async () => {
+            const didSpawn = await ready
+            let cleanup = didSpawn ? await cleanupProcessGroup(job.pid) : { ok: true, scope: 'original-process-group', notStarted: true }
+            let outcome
+            if (cleanup.ok) {
+              // A pipe retained outside this group must not hold cancellation open forever.
+              let drainTimer
+              outcome = await Promise.race([childClosed, new Promise(resolve => { drainTimer = setTimeout(() => resolve(null), 1000) })])
+              clearTimeout(drainTimer)
+              if (!outcome) cleanup = { ok: false, scope: 'original-process-group', error: 'Command stream closure could not be confirmed after original process-group cleanup.' }
+            }
+            job.finished = true
+            request.signal.removeEventListener('abort', abort)
+            if (cleanup.ok) {
+              for (const [stream, decoder] of Object.entries(decoders)) { const data = decoder.end(); if (data && !capped) emit({ type: 'output', stream, data }) }
+              emit({ type: 'exit', code: outcome.code ?? -1, signal: outcome.signal, cancelled: job.cancelled, timedOut: Boolean(job.timedOut), cleanup })
+              jobs.delete(id)
+            } else {
+              emit({ type: 'error', code: 'command.cleanup_unconfirmed', error: cleanup.error, cleanup })
+              child.stdout.destroy(); child.stderr.destroy()
+              // Keep the uncertain job identity reserved; later cancellation cannot claim success.
+            }
+            if (!closed) { closed = true; controller.close() }
+            settle(cleanup)
+          })().catch(error => {
+            const cleanup = { ok: false, scope: 'original-process-group', error: `Command cleanup failed: ${error.message || String(error)}` }
+            job.finished = true
+            clearTimeout(timeout); request.signal.removeEventListener('abort', abort)
+            emit({ type: 'error', code: 'command.cleanup_unconfirmed', error: cleanup.error, cleanup })
+            try { child.stdout.destroy(); child.stderr.destroy() } catch {}
+            if (!closed) { closed = true; try { controller.close() } catch {} }
+            settle(cleanup)
+          })
+          return job.cleaning
+        }
+        child.once('exit', () => job.cleanup())
+        child.once('close', (code, signal) => { closeChild({ code, signal }); job.cleanup() })
+        emit({ type: 'started', pid: child.pid })
         if (request.signal.aborted) abort()
       }, cancel() { closed = true; kill(job) } })
       return new Response(stream, { headers: { 'content-type': 'application/x-ndjson', 'cache-control': 'no-store' } })
@@ -156,7 +200,7 @@ export async function createCompanion(options = {}) {
       if (body.runtimeId && body.runtimeId !== runtimeId) throw failure('The execution environment restarted or changed. Reconnect and explicitly bind this workspace before continuing.', 409, 'RUNTIME_CHANGED')
       if (path === '/whoami') return respond({ ...identity, capabilityManifest })
       if (path === '/jobs/run') { server.timeout(request, 0); const response = await command(body, request); for (const [key, value] of Object.entries(headers)) response.headers.set(key, value); return response }
-      if (path === '/jobs/cancel') { requireCapability('exec'); const job = jobs.get(body.id); if (job) { kill(job); await job.closed } return respond({ ok: Boolean(job) }) }
+      if (path === '/jobs/cancel') { requireCapability('exec'); const job = jobs.get(body.id); if (job) { kill(job); const cleanup = await job.closed; if (!cleanup.ok) throw failure(cleanup.error, 500, 'command.cleanup_unconfirmed') } return respond({ ok: Boolean(job) }) }
       if (path.startsWith('/workspace/')) {
         requireCapability('fs')
         if (path === '/workspace/list') return respond({ files: await list(body.path ?? '') })
@@ -240,7 +284,19 @@ export async function createCompanion(options = {}) {
   }
   const server = Bun.serve({ hostname: '127.0.0.1', port: options.port ?? 7717, tls, maxRequestBodySize: 16 * 1024 * 1024, fetch: route,
     websocket: { open(ws) { terminals.get(ws.data.id)?.attach(ws) }, message(ws, raw) { const terminal = terminals.get(ws.data.id); if (!terminal) return; try { const event = JSON.parse(String(raw)); if (event.type === 'input') terminal.process.terminal.write(String(event.data).slice(0, 65536)); if (event.type === 'resize') terminal.process.terminal.resize(Math.max(20, Math.min(Number(event.cols) || 80, 400)), Math.max(5, Math.min(Number(event.rows) || 24, 200))) } catch { ws.close(1008, 'Invalid terminal message') } }, close(ws) { terminals.get(ws.data.id)?.detach() } } })
-  return { server, token, root, url: `${tls ? 'https' : 'http'}://127.0.0.1:${server.port}`, async close() { if (closing) return; closing = true; const pending = [...jobs.values()].map(job => { kill(job); return job.closed }); for (const id of [...terminals.keys()]) pending.push(closeTerminal(id)); server.stop(true); await Promise.allSettled(pending) } }
+  return { server, token, root, url: `${tls ? 'https' : 'http'}://127.0.0.1:${server.port}`, close() {
+    if (closePromise) return closePromise
+    closing = true
+    closePromise = (async () => {
+      const pending = [...jobs.values()].map(job => { kill(job); return job.closed.then(cleanup => { if (!cleanup.ok) throw new Error(cleanup.error) }) })
+      for (const id of [...terminals.keys()]) pending.push(closeTerminal(id))
+      server.stop(true)
+      const outcomes = await Promise.allSettled(pending)
+      const errors = outcomes.filter(outcome => outcome.status === 'rejected').map(outcome => outcome.reason)
+      if (errors.length) throw new AggregateError(errors, 'Companion shutdown could not confirm cleanup')
+    })()
+    return closePromise
+  } }
 }
 
 if (import.meta.main) {
