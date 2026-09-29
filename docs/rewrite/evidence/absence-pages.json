@@ -1,0 +1,72 @@
+{
+  "source": "cd59257e",
+  "deployment": "35b7a11b726ef3b5af02657e45382464700e4966",
+  "workflow": "https://github.com/kaush4l/ASKK/actions/runs/36597511610",
+  "workflowConclusion": "success",
+  "tests": {
+    "fullSuite": {
+      "passed": 1074,
+      "skipped": 1,
+      "failed": 0,
+      "assertions": 8171,
+      "files": 106
+    },
+    "additionalControllerRegression": {
+      "passed": 150,
+      "failed": 0
+    }
+  },
+  "export": {
+    "version": 1,
+    "basePath": "/ASKK",
+    "totalBytes": 905102945,
+    "fileCount": 220,
+    "runtimeId": "c2w-node24-38d093f4a38002db",
+    "artifactHash": "119a8962aa92dd83dee4be62f84a88a92472b18ecffc134f6317fdfe7e902c14"
+  },
+  "checks": [
+    {
+      "path": "index.html",
+      "status": 200,
+      "sha256": "fe43d76cd0ef40a59941766092643fe032f8524f02c52b01f699d8bb7e39e129",
+      "matches": true
+    },
+    {
+      "path": "_next/static/chunks/app/page-15f5d50a24b16243.js",
+      "status": 200,
+      "sha256": "a9746b1f3cdeee8f099b98ed5e6567bde80189a3e1dcd23d85a5f9171f6f7dde",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/core/write-observations.js",
+      "status": 200,
+      "sha256": "858b30fe0f0781bcc66ab9462aa76ae6526a81e4975b2eb11df1efdbe60ed65b",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/builtin/workspace.js",
+      "status": 200,
+      "sha256": "7871f310db8d1d6e218a3fd919f0f3dad429a59ff2c4577b0b88ec62ac78b6ef",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/runtime/agent.worker.js",
+      "status": 200,
+      "sha256": "78a58b8e68221ec2f2caffddd77ff6a8c8016ecd52402a4cfb7efce24557faf2",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/workspace/controller.js",
+      "status": 200,
+      "sha256": "97b1a20d4de5d6a5f81e1e991a60a9dc3849f1c134d63a8da0ee0630faa27547",
+      "matches": true
+    },
+    {
+      "path": "packages/starter/agents/builder/agent.md",
+      "status": 200,
+      "sha256": "2f14f166dab5b016acb0d4239324a775e51dda732aac023c1114d649dde3a97b",
+      "matches": true
+    }
+  ],
+  "scope": "Exact hosted bytes and automated contract/worker/controller tests. 4B non-thinking scaffold diagnostic failed overall but used one confirmed absence observation to create working source; package and tests remained absent. Separate pre-fix non-thinking trial also failed. No Safari, iPhone, VoiceOver or Browser Linux acceptance."
+}
