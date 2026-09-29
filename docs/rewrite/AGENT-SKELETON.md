@@ -206,3 +206,11 @@ The desk selects the latest task-owned receipt for every configured command. All
 A passed suite proves only the assertions its commands actually execute. It does not make model-authored tests independent or comprehensive. The existing `workspace.command` option still means one successful command, while `workspace.artifact` retains its artifact-specific checks. Dashboard cards separate **Agent finished** from the scope and outcome of the latest recorded completion evidence. Full configuration and receipts remain in the inspector.
 
 The real-model evaluator accepts `--completion path/to/contract.json`; omitted configuration preserves its previous baseline. Withheld behavior checks remain outside the model's repair feedback. The native production-worker fixture tests completion rejection for a missing required command, normal guarded execution, and accepted receipts after all commands run.
+
+### Local evaluation boundaries
+
+Project-loop trials execute in a fresh OS temporary directory outside the harness/evidence tree. This avoids package managers finding the harness's ancestor scripts when a model has not created its own manifest. It is a working-directory boundary, not an operating-system sandbox. Native commands still have the companion process's host authority.
+
+`execution-environment.json` and the evaluation record retain the actual runtime identity/root. After shutdown, final files are copied to the requested evidence directory's `project` archive before the temporary root is removed. Archive failure retains the temporary source for recovery. Agent commands use a 30-second deadline; independent checks use 10 seconds, matching the execution API's seconds contract.
+
+Cancellation during an active command and overlap with subsequent independent checks still need a dedicated lifecycle audit. Existing cancellation archival coverage does not prove that ordering. Do not treat aborted or manually interrupted trials as quality comparisons.

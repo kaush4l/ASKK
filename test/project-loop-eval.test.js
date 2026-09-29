@@ -1,5 +1,6 @@
-import { expect, test } from 'bun:test'
+import { expect, spyOn, test } from 'bun:test'
 import { evaluateProjectLoop, repairCycle, evaluationSampling } from '../scripts/evals/project-loop.js'
+import { LocalExecution } from '../src/execution/local.js'
 import { mkdtemp, writeFile, readFile, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -36,6 +37,8 @@ test('a rejected proposal, cancelled command or ambiguous call is not a reproduc
 
 test('agent commands without a manifest cannot run the archive ancestor test script', async () => {
   const root = await mkdtemp(join(tmpdir(), 'askk-eval-ancestor-'))
+  const jobs = [], startJob = LocalExecution.prototype.startJob
+  const jobSpy = spyOn(LocalExecution.prototype, 'startJob').mockImplementation(function (options) { jobs.push(options); return startJob.call(this, options) })
   const requests = []
   const sampling = { temperature: 0.6, top_p: 0.95, top_k: 20, min_p: 0, seed: 42 }
   const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: async request => {
@@ -58,8 +61,13 @@ test('agent commands without a manifest cannot run the archive ancestor test scr
     expect(requests.length).toBeGreaterThan(0)
     for (const request of requests) for (const [key, value] of Object.entries(sampling)) expect(request[key]).toBe(value)
     expect(result.passed).toBe(false)
+    expect(evidence.checks.find(check => check.name === 'agent ran the declared test script against delivered source')?.passed).toBe(false)
     expect(checks).toHaveLength(2)
     expect(evidence.commands.map(command => command.command)).toEqual(['bun run test', 'pwd'])
+    expect(jobs.filter(job => job.program === '/bin/sh').map(job => job.timeout)).toEqual([30, 30])
+    const independentJobs = jobs.filter(job => job.program === process.execPath)
+    expect(independentJobs.length).toBeGreaterThan(0)
+    expect(independentJobs.every(job => job.timeout === 10)).toBe(true)
     expect(evidence.commands[0].code).not.toBe(0)
     const environment = evidence.executionEnvironment
     for (const key of ['token', 'url', 'authorization', 'headers']) expect(environment).not.toHaveProperty(key)
@@ -77,7 +85,7 @@ test('agent commands without a manifest cannot run the archive ancestor test scr
       expect(check.reason).toContain('command not started')
       expect(check.output).toBeUndefined()
     }
-  } finally { server.stop(true); await rm(root, { recursive: true, force: true }) }
+  } finally { jobSpy.mockRestore(); server.stop(true); await rm(root, { recursive: true, force: true }) }
 }, 15000)
 
 test('a cancelled agent command archives saved source and removes its execution root', async () => {

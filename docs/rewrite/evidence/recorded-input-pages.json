@@ -1,0 +1,27 @@
+{
+  "source": "694eec17",
+  "deployment": "3ea0aa42daa99ddec36dc417302842a7e89f06b5",
+  "workflow": "https://github.com/kaush4l/ASKK/actions/runs/36572547684",
+  "workflowConclusion": "success",
+  "checks": [
+    {
+      "path": "index.html",
+      "status": 200,
+      "sha256": "6c3a1a49e1882f7ef46aac797841b759b8ad4a8ab962996c7dceed4dc01e351a",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/workspace/controller.js",
+      "status": 200,
+      "sha256": "efcd7c50cdeff853196530d9b4d4a94f5dc2037e844aba74addd0b6f69501365",
+      "matches": true
+    },
+    {
+      "path": "_next/static/chunks/app/page-8dd8bc3af0c1f614.js",
+      "status": 200,
+      "sha256": "19aaf07ec416ebcd9f1a1cfb2a83f5007632ab4573a193b02b3289bed66c3bb2",
+      "matches": true
+    }
+  ],
+  "scope": "Hosted byte verification of recorded input inspector changes; no live browser or native Safari/iPhone acceptance. Evaluator-only timeout corrections follow in a separate source commit."
+}

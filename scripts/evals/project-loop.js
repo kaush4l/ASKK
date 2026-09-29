@@ -11,6 +11,7 @@ import { LocalExecution } from '../../src/execution/local.js'
 import { createCompanion } from '../../host/companion.js'
 import { listing } from '../listing.js'
 import { createEvaluationWorkspace, ranDeclaredTests, bunTestReport } from './workspace-evidence.js'
+const INDEPENDENT_CHECK_TIMEOUT_SECONDS = 10
 
 const cases = {
   script: {
@@ -148,14 +149,14 @@ export async function evaluateProjectLoop({ baseUrl, model, directory, caseName 
     const deliveredRevision = await workspace.revision()
     for (const [index, args] of definition.checks.entries()) {
       let output = ''
-      const result = await execution.startJob({ program: process.execPath, args, timeout: 10000, onOutput: event => { if (event.stream !== 'stderr') output += event.data ?? event.text ?? '' } })
+      const result = await execution.startJob({ program: process.execPath, args, timeout: INDEPENDENT_CHECK_TIMEOUT_SECONDS, onOutput: event => { if (event.stream !== 'stderr') output += event.data ?? event.text ?? '' } })
       checks.push({ args, code: result.code, cancelled: result.cancelled, timedOut: result.timedOut, output: output.trim(), passed: !result.cancelled && !result.timedOut && (definition.expected[index] === null ? Number.isInteger(result.code) && result.code !== 0 && checks.every(check => check.passed) : result.code === 0 && output.trim() === definition.expected[index]) })
     }
     if (caseName === 'project') {
       let declared = false
       try { const pkg = JSON.parse((await execution.read('package.json')).content); declared = typeof pkg.scripts?.test === 'string' && Boolean(pkg.scripts.test.trim()) } catch {}
       checks.push({ name: 'declared test script', passed: declared })
-      checks.push({ name: 'agent ran the declared test script against delivered source', passed: ranDeclaredTests(commands, run, deliveredRevision) })
+      checks.push({ name: 'agent ran the declared test script against delivered source', passed: declared && ranDeclaredTests(commands, run, deliveredRevision) })
       const reportPath = join(root, `bun-tests-${crypto.randomUUID()}.xml`)
       for (const args of [['run', 'test'], ['test', '--reporter=junit', `--reporter-outfile=${reportPath}`]]) {
         // Bun can resolve a missing package script from an ancestor project.
@@ -165,7 +166,7 @@ export async function evaluateProjectLoop({ baseUrl, model, directory, caseName 
           continue
         }
         let output = ''
-        const result = await execution.startJob({ program: process.execPath, args, timeout: 10000, onOutput: event => { output += event.data ?? event.text ?? '' } })
+        const result = await execution.startJob({ program: process.execPath, args, timeout: INDEPENDENT_CHECK_TIMEOUT_SECONDS, onOutput: event => { output += event.data ?? event.text ?? '' } })
         const report = args[0] === 'test' ? bunTestReport(await readFile(reportPath, 'utf8').catch(() => '')) : null
         checks.push({ name: args[0] === 'run' ? 'independent package test script' : 'independent Bun test discovery', args, code: result.code, output, report, passed: result.code === 0 && !result.cancelled && !result.timedOut && (report === null || report.passed) })
       }

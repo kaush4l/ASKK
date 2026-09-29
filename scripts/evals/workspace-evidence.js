@@ -1,5 +1,6 @@
 import { selectRequiredCommands, requiredCommandReason } from '../../src/core/command-checks.js'
 import { normalizeCompletion } from '../../src/core/completion.js'
+const AGENT_COMMAND_TIMEOUT_SECONDS = 30
 /** Real execution receipts for evaluations; no model text can create completion evidence. */
 export function createEvaluationWorkspace(execution) {
   const commands = []
@@ -33,7 +34,7 @@ export function createEvaluationWorkspace(execution) {
         receipt.inputRevision = await revision()
         if (writing || epoch !== inputEpoch) throw new Error('Source changed while preparing the command; run it again')
         receipt.stage = 'running'
-        const result = await execution.startJob({ id, program: '/bin/sh', args: ['-c', command], timeout: 30000, onOutput: event => { output += event.data ?? event.text ?? '' } })
+        const result = await execution.startJob({ id, program: '/bin/sh', args: ['-c', command], timeout: AGENT_COMMAND_TIMEOUT_SECONDS, onOutput: event => { output += event.data ?? event.text ?? '' } })
         if (result.runtimeId !== bound.runtimeId) throw new Error('Command receipt came from a different execution runtime')
         const completedRevision = await revision()
         Object.assign(receipt, result, { id, output, completedRevision, completedEpoch: epoch, finishedAt: Date.now(), sourceUnchanged: !writing && epoch === inputEpoch && receipt.inputRevision === completedRevision, stage: 'complete' })

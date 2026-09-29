@@ -21,6 +21,13 @@ test('completion belongs to a task and records exact checked source', async () =
   expect(ranDeclaredTests(f.workspace.commands, owner, 'a')).toBe(true)
   expect(ranDeclaredTests(f.workspace.commands, owner, 'b')).toBe(false)
 })
+test('agent command timeout is forwarded in LocalExecution seconds', async () => {
+  const f = fixture()
+  let timeout
+  f.execution.startJob = async options => { timeout = options.timeout; return { code: 0, runtimeId: 'runtime' } }
+  await f.workspace.run('check', owner)
+  expect(timeout).toBe(30)
+})
 test('later source mutation or write-and-revert invalidates successful commands', async () => {
   const f = fixture(); await f.workspace.run('check', owner)
   f.change('b'); expect((await f.workspace.check({}, owner)).ok).toBe(false)
@@ -88,6 +95,28 @@ test('real Local Bun receipts reject a command that writes source until a subseq
     expect(workspace.commands.every(row => row.stage === 'complete' && row.runtimeId && row.inputRevision && row.completedRevision)).toBe(true)
   } finally { await execution?.dispose(); await companion?.close(); await rm(root, { recursive: true, force: true }) }
 })
+
+test('real LocalExecution fractional-second timeout stops a shell and its delayed descendant', async () => {
+  const { mkdtemp, rm } = await import('node:fs/promises')
+  const { tmpdir } = await import('node:os')
+  const { join } = await import('node:path')
+  const { createCompanion } = await import('../host/companion.js')
+  const { LocalExecution } = await import('../src/execution/local.js')
+  const root = await mkdtemp(join(tmpdir(), 'askk-eval-timeout-'))
+  let companion, execution
+  try {
+    companion = await createCompanion({ root, port: 0, capabilities: ['fs', 'exec'] })
+    execution = new LocalExecution({ url: companion.url, token: companion.token })
+    await execution.prepare()
+    const result = await execution.startJob({ program: '/bin/sh', args: ['-c', '(sleep 0.5; touch descendant-ran) & wait'], timeout: 0.1 })
+    expect(result.timedOut).toBe(true)
+    expect(result.code).not.toBe(0)
+    // Wait past the child's scheduled mutation, before disposing the companion:
+    // shutdown must not hide a descendant left alive by command timeout.
+    await new Promise(resolve => setTimeout(resolve, 650))
+    expect(await Bun.file(join(root, 'descendant-ran')).exists()).toBe(false)
+  } finally { await execution?.dispose(); await companion?.close(); await rm(root, { recursive: true, force: true }) }
+}, 5000)
 
 test('a newer command completed during snapshot collection supersedes the old receipt', async () => {
   const f = fixture(); await f.workspace.run('first', owner)
