@@ -1,0 +1,906 @@
+{
+  "experiment": "Main-process webpack compile-cache admission and ABBA comparison",
+  "scope": "Private max-opt=0 supervisor profile; workload child also max-opt=0; no Next build or product acceptance.",
+  "expectedTag": 2292197379,
+  "archive": {
+    "bytes": 2443264,
+    "sha256": "84188a36a5d4ff484b46042850310217ae7dcd70a30f55fc9421794ed045c45b"
+  },
+  "jobs": [
+    {
+      "label": "unpack",
+      "command": {
+        "program": "sh",
+        "args": [
+          "-lc",
+          "set -eu; printf '%s  %s\n' '84188a36a5d4ff484b46042850310217ae7dcd70a30f55fc9421794ed045c45b' '.cache/harness-diag/node-compile-cache-max-opt-main.tar' | sha256sum -c -; test ! -e /tmp/askk-main-compile-cache; mkdir /tmp/askk-main-compile-cache; tar -xf .cache/harness-diag/node-compile-cache-max-opt-main.tar -C /tmp/askk-main-compile-cache; find /tmp/askk-main-compile-cache -type f -printf '%s\n' | awk '{n++; bytes+=$1} END{print \"files=\"n,\"bytes=\"bytes}'"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-29T00:31:16.832Z",
+      "deadlineMilliseconds": 120000,
+      "receiptGraceMilliseconds": 30000,
+      "output": [
+        {
+          "at": "2026-09-29T00:31:32.501Z",
+          "stream": "stdout",
+          "data": ".cache/harness-diag/node-compile-cache-max-opt-main.tar: OK\n"
+        },
+        {
+          "at": "2026-09-29T00:32:34.118Z",
+          "stream": "stdout",
+          "data": "files=606 bytes=1980928\n"
+        }
+      ],
+      "result": {
+        "id": "cache-unpack",
+        "runtimeId": "browser-linux:cua-prepared-template-proof:c2w-node24-8f08d6cef80797be:995b80a0-36dc-4a7e-bdc7-329a94f13968",
+        "code": 0,
+        "signal": null,
+        "cancelled": false,
+        "stdout": ".cache/harness-diag/node-compile-cache-max-opt-main.tar: OK\nfiles=606 bytes=1980928\n",
+        "stderr": "",
+        "outputTruncated": false
+      },
+      "endedAt": "2026-09-29T00:32:34.960Z",
+      "elapsedMilliseconds": 78127.59999999404,
+      "runtime": {
+        "runtimeId": "browser-linux:cua-prepared-template-proof:c2w-node24-8f08d6cef80797be:995b80a0-36dc-4a7e-bdc7-329a94f13968",
+        "root": "/workspaces/cua-prepared-template-proof",
+        "imageId": "c2w-node24-8f08d6cef80797be",
+        "bootId": "995b80a0-36dc-4a7e-bdc7-329a94f13968",
+        "kind": "browser-linux",
+        "state": "ready",
+        "health": "responsive",
+        "unresolvedRequests": [],
+        "ready": true,
+        "toolchain": {
+          "kind": "node",
+          "version": "24.21.0",
+          "packageManager": "npm",
+          "preparedTemplate": {
+            "id": "next-default-72013276c996cd10",
+            "dependencies": {
+              "next": "16.3.6",
+              "react": "19.3.0",
+              "react-dom": "19.3.0"
+            },
+            "lockSha256": "72013276c996cd104fc0f6c7883e74ec9073e0385ea61412f13b03eba62006f0",
+            "prepareSha256": "01f761ac1f0350adc4aa1102c0fc0f58d01b3f7f45aeda981d03389ccf3d573c",
+            "npmGuardSha256": "2ce131db3a3a9c1349bf3808ed1645b0b7f9bdf427a14c5e9107c9337884b9d5",
+            "prepareCommand": [
+              "node",
+              "/opt/harness/prepare-template.js"
+            ],
+            "detachCommand": [
+              "node",
+              "/opt/harness/prepare-template.js",
+              "--detach"
+            ],
+            "npmTarballCacheIncluded": false
+          }
+        },
+        "filesystem": true,
+        "shell": true,
+        "pty": true,
+        "persistentProcesses": true,
+        "persistence": "idbfs",
+        "capabilities": [
+          "files",
+          "shell",
+          "pty",
+          "node",
+          "npm",
+          "static-export",
+          "browser-network",
+          "prepared-template"
+        ],
+        "network": "browser-fetch-cors",
+        "preview": [
+          "next-static-export"
+        ],
+        "requiresCrossOriginIsolation": true
+      }
+    },
+    {
+      "label": "admission",
+      "command": {
+        "program": "env",
+        "args": [
+          "-u",
+          "NODE_DISABLE_COMPILE_CACHE",
+          "NODE_COMPILE_CACHE=/tmp/askk-main-compile-cache",
+          "NODE_ENV=production",
+          "NEXT_TELEMETRY_DISABLED=1",
+          "NODE_DEBUG_NATIVE=COMPILE_CACHE",
+          "node",
+          "--max-opt=0",
+          "-e",
+          "const started=performance.now();const cpu=process.cpuUsage();const w=require(\"/opt/harness/template/node_modules/next/dist/compiled/webpack/webpack\");const hashes={};for(const name of [\"xxhash64\",\"md4\"])hashes[name]=w.webpack.util.createHash(name).update(\"\").digest(\"hex\");if(hashes.xxhash64!==\"ef46db3751d8e999\"||hashes.md4!==\"31d6cfe0d16ae931b73c59d7e0c089c0\")throw new Error(\"Hash mismatch\");console.log(JSON.stringify({tag:require(\"node:v8\").cachedDataVersionTag(),requireMilliseconds:performance.now()-started,cpuMicroseconds:process.cpuUsage(cpu),uptimeSeconds:process.uptime(),hashes,wasm:typeof WebAssembly}));"
+        ],
+        "cwd": "."
+      },
+      "startedAt": "2026-09-29T00:33:31.993Z",
+      "deadlineMilliseconds": 180000,
+      "receiptGraceMilliseconds": 30000,
+      "output": [
+        {
+          "at": "2026-09-29T00:33:53.778Z",
+          "stream": "stderr",
+          "data": "[compile cache] resolved path /tmp/askk-main-compile-cache + v24.21.0-arm64-88a02803-0 -> /tmp/askk-main-compile-cache/v24.21.0-arm64-88a02803-0\n"
+        },
+        {
+          "at": "2026-09-29T00:33:53.958Z",
+          "stream": "stderr",
+          "data": "[compile cache] creating cache directory /tmp/askk-main-compile-cache/v24.21.0-arm64-88a02803-0...success\n"
+        },
+        {
+          "at": "2026-09-29T00:36:11.138Z",
+          "stream": "stderr",
+          "data": "[compile cache] reading cache from /tmp/askk-main-compile-cache/v24.21.0-arm64-88a02803-0/712488c2 for CommonJS [eval]..."
+        },
+        {
+          "at": "2026-09-29T00:36:12.898Z",
+          "stream": "stderr",
+          "data": "[2329926578 387 1576 2639291514 1664423156]...code size mismatch: expected 618, actual 387\n[compile cache] V8 code cache for CommonJS [eval] was not initialized, initializing the in-memory entry\n"
+        },
+        {
+          "at": "2026-09-29T00:36:15.378Z",
+          "stream": "stderr",
+          "data": "[compile cache] reading cache from /tmp/askk-main-compile-cache/v24.21.0-arm64-88a02803-0/8e9c99c2 for CommonJS [eval]-wrapper..."
+        },
+        {
+          "at": "2026-09-29T00:36:17.478Z",
+          "stream": "stderr",
+          "data": "[2329926578 182 824 3428517510 3804306367]... success, size=824\n[compile cache] V8 code cache for CommonJS [eval]-wrapper was accepted, keeping the in-memory entry\n"
+        },
+        {
+          "at": "2026-09-29T00:36:19.538Z",
+          "stream": "stderr",
+          "data": "[compile cache] reading cache from /tmp/askk-main-compile-cache/v24.21.0-arm64-88a02803-0/c8d93db2 for CommonJS /opt/harness/template/node_modules/next/dist/compiled/webpack/webpack.js...[2329926578 2147 2384 2504347215 224946102]..."
+        },
+        {
+          "at": "2026-09-29T00:36:22.018Z",
+          "stream": "stderr",
+          "data": " success, size=2384\n"
+        },
+        {
+          "at": "2026-09-29T00:36:25.418Z",
+          "stream": "stderr",
+          "data": "[compile cache] V8 code cache for CommonJS /opt/harness/template/node_modules/next/dist/compiled/webpack/webpack.js was accepted, keeping the in-memory entry\n"
+        }
+      ],
+      "cancellationRequestedAt": "2026-09-29T00:36:31.998Z",
+      "result": {
+        "id": "cache-admission",
+        "runtimeId": "browser-linux:cua-prepared-template-proof:c2w-node24-8f08d6cef80797be:995b80a0-36dc-4a7e-bdc7-329a94f13968",
+        "code": null,
+        "signal": "SIGTERM",
+        "cancelled": true,
+        "stdout": "",
+        "stderr": "[compile cache] resolved path /tmp/askk-main-compile-cache + v24.21.0-arm64-88a02803-0 -> /tmp/askk-main-compile-cache/v24.21.0-arm64-88a02803-0\n[compile cache] creating cache directory /tmp/askk-main-compile-cache/v24.21.0-arm64-88a02803-0...success\n[compile cache] reading cache from /tmp/askk-main-compile-cache/v24.21.0-arm64-88a02803-0/712488c2 for CommonJS [eval]...[2329926578 387 1576 2639291514 1664423156]...code size mismatch: expected 618, actual 387\n[compile cache] V8 code cache for CommonJS [eval] was not initialized, initializing the in-memory entry\n[compile cache] reading cache from /tmp/askk-main-compile-cache/v24.21.0-arm64-88a02803-0/8e9c99c2 for CommonJS [eval]-wrapper...[2329926578 182 824 3428517510 3804306367]... success, size=824\n[compile cache] V8 code cache for CommonJS [eval]-wrapper was accepted, keeping the in-memory entry\n[compile cache] reading cache from /tmp/askk-main-compile-cache/v24.21.0-arm64-88a02803-0/c8d93db2 for CommonJS /opt/harness/template/node_modules/next/dist/compiled/webpack/webpack.js...[2329926578 2147 2384 2504347215 224946102]... success, size=2384\n[compile cache] V8 code cache for CommonJS /opt/harness/template/node_modules/next/dist/compiled/webpack/webpack.js was accepted, keeping the in-memory entry\n",
+        "outputTruncated": false
+      },
+      "endedAt": "2026-09-29T00:36:51.180Z",
+      "elapsedMilliseconds": 199186.5,
+      "runtime": {
+        "runtimeId": "browser-linux:cua-prepared-template-proof:c2w-node24-8f08d6cef80797be:995b80a0-36dc-4a7e-bdc7-329a94f13968",
+        "root": "/workspaces/cua-prepared-template-proof",
+        "imageId": "c2w-node24-8f08d6cef80797be",
+        "bootId": "995b80a0-36dc-4a7e-bdc7-329a94f13968",
+        "kind": "browser-linux",
+        "state": "ready",
+        "health": "responsive",
+        "unresolvedRequests": [],
+        "ready": true,
+        "toolchain": {
+          "kind": "node",
+          "version": "24.21.0",
+          "packageManager": "npm",
+          "preparedTemplate": {
+            "id": "next-default-72013276c996cd10",
+            "dependencies": {
+              "next": "16.3.6",
+              "react": "19.3.0",
+              "react-dom": "19.3.0"
+            },
+            "lockSha256": "72013276c996cd104fc0f6c7883e74ec9073e0385ea61412f13b03eba62006f0",
+            "prepareSha256": "01f761ac1f0350adc4aa1102c0fc0f58d01b3f7f45aeda981d03389ccf3d573c",
+            "npmGuardSha256": "2ce131db3a3a9c1349bf3808ed1645b0b7f9bdf427a14c5e9107c9337884b9d5",
+            "prepareCommand": [
+              "node",
+              "/opt/harness/prepare-template.js"
+            ],
+            "detachCommand": [
+              "node",
+              "/opt/harness/prepare-template.js",
+              "--detach"
+            ],
+            "npmTarballCacheIncluded": false
+          }
+        },
+        "filesystem": true,
+        "shell": true,
+        "pty": true,
+        "persistentProcesses": true,
+        "persistence": "idbfs",
+        "capabilities": [
+          "files",
+          "shell",
+          "pty",
+          "node",
+          "npm",
+          "static-export",
+          "browser-network",
+          "prepared-template"
+        ],
+        "network": "browser-fetch-cors",
+        "preview": [
+          "next-static-export"
+        ],
+        "requiresCrossOriginIsolation": true
+      }
+    }
+  ],
+  "startedAt": "2026-09-29T00:22:48.838Z",
+  "provenance": {
+    "adapterSha256": "f9366a33b492a785b4d2b6d98870e56ed41be4d191e2461759e3375e50dd6281",
+    "fixtureSha256": "345d261c1a26952d5a8c8d60ba6f5df76157a474f1b06800e680ae581c89786e",
+    "runtimeWrapperSha256": "72e7a767ecff286e3f5601e944490d0d80271d70f9bd6af3a45e5b0c1d325f32",
+    "diagnosticFunctionsSha256": "91bc4d2a6c2e74ac22bb21d93b539938e8086e2bbfda6da04817fdf4d5eb339f",
+    "nativeQualificationSha256": "c184f228ac6f1378f561f6adfe7c3fa96c542f23649aae0b6b5306ff11551b30"
+  },
+  "bootOverlaps": [
+    {
+      "kind": "UX component checks",
+      "start": "2026-09-29T00:24:22.691Z",
+      "end": "2026-09-29T00:26:24.771Z",
+      "details": "Owned fixture tab closed and server stopped; no VM/model or global viewport changes"
+    }
+  ],
+  "boot": {
+    "state": "ready",
+    "startedAt": "2026-09-29T00:22:48.838Z",
+    "log": [
+      "UEFI firmware (version edk2-stable202302-for-qemu built at 18:12:10 o",
+      "n Sep 11 2023)\r\r\n",
+      "Error: Image at 0009FD42000 start failed: Not Found\r\r\n",
+      "Error: Image at 0009FC94000 start failed: Unsupported\r\r\n",
+      "Tpm2SubmitCommand - Tcg2 - Not Found\r\r\nTpm2GetCapabilityPcrs fail!\r\r\nTpm2SubmitCommand - Tcg2 - Not Found\r\r\n",
+      "Image type X64 can't be loaded on AARCH64 UEFI system.\r\r\n",
+      "\u001b[2J\u001b[01;01H\u001b[=3h\u001b[2J\u001b[01;01H",
+      "\u001b[2J\u001b[01;01H\u001b[=3h\u001b[2J\u001b[01;01H",
+      "EFI stub: Booting Linux Kernel...\r\r\nEFI stub: EFI_RNG_PROTOCOL unavailable\r\r\n",
+      "EFI stub: Generating empty DTB\r\r\nEFI stub: Exiting boot services...\r\r\n",
+      "1970/01/01 00:00:27 mounting {FSType:proc Src:proc Dst:/proc Flags:0 Data: Dir:[] File:[] PostDir:[] PostFile:[] Cmd:[] Async:false Optional:false}",
+      "\r\r\n",
+      "1970/01/01 00:00:27 mounting {FSType:tmpfs Src:tmpfs Dst:/run Flags:0 Data: Dir:[] File:[] PostDir:[] PostFile:[] Cmd:[] Async:false Optional:false}",
+      "\r\r\n",
+      "1970/01/01 00:00:28 mounting {FSType:tmpfs Src:tmpfs Dst:/sys Flags:0 Data: Dir:[] File:[] PostDir:[] PostFile:[] Cmd:[] Async:false Optional:false}\r\r\n",
+      "1970/01/01 00:00:28 mounting {FSType:tmpfs Src:tmpfs Dst:/tmp Flags:0 Data: Dir:[] File:[] PostDir:[] PostFile:[] Cmd:[] Async:false Optional:false}\r\r\n",
+      "1970/01/01 00:00:28 mounting {FSType:tmpfs Src:tmpfs Dst:/var Flags:0 Data: Dir:[] File:[] PostDir:[] PostFile:[] Cmd:[] Async:false Optional:false}\r\r\n",
+      "1970/01/01 00:00:28 mounting {FSType:tmpfs Src:tmpfs Dst:/mnt Flags:0 Data: Dir:[] File:[] PostDir:[] PostFile:[] Cmd:[] Async:false Optional:false}\r\r\n",
+      "1970/01/01 00:00:28 mounting {FSType:cgroup2 Src:none Dst:/sys/fs/cgroup Flags:0 Data: Dir:[{Path:/sys/fs/cgroup Mode:438}] File:[] PostDir:[] PostFile:[] Cmd:[] Async:false Optional:",
+      "false}\r\r\n",
+      "1970/01/01 00:00:28 mounting {FSType:tmpfs Src:tmpfs Dst:/etc Flags:0 Data: Dir:[] File:[] PostDir:[] PostFile:[{Path:/etc/hosts Mode:420 Contents:127.0.0.1",
+      "\tlocalhost\r\r\n} {Path:/etc/resolv.conf Mode:420 Contents:}] Cmd:[] Async:false Optional:false}\r\r\n",
+      "1970/01/01 00:00:29 mounting {FSType:tmpfs Src:tmpfs Dst:/run/bundle Flags:0 Data: Dir:[{Path:/run/bundle Mode:438}] File:[] PostDir:[] PostFile:[] Cmd:[] Async",
+      ":false Optional:false}\r\r\n",
+      "1970/01/01 00:00:29 mounting {FSType:overlay Src:overlay Dst:/run/rootfs Flags:0 Data:lowerdir=/oci/rootfs,upperdir=/run/rootfs-uppe",
+      "r,workdir=/run/rootfs-work Dir:[{Path:/run/rootfs Mode:493} {Path:/run/rootfs-upper Mode:493} {Path:/run/rootfs-work Mode:493}] File:[] PostDir:[{Path:/run/rootfs/etc/ Mode:420",
+      "} {Path:/run/rootfs/etc/ Mode:420}] PostFile:[{Path:/run/rootfs/etc/hosts Mode:420 Contents:127.0.0.1",
+      "\tlocalhost\r\r\n} {Path:/run/rootfs/etc/resolv.conf Mode:420 Contents:}] Cmd:[] Async:false Optional:false}\r\r\n",
+      "1970/01/01 00:00:34 executing(pre-run): [vmtouch -tv /sbin/runc /sbin/init]\r\r\n",
+      "/sbin/runc\r\r\n",
+      "\r[                                                            ] 0/3040",
+      "\r[o                                                           ] 25/3040",
+      "\r[Oo                                                          ] 65/3040",
+      "\r[OOo                                                         ] 126/3040",
+      "\r[OOOo                                                        ] 161/3040",
+      "\r[OOOOo                                                       ] 225/3040",
+      "\r[OOOOOo                                                      ] 257/3040",
+      "\r[OOOOOo                                                      ] 302/3040",
+      "\r[OOOOOOo                                                     ] 353/3040",
+      "\r[OOOOOOOOo                                                   ] 417/3040",
+      "\r[OOOOOOOOOo                                                  ] 481/3040",
+      "\r[OOOOOOOOOOo                                                 ] 514/3040",
+      "\r[OOOOOOOOOOOo                                                ] 577/3040",
+      "\r[OOOOOOOOOOOOo                                               ] 641/3040",
+      "\r[OOOOOOOOOOOOOo                                              ] 705/3040",
+      "\r[OOOOOOOOOOOOOOOo                                            ] 766/3040",
+      "\r[OOOOOOOOOOOOOOOo                                            ] 801/3040",
+      "\r[OOOOOOOOOOOOOOOOo                                           ] 865/3040",
+      "\r[OOOOOOOOOOOOOOOOOOo                                         ] 929/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOo                                        ] 993/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOo                                       ] 1057/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOo                                      ] 1121/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOo                                    ] 1185/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOo                                   ] 1249/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOo                                  ] 1281/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOo                                 ] 1345/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOo                                ] 1382/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOo                               ] 1441/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOo                              ] 1502/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo                             ] 1569/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo                           ] 1633/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo                          ] 1697/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo                         ] 1761/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo                        ] 1793/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo                       ] 1857/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo                      ] 1921/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo                     ] 1985/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo                   ] 2049/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo                  ] 2113/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo                 ] 2177/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo                ] 2238/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo              ] 2305/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo             ] 2382/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo            ] 2433/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo           ] 2497/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo         ] 2574/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo        ] 2638/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo      ] 2718/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo      ] 2753/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo    ] 2817/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo   ] 2881/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOo  ] 2945/3040",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO] 3040/3040\r\r\n",
+      "/sbin/init\r\r\n\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO] 625/625",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO] 625/625",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO] 625/625",
+      "\r[OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO] 625/625\r\r\n",
+      "\r\r\n           Files: 2\r\r\n     Directori",
+      "es: 0\r\r\n   Touched Pages: 3665 (14M)\r\r\n",
+      "         Elapsed: 7.5949 seconds\r\r\n",
+      "==========",
+      "1970/01/01 00:00:45 mounting \"wasi0\" to \"/mnt/wasi0\"\r\r\n",
+      "1970/01/01 00:00:46 INFO:\r\r\nt:1790641374\r\r\nn:02:C4:EF:A6:4D:DA\r\r\nmr: .wasmenv\r\r\nenv: SSL_CERT_FILE=/.wasmenv/proxy.crt\r\r\nenv: https_proxy=http://192.",
+      "168.127.253:80\r\r\nenv: http_proxy=http://192.168.127.253:80\r\r\ne",
+      "nv: HTTPS_PROXY=http://192.168.127.253:80\r\r\nenv: HTTP_PROXY=http://192.168.127.253:80\r\r\nenv: no_proxy=localhos",
+      "t,127.0.0.1\r\r\nenv: NO_PROXY=localhost,127.0.0.1\r\r\n",
+      "m:workspaces/cua-prepared-template-proof\r\r\nm:harness-control\r\r\ne:node\r\r\nc:--max-opt=0 /harness-control/supervisor.js",
+      "\r\r\nenv:HARNESS_WORKSPACE=/workspaces/cua-prepared-template-proof\r\r\nenv:NODE_EXTRA_CA_CERTS=/.wasmenv/proxy.crt\r\r\nenv:NODE_OPTIONS=--use-env-proxy",
+      "\r\r\n\r\r\n",
+      "2026/09/29 00:22:54 Prepared mount wasi0 => \".wasmenv\"\r\r\n",
+      "2026/09/29 00:22:54 Prepared mount wasi0 => \"workspaces/cua-prepared-template-proof\"\r\r\n",
+      "2026/09/29 00:22:54 Prepared mount wasi0 => \"harness-control\"\r\r\n",
+      "2026/09/29 00:23:04 finished udhcpc: udhcpc: started, v1.36.1\r\r\nClearing IP addresses on eth0, upping it\r\r\nudhcpc: broadcasting discover\r\r\nudhcpc: broad",
+      "casting select for 192.168.127.2, server 192.168.127.1\r\r\nudhcpc: lease of 192.168.127.2 obtained from 192.168.127.1, lease time ",
+      "3600\r\r\nSetting IP address 192.168.127.2 on eth0\r\r\nDeleting routers\r\r\nroute: SIOCDELRT: No such process\r\r\nAdding router 192.168",
+      ".127.1\r\r\nRecreating /etc/resolv.conf\r\r\n Adding DNS server 192.168.127.1\r\r\n\r\r\n 1: lo: <LOOPBACK> mtu 65536 qdisc noop qlen 1000\r\r\n    link/loopback 00:0",
+      "0:00:00:00:00 brd 00:00:00:00:00:00\r\r\n2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc pfifo_fast qlen 1000\r\r\n    link/ether 02:c4:ef:a6:4d:d",
+      "a brd ff:ff:ff:ff:ff:ff\r\r\n    inet 192.168.127.2/24 brd 192.168.127.255 scope global eth0\r\r\n       valid_lft forever preferred_lft forever\r\r\n\r\r\n",
+      "2026/09/29 00:23:05 Running: [node --max-opt=0 /harness-control/supervisor.js]\r\r\n",
+      "2026/09/29 00:23:05 executing: [/sbin/runc run -b /run/bundle foo]\r\r\n",
+      "[cache-unpack/stdout] .cache/harness-diag/node-compile-cache-max-opt-main.tar: OK\n",
+      "[cache-unpack/stdout] files=606 bytes=1980928\n",
+      "[cache-admission/stderr] [compile cache] resolved path /tmp/askk-main-compile-cache + v24.21.0-arm64-88a02803-0 -> /tmp/askk-main-compile-cache/v24.21.0-arm64-88a02803-0\n",
+      "[cache-admission/stderr] [compile cache] creating cache directory /tmp/askk-main-compile-cache/v24.21.0-arm64-88a02803-0...success\n",
+      "[cache-admission/stderr] [compile cache] reading cache from /tmp/askk-main-compile-cache/v24.21.0-arm64-88a02803-0/712488c2 for CommonJS [eval]...",
+      "[cache-admission/stderr] [2329926578 387 1576 2639291514 1664423156]...code size mismatch: expected 618, actual 387\n[compile cache] V8 code cache for CommonJS [eval] was not initialized, initializing the in-memory entry\n",
+      "[cache-admission/stderr] [compile cache] reading cache from /tmp/askk-main-compile-cache/v24.21.0-arm64-88a02803-0/8e9c99c2 for CommonJS [eval]-wrapper...",
+      "[cache-admission/stderr] [2329926578 182 824 3428517510 3804306367]... success, size=824\n[compile cache] V8 code cache for CommonJS [eval]-wrapper was accepted, keeping the in-memory entry\n",
+      "[cache-admission/stderr] [compile cache] reading cache from /tmp/askk-main-compile-cache/v24.21.0-arm64-88a02803-0/c8d93db2 for CommonJS /opt/harness/template/node_modules/next/dist/compiled/webpack/webpack.js...[2329926578 2147 2384 2504347215 224946102]...",
+      "[cache-admission/stderr]  success, size=2384\n",
+      "[cache-admission/stderr] [compile cache] V8 code cache for CommonJS /opt/harness/template/node_modules/next/dist/compiled/webpack/webpack.js was accepted, keeping the in-memory entry\n"
+    ],
+    "stages": [
+      {
+        "phase": "Downloading",
+        "atMilliseconds": 316.875
+      },
+      {
+        "phase": "Verifying",
+        "atMilliseconds": 574.1949999928474
+      },
+      {
+        "phase": "Downloading",
+        "atMilliseconds": 574.2549999952316
+      },
+      {
+        "phase": "Verifying",
+        "atMilliseconds": 578.0349999964237
+      },
+      {
+        "phase": "Downloading",
+        "atMilliseconds": 578.6150000095367
+      },
+      {
+        "phase": "Verifying",
+        "atMilliseconds": 583.2849999964237
+      },
+      {
+        "phase": "Downloading",
+        "atMilliseconds": 583.4050000011921
+      },
+      {
+        "phase": "Verifying",
+        "atMilliseconds": 596.4350000023842
+      },
+      {
+        "phase": "Downloading",
+        "atMilliseconds": 596.5749999880791
+      },
+      {
+        "phase": "Verifying",
+        "atMilliseconds": 602.7999999821186
+      },
+      {
+        "phase": "Downloading",
+        "atMilliseconds": 603.0250000059605
+      },
+      {
+        "phase": "Verifying",
+        "atMilliseconds": 615.7999999821186
+      },
+      {
+        "phase": "Downloading",
+        "atMilliseconds": 615.9699999988079
+      },
+      {
+        "phase": "Verifying",
+        "atMilliseconds": 622.8650000095367
+      },
+      {
+        "phase": "Downloading",
+        "atMilliseconds": 623.2349999845028
+      },
+      {
+        "phase": "Verifying",
+        "atMilliseconds": 683.3499999940395
+      },
+      {
+        "phase": "Downloading",
+        "atMilliseconds": 683.5399999916553
+      },
+      {
+        "phase": "Verifying",
+        "atMilliseconds": 696.3449999988079
+      },
+      {
+        "phase": "Downloading",
+        "atMilliseconds": 725.6099999845028
+      },
+      {
+        "phase": "Verifying",
+        "atMilliseconds": 942.0199999809265
+      },
+      {
+        "phase": "Downloading",
+        "atMilliseconds": 961.544999986887
+      },
+      {
+        "phase": "Verifying",
+        "atMilliseconds": 1168.574999988079
+      },
+      {
+        "phase": "Downloading",
+        "atMilliseconds": 1211.2750000059605
+      },
+      {
+        "phase": "Verifying",
+        "atMilliseconds": 1389.169999986887
+      },
+      {
+        "phase": "Downloading",
+        "atMilliseconds": 1428.0199999809265
+      },
+      {
+        "phase": "Verifying",
+        "atMilliseconds": 1618.0149999856949
+      },
+      {
+        "phase": "Downloading",
+        "atMilliseconds": 1632.7899999916553
+      },
+      {
+        "phase": "Verifying",
+        "atMilliseconds": 1804.8949999809265
+      },
+      {
+        "phase": "Downloading",
+        "atMilliseconds": 1872.1850000023842
+      },
+      {
+        "phase": "Verifying",
+        "atMilliseconds": 2097.7750000059605
+      },
+      {
+        "phase": "Downloading",
+        "atMilliseconds": 2115.199999988079
+      },
+      {
+        "phase": "Verifying",
+        "atMilliseconds": 2326.2049999833107
+      },
+      {
+        "phase": "Downloading",
+        "atMilliseconds": 2343.3650000095367
+      },
+      {
+        "phase": "Verifying",
+        "atMilliseconds": 2518.939999997616
+      },
+      {
+        "phase": "Downloading",
+        "atMilliseconds": 2533.405000001192
+      },
+      {
+        "phase": "Verifying",
+        "atMilliseconds": 2692.8849999904633
+      },
+      {
+        "phase": "Downloading",
+        "atMilliseconds": 2774.5199999809265
+      },
+      {
+        "phase": "Verifying",
+        "atMilliseconds": 2960.155000001192
+      },
+      {
+        "phase": "Downloading",
+        "atMilliseconds": 2990.3400000035763
+      },
+      {
+        "phase": "Verifying",
+        "atMilliseconds": 3214.294999986887
+      },
+      {
+        "phase": "Downloading",
+        "atMilliseconds": 3231.0550000071526
+      },
+      {
+        "phase": "Verifying",
+        "atMilliseconds": 3409.655000001192
+      },
+      {
+        "phase": "Downloading",
+        "atMilliseconds": 3458.719999998808
+      },
+      {
+        "phase": "Verifying",
+        "atMilliseconds": 4256.574999988079
+      },
+      {
+        "phase": "Compiling",
+        "atMilliseconds": 4257.674999982119
+      },
+      {
+        "phase": "Restoring files",
+        "atMilliseconds": 4828.049999982119
+      },
+      {
+        "phase": "Booting",
+        "atMilliseconds": 4858.639999985695
+      },
+      {
+        "phase": "Checking tools",
+        "atMilliseconds": 363558.36500000954
+      },
+      {
+        "phase": "Ready",
+        "atMilliseconds": 403863.77500000596
+      }
+    ],
+    "checks": [],
+    "metadata": {
+      "experiment": "main-webpack-cache-admission-comparison",
+      "bootstrap": "PRIVATE altered supervisor entrypoint, same image assets, fresh boot after previous combined-profile VM disposal; previous shutdown checkpoint was unacknowledged",
+      "crossOriginIsolated": true,
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36",
+      "companionAuthorization": false,
+      "profile": "supervisor Node process interpreter tier; child Node programs unchanged; not normal-bootstrap acceptance",
+      "runtimeWrapperSha256": "72e7a767ecff286e3f5601e944490d0d80271d70f9bd6af3a45e5b0c1d325f32",
+      "originalRuntimeWrapperSha256": "c865954dde97cdcf8470b40a5da0ba66a012a3bd831eb6fa1648ed2cbcf12e7a",
+      "entrypoint": [
+        "node",
+        "--max-opt=0",
+        "/harness-control/supervisor.js"
+      ],
+      "handshakeBoundMilliseconds": 600000,
+      "imageId": "c2w-node24-8f08d6cef80797be",
+      "concurrentWork": "Root/UX final UI checks and source commit/deploy overlap boot. Boot timing is not a clean benchmark. No import/cache transfer has begun."
+    },
+    "phase": "Ready",
+    "readyAt": "2026-09-29T00:29:32.704Z",
+    "readyMilliseconds": 403864.8249999881,
+    "runtime": {
+      "runtimeId": "browser-linux:cua-prepared-template-proof:c2w-node24-8f08d6cef80797be:995b80a0-36dc-4a7e-bdc7-329a94f13968",
+      "root": "/workspaces/cua-prepared-template-proof",
+      "imageId": "c2w-node24-8f08d6cef80797be",
+      "bootId": "995b80a0-36dc-4a7e-bdc7-329a94f13968",
+      "kind": "browser-linux",
+      "state": "ready",
+      "health": "responsive",
+      "unresolvedRequests": [],
+      "ready": true,
+      "toolchain": {
+        "kind": "node",
+        "version": "24.21.0",
+        "packageManager": "npm",
+        "preparedTemplate": {
+          "id": "next-default-72013276c996cd10",
+          "dependencies": {
+            "next": "16.3.6",
+            "react": "19.3.0",
+            "react-dom": "19.3.0"
+          },
+          "lockSha256": "72013276c996cd104fc0f6c7883e74ec9073e0385ea61412f13b03eba62006f0",
+          "prepareSha256": "01f761ac1f0350adc4aa1102c0fc0f58d01b3f7f45aeda981d03389ccf3d573c",
+          "npmGuardSha256": "2ce131db3a3a9c1349bf3808ed1645b0b7f9bdf427a14c5e9107c9337884b9d5",
+          "prepareCommand": [
+            "node",
+            "/opt/harness/prepare-template.js"
+          ],
+          "detachCommand": [
+            "node",
+            "/opt/harness/prepare-template.js",
+            "--detach"
+          ],
+          "npmTarballCacheIncluded": false
+        }
+      },
+      "filesystem": true,
+      "shell": true,
+      "pty": true,
+      "persistentProcesses": true,
+      "persistence": "idbfs",
+      "capabilities": [
+        "files",
+        "shell",
+        "pty",
+        "node",
+        "npm",
+        "static-export",
+        "browser-network",
+        "prepared-template"
+      ],
+      "network": "browser-fetch-cors",
+      "preview": [
+        "next-static-export"
+      ],
+      "requiresCrossOriginIsolation": true
+    }
+  },
+  "runtime": {
+    "runtimeId": "browser-linux:cua-prepared-template-proof:c2w-node24-8f08d6cef80797be:995b80a0-36dc-4a7e-bdc7-329a94f13968",
+    "root": "/workspaces/cua-prepared-template-proof",
+    "imageId": "c2w-node24-8f08d6cef80797be",
+    "bootId": "995b80a0-36dc-4a7e-bdc7-329a94f13968",
+    "kind": "browser-linux",
+    "state": "ready",
+    "health": "responsive",
+    "unresolvedRequests": [],
+    "ready": true,
+    "toolchain": {
+      "kind": "node",
+      "version": "24.21.0",
+      "packageManager": "npm",
+      "preparedTemplate": {
+        "id": "next-default-72013276c996cd10",
+        "dependencies": {
+          "next": "16.3.6",
+          "react": "19.3.0",
+          "react-dom": "19.3.0"
+        },
+        "lockSha256": "72013276c996cd104fc0f6c7883e74ec9073e0385ea61412f13b03eba62006f0",
+        "prepareSha256": "01f761ac1f0350adc4aa1102c0fc0f58d01b3f7f45aeda981d03389ccf3d573c",
+        "npmGuardSha256": "2ce131db3a3a9c1349bf3808ed1645b0b7f9bdf427a14c5e9107c9337884b9d5",
+        "prepareCommand": [
+          "node",
+          "/opt/harness/prepare-template.js"
+        ],
+        "detachCommand": [
+          "node",
+          "/opt/harness/prepare-template.js",
+          "--detach"
+        ],
+        "npmTarballCacheIncluded": false
+      }
+    },
+    "filesystem": true,
+    "shell": true,
+    "pty": true,
+    "persistentProcesses": true,
+    "persistence": "idbfs",
+    "capabilities": [
+      "files",
+      "shell",
+      "pty",
+      "node",
+      "npm",
+      "static-export",
+      "browser-network",
+      "prepared-template"
+    ],
+    "network": "browser-fetch-cors",
+    "preview": [
+      "next-static-export"
+    ],
+    "requiresCrossOriginIsolation": true
+  },
+  "transfer": {
+    "startedAt": "2026-09-29T00:30:09.198Z",
+    "fetchAndHashMilliseconds": 13.309999972581863,
+    "bytes": 2443264,
+    "sha256": "84188a36a5d4ff484b46042850310217ae7dcd70a30f55fc9421794ed045c45b",
+    "writeStartedAt": "2026-09-29T00:30:09.381Z",
+    "write": {
+      "path": ".cache/harness-diag/node-compile-cache-max-opt-main.tar",
+      "revision": "84188a36a5d4ff484b46042850310217ae7dcd70a30f55fc9421794ed045c45b",
+      "size": 2443264,
+      "rev": "84188a36a5d4ff484b46042850310217ae7dcd70a30f55fc9421794ed045c45b",
+      "conflict": false
+    },
+    "workspaceWriteMilliseconds": 17052.42500001192,
+    "completedAt": "2026-09-29T00:30:26.434Z"
+  },
+  "quietRelease": {
+    "at": "2026-09-29T00:30Z",
+    "source": "Root explicit quiet release after Pages/UX checks; no further UI/build/full-suite/model work scheduled"
+  },
+  "foregroundRequestedAt": "2026-09-29T00:33:51.350Z",
+  "admissionError": "Error: Diagnostic command did not exit successfully",
+  "finalStatus": "FAILED admission gate: webpack.js cache accepted, bundle5.js not reached within180s; actual SIGTERM cancellation exit at199186.5ms. ABBA and full Next build not run.",
+  "completedAt": "2026-09-29T00:37:56.336Z",
+  "finalRuntime": {
+    "runtimeId": "browser-linux:cua-prepared-template-proof:c2w-node24-8f08d6cef80797be:995b80a0-36dc-4a7e-bdc7-329a94f13968",
+    "root": "/workspaces/cua-prepared-template-proof",
+    "imageId": "c2w-node24-8f08d6cef80797be",
+    "bootId": "995b80a0-36dc-4a7e-bdc7-329a94f13968",
+    "kind": "browser-linux",
+    "state": "ready",
+    "health": "responsive",
+    "unresolvedRequests": [],
+    "ready": true,
+    "toolchain": {
+      "kind": "node",
+      "version": "24.21.0",
+      "packageManager": "npm",
+      "preparedTemplate": {
+        "id": "next-default-72013276c996cd10",
+        "dependencies": {
+          "next": "16.3.6",
+          "react": "19.3.0",
+          "react-dom": "19.3.0"
+        },
+        "lockSha256": "72013276c996cd104fc0f6c7883e74ec9073e0385ea61412f13b03eba62006f0",
+        "prepareSha256": "01f761ac1f0350adc4aa1102c0fc0f58d01b3f7f45aeda981d03389ccf3d573c",
+        "npmGuardSha256": "2ce131db3a3a9c1349bf3808ed1645b0b7f9bdf427a14c5e9107c9337884b9d5",
+        "prepareCommand": [
+          "node",
+          "/opt/harness/prepare-template.js"
+        ],
+        "detachCommand": [
+          "node",
+          "/opt/harness/prepare-template.js",
+          "--detach"
+        ],
+        "npmTarballCacheIncluded": false
+      }
+    },
+    "filesystem": true,
+    "shell": true,
+    "pty": true,
+    "persistentProcesses": true,
+    "persistence": "idbfs",
+    "capabilities": [
+      "files",
+      "shell",
+      "pty",
+      "node",
+      "npm",
+      "static-export",
+      "browser-network",
+      "prepared-template"
+    ],
+    "network": "browser-fetch-cors",
+    "preview": [
+      "next-static-export"
+    ],
+    "requiresCrossOriginIsolation": true
+  },
+  "partialAdmission": [
+    "[compile cache] V8 code cache for CommonJS [eval]-wrapper was accepted, keeping the in-memory entry",
+    "[compile cache] V8 code cache for CommonJS /opt/harness/template/node_modules/next/dist/compiled/webpack/webpack.js was accepted, keeping the in-memory entry"
+  ],
+  "comparisonLimit": "Native cache qualification is not browser acceptance. Most observed time elapsed before eval cache read; no inference about unique CPU, parsing, or filesystem cause follows. No performance pair completed.",
+  "evidence": {
+    "originalReceiptSha256": "8da301d98d179e875d435ce841e0a4201e1a4fdfbb1359703c7409a5b2f0dc66",
+    "source": "Actual Chrome CUA/CDP private diagnostic fixture. No companion was authorized or used for guest execution.",
+    "finalDisposalReceiptSha256": "02990bb4f05a2a1a490b34b0c93f97fc5212b1d28174888ea23e5fbea2f936fb"
+  },
+  "characterization": {
+    "status": "failed admission gate",
+    "cacheSelected": true,
+    "smallWebpackLoaderAccepted": true,
+    "largeWebpackBundleAcceptanceObserved": false,
+    "offOnOnOffComparisonRun": false,
+    "nextBuildRun": false,
+    "actualExit": {
+      "code": null,
+      "signal": "SIGTERM",
+      "cancelled": true
+    },
+    "scope": "Main-process cache produced by the exact native Next build; no default-child cache coverage or product activation.",
+    "observedIntervals": {
+      "transferFetchAndHashMilliseconds": 13.309999972581863,
+      "normalWorkspaceWriteMilliseconds": 17052.42500001192,
+      "guestIntegrityUnpackAndAggregateValidationMilliseconds": 78127.59999999404,
+      "admissionDeadlineMilliseconds": 180000,
+      "admissionIncludingCancellationReceiptMilliseconds": 199186.5
+    },
+    "limits": [
+      "The cache directory and webpack.js were accepted; this does not prove bundle5.js admission or a complete import.",
+      "The first eval-cache read output arrived approximately159s after job start. Output delivery latency may contribute, so this is not a measured CPU phase duration.",
+      "No paired cache-on/cache-off workload completed, so no speed improvement or regression is established.",
+      "Boot overlapped UI work; later transfer/admission occurred after the recorded quiet release.",
+      "Temporary Linux cache unpacking included sha256sum, one tar process, and one find-to-awk aggregate; there were no per-file processes."
+    ]
+  },
+  "disposal": {
+    "requestedAt": "2026-09-29T00:39:05.537Z",
+    "boundMilliseconds": 60000,
+    "reason": "Admission gate failed; no further guest jobs scheduled.",
+    "checkpoint": "acknowledged",
+    "completedAt": "2026-09-29T00:39:06.761Z",
+    "remainingFrames": 0,
+    "runtime": {
+      "runtimeId": "browser-linux:cua-prepared-template-proof:c2w-node24-8f08d6cef80797be:995b80a0-36dc-4a7e-bdc7-329a94f13968",
+      "root": "/workspaces/cua-prepared-template-proof",
+      "imageId": "c2w-node24-8f08d6cef80797be",
+      "bootId": "995b80a0-36dc-4a7e-bdc7-329a94f13968",
+      "kind": "browser-linux",
+      "state": "disposed",
+      "health": "responsive",
+      "unresolvedRequests": [],
+      "ready": false,
+      "toolchain": {
+        "kind": "node",
+        "version": "24.21.0",
+        "packageManager": "npm",
+        "preparedTemplate": {
+          "id": "next-default-72013276c996cd10",
+          "dependencies": {
+            "next": "16.3.6",
+            "react": "19.3.0",
+            "react-dom": "19.3.0"
+          },
+          "lockSha256": "72013276c996cd104fc0f6c7883e74ec9073e0385ea61412f13b03eba62006f0",
+          "prepareSha256": "01f761ac1f0350adc4aa1102c0fc0f58d01b3f7f45aeda981d03389ccf3d573c",
+          "npmGuardSha256": "2ce131db3a3a9c1349bf3808ed1645b0b7f9bdf427a14c5e9107c9337884b9d5",
+          "prepareCommand": [
+            "node",
+            "/opt/harness/prepare-template.js"
+          ],
+          "detachCommand": [
+            "node",
+            "/opt/harness/prepare-template.js",
+            "--detach"
+          ],
+          "npmTarballCacheIncluded": false
+        }
+      },
+      "filesystem": true,
+      "shell": true,
+      "pty": true,
+      "persistentProcesses": true,
+      "persistence": "idbfs",
+      "capabilities": [
+        "files",
+        "shell",
+        "pty",
+        "node",
+        "npm",
+        "static-export",
+        "browser-network",
+        "prepared-template"
+      ],
+      "network": "unavailable",
+      "preview": [
+        "next-static-export"
+      ],
+      "requiresCrossOriginIsolation": true
+    }
+  }
+}
