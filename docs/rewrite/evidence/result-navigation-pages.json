@@ -1,0 +1,35 @@
+{
+  "source": "0306106",
+  "deployment": "cdaeaa936a2ed1cb6f447483a905e0ec98bb3238",
+  "workflow": "https://github.com/kaush4l/ASKK/actions/runs/36559156917",
+  "checks": [
+    {
+      "path": "index.html",
+      "status": 200,
+      "sha256": "107f9d07bd9f38b03ba1657c6c8e7bafcdbf8ab6df880ca44efe744e5d616fe0",
+      "matches": true
+    },
+    {
+      "path": "_next/static/chunks/app/page-e85450b02f01cd86.js",
+      "status": 200,
+      "sha256": "e894c23e3d07f16757e3b1286dff9e59fd42aa06850dc7277ecd70c3b81dd4dc",
+      "matches": true
+    }
+  ],
+  "scope": "Hosted HTTP asset verification. Local Chrome export startup loaded 11 agent definitions without starting inference/execution. Result-click focus, Safari and phone acceptance not established by that smoke check; resolver/rendering/modal boundaries covered by automated tests.",
+  "tests": {
+    "passed": 874,
+    "skipped": 1,
+    "failed": 0,
+    "assertions": 6490,
+    "files": 85
+  },
+  "export": {
+    "version": 1,
+    "basePath": "/ASKK",
+    "totalBytes": 854209211,
+    "fileCount": 211,
+    "runtimeId": "c2w-node24-38d093f4a38002db",
+    "artifactHash": "33c7bd1ffc54e6b4de2dbb0abb1d8fd0828f9f33cf6fc9bb26a273ee7c741f6e"
+  }
+}
