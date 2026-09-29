@@ -1,0 +1,51 @@
+{
+  "source": "1a50e79d",
+  "deployment": "d5b453e904de474e5a91cd6ddbdb01a8f2b020fa",
+  "workflow": "https://github.com/kaush4l/ASKK/actions/runs/36570259281",
+  "workflowConclusion": "success",
+  "checks": [
+    {
+      "path": "index.html",
+      "status": 200,
+      "sha256": "bb1fe2a3c98b05ab28e318e70dee831f1f0f3d14df848bda24b0010d55a1bd05",
+      "matches": true
+    },
+    {
+      "path": "package-templates/basic.json",
+      "status": 200,
+      "sha256": "9599a64f3d84bae21649599162d57835840a1c52ec4a091f7a5e42db4daddb56",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/core/package-template.js",
+      "status": 200,
+      "sha256": "a350650af7c8f09fee884e3a3b94d262c3ec349f974cd4c5e978bab24f87525a",
+      "matches": true
+    },
+    {
+      "path": "runtime/modules/runtime/agent-installations.js",
+      "status": 200,
+      "sha256": "6728fa786dd8090083c1a88acc2b5ef68b5a920ebae5a7bb90513ca5f5ce69ed",
+      "matches": true
+    },
+    {
+      "path": "_next/static/chunks/app/page-bc86c8a4b2c0b135.js",
+      "status": 200,
+      "sha256": "c3ad42dbae43ce457b852c4b084b5909edca2eeab8b8bbf400cd946fb6c80ccc",
+      "matches": true
+    },
+    {
+      "path": "_next/static/chunks/154.aca9be179f26cfbe.js",
+      "status": 200,
+      "sha256": "fac774e2b3d37598a5bd4122938f1b6178498bfdfaf3306fac73207fd6d916f6",
+      "matches": true
+    },
+    {
+      "path": "_next/static/chunks/194.1740d59ac366731d.js",
+      "status": 200,
+      "sha256": "d5464b78b201be2fe290362aef3a39858456a8e58980752f490b9619f475854d",
+      "matches": true
+    }
+  ],
+  "scope": "Hosted byte checks plus local Chrome create/save/review of native starter. No hosted inference, Safari, iPhone or Browser Linux acceptance."
+}
