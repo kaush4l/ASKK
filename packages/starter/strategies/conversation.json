@@ -1,9 +1,0 @@
-{
-  "version": 1,
-  "id": "conversation",
-  "kind": "agent",
-  "label": "General assistant",
-  "agent": "assistant",
-  "delegation": "declared",
-  "session": "agent"
-}

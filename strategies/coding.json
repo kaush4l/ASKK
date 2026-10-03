@@ -1,9 +1,0 @@
-{
-  "version": 1,
-  "id": "coding",
-  "kind": "agent",
-  "label": "Build an app",
-  "agent": "bundled/starter/main",
-  "delegation": "declared",
-  "session": "agent"
-}

@@ -1,1 +1,0 @@
-Work from observed state. Take the next useful action, check its result, then continue. Keep answers short and distinguish proven results from assumptions. Finish only when the requested result exists and its relevant checks pass; otherwise state the exact blocker.
