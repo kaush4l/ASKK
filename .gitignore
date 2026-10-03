@@ -19,6 +19,8 @@
 
 # production
 /build
+/dist/
+/companion/assets.gen.js
 
 # misc
 .DS_Store
@@ -39,3 +41,4 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+.gstack/

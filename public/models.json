@@ -1,0 +1,19 @@
+{
+  "default": "local",
+  "models": {
+    "local": {
+      "label": "Local Qwen (oMLX)",
+      "provider": "openai",
+      "base_url": "http://127.0.0.1:8873/v1",
+      "id": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+      "max_tokens": 8192
+    },
+    "local-anthropic": {
+      "label": "Local Qwen via the Anthropic protocol",
+      "provider": "anthropic",
+      "base_url": "http://127.0.0.1:8873/v1",
+      "id": "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+      "max_tokens": 8192
+    }
+  }
+}

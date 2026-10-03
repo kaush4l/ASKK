@@ -1,24 +1,35 @@
 {
-  "name": "powerhouse",
+  "name": "askk",
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start"
+    "dev": "bun --bun scripts/dev.js",
+    "dev:browser": "bun --bun next dev",
+    "build": "bun --bun next build",
+    "start": "bunx serve@latest out",
+    "companion": "bun companion/server.js",
+    "ask": "bun companion/ask.js",
+    "build:companion": "bun --bun next build && bun scripts/build-companion.js"
   },
   "dependencies": {
+    "@base-ui/react": "^1.8.0",
+    "class-variance-authority": "^0.7.1",
+    "cmdk": "^1.1.1",
+    "cn": "^0.4.0",
+    "date-fns": "^4.4.0",
+    "lucide-react": "^1.50.0",
     "next": "16.3.8",
+    "next-themes": "^0.4.6",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-day-picker": "^10.0.2",
+    "react-dom": "19.2.8",
+    "react-resizable-panels": "^4.14.2",
+    "shadcn": "^4.21.1",
+    "tw-animate-css": "^1.4.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "tailwindcss": "^4",
-    "typescript": "^5"
+    "tailwindcss": "^4"
   },
   "packageManager": "bun@1.4.2",
   "ignoreScripts": [
