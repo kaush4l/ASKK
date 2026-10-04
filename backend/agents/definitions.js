@@ -14,6 +14,9 @@
 //   tools: [web.read, notes.read]
 //   artifacts: [filesystem]      live objects rendered into the prompt
 //                                (features/index.js); each brings its commands
+//   mcp: [github]                MCP servers from .mcp.json (all their tools) or
+//                                server.tool (one), "*" = every server; tools
+//                                are named <server>.<tool>
 //   model: local-anthropic       optional key in the model catalogue
 //                                (models/catalog.js); omitted = the default model
 //   ---
@@ -24,6 +27,7 @@
 import { splitFrontmatter } from "@/backend/agents/frontmatter"
 import { validKey } from "@/backend/models/catalog"
 import { withBase } from "@/backend/platform/base-path"
+import { detectHost } from "@/backend/platform/host"
 
 const AGENTS_BASE = withBase("/agents/")
 const RESPONSE_FORMATS = ["toon", "json"]
@@ -46,6 +50,7 @@ export function parseAgent(markdown) {
     tools: [],
     artifacts: [],
     agents: [], // other agents this one may call as tools
+    mcp: [], // MCP servers (or server.tool) from .mcp.json whose tools it may call
     skills: {},
     strategy: "react",
     response_format: "toon",
@@ -67,6 +72,8 @@ export function validateAgent(config) {
     !plain(config.skills) ||
     !Array.isArray(config.agents ?? []) ||
     !(config.agents ?? []).every((a) => safeName(a) && a !== config.name) ||
+    !Array.isArray(config.mcp ?? []) ||
+    !(config.mcp ?? []).every((m) => m === "*" || safeName(m)) ||
     !RESPONSE_FORMATS.includes(config.response_format) ||
     (config.soul !== undefined && typeof config.soul !== "string")
   ) {
@@ -93,13 +100,47 @@ async function read(url, { optional = false } = {}) {
   return response.text()
 }
 
-// Load the shared soul and every agent in the manifest. Each agent gets its
-// soul (own override or shared) and its skills' text.
+// Where agents come from: the private folders the local host serves
+// (--agents / ASKK_AGENTS, in order) — a team of its own, with its own lead —
+// else the shipped public/agents/ (also with private folders when the host
+// was started with --with-public). Each source has the same layout:
+// index.json, soul.md, <name>/agent.md.
+export async function agentSources() {
+  const host = await detectHost()
+  const origin = globalThis.location.origin
+  return [
+    ...(host.sources ?? []).map(({ id, name }) => ({
+      id: `private:${name}`,
+      name,
+      base: new URL(withBase(`/__askk/sources/${id}/`), origin),
+      private: true,
+    })),
+    ...(host.publicAgents === false ? [] : [{ id: "public", name: "public", base: new URL(AGENTS_BASE, origin), private: false }]),
+  ]
+}
+
+// Every agent of every source. The first agent of the first source is the
+// default (registry). A private agent shadows a public one of the same name;
+// a name twice in private sources is an error.
 export async function loadAgents() {
-  const base = new URL(AGENTS_BASE, globalThis.location.origin)
+  const agents = []
+  for (const source of await agentSources()) {
+    for (const agent of await loadSource(source)) {
+      const existing = agents.find((a) => a.name === agent.name)
+      if (!existing) agents.push(agent)
+      else if (source.private) throw new Error(`Agent "${agent.name}" is defined in two private folders.`)
+      // else: the public agent is shadowed by the private one
+    }
+  }
+  return agents
+}
+
+// One source: its shared soul and every agent in its manifest. Each agent
+// gets its soul (own override or shared) and its skills' text.
+async function loadSource({ id, name, base }) {
   const folders = JSON.parse(await read(new URL("index.json", base)))
   if (!Array.isArray(folders) || !folders.every(safeName) || new Set(folders).size !== folders.length) {
-    throw new Error("Invalid agents/index.json manifest.")
+    throw new Error(`Invalid index.json manifest in ${name} agents.`)
   }
 
   const sharedSoul = splitFrontmatter((await read(new URL("soul.md", base), { optional: true })) ?? "").body
@@ -126,7 +167,7 @@ export async function loadAgents() {
       skills[name] = (await read(inside(reference))).trim()
     }
 
-    agents.push({ ...agent, folder, soul, skills })
+    agents.push({ ...agent, folder, soul, skills, source: id })
   }
   return agents
 }

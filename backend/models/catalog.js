@@ -1,7 +1,9 @@
 // Model catalogue: the model connections agents use, each under a key.
 //
-//   public/models.json            shipped connections (served publicly —
-//                                 never put an API key here)
+//   public/models.json            shipped connections (served publicly — keep
+//                                 it empty: no endpoints, no keys)
+//   .env (ASKK_MODEL_*)           your connection on this machine, served by
+//                                 the local host API (/__askk/models) only
 //   localStorage "askk.models"    connections added or edited in this browser
 //
 //   { "default": "local",
@@ -19,9 +21,19 @@ const KEY = "askk.models"
 
 export const MODEL_FIELDS = ["label", "provider", "base_url", "api_key", "id", "context_length", "max_tokens"]
 
+// Run by this machine (local mode only): the host API serves each as an
+// OpenAI-compatible endpoint (companion/local-models.js). No URL or key.
+export const LOCAL_PROVIDERS = {
+  "claude-cli": "Claude CLI",
+  "codex-cli": "Codex CLI",
+  "gemini-cli": "Gemini CLI",
+  apple: "Apple on-device",
+}
+
 export const PROVIDERS = {
   openai: "OpenAI-compatible",
   anthropic: "Anthropic-compatible",
+  ...LOCAL_PROVIDERS,
 }
 
 const plain = (value) => value !== null && typeof value === "object" && !Array.isArray(value)
@@ -34,7 +46,7 @@ export function cleanModel(model, key = "model") {
   const clean = Object.fromEntries(
     MODEL_FIELDS.filter((f) => model[f] !== undefined && model[f] !== null && model[f] !== "").map((f) => [f, model[f]])
   )
-  if (!(clean.provider in PROVIDERS)) throw new Error(`Model "${key}" needs provider openai or anthropic.`)
+  if (!(clean.provider in PROVIDERS)) throw new Error(`Model "${key}" needs provider ${Object.keys(PROVIDERS).join(", ")}.`)
   if (!clean.id) throw new Error(`Model "${key}" needs a model id.`)
   return clean
 }
@@ -67,6 +79,7 @@ const EMPTY = Object.freeze({ status: "idle", error: null, default: null, models
 class ModelStore {
   #listeners = new Set()
   #file = catalogue(null)
+  #env = catalogue(null) // from .env, via the host API (local mode only)
   #state = EMPTY
   #loading = null
 
@@ -88,7 +101,13 @@ class ModelStore {
     this.#loading ??= (async () => {
       this.#set({ status: "loading" })
       try {
-        const response = await fetch(new URL(FILE, window.location.origin))
+        const [response, env] = await Promise.all([
+          fetch(new URL(FILE, window.location.origin)),
+          fetch(new URL(withBase("/__askk/models"), window.location.origin), { cache: "no-store" })
+            .then((r) => (r.ok ? r.json() : null))
+            .catch(() => null), // no host API: a static host
+        ])
+        if (env) this.#env = catalogue(env)
         if (response.ok) this.#file = catalogue(await response.json())
         else if (response.status !== 404) throw new Error(`Cannot load models.json: HTTP ${response.status}`)
         this.#rebuild({ status: "ready", error: null })
@@ -102,17 +121,19 @@ class ModelStore {
   #rebuild(patch = {}) {
     const saved = readSaved()
     const models = []
-    for (const [key, entry] of Object.entries({ ...this.#file.models, ...saved.models })) {
+    const shipped = { ...this.#file.models, ...this.#env.models }
+    for (const [key, entry] of Object.entries({ ...shipped, ...saved.models })) {
       if (!validKey(key)) continue
       try {
-        const source = !(key in this.#file.models) ? "browser" : key in saved.models ? "edited" : "file"
+        const base = key in this.#env.models ? "env" : "file"
+        const source = !(key in shipped) ? "browser" : key in saved.models ? "edited" : base
         models.push({ key, source, ...cleanModel(entry, key) })
       } catch {
         // An unusable entry is skipped, not fatal.
       }
     }
     const keys = models.map((m) => m.key)
-    const preferred = [saved.default, this.#file.default].find((k) => keys.includes(k))
+    const preferred = [saved.default, this.#env.default, this.#file.default].find((k) => keys.includes(k))
     this.#set({ ...patch, models, default: preferred ?? keys[0] ?? null })
   }
 
@@ -135,6 +156,32 @@ class ModelStore {
     delete saved.models[key]
     if (saved.default === key && !(key in this.#file.models)) saved.default = null
     writeSaved(saved)
+    this.#rebuild()
+  }
+
+  // This browser's layer as editable JSON text: { default, models }.
+  savedJson() {
+    return JSON.stringify(readSaved(), null, 2)
+  }
+
+  // Replace this browser's layer with edited JSON. Everything is checked
+  // before anything is saved: valid keys, usable entries, a known default.
+  replaceSaved(text) {
+    let parsed
+    try {
+      parsed = JSON.parse(text)
+    } catch (error) {
+      throw new Error(`Not valid JSON: ${error.message}`)
+    }
+    if (!plain(parsed) || !plain(parsed.models ?? {})) throw new Error('Expected { "default": "key", "models": { "key": { … } } }.')
+    const next = { default: parsed.default ?? null, models: {} }
+    for (const [key, entry] of Object.entries(parsed.models ?? {})) {
+      if (!validKey(key)) throw new Error(`Key "${key}": letters, digits, dot, dash or underscore, starting with a letter or digit.`)
+      next.models[key] = cleanModel(entry, key)
+    }
+    const known = new Set([...Object.keys(next.models), ...Object.keys(this.#file.models), ...Object.keys(this.#env.models)])
+    if (next.default !== null && !known.has(next.default)) throw new Error(`Default "${next.default}" is not a model key.`)
+    writeSaved(next)
     this.#rebuild()
   }
 

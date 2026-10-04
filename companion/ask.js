@@ -19,17 +19,23 @@ import { readFile } from "node:fs/promises"
 import { resolve, sep } from "node:path"
 import { parseArgs } from "node:util"
 
-import { createHostApi } from "./host-api.js"
+import { agentDirsFrom, createHostApi, modelsFromEnv, rootFrom } from "./host-api.js"
 
 const USAGE = `Usage: askk ask [options] [query]      (query from stdin when omitted)
 
-  --agent <name>     agent to ask (default: the first in agents/index.json, the lead)
-  --root <dir>       workspace folder (default: the current folder)
+  --agent <name>     agent to ask (default: the first agent of the first --agents
+                     folder, else the lead)
+  --agents <dir>     a custom team folder (custom/<team>/: agents/ with index.json,
+                     soul.md, <name>/agent.md, optional skills/ and mcp.json; data/
+                     the workspace); repeatable; default ASKK_AGENTS.
+                     Only these agents load, unless --with-public
+  --with-public      with --agents: also load the public agents (lead, planner, critic)
+  --root <dir>       workspace folder (default: the team's data/, else the current folder)
   --read-only        agents may read the workspace, never change it
   --yes              approve every change the agents ask for (default: decline)
-  --model <key>      model connection from models.json (default: its default)
-  --models <file>    extra model connections, same format as models.json
-                     (API keys belong here or in ASKK_API_KEY, never in public/)
+  --model <key>      model connection to use (default: the one from .env)
+  --models <file>    extra model connections, in the models.json format
+                     (default model: ASKK_MODEL_* in .env, see .env.example)
   --timeout <sec>    stop after this many seconds (default: 1800)
   --json             print { ok, agent, answer, error, seconds } instead of the answer
   --quiet            no progress on stderr
@@ -81,10 +87,12 @@ function installBrowserShims({ api, embedded }) {
 async function loadModel({ embedded, key, extra }) {
   const shippedFile = await publicFile(embedded, "/models.json")
   const shipped = shippedFile ? JSON.parse(await shippedFile.text()) : {}
+  const env = modelsFromEnv()
   const added = extra ? JSON.parse(await readFile(extra, "utf8")) : {}
-  const models = { ...shipped.models, ...added.models }
-  const chosen = key ?? added.default ?? shipped.default
+  const models = { ...shipped.models, ...env.models, ...added.models }
+  const chosen = key ?? added.default ?? env.default ?? shipped.default
   const entry = models[chosen]
+  if (!chosen) fail("no model. Set ASKK_MODEL_BASE_URL and ASKK_MODEL_ID in .env (see .env.example), or pass --models <file>.")
   if (!entry) fail(`no model "${chosen}". Known: ${Object.keys(models).join(", ") || "none"}.`)
   return { key: chosen, ...entry, api_key: entry.api_key ?? process.env.ASKK_API_KEY ?? undefined }
 }
@@ -104,7 +112,9 @@ export async function main(argv, { embedded = null } = {}) {
       allowPositionals: true,
       options: {
         agent: { type: "string" },
-        root: { type: "string", default: process.cwd() },
+        agents: { type: "string", multiple: true, default: [] },
+        "with-public": { type: "boolean", default: false },
+        root: { type: "string" },
         "read-only": { type: "boolean", default: false },
         yes: { type: "boolean", default: false },
         model: { type: "string" },
@@ -129,7 +139,14 @@ export async function main(argv, { embedded = null } = {}) {
   if (!(seconds > 0)) fail("--timeout must be a number of seconds.")
 
   const log = opts.quiet ? () => {} : (line) => process.stderr.write(`${line}\n`)
-  const api = await createHostApi({ root: opts.root, readOnly: opts["read-only"], port: PORT })
+  let api
+  try {
+    const agentDirs = agentDirsFrom(opts.agents)
+    opts.root = await rootFrom(opts.root, agentDirs)
+    api = await createHostApi({ root: opts.root, readOnly: opts["read-only"], port: PORT, agentDirs, withPublic: opts["with-public"] })
+  } catch (error) {
+    fail(error.message)
+  }
   installBrowserShims({ api, embedded })
   const model = await loadModel({ embedded, key: opts.model, extra: opts.models })
 

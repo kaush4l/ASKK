@@ -6,6 +6,9 @@
 //     <name>/SKILL.md     frontmatter (name, description) + Markdown body
 //
 // A static export cannot list a folder, so index.json names the skills.
+// Private agent folders (--agents) may carry their own skills/ in the same
+// layout, served by the local host; their skills join the catalogue (a
+// private skill shadows a public one of the same name).
 //
 //   await listSkills()      [{ name, description }]  (cheap: the whole catalogue)
 //   await loadSkill(name)   { name, description, body }
@@ -15,6 +18,7 @@
 
 import { splitFrontmatter } from "@/backend/agents/frontmatter"
 import { withBase } from "@/backend/platform/base-path"
+import { detectHost } from "@/backend/platform/host"
 
 const SKILLS_BASE = withBase("/skills/")
 const SKILL_FILE = "SKILL.md"
@@ -40,20 +44,33 @@ export function parseSkill(markdown, folder) {
   return { name, description: data.description.trim(), body }
 }
 
-async function loadCatalogue() {
-  const base = new URL(SKILLS_BASE, globalThis.location.origin)
+// One folder of skills; an absent index.json is an empty folder.
+async function loadFolder(base, label) {
   const response = await fetch(new URL("index.json", base))
-  if (response.status === 404) return new Map() // no skills published
-  if (!response.ok) throw new Error(`Cannot load /skills/index.json: HTTP ${response.status}`)
+  if (response.status === 404) return []
+  if (!response.ok) throw new Error(`Cannot load ${label}/index.json: HTTP ${response.status}`)
   const folders = await response.json()
   if (!Array.isArray(folders) || !folders.every(safeName) || new Set(folders).size !== folders.length) {
-    throw new Error("Invalid skills/index.json manifest.")
+    throw new Error(`Invalid ${label}/index.json manifest.`)
   }
+  const list = []
+  for (const folder of folders) list.push(parseSkill(await read(new URL(`${folder}/${SKILL_FILE}`, base)), folder))
+  return list
+}
+
+async function loadCatalogue() {
+  const origin = globalThis.location.origin
+  const host = await detectHost()
+  const folders = [
+    ...(host.sources ?? []).map(({ id, name }) => [new URL(withBase(`/__askk/sources/${id}/skills/`), origin), `${name}/skills`, true]),
+    [new URL(SKILLS_BASE, origin), "skills", false],
+  ]
   const skills = new Map()
-  for (const folder of folders) {
-    const skill = parseSkill(await read(new URL(`${folder}/${SKILL_FILE}`, base)), folder)
-    if (skills.has(skill.name)) throw new Error(`Duplicate skill: ${skill.name}`)
-    skills.set(skill.name, skill)
+  for (const [base, label, isPrivate] of folders) {
+    for (const skill of await loadFolder(base, label)) {
+      if (!skills.has(skill.name)) skills.set(skill.name, skill)
+      else if (isPrivate) throw new Error(`Duplicate skill: ${skill.name}`)
+    }
   }
   return skills
 }

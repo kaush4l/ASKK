@@ -237,7 +237,7 @@ function EmptyState({ engine, status }) {
 }
 
 // What a pending call will do, by tool.
-function ApprovalDetail({ tool, inputs }) {
+function ApprovalDetail({ tool, inputs, summary }) {
   const block = "max-h-48 overflow-auto rounded-md border p-2 font-mono text-xs whitespace-pre-wrap break-words"
   if (tool === "fs.write") {
     return (
@@ -268,7 +268,12 @@ function ApprovalDetail({ tool, inputs }) {
       </p>
     )
   }
-  return <pre className={block}>{JSON.stringify(inputs, null, 2)}</pre>
+  return (
+    <>
+      {summary && <p className="text-sm break-words">{summary}</p>}
+      <pre className={block}>{JSON.stringify(inputs, null, 2)}</pre>
+    </>
+  )
 }
 
 // Tool calls waiting for the owner. The engine pauses until each is answered.
@@ -286,7 +291,7 @@ function Approvals({ engine, approvals }) {
             <span className="size-2 animate-pulse rounded-full bg-amber-500" />
             {engine.name} wants to run <span className="font-mono text-foreground">{approval.tool}</span>
           </div>
-          <ApprovalDetail tool={approval.tool} inputs={approval.inputs ?? {}} />
+          <ApprovalDetail tool={approval.tool} inputs={approval.inputs ?? {}} summary={approval.summary} />
           <div className="flex justify-end gap-2">
             <Button
               type="button"

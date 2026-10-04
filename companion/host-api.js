@@ -7,6 +7,9 @@
 //
 // Endpoints:
 //   GET whoami                 { name, version, root, capabilities, platform }
+//   GET models                 { default, models } — your model connection from
+//        .env (ASKK_MODEL_*, see .env.example), so it is never in the shipped
+//        app or the repo; only this machine's page can read it.
 //   GET fs/list?path=<rel>     { path, entries: [{ name, type, size, mtime }] }
 //   GET fs/read?path=<rel>     { path, size, binary, truncated, text, revision }
 //   GET fs/tree?path=<rel>     { path, entries: [{ name, type, children?, skipped?, omitted? }] }
@@ -21,19 +24,43 @@
 //        A file, link, or empty folder; a folder with contents needs
 //        recursive: true. A link is removed, never what it points to.
 //        revision (files): 409 if the file changed since it was read.
+//   GET apple/actions          { actions: [{ id, available }] } — macOS only
+//   POST apple/run { action, inputs }   { text } — run one Apple action
+//        (companion/apple.js: Shortcuts, speech, notifications, clipboard,
+//        Spotlight, Reminders, open a link)
+//   GET sources                { sources: [{ id, name }] } — private agent folders
+//   GET sources/<id>/<path>    a file from one (.md / .json only, raw text):
+//        index.json, soul.md, <agent>/agent.md, skills/… (agentDirs, --agents)
+//   GET mcp/tools              { servers: [{ name, ok, error?, approval, tools }] }
+//   POST mcp/call { server, tool, arguments }   { text, isError } — call one
+//        tool on an MCP server from .mcp.json (companion/mcp.js), or of an
+//        integration (integrations/<name>/, companion/integrations.js)
+//   GET llm/<provider>/v1/models, POST llm/<provider>/v1/chat/completions
+//        OpenAI-compatible: the claude/codex/gemini CLIs and Apple's on-device
+//        model (companion/local-models.js); capability models.local
+//   GET integrations/events?after=<seq>&from=<boot>&wait=<ms>
+//        { boot, next, events } — messages integrations received (long poll;
+//        only while listening: bun run dev / askk)
 //
 // Capabilities: fs.read and fs.write (write + delete) on `root`; readOnly
-// drops fs.write. The app asks the owner before an agent changes anything.
+// drops fs.write; apple on macOS; mcp when .mcp.json lists servers. The app
+// asks the owner before an agent changes anything or reaches outside ASKK.
 //
 // Security: the Host header must name this machine's loopback address and
 // port (blocks DNS rebinding and other machines on the network); a
 // cross-origin Origin is refused and no CORS headers are sent; POST needs a
 // same-origin Origin and a JSON body; every path is resolved through realpath
-// and must stay inside the root (symlinks out of it are refused).
+// and must stay inside the root (symlinks out of it are refused). Agents
+// cannot write or delete ASKK's own configuration (.env*, .mcp.json), which
+// would let them give themselves a model, a key or a program to run.
 
 import { createHash } from "node:crypto"
 import { lstat, mkdir, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises"
 import { basename, dirname, join, relative, resolve, sep } from "node:path"
+import { createApple } from "./apple.js"
+import { loadIntegrations } from "./integrations.js"
+import { createLocalModels } from "./local-models.js"
+import { createMcp } from "./mcp.js"
 
 export const VERSION = "0.1.0"
 export const API_PREFIX = "/__askk/"
@@ -41,6 +68,8 @@ const MAX_READ = 1024 * 1024 // bytes returned by fs/read
 const MAX_WRITE = 8 * 1024 * 1024 // bytes accepted by fs/write
 const MAX_TREE = 3000 // entries returned by fs/tree
 // Folders listed but never expanded in a tree (same list as backend/features/filesystem/workspace.js).
+// ASKK's own configuration: never written or deleted through the API.
+const PROTECTED = (name) => name === ".mcp.json" || (/^\.env(\..+)?$/.test(name) && name !== ".env.example")
 const TREE_SKIP = new Set([".git", "node_modules", ".next", "out", "dist", "build", ".turbo", ".cache", "coverage", "__pycache__", ".venv", "venv", ".DS_Store"])
 
 class HttpError extends Error {
@@ -58,9 +87,105 @@ const revisionOf = (bytes) => createHash("sha256").update(bytes).digest("hex").s
 
 const readBytes = async (path) => new Uint8Array(await Bun.file(path).arrayBuffer())
 
-export async function createHostApi({ root: rootArg, readOnly = false, port, name = "askk-companion" }) {
+// The model connection configured in the environment (.env, which Bun loads
+// from the folder ASKK starts in): { default, models } in the models.json
+// format, or an empty catalogue when ASKK_MODEL_BASE_URL / _ID are unset. A
+// model this machine runs (ASKK_MODEL_PROVIDER=claude-cli, codex-cli,
+// gemini-cli, apple) needs no URL.
+const RUN_HERE = ["claude-cli", "codex-cli", "gemini-cli", "apple"]
+export function modelsFromEnv(env = process.env) {
+  const baseUrl = env.ASKK_MODEL_BASE_URL?.trim()
+  const id = env.ASKK_MODEL_ID?.trim()
+  const provider = env.ASKK_MODEL_PROVIDER?.trim() || "openai"
+  if (!id || (!baseUrl && !RUN_HERE.includes(provider))) return { default: null, models: {} }
+  const key = env.ASKK_MODEL_KEY?.trim() || "local"
+  const number = (value) => (Number(value) > 0 ? Number(value) : undefined)
+  const model = {
+    label: env.ASKK_MODEL_LABEL?.trim() || `${id} (from .env)`,
+    provider,
+    base_url: baseUrl || undefined,
+    id,
+    api_key: env.ASKK_MODEL_API_KEY?.trim() || undefined,
+    max_tokens: number(env.ASKK_MODEL_MAX_TOKENS),
+    context_length: number(env.ASKK_MODEL_CONTEXT_LENGTH),
+  }
+  return { default: key, models: { [key]: model } }
+}
+
+// Private agent folders: every --agents flag, else ASKK_AGENTS (.env), a
+// list separated by ":" or ",".
+export function agentDirsFrom(flags = []) {
+  if (flags.length) return flags
+  return (process.env.ASKK_AGENTS ?? "").split(/[:,]/).map((d) => d.trim()).filter(Boolean)
+}
+
+// A team folder (custom/<team>/) keeps its agents in agents/ and its shared
+// files in data/; pointing at the agents folder itself works too.
+const teamAgents = async (dir) =>
+  (await Bun.file(join(dir, "index.json")).exists()) ? dir : join(dir, "agents")
+
+// The workspace: --root, else the first team's data/ folder, else the folder
+// ASKK starts in.
+export async function rootFrom(rootFlag, agentDirs = []) {
+  if (rootFlag) return rootFlag
+  if (agentDirs.length) {
+    const team = resolve(agentDirs[0])
+    const data = join(basename(team) === "agents" ? dirname(team) : team, "data")
+    if (await stat(data).then((s) => s.isDirectory(), () => false)) return data
+  }
+  return process.cwd()
+}
+
+export async function createHostApi({
+  root: rootArg,
+  readOnly = false,
+  port,
+  name = "askk-companion",
+  mcpFile = resolve(process.cwd(), ".mcp.json"),
+  agentDirs = [],
+  withPublic = false, // with agentDirs: also load the shipped public/agents/
+  integrationsDir = resolve(process.cwd(), "integrations"),
+  listen = false, // run integration listeners (a continuous server, not askk ask)
+}) {
   const root = await realpath(resolve(rootArg))
-  const capabilities = readOnly ? ["fs.read"] : ["fs.read", "fs.write"]
+  const envModels = modelsFromEnv()
+  const apple = await createApple()
+  const local = await createLocalModels() // claude/codex/gemini CLIs, Apple on-device
+  // Private agent folders (index.json + soul.md + <name>/agent.md, optional
+  // skills/ and mcp.json): served read-only to the app, never written.
+  const sources = await Promise.all(
+    agentDirs.map(async (dir, id) => {
+      const path = await realpath(await teamAgents(resolve(dir))).catch(() => {
+        throw new Error(`Agents folder not found: ${dir} (expected index.json or agents/index.json)`)
+      })
+      if (!(await Bun.file(join(path, "index.json")).exists())) throw new Error(`${dir} has no index.json (the agent manifest).`)
+      // "custom/desk/agents" is the desk's team: named after its folder.
+      return { id, name: basename(path) === "agents" ? basename(dirname(path)) : basename(path), path }
+    })
+  )
+  const mcpServers = await createMcp({ files: [mcpFile, ...sources.map((s) => join(s.path, "mcp.json"))] })
+  const integrations = await loadIntegrations({ dir: integrationsDir, listen })
+  for (const name of integrations?.names ?? []) {
+    if (mcpServers?.names.includes(name)) throw new Error(`"${name}" is both an MCP server and an integration.`)
+  }
+  // MCP servers and integrations, offered to agents the same way.
+  const mcp =
+    mcpServers || integrations
+      ? {
+          tools: async () => [...((await mcpServers?.tools()) ?? []), ...(integrations?.servers() ?? [])],
+          call: (server, tool, args) =>
+            integrations?.has(server) ? integrations.call(server, tool, args) : mcpServers ? mcpServers.call(server, tool, args) : Promise.reject(Object.assign(new Error(`Unknown MCP server "${server}".`), { status: 404 })),
+        }
+      : null
+  const capabilities = [
+    ...(readOnly ? ["fs.read"] : ["fs.read", "fs.write"]),
+    ...(envModels.default ? ["models"] : []),
+    ...(local ? ["models.local"] : []),
+    ...(apple ? ["apple"] : []),
+    ...(mcp ? ["mcp"] : []),
+    ...(sources.length ? ["agents.private"] : []),
+    ...(integrations?.listening.length ? ["integrations.events"] : []),
+  ]
   const allowedHosts = new Set([`127.0.0.1:${port}`, `localhost:${port}`, `[::1]:${port}`])
 
   // ── paths ─────────────────────────────────────────────────────────────
@@ -200,6 +325,7 @@ export async function createHostApi({ root: rootArg, readOnly = false, port, nam
   async function write({ path: rel, text, revision }) {
     if (typeof text !== "string") throw new HttpError(400, "text must be a string.")
     const path = await writeTarget(rel)
+    if (PROTECTED(basename(path))) throw new HttpError(403, `${basename(path)} is ASKK's configuration; only the owner edits it.`)
     return serialize(path, async () => {
       const existing = await Bun.file(path).exists()
       const current = existing ? revisionOf(await readBytes(path)) : null
@@ -227,6 +353,7 @@ export async function createHostApi({ root: rootArg, readOnly = false, port, nam
     if (!parts.length) throw new HttpError(400, "The workspace root cannot be deleted.")
     const parent = await inRoot(parts.slice(0, -1).join("/"))
     const target = join(parent, parts.at(-1))
+    if (PROTECTED(parts.at(-1))) throw new HttpError(403, `${parts.at(-1)} is ASKK's configuration; only the owner edits it.`)
     let info
     try {
       info = await lstat(target)
@@ -246,13 +373,91 @@ export async function createHostApi({ root: rootArg, readOnly = false, port, nam
     })
   }
 
+  // A file of a private agent folder, as raw text.
+  async function sourceFile(endpoint) {
+    const [, idText, ...rest] = endpoint.split("/")
+    const source = sources[Number(idText)]
+    const rel = rest.join("/")
+    if (!source || !/^\d+$/.test(idText)) throw new HttpError(404, "Unknown agent folder.")
+    if (!/\.(md|json)$/.test(rel) || rel.split("/").some((p) => !p || p === "." || p === "..")) {
+      throw new HttpError(404, "Not found.")
+    }
+    let real
+    try {
+      real = await realpath(join(source.path, ...rel.split("/")))
+    } catch {
+      throw new HttpError(404, `Not found: ${rel}`)
+    }
+    if (!real.startsWith(source.path + sep)) throw new HttpError(403, "Path is outside the agents folder.")
+    return new Response(Bun.file(real), {
+      headers: { "content-type": rel.endsWith(".json") ? "application/json" : "text/markdown; charset=utf-8", "cache-control": "no-store" },
+    })
+  }
+
   const GET = {
-    whoami: () => ({ name, version: VERSION, root, capabilities, platform: process.platform }),
+    whoami: () => ({ name, version: VERSION, root, capabilities, platform: process.platform, localModels: local?.providers ?? [], sources: sources.map(({ id, name }) => ({ id, name })), publicAgents: !sources.length || withPublic }),
+    sources: () => ({ sources: sources.map(({ id, name }) => ({ id, name })) }),
+    models: () => envModels,
     "fs/list": (params) => list(params.get("path") ?? ""),
     "fs/read": (params) => read(params.get("path") ?? ""),
     "fs/tree": (params) => tree(params.get("path") ?? ""),
+    ...(apple ? { "apple/actions": () => ({ actions: apple.actions }) } : {}),
+    ...(mcp ? { "mcp/tools": async () => ({ servers: await mcp.tools() }) } : {}),
+    ...(integrations?.listening.length
+      ? {
+          "integrations/events": (params) =>
+            integrations.events({ after: params.get("after"), from: params.get("from"), wait: Number(params.get("wait")) || 0 }),
+        }
+      : {}),
   }
-  const POST = readOnly ? {} : { "fs/write": write, "fs/delete": remove }
+  const POST = {
+    ...(readOnly ? {} : { "fs/write": write, "fs/delete": remove }),
+    ...(apple ? { "apple/run": ({ action, inputs }) => apple.run(action, inputs) } : {}),
+    ...(mcp ? { "mcp/call": ({ server, tool, arguments: args }) => mcp.call(server, tool, args) } : {}),
+  }
+
+  // ── local models (OpenAI-compatible) ──────────────────────────────────
+
+  async function localModel(request, provider, path, sameOrigin) {
+    if (path === "models") {
+      if (request.method !== "GET") return json(405, { error: "Method not allowed." })
+      return json(200, { object: "list", data: local.models(provider).map((m) => ({ object: "model", ...m })) })
+    }
+    if (request.method !== "POST") return json(405, { error: "Method not allowed." })
+    if (!sameOrigin) return json(403, { error: "Model calls need a same-origin request." })
+    const body = await request.json().catch(() => null)
+    if (!body) return json(400, { error: "Invalid JSON body." })
+    const prompt = (body.messages ?? [])
+      .map((m) => (typeof m.content === "string" ? m.content : (m.content ?? []).map((part) => part.text ?? "").join("")))
+      .join("\n\n")
+    const parts = local.complete(provider, { model: body.model, prompt, signal: request.signal })
+    const id = `askk-${Date.now()}`
+    const chunk = (delta, finish = null) => ({ id, object: "chat.completion.chunk", model: body.model, choices: [{ index: 0, delta, finish_reason: finish }] })
+    if (!body.stream) {
+      let text = ""
+      for await (const part of parts) text += part
+      return json(200, { id, object: "chat.completion", model: body.model, choices: [{ index: 0, message: { role: "assistant", content: text }, finish_reason: "stop" }] })
+    }
+    const encoder = new TextEncoder()
+    const send = (controller, data) => controller.enqueue(encoder.encode(`data: ${typeof data === "string" ? data : JSON.stringify(data)}\n\n`))
+    const stream = new ReadableStream({
+      async start(controller) {
+        // A CLI writes nothing until it is done: keep the connection alive.
+        const ping = setInterval(() => controller.enqueue(encoder.encode(": working\n\n")), 5000)
+        try {
+          for await (const part of parts) send(controller, chunk({ content: part }))
+          send(controller, chunk({}, "stop"))
+        } catch (error) {
+          send(controller, { error: { message: error.message } })
+        } finally {
+          clearInterval(ping)
+        }
+        send(controller, "[DONE]")
+        controller.close()
+      },
+    })
+    return new Response(stream, { headers: { "content-type": "text/event-stream", "cache-control": "no-store" } })
+  }
 
   // ── requests ──────────────────────────────────────────────────────────
 
@@ -269,6 +474,9 @@ export async function createHostApi({ root: rootArg, readOnly = false, port, nam
 
     const endpoint = url.pathname.slice(API_PREFIX.length)
     try {
+      if (request.method === "GET" && endpoint.startsWith("sources/")) return await sourceFile(endpoint)
+      const llm = local && endpoint.match(/^llm\/([a-z-]+)\/v1\/(models|chat\/completions)$/)
+      if (llm) return await localModel(request, llm[1], llm[2], sameOrigin)
       if (request.method === "GET") {
         const handler = GET[endpoint]
         if (!handler) return json(404, { error: "Unknown endpoint." })

@@ -34,6 +34,10 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
+
+# MCP servers (may hold tokens); see mcp.example.json
+.mcp.json
 
 # vercel
 .vercel
@@ -42,3 +46,8 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .gstack/
+
+# Vendor applications, integrations and custom agent teams: local only, never pushed
+/vendor/
+/integrations/
+/custom/

@@ -52,7 +52,15 @@ The same app runs in two modes (`backend/platform/host.js` `detectHost()`):
 
 Host API capabilities: `fs.read` (`whoami`, `fs/list`, `fs/tree`, `fs/read`) and
 `fs.write` (`POST fs/write`, revision-checked, atomic; `POST fs/delete`,
-links unlinked never followed, non-empty folders need `recursive`).
+links unlinked never followed, non-empty folders need `recursive`),
+`models` (`.env`) and `apple` (macOS only: `GET apple/actions`,
+`POST apple/run {action, inputs}`, `companion/apple.js` — fixed system
+programs with argument lists, never a shell; agent text is data) and `mcp`
+(`.mcp.json` in the folder ASKK starts in, `mcpServers` format, stdio or
+Streamable HTTP; `GET mcp/tools`, `POST mcp/call {server, tool, arguments}`;
+`companion/mcp.js` is the MCP client, servers start lazily and stay up).
+Agents can never write or delete `.env*` (except `.env.example`) or
+`.mcp.json` through the API.
 Security: Host header must be localhost:port (DNS rebinding; LAN devices get
 demo mode), cross-origin refused, POST needs same-origin Origin + JSON,
 realpath containment (no symlink escapes, also for new files).
@@ -168,6 +176,22 @@ Core never imports a feature folder directly, only the catalogue
     `skills.unload` (each takes `{"names": [...]}`); max 6 loaded. Only the loaded list is per engine.
     (agent.md `skills: {name: file}` is the older always-inlined form.)
 
+- `mcp/` — `tools.js`: `McpTool extends Tool`, one per tool of an MCP
+  server, named `<server>.<tool>`. agent.md `mcp: [server]` (all its tools),
+  `[server.tool]` (one) or `["*"]` (every configured server, silent when
+  none). `loadMcpTools()` fetches the host's list once per thread; the
+  engine adds them in `#describeTools()` before its first letter (they are
+  async, unlike catalogue tools) and lists each server in CONTEXT. Approval
+  per server (`approval: auto|always|never`; auto = all but `readOnlyHint`
+  tools), with a `describe()` sentence on the card.
+- `apple/` — `tools.js`: `apple.*` tools on the owner's Mac through the host
+  API (Shortcuts list/run, say, notify, clipboard read/write, Spotlight,
+  Reminders list/add, open a link). Every call that acts or reads personal
+  data has `approval: true` and a `describe(inputs)` sentence for the
+  approval card (`Tool.describe`); macOS adds its own permission prompt per
+  area. Elsewhere they fail with "not available here". Plan and inventory:
+  `docs/apple.md`.
+
 **`runtime/` — engines running live**
 
 - `engine-worker.js` / `engine-proxy.js` — every engine runs in its own Web
@@ -197,10 +221,25 @@ Core never imports a feature folder directly, only the catalogue
   and `anthropic` (`/messages`), streaming `fetch`, plus `listModels()` and
   `contextWindow()`. Thinking arrives as `reasoning_content` / `thinking_delta`.
 - `catalog.js` — model catalogue: named connections (`key` → provider,
-  base_url, id, …). `public/models.json` ships entries (public — never API
-  keys); Settings adds/edits more in localStorage `askk.models`. One is the
+  base_url, id, …). `public/models.json` is shipped empty (public: never an
+  endpoint or key). Local mode adds the `.env` model (`ASKK_MODEL_*`,
+  `.env.example`) from the host API `GET /__askk/models` (`modelsFromEnv()`
+  in `companion/host-api.js`, capability `models`; headless reads it too).
+  Settings adds/edits more in localStorage `askk.models` (wins over both). One is the
   default; every agent uses it unless agent.md names a key (`model: <key>`).
   `engine.model` = `resolveModel(agent.model)` (null if the key is unknown).
+- Models this Mac runs (local mode): providers `claude-cli`, `codex-cli`,
+  `gemini-cli` (the owner's signed-in CLIs, run as plain completions: own
+  tools, MCP, plugins and project files off, empty temp folder, prompt on
+  stdin) and `apple` (on-device Foundation Models via Apple's Python SDK,
+  `vendor/apple-fm/bridge.py`, 8k context). `companion/local-models.js`; the
+  host serves each OpenAI-compatible at `/__askk/llm/<provider>/v1`
+  (capability `models.local`, SSE with keep-alive pings), and `llm.js` maps
+  the provider to that endpoint, so no URL or key is stored.
+- MCP url servers may name `"oauth": "<token file>"` (`${VAR}` from `.env`):
+  `companion/oauth-file.js` reads the bearer token from a file another program
+  shares, refreshing it under the same flock as the Python desk (one copy,
+  never duplicated: refresh tokens rotate). Robinhood: `ROBINHOOD_OAUTH_FILE`.
 - `metrics.js` — `TokenMeter`: tokens/s and context use per LLM call (server
   `usage` when reported, else ~4 chars/token). Engine state `stats` +
   `contextWindow`; shown on the chat page (`model-stats.jsx`).
@@ -275,6 +314,54 @@ model. New items are `<StatusItem>` components.
 Chat page debug (temporary): the `<>` button next to the model stats opens
 `components/chat/prompt-panel.jsx` beside the chat — "Sent" is the exact
 prompt of each LLM call (`message.prompt`), "Next" is `engine.preview(input)`.
+
+## Agent teams: public and custom
+
+No `--agents`: the public team (`public/agents/`, pushed) runs. To customise,
+point the start at a custom team folder (`custom/<team>/`, git-ignored,
+never pushed): `--agents custom/desk` (dev, `askk`, `askk ask`; or
+`ASKK_AGENTS` in `.env`).
+
+```
+custom/<team>/
+  agents/   index.json, soul.md, <name>/agent.md, skills/, mcp.json (its tools)
+  data/     the team's shared folder: the workspace unless --root is given
+```
+
+The host serves `agents/` read-only (`GET sources/<id>/<path>`). Only that
+team loads (its first agent is the default lead) unless `--with-public`. Its
+skills join the catalogue; its mcp.json merges into the MCP servers (paths
+relative to `agents/`), e.g. OpenAlice through `../../../vendor/openalice-tools.ts`.
+Vendor applications stay in `vendor/` with their own start scripts; a team
+only refers to them. The trade desk: `bun run dev -- --agents custom/desk`.
+
+## Integrations
+
+`integrations/<name>/index.js` (git-ignored, private): connections to outside
+services, configured from `.env`. `companion/integrations.js` loads them;
+each default-exports `createIntegration({ env, log })` → null (not
+configured) or `{ name, approval, tools: [{ name, description, inputSchema,
+annotations, run }], listen?({ emit, signal }) }`. Tools reach agents through
+the same host endpoints as MCP (`mcp/tools`, `mcp/call`), so `McpTool` serves
+them (`telegram.send_message`). Listeners run only on continuous servers
+(dev, `askk`: `createHostApi({ listen: true })`); events queue in the host
+(`GET integrations/events`, long poll, `{ boot, next, events }`, capability
+`integrations.events`). `backend/runtime/integration-bridge.js` (started by
+the registry, one tab via Web Lock, cursor in localStorage) deposits each
+message in the default agent (`EngineProxy.ask`) and sends the answer with
+the event's `reply` tool. First: `integrations/telegram/` (TELEGRAM_BOT_TOKEN,
+TELEGRAM_CHAT_ID; owner's chats only).
+
+## Vendor applications
+
+`vendor/` holds other applications ASKK borrows from, each a clean clone
+(git-ignored; never edit or patch it) beside a script that starts the part
+ASKK uses. `vendor/openalice/` (TraderAlice/OpenAlice) +
+`vendor/openalice-tools.ts`: `startOpenAliceTools()` composes OpenAlice's
+market-data/news/quant tools as `src/main.ts` does (no trading, no workspace
+tools) and returns `[{ name, group, description, inputSchema, effect,
+invoke(args) }]`; `bun run vendor:openalice` lists them. State in
+`vendor/.openalice-data/`, never `~/.openalice`. See `vendor/README.md`.
 
 ## Speech input
 

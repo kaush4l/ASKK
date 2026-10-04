@@ -6,13 +6,19 @@
 //                 filesystem artifact (tree + open files, fs.open / fs.close)
 //   skills/       catalogue of public/skills/ (name + description), the skills
 //                 artifact (catalogue + loaded skills, skills.load / skills.unload)
+//   mcp/          McpTool: each tool of an MCP server in .mcp.json (agent.md
+//                 `mcp:`), loaded from the host when the engine starts work
+//   apple/        apple.* tools: the owner's Mac (Shortcuts, speech, clipboard,
+//                 Spotlight, Reminders, …) through the host API, with approval
 //
 // Add a feature: a folder with its Tool specs and/or Artifact subclasses,
 // then list them below.
 
 import { Tool } from "@/backend/core/tool"
+import { APPLE_TOOLS } from "@/backend/features/apple/tools"
 import { FilesystemArtifact } from "@/backend/features/filesystem/artifact"
 import { FS_TOOLS } from "@/backend/features/filesystem/tools"
+export { loadMcpTools } from "@/backend/features/mcp/tools"
 import { SkillsArtifact } from "@/backend/features/skills/artifact"
 
 // ── artifacts ──────────────────────────────────────────────────────────────
@@ -65,7 +71,7 @@ const PLANNED_TOOLS = {
   },
 }
 
-const TOOL_SPECS = { ...FS_TOOLS, ...PLANNED_TOOLS }
+const TOOL_SPECS = { ...FS_TOOLS, ...APPLE_TOOLS, ...PLANNED_TOOLS }
 
 // Every tool name with a known contract (offered when editing an agent).
 export const TOOL_NAMES = Object.keys(TOOL_SPECS)

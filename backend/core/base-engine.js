@@ -29,7 +29,7 @@ import { formatContext, formatRequest, formatRole, formatSoul, renderTemplate } 
 import { formatLog } from "@/backend/core/log"
 import { AgentTool, Tool } from "@/backend/core/tool"
 import { parseToolPlan } from "@/backend/core/tool-plan"
-import { createArtifacts, createTools } from "@/backend/features"
+import { createArtifacts, createTools, loadMcpTools } from "@/backend/features"
 import { missingModelMessage, resolveModel } from "@/backend/models/catalog"
 import { complete, contextWindow } from "@/backend/models/llm"
 import { TokenMeter } from "@/backend/models/metrics"
@@ -182,7 +182,7 @@ export class BaseEngine {
       ...(agent.agents?.length ? this.#questTools() : []),
     ]
     this.toolsMap = new Map(this.tools.map((tool) => [tool.name, tool]))
-    this.#toolContext = null
+    this.#toolContext = null // MCP tools are added with it (#describeTools)
     this.responseFormat = agent.response_format ?? "toon"
 
     // Static sections, rendered once per definition
@@ -468,12 +468,23 @@ export class BaseEngine {
   }
 
   // CONTEXT lines the tools contribute (e.g. which workspace fs.* work on);
-  // tools of one feature share one context() function, asked once.
+  // tools of one feature share one context() function, asked once. The
+  // agent's MCP servers (`mcp:`) are listed here too, asynchronously, and
+  // their tools join the engine's (once per definition).
   async #describeTools() {
     if (this.#toolContext) return
+    const agent = this.agent
+    const mcp = await loadMcpTools(agent.mcp ?? [])
+    if (this.agent !== agent) return // reconfigured meanwhile; the next letter loads again
+    const added = mcp.tools.filter((tool) => !this.toolsMap.has(tool.name))
+    if (added.length) {
+      this.tools = [...this.tools, ...added]
+      this.toolsMap = new Map(this.tools.map((tool) => [tool.name, tool]))
+      this.toolsInstructions = this.formatToolsInstructions()
+    }
     const sources = [...new Set(this.tools.map((tool) => tool.context).filter(Boolean))]
     const lines = await Promise.all(sources.map((context) => Promise.resolve().then(context).catch(() => null)))
-    this.#toolContext = lines.filter(Boolean)
+    this.#toolContext = [...lines.filter(Boolean), ...mcp.lines]
   }
 
   // Fill the template. The complete prompt is sent on every request.
@@ -581,7 +592,10 @@ export class BaseEngine {
     const id = `approval-${++this.#approvalCount}`
     const previous = this.#state.activity
     this.update({
-      approvals: [...this.#state.approvals, { id, tool: tool.name, inputs, at: new Date().toISOString() }],
+      approvals: [
+        ...this.#state.approvals,
+        { id, tool: tool.name, inputs, summary: tool.describe?.(inputs) ?? null, at: new Date().toISOString() },
+      ],
       activity: { phase: "approval", name: tool.name },
     })
     return new Promise((resolve) => {

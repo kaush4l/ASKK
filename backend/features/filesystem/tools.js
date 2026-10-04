@@ -1,4 +1,4 @@
-// The fs.* tools: list, read, write, edit and delete files in the workspace
+// The fs.* tools: list, read, write, edit, append and delete files in the workspace
 // (workspace.js). Write tools need the owner's approval, and a write over an
 // existing file must be based on a revision this engine has seen (read, or
 // open in the filesystem artifact: markSeen).
@@ -90,6 +90,34 @@ async function fsEdit({ path, old, new: replacement }, { engine }) {
   return `Edited ${result.path} (${formatSize(result.size)}).`
 }
 
+// Append text to a file (created if missing): logs, ledgers, notes shared by
+// several agents. Each line keeps its own; a concurrent change by another
+// agent is retried on the fresh content, never overwritten.
+async function fsAppend({ path, text }, { engine }) {
+  if (typeof text !== "string" || !text) throw new Error('Expected {"path": "...", "text": "lines to add"}.')
+  const ws = await workspace()
+  const key = requirePath(path).replace(/^\/+/, "")
+  for (let attempt = 0; attempt < 5; attempt++) {
+    let current = null
+    try {
+      current = await ws.read(key)
+    } catch (error) {
+      if (!/not found/i.test(error.message)) throw error
+    }
+    if (current && (current.binary || current.truncated)) throw new Error(`${key} cannot be appended to as text.`)
+    const before = current?.text ?? ""
+    const joined = before && !before.endsWith("\n") ? `${before}\n${text}` : `${before}${text}`
+    try {
+      const result = await ws.write(key, joined.endsWith("\n") ? joined : `${joined}\n`, { revision: current?.revision ?? null })
+      seenBy(engine).set(result.path, result.revision)
+      return `Appended ${text.length} characters to ${result.path} (${formatSize(result.size)}).`
+    } catch (error) {
+      if (error.name !== "ConflictError") throw error // changed meanwhile: try again on the new content
+    }
+  }
+  throw new Error(`${key} kept changing while appending; try again.`)
+}
+
 async function fsDelete({ path, recursive = false }, { engine }) {
   const ws = await workspace()
   const revisions = seenBy(engine)
@@ -152,6 +180,21 @@ const SPECS = {
     effect: "write",
     approval: true,
     run: fsEdit,
+  },
+  "fs.append": {
+    description:
+      "Append text to the end of a workspace file, creating it if missing (logs, ledgers, shared notes). " +
+      "Other agents' additions are kept. Needs the owner's approval.",
+    inputs: {
+      type: "object",
+      properties: { path: pathSchema, text: { type: "string" } },
+      required: ["path", "text"],
+      additionalProperties: false,
+    },
+    effect: "write",
+    approval: true,
+    describe: ({ path, text = "" }) => `Append ${text.length} characters to ${path}.`,
+    run: fsAppend,
   },
   "fs.delete": {
     description:

@@ -3,17 +3,33 @@
 import { AgentCard } from "@/components/agents/agent-card"
 import { useEngines } from "@/hooks/use-engines"
 
-// Every agent read from public/agents/, one card each.
+// Every loaded agent (public/agents/ or a custom team), one card each.
 export function AgentsPage() {
   const { agents, edited, engines, status, error } = useEngines()
+  const teams = [...new Set(agents.filter((a) => a.source?.startsWith("private:")).map((a) => a.source.slice(8)))]
+  const hasPublic = agents.some((a) => !a.source?.startsWith("private:"))
 
   return (
     <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
       <div className="flex flex-col gap-1">
         <h1 className="text-2xl">Agents</h1>
         <p className="text-sm text-muted-foreground">
-          Loaded from <code>public/agents/</code>. Edits are saved in this browser and apply to
-          live engines on their next message.
+          {teams.length ? (
+            <>
+              Team <code>{teams.join(", ")}</code> (started with <code>--agents</code>)
+              {hasPublic && (
+                <>
+                  {" "}
+                  and <code>public/agents/</code>
+                </>
+              )}
+            </>
+          ) : (
+            <>
+              Loaded from <code>public/agents/</code>
+            </>
+          )}
+          . Edits are saved in this browser and apply to live engines on their next message.
         </p>
       </div>
 

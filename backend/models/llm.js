@@ -6,17 +6,23 @@
 //   await contextWindow(model)                          -> number | null
 //
 // `model` is a connection from the model catalogue (catalog.js):
-//   { provider: "openai" | "anthropic", base_url, api_key, id, context_length, max_tokens }
+//   { provider: "openai" | "anthropic" | <local>, base_url, api_key, id, context_length, max_tokens }
 //
 // openai     any OpenAI-compatible /chat/completions (oMLX, LM Studio, Ollama,
 //            vLLM, llama.cpp, OpenRouter, OpenAI)
 // anthropic  any Anthropic-compatible /messages (Anthropic, or a local server
 //            that speaks it), with the header that allows browser calls
 //
+// claude-cli, codex-cli, gemini-cli, apple — run by this machine; the local
+//            host serves each as an OpenAI-compatible endpoint under
+//            /__askk/llm/<provider>/v1 (companion/local-models.js)
+//
 // The prompt is sent whole, as a single user message. onDelta receives
 // { content, reasoning } per chunk; `reasoning` is the model's thinking.
 // `usage` is { inputTokens, outputTokens, tokensPerSecond? } when the server
 // reports it, else null.
+
+import { withBase } from "@/backend/platform/base-path"
 
 const CONTEXT_KEYS = ["context_length", "max_context_length", "max_model_len", "context_window", "max_input_tokens", "loaded_context_length"]
 
@@ -190,10 +196,17 @@ const PROTOCOLS = {
   },
 }
 
+// A model this machine runs: the same-origin host endpoint, in OpenAI's shape.
+const LOCAL = new Set(["claude-cli", "codex-cli", "gemini-cli", "apple"])
+const local = (model) =>
+  LOCAL.has(model?.provider)
+    ? { ...model, provider: "openai", api_key: undefined, base_url: `${globalThis.location?.origin ?? ""}${withBase(`/__askk/llm/${model.provider}/v1`)}` }
+    : model
+
 function protocol(model) {
   if (!model) throw new Error("No model connection.")
   const found = PROTOCOLS[model?.provider]
-  if (!found) throw new Error(`Unknown provider "${model?.provider}". Use openai or anthropic.`)
+  if (!found) throw new Error(`Unknown provider "${model?.provider}".`)
   if (!model.id) throw new Error("No model selected. Set one in Settings.")
   return found
 }
@@ -201,6 +214,7 @@ function protocol(model) {
 export async function complete({ model, prompt, signal, onDelta }) {
   let raw = ""
   let reasoning = ""
+  model = local(model)
   const usage = await protocol(model).stream(model, prompt, {
     signal,
     emit: (content, thinking) => {
@@ -213,6 +227,7 @@ export async function complete({ model, prompt, signal, onDelta }) {
 }
 
 export function listModels(model, options) {
+  model = local(model)
   const found = PROTOCOLS[model?.provider]
   if (!found) throw new Error(`Unknown provider "${model?.provider}".`)
   return found.models(model, options)

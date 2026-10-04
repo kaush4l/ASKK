@@ -1,8 +1,10 @@
 // Tool — the contract every capability an engine can call follows: name,
 // description, inputs (JSON schema), effect, approval and, once implemented,
 // `run(inputs, { engine, signal })`. Tools with `approval: true` wait for the
-// owner (BaseEngine.executeTool). `context()` may return one line for the
-// prompt's CONTEXT section (e.g. which workspace the fs.* tools work on).
+// owner (BaseEngine.executeTool); `describe(inputs)` may say in one sentence
+// what the call will do, for the approval card. `context()` may return one
+// line for the prompt's CONTEXT section (e.g. which workspace the fs.* tools
+// work on).
 //
 // Implementations live with their feature (features/<name>/tools.js) and are
 // registered in features/index.js.
@@ -17,6 +19,7 @@ export class Tool {
     kind = "tool", // "tool" | "agent"
     run = null, // async (inputs, { engine, signal }) -> string | object
     context = null, // async () -> string | null, a CONTEXT line (shared by a feature's tools)
+    describe = null, // (inputs) -> string, what the call will do (approval card)
   }) {
     this.name = name
     this.description = description
@@ -26,6 +29,7 @@ export class Tool {
     this.kind = kind
     this.run = run
     this.context = context
+    this.describe = describe
   }
 
   async invoke(inputs = {}, context = {}) {

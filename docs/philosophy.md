@@ -11,35 +11,20 @@ from one idea:
 
 Each agent runs as an engine in its own Web Worker. It owns:
 
-- **an inbox**: every piece of work arrives as a letter: your message,
-  another agent's quest, a report on a quest it handed out;
-- **its tools and artifacts**: what it can do, and the live objects it works
-  on;
+- **an inbox**: every piece of work arrives as a letter: your message, another agent's quest, a report on a quest it handed out;
+- **its tools and artifacts**: what it can do, and the live objects it works on;
 - **its memory**: its conversation, saved as Markdown;
-- **its status**: `created → idle ⇄ running → disposed`, plus what it is
-  doing right now (`activity`).
+- **its status**: `created → idle ⇄ running → disposed`, plus what it is doing right now (`activity`).
 
-An engine works one letter at a time. A deposit while it is idle starts the
-work.
+An engine works one letter at a time. A deposit while it is idle starts the work.
 
 ## 2. Send messages, never wait on another agent
 
-Engines talk only by putting letters in each other's inboxes. Calling
-another agent hands it a quest and returns at once. The caller's turn ends,
-and the report comes back as a new letter that wakes it. No agent ever
-blocks on another, so each one is always free to show its own state and to
-take your next message.
+Engines talk only by putting letters in each other's inboxes. Calling another agent hands it a quest and returns at once. The caller's turn ends, and the report comes back as a new letter that wakes it. No agent ever blocks on another, so each one is always free to show its own state and to take your next message.
 
 ## 3. Long work is supervised, not capped
 
-Agents may take as many steps as a quest needs, and a manager as many
-rounds; there is no fixed loop limit. Unlimited work brings risks: an
-agent drifting from its quest, looping on the same call, or stalling. The
-answer is supervision instead of a cap. A system supervisor reads every
-running engine's state, and every few minutes or steps sends the quest's
-owner a status letter with a digest of the latest work. The owner checks it
-against the quest: lets it run, steers it, or calls it back. The owner can
-always see the same thing and press Stop.
+Agents may take as many steps as a quest needs, and a manager as many rounds; there is no fixed loop limit. Unlimited work brings risks: an agent drifting from its quest, looping on the same call, or stalling. The answer is supervision instead of a cap. A system supervisor reads every running engine's state, and every few minutes or steps sends the quest's owner a status letter with a digest of the latest work. The owner checks it against the quest: lets it run, steers it, or calls it back. The owner can always see the same thing and press Stop.
 
 ## 4. State is the interface
 
@@ -52,8 +37,7 @@ An engine's state is one immutable snapshot, replaced on every change:
 - token metrics and context use;
 - artifact state.
 
-The worker sends changes as batched patches (about 30 per second, only what
-changed). The UI subscribes (`useSyncExternalStore`) and only renders.
+The worker sends changes as batched patches (about 30 per second, only what changed). The UI subscribes (`useSyncExternalStore`) and only renders.
 
 So:
 

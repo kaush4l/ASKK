@@ -9,6 +9,7 @@ import { detectHost } from "@/backend/platform/host"
 import { engineRegistry } from "@/backend/runtime/registry"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useEngineState, useEngines } from "@/hooks/use-engines"
+import { engineTone, initials } from "@/lib/engine-tone"
 import { cn } from "@/lib/utils"
 
 // The status bar: a thin strip pinned to the bottom of every page, showing
@@ -70,22 +71,6 @@ function HostItem() {
       <span className="max-w-32 truncate max-sm:hidden">{local ? folder : "Browser"}</span>
     </StatusItem>
   )
-}
-
-// What an engine's dot and words say about its state.
-function engineTone(state) {
-  if (!state) return { dot: "bg-muted-foreground/40", word: "starting" }
-  if (state.approvals?.length) return { dot: "bg-amber-500 animate-pulse", word: "needs your approval" }
-  if (state.status === "error") return { dot: "bg-destructive", word: "error" }
-  if (state.status === "running") return { dot: "bg-emerald-500 animate-pulse", word: describeActivity(state.activity) }
-  if (state.activity?.phase === "waiting") return { dot: "bg-amber-500", word: describeActivity(state.activity) }
-  return { dot: "bg-muted-foreground/40", word: "idle" }
-}
-
-// "planner" -> "Pl", "planner 2" -> "Pl2" (as in the engine bar)
-function initials(name) {
-  const [word, suffix = ""] = name.split(" ")
-  return word.slice(0, 1).toUpperCase() + word.slice(1, 2) + suffix
 }
 
 function EngineItem({ engine, active }) {

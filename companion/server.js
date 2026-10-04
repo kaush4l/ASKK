@@ -4,7 +4,7 @@
 // no mixed content, and Safari works as-is. For development use `bun run dev`
 // (scripts/dev.js): the same host API on the Next dev server, with hot reload.
 //
-//   askk [--root <dir>] [--port 7717] [--read-only]
+//   askk [--root <dir>] [--port 7717] [--read-only] [--agents <dir> …]
 //   askk ask [options] "query"     headless: answer on stdout (companion/ask.js)
 //
 // The app stays a static export; this only serves it and provides
@@ -15,7 +15,7 @@ import { stat } from "node:fs/promises"
 import { extname, resolve, sep } from "node:path"
 import { parseArgs } from "node:util"
 
-import { API_PREFIX, VERSION, createHostApi } from "./host-api.js"
+import { API_PREFIX, VERSION, agentDirsFrom, createHostApi, rootFrom } from "./host-api.js"
 
 // The app: embedded when compiled (assets.gen.js maps URL path -> file),
 // else read from out/ next to this file (run `bun --bun next build` first).
@@ -27,13 +27,23 @@ if (Bun.argv[2] === "ask") await (await import("./ask.js")).main(Bun.argv.slice(
 const { values: args } = parseArgs({
   args: Bun.argv.slice(2),
   options: {
-    root: { type: "string", default: process.cwd() },
+    root: { type: "string" },
     port: { type: "string", default: "7717" },
     "read-only": { type: "boolean", default: false },
+    agents: { type: "string", multiple: true, default: [] },
+    "with-public": { type: "boolean", default: false },
   },
 })
 const port = Number(args.port)
-const api = await createHostApi({ root: args.root, readOnly: args["read-only"], port })
+const agentDirs = agentDirsFrom(args.agents)
+const api = await createHostApi({
+  root: await rootFrom(args.root, agentDirs),
+  readOnly: args["read-only"],
+  port,
+  agentDirs,
+  withPublic: args["with-public"],
+  listen: true, // a continuous server: integration listeners run (Telegram, …)
+})
 
 const outDir = resolve(import.meta.dir, "../out")
 
@@ -69,6 +79,7 @@ const allowedHosts = new Set([`127.0.0.1:${port}`, `localhost:${port}`])
 const server = Bun.serve({
   hostname: "127.0.0.1",
   port,
+  idleTimeout: 0, // a local model may think for minutes (host-api pings while streaming)
   async fetch(request) {
     // DNS-rebinding guard: only requests addressed to this server.
     if (!allowedHosts.has(request.headers.get("host"))) return new Response("Bad host", { status: 421 })

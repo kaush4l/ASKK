@@ -63,6 +63,7 @@ export class EngineProxy {
     this.tools = [
       ...agent.tools.map((name) => ({ name, kind: "tool" })),
       ...(agent.agents ?? []).map((name) => ({ name, kind: "agent" })),
+      ...(agent.mcp ?? []).map((name) => ({ name: name === "*" ? "MCP: all servers" : name.includes(".") ? name : `${name}.*`, kind: "tool" })),
     ]
   }
 
@@ -153,6 +154,12 @@ export class EngineProxy {
   deposit(letter) {
     if (this.status === "disposed") throw new Error(`${this.name} is closed.`)
     this.#post({ type: "deposit", letter })
+  }
+
+  // A request whose final answer the caller needs (e.g. a reply to a
+  // message from an integration). Resolves with the answer.
+  ask(text, { from = null } = {}) {
+    return this.#call("ask", [text, { from }])
   }
 
   // UI entry point: the owner's message, as a letter. Outcomes are in state.

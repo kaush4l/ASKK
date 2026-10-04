@@ -55,4 +55,14 @@ export const HOST_CAPABILITIES = [
     label: "Change files in your project folder",
     fallback: "Changes go to the browser workspace instead.",
   },
+  {
+    id: "models",
+    label: "Your model from .env",
+    fallback: "Add your model on the Settings page.",
+  },
+  {
+    id: "apple",
+    label: "Your Mac: Shortcuts, Reminders, Spotlight, speech, clipboard",
+    fallback: null,
+  },
 ]

@@ -4,10 +4,12 @@ import * as React from "react"
 import { PencilIcon, PlusIcon, RotateCcwIcon, StarIcon, Trash2Icon } from "lucide-react"
 
 import { ModelFields } from "@/components/model-fields"
+import { ModelsJson } from "@/components/settings/models-json"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { models, MODEL_FIELDS, PROVIDERS } from "@/backend/models/catalog"
 import { useModels } from "@/hooks/use-models"
 
@@ -127,6 +129,7 @@ function ModelRow({ model, isDefault }) {
 export function SettingsPage() {
   const catalogue = useModels()
   const [adding, setAdding] = React.useState(false)
+  const [view, setView] = React.useState("form") // "form" | "json"
   const fallback = catalogue.models.find((m) => m.key === catalogue.default)
 
   return (
@@ -141,25 +144,43 @@ export function SettingsPage() {
           <CardTitle className="text-lg">Models</CardTitle>
           <CardDescription>
             Every agent uses the default model. An agent that needs another names its key in agent.md
-            (<code>model: key</code>). Entries come from <code>public/models.json</code> or are added here;
-            API keys stay in this browser.
+            (<code>model: key</code>). Entries come from <code>.env</code>, <code>public/models.json</code>, or are
+            added here; API keys stay in this browser. Edit them in the form or as JSON.
           </CardDescription>
           <CardAction>
-            <Button size="sm" variant="outline" onClick={() => setAdding(true)} disabled={adding}>
-              <PlusIcon /> Add
-            </Button>
+            {view === "form" && (
+              <Button size="sm" variant="outline" onClick={() => setAdding(true)} disabled={adding}>
+                <PlusIcon /> Add
+              </Button>
+            )}
           </CardAction>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
+          <Tabs value={view} onValueChange={setView}>
+            <TabsList>
+              <TabsTrigger value="form" className="pointer-coarse:h-10">
+                Form
+              </TabsTrigger>
+              <TabsTrigger value="json" className="pointer-coarse:h-10">
+                JSON
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
           {catalogue.error && <p className="text-sm text-destructive">{catalogue.error}</p>}
           {catalogue.status !== "ready" && <p className="text-sm text-muted-foreground">Loading models…</p>}
-          {adding && (
-            // Start from the default connection: usually only the model id changes.
-            <ModelForm initial={{ ...connection(fallback), label: "" }} onDone={() => setAdding(false)} />
+          {view === "json" ? (
+            catalogue.status === "ready" && <ModelsJson />
+          ) : (
+            <>
+              {adding && (
+                // Start from the default connection: usually only the model id changes.
+                <ModelForm initial={{ ...connection(fallback), label: "" }} onDone={() => setAdding(false)} />
+              )}
+              {catalogue.models.map((model) => (
+                <ModelRow key={model.key} model={model} isDefault={model.key === catalogue.default} />
+              ))}
+            </>
           )}
-          {catalogue.models.map((model) => (
-            <ModelRow key={model.key} model={model} isDefault={model.key === catalogue.default} />
-          ))}
         </CardContent>
       </Card>
     </div>

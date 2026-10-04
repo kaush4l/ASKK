@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { listModels } from "@/backend/models/llm"
-import { PROVIDERS } from "@/backend/models/catalog"
+import { LOCAL_PROVIDERS, PROVIDERS } from "@/backend/models/catalog"
 
 function Row({ id, label, hint, children }) {
   return (
@@ -46,6 +46,7 @@ export function ModelFields({ value, onChange }) {
 
   const number = (raw) => (raw === "" ? "" : Math.max(0, Math.floor(Number(raw))) || "")
   const known = models?.find((m) => m.id === value.id)
+  const onThisMachine = value.provider in LOCAL_PROVIDERS // no URL or key: the host runs it
 
   return (
     <div className="flex flex-col gap-4">
@@ -55,7 +56,7 @@ export function ModelFields({ value, onChange }) {
           value={value.provider}
           onValueChange={(provider) => (setModels(null), set({ provider }))}
         >
-          <TabsList>
+          <TabsList className="h-auto flex-wrap">
             {Object.entries(PROVIDERS).map(([key, label]) => (
               <TabsTrigger key={key} value={key} className="pointer-coarse:h-10">
                 {label}
@@ -65,29 +66,37 @@ export function ModelFields({ value, onChange }) {
         </Tabs>
       </Row>
 
-      <Row id={`${id}-url`} label="Base URL">
-        <Input
-          id={`${id}-url`}
-          inputMode="url"
-          autoComplete="off"
-          spellCheck={false}
-          value={value.base_url ?? ""}
-          placeholder={value.provider === "anthropic" ? "https://api.anthropic.com" : "http://127.0.0.1:8873/v1"}
-          onChange={(e) => (setModels(null), set({ base_url: e.target.value }))}
-          className={inputClass}
-        />
-      </Row>
+      {onThisMachine ? (
+        <p className="text-xs text-muted-foreground">
+          Runs on this Mac through ASKK (local mode only), signed in as you. Load lists its models.
+        </p>
+      ) : (
+        <>
+          <Row id={`${id}-url`} label="Base URL">
+            <Input
+              id={`${id}-url`}
+              inputMode="url"
+              autoComplete="off"
+              spellCheck={false}
+              value={value.base_url ?? ""}
+              placeholder={value.provider === "anthropic" ? "https://api.anthropic.com" : "http://127.0.0.1:8873/v1"}
+              onChange={(e) => (setModels(null), set({ base_url: e.target.value }))}
+              className={inputClass}
+            />
+          </Row>
 
-      <Row id={`${id}-key`} label="API key" hint="Stored in plain text in this browser. Leave empty for local servers.">
-        <Input
-          id={`${id}-key`}
-          type="password"
-          autoComplete="off"
-          value={value.api_key ?? ""}
-          onChange={(e) => set({ api_key: e.target.value })}
-          className={inputClass}
-        />
-      </Row>
+          <Row id={`${id}-key`} label="API key" hint="Stored in plain text in this browser. Leave empty for local servers.">
+            <Input
+              id={`${id}-key`}
+              type="password"
+              autoComplete="off"
+              value={value.api_key ?? ""}
+              onChange={(e) => set({ api_key: e.target.value })}
+              className={inputClass}
+            />
+          </Row>
+        </>
+      )}
 
       <Row
         id={`${id}-model`}

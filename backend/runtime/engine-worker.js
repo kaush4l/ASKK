@@ -9,7 +9,7 @@
 // main → worker
 //   { type: "init", id, name, agent, model, descriptions }
 //   { type: "deposit", letter }            a letter for the inbox (BaseEngine.deposit)
-//   { type: "call", callId, method: "restore" | "clearMemory" | "summarizeMemory" | "preview", args }
+//   { type: "call", callId, method: "restore" | "clearMemory" | "summarizeMemory" | "preview" | "ask", args }
 //   { type: "stop" }
 //   { type: "configure", agent, model, descriptions }
 //   { type: "sent", callId, ok, value, error }   reply to "send": delivered (value: engine id)
@@ -83,7 +83,7 @@ const toError = (data) => Object.assign(new Error(data?.message ?? "Unknown erro
 async function call({ callId, method, args = [] }) {
   try {
     let value
-    if (["restore", "clearMemory", "summarizeMemory", "preview"].includes(method)) {
+    if (["restore", "clearMemory", "summarizeMemory", "preview", "ask"].includes(method)) {
       value = await engine[method](...args)
     } else {
       throw new Error(`Unknown method ${method}`)

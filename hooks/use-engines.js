@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useSyncExternalStore } from "react"
+import { useCallback, useEffect, useRef, useSyncExternalStore } from "react"
 
 import { engineRegistry } from "@/backend/runtime/registry"
 
@@ -27,4 +27,25 @@ export function useEngineState(engine) {
     engine?.getSnapshot ?? nullSnapshot,
     engine?.getSnapshot ?? nullSnapshot
   )
+}
+
+// Every engine's state, in the order of `engines` (dashboard views that
+// read them all). The array is new only when one of the snapshots changed.
+export function useEngineStates(engines) {
+  const cache = useRef({ engines: null, states: [] })
+  const subscribe = useCallback(
+    (listener) => {
+      const offs = engines.map((engine) => engine.subscribe(listener))
+      return () => offs.forEach((off) => off())
+    },
+    [engines]
+  )
+  const getSnapshot = () => {
+    const states = engines.map((engine) => engine.getSnapshot())
+    const last = cache.current
+    if (last.engines === engines && states.every((state, i) => state === last.states[i])) return last.states
+    cache.current = { engines, states }
+    return states
+  }
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
 }

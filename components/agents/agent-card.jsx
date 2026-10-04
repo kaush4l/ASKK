@@ -83,6 +83,11 @@ function AgentView({ agent, liveCount }) {
           <ToolBadges tools={agent.artifacts} />
         </Field>
       )}
+      {agent.mcp?.length > 0 && (
+        <Field label="MCP servers">
+          <ToolBadges tools={agent.mcp} />
+        </Field>
+      )}
       {agent.agents?.length > 0 && (
         <Field label="Delegates to (agents as tools)">
           <ToolBadges tools={agent.agents} />
@@ -214,7 +219,7 @@ export function AgentCard({ agent, edited, liveCount }) {
         <CardTitle className="text-lg">{agent.name}</CardTitle>
         {!editing && <CardDescription>{agent.description}</CardDescription>}
         <CardAction>
-          <Badge variant={edited ? "secondary" : "outline"}>{edited ? "edited" : "file"}</Badge>
+          <Badge variant={edited ? "secondary" : "outline"}>{edited ? "edited" : agent.source?.startsWith("private:") ? "private" : "file"}</Badge>
         </CardAction>
       </CardHeader>
 

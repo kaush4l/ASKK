@@ -1,6 +1,7 @@
 import { pickEditable, readAgentEdits, writeAgentEdits } from "@/backend/agents/agent-store"
 import { loadAgents, validateAgent } from "@/backend/agents/definitions"
 import { EngineProxy } from "@/backend/runtime/engine-proxy"
+import { startIntegrationBridge } from "@/backend/runtime/integration-bridge"
 import { createSupervisor } from "@/backend/runtime/supervisor"
 import { models } from "@/backend/models/catalog"
 
@@ -86,6 +87,8 @@ class EngineRegistry {
         engines: () => this.#state.engines,
         deliver: (id, letter) => this.#state.engines.find((e) => e.id === id && e.status !== "disposed")?.deposit(letter),
       })
+      // Messages from integrations (Telegram, …) go to the default agent.
+      startIntegrationBridge(() => this.#state.engines.find((e) => e.id === this.#state.requiredId && e.status !== "disposed"))
       // Catalogue changes (new default, edited connection) reach every engine.
       models.subscribe(() => {
         for (const engine of this.#state.engines) engine.reconfigure()
