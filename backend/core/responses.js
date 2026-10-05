@@ -249,8 +249,8 @@ export class BaseResponse {
 
 export class ReActResponse extends BaseResponse {
   static toonExamples = {
-    observation: "observation:\n- <a fact that matters now>\n- <what the latest result showed>",
-    thinking: "thinking:\n- <what the facts mean>\n- <the options>\n- <the choice and why>",
+    observation: "observation:\n- <a new fact from the request or the latest result>",
+    decision: "decision: <the move you are making, and the fact it rests on>",
   }
 
   static fields = {
@@ -258,15 +258,13 @@ export class ReActResponse extends BaseResponse {
       type: "list",
       default: [],
       description:
-        "What you see now, one fact per item: what the request asks, what the latest results showed, " +
-        "constraints. Short items.",
+        "New facts since the last step, one per item: what the request asks, what the latest result showed. " +
+        "At most 4 short items.",
     },
-    thinking: {
-      type: "list",
-      default: [],
-      description:
-        "Your reasoning, one step per item, in order: what the facts mean, the options, the choice and why. " +
-        "As many steps as the problem needs. Must be safe to log.",
+    decision: {
+      type: "string",
+      default: "",
+      description: "One line: the move you are making and the fact it rests on. A conclusion, not a working-out.",
     },
     plan: {
       type: "list",
@@ -288,7 +286,8 @@ export class ReActResponse extends BaseResponse {
   }
 
   static normalize(data) {
-    for (const key of ["observation", "thinking", "plan"]) {
+    if (typeof data.decision === "string") data.decision = stripWrappingQuotes(data.decision)
+    for (const key of ["observation", "plan"]) {
       if (Array.isArray(data[key])) data[key] = data[key].map(stripWrappingQuotes).filter((item) => item.trim())
     }
     if (typeof data.response === "string") data.response = stripWrappingQuotes(data.response)

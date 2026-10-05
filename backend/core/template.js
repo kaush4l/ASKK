@@ -2,21 +2,43 @@
 
 // Element slots in the order they are sent. Empty elements are dropped; the
 // rest are joined by a blank line. The complete prompt is sent every request.
+//
+// Ordered for prompt caching: what changes least comes first, so a provider
+// can reuse the longest unchanged prefix.
+//   soul, instructions, tools, response   fixed per definition
+//   history                               grows between requests, fixed during one
+//   artifacts                             re-read before every step (shared space, files)
+//   context                               the current time, open quests: every call
+//   request                               the request and the work done on it
 const PROMPT_TEMPLATE = [
   "soul",
   "instructions",
-  "context",
-  "history",
-  "artifacts",
   "tools",
   "response",
+  "history",
+  "artifacts",
+  "context",
   "request",
 ]
 
+// Slots after which the prompt so far is a stable prefix worth caching.
+const CACHE_AFTER = new Set(["response", "history"])
+
+// The prompt and its cache breakpoints (character offsets where a stable
+// prefix ends), for providers with explicit caching (anthropic).
+export function renderPrompt(values) {
+  let text = ""
+  const breaks = []
+  for (const slot of PROMPT_TEMPLATE) {
+    if (!values[slot]) continue
+    text += (text ? "\n\n" : "") + values[slot]
+    if (CACHE_AFTER.has(slot)) breaks.push(text.length)
+  }
+  return { text, breaks: [...new Set(breaks)].filter((at) => at < text.length) }
+}
+
 export function renderTemplate(values) {
-  return PROMPT_TEMPLATE.map((slot) => values[slot])
-    .filter(Boolean)
-    .join("\n\n")
+  return renderPrompt(values).text
 }
 
 // Soul: who the agent is in every role (values, character). Never the job.
@@ -39,7 +61,12 @@ export function formatRole(text) {
 // `extra`: more context lines (e.g. the workspace an engine works on).
 export function formatContext(extra = []) {
   const now = new Date()
-  return ["## CONTEXT", `Current local time: ${now.toString()}`, `Current UTC time: ${now.toISOString()}`, ...extra].join("\n")
+  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone
+  return [
+    "## CONTEXT",
+    `Current time: ${now.toString()} (${zone}); UTC ${now.toISOString()}. Use this clock for every time you write.`,
+    ...extra,
+  ].join("\n")
 }
 
 // The request, then the work already done on it this turn (`progress`, the

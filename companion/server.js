@@ -16,6 +16,8 @@ import { extname, resolve, sep } from "node:path"
 import { parseArgs } from "node:util"
 
 import { API_PREFIX, VERSION, agentDirsFrom, createHostApi, rootFrom } from "./host-api.js"
+import { createTeam, findTeamServer } from "./team.js"
+import { realpath } from "node:fs/promises"
 
 // The app: embedded when compiled (assets.gen.js maps URL path -> file),
 // else read from out/ next to this file (run `bun --bun next build` first).
@@ -32,17 +34,32 @@ const { values: args } = parseArgs({
     "read-only": { type: "boolean", default: false },
     agents: { type: "string", multiple: true, default: [] },
     "with-public": { type: "boolean", default: false },
+    "browser-engines": { type: "boolean", default: false },
   },
 })
 const port = Number(args.port)
 const agentDirs = agentDirsFrom(args.agents)
+// One team for every tab (companion/team.js), unless --browser-engines: then
+// each tab runs its own engines, as the static build does.
+const root = await realpath(await rootFrom(args.root, agentDirs))
+// One instance per workspace: a second server would run a second team on
+// the same memory and files.
+const running = args["browser-engines"] ? null : findTeamServer(root)
+if (running) {
+  console.error(`ASKK already runs this workspace's team: http://localhost:${running.port}/ (pid ${running.pid}). Open that, or stop it first.`)
+  process.exit(1)
+}
+const team = args["browser-engines"]
+  ? null
+  : createTeam({ root, readOnly: args["read-only"], agentDirs, withPublic: args["with-public"], embedded, log: (line) => console.error(line) })
 const api = await createHostApi({
-  root: await rootFrom(args.root, agentDirs),
+  root,
+  team,
   readOnly: args["read-only"],
   port,
   agentDirs,
   withPublic: args["with-public"],
-  listen: true, // a continuous server: integration listeners run (Telegram, …)
+  listen: !team, // a continuous server: integration listeners run (Telegram, …); with a team, in the team
 })
 
 const outDir = resolve(import.meta.dir, "../out")
@@ -90,6 +107,7 @@ const server = Bun.serve({
   },
 })
 
+team?.announce(server.port)
 console.log(`ASKK companion ${VERSION}`)
 console.log(`  workspace  ${api.root} (${api.capabilities.includes("fs.write") ? "read + write" : "read-only"})`)
 console.log(`  open       http://localhost:${server.port}/`)

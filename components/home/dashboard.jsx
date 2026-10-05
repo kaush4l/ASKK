@@ -3,12 +3,14 @@
 import * as React from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { ArrowUpIcon, FolderIcon } from "lucide-react"
+import { FolderIcon } from "lucide-react"
 
+import { describeActivity } from "@/backend/core/activity"
 import { HOST_CAPABILITIES, detectHost, hasCapability } from "@/backend/platform/host"
 import { engineRegistry } from "@/backend/runtime/registry"
+import { Approvals } from "@/components/chat/chat"
+import { Composer } from "@/components/chat/composer"
 import { Constellation } from "@/components/home/constellation"
-import { Button } from "@/components/ui/button"
 import { useEngineStates, useEngines } from "@/hooks/use-engines"
 import { engineTone } from "@/lib/engine-tone"
 import { cn } from "@/lib/utils"
@@ -72,41 +74,107 @@ function Welcome({ busy }) {
 
 // ── ask the lead ─────────────────────────────────────────────────────────
 
-function QuickAsk({ engine, onSent }) {
+function QuickAsk({ engine, state, onOpen }) {
   const [text, setText] = React.useState("")
-  const send = (event) => {
-    event.preventDefault()
-    const query = text.trim()
-    if (!query || !engine) return
-    engine.send(query)
-    setText("")
-    onSent(engine)
-  }
+  const [asked, setAsked] = React.useState(null) // when this page last sent the lead a request
+  const messages = state?.messages ?? []
+  const reply = asked
+    ? [...messages].reverse().find((m) => m.role === "assistant" && m.final && !m.waiting && m.at && m.at >= asked)
+    : null
   return (
-    <form onSubmit={send} className="relative w-full max-w-xl motion-safe:animate-rise"
-      style={{ animationDelay: "1.7s" }}>
-      <label htmlFor="quick-ask" className="sr-only">
-        Ask {engine?.name ?? "the lead"}
-      </label>
-      <input
-        id="quick-ask"
+    <div className="flex w-full max-w-xl flex-col gap-2 motion-safe:animate-rise" style={{ animationDelay: "1.7s" }}>
+      <Composer
         value={text}
-        onChange={(e) => setText(e.target.value)}
-        placeholder={engine ? `Tell ${engine.name} what you need…` : "Starting agents…"}
+        onChange={setText}
+        onSend={(query) => {
+          setAsked(new Date().toISOString())
+          engine.send(query)
+        }}
+        onStop={() => engine.stop()}
+        running={state?.status === "running"}
         disabled={!engine}
-        autoComplete="off"
-        className="h-12 w-full rounded-full border bg-transparent pr-14 pl-5 text-base outline-none placeholder:text-muted-foreground focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm"
+        label={`Ask ${engine?.name ?? "the lead"}`}
+        placeholder={engine ? `Tell ${engine.name} what you need…` : "Starting agents…"}
       />
-      <Button
-        type="submit"
-        size="icon"
-        className="absolute top-1.5 right-1.5 rounded-full pointer-coarse:size-10"
-        disabled={!text.trim() || !engine}
-        aria-label="Send"
-      >
-        <ArrowUpIcon />
-      </Button>
-    </form>
+      {reply && (
+        <div className="flex flex-col gap-1 rounded-xl border px-4 py-3 text-sm" aria-live="polite">
+          <span className="flex items-center gap-2 text-xs text-muted-foreground">
+            {engine.name} answered
+            <button type="button" onClick={() => onOpen(engine)} className="ml-auto underline-offset-2 hover:underline pointer-coarse:min-h-10">
+              Open chat
+            </button>
+          </span>
+          <p className="max-h-64 overflow-auto whitespace-pre-wrap break-words">{reply.content}</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── live: who is working, on what, and what needs you ─────────────────────
+
+function lastTool(state) {
+  const messages = state?.messages ?? []
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i]
+    if (m.role === "tool" && m.name) return m
+    if (m.role === "user" && !m.from) return null // only the current letter's work
+  }
+  return null
+}
+
+function LivePanel({ engines, states, onOpen }) {
+  const working = engines
+    .map((engine, i) => ({ engine, state: states[i] }))
+    .filter(({ state }) => state?.activity && state.activity.phase !== "idle")
+  const asking = engines
+    .map((engine, i) => ({ engine, approvals: states[i]?.approvals ?? [] }))
+    .filter(({ approvals }) => approvals.length)
+  if (!working.length && !asking.length) return null
+  return (
+    <section className="flex w-full max-w-xl flex-col gap-2" aria-labelledby="live-title" aria-live="polite">
+      <h2 id="live-title" className="sr-only">Live work</h2>
+      {asking.map(({ engine, approvals }) => (
+        <Approvals key={engine.id} engine={engine} approvals={approvals} />
+      ))}
+      {working.length > 0 && (
+        <ol className="flex flex-col divide-y rounded-xl border">
+          {working.map(({ engine, state }) => {
+            const tool = lastTool(state)
+            const forWhom = state.working?.from
+            return (
+              <li key={engine.id}>
+                <button
+                  type="button"
+                  onClick={() => onOpen(engine)}
+                  className="flex w-full min-w-0 flex-col gap-0.5 px-3 py-2 text-left text-sm outline-none hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/50 pointer-coarse:min-h-10"
+                >
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span
+                      aria-hidden
+                      className={cn(
+                        "size-2 shrink-0 rounded-full",
+                        state.activity.phase === "waiting" || state.activity.phase === "approval"
+                          ? "bg-amber-500"
+                          : "animate-pulse bg-emerald-500"
+                      )}
+                    />
+                    <span>{engine.name}</span>
+                    <span className="min-w-0 truncate text-muted-foreground">{describeActivity(state.activity)}</span>
+                  </span>
+                  {(forWhom || tool) && (
+                    <span className="truncate pl-4 text-xs text-muted-foreground">
+                      {forWhom ? `quest from ${forWhom}` : "your request"}
+                      {tool ? ` · last: ${tool.kind === "agent" ? "quest to " : ""}${tool.name}${tool.ok ? "" : " (failed)"}` : ""}
+                    </span>
+                  )}
+                </button>
+              </li>
+            )
+          })}
+        </ol>
+      )}
+    </section>
   )
 }
 
@@ -283,7 +351,8 @@ export function Dashboard() {
             <div className="aspect-[2/1] w-full" aria-label="Starting agents" />
           )}
         </div>
-        <QuickAsk engine={ordered[0] ?? null} onSent={open} />
+        <QuickAsk engine={ordered[0] ?? null} state={states[0]} onOpen={open} />
+        <LivePanel engines={ordered} states={states} onOpen={open} />
       </section>
 
       <section className="flex flex-col gap-3" aria-labelledby="team-title">

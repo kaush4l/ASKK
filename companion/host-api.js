@@ -31,6 +31,9 @@
 //   GET sources                { sources: [{ id, name }] } — private agent folders
 //   GET sources/<id>/<path>    a file from one (.md / .json only, raw text):
 //        index.json, soul.md, <agent>/agent.md, skills/… (agentDirs, --agents)
+//   GET web/search?q=&limit=   { engine, query, results } — web search
+//   GET web/read?url=          { url, title, text } — a public page as text
+//        (companion/web.js: SearXNG if ASKK_SEARXNG_URL, else DuckDuckGo)
 //   GET mcp/tools              { servers: [{ name, ok, error?, approval, tools }] }
 //   POST mcp/call { server, tool, arguments }   { text, isError } — call one
 //        tool on an MCP server from .mcp.json (companion/mcp.js), or of an
@@ -38,6 +41,9 @@
 //   GET llm/<provider>/v1/models, POST llm/<provider>/v1/chat/completions
 //        OpenAI-compatible: the claude/codex/gemini CLIs and Apple's on-device
 //        model (companion/local-models.js); capability models.local
+//   GET team/stream            Server-Sent Events: the server's team (snapshot,
+//                              then registry / state / models changes) — capability team
+//   POST team/call { target, method, args }   { ok, value | error } — an action on it
 //   GET integrations/events?after=<seq>&from=<boot>&wait=<ms>
 //        { boot, next, events } — messages integrations received (long poll;
 //        only while listening: bun run dev / askk)
@@ -58,6 +64,7 @@ import { createHash } from "node:crypto"
 import { lstat, mkdir, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises"
 import { basename, dirname, join, relative, resolve, sep } from "node:path"
 import { createApple } from "./apple.js"
+import { createWeb } from "./web.js"
 import { loadIntegrations } from "./integrations.js"
 import { createLocalModels } from "./local-models.js"
 import { createMcp } from "./mcp.js"
@@ -87,29 +94,39 @@ const revisionOf = (bytes) => createHash("sha256").update(bytes).digest("hex").s
 
 const readBytes = async (path) => new Uint8Array(await Bun.file(path).arrayBuffer())
 
-// The model connection configured in the environment (.env, which Bun loads
+// The model connections configured in the environment (.env, which Bun loads
 // from the folder ASKK starts in): { default, models } in the models.json
-// format, or an empty catalogue when ASKK_MODEL_BASE_URL / _ID are unset. A
-// model this machine runs (ASKK_MODEL_PROVIDER=claude-cli, codex-cli,
-// gemini-cli, apple) needs no URL.
+// format, or an empty catalogue when ASKK_MODEL_ID is unset. ASKK_MODEL_* is
+// the default; ASKK_BACKUP_* (optional) is its fallback, used when the default
+// fails before answering. A model this machine runs (provider claude-cli,
+// codex-cli, gemini-cli, apple) needs no URL.
 const RUN_HERE = ["claude-cli", "codex-cli", "gemini-cli", "apple"]
+function envModel(env, prefix, fallbackKey) {
+  const value = (name) => env[`${prefix}_${name}`]?.trim() || undefined
+  const number = (name) => (Number(value(name)) > 0 ? Number(value(name)) : undefined)
+  const id = value("ID")
+  const provider = value("PROVIDER") || "openai"
+  if (!id || (!value("BASE_URL") && !RUN_HERE.includes(provider))) return null
+  return [
+    value("KEY") || fallbackKey,
+    {
+      label: value("LABEL") || `${id} (from .env)`,
+      provider,
+      base_url: value("BASE_URL"),
+      id,
+      api_key: value("API_KEY"),
+      max_tokens: number("MAX_TOKENS"),
+      context_length: number("CONTEXT_LENGTH"),
+    },
+  ]
+}
+
 export function modelsFromEnv(env = process.env) {
-  const baseUrl = env.ASKK_MODEL_BASE_URL?.trim()
-  const id = env.ASKK_MODEL_ID?.trim()
-  const provider = env.ASKK_MODEL_PROVIDER?.trim() || "openai"
-  if (!id || (!baseUrl && !RUN_HERE.includes(provider))) return { default: null, models: {} }
-  const key = env.ASKK_MODEL_KEY?.trim() || "local"
-  const number = (value) => (Number(value) > 0 ? Number(value) : undefined)
-  const model = {
-    label: env.ASKK_MODEL_LABEL?.trim() || `${id} (from .env)`,
-    provider,
-    base_url: baseUrl || undefined,
-    id,
-    api_key: env.ASKK_MODEL_API_KEY?.trim() || undefined,
-    max_tokens: number(env.ASKK_MODEL_MAX_TOKENS),
-    context_length: number(env.ASKK_MODEL_CONTEXT_LENGTH),
-  }
-  return { default: key, models: { [key]: model } }
+  const main = envModel(env, "ASKK_MODEL", "local")
+  if (!main) return { default: null, models: {} }
+  const backup = envModel(env, "ASKK_BACKUP", "backup")
+  if (backup && backup[0] !== main[0]) main[1].fallback = backup[0]
+  return { default: main[0], models: Object.fromEntries(backup ? [backup, main] : [main]) }
 }
 
 // Private agent folders: every --agents flag, else ASKK_AGENTS (.env), a
@@ -146,10 +163,12 @@ export async function createHostApi({
   withPublic = false, // with agentDirs: also load the shipped public/agents/
   integrationsDir = resolve(process.cwd(), "integrations"),
   listen = false, // run integration listeners (a continuous server, not askk ask)
+  team = null, // the server's team (companion/team.js): one set of engines every tab mirrors
 }) {
   const root = await realpath(resolve(rootArg))
   const envModels = modelsFromEnv()
   const apple = await createApple()
+  const web = createWeb()
   const local = await createLocalModels() // claude/codex/gemini CLIs, Apple on-device
   // Private agent folders (index.json + soul.md + <name>/agent.md, optional
   // skills/ and mcp.json): served read-only to the app, never written.
@@ -159,7 +178,7 @@ export async function createHostApi({
         throw new Error(`Agents folder not found: ${dir} (expected index.json or agents/index.json)`)
       })
       if (!(await Bun.file(join(path, "index.json")).exists())) throw new Error(`${dir} has no index.json (the agent manifest).`)
-      // "custom/desk/agents" is the desk's team: named after its folder.
+      // "custom/<team>/agents" is that team: named after its folder.
       return { id, name: basename(path) === "agents" ? basename(dirname(path)) : basename(path), path }
     })
   )
@@ -182,9 +201,11 @@ export async function createHostApi({
     ...(envModels.default ? ["models"] : []),
     ...(local ? ["models.local"] : []),
     ...(apple ? ["apple"] : []),
+    "web",
     ...(mcp ? ["mcp"] : []),
     ...(sources.length ? ["agents.private"] : []),
     ...(integrations?.listening.length ? ["integrations.events"] : []),
+    ...(team ? ["team"] : []),
   ]
   const allowedHosts = new Set([`127.0.0.1:${port}`, `localhost:${port}`, `[::1]:${port}`])
 
@@ -395,13 +416,15 @@ export async function createHostApi({
   }
 
   const GET = {
-    whoami: () => ({ name, version: VERSION, root, capabilities, platform: process.platform, localModels: local?.providers ?? [], sources: sources.map(({ id, name }) => ({ id, name })), publicAgents: !sources.length || withPublic }),
+    whoami: () => ({ name, version: VERSION, root, runtime: team?.storageDir ?? null, capabilities, platform: process.platform, localModels: local?.providers ?? [], sources: sources.map(({ id, name }) => ({ id, name })), publicAgents: !sources.length || withPublic }),
     sources: () => ({ sources: sources.map(({ id, name }) => ({ id, name })) }),
     models: () => envModels,
     "fs/list": (params) => list(params.get("path") ?? ""),
     "fs/read": (params) => read(params.get("path") ?? ""),
     "fs/tree": (params) => tree(params.get("path") ?? ""),
     ...(apple ? { "apple/actions": () => ({ actions: apple.actions }) } : {}),
+    "web/search": (params) => web.search(params.get("q"), params.get("limit")),
+    "web/read": (params) => web.read(params.get("url")),
     ...(mcp ? { "mcp/tools": async () => ({ servers: await mcp.tools() }) } : {}),
     ...(integrations?.listening.length
       ? {
@@ -414,6 +437,7 @@ export async function createHostApi({
     ...(readOnly ? {} : { "fs/write": write, "fs/delete": remove }),
     ...(apple ? { "apple/run": ({ action, inputs }) => apple.run(action, inputs) } : {}),
     ...(mcp ? { "mcp/call": ({ server, tool, arguments: args }) => mcp.call(server, tool, args) } : {}),
+    ...(team ? { "team/call": (body) => team.call(body) } : {}),
   }
 
   // ── local models (OpenAI-compatible) ──────────────────────────────────
@@ -475,6 +499,7 @@ export async function createHostApi({
     const endpoint = url.pathname.slice(API_PREFIX.length)
     try {
       if (request.method === "GET" && endpoint.startsWith("sources/")) return await sourceFile(endpoint)
+      if (team && request.method === "GET" && endpoint === "team/stream") return team.stream(request)
       const llm = local && endpoint.match(/^llm\/([a-z-]+)\/v1\/(models|chat\/completions)$/)
       if (llm) return await localModel(request, llm[1], llm[2], sameOrigin)
       if (request.method === "GET") {

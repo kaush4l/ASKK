@@ -3,11 +3,13 @@
 // implements them and is registered here.
 //
 //   filesystem/   workspace (OPFS or companion folder), fs.* tools, the
-//                 filesystem artifact (tree + open files, fs.open / fs.close)
+//                 filesystem artifact (tree + open files, fs.open / fs.close),
+//                 shared artifact (shared/: every file always expanded)
 //   skills/       catalogue of public/skills/ (name + description), the skills
 //                 artifact (catalogue + loaded skills, skills.load / skills.unload)
 //   mcp/          McpTool: each tool of an MCP server in .mcp.json (agent.md
 //                 `mcp:`), loaded from the host when the engine starts work
+//   schedule/     schedule.wake: book the next run (state/wakes.jsonl)
 //   apple/        apple.* tools: the owner's Mac (Shortcuts, speech, clipboard,
 //                 Spotlight, Reminders, …) through the host API, with approval
 //
@@ -16,16 +18,21 @@
 
 import { Tool } from "@/backend/core/tool"
 import { APPLE_TOOLS } from "@/backend/features/apple/tools"
-import { FilesystemArtifact } from "@/backend/features/filesystem/artifact"
+import { FilesystemArtifact, SharedArtifact } from "@/backend/features/filesystem/artifact"
 import { FS_TOOLS } from "@/backend/features/filesystem/tools"
+import { SCHEDULE_TOOLS } from "@/backend/features/schedule/tools"
+import { WEB_TOOLS } from "@/backend/features/web/tools"
 export { loadMcpTools } from "@/backend/features/mcp/tools"
 import { SkillsArtifact } from "@/backend/features/skills/artifact"
+import { ChecklistArtifact } from "@/backend/features/checklist/artifact"
 
 // ── artifacts ──────────────────────────────────────────────────────────────
 
 export const ARTIFACTS = {
   [FilesystemArtifact.type]: FilesystemArtifact,
+  [SharedArtifact.type]: SharedArtifact,
   [SkillsArtifact.type]: SkillsArtifact,
+  [ChecklistArtifact.type]: ChecklistArtifact,
 }
 
 export const ARTIFACT_NAMES = Object.keys(ARTIFACTS)
@@ -60,18 +67,9 @@ const PLANNED_TOOLS = {
     effect: "write",
     approval: true,
   },
-  "web.read": {
-    description: "Read text from a specified CORS-enabled HTTP resource; this is not web search.",
-    inputs: {
-      type: "object",
-      properties: { url: { type: "string" } },
-      required: ["url"],
-      additionalProperties: false,
-    },
-  },
 }
 
-const TOOL_SPECS = { ...FS_TOOLS, ...APPLE_TOOLS, ...PLANNED_TOOLS }
+const TOOL_SPECS = { ...FS_TOOLS, ...WEB_TOOLS, ...SCHEDULE_TOOLS, ...APPLE_TOOLS, ...PLANNED_TOOLS }
 
 // Every tool name with a known contract (offered when editing an agent).
 export const TOOL_NAMES = Object.keys(TOOL_SPECS)

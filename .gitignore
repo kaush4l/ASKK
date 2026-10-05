@@ -51,3 +51,8 @@ next-env.d.ts
 /vendor/
 /integrations/
 /custom/
+
+# The team shared space (agents' shared/ folder in the workspace): local only, never pushed
+/shared/
+.claude/settings.local.json
+/docs/teams-plan.md

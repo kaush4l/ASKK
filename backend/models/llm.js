@@ -1,7 +1,7 @@
 // LLM inference — one call shape, two wire protocols. Called directly from
 // the browser; the server must allow CORS.
 //
-//   await complete({ model, prompt, signal, onDelta })  -> { raw, reasoning, usage }
+//   await complete({ model, prompt, signal, onDelta })  -> { raw, reasoning, usage, model?, fellBack? }
 //   await listModels(model)                             -> [{ id, contextLength }]
 //   await contextWindow(model)                          -> number | null
 //
@@ -108,6 +108,20 @@ const parse = (text) => {
   }
 }
 
+// The prompt as text blocks split at its stable prefixes (cacheAt: character
+// offsets), each prefix marked for Anthropic's prompt cache. Max 4 marks.
+function cachedBlocks(prompt, cacheAt) {
+  const blocks = []
+  let from = 0
+  for (const at of cacheAt.slice(-3)) {
+    if (at <= from || at >= prompt.length) continue
+    blocks.push({ type: "text", text: prompt.slice(from, at), cache_control: { type: "ephemeral" } })
+    from = at
+  }
+  blocks.push({ type: "text", text: prompt.slice(from) })
+  return blocks
+}
+
 const PROTOCOLS = {
   openai: {
     async stream(model, prompt, { signal, emit }) {
@@ -154,7 +168,7 @@ const PROTOCOLS = {
   },
 
   anthropic: {
-    async stream(model, prompt, { signal, emit }) {
+    async stream(model, prompt, { cacheAt = [], signal, emit }) {
       const response = await request(`${anthropicBase(model)}/messages`, {
         method: "POST",
         headers: anthropicHeaders(model),
@@ -162,7 +176,7 @@ const PROTOCOLS = {
           model: model.id,
           stream: true,
           max_tokens: Number(model.max_tokens) || 8192,
-          messages: [{ role: "user", content: prompt }],
+          messages: [{ role: "user", content: cachedBlocks(prompt, cacheAt) }],
         }),
         signal,
       })
@@ -173,7 +187,12 @@ const PROTOCOLS = {
         if (event?.type === "message_start" || event?.type === "message_delta") {
           const reported = event.message?.usage ?? event.usage ?? {}
           usage = {
-            inputTokens: reported.input_tokens ?? usage?.inputTokens ?? null,
+            // input_tokens excludes the cached prefix: count it too
+            inputTokens:
+              reported.input_tokens != null
+                ? reported.input_tokens + (reported.cache_read_input_tokens ?? 0) + (reported.cache_creation_input_tokens ?? 0)
+                : (usage?.inputTokens ?? null),
+            cachedTokens: reported.cache_read_input_tokens ?? usage?.cachedTokens ?? null,
             outputTokens: reported.output_tokens ?? usage?.outputTokens ?? null,
             tokensPerSecond: null,
           }
@@ -211,18 +230,30 @@ function protocol(model) {
   return found
 }
 
-export async function complete({ model, prompt, signal, onDelta }) {
+// `model.backup` (resolveModel, from `fallback`): tried once when the model
+// fails before any text arrived. Never after a stop or a partial answer.
+export async function complete({ model, prompt, cacheAt = [], signal, onDelta }) {
   let raw = ""
   let reasoning = ""
-  model = local(model)
-  const usage = await protocol(model).stream(model, prompt, {
-    signal,
-    emit: (content, thinking) => {
-      raw += content
-      reasoning += thinking
-      onDelta?.({ content, reasoning: thinking })
-    },
-  })
+  const attempt = (connection) =>
+    protocol(connection).stream(connection, prompt, {
+      cacheAt,
+      signal,
+      emit: (content, thinking) => {
+        raw += content
+        reasoning += thinking
+        onDelta?.({ content, reasoning: thinking })
+      },
+    })
+  let usage
+  try {
+    usage = await attempt(local(model))
+  } catch (error) {
+    if (!model?.backup || signal?.aborted || error.name === "AbortError" || raw || reasoning) throw error
+    console.warn(`Model ${model.key ?? model.id} failed (${error.message}); using ${model.backup.key ?? model.backup.id}.`)
+    usage = await attempt(local(model.backup))
+    return { raw, reasoning, usage, model: model.backup.key ?? model.backup.id, fellBack: error.message }
+  }
   return { raw, reasoning, usage }
 }
 

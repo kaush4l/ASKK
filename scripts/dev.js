@@ -5,7 +5,7 @@
 //   bun run dev [--root <dir>] [--port 3000] [--hostname 127.0.0.1] [--read-only]
 //               [--agents <dir> …]   custom team folders (default: ASKK_AGENTS)
 //
-// No --agents: the public agents (public/agents/). --agents custom/desk: that
+// No --agents: the public agents (public/agents/). --agents custom/<team>: that
 // team only (its agents/ folder, tools from its mcp.json). --root is the
 // workspace agents work on (default: the team's data/ folder, else the folder
 // dev was started from). --hostname 0.0.0.0 lets phones on the network open the app; the host
@@ -16,6 +16,8 @@ import { parseArgs } from "node:util"
 import next from "next"
 
 import { API_PREFIX, agentDirsFrom, createHostApi, rootFrom } from "../companion/host-api.js"
+import { createTeam, findTeamServer } from "../companion/team.js"
+import { realpath } from "node:fs/promises"
 
 const { values: args } = parseArgs({
   args: process.argv.slice(2),
@@ -26,20 +28,35 @@ const { values: args } = parseArgs({
     "read-only": { type: "boolean", default: false },
     agents: { type: "string", multiple: true, default: [] },
     "with-public": { type: "boolean", default: false },
+    "browser-engines": { type: "boolean", default: false },
   },
 })
 const port = Number(args.port)
 const MAX_BODY = 16 * 1024 * 1024
 
 const agentDirs = agentDirsFrom(args.agents)
+// One team for every tab (companion/team.js), unless --browser-engines: then
+// each tab runs its own engines, as the static build does.
+const root = await realpath(await rootFrom(args.root, agentDirs))
+// One instance per workspace: a second server would run a second team on
+// the same memory and files.
+const running = args["browser-engines"] ? null : findTeamServer(root)
+if (running) {
+  console.error(`ASKK already runs this workspace's team: http://localhost:${running.port}/ (pid ${running.pid}). Open that, or stop it first.`)
+  process.exit(1)
+}
+const team = args["browser-engines"]
+  ? null
+  : createTeam({ root, readOnly: args["read-only"], agentDirs, withPublic: args["with-public"], log: (line) => console.error(line) })
 const api = await createHostApi({
-  root: await rootFrom(args.root, agentDirs),
+  root,
+  team,
   readOnly: args["read-only"],
   port,
   name: "askk-companion",
   agentDirs,
   withPublic: args["with-public"],
-  listen: true, // a continuous server: integration listeners run (Telegram, …)
+  listen: !team, // a continuous server: integration listeners run (Telegram, …); with a team, in the team
 })
 
 // node:http request -> Fetch Request (host API requests only).
@@ -96,7 +113,12 @@ const app = next({ dev: true, hostname: args.hostname, port, httpServer: server 
 const handle = app.getRequestHandler()
 await app.prepare()
 
+// A team call (`ask`) lasts as long as the run, often well past node's 5 minute
+// request limit.
+server.requestTimeout = 0
+
 server.listen(port, args.hostname, () => {
+  team?.announce(port)
   console.log(`ASKK dev · http://localhost:${port}/`)
   console.log(`  workspace  ${api.root} (${api.capabilities.includes("fs.write") ? "read + write" : "read-only"})`)
 })

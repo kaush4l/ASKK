@@ -6,8 +6,8 @@
 // oauth_metadata.token_endpoint, absolute expires_at). There is one copy, never
 // a duplicate: a refresh token rotates when it is used, so whichever copy
 // refreshed second would be locked out. Every refresh runs under an exclusive
-// flock on ".<file>.lock" beside it and re-reads the file inside the lock, the
-// same protocol as the Python desk's broker.py, so both can share it.
+// flock on ".<file>.lock" beside it and re-reads the file inside the lock, so
+// another program following the same protocol can share it.
 
 import { closeSync, openSync } from "node:fs"
 import { chmod, rename, writeFile } from "node:fs/promises"

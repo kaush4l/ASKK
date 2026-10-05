@@ -19,7 +19,7 @@ lines.push("}", "")
 await Bun.write(resolve(here, "companion/assets.gen.js"), lines.join("\n"))
 
 const target = Bun.argv.includes("--target") ? Bun.argv[Bun.argv.indexOf("--target") + 1] : null
-const cmd = ["bun", "build", "--compile", "--minify", "companion/server.js", "--outfile", "dist/askk", ...(target ? ["--target", target] : [])]
+const cmd = ["bun", "build", "--compile", "--minify", "companion/server.js", "companion/team-worker.js", "--outfile", "dist/askk", ...(target ? ["--target", target] : [])]
 const proc = Bun.spawn(cmd, { cwd: here, stdout: "inherit", stderr: "inherit" })
 if ((await proc.exited) !== 0) process.exit(1)
 console.log(`Embedded ${files.length} files → dist/askk`)

@@ -56,9 +56,19 @@ export const HOST_CAPABILITIES = [
     fallback: "Changes go to the browser workspace instead.",
   },
   {
+    id: "team",
+    label: "One runtime: agents run on this computer; memory and research are files there, the same in every tab and terminal run",
+    fallback: "Agents run in this tab; their memory is stored in this browser only.",
+  },
+  {
     id: "models",
     label: "Your model from .env",
     fallback: "Add your model on the Settings page.",
+  },
+  {
+    id: "web",
+    label: "Search the web and read pages",
+    fallback: "Web search uses Wikipedia only; pages read only when the site allows it (CORS).",
   },
   {
     id: "apple",

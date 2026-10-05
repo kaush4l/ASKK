@@ -5,6 +5,11 @@
 //   createSyncAccessHandle  workers only (older Safari)
 //   localStorage         main-thread fallback when OPFS writing is unavailable
 //
+// In the runtime (the local server's team, headless runs: Bun with
+// companion/shims.js) engine files are real files on disk instead
+// (globalThis.askkRuntimeFiles, <runtime>/files/): one copy for every tab and
+// terminal run. The browser keeps them only in browser-only mode.
+//
 //   await writeFile("agents/lead/memory.md", text)
 //   await readFile("agents/lead/memory.md")   // null when missing
 
@@ -49,7 +54,11 @@ async function fileHandle(root, path, create) {
   return dir.getFileHandle(name, { create })
 }
 
+const runtimeFiles = () => globalThis.askkRuntimeFiles ?? null
+
 export async function readFile(path) {
+  const runtime = runtimeFiles()
+  if (runtime) return runtime.read(path)
   const root = await opfs()
   if (!root) return noStorage() ?? localStorage.getItem(FALLBACK_PREFIX + path)
   try {
@@ -63,6 +72,8 @@ export async function readFile(path) {
 
 export function writeFile(path, text) {
   return serialize(path, async () => {
+    const runtime = runtimeFiles()
+    if (runtime) return runtime.write(path, text)
     const root = await opfs()
     if (!root) {
       noStorage()

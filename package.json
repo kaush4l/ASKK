@@ -10,7 +10,7 @@
     "companion": "bun companion/server.js",
     "ask": "bun companion/ask.js",
     "build:companion": "bun --bun next build && bun scripts/build-companion.js",
-    "vendor:openalice": "bun --conditions=openalice-source vendor/openalice-tools.ts"
+    "wake": "bun scripts/wake.js"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",

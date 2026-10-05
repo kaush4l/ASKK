@@ -8,7 +8,10 @@
 //
 //   { "default": "local",
 //     "models": { "local": { label, provider, base_url, api_key, id,
-//                            context_length, max_tokens } } }
+//                            context_length, max_tokens, fallback } } }
+//
+// `fallback` names another key: when a call fails before any text arrives
+// (CLI refused, server down), the same prompt goes to that model once.
 //
 // Every agent uses the default model. An agent that needs a special one names
 // its key in agent.md (`model: local-anthropic`). Browser entries override
@@ -19,7 +22,7 @@ import { withBase } from "@/backend/platform/base-path"
 const FILE = withBase("/models.json")
 const KEY = "askk.models"
 
-export const MODEL_FIELDS = ["label", "provider", "base_url", "api_key", "id", "context_length", "max_tokens"]
+export const MODEL_FIELDS = ["label", "provider", "base_url", "api_key", "id", "context_length", "max_tokens", "fallback"]
 
 // Run by this machine (local mode only): the host API serves each as an
 // OpenAI-compatible endpoint (companion/local-models.js). No URL or key.
@@ -198,8 +201,11 @@ export const models = new ModelStore()
 
 // The connection for a key, or the default when no key is given. null when
 // the key (or a default) is not in the catalogue.
+// The connection, with its fallback's connection attached as `backup`.
 export function resolveModel(key = null) {
-  return models.get(key ?? models.getSnapshot().default)
+  const model = models.get(key ?? models.getSnapshot().default)
+  const backup = model?.fallback && model.fallback !== model.key ? models.get(model.fallback) : null
+  return model && backup ? { ...model, backup: { ...backup, backup: undefined } } : model
 }
 
 export function missingModelMessage(key = null) {

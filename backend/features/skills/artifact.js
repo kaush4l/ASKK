@@ -8,6 +8,9 @@
 //
 //   skills.load({"names": ["verification", ...]})   add skills' text to the prompt
 //   skills.unload({"names": ["verification"]})      drop them once the work is done
+//
+// agent.md `skillset: [a, b]` limits the catalogue (and what can be loaded) to
+// those skills, so an agent's prompt lists only the procedures its job needs.
 
 import { Artifact } from "@/backend/core/artifact"
 import { Tool } from "@/backend/core/tool"
@@ -31,7 +34,9 @@ export class SkillsArtifact extends Artifact {
 
   async refresh() {
     try {
-      this.catalogue = await listSkills()
+      const skillset = this.engine?.agent?.skillset
+      const all = await listSkills()
+      this.catalogue = Array.isArray(skillset) ? all.filter((s) => skillset.includes(s.name)) : all
       this.catalogueError = null
     } catch (error) {
       this.catalogueError = error.message
@@ -94,6 +99,9 @@ export class SkillsArtifact extends Artifact {
   // All or nothing: an unknown name or a full list loads none of them.
   async #load({ names }) {
     const wanted = this.#names(names)
+    const skillset = this.engine?.agent?.skillset
+    const outside = Array.isArray(skillset) ? wanted.filter((name) => !skillset.includes(name)) : []
+    if (outside.length) throw new Error(`Not in your skillset: ${outside.join(", ")}. Yours: ${skillset.join(", ")}.`)
     const fresh = wanted.filter((name) => !this.state.loaded.includes(name))
     const already = wanted.filter((name) => this.state.loaded.includes(name))
     if (this.state.loaded.length + fresh.length > MAX_LOADED) {

@@ -2,7 +2,8 @@
 
 A team of AI agents that runs in your browser. You talk to the **lead**; it
 works out what you need, does small things itself, and hands larger parts
-to its team (planner, critic) as quests. Every agent runs on its own thread,
+to its team as quests: the **searcher** looks things up on the internet and
+the **humaniser** retells the findings in a human (or poetic) voice. Every agent runs on its own thread,
 with its own inbox, tools, memory and status, and a UI attached to that
 state. You see everything as it happens. See
 [docs/philosophy.md](docs/philosophy.md).
@@ -179,9 +180,10 @@ server without the host API).
 - **Soul and role.** Every agent shares one identity (`public/agents/soul.md`).
   Each agent wears its own hat: the body of its `agent.md`. See
   `docs/soul-and-role.md`.
-- **Lead and team.** The lead turns your goal into complete quests for the
-  planner and critic and stops. Their reports wake it, and it answers in its
-  own words. Press **Call back** to recall quests that are still out.
+- **Lead and team.** Ask the lead anything the internet knows: it quests the
+  searcher (web search + page reading, sources linked), then the humaniser,
+  and answers with the humaniser's reply. Its quests end its turn; the
+  reports wake it. Press **Call back** to recall quests that are still out.
 - **Long-running work.** There is no step or round limit. Instead, a
   supervisor sends the lead a status check with each agent's latest work
   (every 5 minutes or 10 steps). The lead lets it run, steers it, or calls it

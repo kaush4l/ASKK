@@ -81,7 +81,7 @@ Next steps: the host could start `fm serve` itself when the licence is
 accepted (capability `models.apple`), and the catalogue could list `system`
 and `pcc` automatically. This gives free, private, offline agents with no
 setup. The on-device model is small (around 3B parameters), so it suits the
-planner and critic or short tasks. The lead may want `pcc` or a bigger
+searcher and humaniser or short tasks. The lead may want `pcc` or a bigger
 model.
 
 ## A. Safari / WebKit: every Apple device

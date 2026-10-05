@@ -37,16 +37,35 @@ The same app runs in two modes (`backend/platform/host.js` `detectHost()`):
   Workspace = `--root` (default: the folder dev starts in); `--read-only`,
   `--port`, `--hostname`. The compiled companion (`bun run build:companion`
   → `dist/askk`, `companion/server.js`) serves the built app with the same API.
+- **one team per local server** — in local mode (dev, `askk`) the engines run
+  once, in the server process (`companion/team.js` starts `team-worker.js`, a
+  Bun Worker: the same registry and engines as the app, browser shims from
+  `companion/shims.js`). Its data is the workspace's **runtime folder**
+  (`teamStorageDir`: `custom/<team>/runtime/` for a team's data/, else
+  `~/.askk/team/<root hash>/`; never inside the workspace): engine files as
+  real files (`files/agents/<engine>/memory.md`, history, artifacts.json —
+  `platform/storage.js` uses `globalThis.askkRuntimeFiles`) and settings
+  (one file per localStorage key). `server.json` there tells headless runs
+  where the server is. Every tab mirrors it (`backend/runtime/remote-team.js`,
+  capability `team`): `GET team/stream` (SSE: snapshot, then registry / state
+  / models changes), `POST team/call {target, method, args}` (a message, an
+  approval, stop, model switch, agent edit). The registry picks the mode in
+  `start()`. Integration listeners run in the team. `--browser-engines`
+  restores per-tab engines; the static build always runs them in the tab.
 - **headless** — `askk ask "query"` / `bun run ask -- "query"`
   (`companion/ask.js`): one query to an agent, answer on stdout, exit code
   (0/1/2/124), for scripts and cron. Same agents and engines in Bun,
   in-process (no workers); browser shims (`location`, same-origin `fetch`
-  answered in-process by the host API + public files, `localStorage` per
-  run), so no port is opened. Changes declined unless `--yes`. Memory is per
-  run. App code must keep working there: use `globalThis.location`, not
+  answered in-process by the host API + public files), so no port is opened.
+  When a server runs the workspace's team, the query goes to it instead
+  (live in every tab; approvals without `--yes` wait in the app). Otherwise
+  it uses the same runtime folder, so memory and research carry over between
+  runs. `--local` forces in-process (memory per run if a server is up).
+  Changes declined unless `--yes`. App code must keep working there: use `globalThis.location`, not
   `window`.
 - **demo** — the static build on any host (or `bun run dev:browser`):
-  browser-only, the ~80%. Host capabilities are shown as missing in the
+  browser-only, the ~80%. Engines run in the tab and their memory lives in
+  that browser (OPFS); nothing is shared with other tabs or devices. Host capabilities are shown as missing in the
   header (`components/host-status.jsx`, `HOST_CAPABILITIES`) and fall back
   where they can (files → OPFS workspace).
 
@@ -106,9 +125,11 @@ Core never imports a feature folder directly, only the catalogue
 **`core/` — abstractions and the flow**
 
 - `base-engine.js` — `BaseEngine`, the abstract agent: elements that render
-  into the prompt (`template.js` order: soul → instructions → context →
-  history → artifacts → tools → structured response → current request;
-  complete prompt every request). History holds finished turns only; the
+  into the prompt (`template.js` order, least-changing first for prompt
+  caching: soul → instructions → tools → structured response → history →
+  artifacts → context (current time, open quests) → current request; complete
+  prompt every request; `renderPrompt()` also returns the cache breakpoints,
+  sent as Anthropic `cache_control` blocks). History holds finished turns only; the
   current request's own steps and tool results render after it ("WORK DONE
   ON THE CURRENT REQUEST", then the request restated) so the model continues
   instead of restarting. CONTEXT holds the lines tools contribute
@@ -128,6 +149,11 @@ Core never imports a feature folder directly, only the catalogue
   tool). Tools with `approval: true` pause the engine (`state.approvals`)
   until the owner answers in chat (`resolveApproval`); a declined call is
   auto-declined if repeated in the same request.
+  Autopilot (`BaseEngine.autopilot`, a static flag: on = approval tools run
+  without asking; `registry.setAutopilot`, status-bar toggle, saved as setting
+  `askk.autopilot`, default `ASKK_AUTOPILOT` in .env): scheduled runs work
+  unattended. Engines in Web Workers (per-tab mode) have their own static, so
+  there the registry approves pending approvals instead.
 - `template.js` — prompt slots and their order.
 - `responses.js` — structured response models (`ReActResponse`, …) with
   JSON / TOON / fallback parsing. Port of LocalAgents `core/responses.py`.
@@ -149,8 +175,8 @@ Core never imports a feature folder directly, only the catalogue
 **`features/` — implementations, one folder per feature**
 
 - `index.js` — the catalogue: every tool and artifact type an agent.md may
-  list (`createTools`, `createArtifacts`, `TOOL_NAMES`). `web.read`,
-  `notes.*` are contract-only here. Add a feature = a folder + list it here.
+  list (`createTools`, `createArtifacts`, `TOOL_NAMES`). `notes.*` are
+  contract-only here. Add a feature = a folder + list it here.
 - `filesystem/` — the workspace and everything built on it:
   - `workspace.js` — the files agents work on, one contract, two backends:
     OPFS `workspace/` (browser-only / static) or the companion's folder
@@ -159,11 +185,31 @@ Core never imports a feature folder directly, only the catalogue
   - `tools.js` — `fs.list`, `fs.read`, `fs.write`, `fs.edit`, `fs.delete`.
     `fs.write` over an existing file must be based on a revision the engine
     read (`markSeen`).
-  - `artifact.js` — `FilesystemArtifact`: the workspace tree (names only,
-    every level; heavy folders like node_modules listed, not expanded) plus
-    the engine's open files with current content. `fs.open` / `fs.close`;
-    open files count as seen for `fs.write`'s revision check. Files are
-    shared; only the open list is per engine.
+  - `artifact.js` — `FilesystemArtifact` (`filesystem`): the workspace tree
+    (names only, every level; heavy folders like node_modules listed, not
+    expanded) plus the files the engine opened (`fs.open` / `fs.close`
+    expand / collapse, max 12), re-read each step. `SharedArtifact`
+    (`shared`): the workspace's `shared/` folder (git-ignored), EVERY file
+    always expanded, re-read before every step, so parallel agents see each
+    other's writes at their next step; agents write it with fs.write /
+    fs.append. Budgets: 40K/file, 120K total, 200 files; newest-dated paths
+    first; .jsonl/.log show their tail; .env* never. Every shown file counts
+    as seen for `fs.write`'s revision check.
+
+- `checklist/` — `ChecklistArtifact` (`checklist`): agent.md `checklist:` (THIS
+  RUN: fresh per origin, the final answer is refused up to twice while items
+  are open — `BaseEngine.pendingChecks()` in the ReAct loop) and `daily:`
+  (TODAY: fresh per America/New_York day, kept across runs: the day's
+  script), items `"id: what done means"`. `checklist.tick {id, evidence}`,
+  `checklist.skip {id, reason}`. Status turns are never blocked.
+
+- `web/` — `tools.js`: `web.search {query, limit?}` and `web.read {url}`.
+  Local mode: the host does both (`companion/web.js`, capability `web`,
+  `GET web/search?q=`, `GET web/read?url=`): SearXNG (free, open-source
+  metasearch) when `ASKK_SEARXNG_URL` names an instance with JSON on, else
+  DuckDuckGo's keyless HTML page; pages fetched host-side, public addresses
+  only (loopback/private/link-local refused at every redirect), as text,
+  40K cap. Browser-only: search = Wikipedia's CORS API, read = direct fetch.
 
 - `skills/` — procedures kept out of the prompt until needed. Skills live
   in `public/skills/<name>/SKILL.md` (frontmatter `name`, `description` +
@@ -174,8 +220,14 @@ Core never imports a feature folder directly, only the catalogue
   - `artifact.js` — `SkillsArtifact` (`artifacts: [skills]`): renders the
     catalogue plus the engine's loaded skills in full. `skills.load` /
     `skills.unload` (each takes `{"names": [...]}`); max 6 loaded. Only the loaded list is per engine.
+    agent.md `skillset: [a, b]` limits the catalogue and what can be loaded to those skills.
     (agent.md `skills: {name: file}` is the older always-inlined form.)
 
+- `schedule/` — `tools.js`: `schedule.wake {in_minutes|at, reason, message}`
+  books the team's next run as a row in the workspace's `state/wakes.jsonl`
+  (`at` UTC). `scripts/wake.js --agents <team>` (cron, every 5 min) runs each
+  due wake once through headless ASKK (claims it with a `done` row first;
+  over `--stale` minutes late = `missed`; one runner per root via `state/wake.lock`).
 - `mcp/` — `tools.js`: `McpTool extends Tool`, one per tool of an MCP
   server, named `<server>.<tool>`. agent.md `mcp: [server]` (all its tools),
   `[server.tool]` (one) or `["*"]` (every configured server, silent when
@@ -238,8 +290,8 @@ Core never imports a feature folder directly, only the catalogue
   the provider to that endpoint, so no URL or key is stored.
 - MCP url servers may name `"oauth": "<token file>"` (`${VAR}` from `.env`):
   `companion/oauth-file.js` reads the bearer token from a file another program
-  shares, refreshing it under the same flock as the Python desk (one copy,
-  never duplicated: refresh tokens rotate). Robinhood: `ROBINHOOD_OAUTH_FILE`.
+  shares, refreshing it under an exclusive flock (one copy, never
+  duplicated: refresh tokens rotate).
 - `metrics.js` — `TokenMeter`: tokens/s and context use per LLM call (server
   `usage` when reported, else ~4 chars/token). Engine state `stats` +
   `contextWindow`; shown on the chat page (`model-stats.jsx`).
@@ -285,7 +337,8 @@ quest comes back as a failed report, so its batch still joins). Agents with
 `agents:` get both tools. Runs on the main thread (registry) and in
 headless. Quests are not persisted across reloads. The
 lead is the manager: it turns the owner's goal into complete quests
-(`public/agents/lead/agent.md`); planner and critic are its team.
+(`public/agents/lead/agent.md`); searcher (web search) and humaniser (the human/poetic reply) are its team;
+planner and critic are retired to `backup/agents/`.
 
 Memory: each engine's messages live in a readable Markdown file,
 `agents/<engine>/memory.md`, in the browser's Origin Private File System
@@ -295,7 +348,9 @@ empties it; `summarizeMemory()` replaces the log with one `summary` message.
 Every summarize (manual, or automatic before an LLM step once the prompt
 reaches 92% of the context window) first moves the log to a new
 `agents/<engine>/history-<time>.md`. The prompt carries the full memory; the
-token estimate is calibrated from server usage counts.
+token estimate is calibrated from server usage counts. Context per agent: min(the model's window, 262144 tokens;
+`ASKK_CONTEXT_CAP` or agent.md `context_window` override), also when the
+model's window is unknown.
 
 Single-call agents (`core/single-call.js`): one render → infer → parse, no loop,
 tools, or memory (e.g. `createSummarizer()`). Engine and single-call agents
@@ -319,7 +374,7 @@ prompt of each LLM call (`message.prompt`), "Next" is `engine.preview(input)`.
 
 No `--agents`: the public team (`public/agents/`, pushed) runs. To customise,
 point the start at a custom team folder (`custom/<team>/`, git-ignored,
-never pushed): `--agents custom/desk` (dev, `askk`, `askk ask`; or
+never pushed): `--agents custom/<team>` (dev, `askk`, `askk ask`; or
 `ASKK_AGENTS` in `.env`).
 
 ```
@@ -331,9 +386,8 @@ custom/<team>/
 The host serves `agents/` read-only (`GET sources/<id>/<path>`). Only that
 team loads (its first agent is the default lead) unless `--with-public`. Its
 skills join the catalogue; its mcp.json merges into the MCP servers (paths
-relative to `agents/`), e.g. OpenAlice through `../../../vendor/openalice-tools.ts`.
-Vendor applications stay in `vendor/` with their own start scripts; a team
-only refers to them. The trade desk: `bun run dev -- --agents custom/desk`.
+relative to `agents/`). A team keeps the applications only it uses in its
+own `vendor/` (git-ignored with `custom/`); app-wide ones stay in `vendor/`.
 
 ## Integrations
 
@@ -356,12 +410,8 @@ TELEGRAM_CHAT_ID; owner's chats only).
 
 `vendor/` holds other applications ASKK borrows from, each a clean clone
 (git-ignored; never edit or patch it) beside a script that starts the part
-ASKK uses. `vendor/openalice/` (TraderAlice/OpenAlice) +
-`vendor/openalice-tools.ts`: `startOpenAliceTools()` composes OpenAlice's
-market-data/news/quant tools as `src/main.ts` does (no trading, no workspace
-tools) and returns `[{ name, group, description, inputSchema, effect,
-invoke(args) }]`; `bun run vendor:openalice` lists them. State in
-`vendor/.openalice-data/`, never `~/.openalice`. See `vendor/README.md`.
+ASKK uses (`vendor/apple-fm/`). A team's own vendor apps live in the team
+folder (`custom/<team>/vendor/`), reached through its mcp.json.
 
 ## Speech input
 

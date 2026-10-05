@@ -4,22 +4,31 @@
 //   bun run ask -- "Summarize what changed in docs/ this week"
 //   echo "query" | askk ask --root ~/code/app --yes --json
 //
-// The same agents, engines, skills and prompts as the app, run in this
+// When a local server (dev, `askk`) runs this workspace's team, the query
+// goes to that team instead (findTeamServer): the one team does the work and
+// every open tab shows it live; approvals not given by --yes wait in the app.
+// --local runs it here regardless.
+//
+// Otherwise the same agents, engines, skills and prompts as the app, run in this
 // process: the host API answers in-process (no port is opened), so agents
 // work on --root (default: the current folder) exactly as in local mode.
 // Agents run concurrently on one thread here (not one Web Worker each); the
-// inbox, quests and reports work the same. Memory lives for this run only:
-// every job starts fresh.
+// inbox, quests and reports work the same. Memory, history and artifacts are
+// the workspace's runtime files (team.js teamStorageDir, the same the server
+// uses), so research carries from run to run. With --local while a server
+// runs the team, memory is this run's only (one writer per runtime).
 //
 // Changes to files need approval: declined unless --yes (or --read-only).
 // The answer goes to stdout; progress to stderr (--quiet hides it).
 // Exit codes: 0 answered, 1 failed, 2 usage, 124 timed out.
 
-import { readFile } from "node:fs/promises"
-import { resolve, sep } from "node:path"
+import { readFile, realpath } from "node:fs/promises"
+import { resolve } from "node:path"
 import { parseArgs } from "node:util"
 
 import { agentDirsFrom, createHostApi, modelsFromEnv, rootFrom } from "./host-api.js"
+import { SHIM_PORT as PORT, installBrowserShims, publicFile } from "./shims.js"
+import { findTeamServer, teamStorageDir } from "./team.js"
 
 const USAGE = `Usage: askk ask [options] [query]      (query from stdin when omitted)
 
@@ -29,7 +38,7 @@ const USAGE = `Usage: askk ask [options] [query]      (query from stdin when omi
                      soul.md, <name>/agent.md, optional skills/ and mcp.json; data/
                      the workspace); repeatable; default ASKK_AGENTS.
                      Only these agents load, unless --with-public
-  --with-public      with --agents: also load the public agents (lead, planner, critic)
+  --with-public      with --agents: also load the public agents (lead, searcher, humaniser)
   --root <dir>       workspace folder (default: the team's data/, else the current folder)
   --read-only        agents may read the workspace, never change it
   --yes              approve every change the agents ask for (default: decline)
@@ -39,49 +48,12 @@ const USAGE = `Usage: askk ask [options] [query]      (query from stdin when omi
   --timeout <sec>    stop after this many seconds (default: 1800)
   --json             print { ok, agent, answer, error, seconds } instead of the answer
   --quiet            no progress on stderr
+  --local            run the team in this process even when a server runs it
   -h, --help`
-
-const PORT = 7717
-const ORIGIN = `http://localhost:${PORT}` // virtual: never listened on
 
 function fail(message, code = 2) {
   process.stderr.write(`askk ask: ${message}\n`)
   process.exit(code)
-}
-
-// The app's public files: embedded in the compiled binary, else public/.
-async function publicFile(embedded, pathname) {
-  if (embedded) return embedded[pathname] ? Bun.file(embedded[pathname]) : null
-  const base = resolve(import.meta.dir, "../public")
-  const file = resolve(base, `.${pathname}`)
-  if (!file.startsWith(base + sep)) return null
-  const blob = Bun.file(file)
-  return (await blob.exists()) ? blob : null
-}
-
-// Browser globals the app code expects: a page location, same-origin fetch
-// (host API and public files answered in-process), localStorage (this run).
-function installBrowserShims({ api, embedded }) {
-  globalThis.location = new URL(`${ORIGIN}/`)
-  const store = new Map()
-  globalThis.localStorage = {
-    getItem: (key) => (store.has(key) ? store.get(key) : null),
-    setItem: (key, value) => store.set(key, String(value)),
-    removeItem: (key) => store.delete(key),
-  }
-  const realFetch = globalThis.fetch
-  globalThis.fetch = async (input, init = {}) => {
-    const url = new URL(input instanceof Request ? input.url : String(input), globalThis.location)
-    if (url.origin !== ORIGIN) return realFetch(input instanceof Request ? input : url, init)
-    if (url.pathname.startsWith("/__askk/")) {
-      const headers = new Headers(init.headers)
-      headers.set("host", url.host)
-      headers.set("origin", ORIGIN) // same origin, as the page would send
-      return api.handle(new Request(url, { ...init, headers }))
-    }
-    const file = await publicFile(embedded, url.pathname)
-    return file ? new Response(file) : new Response("Not found", { status: 404 })
-  }
 }
 
 async function loadModel({ embedded, key, extra }) {
@@ -94,7 +66,13 @@ async function loadModel({ embedded, key, extra }) {
   const entry = models[chosen]
   if (!chosen) fail("no model. Set ASKK_MODEL_BASE_URL and ASKK_MODEL_ID in .env (see .env.example), or pass --models <file>.")
   if (!entry) fail(`no model "${chosen}". Known: ${Object.keys(models).join(", ") || "none"}.`)
-  return { key: chosen, ...entry, api_key: entry.api_key ?? process.env.ASKK_API_KEY ?? undefined }
+  const backup = entry.fallback && entry.fallback !== chosen ? models[entry.fallback] : null
+  return {
+    key: chosen,
+    ...entry,
+    api_key: entry.api_key ?? process.env.ASKK_API_KEY ?? undefined,
+    ...(backup ? { backup: { key: entry.fallback, ...backup } } : {}),
+  }
 }
 
 async function readStdin() {
@@ -122,6 +100,7 @@ export async function main(argv, { embedded = null } = {}) {
         timeout: { type: "string", default: "1800" },
         json: { type: "boolean", default: false },
         quiet: { type: "boolean", default: false },
+        local: { type: "boolean", default: false },
         help: { type: "boolean", short: "h", default: false },
       },
     })
@@ -143,11 +122,14 @@ export async function main(argv, { embedded = null } = {}) {
   try {
     const agentDirs = agentDirsFrom(opts.agents)
     opts.root = await rootFrom(opts.root, agentDirs)
+    const running = findTeamServer(await realpath(opts.root))
+    if (running && !(opts.local || opts.model || opts.models)) return await askTeam({ server: running, query, opts, seconds, log })
+    opts.storageDir = running ? null : teamStorageDir(await realpath(opts.root))
     api = await createHostApi({ root: opts.root, readOnly: opts["read-only"], port: PORT, agentDirs, withPublic: opts["with-public"] })
   } catch (error) {
     fail(error.message)
   }
-  installBrowserShims({ api, embedded })
+  installBrowserShims({ api, embedded, storageDir: opts.storageDir })
   const model = await loadModel({ embedded, key: opts.model, extra: opts.models })
 
   // App code, after the shims (it reads location and fetch when it runs).
@@ -205,6 +187,10 @@ export async function main(argv, { embedded = null } = {}) {
     engines.push(engine)
   }
 
+  // Each agent's saved memory from earlier runs (runtime files).
+  if (opts.storageDir) await Promise.all(engines.map((engine) => engine.restore()))
+  log(`askk: memory ${opts.storageDir ? `kept in ${opts.storageDir}` : "for this run only (a server runs this team)"}`)
+
   // Status checks on long-running quests, as in the app.
   createSupervisor({
     engines: () => engines,
@@ -239,6 +225,104 @@ export async function main(argv, { embedded = null } = {}) {
     const answer = await engines.find((e) => e.agent.name === chosen.name).ask(query)
     finish({ ok: true, answer }, 0)
   } catch (error) {
+    finish({ ok: false, error: error.message }, 1)
+  }
+}
+
+// ── the query on the running server's team ─────────────────────────────────
+
+async function askTeam({ server, query, opts, seconds, log }) {
+  const { describeActivity } = await import("@/backend/core/activity")
+  const origin = `http://localhost:${server.port}`
+  const headers = { origin, "content-type": "application/json" }
+  const call = async (target, method, args = []) => {
+    // `timeout: false`: Bun's fetch gives up after 5 minutes; an ask lasts the whole run.
+    const response = await fetch(`${origin}/__askk/team/call`, { method: "POST", headers, body: JSON.stringify({ target, method, args }), timeout: false })
+    const result = await response.json().catch(() => ({ ok: false, error: { message: `HTTP ${response.status}` } }))
+    if (!result.ok) throw new Error(result.error?.message ?? "team call failed")
+    return result.value
+  }
+
+  // The team's live state (as the tabs see it): progress lines, approvals.
+  const stream = new AbortController()
+  const response = await fetch(`${origin}/__askk/team/stream`, { headers: { origin }, signal: stream.signal, timeout: false })
+  if (!response.ok) fail(`the server on port ${server.port} has no team (HTTP ${response.status}); use --local.`, 1)
+  const reader = response.body.pipeThrough(new TextDecoderStream()).getReader()
+  const states = {}
+  let registry = null
+  const last = {}
+  const answered = new Set()
+  const onState = (id) => {
+    const engine = registry?.engines.find((e) => e.id === id)
+    const { activity, approvals = [] } = states[id] ?? {}
+    const line = !activity || activity.phase === "idle" ? "" : `${engine?.name ?? id}: ${describeActivity(activity)}`
+    if (line && line !== last[id]) log(line)
+    last[id] = line
+    for (const approval of approvals) {
+      if (answered.has(approval.id)) continue
+      answered.add(approval.id)
+      const what = `${approval.tool} ${JSON.stringify(approval.inputs).slice(0, 160)}`
+      if (opts.yes) {
+        log(`${engine?.name ?? id}: approved ${what}`)
+        call(id, "resolveApproval", [approval.id, true]).catch(() => {})
+      } else log(`${engine?.name ?? id}: waiting for the owner's approval in the app: ${what}`)
+    }
+  }
+  let ready
+  const snapshot = new Promise((resolve) => (ready = resolve))
+  ;(async () => {
+    let buffer = ""
+    for (;;) {
+      const { value, done } = await reader.read().catch(() => ({ done: true }))
+      if (done) break
+      buffer += value
+      let end
+      while ((end = buffer.indexOf("\n\n")) >= 0) {
+        const block = buffer.slice(0, end)
+        buffer = buffer.slice(end + 2)
+        const data = block.split("\n").filter((l) => l.startsWith("data: ")).map((l) => l.slice(6)).join("\n")
+        if (!data) continue
+        const event = JSON.parse(data)
+        if (event.type === "snapshot") {
+          registry = event.registry
+          Object.assign(states, event.states)
+          ready()
+        } else if (event.type === "registry") registry = event.registry
+        else if (event.type === "state") {
+          const { messages, ...rest } = event.patch
+          states[event.id] = { ...(states[event.id] ?? {}), ...rest }
+          onState(event.id)
+        }
+      }
+    }
+  })()
+  await snapshot
+  if (registry.status !== "ready") fail(`the server's team is ${registry.status}${registry.error ? `: ${registry.error}` : ""}.`, 1)
+  const engine = opts.agent
+    ? registry.engines.find((e) => e.agent?.name === opts.agent || e.name === opts.agent)
+    : registry.engines.find((e) => e.id === registry.requiredId) ?? registry.engines[0]
+  if (!engine) fail(`no agent "${opts.agent}" on the server. Known: ${registry.engines.map((e) => e.name).join(", ")}.`)
+
+  log(`askk: asking ${engine.name} on the running team (http://localhost:${server.port}/, pid ${server.pid}) · shown live in the app`)
+  const started = Date.now()
+  const finish = ({ ok, answer = null, error = null }, code) => {
+    const elapsed = Math.round((Date.now() - started) / 100) / 10
+    if (opts.json) process.stdout.write(`${JSON.stringify({ ok, agent: engine.name, answer, error, seconds: elapsed })}\n`)
+    else if (ok) process.stdout.write(`${answer}\n`)
+    if (!ok) process.stderr.write(`askk: ${error}\n`)
+    stream.abort()
+    process.exit(code)
+  }
+  const timer = setTimeout(() => {
+    call(engine.id, "stop").catch(() => {})
+    finish({ ok: false, error: `timed out after ${seconds}s` }, 124)
+  }, seconds * 1000)
+  try {
+    const answer = await call(engine.id, "ask", [query])
+    clearTimeout(timer)
+    finish({ ok: true, answer }, 0)
+  } catch (error) {
+    clearTimeout(timer)
     finish({ ok: false, error: error.message }, 1)
   }
 }

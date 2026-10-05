@@ -70,12 +70,15 @@ export function validateAgent(config) {
     !Array.isArray(config.artifacts ?? []) ||
     !(config.artifacts ?? []).every(safeName) ||
     !plain(config.skills) ||
+    !(config.skillset === undefined || (Array.isArray(config.skillset) && config.skillset.every(safeName))) ||
     !Array.isArray(config.agents ?? []) ||
     !(config.agents ?? []).every((a) => safeName(a) && a !== config.name) ||
     !Array.isArray(config.mcp ?? []) ||
     !(config.mcp ?? []).every((m) => m === "*" || safeName(m)) ||
     !RESPONSE_FORMATS.includes(config.response_format) ||
-    (config.soul !== undefined && typeof config.soul !== "string")
+    (config.soul !== undefined && typeof config.soul !== "string") ||
+    !(config.checklist === undefined || (Array.isArray(config.checklist) && config.checklist.every((c) => typeof c === "string"))) ||
+    !(config.daily === undefined || (Array.isArray(config.daily) && config.daily.every((c) => typeof c === "string")))
   ) {
     throw new Error(`Invalid agent definition${config.name ? `: ${config.name}` : ""}.`)
   }

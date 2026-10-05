@@ -1,21 +1,11 @@
 "use client"
 
 import * as React from "react"
-import {
-  ArrowUpIcon,
-  BotIcon,
-  CheckIcon,
-  CodeIcon,
-  ChevronRightIcon,
-  MicIcon,
-  MicOffIcon,
-  SquareIcon,
-  UserIcon,
-  XIcon,
-} from "lucide-react"
+import { BotIcon, CheckIcon, CodeIcon, ChevronRightIcon, UserIcon, XIcon } from "lucide-react"
 
 import { describeActivity } from "@/backend/core/activity"
 
+import { Composer } from "@/components/chat/composer"
 import { EngineBar } from "@/components/chat/engine-bar"
 import { ModelStats } from "@/components/chat/model-stats"
 import { PromptPanel } from "@/components/chat/prompt-panel"
@@ -28,10 +18,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Textarea } from "@/components/ui/textarea"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useEngineState, useEngines } from "@/hooks/use-engines"
-import { useSpeechInput } from "@/hooks/use-speech"
 import { cn } from "@/lib/utils"
 
 // A collapsed section inside a reply: thoughts, structured fields, prompt.
@@ -149,7 +136,7 @@ function ChatMessage({ message, streaming }) {
   if (message.role === "tool") return <ToolEvent message={message} />
   if (message.role === "summary") return <SummaryMessage message={message} />
 
-  const { role, content, raw, reasoning, structured, prompt, error, stopped, from } = message
+  const { role, content, raw, reasoning, structured, prompt, error, stopped, from, fellBack } = message
   const isUser = role === "user"
   const waiting = streaming && !raw
   const toolStep = (message.action ?? structured?.action) === "tool"
@@ -177,6 +164,11 @@ function ChatMessage({ message, streaming }) {
           <p className="whitespace-pre-wrap text-muted-foreground">{raw}</p>
         )}
         {from && <span className="text-xs opacity-70">from {from}</span>}
+        {fellBack && (
+          <span className="text-xs text-muted-foreground" title={fellBack}>
+            answered by the backup model ({message.model})
+          </span>
+        )}
         {!streaming && content && !toolStep && <p className="whitespace-pre-wrap">{content}</p>}
         {!streaming && toolStep && (
           <p className="font-mono text-xs break-all whitespace-pre-wrap">{content}</p>
@@ -277,7 +269,7 @@ function ApprovalDetail({ tool, inputs, summary }) {
 }
 
 // Tool calls waiting for the owner. The engine pauses until each is answered.
-function Approvals({ engine, approvals }) {
+export function Approvals({ engine, approvals }) {
   if (!approvals?.length) return null
   return (
     <div className="flex flex-col gap-2 pb-2">
@@ -311,38 +303,6 @@ function Approvals({ engine, approvals }) {
   )
 }
 
-// Live dictation into the message box. Disabled, with the reason, where the
-// browser cannot transcribe speech.
-function MicButton({ speech, onToggle, disabled }) {
-  const { support, listening } = speech
-  if (!support) return null
-  const unavailable = !support.supported
-  const label = unavailable ? support.reason : listening ? "Stop dictation" : "Dictate (live transcription)"
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Button
-            type="button"
-            size="icon"
-            variant={listening ? "destructive" : "ghost"}
-            className={cn("rounded-full pointer-coarse:size-10", listening && "animate-pulse")}
-            onClick={onToggle}
-            disabled={unavailable || disabled}
-            aria-label={label}
-            aria-pressed={listening}
-          />
-        }
-      >
-        {unavailable ? <MicOffIcon /> : <MicIcon />}
-      </TooltipTrigger>
-      <TooltipContent side="top" className="max-w-64">
-        {label}
-      </TooltipContent>
-    </Tooltip>
-  )
-}
-
 export function Chat() {
   const { engines, activeId, status } = useEngines()
   const engine = engines.find((e) => e.id === activeId) ?? null
@@ -354,36 +314,9 @@ export function Chat() {
   const [showPrompt, setShowPrompt] = React.useState(false)
   const endRef = React.useRef(null)
 
-  // Dictation goes after whatever was typed before it started.
-  const dictationBase = React.useRef("")
-  const speech = useSpeechInput({
-    onText: (text) => setInput(dictationBase.current ? `${dictationBase.current} ${text}`.trimEnd() : text),
-  })
-  function toggleDictation() {
-    if (!speech.listening) dictationBase.current = input.trimEnd()
-    speech.toggle()
-  }
-
   React.useEffect(() => {
     endRef.current?.scrollIntoView({ block: "end" })
   }, [messages])
-
-  function send() {
-    const text = input.trim()
-    if (!text || running || !engine) return
-    speech.release()
-    dictationBase.current = ""
-    setInput("")
-    engine.send(text)
-  }
-
-  function onKeyDown(event) {
-    // Enter sends, Shift+Enter inserts a newline; ignore IME composition.
-    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
-      event.preventDefault()
-      send()
-    }
-  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -416,88 +349,44 @@ export function Chat() {
             </div>
           </ScrollArea>
     
-          <form
+          <Composer
             className="mx-auto w-full max-w-3xl p-4 pt-0"
-            onSubmit={(event) => {
-              event.preventDefault()
-              send()
-            }}
-          >
-            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-1 pb-2">
-              <ActivityLine engine={engine} activity={state?.activity} />
-              <div className="ml-auto flex min-w-0 items-center gap-1">
-                <ModelStats engine={engine} state={state} />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={() => setShowPrompt((v) => !v)}
-                  aria-pressed={showPrompt}
-                  aria-label="Show prompt sent to the LLM"
-                  title="Prompt sent to the LLM"
-                  disabled={!engine}
-                  className="aria-pressed:bg-muted pointer-coarse:size-10"
-                >
-                  <CodeIcon />
-                </Button>
-              </div>
-            </div>
-            <Approvals engine={engine} approvals={state?.approvals} />
-            {speech.error && <p className="px-1 pb-2 text-xs text-destructive">{speech.error}</p>}
-            {speech.correctionError && <p className="px-1 pb-2 text-xs text-destructive">{speech.correctionError}</p>}
-            {(speech.listening || speech.correcting) && (
-              <p className="px-1 pb-2 text-xs text-muted-foreground" aria-live="polite">
-                {speech.correcting ? "Punctuating…" : "Listening · punctuation is added after each pause"}
-              </p>
-            )}
-            {state?.memoryError && (
-              <p className="px-1 pb-2 text-xs text-destructive">{state.memoryError}</p>
-            )}
-            {state?.error?.startsWith("Summarize failed") && (
-              <p className="px-1 pb-2 text-xs text-destructive">{state.error}</p>
-            )}
-            <div className="relative">
-              <Textarea
-                value={input}
-                onChange={(event) => {
-                  // Typing takes over from dictation.
-                  if (speech.listening || speech.correcting) speech.release()
-                  setInput(event.target.value)
-                }}
-                onKeyDown={onKeyDown}
-                disabled={!engine}
-                placeholder={
-                  speech.listening ? "Listening…" : engine ? `Message ${engine.name}…` : "Open an agent to chat"
-                }
-                aria-label="Message"
-                className="max-h-48 min-h-12 resize-none pr-22 pointer-coarse:pr-24 dark:bg-transparent"
-              />
-              <div className="absolute right-12 bottom-2 pointer-coarse:right-14">
-                <MicButton speech={speech} onToggle={toggleDictation} disabled={!engine} />
-              </div>
-              {running ? (
-                <Button
-                  type="button"
-                  size="icon"
-                  className="absolute right-2 bottom-2 rounded-full pointer-coarse:size-10"
-                  onClick={() => engine.stop()}
-                  aria-label="Stop"
-                >
-                  <SquareIcon className="fill-current" />
-                </Button>
-              ) : (
-                <Button
-                  type="submit"
-                  size="icon"
-                  className="absolute right-2 bottom-2 rounded-full pointer-coarse:size-10"
-                  disabled={!input.trim() || !engine}
-                  aria-label="Send"
-                >
-                  <ArrowUpIcon />
-                </Button>
-              )}
-            </div>
-          </form>
+            value={input}
+            onChange={setInput}
+            onSend={(text) => engine.send(text)}
+            onStop={() => engine.stop()}
+            running={running}
+            disabled={!engine}
+            placeholder={engine ? `Message ${engine.name}…` : "Open an agent to chat"}
+            above={
+              <>
+                <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-1 pb-2">
+                  <ActivityLine engine={engine} activity={state?.activity} />
+                  <div className="ml-auto flex min-w-0 items-center gap-1">
+                    <ModelStats engine={engine} state={state} />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={() => setShowPrompt((v) => !v)}
+                      aria-pressed={showPrompt}
+                      aria-label="Show prompt sent to the LLM"
+                      title="Prompt sent to the LLM"
+                      disabled={!engine}
+                      className="aria-pressed:bg-muted pointer-coarse:size-10"
+                    >
+                      <CodeIcon />
+                    </Button>
+                  </div>
+                </div>
+                <Approvals engine={engine} approvals={state?.approvals} />
+                {state?.memoryError && <p className="px-1 pb-2 text-xs text-destructive">{state.memoryError}</p>}
+                {state?.error?.startsWith("Summarize failed") && (
+                  <p className="px-1 pb-2 text-xs text-destructive">{state.error}</p>
+                )}
+              </>
+            }
+          />
         </div>
         {showPrompt && engine && (
           <PromptPanel

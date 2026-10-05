@@ -25,7 +25,7 @@ import { IDLE } from "@/backend/core/activity"
 import { Memory, serializeMemory } from "@/backend/core/memory"
 import { ReActResponse } from "@/backend/core/responses"
 import { createSummarizer } from "@/backend/core/single-call"
-import { formatContext, formatRequest, formatRole, formatSoul, renderTemplate } from "@/backend/core/template"
+import { formatContext, formatRequest, formatRole, formatSoul, renderPrompt, renderTemplate } from "@/backend/core/template"
 import { formatLog } from "@/backend/core/log"
 import { AgentTool, Tool } from "@/backend/core/tool"
 import { parseToolPlan } from "@/backend/core/tool-plan"
@@ -37,6 +37,18 @@ import { readFile, writeFile } from "@/backend/platform/storage"
 
 // Summarize automatically once a prompt reaches this share of the context window.
 const AUTO_SUMMARIZE_AT = 0.92
+// Every agent's context is capped (tokens): the model's window when smaller,
+// else this. Also the window when the model's is unknown (the local CLIs), so
+// auto-summarize always has a limit. agent.md `context_window` or
+// ASKK_CONTEXT_CAP (.env, server and headless) overrides it.
+const CONTEXT_CAP = 262144
+
+function contextCap(agent) {
+  const own = Number(agent?.context_window)
+  if (own > 0) return own
+  const env = Number(globalThis.process?.env?.ASKK_CONTEXT_CAP)
+  return env > 0 ? env : CONTEXT_CAP
+}
 // Steps per letter (agent.md `max_steps`) and rounds of quests per origin
 // (`max_rounds`): unlimited unless set. Long-running work is kept on track by
 // status checks instead (runtime/supervisor.js → status letters to the lead).
@@ -65,7 +77,7 @@ function responseText(parsed) {
   const value = parsed.response
   if (Array.isArray(value)) return value.join("\n")
   const text = (field) => (Array.isArray(field) ? field.join("\n") : String(field ?? ""))
-  return text(value) || text(parsed.thinking) || text(parsed.observation)
+  return text(value) || text(parsed.decision) || text(parsed.thinking) || text(parsed.observation)
 }
 
 const clip = (text, size) =>
@@ -207,9 +219,20 @@ export class BaseEngine {
 
   async #loadContextWindow() {
     const model = this.model
-    const window = model ? await contextWindow(model).catch(() => null) : null
+    // `this.model` is resolved anew on every read: compare the connection.
+    const current = () => {
+      const now = this.model
+      return this.status !== "disposed" && now?.key === model?.key && now?.id === model?.id
+    }
+    const cap = contextCap(this.agent)
+    // The cap holds at once; a smaller window from the model's list lowers
+    // it. A lookup that never answers (some local servers) leaves the cap.
+    if (current()) this.update({ contextWindow: cap })
+    const timeout = new Promise((resolve) => setTimeout(() => resolve(null), 10000))
+    const known = model ? await Promise.race([contextWindow(model).catch(() => null), timeout]) : null
+    const window = Math.min(known ?? cap, cap)
     // Ignore a lookup that a newer model change has overtaken.
-    if (this.status !== "disposed" && this.model === model) this.update({ contextWindow: window })
+    if (current()) this.update({ contextWindow: window })
   }
 
   // agent.md body, then each declared skill.
@@ -287,6 +310,12 @@ export class BaseEngine {
   }
 
   // ── artifacts ──────────────────────────────────────────────────────────
+
+  // What artifacts say must still be done before a final answer (the
+  // checklist): [{ id, text }]. Empty = the answer may stand.
+  pendingChecks() {
+    return (this.artifacts ?? []).flatMap((artifact) => artifact.pending?.() ?? [])
+  }
 
   get #artifactsPath() {
     return `${this.memory.dir}/artifacts.json`
@@ -558,6 +587,12 @@ export class BaseEngine {
     return !failed
   }
 
+  // Autopilot: one switch for every engine in this thread (the server's
+  // team is one thread). On, a tool marked `approval` runs without asking
+  // the owner. Set by the registry (setAutopilot); headless and the server
+  // start from ASKK_AUTOPILOT in .env.
+  static autopilot = /^(1|true|on|yes)$/i.test(globalThis.process?.env?.ASKK_AUTOPILOT ?? "")
+
   // Execute a tool by name. Never throws — returns { ok, output }.
   async executeTool(toolName, inputs, { signal } = {}) {
     try {
@@ -566,7 +601,7 @@ export class BaseEngine {
         const available = [...this.toolsMap.keys()].join(", ") || "none"
         throw new Error(`Tool not found. Available: ${available}`)
       }
-      if (tool.approval) {
+      if (tool.approval && !BaseEngine.autopilot) {
         // A declined call is not asked again within the same request.
         const key = `${toolName} ${JSON.stringify(inputs)}`
         if (this.#declined.has(key) || !(await this.#requestApproval(tool, inputs, signal))) {
@@ -634,7 +669,7 @@ export class BaseEngine {
     const model = this.model
     if (!model) throw new Error(missingModelMessage(this.agent.model))
     await this.refreshArtifacts()
-    const prompt = this.render(text, history)
+    const { text: prompt, breaks: cacheAt } = renderPrompt(this.elements(text, history))
     let reply = this.message("assistant", { prompt, raw: "", reasoning: "", structured: null, step })
     const meter = new TokenMeter({ prompt, contextWindow: this.#state.contextWindow })
     this.update({
@@ -644,10 +679,12 @@ export class BaseEngine {
     })
 
     let usage = null
+    let fellBack = null
     try {
-      ;({ usage } = await complete({
+      ;({ usage, fellBack } = await complete({
         model,
         prompt,
+        cacheAt,
         signal,
         onDelta: ({ content, reasoning }) => {
           reply = { ...reply, raw: reply.raw + content, reasoning: reply.reasoning + reasoning }
@@ -660,6 +697,8 @@ export class BaseEngine {
           })
         },
       }))
+      // The model failed before answering and its fallback answered: say so on the reply.
+      if (fellBack) reply = { ...reply, model: model.backup.key ?? model.backup.id, fellBack }
     } finally {
       this.update({ stats: meter.finish(usage) })
       if (usage?.inputTokens > 0) this.#charsPerToken = prompt.length / usage.inputTokens
@@ -839,6 +878,7 @@ export class BaseEngine {
       working: {
         id: letter.id,
         kind: letter.kind,
+        origin: origin.id, // the run this letter belongs to (request or quest, and its reports)
         quest: origin.kind === "quest" ? origin.id : null,
         replyTo: origin.replyTo ?? null,
         from: origin.from ?? null,

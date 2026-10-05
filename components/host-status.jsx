@@ -41,7 +41,7 @@ export function HostStatus() {
             <span className="text-sm text-foreground">{local ? "Running on this computer" : "Running in the browser only"}</span>
             <span className="font-normal break-all">
               {local
-                ? `Workspace: ${host.root}`
+                ? `Workspace: ${host.root}${host.runtime ? ` · Runtime (memory, history): ${host.runtime}` : " · Memory: this browser"}`
                 : "This version has no access to your computer. Run ASKK from source (bun run dev) for the full set."}
             </span>
           </DropdownMenuLabel>
