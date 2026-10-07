@@ -4,6 +4,7 @@
 // open in the filesystem artifact: markSeen).
 
 import { ConflictError, workspace } from "@/backend/features/filesystem/workspace"
+import { checkDelete, checkLane, checkPreserve } from "@/backend/features/filesystem/guard"
 
 const MAX_OUTPUT = 60000 // characters of a file shown to the model
 
@@ -35,6 +36,11 @@ async function fsList({ path = "" }) {
 
 async function fsRead({ path }, { engine }) {
   const ws = await workspace()
+  // A shared/ file is in the SHARED artifact already: only a status line.
+  for (const artifact of engine?.artifacts ?? []) {
+    const status = await artifact.show?.(requirePath(path)).catch(() => null)
+    if (status) return status
+  }
   const file = await ws.read(requirePath(path))
   if (file.binary) throw new Error(`${file.path} is a binary file (${formatSize(file.size)}); it cannot be shown as text.`)
   seenBy(engine).set(file.path, file.revision)
@@ -53,6 +59,11 @@ async function fsWrite({ path, text }, { engine }) {
   const ws = await workspace()
   const revisions = seenBy(engine)
   const key = requirePath(path).replace(/^\/+/, "")
+  checkLane(engine?.agent, key, "write")
+  if (engine?.agent?.preserve && revisions.has(key)) {
+    const before = await ws.read(key).catch(() => null)
+    if (before && !before.binary) checkPreserve(engine.agent, key, before.text, text)
+  }
   try {
     // Never read: it must be a new file.
     const result = await ws.write(key, text, { revision: revisions.get(key) ?? null })
@@ -62,7 +73,7 @@ async function fsWrite({ path, text }, { engine }) {
     if (error instanceof ConflictError || error.name === "ConflictError") {
       throw new Error(
         revisions.has(key)
-          ? `${key} changed since you read it. Read it again (fs.open or fs.read), then write.`
+          ? `${key} changed since you read it. Open or read it again, then write.`
           : `${key} already exists. Open or read it first (or use fs.edit), then write.`
       )
     }
@@ -75,6 +86,7 @@ async function fsEdit({ path, old, new: replacement }, { engine }) {
     throw new Error('Expected {"path": "...", "old": "exact text to replace", "new": "replacement"}.')
   }
   const ws = await workspace()
+  checkLane(engine?.agent, requirePath(path).replace(/^\/+/, ""), "edit")
   const file = await ws.read(requirePath(path))
   if (file.binary || file.truncated) throw new Error(`${file.path} cannot be edited as text.`)
   const count = file.text.split(old).length - 1
@@ -85,7 +97,9 @@ async function fsEdit({ path, old, new: replacement }, { engine }) {
         : `The "old" text appears ${count} times in ${file.path}; include more surrounding text so it matches once.`
     )
   }
-  const result = await ws.write(file.path, file.text.replace(old, () => replacement), { revision: file.revision })
+  const edited = file.text.replace(old, () => replacement)
+  checkPreserve(engine?.agent, file.path, file.text, edited)
+  const result = await ws.write(file.path, edited, { revision: file.revision })
   seenBy(engine).set(result.path, result.revision)
   return `Edited ${result.path} (${formatSize(result.size)}).`
 }
@@ -97,6 +111,7 @@ async function fsAppend({ path, text }, { engine }) {
   if (typeof text !== "string" || !text) throw new Error('Expected {"path": "...", "text": "lines to add"}.')
   const ws = await workspace()
   const key = requirePath(path).replace(/^\/+/, "")
+  checkLane(engine?.agent, key, "append to")
   for (let attempt = 0; attempt < 5; attempt++) {
     let current = null
     try {
@@ -122,6 +137,11 @@ async function fsDelete({ path, recursive = false }, { engine }) {
   const ws = await workspace()
   const revisions = seenBy(engine)
   const key = requirePath(path).replace(/^\/+/, "")
+  checkLane(engine?.agent, key, "delete")
+  checkDelete(engine?.agent, key)
+  if (engine?.agent?.preserve && recursive === true) {
+    throw new Error(`Refused: recursive delete of ${key} under preserve — existing work is never deleted in bulk; report it as blocked for the owner.`)
+  }
   try {
     // A file this engine read must not have changed since.
     const result = await ws.remove(key, { recursive: recursive === true, revision: revisions.get(key) })
@@ -145,16 +165,21 @@ const pathSchema = { type: "string", minLength: 1, maxLength: 1024 }
 
 const SPECS = {
   "fs.list": {
+    view: "file",
     description: 'List a folder of the workspace. Paths are relative to the workspace root; omit path (or "") for the root.',
     inputs: { type: "object", properties: { path: { type: "string", maxLength: 1024 } }, additionalProperties: false },
     run: fsList,
   },
   "fs.read": {
-    description: "Read a text file from the workspace. Read a file before changing it.",
+    view: "file",
+    description:
+      "Read a text file from the workspace. Read a file before changing it. A shared/ file shown in " +
+      "SHARED returns only a status line (read it there).",
     inputs: { type: "object", properties: { path: pathSchema }, required: ["path"], additionalProperties: false },
     run: fsRead,
   },
   "fs.write": {
+    view: "file",
     description:
       "Write a whole text file in the workspace (parent folders are created). To replace an existing file, " +
       "open or read it first. For small changes prefer fs.edit. Needs the owner's approval.",
@@ -169,6 +194,7 @@ const SPECS = {
     run: fsWrite,
   },
   "fs.edit": {
+    view: "file",
     description:
       'Replace one exact piece of text in a workspace file: "old" must appear exactly once. Needs the owner\'s approval.',
     inputs: {
@@ -182,6 +208,7 @@ const SPECS = {
     run: fsEdit,
   },
   "fs.append": {
+    view: "file",
     description:
       "Append text to the end of a workspace file, creating it if missing (logs, ledgers, shared notes). " +
       "Other agents' additions are kept. Needs the owner's approval.",
@@ -197,6 +224,7 @@ const SPECS = {
     run: fsAppend,
   },
   "fs.delete": {
+    view: "file",
     description:
       "Delete a file or folder in the workspace. A folder with contents needs recursive: true. " +
       "Needs the owner's approval.",

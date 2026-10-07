@@ -92,6 +92,7 @@ function EngineItem({ engine, active }) {
   const approvals = state?.approvals?.length ?? 0
   const quests = state?.quests ?? []
   const queued = state?.inbox?.length ?? 0
+  const spawned = engine.agent?.spawned ?? null // created by another agent (team artifact)
 
   return (
     <StatusItem
@@ -106,6 +107,11 @@ function EngineItem({ engine, active }) {
           <span className="text-foreground">
             {engine.name} · {tone.word}
           </span>
+          {spawned && (
+            <span>
+              Sub-agent of {spawned.by} · {spawned.keep ? "kept on the team" : `task agent (ends after ${spawned.idle_minutes} min idle)`}
+            </span>
+          )}
           {state?.error && <span className="text-destructive">{state.error}</span>}
           {approvals > 0 && <span>{approvals} change{approvals > 1 ? "s" : ""} waiting for your approval</span>}
           {quests.map((q) => (
@@ -120,7 +126,10 @@ function EngineItem({ engine, active }) {
     >
       <Dot className={tone.dot} />
       <span className="sm:hidden">{initials(engine.name)}</span>
-      <span className="max-w-24 truncate max-sm:hidden">{engine.name}</span>
+      <span className={cn("max-w-24 truncate max-sm:hidden", spawned && !spawned.keep && "italic")}>
+        {spawned ? "↳ " : ""}
+        {engine.name}
+      </span>
       {approvals > 0 && (
         <span className="rounded-full bg-amber-500 px-1 text-[10px] leading-3.5 text-black tabular-nums">{approvals}</span>
       )}

@@ -5,6 +5,7 @@ import { detectHost, hasCapability } from "@/backend/platform/host"
 import { EngineProxy } from "@/backend/runtime/engine-proxy"
 import { startIntegrationBridge } from "@/backend/runtime/integration-bridge"
 import { RemoteEngine, connectTeam, teamCall } from "@/backend/runtime/remote-team"
+import { createSpawner } from "@/backend/runtime/spawner"
 import { createSupervisor } from "@/backend/runtime/supervisor"
 import { models } from "@/backend/models/catalog"
 
@@ -58,7 +59,30 @@ class EngineRegistry {
       target.deposit(letter)
       return target.id
     },
+    // Sub-agents (the team artifact): created and ended at runtime.
+    spawn: (caller, spec) => this.#spawner.spawn(caller, spec),
+    kill: (caller, name, reason) => this.#spawner.kill(caller, name, reason),
+    keep: (caller, name, keep) => this.#spawner.keep(caller, name, keep),
+    roster: (caller) => this.#spawner.roster(caller),
   }
+  // Agents created by agents (runtime/spawner.js): their definitions join
+  // `agents` (flagged `spawned`), their engines `engines`, until ended.
+  #spawner = createSpawner({
+    agents: () => this.#state.agents,
+    engines: () => (this.#remote ? [] : this.#state.engines), // a mirroring tab ends nothing
+    add: (agent, { restore = false } = {}) => {
+      const engine = this.#factory({ agent, name: agent.name, host: this.#host })
+      if (restore) engine.restore()
+      this.#watchApprovals(engine)
+      this.#set({ agents: [...this.#state.agents, agent], engines: [...this.#state.engines, engine] })
+      return engine
+    },
+    remove: (engine) => this.#drop(engine),
+    replace: (agent) => {
+      this.#set({ agents: this.#state.agents.map((a) => (a.name === agent.name ? agent : a)) })
+      for (const engine of this.#state.engines) if (engine.agent.name === agent.name) engine.reconfigure(agent)
+    },
+  })
   #state = {
     agents: [], // effective definitions (file + saved edit)
     edited: [], // names of agents with a saved edit
@@ -159,12 +183,16 @@ class EngineRegistry {
         }
       })
 
-      // Agents first: engines describe their sub-agents through the directory.
       this.#set({ agents, edited })
-      const engines = agents.map((agent) => this.#factory({ agent, name: agent.name, host: this.#host }))
+      // Sub-agents kept by their creators (saved) come back, with their memory.
+      const all = [...agents, ...this.#spawner.saved()]
+      // Agents first: engines describe their sub-agents through the directory.
+      this.#set({ agents: all })
+      const engines = all.map((agent) => this.#factory({ agent, name: agent.name, host: this.#host }))
       // Each engine reloads its own memory file before the registry is ready.
       await Promise.all(engines.map((engine) => engine.restore()))
       for (const engine of engines) this.#watchApprovals(engine)
+      for (const engine of engines) if (engine.agent.spawned) this.#spawner.adopt(engine)
       const requiredId = engines[0]?.id ?? null
       this.#set({ engines, activeId: requiredId, requiredId, status: "ready" })
       // Status checks on long-running quests, sent to each quest's owner.
@@ -304,14 +332,23 @@ class EngineRegistry {
 
   dispose(id) {
     if (this.#remote) return void teamCall("registry", "dispose", [id]).catch(() => {})
+    const engine = this.#state.engines.find((e) => e.id === id)
+    if (!engine || id === this.#state.requiredId) return
+    this.#spawner.forget(engine) // a sub-agent closed in the app is ended
+    this.#drop(engine)
+  }
+
+  // Close an engine; a sub-agent's definition goes with it.
+  #drop(engine) {
     const engines = this.#state.engines
-    const index = engines.findIndex((e) => e.id === id)
-    if (index === -1 || id === this.#state.requiredId) return
-    engines[index].dispose()
-    const rest = engines.filter((e) => e.id !== id)
+    const index = engines.indexOf(engine)
+    if (index === -1) return
+    engine.dispose()
+    const rest = engines.filter((e) => e !== engine)
     const activeId =
-      this.#state.activeId === id ? (rest[index] ?? rest[index - 1] ?? null)?.id ?? null : this.#state.activeId
-    this.#set({ engines: rest, activeId })
+      this.#state.activeId === engine.id ? (rest[index] ?? rest[index - 1] ?? null)?.id ?? null : this.#state.activeId
+    const agents = engine.agent?.spawned ? this.#state.agents.filter((a) => a.name !== engine.agent.name) : this.#state.agents
+    this.#set({ engines: rest, agents, activeId })
   }
 }
 

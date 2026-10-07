@@ -21,14 +21,19 @@
 //
 // Summarizing moves the log into a new agents/<engine>/history-<time>.md (same
 // format) and leaves only the summary in memory.md. Startup loads memory.md only.
+// History is capped: only the newest HISTORY_KEEP files per engine are kept
+// (ASKK_HISTORY_KEEP in .env, via the runtime; default 6), so the runtime
+// folder stays bounded however many runs an engine works.
 
-import { readFile, writeFile } from "@/backend/platform/storage"
+import { listDir, readFile, removeEntry, writeFile } from "@/backend/platform/storage"
 
 // Fields kept besides the text. Prompts, raw output and reasoning are not
 // part of memory — only the conversation.
 const META_FIELDS = ["role", "from", "name", "kind", "ok", "stage", "parallel", "skipped", "action", "stopped", "error", "count", "archive", "at", "quest", "reports", "waiting", "status", "guidance"]
 
 const ENTRY = /^## [^\n]*\n<!-- (\{.*\}) -->\n\n?/gm
+
+export const HISTORY_KEEP = 6
 
 const slug = (name) => name.toLowerCase().replace(/[^a-z0-9._-]+/g, "-")
 
@@ -92,6 +97,16 @@ export class Memory {
     let path = `${base}.md`
     for (let n = 2; (await readFile(path)) !== null; n++) path = `${base}-${n}.md` // never overwrite
     await writeFile(path, serializeMemory(`${this.title} · ${at}`, messages, "History"))
+    await this.prune().catch(() => {}) // a cap that cannot be applied never fails the archive
     return path
+  }
+
+  // Delete the oldest history files beyond `keep` (names sort by time).
+  async prune(keep = Number(globalThis.askkHistoryKeep) || HISTORY_KEEP) {
+    const entries = await listDir(this.dir).catch(() => null)
+    const history = (entries ?? []).filter((e) => e.type === "file" && /^history-.*\.md$/.test(e.name)).map((e) => e.name).sort()
+    const old = history.slice(0, Math.max(0, history.length - keep))
+    for (const name of old) await removeEntry(`${this.dir}/${name}`)
+    return old.length
   }
 }

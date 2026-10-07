@@ -2,7 +2,7 @@
 
 Every agent's prompt starts with two sections that do different jobs.
 
-| | Soul (`WHO YOU ARE`) | Role (`YOUR ROLE`) |
+| | Soul (opens the prompt, no header) | Role (`YOUR ROLE`) |
 |---|---|---|
 | What it is | The agent's identity: character and values | The hat it wears for this work |
 | Changes | Almost never. One soul is shared by every agent | Per agent: developer, architect, tester, debugger, writer… |
@@ -95,7 +95,7 @@ Directions learned from earlier work in this role (optional; grows over time).
 
 ## In the prompt
 
-`backend/core/template.js`: `formatSoul()` renders `## WHO YOU ARE`, ending
-with a line saying it holds in every role and that YOUR ROLE comes next;
+`backend/core/template.js`: `formatSoul()` renders the soul first, with no
+header (the prompt opens on the identity itself) and nothing after it;
 `formatRole()` renders `## YOUR ROLE`. Single-call agents (summarizer,
 punctuator) have a role and no soul.

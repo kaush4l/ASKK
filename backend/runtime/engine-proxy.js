@@ -7,6 +7,7 @@
 import { IDLE } from "@/backend/core/activity"
 import { Memory } from "@/backend/core/memory"
 import { resolveModel } from "@/backend/models/catalog"
+import { SPAWN_CALLS } from "@/backend/runtime/spawner"
 
 let proxyCount = 0
 
@@ -28,6 +29,7 @@ export class EngineProxy {
     stats: null,
     contextWindow: null,
     approvals: [],
+    live: {},
     inbox: [],
     quests: [],
     working: null,
@@ -132,6 +134,17 @@ export class EngineProxy {
         }
         break
       }
+      case "host": {
+        // A sub-agent call (the team artifact), answered by the registry.
+        try {
+          if (!SPAWN_CALLS.includes(data.method) || !this.#host[data.method]) throw new Error("Sub-agents cannot be created here.")
+          const value = this.#host[data.method](this, ...(data.args ?? []))
+          this.#post({ type: "sent", callId: data.callId, ok: true, value })
+        } catch (error) {
+          this.#post({ type: "sent", callId: data.callId, ok: false, error: { name: error.name, message: error.message } })
+        }
+        break
+      }
     }
   }
 
@@ -190,6 +203,12 @@ export class EngineProxy {
   // Approve (true) or decline a pending tool call from state `approvals`.
   resolveApproval(id, ok) {
     this.#post({ type: "approval", id, ok: !!ok })
+  }
+
+  // Owner guidance on the work in progress (seen at its next step).
+  guide(text) {
+    this.#post({ type: "guide", text })
+    return Promise.resolve({ delivered: this.getSnapshot().status === "running" })
   }
 
   // New definition, model, or sibling descriptions.

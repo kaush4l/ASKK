@@ -87,6 +87,7 @@ async function describeWeb() {
 
 export const WEB_TOOLS = {
   "web.search": {
+    view: "web",
     description:
       "Search the internet. Returns numbered results: title, URL, snippet. Search first, then web.read the best 1-3 URLs " +
       "before trusting a snippet.",
@@ -100,6 +101,7 @@ export const WEB_TOOLS = {
     run: search,
   },
   "web.read": {
+    view: "web",
     description: "Read one web page (http/https URL) as plain text (max 40K characters).",
     inputs: {
       type: "object",

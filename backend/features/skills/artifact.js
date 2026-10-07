@@ -56,6 +56,11 @@ export class SkillsArtifact extends Artifact {
     if (gone.length) this.setState({ loaded: this.state.loaded.filter((n) => !gone.includes(n)) })
   }
 
+  // Live follow: which skills this engine has loaded.
+  live() {
+    return { view: "list", data: { items: this.state.loaded.map((name) => ({ name })) } }
+  }
+
   render() {
     const lines = [
       `### ${this.constructor.title}`,
@@ -140,6 +145,7 @@ export class SkillsArtifact extends Artifact {
     return [
       new Tool({
         name: "skills.load",
+        view: "text",
         description:
           "Load one or more skills before doing the kind of work they describe: their full text appears under " +
           "Loaded in the SKILLS artifact until you unload them.",

@@ -7,7 +7,7 @@
 // files in <storageDir>/files/ (backend/platform/storage.js uses
 // globalThis.askkRuntimeFiles): the runtime's data, never the browser's.
 
-import { mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs"
+import { mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { dirname, join, resolve, sep } from "node:path"
 
 export const SHIM_PORT = 7717
@@ -82,17 +82,40 @@ function diskFiles(dir) {
       writeFileSync(temp, text, { mode: 0o600 })
       renameSync(temp, file) // atomic: a reader never sees half a file
     },
+    // Entries of a folder ([{ name, type, size, mtime }]), null when missing.
+    list(path) {
+      try {
+        return readdirSync(full(path), { withFileTypes: true }).map((entry) => {
+          const stats = statSync(join(full(path), entry.name))
+          return { name: entry.name, type: entry.isDirectory() ? "dir" : "file", size: stats.size, mtime: stats.mtimeMs }
+        })
+      } catch (error) {
+        if (error.code === "ENOENT" || error.code === "ENOTDIR") return null
+        throw error
+      }
+    },
+    remove(path, { recursive = false } = {}) {
+      try {
+        rmSync(full(path), { recursive })
+        return true
+      } catch (error) {
+        if (error.code === "ENOENT") return false
+        throw error
+      }
+    },
   }
 }
 
 const OLD_FILE_PREFIX = "powerhouse.fs:" // engine files once kept as localStorage keys
 
-export function installBrowserShims({ api, embedded = null, storageDir = null }) {
+// forward: { port, desk, prefixes } — host API paths answered by the real
+// server on that port (as that desk) instead of in-process.
+export function installBrowserShims({ api, embedded = null, storageDir = null, filesDir = null, forward = null }) {
   globalThis.location = new URL(`${SHIM_ORIGIN}/`)
   globalThis.window ??= globalThis // app code reads window.location
   globalThis.localStorage = storageDir ? diskStorage(storageDir) : memoryStorage()
   if (storageDir) {
-    const files = diskFiles(join(storageDir, "files"))
+    const files = diskFiles(filesDir ?? join(storageDir, "files")) // a desk keeps them in custom/<desk>/memory/
     // Engine files from before: localStorage keys become real files.
     for (const name of readdirSync(storageDir)) {
       const key = decodeURIComponent(name)
@@ -102,11 +125,19 @@ export function installBrowserShims({ api, embedded = null, storageDir = null })
       localStorage.removeItem(key)
     }
     globalThis.askkRuntimeFiles = files
+    globalThis.askkHistoryKeep = Number(process.env.ASKK_HISTORY_KEEP) || undefined // history files kept per engine
   }
   const realFetch = globalThis.fetch
   globalThis.fetch = async (input, init = {}) => {
     const url = new URL(input instanceof Request ? input.url : String(input), globalThis.location)
     if (url.origin !== SHIM_ORIGIN) return realFetch(input instanceof Request ? input : url, init)
+    if (forward && forward.prefixes.some((prefix) => url.pathname.startsWith(prefix))) {
+      const target = `http://localhost:${forward.port}`
+      const headers = new Headers(input instanceof Request ? input.headers : init.headers)
+      headers.set("origin", target)
+      if (forward.desk) headers.set("x-askk-desk", forward.desk)
+      return realFetch(`${target}${url.pathname}${url.search}`, { ...init, headers })
+    }
     if (url.pathname.startsWith("/__askk/")) {
       const headers = new Headers(init.headers)
       headers.set("host", url.host)

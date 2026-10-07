@@ -112,6 +112,26 @@ export class FilesystemArtifact extends Artifact {
     if (gone.length) this.setState({ open: this.state.open.filter((p) => !gone.includes(p)) })
   }
 
+  // Live follow: the tree and the files this engine sees (path, size,
+  // revision), published by the engine whenever they change.
+  live() {
+    if (!this.tree && !this.treeError) return null
+    return {
+      view: "filesystem",
+      data: {
+        label: this.label,
+        folder: this.constructor.folder,
+        error: this.treeError,
+        tree: this.tree ?? [],
+        open: this.state.open,
+        files: (this.order ?? []).map((path) => {
+          const file = this.files.get(path)
+          return file?.error ? { path, error: file.error } : { path, size: file?.size ?? null, revision: file?.revision ?? null }
+        }),
+      },
+    }
+  }
+
   // ── rendering ──────────────────────────────────────────────────────────
 
   // Tree lines, two spaces per level; folders end with "/".
@@ -212,7 +232,10 @@ export class FilesystemArtifact extends Artifact {
     this.files.set(file.path, file)
     markSeen(this.engine, file.path, file.revision)
     this.setState({ open: [...this.state.open, file.path] })
-    return `Opened ${file.path} (${formatSize(file.size)}): it is shown under Files in the FILESYSTEM artifact.`
+    const part = file.truncated || file.text.length > MAX_FILE_CHARS
+      ? ` Only ${isLog(file.path) ? "its last" : "its first"} ${MAX_FILE_CHARS} characters are shown.`
+      : ""
+    return `Opened ${file.path} (${formatSize(file.size)}): it is shown under Files in the FILESYSTEM artifact.${part}`
   }
 
   async #close({ path }) {
@@ -233,6 +256,7 @@ export class FilesystemArtifact extends Artifact {
     return [
       new Tool({
         name: "fs.open",
+        view: "file",
         description: "Expand a workspace file: its current content is shown in the FILESYSTEM artifact until closed.",
         inputs: pathInput,
         run: (inputs) => this.#open(inputs),
@@ -264,6 +288,20 @@ export class SharedArtifact extends FilesystemArtifact {
         `is here at your next step. Share a finding others need by writing it here (fs.append to a ` +
         `${SHARED_FOLDER}/… file, one dated line).`,
     ]
+  }
+
+  // fs.read of a shared/ file (agents without FILESYSTEM keep fs.read): the
+  // file is shown here already, so the result is a status line, not the
+  // content a second time. Null when it is not shown whole.
+  async show(path) {
+    const key = normalizePath(path)
+    if (!key.startsWith(`${SHARED_FOLDER}/`)) return null
+    const file = await (await workspace()).read(key)
+    if (file.binary || file.truncated || file.text.length > MAX_FILE_CHARS) return null
+    const others = [...this.files].filter(([p, f]) => p !== file.path && f.text).reduce((n, [, f]) => n + Math.min(f.text.length, MAX_FILE_CHARS), 0)
+    if (others + file.text.length > MAX_TOTAL_CHARS) return null
+    markSeen(this.engine, file.path, file.revision)
+    return `${file.path} (${formatSize(file.size)}) is shown with its current content in SHARED (re-read before every step); read it there.`
   }
 
   commands() {

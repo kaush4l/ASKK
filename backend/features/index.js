@@ -10,6 +10,14 @@
 //   mcp/          McpTool: each tool of an MCP server in .mcp.json (agent.md
 //                 `mcp:`), loaded from the host when the engine starts work
 //   schedule/     schedule.wake: book the next run (state/wakes.jsonl)
+//   checklist/    the run checklist artifact (THIS RUN + TODAY, checklist.tick / skip)
+//   compact/      size caps on working files, kept by compaction (not summaries):
+//                 the compact artifact (agent.md `compact:`), intel.compact
+//   terminal/     term.run (a desk's programs in the workspace, sandboxed on the
+//                 host) and the terminal artifact (the team's last 5 runs)
+//   team/         the team artifact: sub-agents this agent creates and ends
+//                 (agent.spawn / agent.task / agent.keep / agent.kill,
+//                 runtime/spawner.js)
 //   apple/        apple.* tools: the owner's Mac (Shortcuts, speech, clipboard,
 //                 Spotlight, Reminders, …) through the host API, with approval
 //
@@ -25,6 +33,10 @@ import { WEB_TOOLS } from "@/backend/features/web/tools"
 export { loadMcpTools } from "@/backend/features/mcp/tools"
 import { SkillsArtifact } from "@/backend/features/skills/artifact"
 import { ChecklistArtifact } from "@/backend/features/checklist/artifact"
+import { CompactArtifact } from "@/backend/features/compact/artifact"
+import { TerminalArtifact } from "@/backend/features/terminal/artifact"
+import { TERMINAL_TOOLS } from "@/backend/features/terminal/tools"
+import { TeamArtifact } from "@/backend/features/team/artifact"
 
 // ── artifacts ──────────────────────────────────────────────────────────────
 
@@ -33,6 +45,9 @@ export const ARTIFACTS = {
   [SharedArtifact.type]: SharedArtifact,
   [SkillsArtifact.type]: SkillsArtifact,
   [ChecklistArtifact.type]: ChecklistArtifact,
+  [CompactArtifact.type]: CompactArtifact,
+  [TerminalArtifact.type]: TerminalArtifact,
+  [TeamArtifact.type]: TeamArtifact,
 }
 
 export const ARTIFACT_NAMES = Object.keys(ARTIFACTS)
@@ -69,7 +84,7 @@ const PLANNED_TOOLS = {
   },
 }
 
-const TOOL_SPECS = { ...FS_TOOLS, ...WEB_TOOLS, ...SCHEDULE_TOOLS, ...APPLE_TOOLS, ...PLANNED_TOOLS }
+const TOOL_SPECS = { ...FS_TOOLS, ...WEB_TOOLS, ...SCHEDULE_TOOLS, ...APPLE_TOOLS, ...TERMINAL_TOOLS, ...PLANNED_TOOLS }
 
 // Every tool name with a known contract (offered when editing an agent).
 export const TOOL_NAMES = Object.keys(TOOL_SPECS)

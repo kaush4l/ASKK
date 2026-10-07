@@ -6,6 +6,16 @@
 // line for the prompt's CONTEXT section (e.g. which workspace the fs.* tools
 // work on).
 //
+// Live follow (the UI that shows every call as it happens) reads two more
+// fields. `view` says how a call renders there: "terminal" (a command and its
+// output), "file" (a file change as a diff in the tree of touched files),
+// "browser" (a page the agent drives), "web" (a search or page read),
+// "quest" (work handed to another agent), "checklist", "schedule", "data"
+// (structured inputs → result); null = not UI-renderable, a row in the log.
+// `streams: true` = the tool reports progress while it runs: run() gets
+// `progress(update)`, update { append: "text" } | { text } | { data: {…} },
+// shown live (engine activity.calls[i].progress) before the result lands.
+//
 // Implementations live with their feature (features/<name>/tools.js) and are
 // registered in features/index.js.
 
@@ -20,6 +30,8 @@ export class Tool {
     run = null, // async (inputs, { engine, signal }) -> string | object
     context = null, // async () -> string | null, a CONTEXT line (shared by a feature's tools)
     describe = null, // (inputs) -> string, what the call will do (approval card)
+    view = null, // how Live follow renders a call (above); null = a log row
+    streams = false, // run() reports progress({ append | text | data }) while it runs
   }) {
     this.name = name
     this.description = description
@@ -30,6 +42,8 @@ export class Tool {
     this.run = run
     this.context = context
     this.describe = describe
+    this.view = view
+    this.streams = streams
   }
 
   async invoke(inputs = {}, context = {}) {
@@ -48,6 +62,7 @@ export class AgentTool extends Tool {
       description,
       inputs: { type: "object", properties: { quest: { type: "string" } }, required: ["quest"] },
       kind: "agent",
+      view: "quest",
     })
   }
 

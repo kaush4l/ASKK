@@ -41,15 +41,33 @@ The same app runs in two modes (`backend/platform/host.js` `detectHost()`):
   once, in the server process (`companion/team.js` starts `team-worker.js`, a
   Bun Worker: the same registry and engines as the app, browser shims from
   `companion/shims.js`). Its data is the workspace's **runtime folder**
-  (`teamStorageDir`: `custom/<team>/runtime/` for a team's data/, else
+  (`teamStorageDir` / `teamMemoryDir`: a desk keeps host state in
+  `custom/<desk>/state/` and engine files in `custom/<desk>/memory/`; a team
+  folder without desk.js uses `custom/<team>/runtime/`, any other workspace
   `~/.askk/team/<root hash>/`; never inside the workspace): engine files as
-  real files (`files/agents/<engine>/memory.md`, history, artifacts.json —
+  real files (`agents/<engine>/memory.md`, history, artifacts.json —
   `platform/storage.js` uses `globalThis.askkRuntimeFiles`) and settings
   (one file per localStorage key). `server.json` there tells headless runs
   where the server is. Every tab mirrors it (`backend/runtime/remote-team.js`,
   capability `team`): `GET team/stream` (SSE: snapshot, then registry / state
   / models changes), `POST team/call {target, method, args}` (a message, an
-  approval, stop, model switch, agent edit). The registry picks the mode in
+  approval, stop, model switch, agent edit), `POST team/send {text, agent?,
+  from?}` (work into an agent's inbox without waiting; default the lead).
+  The server is the team's home and runs until stopped: it runs its own wake
+  book (`companion/wakes.js`, every 30 s) and outside sources only send it
+  inputs (`bun run send -- --agents <team> [--agent] [--from] [--start]
+  [--unless-booked <min>] "text"`, `scripts/send.js`; cron lines call that):
+  server up → the text goes to the desk's lead (x-askk-desk); down with
+  `--start` → it starts launchd `askk.desks` (kickstart/bootstrap, else a
+  detached `bun run dev --desks`), waits for it, then sends; still down → the
+  text is booked as a wake due now in `state/wakes.jsonl`, run when the server
+  comes up (within 60 min). One server per team folder, each on its own port: several desks run
+  side by side. Always on: a launchd agent per desk (`custom/<team>/launchd/
+  *.plist`, KeepAlive; it runs `bun run dev`, not `bun --bun scripts/dev.js`,
+  whose Turbopack PostCSS worker cannot spawn node under launchd). Next allows
+  ONE `next dev` per project folder, so a second desk runs the compiled
+  companion (`bun run build:companion` → `dist/askk --agents custom/<desk>
+  --port <n>`), and only one server should run the Telegram listener per bot. The registry picks the mode in
   `start()`. Integration listeners run in the team. `--browser-engines`
   restores per-tab engines; the static build always runs them in the tab.
 - **headless** — `askk ask "query"` / `bun run ask -- "query"`
@@ -80,6 +98,32 @@ Streamable HTTP; `GET mcp/tools`, `POST mcp/call {server, tool, arguments}`;
 `companion/mcp.js` is the MCP client, servers start lazily and stay up).
 Agents can never write or delete `.env*` (except `.env.example`) or
 `.mcp.json` through the API.
+Real-money orders (`robinhood.place_option_order`) pass `companion/order-guard.js`
+inside `mcp/call` first: limits from `.env` (`ASKK_ORDERS=live` or every order is
+refused; account, contracts, debit per order and per day, opens per day, ET
+window; opening = limit debit buys only, closing always passes), every attempt
+logged to `<runtime>/orders.jsonl`. The limits live where agents cannot write.
+`ASKK_ORDERS=paper`: same guard, the trade desk's `tools/paper-broker.js` answers the order account's
+option tools (place/cancel/review/orders/positions/portfolio) from `<runtime>/paper.json`,
+filling against live quotes — a desk runs end to end without real money. `openalice.lensReplay` (the trade desk's `tools/lens.js`: past sessions' 5m bars replayed
+through its entry lenses — breakout, fade, orb-fail, pullback — and exit plans, ATM options priced
+with Black-Scholes, IV from VIX × 0.55 calls / 0.75 puts calibrated on the desk's fills, index ETFs
+only; modes map (pre-open regime + each entry's record in that regime, 90% CI), replay (held-out
+half), audit (a session: offered vs taken); the grader audits every session, the retro attributes
+every row to thinking/timing/execution/market in `state/attribution.jsonl`). `openalice.moversBoard` (the trade desk's `tools/movers.js`): 16 trackers (index, metals, rates, energy,
+sectors) ranked by gap and move in ATR14 units, gap fill, VWAP side, the multi-day leg and a setup label; the
+desk and momentum measure its top 3 every plan and refresh (`quotes` for pre-market prints). `book.read`
+(the trade desk's `tools/book.js`, wired by its desk.js `host()` hook): the account's money variables
+computed in code — equity, start-of-day equity (`<runtime>/book.json`, 30 days), day P&L,
+goal (`ASKK_DAY_TARGET_PCT`) and pace, upkeep, the guard's budget left, sizing tier
+(`TIERS`) and per-order debit, positions, orders, fills, round trips; the guard's day stop
+(`ASKK_ORDER_DAY_STOP_PCT`, default 25) refuses openings from it. A desk's `host()` also gets
+`root` (the workspace) and `listen` (true only on the continuous server, one per team): the trade
+desk starts its tripwire there (`tools/tripwire.js`, off with `ASKK_TRIPWIRE=off`): code, no model,
+quotes the watch list every 30 s in market hours (base ETFs + `state/tripwires.json` `watch`/`levels`/
+`flushPct`, which the lead rewrites every run) and books one wake due now in `state/wakes.jsonl` on a
+flush, the reclaim after it, a ±1%/±3% day-move cross or an armed level (cooldown 20 min, ≤ 6/hour;
+fires logged in `<runtime>/tripwire.jsonl`) — the lead rests between runs and never polls a price.
 Security: Host header must be localhost:port (DNS rebinding; LAN devices get
 demo mode), cross-origin refused, POST needs same-origin Origin + JSON,
 realpath containment (no symlink escapes, also for new files).
@@ -184,7 +228,10 @@ Core never imports a feature folder directly, only the catalogue
     conflict checks.
   - `tools.js` — `fs.list`, `fs.read`, `fs.write`, `fs.edit`, `fs.delete`.
     `fs.write` over an existing file must be based on a revision the engine
-    read (`markSeen`).
+    read (`markSeen`). No content twice in the prompt: an agent with the
+    `filesystem` artifact gets no `fs.read`/`fs.list` (the tree lists every
+    file, `fs.open` shows one; its result is a status line), and `fs.read`
+    of a shared/ file shown in SHARED returns only a status line.
   - `artifact.js` — `FilesystemArtifact` (`filesystem`): the workspace tree
     (names only, every level; heavy folders like node_modules listed, not
     expanded) plus the files the engine opened (`fs.open` / `fs.close`
@@ -202,6 +249,11 @@ Core never imports a feature folder directly, only the catalogue
   (TODAY: fresh per America/New_York day, kept across runs: the day's
   script), items `"id: what done means"`. `checklist.tick {id, evidence}`,
   `checklist.skip {id, reason}`. Status turns are never blocked.
+  `checklist_file: <path>` keeps TODAY in a workspace Markdown file instead
+  (`- [ ] id: text`, `[x]`/`[-]`, `  ↳ note`; the owner can edit it, re-read every
+  step): the first run of a new ET day archives it to `days/<date>/checklist.md` and
+  writes a clean one from `daily:`; `checklist.add {text, id?}` adds items; an open
+  item whose leading `HH:MM` ET has passed (or has no time) blocks the answer too.
 
 - `web/` — `tools.js`: `web.search {query, limit?}` and `web.read {url}`.
   Local mode: the host does both (`companion/web.js`, capability `web`,
@@ -225,7 +277,8 @@ Core never imports a feature folder directly, only the catalogue
 
 - `schedule/` — `tools.js`: `schedule.wake {in_minutes|at, reason, message}`
   books the team's next run as a row in the workspace's `state/wakes.jsonl`
-  (`at` UTC). `scripts/wake.js --agents <team>` (cron, every 5 min) runs each
+  (`at` UTC); `replaces: [id]` cancels the open wakes it supersedes (`cancelled` rows). A running server runs due wakes itself;
+  `scripts/wake.js --agents <team>` (only when no server runs) runs each
   due wake once through headless ASKK (claims it with a `done` row first;
   over `--stale` minutes late = `missed`; one runner per root via `state/wake.lock`).
 - `mcp/` — `tools.js`: `McpTool extends Tool`, one per tool of an MCP
@@ -236,6 +289,23 @@ Core never imports a feature folder directly, only the catalogue
   async, unlike catalogue tools) and lists each server in CONTEXT. Approval
   per server (`approval: auto|always|never`; auto = all but `readOnlyHint`
   tools), with a `describe()` sentence on the card.
+- `team/` — `TeamArtifact` (`team`): sub-agents an agent creates while it
+  works (Claude Code Task subagents / VS Code custom agents). `agent.spawn
+  {name, role, goal, tools?, mcp?, artifacts?, keep?, idle_minutes?, max_steps?}`
+  makes a new engine from `role` (the caller's soul, model and response
+  format; tools/MCP/artifacts ⊆ the caller's; no `team`, so no nesting) and
+  hands it `goal` as a quest at once — the report wakes the caller like any
+  quest. Then the caller decides: `agent.kill` (done; open quests called back),
+  `agent.task {name, quest}` (more work, same context), `agent.keep` (a lasting
+  member: saved as setting `askk.spawned`, restarted with its memory). The
+  artifact lists them live (kept/task, working/idle, tools, ended lately);
+  task agents idle `spawn_idle_minutes` (30) are ended by the reaper; at most
+  `spawn_max` (6) per caller. Work lives in `runtime/spawner.js`
+  (`createSpawner`), used by the registry (server team, per-tab workers via
+  the `host` worker message) and headless ask; engines reach it through their
+  directory (`spawn/kill/keep/roster`). Spawned definitions carry `spawned:
+  {by, keep, idle_minutes, role, at}`; they join `agents`, so every tab,
+  the status bar and Live follow show them.
 - `apple/` — `tools.js`: `apple.*` tools on the owner's Mac through the host
   API (Shortcuts list/run, say, notify, clipboard read/write, Spotlight,
   Reminders list/add, open a link). Every call that acts or reads personal
@@ -262,7 +332,7 @@ Core never imports a feature folder directly, only the catalogue
 
 - `definitions.js` + `frontmatter.js` — load `public/agents/` (askk-style
   `agent.md` frontmatter, shared `soul.md`). Soul = identity (values,
-  character; `## WHO YOU ARE`), never the job; the agent.md body = the role,
+  character; opens the prompt with no header), never the job; the agent.md body = the role,
   the hat for this work (`## YOUR ROLE`: the work, rules, learned). How to
   write each, and the research behind the split: `docs/soul-and-role.md`. `agent-store.js` — owner edits
   (localStorage).
@@ -351,6 +421,18 @@ reaches 92% of the context window) first moves the log to a new
 token estimate is calibrated from server usage counts. Context per agent: min(the model's window, 262144 tokens;
 `ASKK_CONTEXT_CAP` or agent.md `context_window` override), also when the
 model's window is unknown.
+agent.md `memory: run` (default `keep`): every run (a request or a quest) starts from an empty
+log, the old one moved to a history file — for agents whose work lives in shared files.
+Letter ids carry a per-boot prefix, so a run's origin id never repeats after a restart.
+History files are capped: `Memory.archive` keeps the newest `ASKK_HISTORY_KEEP` (6) per engine.
+
+Compaction (`features/compact/`, artifact `compact`) is not summarization: agent.md
+`compact:` lines `"<path>: <max chars>"` (and `"<dir>/<date>/ -> <dest>/<date>/...: <keep>"`
+to move older dated folders out) cap working files. Checked before a step (once a minute);
+over its cap a file is compacted to 60%: `.jsonl` rows sharing an id fold, long fields cut,
+oldest rows dropped; other files get one `createCompactor()` pass (same format; repeats,
+common knowledge and superseded lines go; dated numbers, open items, evidenced lessons stay).
+The original is archived in the engine's storage (`compacted/`, 3 kept). `intel.compact`.
 
 Single-call agents (`core/single-call.js`): one render → infer → parse, no loop,
 tools, or memory (e.g. `createSummarizer()`). Engine and single-call agents
@@ -370,7 +452,7 @@ Chat page debug (temporary): the `<>` button next to the model stats opens
 `components/chat/prompt-panel.jsx` beside the chat — "Sent" is the exact
 prompt of each LLM call (`message.prompt`), "Next" is `engine.preview(input)`.
 
-## Agent teams: public and custom
+## Agent teams: public and custom (desks)
 
 No `--agents`: the public team (`public/agents/`, pushed) runs. To customise,
 point the start at a custom team folder (`custom/<team>/`, git-ignored,
@@ -382,6 +464,86 @@ custom/<team>/
   agents/   index.json, soul.md, <name>/agent.md, skills/, mcp.json (its tools)
   data/     the team's shared folder: the workspace unless --root is given
 ```
+
+A desk is the full format (`custom/README.md`, loader `companion/desk.js`):
+`desk.js` (init script: `export default ({dir, env}) => ({ name, description,
+port, terminal: {programs, timeoutSeconds} | null, host({call, env, state,
+dir}) => ({ wrap, servers, beforeOpen }) })`), `agents/`, `tools/` (host code
+only this desk uses), `vendor/`, `data/` (workspace), `memory/`, `state/`,
+`launchd/`. The host applies each desk's `host()` hook in `mcp/call` (wrap
+below the order guard, extra tool servers, opening checks). Desks:
+`trade-desk`, `dev-desk` (lead/programmer/tester, Python products,
+terminal, local oMLX model) and `single-desk` (one lead that builds its own
+team with the `team` artifact, local oMLX model, port 1113 alone). ONE process hosts every desk: `bun run dev --
+--desks custom [--desk trade-desk] --port 1111` (launchd `askk.desks`,
+`custom/launchd/askk.desks.plist`, log `custom/server.log`): each desk its own
+team, host API, wakes, MCP servers and integrations (desk.js `integrations`
+allow-list: one Telegram listener per bot); a request reaches a desk by the
+`x-askk-desk` header (scripts: server.json names the desk) or the
+`askk_desk` cookie (the header's desk switcher, `components/host-status.jsx`:
+`GET desks`, `POST desks/select`), else the default. A desk's `model`
+(desk.js) is its team's default. Alone (`--agents custom/<desk>`) a desk
+runs on its own port with its own `.next-desks/<name>` build.
+
+Parallel dev team guards (agent.md, enforced in code; findings and plan: `docs/parallel-dev-team.md`):
+`writes: [globs, "!exclude"]` — the agent's file lane, fs.write/edit/append/delete refuse other paths
+(`features/filesystem/guard.js`); `preserve: true` — a write that drops a def/class/function/test or
+guts a code file, and deleting code/test files or folders, is refused (the way out is a blocked
+report); `strict: true` — the final answer is refused while any checklist item is open (default:
+twice, then through); `agent.spawn {writes, checklist}` gives a helper a lane inside the caller's
+(exclusions, preserve, strict carried over); the supervisor sends a STALLED status when a quest's
+agent sits idle without it for `stall_minutes` (10); the terminal refuses destructive git (reset
+--hard, clean, rm, restore, checkout --, push --force, branch -D, …) and `python -c` file deletes on
+every desk (`refuseDestructive`).
+
+Terminal (`features/terminal/`, capability `term`, only when a desk declares
+`terminal`): `term.run {command, cwd?, timeout?}` → `POST term/run`
+(`companion/terminal.js`): the desk's programs only, `&&` chains and `cd`, no
+shell syntax, under macOS `sandbox-exec` (writes only in the workspace, temp
+and caches; no ~/.ssh, .env, other desks), minimal environment, output kept
+to 20 000 chars, every run logged in `state/terminal.jsonl`. The `terminal`
+artifact shows the team's last 5 runs (agent, command, exit, output tail).
+`term.run` streams its output into the call's progress (`POST term/run
+{stream: true}` → NDJSON start / out / result). Long-running programs (a dev
+server) go to `term.start {command, cwd?, name?, port?}`: one program, same
+allow-list and sandbox, its own process group, output kept (40K), printed
+local URLs collected, at most 4 at once, stopped after the desk's
+`backgroundMinutes` (120) and when the server exits; any agent checks it with
+`term.ps` / `term.logs {id, tail?}` and ends it with `term.stop {id}` (host:
+`POST term/start`, `GET term/ps`, `GET term/logs`, `POST term/stop`). The
+terminal artifact lists them. `GET term/stream` (SSE): a snapshot (runs in
+progress, procs), then `start` / `out` / `end` and `proc` / `proc-out` events.
+One terminal per server: the team worker's `term/*` fetches go to the
+server's own host API over HTTP (`createTeam({ port, desk })` → shims
+`forward`, with `x-askk-desk`), so agents' runs and processes are the ones
+`term/stream` shows every tab. The dev desk's tester has a headless Chrome (`browser.*`,
+`custom/dev-desk/agents/mcp.json`: chrome-devtools-mcp, isolated profile,
+only http://127.0.0.1|localhost:80* — start apps for it on ports 8000–8099).
+
+Live follow (`/live`, `components/live/live-page.jsx`; model in
+`backend/features/live/follow.js`): every tool call of every engine in one
+feed, newest first, beside the chat instead of in it, so the owner can guide
+while it happens. The standard (`backend/core/tool.js`): a tool declares
+`view` — how its calls render: `terminal | file | browser | web | quest |
+checklist | schedule | data | text`, null = log-only (hidden unless "All
+calls") — and `streams: true` when it reports progress while it runs: `run()`
+gets `progress({ append | text | data })`, kept on `activity.calls[i].progress`
+(throttled to 10/s, 4K tail) and shown before the result lands (term.run
+streams its output this way, NDJSON from `POST term/run {stream: true}`). MCP
+servers declare `"view"` in mcp.json (forwarded by `mcp/tools`); agents are
+`quest`. Tool messages carry `view`. Artifacts publish UI snapshots:
+`Artifact.live()` → `{ view, data }`, the engine puts it in `state.live[type]`
+(`{ title, view, data, version, at }`) only when it changed — after
+refresh, after every tool stage and on every artifact change (an update
+event, not a poll). Tabs: Call (the followed call by its view: live terminal,
+file diff in the touched-files tree, quest/inputs → result), Files (the
+filesystem artifact's tree, changed files marked, a file read fresh), Terminal
+(runs in progress, background processes from term.start with their URLs,
+recent runs), Checklist. Guide box: `engine.guide(text)` (team call `guide`)
+adds owner guidance to the running work at its next step without stopping
+it; an idle agent gets a message instead. "Following" keeps the newest call in
+progress selected; a click pauses it. Restored tool messages take their inputs
+from the step's tool plan; `viewOf()` fills `view` for older messages.
 
 The host serves `agents/` read-only (`GET sources/<id>/<path>`). Only that
 team loads (its first agent is the default lead) unless `--with-public`. Its
@@ -412,6 +574,36 @@ TELEGRAM_CHAT_ID; owner's chats only).
 (git-ignored; never edit or patch it) beside a script that starts the part
 ASKK uses (`vendor/apple-fm/`). A team's own vendor apps live in the team
 folder (`custom/<team>/vendor/`), reached through its mcp.json.
+
+## Hardware features (optional, per machine)
+
+Features that depend on the machine, not on an agent: each detects itself and is
+left out (with a fallback) when the hardware or OS is missing. Browser side
+`backend/hardware/` (catalogue `index.js`), host side `companion/hardware/`
+(`loadHardware()`, once per process, used by `host-api.js`).
+
+- `speech/` — capability `speech` (macOS; off with `ASKK_SPEECH=off`):
+  on-device recognition with Apple's SpeechAnalyzer (macOS 26+) through the
+  `askk-speech` helper (`companion/hardware/speech/asr.swift`, compiled with swiftc
+  on first use into `~/.askk/bin/`, kept running, JSON lines), so any browser gets
+  local ASR (`POST speech/transcribe {audio: base64 16 kHz mono PCM, locale}`,
+  ~0.1 s per utterance); voices with `say` (`GET speech/voices`, `POST speech/say`
+  → WAV; text on stdin). Browser: `microphone.js` (AudioWorklet → 16 kHz,
+  adaptive-noise voice detector, pre-roll, hands-free or push to talk, barge-in
+  guard), `recognizers.js` (mac, or Safari dictation via `lib/speech.js`),
+  `voices.js` (Mac voices or speechSynthesis, sentence by sentence, `speakable()`),
+  `narrator.js` (engine state diff → spoken lines: 1 answer/approval/error,
+  2 quests/reports/failures, 3 every step), `pipeline.js` (`SpeechToSpeech`: mic →
+  ASR → the desk lead's inbox; lead's state → narrator → voice; echo filter,
+  "stop", yes/no approvals by voice; settings in localStorage `askk.sts`).
+  Listen modes: `wake` (default) transcribes everything live but sends only what
+  follows the wake word (`wakeWord`, "computer"; `splitWake()`), after a
+  `commandPauseMs` (2 s) silence, so short pauses never cut a command; the wake
+  word alone waits 8 s for the command; saying it interrupts the voice; a bare
+  yes/no answers a pending approval. `direct`: every utterance is a command
+  (hands-free after `endSilenceMs`, or push to talk), louder speech interrupts.
+  Page `/sts` (`components/sts/`): the live orb (canvas: level, spectrum, phase),
+  live caption, conversation timeline, team strip, settings sheet.
 
 ## Speech input
 

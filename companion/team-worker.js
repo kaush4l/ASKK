@@ -5,7 +5,7 @@
 // localStorage (memory, agent edits, model choice) is kept on disk.
 //
 // main → worker
-//   { type: "init", root, readOnly, agentDirs, withPublic, storageDir, embedded }
+//   { type: "init", root, readOnly, agentDirs, withPublic, storageDir, filesDir, embedded }
 //   { type: "call", callId, target: "registry" | <engine id>, method, args }
 // worker → main
 //   { type: "registry", registry }       the registry's public state
@@ -17,7 +17,7 @@ import { createHostApi } from "./host-api.js"
 import { SHIM_PORT, installBrowserShims } from "./shims.js"
 
 const REGISTRY_CALLS = new Set(["updateAgent", "resetAgent", "create", "dispose", "setModels", "setAutopilot"])
-const ENGINE_CALLS = new Set(["deposit", "send", "ask", "clearMemory", "summarizeMemory", "preview", "stop", "resolveApproval"])
+const ENGINE_CALLS = new Set(["deposit", "send", "ask", "clearMemory", "summarizeMemory", "preview", "stop", "resolveApproval", "guide"])
 const FLUSH_MS = 33
 
 let registry = null
@@ -69,14 +69,22 @@ async function call({ callId, target, method, args = [] }) {
   }
 }
 
-async function start({ root, readOnly, agentDirs, withPublic, storageDir, embedded = null }) {
+// A promise nobody awaited must never end the team's thread: every engine
+// lives here. Log it; the engine that failed has already recorded its error.
+process.on("unhandledRejection", (reason) => console.error(`team: unhandled rejection (kept running): ${reason?.message ?? reason}`))
+
+async function start({ root, readOnly, agentDirs, withPublic, storageDir, filesDir, embedded = null, hostPort = null, desk = null }) {
   // Listeners (Telegram, …) run here: the team answers them.
   const api = await createHostApi({ root, readOnly, port: SHIM_PORT, agentDirs, withPublic, listen: true })
-  installBrowserShims({ api, embedded, storageDir })
+  // term/*: the server's own terminal (one set of runs and background
+  // processes, streamed to every tab by GET term/stream), not this thread's.
+  const forward = hostPort ? { port: hostPort, desk, prefixes: ["/__askk/term/"] } : null
+  installBrowserShims({ api, embedded, storageDir, filesDir, forward })
 
   const { engineRegistry } = await import("@/backend/runtime/registry")
   const { createEngine } = await import("@/backend/engines")
   const { models } = await import("@/backend/models/catalog")
+  const { spawnDirectory } = await import("@/backend/runtime/spawner")
   registry = engineRegistry
 
   let count = 0
@@ -85,6 +93,7 @@ async function start({ root, readOnly, agentDirs, withPublic, storageDir, embedd
     const directory = {
       describe: (other) => host.descriptions()[other],
       send: async (to, letter) => host.send(box.engine, to, letter),
+      ...spawnDirectory(host, () => box.engine), // sub-agents (the team artifact)
     }
     const engine = createEngine({ agent, id: `engine-${++count}`, name, directory })
     box.engine = engine

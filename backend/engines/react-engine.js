@@ -18,9 +18,11 @@ export class ReActEngine extends BaseEngine {
       const reply = await this.step(text, history, step, signal)
 
       // An answer with open checklist items goes back once or twice; after
-      // that it stands, with the open items said in it.
+      // that it stands, with the open items said in it. agent.md `strict: true`:
+      // it never stands — each item is done (tick + evidence) or honestly
+      // skipped with the reason (a blocked report), until max_steps.
       const open = reply.action !== "tool" ? this.pendingChecks() : []
-      if (open.length && refused < 2) {
+      if (open.length && (this.agent?.strict || refused < 2)) {
         refused++
         this.push(
           this.message("tool", {

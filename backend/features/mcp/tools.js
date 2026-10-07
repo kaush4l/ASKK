@@ -38,7 +38,7 @@ const NAME = /[^A-Za-z0-9_.-]/g // characters a tool call cannot name
 const quote = (s = "", n = 120) => (s.length > n ? `${s.slice(0, n)}…` : s)
 
 export class McpTool extends Tool {
-  constructor({ server, tool, approval = "auto" }) {
+  constructor({ server, tool, approval = "auto", view = null }) {
     const readOnly = tool.annotations?.readOnlyHint === true
     super({
       name: `${server}.${tool.name.replace(NAME, "_")}`,
@@ -46,6 +46,7 @@ export class McpTool extends Tool {
       inputs: tool.inputSchema ?? { type: "object" },
       effect: readOnly ? "read" : "write",
       approval: approval === "always" || (approval === "auto" && !readOnly),
+      view, // the server's `view` (mcp.json), e.g. "browser"
       describe: (inputs) => {
         const args = JSON.stringify(inputs ?? {})
         return `Call ${tool.title ?? tool.name} on the MCP server “${server}”${args === "{}" ? "" : ` with ${quote(args)}`}.`
@@ -110,7 +111,7 @@ export async function loadMcpTools(entries = []) {
       continue
     }
     const chosen = picks.has("*") ? server.tools : server.tools.filter((t) => picks.has(t.name))
-    for (const tool of chosen) tools.push(new McpTool({ server: name, tool, approval: server.approval }))
+    for (const tool of chosen) tools.push(new McpTool({ server: name, tool, approval: server.approval, view: server.view ?? null }))
     const missing = [...picks].filter((p) => p !== "*" && !server.tools.some((t) => t.name === p))
     lines.push(
       `MCP ${name}: ${chosen.length} tool${chosen.length === 1 ? "" : "s"} (${name}.*)` +

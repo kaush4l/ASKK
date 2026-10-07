@@ -99,7 +99,7 @@ export function writeFile(path, text) {
   })
 }
 
-// ── folders (OPFS only; no localStorage fallback) ────────────────────────
+// ── folders (OPFS or runtime files; no localStorage fallback) ────────────
 
 async function dirHandle(root, path, create) {
   let dir = root
@@ -116,6 +116,8 @@ async function requireOpfs() {
 // Entries of a folder: [{ name, type: "dir" | "file", size, mtime }];
 // null when the folder does not exist.
 export async function listDir(path) {
+  const runtime = runtimeFiles()
+  if (runtime?.list) return runtime.list(path)
   const root = await requireOpfs()
   let dir
   try {
@@ -149,6 +151,8 @@ export async function readBlob(path) {
 // Delete a file or folder; a folder with contents needs `recursive`.
 // Returns false when it does not exist.
 export async function removeEntry(path, { recursive = false } = {}) {
+  const runtime = runtimeFiles()
+  if (runtime?.remove) return runtime.remove(path, { recursive })
   const parts = path.split("/").filter(Boolean)
   const name = parts.pop()
   try {

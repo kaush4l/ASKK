@@ -5,6 +5,8 @@
 //   {"id", "at", "wait_minutes", "reason", "message", "agent", "booked_at"}
 // `at` is UTC ISO 8601. A runner outside the app (scripts/wake.js, on cron)
 // starts each due wake once and appends {"id", "done": "<time>"} after it.
+// `replaces: [id]` cancels earlier open wakes this one supersedes:
+// {"id": "<old>", "cancelled": "<time>", "by": "<new id>"}.
 // The file is in the workspace, so every agent sees the book in FILESYSTEM.
 
 import { workspace } from "@/backend/features/filesystem/workspace"
@@ -45,6 +47,7 @@ async function scheduleWake(inputs, { engine }) {
     agent: engine?.name ?? null,
     booked_at: new Date(now).toISOString(),
   }
+  const replaces = [...new Set((inputs.replaces ?? []).map((id) => String(id).trim()).filter(Boolean))]
   const ws = await workspace()
   for (let attempt = 0; attempt < 5; attempt++) {
     let current = null
@@ -54,10 +57,23 @@ async function scheduleWake(inputs, { engine }) {
       if (!/not found/i.test(error.message)) throw error
     }
     const before = current?.text ?? ""
-    const text = `${before}${before && !before.endsWith("\n") ? "\n" : ""}${JSON.stringify(row)}\n`
+    const rows = before.split("\n").flatMap((line) => {
+      try {
+        return line.trim() ? [JSON.parse(line)] : []
+      } catch {
+        return []
+      }
+    })
+    const closed = new Set(rows.filter((r) => r.done || r.missed || r.cancelled).map((r) => r.id))
+    const open = new Set(rows.filter((r) => r.at && !closed.has(r.id)).map((r) => r.id))
+    const unknown = replaces.filter((id) => !open.has(id))
+    if (unknown.length) throw new Error(`replaces: no open wake ${unknown.join(", ")}. Open: ${[...open].join(", ") || "none"}.`)
+    const cancels = replaces.map((id) => JSON.stringify({ id, cancelled: row.booked_at, by: row.id }))
+    const text = `${before}${before && !before.endsWith("\n") ? "\n" : ""}${[JSON.stringify(row), ...cancels].join("\n")}\n`
     try {
       await ws.write(WAKES_PATH, text, { revision: current?.revision ?? null })
-      return `Booked ${row.id}: wake at ${row.at} (in ${row.wait_minutes} min) — ${reason}`
+      const note = replaces.length ? `; cancelled ${replaces.join(", ")}` : ""
+      return `Booked ${row.id}: wake at ${row.at} (in ${row.wait_minutes} min) — ${reason}${note}`
     } catch (error) {
       if (error.name !== "ConflictError") throw error
     }
@@ -67,10 +83,12 @@ async function scheduleWake(inputs, { engine }) {
 
 export const SCHEDULE_TOOLS = {
   "schedule.wake": {
+    view: "schedule",
     description:
       "Book the next run of this team: wait in_minutes (or until `at`, ISO 8601 with offset), the reason, " +
       "and the exact message the next run starts with. Use it when nothing more can be done now and the " +
-      "market needs time. Needs the owner's approval.",
+      "market needs time. A wake that supersedes open ones names them in `replaces` (their ids), which " +
+      "cancels them. Needs the owner's approval.",
     inputs: {
       type: "object",
       properties: {
@@ -78,6 +96,7 @@ export const SCHEDULE_TOOLS = {
         at: { type: "string", maxLength: 40 },
         reason: { type: "string", minLength: 1, maxLength: 300 },
         message: { type: "string", minLength: 1, maxLength: 1000 },
+        replaces: { type: "array", items: { type: "string", maxLength: 40 }, maxItems: 10 },
       },
       required: ["reason", "message"],
       additionalProperties: false,

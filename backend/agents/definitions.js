@@ -78,7 +78,13 @@ export function validateAgent(config) {
     !RESPONSE_FORMATS.includes(config.response_format) ||
     (config.soul !== undefined && typeof config.soul !== "string") ||
     !(config.checklist === undefined || (Array.isArray(config.checklist) && config.checklist.every((c) => typeof c === "string"))) ||
-    !(config.daily === undefined || (Array.isArray(config.daily) && config.daily.every((c) => typeof c === "string")))
+    !(config.memory === undefined || config.memory === "keep" || config.memory === "run") ||
+    !(config.daily === undefined || (Array.isArray(config.daily) && config.daily.every((c) => typeof c === "string"))) ||
+    !(config.checklist_file === undefined || (typeof config.checklist_file === "string" && config.checklist_file.trim())) ||
+    !(config.writes === undefined || (Array.isArray(config.writes) && config.writes.every((c) => typeof c === "string" && c.trim()))) ||
+    !(config.preserve === undefined || typeof config.preserve === "boolean") ||
+    !(config.strict === undefined || typeof config.strict === "boolean") ||
+    !(config.compact === undefined || (Array.isArray(config.compact) && config.compact.every((c) => typeof c === "string")))
   ) {
     throw new Error(`Invalid agent definition${config.name ? `: ${config.name}` : ""}.`)
   }

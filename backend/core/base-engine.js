@@ -37,6 +37,9 @@ import { readFile, writeFile } from "@/backend/platform/storage"
 
 // Summarize automatically once a prompt reaches this share of the context window.
 const AUTO_SUMMARIZE_AT = 0.92
+// A failed model call is tried again this many times (after 15 s, then 30 s).
+const MODEL_RETRIES = 2
+const RETRY_WAIT_MS = 15 * 1000
 // Every agent's context is capped (tokens): the model's window when smaller,
 // else this. Also the window when the model's is unknown (the local CLIs), so
 // auto-summarize always has a limit. agent.md `context_window` or
@@ -97,6 +100,21 @@ function fitLog(log, window) {
   })
 }
 
+// Tool inputs as shown while a call runs (activity.calls): long strings cut,
+// the full inputs land on the tool message when the call ends.
+const LIVE_INPUT_CHARS = 20000
+const LIVE_PROGRESS_CHARS = 4000 // a streaming call's live output kept in state (its tail; every patch re-sends it to every tab)
+const LIVE_PROGRESS_MS = 100 // progress reaches the state at most ten times a second
+function clipInputs(inputs) {
+  if (!inputs || typeof inputs !== "object") return inputs ?? null
+  return Object.fromEntries(
+    Object.entries(inputs).map(([key, value]) => [key, typeof value === "string" && value.length > LIVE_INPUT_CHARS ? `${value.slice(0, LIVE_INPUT_CHARS)}…` : value])
+  )
+}
+
+
+// A long text as its start and a marker (letters that repeat what history already holds).
+const clipText = (text, max) => (text && text.length > max ? `${text.slice(0, max)}… (${text.length - max} more chars, in your history)` : text)
 export class BaseEngine {
   #listeners = new Set()
   #controller = null
@@ -118,6 +136,7 @@ export class BaseEngine {
     contextWindow: null,
     approvals: [], // tool calls waiting for the owner: [{ id, tool, inputs }]
     artifacts: {}, // artifact state by type, e.g. { filesystem: { open: [...] } }
+    live: {}, // artifact UI snapshots by type (publishLive): { title, view, data, version, at }
     inbox: [], // letters waiting their turn: [{ id, kind, from, preview }]
     quests: [], // quests this engine handed out, report not back: [{ id, to, text, at }]
     // The letter being worked on, for the supervisor: { id, kind, quest,
@@ -133,6 +152,9 @@ export class BaseEngine {
   #inbox = [] // [{ letter }] waiting
   #draining = false
   #letterCount = 0
+  // Letter ids stay unique across restarts (the count starts again at 0): a
+  // run is one origin id, and per-run state (the checklist) resets on a new one.
+  #letterPrefix = `${Date.now().toString(36)}`
   #work = null // { letter, origin, controller } being worked on
   #origins = new Map() // origin letter id -> { resolve, reject } (ask())
   // Quests handed to other agents, by id: { id, to, toId, text, origin, batch, report }
@@ -140,6 +162,7 @@ export class BaseEngine {
   #questCount = 0
   #dispatched = 0 // quests handed out by the current letter
   #guidance = [] // guidance messages for the work in progress, added at its next step
+  #activityBeforeApproval = null // restored when the last open approval is answered
 
   // directory: { describe(name) -> description,
   //              send({ name } | { id }, letter) -> Promise<engine id> }
@@ -181,8 +204,11 @@ export class BaseEngine {
     // Artifacts keep their state across a reconfigure.
     const saved = Object.fromEntries((this.artifacts ?? []).map((a) => [a.type, a.state]))
     this.artifacts = createArtifacts(agent.artifacts ?? [], { engine: this, saved, onChange: () => this.#artifactsChanged() })
+    // The FILESYSTEM artifact lists every file and shows opened ones (fs.open):
+    // fs.read / fs.list would only put the same text in the prompt twice.
+    const viaArtifact = agent.artifacts?.includes("filesystem") ? ["fs.read", "fs.list"] : []
     this.tools = [
-      ...createTools(agent.tools),
+      ...createTools((agent.tools ?? []).filter((name) => !viaArtifact.includes(name))),
       ...this.artifacts.flatMap((artifact) => artifact.commands()),
       ...(agent.agents ?? []).map(
         (name) =>
@@ -191,7 +217,9 @@ export class BaseEngine {
             description: this.directory?.describe(name) ?? `Hand the ${name} agent a quest.`,
           })
       ),
-      ...(agent.agents?.length ? this.#questTools() : []),
+      // quest.steer / quest.recall: for agents that hand out quests (to named
+      // agents, or to sub-agents they create with the team artifact).
+      ...(agent.agents?.length || agent.artifacts?.includes("team") ? this.#questTools() : []),
     ]
     this.toolsMap = new Map(this.tools.map((tool) => [tool.name, tool]))
     this.#toolContext = null // MCP tools are added with it (#describeTools)
@@ -325,6 +353,7 @@ export class BaseEngine {
   #artifactsChanged() {
     const artifacts = Object.fromEntries(this.artifacts.map((a) => [a.type, a.toJSON()]))
     this.update({ artifacts })
+    this.publishLive()
     writeFile(this.#artifactsPath, JSON.stringify(artifacts, null, 2)).catch((error) =>
       this.update({ memoryError: `Artifacts not saved: ${error.message}` })
     )
@@ -338,11 +367,37 @@ export class BaseEngine {
       if (saved[artifact.type]) artifact.state = { ...artifact.initialState(), ...saved[artifact.type] }
     }
     this.update({ artifacts: Object.fromEntries(this.artifacts.map((a) => [a.type, a.toJSON()])) })
+    this.refreshArtifacts().catch(() => {}) // their live views, before the first step
   }
 
   // Bring every artifact up to date with its source (before each render).
   async refreshArtifacts() {
     await Promise.all(this.artifacts.map((artifact) => artifact.refresh()))
+    this.publishLive()
+  }
+
+  // Each artifact's UI snapshot (Artifact.live()) into state.live[type] =
+  // { title, view, data, version, at }, only when it changed: an update
+  // event for every view that follows the engine (Live follow).
+  #liveSeen = new Map() // type -> JSON of its last published snapshot
+  publishLive() {
+    let changed = null
+    for (const artifact of this.artifacts ?? []) {
+      let snapshot = null
+      try {
+        snapshot = artifact.live()
+      } catch {
+        snapshot = null
+      }
+      if (!snapshot) continue
+      const json = JSON.stringify(snapshot)
+      if (this.#liveSeen.get(artifact.type) === json) continue
+      this.#liveSeen.set(artifact.type, json)
+      const before = this.#state.live?.[artifact.type]
+      changed ??= { ...(this.#state.live ?? {}) }
+      changed[artifact.type] = { title: artifact.constructor.title, ...snapshot, version: (before?.version ?? 0) + 1, at: new Date().toISOString() }
+    }
+    if (changed) this.update({ live: changed })
   }
 
   formatArtifacts() {
@@ -557,10 +612,12 @@ export class BaseEngine {
       const stage = index + 1
       const parallel = calls.length > 1
       const kindOf = (name) => (this.toolsMap.get(name)?.kind === "agent" ? "agent" : "tool")
+      const viewOf = (name) => this.toolsMap.get(name)?.view ?? null
       const result = (call, fields) =>
         this.message("tool", {
           name: call.name,
           kind: kindOf(call.name),
+          view: viewOf(call.name),
           inputs: call.inputs,
           stage,
           parallel,
@@ -576,11 +633,38 @@ export class BaseEngine {
       }
 
       const names = calls.map((c) => c.name)
-      this.update({ activity: { phase: parallel ? "tools" : kindOf(names[0]), name: names[0], names } })
-      const outcomes = await Promise.all(calls.map((c) => this.executeTool(c.name, c.inputs, { signal })))
+      // calls: what is running now, for views that follow it live (Live follow);
+      // a tool that streams adds its progress to its call while it runs.
+      const running = calls.map((c) => ({ name: c.name, kind: kindOf(c.name), view: viewOf(c.name), streams: !!this.toolsMap.get(c.name)?.streams, inputs: clipInputs(c.inputs), progress: null }))
+      const since = new Date().toISOString()
+      this.update({ activity: { phase: parallel ? "tools" : kindOf(names[0]), name: names[0], names, calls: running, stage, since } })
+      let publishing = null
+      const publish = () => {
+        publishing = null
+        if (this.#state.activity?.since === since) this.update({ activity: { ...this.#state.activity, calls: running.map((c) => ({ ...c })) } })
+      }
+      const progressOf = (i) => (update) => {
+        if (!update || typeof update !== "object") return
+        const progress = { ...(running[i].progress ?? {}) }
+        if (typeof update.append === "string") progress.text = `${progress.text ?? ""}${update.append}`.slice(-LIVE_PROGRESS_CHARS)
+        if (typeof update.text === "string") progress.text = update.text.slice(-LIVE_PROGRESS_CHARS)
+        if (update.data && typeof update.data === "object") progress.data = { ...(progress.data ?? {}), ...update.data }
+        progress.at = new Date().toISOString()
+        running[i].progress = progress
+        publishing ??= setTimeout(publish, LIVE_PROGRESS_MS)
+      }
+      const outcomes = await Promise.all(calls.map((c, i) => this.executeTool(c.name, c.inputs, { signal, progress: progressOf(i) })))
+      clearTimeout(publishing)
       if (signal?.aborted) throw new DOMException("Aborted", "AbortError")
 
       outcomes.forEach((outcome, i) => this.push(result(calls[i], outcome)))
+      // What the calls changed (files, runs) shows in the artifacts' live views
+      // now, not at the next step — only after a stage that could change them.
+      const changing = calls.some((c) => {
+        const tool = this.toolsMap.get(c.name)
+        return tool?.effect === "write" || tool?.view === "file" || tool?.view === "terminal"
+      })
+      if (changing && this.artifacts?.some((a) => a.live() !== null)) await this.refreshArtifacts().catch(() => {})
       const bad = outcomes.findIndex((o) => !o.ok)
       if (bad !== -1) failed = calls[bad].name
     }
@@ -594,7 +678,7 @@ export class BaseEngine {
   static autopilot = /^(1|true|on|yes)$/i.test(globalThis.process?.env?.ASKK_AUTOPILOT ?? "")
 
   // Execute a tool by name. Never throws — returns { ok, output }.
-  async executeTool(toolName, inputs, { signal } = {}) {
+  async executeTool(toolName, inputs, { signal, progress } = {}) {
     try {
       const tool = this.toolsMap.get(toolName)
       if (!tool) {
@@ -611,7 +695,7 @@ export class BaseEngine {
           )
         }
       }
-      const result = await tool.invoke(inputs, { engine: this, signal })
+      const result = await tool.invoke(inputs, { engine: this, signal, progress: progress ?? (() => {}) })
       return { ok: true, output: typeof result === "string" ? result : JSON.stringify(result) }
     } catch (error) {
       return { ok: false, output: `Error executing ${toolName}: ${error.message}` }
@@ -625,7 +709,9 @@ export class BaseEngine {
   #requestApproval(tool, inputs, signal) {
     if (signal?.aborted) return Promise.resolve(false)
     const id = `approval-${++this.#approvalCount}`
-    const previous = this.#state.activity
+    // The activity to go back to is the one before the FIRST open approval
+    // (with overlapping approvals, a later one would restore "approval").
+    if (!this.#state.approvals.length) this.#activityBeforeApproval = this.#state.activity
     this.update({
       approvals: [
         ...this.#state.approvals,
@@ -639,7 +725,7 @@ export class BaseEngine {
         this.#approvalWaits.delete(id)
         signal?.removeEventListener("abort", onAbort)
         const approvals = this.#state.approvals.filter((a) => a.id !== id)
-        this.update({ approvals, ...(approvals.length ? {} : { activity: previous }) })
+        this.update({ approvals, ...(approvals.length ? {} : { activity: this.#activityBeforeApproval }) })
         resolve(ok)
       }
       const onAbort = () => done(false)
@@ -650,6 +736,17 @@ export class BaseEngine {
 
   resolveApproval(id, ok) {
     this.#approvalWaits.get(id)?.(!!ok)
+  }
+
+  // Guidance from the owner on the work in progress (Live follow's guide
+  // box): added to that work at its next step, without stopping it. Returns
+  // whether it reached running work; when idle, send a letter instead.
+  guide(text, from = "owner") {
+    const content = String(text ?? "").trim()
+    if (!content) throw new Error("Empty guidance.")
+    if (!this.#work || this.status !== "running") return { delivered: false }
+    this.#guidance.push(this.message("user", { content, from, guidance: true }))
+    return { delivered: true }
   }
 
   // ── inference ──────────────────────────────────────────────────────────
@@ -681,22 +778,21 @@ export class BaseEngine {
     let usage = null
     let fellBack = null
     try {
-      ;({ usage, fellBack } = await complete({
-        model,
-        prompt,
-        cacheAt,
-        signal,
-        onDelta: ({ content, reasoning }) => {
-          reply = { ...reply, raw: reply.raw + content, reasoning: reply.reasoning + reasoning }
-          meter.add(content + reasoning)
-          const stage = content ? "responding" : "thinking"
-          this.update({
-            messages: [...this.#state.messages.slice(0, -1), reply],
-            stats: meter.snapshot(),
-            ...(this.#state.activity.stage !== stage ? { activity: { phase: "llm", stage } } : {}),
-          })
-        },
-      }))
+      // A model server can fail mid-answer for reasons that pass (a local GPU
+      // hang, a dropped connection, a 5xx): try again, at most MODEL_RETRIES
+      // times, from an empty reply. Stops and aborts are never retried.
+      for (let attempt = 0; ; attempt++) {
+        try {
+          ;({ usage, fellBack } = await this.#complete(model, prompt, cacheAt, signal, meter, () => reply, (next) => (reply = next)))
+          break
+        } catch (error) {
+          if (error.name === "AbortError" || signal?.aborted || attempt >= MODEL_RETRIES) throw error
+          reply = { ...reply, raw: "", reasoning: "", retries: attempt + 1, lastError: error.message }
+          this.update({ messages: [...this.#state.messages.slice(0, -1), reply], activity: { phase: "llm", stage: "waiting", retry: attempt + 1 } })
+          await new Promise((resolve) => setTimeout(resolve, RETRY_WAIT_MS * (attempt + 1)))
+          if (signal?.aborted) throw Object.assign(new Error("Stopped."), { name: "AbortError" })
+        }
+      }
       // The model failed before answering and its fallback answered: say so on the reply.
       if (fellBack) reply = { ...reply, model: model.backup.key ?? model.backup.id, fellBack }
     } finally {
@@ -711,6 +807,29 @@ export class BaseEngine {
       }
     }
     return reply
+  }
+
+  // One model call for step(): streams into the reply (getReply/setReply keep
+  // step's variable current) with live activity and token metrics.
+  #complete(model, prompt, cacheAt, signal, meter, getReply, setReply) {
+    return complete({
+      model,
+      prompt,
+      cacheAt,
+      signal,
+      onDelta: ({ content, reasoning }) => {
+        const reply = getReply()
+        const next = { ...reply, raw: reply.raw + content, reasoning: reply.reasoning + reasoning }
+        setReply(next)
+        meter.add(content + reasoning)
+        const stage = content ? "responding" : "thinking"
+        this.update({
+          messages: [...this.#state.messages.slice(0, -1), next],
+          stats: meter.snapshot(),
+          ...(this.#state.activity.stage !== stage ? { activity: { phase: "llm", stage } } : {}),
+        })
+      },
+    })
   }
 
   // ── inbox: letters ─────────────────────────────────────────────────────
@@ -739,8 +858,12 @@ export class BaseEngine {
     if (letter.kind === "cancel") return Promise.resolve(this.#cancel(letter.quest))
     if (letter.kind === "guidance") return Promise.resolve(this.#receiveGuidance(letter))
     if (letter.kind === "status") return Promise.resolve(this.#receiveStatus(letter))
-    const entry = { ...letter, id: letter.id ?? `${this.id}-l${++this.#letterCount}`, at: new Date().toISOString() }
+    const entry = { ...letter, id: letter.id ?? this.#nextLetterId(), at: new Date().toISOString() }
     const done = new Promise((resolve, reject) => this.#origins.set(entry.id, { resolve, reject }))
+    // Handled here: a caller that awaits still sees the failure, but a letter
+    // nobody waits on (a routed quest) can never become an unhandled rejection,
+    // which would end the whole team's thread.
+    done.catch(() => {})
     this.#enqueue(entry)
     return done
   }
@@ -755,6 +878,23 @@ export class BaseEngine {
     return this.ask(text).catch(() => {})
   }
 
+
+
+  // agent.md `memory: run` — every run (a request or a quest; not the reports
+  // or status checks that continue one) starts from an empty log; the old one
+  // moves to a history file. For agents whose work lives in shared files, so
+  // past runs are not re-sent on every step.
+  async #freshForRun() {
+    if (this.agent?.memory !== "run") return
+    const log = this.#state.messages.filter((m) => m.content || m.output)
+    if (!log.length) return
+    await this.memory.archive(log)
+    this.update({ messages: [], stats: null })
+    await this.persist()
+  }
+  #nextLetterId() {
+    return `${this.id}-${this.#letterPrefix}-l${++this.#letterCount}`
+  }
   #enqueue(letter) {
     this.#inbox.push({ letter })
     this.#publishInbox()
@@ -827,7 +967,8 @@ export class BaseEngine {
     if (letter.kind !== "reports") return letter.text
     const { origin } = letter
     const parts = letter.reports.map(({ quest, report }) =>
-      [`### ${quest.to} · quest ${quest.id} · ${report.ok ? "done" : "failed"}`, `Quest: ${quest.text}`, "", "Report:", report.text].join(
+      // The quest's full text is already in this engine's history (its own call): a reminder is enough.
+      [`### ${quest.to} · quest ${quest.id} · ${report.ok ? "done" : "failed"}`, `Quest: ${clipText(quest.text, 240)}`, "", "Report:", report.text].join(
         "\n"
       )
     )
@@ -838,7 +979,7 @@ export class BaseEngine {
       : ""
     return (
       `Reports are back on the quests you handed out for this ${origin.kind === "quest" ? `quest from ${origin.from}` : "request"}:\n\n` +
-      `"${origin.text}"\n\n${parts.join("\n\n")}\n\n${guidance}` +
+      `"${clipText(origin.text, 400)}"\n\n${parts.join("\n\n")}\n\n${guidance}` +
       (Number.isFinite(this.maxRounds) ? `Round ${rounds} of ${this.maxRounds}. ` : "") +
       (left
         ? "Continue that work with these reports: hand out more quests only if something the goal needs is still missing, otherwise answer it."
@@ -857,6 +998,7 @@ export class BaseEngine {
     this.#declined.clear()
     this.#dispatched = 0
     await this.#describeTools()
+    if (letter.kind === "quest" || letter.kind === "request") await this.#freshForRun(letter)
     const text = this.#requestText(letter)
     // The request is rendered in its own slot; history is every other message.
     const request = this.message("user", {
@@ -967,7 +1109,7 @@ export class BaseEngine {
     this.#publishQuests()
     this.#enqueue({
       kind: "reports",
-      id: `${this.id}-l${++this.#letterCount}`,
+      id: this.#nextLetterId(),
       origin: quest.origin,
       reports: batch.map((q) => ({ quest: q, report: q.report })),
       at: new Date().toISOString(),
@@ -992,12 +1134,20 @@ export class BaseEngine {
   #receiveStatus(letter) {
     if (!this.#openQuest(letter.quest)) return
     this.#inbox = this.#inbox.filter(({ letter: l }) => !(l.kind === "status" && l.quest === letter.quest))
-    this.#enqueue({ ...letter, id: `${this.id}-l${++this.#letterCount}`, at: new Date().toISOString() })
+    this.#enqueue({ ...letter, id: this.#nextLetterId(), at: new Date().toISOString() })
   }
 
   #statusText(letter) {
     const quest = this.#quests.get(letter.quest)
     const minutes = Math.round((Date.now() - Date.parse(quest.at)) / 60000)
+    if (letter.stalled) {
+      return (
+        `Stalled quest ${quest.id}, handed to ${quest.to} ${minutes} min ago for: "${quest.origin.text}"\n\n` +
+        `The quest:\n${quest.text}\n\n${letter.text}\n\n` +
+        `Act now: quest.recall({"quest": "${quest.id}", "reason": "stalled"}) and send the same full quest again, ` +
+        "or do the work another way. Waiting does not bring this report back."
+      )
+    }
     return (
       `Status check on quest ${quest.id}, handed to ${quest.to} ${minutes} min ago for: "${quest.origin.text}"\n\n` +
       `The quest:\n${quest.text}\n\n` +
@@ -1027,6 +1177,7 @@ export class BaseEngine {
     return [
       new Tool({
         name: "quest.steer",
+        view: "quest",
         description:
           "Send guidance to an agent working on one of your quests; it sees it on its next step. Use it when a " +
           "status check shows it drifting.",
@@ -1040,6 +1191,7 @@ export class BaseEngine {
       }),
       new Tool({
         name: "quest.recall",
+        view: "quest",
         description:
           "Stop one of your quests: the agent drops it, and it comes back to you as a failed report with your reason.",
         inputs: {
@@ -1067,6 +1219,14 @@ export class BaseEngine {
     // Its batch still joins: the quest reports back as called back.
     this.#receiveReport({ quest: id, from: quest.to, ok: false, text: `Called back by you${reason ? `: ${reason}` : "."}` })
     return `Quest ${id} called back; ${quest.to} stops working on it.`
+  }
+
+  // Call back every open quest to agent `name` (before it is ended: agent.kill);
+  // each reports back as called back, so its batch still joins. Returns how many.
+  recallQuestsTo(name, reason = "") {
+    const open = [...this.#quests.values()].filter((q) => q.to === name && !q.report)
+    for (const quest of open) this.#recallOne(quest.id, reason)
+    return open.length
   }
 
   // Call quests back: each agent drops the quest from its inbox or stops

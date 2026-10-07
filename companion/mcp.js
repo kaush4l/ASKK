@@ -5,7 +5,7 @@
 //
 //   const mcp = await createMcp({ files })  null when no file lists a server
 //   mcp.names                               configured server names
-//   await mcp.tools()                       [{ name, ok, error?, approval, tools: [{ name, title, description, inputSchema, annotations }] }]
+//   await mcp.tools()                       [{ name, ok, error?, approval, view?, tools: [{ name, title, description, inputSchema, annotations }] }]
 //   await mcp.call(server, tool, args)      { text, isError }
 //
 // `.mcp.json`, in the folder ASKK starts in (the common format):
@@ -15,7 +15,7 @@
 //                   "env": { "KEY": "value" }, "cwd": "." },
 //       "remote": { "url": "https://example.com/mcp", "headers": { "Authorization": "Bearer …" } },
 //       "oauth":  { "url": "https://…/mcp", "oauth": "${TOKEN_FILE}" },  (companion/oauth-file.js)
-//       "…":      { …, "approval": "auto" | "always" | "never" } } }
+//       "…":      { …, "approval": "auto" | "always" | "never", "view": "browser" } } }
 //
 // Several files merge (the owner's .mcp.json, then each private agent
 // folder's mcp.json); a server name may appear once. A stdio server's cwd
@@ -297,6 +297,8 @@ export async function createMcp({ files = [] }) {
   }
 
   const approvalOf = (name) => (["always", "never"].includes(servers[name].approval) ? servers[name].approval : "auto")
+  // How the Live follow page renders this server's calls (e.g. "browser"), when the file says.
+  const viewOf = (name) => (typeof servers[name].view === "string" && SAFE.test(servers[name].view) ? { view: servers[name].view } : {})
 
   process.on("exit", () => {
     for (const conn of live.values()) conn.close()
@@ -313,9 +315,9 @@ export async function createMcp({ files = [] }) {
             list.catch(() => lists.delete(name)) // try again next time
           }
           try {
-            return { name, ok: true, approval: approvalOf(name), tools: await lists.get(name) }
+            return { name, ok: true, approval: approvalOf(name), ...viewOf(name), tools: await lists.get(name) }
           } catch (error) {
-            return { name, ok: false, approval: approvalOf(name), error: error.message, tools: [] }
+            return { name, ok: false, approval: approvalOf(name), ...viewOf(name), error: error.message, tools: [] }
           }
         })
       )

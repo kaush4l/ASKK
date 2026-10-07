@@ -42,13 +42,11 @@ export function renderTemplate(values) {
 }
 
 // Soul: who the agent is in every role (values, character). Never the job.
+// It opens the prompt with no header: the first token is already the identity.
 // See docs/soul-and-role.md.
 export function formatSoul(text) {
   if (!text?.trim()) return ""
-  return (
-    `## WHO YOU ARE\n\n${text.trim()}\n\n` +
-    "This holds in every role you take. YOUR ROLE, next, is the work you are doing now and how it is done."
-  )
+  return text.trim()
 }
 
 // Role: the hat for this work — what the work is, its rules, what has been

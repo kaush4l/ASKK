@@ -28,6 +28,11 @@
 //   POST apple/run { action, inputs }   { text } — run one Apple action
 //        (companion/apple.js: Shortcuts, speech, notifications, clipboard,
 //        Spotlight, Reminders, open a link)
+//   GET speech/status          { recognize, ready, error, voice, sampleRate } — hardware/speech
+//   GET speech/voices          { voices: [{ name, lang }] } — the Mac's `say` voices
+//   POST speech/transcribe { audio, locale }   { text, seconds, ms } — base64 16 kHz
+//        mono 16-bit PCM, recognized on-device (Apple SpeechAnalyzer)
+//   POST speech/say { text, voice?, rate? }    { audio, type } — base64 WAV from `say`
 //   GET sources                { sources: [{ id, name }] } — private agent folders
 //   GET sources/<id>/<path>    a file from one (.md / .json only, raw text):
 //        index.json, soul.md, <agent>/agent.md, skills/… (agentDirs, --agents)
@@ -43,7 +48,23 @@
 //        model (companion/local-models.js); capability models.local
 //   GET team/stream            Server-Sent Events: the server's team (snapshot,
 //                              then registry / state / models changes) — capability team
-//   POST team/call { target, method, args }   { ok, value | error } — an action on it
+//   POST team/send { text, agent?, from? }   { ok, value: { engine, agent, queued } } — work into an
+//        agent's inbox without waiting (cron, scripts, any source); default agent: the lead
+//   POST team/call { target, method, args, timeout? }   { ok, value | error } — an action on it (timeout ms, default 30 min, max 6 h)
+//   POST term/run { command, cwd?, timeout?, agent?, stream? }   { id, command, cwd, exit, ms, output } — a desk's
+//        program in the workspace (companion/terminal.js; only when its desk.js declares `terminal`).
+//        stream: true answers application/x-ndjson, one event per line: {type:"start", id, command, cwd},
+//        {type:"out", text}…, then {type:"result", …the JSON answer} or {type:"error", error, status};
+//        closing the request kills the program.
+//   POST term/start { command, cwd?, name?, port?, agent? }   { id, name, pid, status, exit, urls, output, … }
+//        a background process (a dev server): ONE program, same programs and sandbox, PORT set
+//        when given; answers after ~3 s with its first output and the URLs it printed. Max 4 running.
+//   GET term/ps                { procs: [{ id, name, command, cwd, agent, pid, port, startedAt, status, exit, urls }] }
+//   GET term/logs?id=&tail=50  { …that summary, output } — its last `tail` lines (40 000 chars kept)
+//   POST term/stop { id }      { …summary } — SIGTERM to its process group, SIGKILL after 5 s
+//   GET term/log?limit=5       { policy, entries, procs } — the desk's last terminal runs + background processes
+//   GET term/stream            SSE: runs in progress and procs (snapshot), then start / out / end,
+//        proc (a background process started or exited) and proc-out { id, text } (Live follow)
 //   GET integrations/events?after=<seq>&from=<boot>&wait=<ms>
 //        { boot, next, events } — messages integrations received (long poll;
 //        only while listening: bun run dev / askk)
@@ -64,10 +85,15 @@ import { createHash } from "node:crypto"
 import { lstat, mkdir, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises"
 import { basename, dirname, join, relative, resolve, sep } from "node:path"
 import { createApple } from "./apple.js"
+import { loadHardware } from "./hardware/index.js"
 import { createWeb } from "./web.js"
 import { loadIntegrations } from "./integrations.js"
 import { createLocalModels } from "./local-models.js"
 import { createMcp } from "./mcp.js"
+import { loadDesk } from "./desk.js"
+import { guardOrders } from "./order-guard.js"
+import { createTerminal } from "./terminal.js"
+import { teamStorageDir } from "./team.js"
 
 export const VERSION = "0.1.0"
 export const API_PREFIX = "/__askk/"
@@ -164,10 +190,12 @@ export async function createHostApi({
   integrationsDir = resolve(process.cwd(), "integrations"),
   listen = false, // run integration listeners (a continuous server, not askk ask)
   team = null, // the server's team (companion/team.js): one set of engines every tab mirrors
+  desk = null, // { name, description } when one server hosts several desks (scripts/dev.js --desks)
 }) {
   const root = await realpath(resolve(rootArg))
-  const envModels = modelsFromEnv()
+  let envModels = modelsFromEnv()
   const apple = await createApple()
+  const { speech } = await loadHardware({ log: (line) => console.log(line) }) // hardware/: optional, per machine
   const web = createWeb()
   const local = await createLocalModels() // claude/codex/gemini CLIs, Apple on-device
   // Private agent folders (index.json + soul.md + <name>/agent.md, optional
@@ -183,29 +211,78 @@ export async function createHostApi({
     })
   )
   const mcpServers = await createMcp({ files: [mcpFile, ...sources.map((s) => join(s.path, "mcp.json"))] })
-  const integrations = await loadIntegrations({ dir: integrationsDir, listen })
+  // A desk may limit the integrations it runs (desk.js `integrations: [...]`):
+  // one Telegram bot can have only one listener, so a second desk declares none.
+  const deskList = (await Promise.all(sources.map((s) => loadDesk(s.path)))).filter(Boolean)
+  const only = deskList.find((d) => Array.isArray(d.integrations))?.integrations ?? null
+  const integrations = await loadIntegrations({ dir: integrationsDir, listen, only })
   for (const name of integrations?.names ?? []) {
     if (mcpServers?.names.includes(name)) throw new Error(`"${name}" is both an MCP server and an integration.`)
   }
-  // MCP servers and integrations, offered to agents the same way.
-  const mcp =
+  // MCP servers and integrations, offered to agents the same way. Real-money
+  // orders pass the order guard first (companion/order-guard.js: .env limits,
+  // closed by default; every attempt logged in the runtime folder). A desk
+  // (custom/<desk>/desk.js, companion/desk.js) adds its own host tools: its
+  // host() hook may wrap the call below the guard (the trade desk's paper
+  // broker), add tool servers (its book.read) and refuse openings (day stop).
+  const desks = (await Promise.all(sources.map((s) => loadDesk(s.path)))).filter(Boolean)
+  // A desk's own model (desk.js `model`) is its team's default; the .env ones stay selectable.
+  const deskModel = desks.find((d) => d.model)?.model
+  if (deskModel) {
+    const { key, ...model } = deskModel
+    envModels = { default: key, models: { ...envModels.models, [key]: { label: `${model.id} (desk)`, ...model } } }
+  }
+  const runtime = teamStorageDir(root)
+  const ordersLog = join(runtime, "orders.jsonl")
+  let call =
     mcpServers || integrations
+      ? (server, tool, args) =>
+          integrations?.has(server) ? integrations.call(server, tool, args) : mcpServers ? mcpServers.call(server, tool, args) : Promise.reject(Object.assign(new Error(`Unknown MCP server "${server}".`), { status: 404 }))
+      : (server) => Promise.reject(Object.assign(new Error(`Unknown MCP server "${server}".`), { status: 404 }))
+  const deskServers = []
+  const openChecks = []
+  for (const desk of desks) {
+    if (!desk.host) continue
+    // `call` for the desk's tools is the final one (after every wrap), bound late.
+    // root: the workspace; listen: a continuous server (one per team), where watchers may run.
+    const hooks = (await desk.host({ call: (...args) => below(...args), env: process.env, state: runtime, dir: desk.folder, root, listen })) ?? {}
+    if (typeof hooks.wrap === "function") call = hooks.wrap(call)
+    for (const server of hooks.servers ?? []) deskServers.push(server)
+    if (typeof hooks.beforeOpen === "function") openChecks.push(hooks.beforeOpen)
+  }
+  const below = call
+  const guarded = guardOrders(below, {
+    logPath: ordersLog,
+    beforeOpen: openChecks.length ? async () => { for (const check of openChecks) await check() } : null,
+  })
+  const deskServer = new Map(deskServers.map((s) => [s.name, s]))
+  const mcp =
+    mcpServers || integrations || deskServers.length
       ? {
-          tools: async () => [...((await mcpServers?.tools()) ?? []), ...(integrations?.servers() ?? [])],
-          call: (server, tool, args) =>
-            integrations?.has(server) ? integrations.call(server, tool, args) : mcpServers ? mcpServers.call(server, tool, args) : Promise.reject(Object.assign(new Error(`Unknown MCP server "${server}".`), { status: 404 })),
+          tools: async () => [
+            ...((await mcpServers?.tools()) ?? []),
+            ...(integrations?.servers() ?? []),
+            ...deskServers.map(({ call: _call, ...server }) => ({ ok: true, approval: "auto", ...server })),
+          ],
+          call: (server, tool, args) => (deskServer.has(server) ? deskServer.get(server).call(tool, args) : guarded(server, tool, args)),
         }
       : null
+  // term.run: a desk that declares `terminal` lets its agents run those
+  // programs in the workspace (companion/terminal.js: sandboxed, logged).
+  const terminalPolicy = desks.find((d) => d.terminal)?.terminal ?? null
+  const terminal = terminalPolicy && !readOnly ? createTerminal({ root, policy: terminalPolicy, logPath: join(runtime, "terminal.jsonl") }) : null
   const capabilities = [
     ...(readOnly ? ["fs.read"] : ["fs.read", "fs.write"]),
     ...(envModels.default ? ["models"] : []),
     ...(local ? ["models.local"] : []),
     ...(apple ? ["apple"] : []),
+    ...(speech ? ["speech"] : []),
     "web",
     ...(mcp ? ["mcp"] : []),
     ...(sources.length ? ["agents.private"] : []),
     ...(integrations?.listening.length ? ["integrations.events"] : []),
     ...(team ? ["team"] : []),
+    ...(terminal ? ["term"] : []),
   ]
   const allowedHosts = new Set([`127.0.0.1:${port}`, `localhost:${port}`, `[::1]:${port}`])
 
@@ -416,16 +493,24 @@ export async function createHostApi({
   }
 
   const GET = {
-    whoami: () => ({ name, version: VERSION, root, runtime: team?.storageDir ?? null, capabilities, platform: process.platform, localModels: local?.providers ?? [], sources: sources.map(({ id, name }) => ({ id, name })), publicAgents: !sources.length || withPublic }),
+    whoami: () => ({ name, version: VERSION, desk, root, runtime: team?.storageDir ?? null, capabilities, platform: process.platform, localModels: local?.providers ?? [], sources: sources.map(({ id, name }) => ({ id, name })), publicAgents: !sources.length || withPublic }),
     sources: () => ({ sources: sources.map(({ id, name }) => ({ id, name })) }),
     models: () => envModels,
     "fs/list": (params) => list(params.get("path") ?? ""),
     "fs/read": (params) => read(params.get("path") ?? ""),
     "fs/tree": (params) => tree(params.get("path") ?? ""),
     ...(apple ? { "apple/actions": () => ({ actions: apple.actions }) } : {}),
+    ...(speech ? { "speech/status": () => speech.status(), "speech/voices": () => speech.voices() } : {}),
     "web/search": (params) => web.search(params.get("q"), params.get("limit")),
     "web/read": (params) => web.read(params.get("url")),
     ...(mcp ? { "mcp/tools": async () => ({ servers: await mcp.tools() }) } : {}),
+    ...(terminal
+      ? {
+          "term/log": (params) => ({ policy: terminal.policy, entries: terminal.log(Number(params.get("limit")) || 5), procs: terminal.ps() }),
+          "term/ps": () => ({ procs: terminal.ps() }),
+          "term/logs": (params) => terminal.logs({ id: params.get("id"), tail: params.get("tail") }),
+        }
+      : {}),
     ...(integrations?.listening.length
       ? {
           "integrations/events": (params) =>
@@ -436,8 +521,16 @@ export async function createHostApi({
   const POST = {
     ...(readOnly ? {} : { "fs/write": write, "fs/delete": remove }),
     ...(apple ? { "apple/run": ({ action, inputs }) => apple.run(action, inputs) } : {}),
+    ...(speech ? { "speech/transcribe": (body) => speech.transcribe(body), "speech/say": (body) => speech.speak(body) } : {}),
     ...(mcp ? { "mcp/call": ({ server, tool, arguments: args }) => mcp.call(server, tool, args) } : {}),
-    ...(team ? { "team/call": (body) => team.call(body) } : {}),
+    ...(team ? { "team/call": (body) => team.call(body), "team/send": (body) => team.send(body) } : {}),
+    ...(terminal
+      ? {
+          "term/run": (body, request) => (body.stream ? terminal.runStream(body, request) : terminal.run(body)),
+          "term/start": (body) => terminal.start(body),
+          "term/stop": (body) => terminal.stop({ id: body.id }),
+        }
+      : {}),
   }
 
   // ── local models (OpenAI-compatible) ──────────────────────────────────
@@ -500,6 +593,7 @@ export async function createHostApi({
     try {
       if (request.method === "GET" && endpoint.startsWith("sources/")) return await sourceFile(endpoint)
       if (team && request.method === "GET" && endpoint === "team/stream") return team.stream(request)
+      if (terminal && request.method === "GET" && endpoint === "term/stream") return terminal.stream(request)
       const llm = local && endpoint.match(/^llm\/([a-z-]+)\/v1\/(models|chat\/completions)$/)
       if (llm) return await localModel(request, llm[1], llm[2], sameOrigin)
       if (request.method === "GET") {
@@ -516,7 +610,9 @@ export async function createHostApi({
         const body = await request.json().catch(() => null)
         if (!body) return json(400, { error: "Invalid JSON body." })
         if (typeof body.text === "string" && body.text.length > MAX_WRITE) return json(413, { error: "File too large (8 MB max)." })
-        return json(200, await handler(body))
+        // A handler may answer with its own Response (a stream: term/run with stream: true).
+        const value = await handler(body, request)
+        return value instanceof Response ? value : json(200, value)
       }
       return json(405, { error: "Method not allowed." })
     } catch (error) {

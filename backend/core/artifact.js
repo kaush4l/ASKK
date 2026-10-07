@@ -8,6 +8,10 @@
 //   render()   the latest state as prompt text (the ARTIFACTS section)
 //   commands() tools that change the state; their results stay short, since
 //              the content itself is in the next render
+//   live()     what the UI shows of it (Live follow), JSON-safe:
+//              { view: "filesystem" | "terminal" | "checklist" | …, data } or null.
+//              The engine publishes it whenever it changes (state.live[type],
+//              with a version): artifacts update the UI as events, not polls.
 //
 // Design and roadmap: docs/artifacts.md.
 //
@@ -54,6 +58,10 @@ export class Artifact {
 
   commands() {
     return []
+  }
+
+  live() {
+    return null
   }
 
   toJSON() {

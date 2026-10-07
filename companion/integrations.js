@@ -28,10 +28,11 @@ const SAFE = /^[a-z][a-z0-9_-]*$/i
 const KEEP = 200 // events kept for the app
 const MAX_WAIT = 25_000 // ms a long poll may wait
 
-export async function loadIntegrations({ dir = resolve(process.cwd(), "integrations"), env = process.env, listen = false, log = console.error } = {}) {
+export async function loadIntegrations({ dir = resolve(process.cwd(), "integrations"), env = process.env, listen = false, log = console.error, only = null } = {}) {
   let folders = []
   try {
     folders = (await readdir(dir, { withFileTypes: true })).filter((d) => d.isDirectory() && SAFE.test(d.name)).map((d) => d.name)
+    if (Array.isArray(only)) folders = folders.filter((name) => only.includes(name)) // a desk's allow-list
   } catch {
     return null // no integrations folder
   }

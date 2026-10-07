@@ -9,6 +9,25 @@
         "dev"
       ],
       "port": 3000
+    },
+    {
+      "name": "askk-trade-desk",
+      "url": "http://localhost:1111",
+      "port": 1111
+    },
+    {
+      "name": "askk-single-desk",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--",
+        "--agents",
+        "custom/single-desk",
+        "--port",
+        "1113"
+      ],
+      "port": 1113
     }
   ]
 }

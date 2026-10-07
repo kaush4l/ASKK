@@ -1,4 +1,7 @@
-// The wake runner: starts every run a team booked with schedule.wake.
+// The wake runner for a team with NO server running: starts every run it
+// booked with schedule.wake. A running server (bun run dev, askk) reads its
+// own wake book (companion/wakes.js), so then this does nothing; outside
+// inputs go to the server with scripts/send.js.
 //
 //   bun scripts/wake.js --agents custom/<team> [--root <dir>] [--dry-run]
 //
@@ -18,21 +21,13 @@ import { dirname, join, resolve } from "node:path"
 import { parseArgs } from "node:util"
 
 import { agentDirsFrom, rootFrom } from "../companion/host-api.js"
+import { findTeamServer } from "../companion/team.js"
+import { dueWakes, wakeText } from "../companion/wakes.js"
 
 const stamp = () => new Date().toISOString()
 const log = (line) => console.log(`${stamp()} ${line}`)
 
-export function dueWakes(text, now = Date.now()) {
-  const rows = text.split("\n").filter(Boolean).flatMap((line) => {
-    try {
-      return [JSON.parse(line)]
-    } catch {
-      return []
-    }
-  })
-  const closed = new Set(rows.filter((r) => r.done || r.missed).map((r) => r.id))
-  return rows.filter((r) => r.id && r.at && r.message && !r.done && !r.missed && !closed.has(r.id) && Date.parse(r.at) <= now)
-}
+export { dueWakes }
 
 async function main() {
   const { values: args } = parseArgs({
@@ -47,6 +42,8 @@ async function main() {
   })
   const agentDirs = agentDirsFrom(args.agents)
   const root = await rootFrom(args.root, agentDirs)
+  const server = findTeamServer(root)
+  if (server) return log(`team server running (port ${server.port}): it runs its own wakes; nothing to do`)
   const wakesPath = join(root, "state", "wakes.jsonl")
   const lockPath = join(root, "state", "wake.lock")
 
@@ -73,7 +70,7 @@ async function main() {
         ...agentDirs.flatMap((d) => ["--agents", d]),
         ...(wake.agent ? ["--agent", wake.agent] : []),
         "--root", root, "--yes", "--timeout", args.timeout,
-        `Wake ${wake.id} (booked ${wake.booked_at}, reason: ${wake.reason}). ${wake.message}`,
+        wakeText(wake),
       ]
       const run = spawnSync(process.execPath, ask, { stdio: "inherit", timeout: (Number(args.timeout) + 60) * 1000 })
       log(`${wake.id} finished: exit ${run.status ?? run.signal}`)

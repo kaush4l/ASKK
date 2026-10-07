@@ -28,7 +28,7 @@ import { parseArgs } from "node:util"
 
 import { agentDirsFrom, createHostApi, modelsFromEnv, rootFrom } from "./host-api.js"
 import { SHIM_PORT as PORT, installBrowserShims, publicFile } from "./shims.js"
-import { findTeamServer, teamStorageDir } from "./team.js"
+import { findTeamServer, teamMemoryDir, teamStorageDir } from "./team.js"
 
 const USAGE = `Usage: askk ask [options] [query]      (query from stdin when omitted)
 
@@ -125,11 +125,12 @@ export async function main(argv, { embedded = null } = {}) {
     const running = findTeamServer(await realpath(opts.root))
     if (running && !(opts.local || opts.model || opts.models)) return await askTeam({ server: running, query, opts, seconds, log })
     opts.storageDir = running ? null : teamStorageDir(await realpath(opts.root))
+    opts.filesDir = running ? null : teamMemoryDir(await realpath(opts.root))
     api = await createHostApi({ root: opts.root, readOnly: opts["read-only"], port: PORT, agentDirs, withPublic: opts["with-public"] })
   } catch (error) {
     fail(error.message)
   }
-  installBrowserShims({ api, embedded, storageDir: opts.storageDir })
+  installBrowserShims({ api, embedded, storageDir: opts.storageDir, filesDir: opts.filesDir })
   const model = await loadModel({ embedded, key: opts.model, extra: opts.models })
 
   // App code, after the shims (it reads location and fetch when it runs).
@@ -137,6 +138,7 @@ export async function main(argv, { embedded = null } = {}) {
   const { createEngine } = await import("@/backend/engines")
   const { describeActivity } = await import("@/backend/core/activity")
   const { createSupervisor } = await import("@/backend/runtime/supervisor")
+  const { createSpawner, spawnDirectory } = await import("@/backend/runtime/spawner")
 
   const agents = await loadAgents()
   const chosen = opts.agent ? agents.find((a) => a.name === opts.agent) : agents[0]
@@ -157,7 +159,46 @@ export async function main(argv, { embedded = null } = {}) {
       setTimeout(() => target.deposit(letter).catch(() => {}), 0)
       return target.id
     },
+    ...spawnDirectory(spawnHost, () => self), // sub-agents (the team artifact)
   })
+
+  // Sub-agents created during the run (runtime/spawner.js), as in the app.
+  const startEngine = (agent) => {
+    const engine = createEngine({ agent, id: agent.name, getModel: () => model })
+    engine.directory = directory(engine)
+    engine.configure(agent) // agent tools read their descriptions from the directory
+    watch(engine)
+    engines.push(engine)
+    return engine
+  }
+  const spawner = createSpawner({
+    agents: () => agents,
+    engines: () => engines,
+    add: (agent, { restore = false } = {}) => {
+      agents.push(agent)
+      const engine = startEngine(agent)
+      if (restore && opts.storageDir) engine.restore()
+      log(`+ ${agent.spawned.by} created ${agent.name} (${agent.spawned.keep ? "kept" : "task agent"}; tools: ${agent.tools.join(", ") || "none"})`)
+      return engine
+    },
+    remove: (engine) => {
+      engine.dispose()
+      engines.splice(engines.indexOf(engine), 1)
+      agents.splice(agents.findIndex((a) => a.name === engine.agent.name), 1)
+      log(`- ${engine.name} ended`)
+    },
+    replace: (agent) => {
+      agents.splice(agents.findIndex((a) => a.name === agent.name), 1, agent)
+      engines.find((e) => e.agent.name === agent.name)?.reconfigure(agent)
+      log(`~ ${agent.name} ${agent.spawned.keep ? "kept" : "a task agent again"}`)
+    },
+  })
+  const spawnHost = {
+    spawn: (caller, spec) => spawner.spawn(caller, spec),
+    kill: (caller, name, reason) => spawner.kill(caller, name, reason),
+    keep: (caller, name, keep) => spawner.keep(caller, name, keep),
+    roster: (caller) => spawner.roster(caller),
+  }
 
   // Progress on stderr, and the approval policy.
   function watch(engine) {
@@ -179,12 +220,11 @@ export async function main(argv, { embedded = null } = {}) {
     })
   }
 
-  for (const agent of agents) {
-    const engine = createEngine({ agent, id: agent.name, getModel: () => model })
-    engine.directory = directory(engine)
-    engine.configure(agent) // agent tools read their descriptions from the directory
-    watch(engine)
-    engines.push(engine)
+  // Kept sub-agents (saved by an earlier run or the server) join the team.
+  if (opts.storageDir) agents.push(...spawner.saved())
+  for (const agent of [...agents]) {
+    const engine = startEngine(agent)
+    if (agent.spawned) spawner.adopt(engine)
   }
 
   // Each agent's saved memory from earlier runs (runtime files).
@@ -234,10 +274,11 @@ export async function main(argv, { embedded = null } = {}) {
 async function askTeam({ server, query, opts, seconds, log }) {
   const { describeActivity } = await import("@/backend/core/activity")
   const origin = `http://localhost:${server.port}`
-  const headers = { origin, "content-type": "application/json" }
-  const call = async (target, method, args = []) => {
+  const headers = { origin, "content-type": "application/json", ...(server.desk ? { "x-askk-desk": server.desk } : {}) }
+  // The server waits as long as this run may (--timeout), not its 30-minute default.
+  const call = async (target, method, args = [], timeout = seconds * 1000) => {
     // `timeout: false`: Bun's fetch gives up after 5 minutes; an ask lasts the whole run.
-    const response = await fetch(`${origin}/__askk/team/call`, { method: "POST", headers, body: JSON.stringify({ target, method, args }), timeout: false })
+    const response = await fetch(`${origin}/__askk/team/call`, { method: "POST", headers, body: JSON.stringify({ target, method, args, timeout }), timeout: false })
     const result = await response.json().catch(() => ({ ok: false, error: { message: `HTTP ${response.status}` } }))
     if (!result.ok) throw new Error(result.error?.message ?? "team call failed")
     return result.value
@@ -245,7 +286,7 @@ async function askTeam({ server, query, opts, seconds, log }) {
 
   // The team's live state (as the tabs see it): progress lines, approvals.
   const stream = new AbortController()
-  const response = await fetch(`${origin}/__askk/team/stream`, { headers: { origin }, signal: stream.signal, timeout: false })
+  const response = await fetch(`${origin}/__askk/team/stream`, { headers: { origin, ...(server.desk ? { "x-askk-desk": server.desk } : {}) }, signal: stream.signal, timeout: false })
   if (!response.ok) fail(`the server on port ${server.port} has no team (HTTP ${response.status}); use --local.`, 1)
   const reader = response.body.pipeThrough(new TextDecoderStream()).getReader()
   const states = {}

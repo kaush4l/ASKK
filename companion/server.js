@@ -51,7 +51,7 @@ if (running) {
 }
 const team = args["browser-engines"]
   ? null
-  : createTeam({ root, readOnly: args["read-only"], agentDirs, withPublic: args["with-public"], embedded, log: (line) => console.error(line) })
+  : createTeam({ root, readOnly: args["read-only"], agentDirs, withPublic: args["with-public"], embedded, port, log: (line) => console.error(line) })
 const api = await createHostApi({
   root,
   team,

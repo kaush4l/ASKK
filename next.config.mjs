@@ -9,6 +9,9 @@ const nextConfig = {
   output: "export",
   images: { unoptimized: true },
   basePath,
+  // Each desk's dev server builds into its own folder (scripts/dev.js sets
+  // ASKK_DIST_DIR=.next-desks/<desk>): Next allows one `next dev` per distDir.
+  ...(process.env.ASKK_DIST_DIR ? { distDir: process.env.ASKK_DIST_DIR } : {}),
 };
 
 export default nextConfig;

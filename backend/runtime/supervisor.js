@@ -13,11 +13,18 @@
 // Reads only state snapshots (getSnapshot), so it works the same over
 // EngineProxy objects on the main thread (registry.js) and over in-process
 // engines (companion/ask.js). The owner's agent.md sets the cadence.
+//
+// Stalls: a quest handed out whose agent sits idle without working on it for
+// `stall_minutes` (owner's agent.md, default 10) — the letter was lost (a
+// restart, a crash) or dropped — gets a STALLED status, repeated every
+// stall_minutes while it lasts, so the owner re-sends or recalls it instead of
+// waiting forever for a report that will not come.
 
 import { digest } from "@/backend/core/log"
 
 const DEFAULT_MINUTES = 5
 const DEFAULT_STEPS = 10
+const DEFAULT_STALL_MINUTES = 10
 
 const isStep = (m) => m.role === "assistant" && (m.structured || m.error || m.stopped)
 // Finished messages only: a reply still streaming is reported next time.
@@ -25,6 +32,7 @@ const isDone = (m) => m.role !== "assistant" || !!(m.structured || m.error || m.
 
 export function createSupervisor({ engines, deliver, tickMs = 15000, now = () => Date.now() }) {
   const tracks = new Map() // quest id -> { lastId, lastAt }
+  const stalls = new Map() // quest id -> last STALLED status (ms)
 
   function tick() {
     const live = engines().filter((e) => e.status !== "disposed")
@@ -66,6 +74,38 @@ export function createSupervisor({ engines, deliver, tickMs = 15000, now = () =>
       track.lastAt = now()
     }
     for (const quest of tracks.keys()) if (!active.has(quest)) tracks.delete(quest)
+
+    const open = new Set()
+    for (const owner of live) {
+      const { quests = [] } = owner.getSnapshot()
+      const stallMs = (Number(owner.agent?.stall_minutes) || DEFAULT_STALL_MINUTES) * 60000
+      for (const quest of quests) {
+        open.add(quest.id)
+        const target = live.find((e) => e.name === quest.to)
+        const snap = target?.getSnapshot()
+        const busy = snap && (snap.status === "running" || snap.working)
+        if (busy) {
+          stalls.delete(quest.id)
+          continue
+        }
+        const since = stalls.get(quest.id) ?? (Date.parse(quest.at) || now())
+        if (now() - since < stallMs) continue
+        const minutes = Math.round((now() - (Date.parse(quest.at) || now())) / 60000)
+        deliver(owner.id, {
+          kind: "status",
+          quest: quest.id,
+          from: quest.to,
+          steps: 0,
+          stalled: true,
+          text:
+            `STALLED: ${quest.to} ${target ? `is ${snap?.status ?? "idle"} and not working on this quest` : "is not running"} ` +
+            `${minutes} minutes after you sent it — the letter was likely lost. quest.recall it and send it again ` +
+            "(the same full quest), or do it another way. Do not wait for this report.",
+        })
+        stalls.set(quest.id, now())
+      }
+    }
+    for (const quest of stalls.keys()) if (!open.has(quest)) stalls.delete(quest)
   }
 
   const timer = setInterval(tick, tickMs)

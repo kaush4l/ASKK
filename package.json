@@ -10,7 +10,8 @@
     "companion": "bun companion/server.js",
     "ask": "bun companion/ask.js",
     "build:companion": "bun --bun next build && bun scripts/build-companion.js",
-    "wake": "bun scripts/wake.js"
+    "wake": "bun scripts/wake.js",
+    "send": "bun scripts/send.js"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",

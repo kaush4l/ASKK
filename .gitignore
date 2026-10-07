@@ -56,3 +56,4 @@ next-env.d.ts
 /shared/
 .claude/settings.local.json
 /docs/teams-plan.md
+/.next-desks/

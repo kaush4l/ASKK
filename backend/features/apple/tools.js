@@ -49,6 +49,7 @@ const SPECS = {
     inputs: { type: "object", properties: {}, additionalProperties: false },
   },
   "apple.shortcuts.run": {
+    view: "text",
     description:
       "Run one of the owner's Shortcuts by exact name, optionally with text input; returns its text output. " +
       "Shortcuts reach the owner's apps and Apple Intelligence actions. Needs the owner's approval.",
@@ -81,12 +82,14 @@ const SPECS = {
     },
   },
   "apple.clipboard.read": {
+    view: "text",
     description: "Read the text on the owner's clipboard. Needs the owner's approval.",
     inputs: { type: "object", properties: {}, additionalProperties: false },
     approval: true,
     describe: () => "Read the text on your clipboard.",
   },
   "apple.clipboard.write": {
+    view: "text",
     description: "Put text on the owner's clipboard (replaces what is there). Needs the owner's approval.",
     inputs: { type: "object", properties: { text: str(100000) }, required: ["text"], additionalProperties: false },
     effect: "write",
@@ -94,6 +97,7 @@ const SPECS = {
     describe: ({ text = "" }) => `Replace your clipboard with ${text.length} characters: ${quote(text)}.`,
   },
   "apple.spotlight.search": {
+    view: "text",
     description:
       "Search the whole Mac with Spotlight (file names and contents; Spotlight query syntax works). " +
       "Returns paths, outside the workspace too. Needs the owner's approval.",
@@ -107,12 +111,14 @@ const SPECS = {
     describe: ({ query }) => `Search your whole Mac with Spotlight for ${quote(query)}.`,
   },
   "apple.reminders.list": {
+    view: "checklist",
     description: "List open reminders in a Reminders list (default list when omitted). Needs the owner's approval.",
     inputs: { type: "object", properties: { list: { type: "string", maxLength: 120 } }, additionalProperties: false },
     approval: true,
     describe: ({ list }) => `Read your open reminders in ${list ? quote(list) : "your default list"}.`,
   },
   "apple.reminders.add": {
+    view: "checklist",
     description: "Add a reminder (title, optional notes and list name). Needs the owner's approval.",
     inputs: {
       type: "object",

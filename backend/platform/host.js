@@ -71,8 +71,19 @@ export const HOST_CAPABILITIES = [
     fallback: "Web search uses Wikipedia only; pages read only when the site allows it (CORS).",
   },
   {
+    id: "term",
+    label: "Run the desk's programs in its workspace (terminal)",
+    fallback: null,
+    localOff: "This desk declares no terminal (desk.js).",
+  },
+  {
     id: "apple",
     label: "Your Mac: Shortcuts, Reminders, Spotlight, speech, clipboard",
     fallback: null,
+  },
+  {
+    id: "speech",
+    label: "Speech on this Mac: on-device recognition (any browser) and Mac voices",
+    fallback: "Speech to speech uses Safari's dictation and the browser's voices.",
   },
 ]

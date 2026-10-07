@@ -21,6 +21,7 @@ const EMPTY_STATE = {
   stats: null,
   contextWindow: null,
   approvals: [],
+  live: {},
   inbox: [],
   quests: [],
   working: null,
@@ -130,6 +131,10 @@ export class RemoteEngine {
 
   resolveApproval(id, ok) {
     this.#call("resolveApproval", [id, !!ok]).catch(() => {})
+  }
+
+  guide(text) {
+    return this.#call("guide", [text])
   }
 
   reconfigure() {} // the server reconfigures its engines
