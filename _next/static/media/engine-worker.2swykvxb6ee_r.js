@@ -21,8 +21,11 @@
 //   { type: "result", callId, ok, value, error }
 //   { type: "send", callId, to, letter }   deliver a letter to another engine's inbox
 //                                          (`to`: { name } for quests, { id } for replies)
+//   { type: "host", callId, method, args } a sub-agent call (spawn | kill | keep | roster,
+//                                          runtime/spawner.js); answered with "sent"
 
 import { createEngine } from "@/backend/engines"
+import { SPAWN_CALLS } from "@/backend/runtime/spawner"
 
 let engine = null
 let model = null // the connection, sent by the main thread (the catalogue lives there)
@@ -71,9 +74,19 @@ function send(to, letter) {
   })
 }
 
+// A sub-agent call, answered by the registry on the main thread.
+function hostCall(method, args) {
+  return new Promise((resolve, reject) => {
+    const callId = ++sendCount
+    sending.set(callId, { resolve, reject })
+    postMessage({ type: "host", callId, method, args })
+  })
+}
+
 const directory = {
   describe: (name) => descriptions[name],
   send,
+  ...Object.fromEntries(SPAWN_CALLS.map((method) => [method, (...args) => hostCall(method, args)])),
 }
 
 const toError = (data) => Object.assign(new Error(data?.message ?? "Unknown error"), { name: data?.name ?? "Error" })
@@ -122,6 +135,13 @@ self.onmessage = ({ data }) => {
       break
     case "approval":
       engine.resolveApproval(data.id, data.ok)
+      break
+    case "guide":
+      try {
+        engine.guide(data.text)
+      } catch {
+        // empty guidance is ignored
+      }
       break
     case "sent": {
       const pending = sending.get(data.callId)
