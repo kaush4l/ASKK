@@ -26,6 +26,8 @@
 
 import { createEngine } from "@/backend/engines"
 import { SPAWN_CALLS } from "@/backend/runtime/spawner"
+import { statePatch } from "@/backend/runtime/worker-host"
+import { LIMITS } from "@/lib/config"
 
 let engine = null
 let model = null // the connection, sent by the main thread (the catalogue lives there)
@@ -33,7 +35,7 @@ let descriptions = {}
 
 // ── state → main thread, batched ─────────────────────────────────────────
 
-const FLUSH_MS = 33
+const FLUSH_MS = LIMITS.runtime.patchFlushMs
 let sent = {}
 let timer = null
 
@@ -41,17 +43,7 @@ function flush() {
   clearTimeout(timer)
   timer = null
   const state = engine.getSnapshot()
-  const patch = {}
-  for (const [key, value] of Object.entries(state)) {
-    if (key !== "messages" && value !== sent[key]) patch[key] = value
-  }
-  if (state.messages !== sent.messages) {
-    // Send only messages from the first one that changed (usually the last).
-    const before = sent.messages ?? []
-    let from = 0
-    while (from < before.length && from < state.messages.length && before[from] === state.messages[from]) from++
-    patch.messages = { from, items: state.messages.slice(from) }
-  }
+  const patch = statePatch(sent, state)
   sent = state
   if (Object.keys(patch).length) postMessage({ type: "state", patch })
 }
