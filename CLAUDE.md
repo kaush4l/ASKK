@@ -246,7 +246,7 @@ Core never imports a feature folder directly, only the catalogue
   guidance stay in the file and the prompt (edits change only the item's box and note line).
   Without a template, `daily:` lines are the template. Template ids must not repeat the run `checklist:` ids.
 
-- `web/` — `tools.js`: `web.search {query, limit?}` and `web.read {url}`.
+- `web/` — `tools.js`: `web.search {query, limit?}` and `web.read {url, find?, max_chars?}` (`find`: only the passages around those terms, ≤ `LIMITS.web.findChars`; `narrowText`).
   Local mode: the host does both (`companion/capabilities/web.js`, capability `web`,
   `GET web/search?q=`, `GET web/read?url=`): SearXNG (free, open-source
   metasearch) when `ASKK_SEARXNG_URL` names an instance with JSON on, else

@@ -60,7 +60,37 @@ async function search({ query, limit = LIMITS.web.searchResults }) {
   return formatResults({ engine: "wikipedia (browser-only mode)", query: q, results: await wikipedia(q, n) })
 }
 
-async function read({ url }) {
+// The parts of a page an agent asked for, so a 40K page does not land in its context whole: with `find`, only the
+// passages around each term (±`findAround` chars, overlaps merged, in page order); then at most `max` chars.
+export function narrowText(text, { find, max } = {}) {
+  let out = String(text ?? "")
+  const terms = [].concat(find ?? []).map((t) => String(t).trim().toLowerCase()).filter(Boolean)
+  let note = ""
+  if (terms.length) {
+    const around = LIMITS.web.findAround
+    const lower = out.toLowerCase()
+    const spans = []
+    for (const term of terms) {
+      for (let at = lower.indexOf(term); at >= 0; at = lower.indexOf(term, at + term.length)) {
+        spans.push([Math.max(0, at - around), Math.min(out.length, at + term.length + around)])
+      }
+    }
+    spans.sort((a, b) => a[0] - b[0])
+    const merged = []
+    for (const s of spans) {
+      const last = merged[merged.length - 1]
+      if (last && s[0] <= last[1]) last[1] = Math.max(last[1], s[1])
+      else merged.push([...s])
+    }
+    note = merged.length ? `[${merged.length} passage(s) matching ${terms.join(", ")}]\n` : `[no passage matches ${terms.join(", ")}]`
+    out = merged.map(([a, b]) => `${a > 0 ? "…" : ""}${out.slice(a, b).trim()}${b < out.length ? "…" : ""}`).join("\n\n")
+  }
+  const cap = Math.min(Number(max) || (terms.length ? LIMITS.web.findChars : MAX_TEXT), MAX_TEXT)
+  const cut = out.length > cap
+  return { text: `${note}${cut ? out.slice(0, cap) : out}`, truncated: cut }
+}
+
+async function read({ url, find, max_chars }) {
   if (typeof url !== "string" || !/^https?:\/\//i.test(url)) throw new Error('Expected {"url": "https://…"}.')
   let page
   if (hasCapability(await detectHost(), "web")) {
@@ -77,7 +107,8 @@ async function read({ url }) {
     const title = raw.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]?.trim() ?? ""
     page = { url, title, text: text.slice(0, MAX_TEXT), truncated: text.length > MAX_TEXT }
   }
-  return `${page.title ? `# ${page.title}\n` : ""}${page.url}\n\n${page.text}${page.truncated ? "\n…[truncated]" : ""}`
+  const part = find != null || max_chars != null ? narrowText(page.text, { find, max: max_chars }) : page
+  return `${page.title ? `# ${page.title}\n` : ""}${page.url}\n\n${part.text}${part.truncated || page.truncated ? "\n…[truncated]" : ""}`
 }
 
 async function describeWeb() {
@@ -103,10 +134,16 @@ export const WEB_TOOLS = {
   },
   "web.read": {
     view: "web",
-    description: "Read one web page (http/https URL) as plain text (max 40K characters).",
+    description:
+      "Read one web page (http/https URL) as plain text (max 40K characters). Pass `find` (terms) to get only the " +
+      "passages around them (≤ 6K), or `max_chars` to cap the text: a whole page costs context on every later step.",
     inputs: {
       type: "object",
-      properties: { url: { type: "string", minLength: 8, maxLength: LIMITS.web.urlChars } },
+      properties: {
+        url: { type: "string", minLength: 8, maxLength: LIMITS.web.urlChars },
+        find: { type: "array", items: { type: "string", minLength: 1, maxLength: 80 }, maxItems: 12 },
+        max_chars: { type: "integer", minimum: 500, maximum: LIMITS.web.readChars },
+      },
       required: ["url"],
       additionalProperties: false,
     },
