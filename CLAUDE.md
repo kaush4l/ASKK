@@ -330,7 +330,6 @@ Core never imports a feature folder directly, only the catalogue
   localStorage: models are resolved on the main thread and sent in.
 - `registry.js` — on startup, one engine per agent in
   `public/agents/index.json`. Engines come only from agent definitions.
-  Retired agent definitions are kept in `backup/agents/` (not served).
   The first agent in `index.json` is the default: its engine (`requiredId`)
   is required and has no close button; extra engines can be closed.
 
@@ -429,8 +428,7 @@ a hard deadline per quest handed out — no report by then and code calls it bac
 team lead waiting on its members) counts as busy, never STALLED. The whole
 lifecycle and the team-of-teams constraints: `docs/agent-lifecycle.md`. The
 lead is the manager: it turns the owner's goal into complete quests
-(`public/agents/lead/agent.md`); searcher (web search) and humaniser (the human/poetic reply) are its team;
-planner and critic are retired to `backup/agents/`.
+(`public/agents/lead/agent.md`); searcher (web search) and humaniser (the human/poetic reply) are its team.
 
 Memory: each engine's messages live in a readable Markdown file,
 `agents/<engine>/memory.md`, in the browser's Origin Private File System
