@@ -1,0 +1,35 @@
+# Build the static export and publish it to GitHub Pages (gh-pages branch).
+# Served at https://kaush4l.github.io/ASKK/, so the app is built with the
+# /ASKK base path (next.config.mjs, backend/platform/base-path.js).
+name: Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - run: bun install --frozen-lockfile
+      - run: bun --bun run build
+        env:
+          NEXT_PUBLIC_BASE_PATH: /ASKK
+      - uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./out
+          publish_branch: gh-pages
+          commit_message: "Publish ${{ github.sha }}"
