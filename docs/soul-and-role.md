@@ -2,13 +2,13 @@
 
 Every agent's prompt starts with two sections that do different jobs.
 
-| | Soul (opens the prompt, no header) | Role (`YOUR ROLE`) |
+| | Soul (opens the prompt, no header) | Role (`# YOU ARE <name>`, right after the soul) |
 |---|---|---|
 | What it is | The agent's identity: character and values | The hat it wears for this work |
 | Changes | Almost never. One soul is shared by every agent | Per agent: developer, architect, tester, debugger, writer… |
 | Contains | How it treats truth, the owner, scope, risk, and other people's words | What the work looks like, its rules, the tools and artifacts it uses, what has been learned about doing it well |
 | Never contains | A job, a domain, tools, procedures, expertise claims | Values that should hold in every role |
-| File | `public/agents/soul.md` (or an agent's own `soul.md`) | the `agent.md` body (+ skills) |
+| File | the desk's soul (e.g. `custom/<desk>/agents/soul.md`, a team's own `soul.md`) | the `agent.md` body |
 
 A person works the same way. The same person can be a developer in the
 morning, an architect after lunch and a poet at night. Their character, which
@@ -90,12 +90,21 @@ Directions learned from earlier work in this role (optional; grows over time).
   review), make two agents and let one call the other.
 - **Rules that hold in every role go in the soul**, not repeated in each
   role.
-- **Skills are detachable know-how.** A procedure useful to several roles
-  belongs in `public/skills/`, loaded when needed, not pasted into a role.
+- **Shared know-how lives with the desk.** A procedure useful to several roles
+  belongs in the desk (a tool, an artifact, a file its agents read), not pasted into every role.
 
 ## In the prompt
 
-`backend/core/template.js`: `formatSoul()` renders the soul first, with no
-header (the prompt opens on the identity itself) and nothing after it;
-`formatRole()` renders `## YOUR ROLE`. Single-call agents (summarizer,
-punctuator) have a role and no soul.
+`backend/kernel/agent/agent.js` `render()` writes the prompt in the owner's reading order (2026-10-17 owner: "soul,
+agent instructions, context, quest, history, tools and response format"):
+
+1. the soul, with no header — the prompt opens on the identity itself;
+2. `# YOU ARE <name>` with the role (the agent.md body);
+3. context: every artifact the agent holds, `# <id> — <title>` each;
+4. the quest: `# REQUEST (from …)`, then `# OWNER GUIDANCE` right under it while a note waits;
+5. history: `# EARLIER RUNS`, then `# WORK DONE ON THIS REQUEST`;
+6. `# TOOLS`;
+7. `# RESPONSE` (the response and report formats), or `# SYSTEM` when a desk replaces it.
+
+So the soul and the role are read before anything the agent holds or is asked, and how to reply is read last,
+right before the agent writes. The full table is in `backend/kernel/README.md` (d).

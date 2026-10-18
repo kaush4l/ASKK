@@ -3,8 +3,8 @@
 import * as React from "react"
 import { CheckIcon, MinusIcon } from "lucide-react"
 
-import { HOST_CAPABILITIES, detectHost, hasCapability } from "@/backend/platform/host"
-import { withBase } from "@/backend/platform/base-path"
+import { HOST_CAPABILITIES, detectHost, hasCapability } from "@/backend/live/host"
+import { withBase } from "@/backend/live/base-path"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -94,7 +94,7 @@ export function HostStatus() {
         }
       >
         <span className={cn("size-2 rounded-full", local ? "bg-emerald-500" : "bg-amber-500", busy && "animate-pulse bg-sky-500")} />
-        {current ?? (local ? "This computer" : "Browser only")}
+        {current ?? (local ? "This computer" : "No desk")}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-80 max-w-[calc(100vw-2rem)]">
         {current && (
@@ -118,11 +118,11 @@ export function HostStatus() {
         )}
         <DropdownMenuGroup>
           <DropdownMenuLabel className="flex flex-col gap-1">
-            <span className="text-sm text-foreground">{local ? "Running on this computer" : "Running in the browser only"}</span>
+            <span className="text-sm text-foreground">{local ? "The desk runs on this computer" : "No desk server answers here"}</span>
             <span className="font-normal break-all">
               {local
-                ? `Workspace: ${host.root}${host.runtime ? ` · Runtime (memory, history): ${host.runtime}` : " · Memory: this browser"}`
-                : "This version has no access to your computer. Run ASKK from source (bun run dev) for the full set."}
+                ? `Workspace: ${host.root}${host.runtime ? ` · State: ${host.runtime}` : ""}`
+                : "Start the desk server from the repository (bun run dev) and open the address it prints."}
             </span>
           </DropdownMenuLabel>
         </DropdownMenuGroup>
@@ -141,7 +141,7 @@ export function HostStatus() {
                   <span className={cn(!on && "text-muted-foreground")}>{cap.label}</span>
                   {!on && (
                     <span className="text-xs text-muted-foreground">
-                      {local ? (cap.localOff ?? "Turned off (--read-only).") : (cap.fallback ?? "Not available in this version.")}
+                      {local ? (cap.localOff ?? "Not on this server.") : "Needs the desk server."}
                     </span>
                   )}
                 </span>

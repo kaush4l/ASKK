@@ -52,6 +52,9 @@ next-env.d.ts
 /integrations/
 /custom/
 
+# Local editor settings (.vscode/settings.json hides custom/'s own git repo from Source Control)
+/.vscode/
+
 # The team shared space (agents' shared/ folder in the workspace): local only, never pushed
 /shared/
 .claude/settings.local.json

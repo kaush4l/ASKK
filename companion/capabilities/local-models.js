@@ -39,14 +39,11 @@ class LocalModelError extends HttpError {
 async function findBinary(name) {
   const onPath = Bun.which(name)
   if (onPath) return onPath
-  const usual = [join(homedir(), ".local/bin", name), `/opt/homebrew/bin/${name}`, `/usr/local/bin/${name}`]
+  const usual = [join(homedir(), ".local/bin"), "/opt/homebrew/bin", "/usr/local/bin"]
   const nvm = join(process.env.NVM_DIR || join(homedir(), ".nvm"), "versions/node")
   const versions = await readdir(nvm).catch(() => [])
   versions.sort((a, b) => b.localeCompare(a, undefined, { numeric: true }))
-  for (const path of [...usual, ...versions.map((v) => join(nvm, v, "bin", name))]) {
-    if (await Bun.file(path).exists()) return path
-  }
-  return null
+  return Bun.which(name, { PATH: [...usual, ...versions.map((v) => join(nvm, v, "bin"))].join(":") })
 }
 
 const CLIS = {
@@ -107,17 +104,8 @@ const APPLE_PYTHON = join(APPLE_DIR, ".venv/bin/python")
 const APPLE_BRIDGE = join(APPLE_DIR, "bridge.py")
 
 // A child process tied to the request: aborted or timed out → killed.
-function spawn(argv, { cwd, env, signal }) {
-  const proc = Bun.spawn(argv, { cwd, env, stdin: "pipe", stdout: "pipe", stderr: "pipe" })
-  const kill = () => proc.kill("SIGKILL")
-  const timer = setTimeout(kill, TIMEOUT)
-  signal?.addEventListener("abort", kill, { once: true })
-  proc.exited.finally(() => {
-    clearTimeout(timer)
-    signal?.removeEventListener("abort", kill)
-  })
-  return proc
-}
+const spawn = (argv, { cwd, env, signal }) =>
+  Bun.spawn(argv, { cwd, env, stdin: "pipe", stdout: "pipe", stderr: "pipe", signal, timeout: TIMEOUT, killSignal: "SIGKILL" })
 
 async function* runCli(provider, bin, { model, prompt, signal }) {
   const spec = CLIS[provider]

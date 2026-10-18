@@ -19,7 +19,7 @@
 // What was heard is dropped when it is only the voice's own echo. "Stop"
 // silences it; "yes" / "no" answer a pending approval.
 
-import { detectHost } from "@/backend/platform/host"
+import { detectHost } from "@/backend/live/host"
 import { Microphone } from "@/backend/hardware/speech/microphone"
 import { narrate } from "@/backend/hardware/speech/narrator"
 import { hostGet, MacRecognizer, SafariRecognizer } from "@/backend/hardware/speech/recognizers"

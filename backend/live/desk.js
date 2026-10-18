@@ -1,0 +1,166 @@
+// The desk's shape and shared state, mirrored from the team stream (companion/team/kernel-team.js): the agent
+// tree (the lead → the agents it holds as tools → theirs), every board, every artifact. Agent states live on the
+// agents (registry.js); this adds what they do not carry. The registry feeds it every event (apply), so it is
+// current whether or not a view is mounted. null = no desk yet.
+// 2026-10-17: a `kernel` event may carry the tree (an agent spawned or dismissed) and `removed` (artifact ids no
+// agent holds any more, gone with a dismissed helper).
+
+import { isRunRequest } from "@/backend/live/agent"
+import { teamCall } from "@/backend/live/stream"
+
+let state = null // { title, tree, boards, artifacts }
+const listeners = new Set()
+
+function set(next) {
+  state = next
+  for (const fn of listeners) fn()
+}
+
+export const kernelDesk = {
+  subscribe(fn) {
+    listeners.add(fn)
+    return () => listeners.delete(fn)
+  },
+  getSnapshot: () => state,
+  getServerSnapshot: () => null,
+  // A team/stream event (registry.js hands every one over).
+  apply(e) {
+    if (e.type === "snapshot") set(e.kernel ?? null)
+    else if (e.type === "kernel" && state) {
+      let artifacts = e.artifact ? { ...state.artifacts, [e.artifact.id]: e.artifact } : state.artifacts
+      if (e.removed?.length) artifacts = Object.fromEntries(Object.entries(artifacts ?? {}).filter(([id]) => !e.removed.includes(id)))
+      set({
+        ...state,
+        ...(e.tree ? { tree: e.tree } : {}),
+        ...(e.boards ? { boards: e.boards } : {}),
+        artifacts,
+      })
+    }
+  },
+}
+
+// Every artifact an agent holds, in reading order (the agent page).
+export function artifactsHeldBy(artifacts, agentName) {
+  return Object.values(artifacts ?? {})
+    .filter((a) => a.holders?.includes(agentName))
+    .sort((a, b) => rank(a) - rank(b) || a.id.localeCompare(b.id))
+}
+
+// The board of a team path ("desk/world") in the boards tree.
+export function boardAt(boards, path) {
+  const parts = path.split("/")
+  let b = boards
+  if (!b || b.name !== parts[0]) return null
+  for (const name of parts.slice(1)) {
+    b = b.children?.find((c) => c.name === name)
+    if (!b) return null
+  }
+  return b
+}
+
+// A team's live status from its agents' engine states: working | reported | error | idle.
+export function teamStatus(agentStates) {
+  if (agentStates.some((s) => s?.status === "error")) return "error"
+  if (agentStates.some((s) => s?.status === "running" || s?.activity?.phase === "waiting")) return "working"
+  if (agentStates.some((s) => (s?.messages ?? []).some((m) => m.action === "answer"))) return "reported"
+  return "idle"
+}
+
+// One agent's live look (state colour, speech bubble, tools in use): visual.js, shared with the server's Telegram status.
+export { VISUAL_STATES, agentVisual } from "@/backend/live/visual"
+
+// The quest a lead is working on (or last worked): its newest incoming message — the owner's
+// request for the desk lead, the parent lead's quest for a team lead.
+export function currentQuest(state) {
+  const messages = state?.messages ?? []
+  const byId = state?.working?.request ? messages.find((m) => m.id === state.working.request) : null
+  const m = byId ?? [...messages].reverse().find(isRunRequest) // guidance and an owner chat are not a run
+  return m ? { text: String(m.content ?? ""), from: m.from ?? "owner", at: m.at ?? null, active: !!byId } : null
+}
+
+// A card's artifacts: the team's own (board, memory, any the desk owns) and its lead's (checklist,
+// quality). Ordered for reading by view: the desk's lists, checklist, the dispatched jobs and the charts (2026-10-17:
+// the line's work in flight and its graphs read right under the plan), quality, board, schedule, text.
+const ORDER = ["list", "checklist", "dispatch", "chart", "quality", "board", "schedule", "text"]
+const rank = (a) => (ORDER.includes(a.view) ? ORDER.indexOf(a.view) : ORDER.length)
+// teams: every team name in the tree — an artifact no team owns (a lone agent's memory) sits on its first holder's card.
+export function artifactsFor(artifacts, { team, lead, teams = null }) {
+  return Object.values(artifacts ?? {})
+    .filter((a) => a.owner === team || (a.holders?.[0] === lead && (["checklist", "quality", "text"].includes(a.view) || (teams && !teams.has(a.owner)))))
+    .filter((a, i, all) => all.findIndex((b) => b.id === a.id) === i)
+    .sort((a, b) => rank(a) - rank(b) || a.id.localeCompare(b.id))
+}
+
+// Every agent name under a tree node (itself included).
+export const namesIn = (node) => [node.name, ...(node.agents ?? []).flatMap(namesIn)]
+
+// A team card's rows (2026-10-17 owner: the lead creates sub-teams at run time): every agent under the card's lead, a
+// sub-team's members indented under their own lead, at any depth — a spawned team is a member of the lead holding
+// members of its own, and none of them has a card but the depth-1 one.
+//   → [{ name, title, depth (0: the card's direct members), lead: true when it holds agents }]
+export function cardRows(node, depth = 0) {
+  return (node?.agents ?? []).flatMap((m) => [{ name: m.name, title: m.title ?? null, depth, lead: !!m.agents?.length }, ...cardRows(m, depth + 1)])
+}
+
+// A team card's artifacts: its own (artifactsFor) first, then every nested sub-team's, top-down (their boards have no
+// card of their own).
+export function cardArtifacts(artifacts, node, { teams = null } = {}) {
+  const nested = (n) => (n.agents ?? []).filter((m) => m.agents?.length).flatMap((m) => [m, ...nested(m)])
+  return [node, ...nested(node)]
+    .flatMap((n) => artifactsFor(artifacts, { team: n.team ?? n.name, lead: n.name, teams }))
+    .filter((a, i, all) => all.findIndex((b) => b.id === a.id) === i)
+}
+
+// A team's name on its card and chip: its title, unless that is only the kernel's default "<team> board" (a team
+// spawned at run time has no title of its own), else the team, else the lead's name.
+export function teamTitle(node) {
+  const team = node?.team ?? null
+  return node?.title && node.title !== `${team} board` ? node.title : (team ?? node?.name ?? "")
+}
+
+// How long a job ran: "45s", "12m04s", "1h02m" (the kit's dispatch prompt says it the same way).
+export function elapsedText(ms) {
+  if (!Number.isFinite(ms) || ms < 0) return ""
+  const s = Math.floor(ms / 1000)
+  if (s < 60) return `${s}s`
+  const m = Math.floor(s / 60)
+  if (m < 60) return `${m}m${String(s % 60).padStart(2, "0")}s`
+  return `${Math.floor(m / 60)}h${String(m % 60).padStart(2, "0")}m`
+}
+
+// The dispatch artifact's jobs (kit dispatch, backend/kernel/builtin/dispatch.js: work a holder started on another
+// agent while its own steps go on) as rows: the running ones first, longest running on top, then the ended ones newest
+// first; each with how long it has run, else how long it took and when it ended.
+//   state: { jobs: [{id, to, by, ask, status: running | done | failed | stopped, startedAt, endedAt, report, error}] }
+//   → [{ id, to, by, ask (one line), status, running, elapsed, endedAt, report, error }]
+const atMs = (at) => (typeof at === "number" ? at : Date.parse(at ?? ""))
+export function dispatchRows(state, { now = Date.now() } = {}) {
+  const jobs = Array.isArray(state?.jobs) ? state.jobs.filter((j) => j?.id) : []
+  return jobs
+    .map((j) => {
+      const running = j.status === "running"
+      const start = atMs(j.startedAt)
+      const end = running ? now : Number.isFinite(atMs(j.endedAt)) ? atMs(j.endedAt) : null
+      return {
+        id: String(j.id),
+        to: j.to ?? "",
+        by: j.by ?? "",
+        ask: String(j.ask ?? "").replace(/\s+/g, " ").trim(),
+        status: j.status ?? "running",
+        running,
+        elapsed: Number.isFinite(start) && end != null ? elapsedText(end - start) : "",
+        endedAt: running ? null : (j.endedAt ?? null),
+        report: String(j.report ?? ""),
+        error: j.error ?? null,
+        start: Number.isFinite(start) ? start : 0,
+        end: end ?? 0,
+      }
+    })
+    .sort((a, b) => (a.running !== b.running ? (a.running ? -1 : 1) : a.running ? a.start - b.start : b.end - a.end))
+    .map(({ start, end, ...row }) => row)
+}
+
+// The next run, set by the owner (time "HH:MM" ET or ISO; goal text) — the desk's schedule.
+export const bookNextRun = ({ at, goal }) => teamCall("desk", "schedule", [{ at, goal }])
+export const clearNextRun = () => teamCall("desk", "unschedule", [])
+export const setDefaultGoal = (goal) => teamCall("desk", "defaultGoal", [goal])

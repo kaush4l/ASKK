@@ -1,6 +1,6 @@
 "use client"
 
-import { describeActivity } from "@/backend/core/activity"
+import { describeActivity } from "@/backend/live/activity"
 import { cn } from "@/lib/utils"
 
 export function Caption({ state }) {

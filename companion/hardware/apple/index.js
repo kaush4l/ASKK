@@ -7,12 +7,11 @@
 //
 // Every action runs a fixed program with an argument list (never a shell),
 // with a timeout and a capped output; agent text is passed as arguments or
-// stdin, never spliced into a script. Authorization is two-fold: the app asks
-// the owner before each call that reaches outside ASKK (the tool's
-// `approval`, backend/features/apple/tools.js), and macOS asks once per
+// stdin, never spliced into a script. A desk that offers these to its agents
+// decides who may call them (its host() guard); macOS asks once per
 // protected area (Reminders, Automation, …) naming the app that asked.
 
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { HttpError } from "../../shared/http.js"
@@ -36,10 +35,8 @@ const optional = (value, name, max) => (value == null || value === "" ? null : t
 
 // Run a program; resolves with stdout, rejects with its error output.
 async function exec(argv, { stdin, timeout = TIMEOUT } = {}) {
-  const proc = Bun.spawn(argv, { stdin: stdin != null ? new TextEncoder().encode(stdin) : "ignore", stdout: "pipe", stderr: "pipe" })
-  const timer = setTimeout(() => proc.kill(), timeout)
+  const proc = Bun.spawn(argv, { stdin: stdin != null ? new TextEncoder().encode(stdin) : "ignore", stdout: "pipe", stderr: "pipe", timeout })
   const [out, err, code] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited])
-  clearTimeout(timer)
   if (proc.signalCode) throw new AppleError(`${argv[0]} did not finish within ${timeout / 1000}s.`)
   if (code !== 0) throw new AppleError((err || out).trim().split("\n").slice(-3).join(" ") || `${argv[0]} failed (${code}).`)
   return out
@@ -105,11 +102,11 @@ const ACTIONS = {
       try {
         const args = ["shortcuts", "run", name, "--output-path", join(dir, "out")]
         if (optional(input, "input", HOST_LIMITS.apple.shortcutInputChars)) {
-          await writeFile(join(dir, "in.txt"), input)
+          await Bun.write(join(dir, "in.txt"), input)
           args.push("--input-path", join(dir, "in.txt"))
         }
         await exec(args, { timeout: HOST_LIMITS.apple.shortcutTimeoutMs })
-        const output = await readFile(join(dir, "out"), "utf8").catch(() => "")
+        const output = await Bun.file(join(dir, "out")).text().catch(() => "")
         return output.trim() ? `Shortcut "${name}" output:\n${output.trim()}` : `Shortcut "${name}" ran (no output).`
       } finally {
         await rm(dir, { recursive: true, force: true })

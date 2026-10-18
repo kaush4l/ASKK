@@ -8,7 +8,7 @@
 //             when there is no host: it listens itself; an utterance ends
 //             after a pause with no new words.
 
-import { withBase } from "@/backend/platform/base-path"
+import { withBase } from "@/backend/live/base-path"
 import { pcmToBase64 } from "@/backend/hardware/speech/microphone"
 import { LiveTranscriber } from "@/lib/speech/recognition"
 import { LIMITS } from "@/lib/config"

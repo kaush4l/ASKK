@@ -1,217 +1,161 @@
-// The default way to run ASKK: the Next dev server (hot reload, debugging)
-// with the host API (companion/server/host-api.js) on the same origin under
-// /__askk/, so the app runs in local mode with the machine's capabilities.
+// The default way to run ASKK: the desks (companion/server/desks.js: each desk's kernel team, host API, wake book,
+// tool servers, integrations) and the live UI on the Next dev server (hot reload, debugging), on one port, the
+// host API same-origin under /__askk/.
 //
-//   bun run dev [--root <dir>] [--port 3000] [--hostname 127.0.0.1] [--read-only]
-//               [--agents <dir> …]   custom team folders (default: ASKK_AGENTS)
-//   bun run dev --desks custom [--desk <name>] --port 1111
-//               every desk (custom/<desk>/desk.js) in one process on one port; the header's
-//               desk switcher (cookie askk_desk) or the x-askk-desk header picks the desk
+//   bun run dev [--desks custom] [--desk <name>] [--only a,b] [--port 1111] [--hostname 127.0.0.1] [--read-only]
+//               every desk (custom/<desk>/main.js) in one process; the header's desk switcher (cookie askk_desk)
+//               or the x-askk-desk header picks the desk
+//   bun run dev --agents custom/<desk>
+//               that desk alone (default ASKK_AGENTS), on its own port and Next build folder (.next-desks/<name>),
+//               so it can run beside the desks' server
 //
-// No --agents: the public agents (public/agents/). --agents custom/<team>: that
-// team only (its agents/ folder, tools from its mcp.json). --root is the
-// workspace agents work on (default: the team's data/ folder, else the folder
-// dev was started from). --hostname 0.0.0.0 lets phones on the network open the app; the host
-// API still answers only on localhost, so they get the browser-only mode.
+// --hostname 0.0.0.0 lets phones on the network open the app; the host API still answers only on localhost, so
+// they get the "no desk here" page.
 
-import { createServer } from "node:http"
+import { createServer } from "node:http" // Next's adapter only (see "Next.js renders the pages" below)
 import { parseArgs } from "node:util"
+import { basename } from "node:path"
 import next from "next"
 
-import { API_PREFIX, createHostApi } from "../companion/server/host-api.js"
-import { TEAM_OPTIONS, agentDirsFrom, rootFrom } from "../companion/shared/args.js"
-import { createTeam, findTeamServer, teamStorageDir } from "../companion/team/team.js"
-import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs"
-import { join } from "node:path"
-import { realpath } from "node:fs/promises"
-import { refuseSecondTeam } from "../companion/shared/single-team.js"
+import { API_PREFIX } from "../companion/server/host-api.js"
+import { hostDesks } from "../companion/server/desks.js"
+import { DESK_OPTIONS, deskDirFrom } from "../companion/shared/args.js"
 import { listDesks, loadDesk } from "../companion/team/desk.js"
-import { DEFAULT_PORT, DESK_COOKIE, DESK_HEADER } from "../companion/shared/config.js"
+import { DEFAULT_PORT } from "../companion/shared/config.js"
 
 const { values: args } = parseArgs({
   args: process.argv.slice(2),
   options: {
-    ...TEAM_OPTIONS,
+    ...DESK_OPTIONS,
     port: { type: "string" }, // default: the desk's port, else PORT, else 3000
     hostname: { type: "string", default: "127.0.0.1" },
     "read-only": { type: "boolean", default: false },
     desks: { type: "string" }, // a folder of desks (custom): every desk in one process
     desk: { type: "string" }, // with --desks: the one a new tab opens (default: the first)
-    "with-public": { type: "boolean", default: false },
-    "browser-engines": { type: "boolean", default: false },
+    only: { type: "string" }, // with --desks: host only these desks (comma list of folder names)
   },
 })
 const MAX_BODY = 16 * 1024 * 1024
 
-// One process, one port, every desk: --desks custom hosts each desk in that
-// folder (companion/team/desk.js) with its own team, host API, wakes and
-// integrations. A request reaches a desk by the x-askk-desk header (scripts,
-// cron: server.json names it) or the askk_desk cookie (the header's desk
-// switcher, POST desks/select); otherwise the default desk.
-// Without --desks: one team (--agents / --root), as before.
-const hosted = new Map() // desk name -> { api, team, desk }
-let fallback = null // the default desk's name
-const singleLog = (line) => console.error(line)
+// One desk alone (--agents / ASKK_AGENTS, without --desks), else every desk of --desks (default custom/).
+const alone = args.desks ? null : deskDirFrom(args.agents)
+let folders
 let port
-let logRoot // the default desk's workspace: its state/ holds server.log
-
-if (args.desks) {
-  const folders = listDesks(args.desks)
-  if (!folders.length) {
-    console.error(`No desks in ${args.desks} (folders with a desk.js).`)
+if (alone) {
+  const desk = await loadDesk(alone)
+  if (!desk) {
+    console.error(`${alone} is not a desk (no main.js).`)
     process.exit(1)
   }
-  port = Number(args.port ?? process.env.PORT ?? DEFAULT_PORT)
-  for (const folder of folders) {
-    const desk = await loadDesk(folder)
-    const root = await realpath(desk.workspace)
-    const running = findTeamServer(root)
-    if (running) {
-      console.error(`ASKK already runs desk ${desk.name}: http://localhost:${running.port}/ (pid ${running.pid}). Stop it first.`)
-      process.exit(1)
-    }
-    const team = createTeam({ root, agentDirs: [folder], port, desk: desk.name, log: (line) => console.error(`${desk.name}: ${line}`) })
-    const api = await createHostApi({ root, team, port, name: "askk-companion", agentDirs: [folder], desk: { name: desk.name, description: desk.description } })
-    hosted.set(desk.name, { api, team, desk })
-  }
-  fallback = hosted.has(args.desk ?? process.env.ASKK_DESK) ? (args.desk ?? process.env.ASKK_DESK) : [...hosted.keys()][0]
-  logRoot = await realpath(hosted.get(fallback).desk.workspace)
+  folders = [desk.folder]
+  process.env.ASKK_DIST_DIR ??= `.next-desks/${desk.name}` // Next allows one `next dev` per build folder
+  port = Number(args.port ?? desk.port ?? process.env.PORT ?? DEFAULT_PORT)
 } else {
-  const agentDirs = agentDirsFrom(args.agents)
-  // One team for every tab (companion/team/team.js), unless --browser-engines: then
-  // each tab runs its own engines, as the static build does.
-  const root = await realpath(await rootFrom(args.root, agentDirs))
-  // A desk alone brings its port and its own Next build folder (Next locks one
-  // `next dev` per distDir), so it can also run beside another server.
-  const desk = await loadDesk(agentDirs[0])
-  if (desk) process.env.ASKK_DIST_DIR ??= `.next-desks/${desk.name}`
-  port = Number(args.port ?? desk?.port ?? process.env.PORT ?? DEFAULT_PORT)
-  if (!args["browser-engines"]) refuseSecondTeam(root)
-  const team = args["browser-engines"] ? null : createTeam({ root, readOnly: args["read-only"], agentDirs, withPublic: args["with-public"], port, log: singleLog })
-  const api = await createHostApi({
-    root,
-    team,
-    readOnly: args["read-only"],
-    port,
-    name: "askk-companion",
-    agentDirs,
-    withPublic: args["with-public"],
-    listen: !team, // a continuous server: integration listeners run (Telegram, …); with a team, in the team
-  })
-  fallback = desk?.name ?? "default"
-  logRoot = root
-  hosted.set(fallback, { api, team, desk })
+  const only = args.only ? new Set(args.only.split(",").map((s) => s.trim()).filter(Boolean)) : null
+  folders = listDesks(args.desks ?? "custom").filter((f) => !only || only.has(basename(f)))
+  port = Number(args.port ?? process.env.PORT ?? DEFAULT_PORT)
 }
+if (!folders.length) {
+  console.error(`No desks in ${args.desks ?? "custom"} (folders with a main.js).`)
+  process.exit(1)
+}
+const desks = await hostDesks({ folders, port, defaultDesk: args.desk ?? process.env.ASKK_DESK, readOnly: args["read-only"] }).catch((error) => {
+  console.error(error.message)
+  process.exit(1)
+})
 
-// The server's own log (launchd writes it, opened for append; ASKK_SERVER_LOG
-// names it) is capped: past 5 MB it keeps its newest 1 MB.
-const serverLog = process.env.ASKK_SERVER_LOG ?? join(teamStorageDir(logRoot), "server.log")
-setInterval(() => {
+// The server's own log (launchd writes it, opened for append; ASKK_SERVER_LOG names it) is capped: past 5 MB it
+// keeps its newest 1 MB.
+setInterval(async () => {
   try {
-    if (!existsSync(serverLog) || statSync(serverLog).size <= 5 * 1024 * 1024) return
-    const text = readFileSync(serverLog, "utf8")
-    writeFileSync(serverLog, `…(older lines cut at ${new Date().toISOString()})\n${text.slice(-1024 * 1024)}`)
+    const log = Bun.file(desks.serverLog) // size 0 when missing
+    if (log.size <= 5 * 1024 * 1024) return
+    const text = await log.text()
+    await Bun.write(desks.serverLog, `…(older lines cut at ${new Date().toISOString()})\n${text.slice(-1024 * 1024)}`) // in place: launchd's append fd stays valid
   } catch {}
 }, 10 * 60 * 1000).unref()
 
-const DESK_COOKIE_RE = new RegExp(`(?:^|;\\s*)${DESK_COOKIE}=([^;]+)`)
-const cookieDesk = (cookie = "") => DESK_COOKIE_RE.exec(cookie)?.[1]
-const pick = (req) => {
-  const name = req.headers[DESK_HEADER] ?? cookieDesk(req.headers.cookie)
-  return hosted.has(name) ? name : fallback
-}
-const allowedHosts = () => new Set([`127.0.0.1:${port}`, `localhost:${port}`, `[::1]:${port}`])
-
-// GET desks: { current, desks: [{ name, description, work }] } (work: what its team is running now,
-// team.work()); POST desks/select
-// { name }: sets the askk_desk cookie (same-origin JSON only, like the host API).
-async function desksEndpoint(req, path) {
-  if (!allowedHosts().has(req.headers.host)) return Response.json({ error: "Host capabilities answer on localhost only." }, { status: 421 })
-  const list = () => [...hosted.values()].map(({ desk, team }) => ({ name: desk?.name ?? fallback, description: desk?.description ?? "", work: team?.work?.() ?? [] }))
-  if (path === "desks" && req.method === "GET") return Response.json({ current: pick(req), default: fallback, desks: list() })
-  if (path === "desks/select" && req.method === "POST") {
-    const origin = req.headers.origin ?? ""
-    if (!allowedHosts().has(origin.replace(/^http:\/\//, "")) || !String(req.headers["content-type"]).includes("application/json")) {
-      return Response.json({ error: "Desk switches need a same-origin JSON request." }, { status: 403 })
-    }
-    const chunks = []
-    for await (const chunk of req) chunks.push(chunk)
-    const name = JSON.parse(Buffer.concat(chunks).toString() || "{}").name
-    if (!hosted.has(name)) return Response.json({ error: `No desk "${name}".` }, { status: 404 })
-    return new Response(JSON.stringify({ current: name }), {
-      headers: { "content-type": "application/json", "set-cookie": `${DESK_COOKIE}=${name}; Path=/; SameSite=Strict; Max-Age=31536000` },
-    })
-  }
-  return Response.json({ error: "Not found." }, { status: 404 })
-}
-
-// node:http request -> Fetch Request (host API requests only).
-async function toRequest(req, signal) {
-  const headers = new Headers()
-  for (const [key, value] of Object.entries(req.headers)) {
-    if (value != null) headers.set(key, Array.isArray(value) ? value.join(", ") : value)
-  }
-  let body
-  if (req.method !== "GET" && req.method !== "HEAD") {
-    const chunks = []
-    let size = 0
-    for await (const chunk of req) {
-      size += chunk.length
-      if (size > MAX_BODY) return null
-      chunks.push(chunk)
-    }
-    body = Buffer.concat(chunks)
-  }
-  return new Request(`http://${req.headers.host ?? "localhost"}${req.url}`, { method: req.method, headers, body, signal })
-}
-
-// Streamed as it comes (a local model's answer arrives in parts).
-async function sendResponse(res, response) {
-  res.writeHead(response.status, Object.fromEntries(response.headers))
-  if (!response.body) return res.end()
-  try {
-    for await (const chunk of response.body) {
-      if (res.destroyed) break
-      res.write(chunk)
-    }
-  } finally {
-    res.end()
-  }
-}
-
-const server = createServer(async (req, res) => {
-  if (req.url.startsWith(API_PREFIX)) {
-    try {
-      // The page went away (reload, Stop): abort, so a local model stops too.
-      const gone = new AbortController()
-      res.on("close", () => res.writableEnded || gone.abort())
-      const path = req.url.slice(API_PREFIX.length).split("?")[0]
-      if (path === "desks" || path === "desks/select") return sendResponse(res, await desksEndpoint(req, path))
-      const request = await toRequest(req, gone.signal)
-      if (!request) return sendResponse(res, Response.json({ error: "Too large." }, { status: 413 }))
-      return sendResponse(res, await hosted.get(pick(req)).api.handle(request))
-    } catch (error) {
-      return sendResponse(res, Response.json({ error: error.message }, { status: 500 }))
-    }
-  }
-  return handle(req, res)
-})
-
-const app = next({ dev: true, hostname: args.hostname, port, httpServer: server })
+// Next.js renders the pages. Its custom-server API takes node req/res (and node's `upgrade` event for
+// hot reload), so it runs on a private loopback port only this process reaches; Bun.serve owns the
+// public port, answers the host API itself and passes everything else to Next.
+const nextServer = createServer((req, res) => handle(req, res))
+const app = next({ dev: true, hostname: args.hostname, port, httpServer: nextServer })
 const handle = app.getRequestHandler()
 await app.prepare()
+nextServer.requestTimeout = 0
+await new Promise((resolve, reject) => nextServer.once("error", reject).listen(0, "127.0.0.1", resolve))
+const nextOrigin = `http://127.0.0.1:${nextServer.address().port}`
 
-// A team call (`ask`) lasts as long as the run, often well past node's 5 minute
-// request limit.
-server.requestTimeout = 0
+const HOP_BY_HOP = ["connection", "keep-alive", "proxy-connection", "te", "trailer", "transfer-encoding", "upgrade"]
+function toNext(request, url) {
+  const headers = new Headers(request.headers) // Host, Origin and cookies as the browser sent them
+  for (const name of HOP_BY_HOP) headers.delete(name)
+  const body = request.method === "GET" || request.method === "HEAD" ? undefined : request.body
+  return fetch(`${nextOrigin}${url.pathname}${url.search}`, {
+    method: request.method,
+    headers,
+    body,
+    duplex: "half",
+    redirect: "manual", // the browser follows Next's redirects itself
+    decompress: false, // passed on as Next encoded it
+    signal: request.signal,
+  })
+}
 
-server.listen(port, args.hostname, () => {
-  for (const [name, { team }] of hosted) team?.announce(port, args.desks ? name : null)
-  if (args.desks) console.log(`ASKK desks · ${[...hosted.keys()].join(", ")} (default ${fallback})`)
-  console.log(`ASKK dev · http://localhost:${port}/`)
-  for (const [name, entry] of hosted) {
-    const api = entry.api
-    if (!api) continue
-    console.log(`  ${args.desks ? `${name.padEnd(12)} ` : "workspace  "}${api.root} (${api.capabilities.includes("fs.write") ? "read + write" : "read-only"})`)
-  }
+// Hot reload: each browser WebSocket is paired with one to Next (messages queued until it opens).
+const HMR_HEADERS = ["host", "origin", "cookie", "user-agent"]
+const hotReload = {
+  open(ws) {
+    const upstream = new WebSocket(ws.data.url, { headers: ws.data.headers })
+    upstream.binaryType = "arraybuffer"
+    ws.data.upstream = upstream
+    upstream.onopen = () => ws.data.queue.splice(0).forEach((message) => upstream.send(message))
+    upstream.onmessage = (event) => ws.send(event.data)
+    upstream.onclose = () => ws.close()
+    upstream.onerror = () => ws.close()
+  },
+  message(ws, message) {
+    if (ws.data.upstream.readyState === WebSocket.OPEN) ws.data.upstream.send(message)
+    else ws.data.queue.push(message)
+  },
+  close(ws) {
+    ws.data.upstream?.close()
+  },
+}
+
+Bun.serve({
+  hostname: args.hostname,
+  port,
+  idleTimeout: 0, // a team call (`ask`) and team/stream last as long as the run
+  maxRequestBodySize: MAX_BODY,
+  development: false,
+  websocket: hotReload,
+  async fetch(request, server) {
+    const url = new URL(request.url)
+    if (url.pathname.startsWith(API_PREFIX)) {
+      try {
+        // request.signal aborts when the page goes away (reload, Stop), so a local model stops too.
+        if (Number(request.headers.get("content-length")) > MAX_BODY) return Response.json({ error: "Too large." }, { status: 413 })
+        return await desks.handleApi(request)
+      } catch (error) {
+        return Response.json({ error: error.message }, { status: 500 })
+      }
+    }
+    if (request.headers.get("upgrade")?.toLowerCase() === "websocket") {
+      const headers = Object.fromEntries(HMR_HEADERS.map((name) => [name, request.headers.get(name)]).filter(([, value]) => value))
+      const data = { url: `${nextOrigin.replace(/^http/, "ws")}${url.pathname}${url.search}`, headers, queue: [] }
+      return server.upgrade(request, { data }) ? undefined : new Response("WebSocket upgrade failed.", { status: 400 })
+    }
+    try {
+      return await toNext(request, url)
+    } catch (error) {
+      if (request.signal.aborted) return new Response(null, { status: 499 })
+      return new Response(`Next.js did not answer: ${error.message}`, { status: 502 })
+    }
+  },
 })
+
+desks.announce()
+console.log(`ASKK dev · ${[...desks.hosted.keys()].join(", ")} (default ${desks.fallback}) · http://localhost:${port}/`)
+for (const [name, { api }] of desks.hosted) console.log(`  ${name.padEnd(14)} ${api.root} (${api.capabilities.includes("fs.write") ? "read + write" : "read-only"})`)
+desks.startTelegram()

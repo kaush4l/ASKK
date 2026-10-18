@@ -8,43 +8,16 @@ export { API_PREFIX, DESK_COOKIE, DESK_HEADER } from "../../lib/config.js"
 export const DEFAULT_PORT = 3000
 export const DESKS_PORT = Number(process.env.ASKK_DESKS_PORT) || 1111
 
-// The wake book is checked this often (companion/team/wakes.js); a wake later
-// than this many minutes is marked missed (also scripts/wake.js --stale default).
+// The wake book is checked this often (companion/shared/wakes.js, run by kernel-team); a wake later than this many
+// minutes is marked missed.
 export const WAKE_TICK_MS = 30 * 1000
 export const WAKE_STALE_MINUTES = 60
 
-// Server-sent event streams (team/stream, term/stream) send a comment this often.
+// The team stream (team/stream) sends a comment this often.
 export const SSE_PING_MS = 15000
-
-// A desk's background programs (term.start) are stopped after this many minutes.
-export const TERM_BACKGROUND_MINUTES = 120
 
 // Every host-side cap, timeout and size limit in one place (values only; .env overrides stay where they are read).
 export const HOST_LIMITS = {
-  // terminal (companion/capabilities/terminal.js)
-  terminal: {
-    outputChars: 20000, // output kept per term.run
-    logTailChars: 4000, // output per row of state/terminal.jsonl
-    logKeepRows: 200, // rows kept when the log is pruned
-    logMaxBytes: 512 * 1024, // the log is pruned past this size
-    liveKeepChars: 20000, // of a run in progress, sent to a new viewer
-    procKeepChars: 40000, // of a background process's output
-    maxProcs: 4, // background processes at once, per terminal
-    keepExited: 10, // exited background processes still listed
-    startWaitMs: 3000, // term/start waits this long for first output and URLs
-    startWaitMaxMs: 10000, // upper bound on a caller's requested wait
-    startOutputLines: 40, // output returned by term/start
-    startOutputChars: 4000,
-    stopGraceMs: 5000, // SIGTERM, then SIGKILL
-    recentRuns: 5, // runs in term/log and the stream snapshot (default)
-    recentRunsMax: 50,
-    logsTailLines: 50, // term/logs default tail
-    logsTailMaxLines: 1000,
-    procNameChars: 60,
-    urlScanChars: 200, // carried-over output scanned for local URLs
-  },
-  // desk terminal policy (companion/team/desk.js)
-  desk: { termTimeoutSeconds: 300, termTimeoutMaxSeconds: 1800 },
   // apple.* actions (companion/hardware/apple/index.js)
   apple: {
     actionTimeoutMs: 60000,
@@ -77,9 +50,82 @@ export const HOST_LIMITS = {
     sayRateMaxWpm: 400,
   },
   // web.search / web.read (companion/capabilities/web.js)
-  web: { readBytes: 2000000, readChars: 40000, timeoutMs: 15000, searchResults: 8, searchResultsMax: 20 },
-  // fs/* (companion/capabilities/files.js)
-  files: { readBytes: 1024 * 1024, treeEntries: 3000, binarySniffBytes: 8000 },
+  web: {
+    readBytes: 2000000,
+    readChars: 40000,
+    timeoutMs: 15000,
+    searchResults: 8,
+    searchResultsMax: 20,
+    apiTimeoutMs: 10000, // wikipedia / arxiv / hn API calls
+    snippetChars: 300,
+    cacheMs: 10 * 60000, // the same query + limit + source answers from memory this long
+    cacheEntries: 200,
+    // Per search engine, process-wide: requests at once, ms between request starts, the backoff before each retry
+    // of a rate-limited answer, how long an engine still rate-limited after its retries is skipped (coolMs), and how
+    // long one that did not answer (timeout, network, 5xx) is skipped (downMs).
+    engines: {
+      duckduckgo: { concurrency: 1, spacingMs: 1500, retryMs: [3000, 8000], coolMs: 2 * 60000, downMs: 30000 },
+      searxng: { concurrency: 4, spacingMs: 0, retryMs: [], coolMs: 2 * 60000, downMs: 30000 },
+      wikipedia: { concurrency: 1, spacingMs: 0, retryMs: [], coolMs: 2 * 60000, downMs: 30000 }, // Wikimedia etiquette: serial requests
+      arxiv: { concurrency: 1, spacingMs: 3000, retryMs: [], coolMs: 2 * 60000, downMs: 30000 }, // arXiv API terms: one request per 3 s
+      hn: { concurrency: 4, spacingMs: 0, retryMs: [], coolMs: 2 * 60000, downMs: 30000 },
+    },
+  },
+  // fs/* (companion/capabilities/files.js); fs/watch: open streams per desk, ms changes are gathered, paths per event
+  files: { readBytes: 1024 * 1024, treeEntries: 3000, binarySniffBytes: 8000, watchers: 16, watchDebounceMs: 300, watchPaths: 200 },
+  // term/* sessions (companion/capabilities/terminal.js), per desk: running at once, finished ones kept listed, raw
+  // characters and view lines kept per session, the PTY size, minutes a session may run (a desk's `terminal:
+  // { backgroundMinutes }` changes it), the SIGTERM → SIGKILL grace, the longest wait (term/start wait, term/wait),
+  // stdin per write, the full log per session (state/terminal/<id>.log) and how many logs are kept, the
+  // state/terminal.jsonl rows (tail characters, rows kept once it passes logMaxBytes)
+  term: {
+    maxSessions: 6,
+    keepFinished: 20,
+    keepChars: 200000,
+    keepLines: 2000,
+    lineChars: 4000, // a line longer than this (no newline yet) is cut into the view
+    tailLines: 50,
+    maxTailLines: 1000,
+    cols: 120,
+    rows: 32,
+    backgroundMinutes: 120,
+    stopGraceMs: 5000,
+    waitMaxSeconds: 600,
+    inputChars: 4000,
+    nameChars: 60,
+    untilChars: 300, // term/wait's `until`: literal texts, characters each and how many
+    untilTexts: 8,
+    urlScanChars: 200,
+    logBytes: 20 * 1024 * 1024,
+    keepLogs: 100,
+    rowTailChars: 4000,
+    rowKeep: 200,
+    rowMaxBytes: 512 * 1024,
+  },
+  // browser/* pages (companion/capabilities/browser.js, Bun.WebView): open pages per desk and per process, the
+  // default and allowed viewport, navigation / action timeouts and the settle after one, screenshots kept per page
+  // (state/browser/<id>/<n>.png) and page folders kept, closed pages still listed, the caps on eval results, the
+  // text outline, typed text, console lines kept / shown in a summary and their length
+  browser: {
+    perDesk: 3,
+    perProcess: 6,
+    width: 1280,
+    height: 800,
+    minSize: 200,
+    maxSize: 3840,
+    navTimeoutMs: 15000,
+    actionTimeoutMs: 10000,
+    settleMs: 250,
+    keepShots: 20,
+    keepPages: 20,
+    keepClosed: 10,
+    evalChars: 20000,
+    textChars: 8000,
+    inputChars: 20000,
+    consoleKeep: 200,
+    consoleShown: 20,
+    consoleLineChars: 500,
+  },
   // fs/write body (companion/server/host-api.js); requests up to 2x are read
   hostApi: { writeBytes: 8 * 1024 * 1024 },
   // shared OAuth token files (companion/capabilities/oauth-file.js)
@@ -94,13 +140,7 @@ export const HOST_LIMITS = {
   wakes: { bookBytes: 32 * 1024, keepClosed: 40, listRecent: 20 },
   // team server (companion/team/team.js, team-worker.js)
   team: {
-    flushMs: 33, // state patches batched to ~30/s
-    callTimeoutMs: 30 * 60 * 1000, // team/call default wait
-    maxCallTimeoutMs: 6 * 60 * 60 * 1000,
-    fromChars: 80,
-    logPreviewChars: 80,
-    runPreviewChars: 100,
+    logPreviewChars: 80, // a run's text in the desk log
+    runPreviewChars: 100, // a run's first line in GET desks (work)
   },
-  // headless ask (companion/team/ask.js)
-  ask: { timeoutSeconds: 1800, approvalPreviewChars: 160 },
 }

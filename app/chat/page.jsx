@@ -1,7 +1,7 @@
-import { Chat } from "@/components/chat/chat";
+import { ChatRedirect } from "@/components/agents/chat-redirect";
 
-export const metadata = { title: "Chat · ASKK" };
+export const metadata = { title: "Agents · ASKK" };
 
 export default function ChatPage() {
-  return <Chat />;
+  return <ChatRedirect />;
 }

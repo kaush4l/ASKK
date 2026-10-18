@@ -22,7 +22,6 @@
 
 import { readdir } from "node:fs/promises"
 import { join, resolve } from "node:path"
-import { pathToFileURL } from "node:url"
 import { httpError } from "../shared/http.js"
 import { HOST_LIMITS } from "../shared/config.js"
 
@@ -44,7 +43,7 @@ export async function loadIntegrations({ dir = resolve(process.cwd(), "integrati
     const file = join(dir, folder, "index.js")
     if (!(await Bun.file(file).exists())) continue
     try {
-      const create = (await import(pathToFileURL(file).href)).default
+      const create = (await import(Bun.pathToFileURL(file).href)).default
       const integration = await create({ env, log: (...args) => log(`${folder}:`, ...args) })
       if (!integration) {
         integrations.set(folder, { name: folder, error: "not configured (see its .env values)", tools: [] })
@@ -86,7 +85,14 @@ export async function loadIntegrations({ dir = resolve(process.cwd(), "integrati
   return {
     names: [...integrations.keys()],
     listening,
+    close: () => controller.abort(), // its listeners stop (a desk reloaded: companion/server/desks.js)
     has: (name) => integrations.has(name),
+    // The integration itself, for host code only (a server-side bridge: companion/team/kernel-telegram.js);
+    // never listed to agents, and its calls skip the desk's guard, which governs agents' tool calls.
+    get: (name) => {
+      const integration = integrations.get(name)
+      return integration && !integration.error ? integration : null
+    },
 
     // The same shape as the MCP client's tools() entries.
     servers() {

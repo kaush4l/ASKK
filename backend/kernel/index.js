@@ -1,0 +1,26 @@
+// The kernel: agent loop, artifacts, tools, callbacks, teams. Plain JS, no host or worker
+// dependency, so the same code runs in a tab, a worker, a Bun server and a test.
+// The one entry from outside the kernel: import from here, never from a file in its folders (map: README.md).
+export { Agent, CHAT_FORMAT } from "./agent/agent.js"
+export { parseReply, RESPONSE_FORMAT } from "./agent/reply.js"
+export { REPORT_FORMAT, REPORT_FIELDS, checkReport, parseReport, scoreReport } from "./agent/report.js"
+export { Tool, AgentTool, QUEST_INPUT, questText, defineTool, TOOL_NAME } from "./tool/tool.js"
+export { Artifact } from "./artifact/artifact.js"
+export { SharedBoard } from "./artifact/board.js"
+export { Checklist } from "./artifact/checklist.js"
+export { QualityMatrix } from "./artifact/quality.js"
+export { Schedule } from "./artifact/schedule.js"
+export { Desk, buildDesk, buildAgent } from "./desk/desk.js"
+// The inbuilt kit (2026-10-17): its catalogue (attach by name), the desk's Plan, the spawn tools, files, terminal,
+// preview, web.
+export { BUILTIN, builtinKit } from "./builtin/index.js"
+export { Plan } from "./builtin/plan.js"
+export { spawnTool, dismissTool, SPAWN_TOOLS, SPAWN_NAME } from "./builtin/spawn.js"
+export { Files, hostFiles, walkTree, lineDiff, globRegex, inLane, globCovers, mayContain, cleanPath, hostError } from "./builtin/files.js"
+export { Terminal } from "./builtin/terminal.js"
+export { Preview } from "./builtin/preview.js"
+export { Dispatch } from "./builtin/dispatch.js"
+export { Charts, parseRows, seriesOf, seriesLine, downsample } from "./builtin/charts.js"
+export { webSearchTool, webReadTool, WEB_TOOLS } from "./builtin/web.js"
+export { complete, contextWindow, listModels } from "./model/llm.js"
+export { narrowText, READ_CHARS, FIND_CHARS, FIND_AROUND } from "./util/text.js"

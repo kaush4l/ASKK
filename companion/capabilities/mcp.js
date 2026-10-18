@@ -1,6 +1,6 @@
 // MCP (Model Context Protocol) client for the host API: ASKK connects to the
-// MCP servers the owner lists in `.mcp.json` and offers their tools to
-// agents (backend/features/mcp/). Servers are connected lazily, on first use,
+// MCP servers the owner lists in `.mcp.json` (and a desk's own mcp.json) and offers their tools to
+// the desk's agents (mcp/call). Servers are connected lazily, on first use,
 // and kept running.
 //
 //   const mcp = await createMcp({ files })  null when no file lists a server
@@ -304,12 +304,16 @@ export async function createMcp({ files = [] }) {
   // How the Live follow page renders this server's calls (e.g. "browser"), when the file says.
   const viewOf = (name) => (typeof servers[name].view === "string" && SAFE.test(servers[name].view) ? { view: servers[name].view } : {})
 
-  process.on("exit", () => {
+  const close = () => {
     for (const conn of live.values()) conn.close()
-  })
+    live.clear()
+    lists.clear()
+  }
+  process.on("exit", close)
 
   return {
     names: Object.keys(servers),
+    close, // the servers started so far (a desk reloaded: companion/server/desks.js)
     async tools() {
       return Promise.all(
         Object.keys(servers).map(async (name) => {

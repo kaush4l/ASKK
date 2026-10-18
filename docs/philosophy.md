@@ -1,111 +1,75 @@
 # Engineering philosophy
 
-ASKK is a team of agents you can watch work. Every design choice follows
-from one idea:
+ASKK is a team of agents you can watch work. Every design choice follows from one idea:
 
-> **Every engine is a live object: its own thread, its own inbox, its own
-> tools and state, and a UI attached to that state. Whatever it does, you
-> see as it happens.**
+> **Everything that runs has a UI twin. The kernel is plain code, but each agent, tool, artifact, run and piece of
+> background work reaches the screen as it happens, so the owner can follow the trail.**
 
-## 1. One engine, one thread, one inbox
+## 1. The core, the desk, the host
 
-Each agent runs as an engine in its own Web Worker. It owns:
+- **The core** (`backend/kernel/`) is the agent loop and its parts — `Agent`, `Tool`, `Artifact`, teams, checklists,
+  quality, schedule, reports — plain code with no host dependency.
+- **A desk** (`custom/<desk>/`) is one team built on the core: its agents (folders with `agent.md`), its tools and
+  artifacts, its background work.
+- **The host** (`companion/`) starts the desk and gives it the infrastructure: files, web, MCP tool servers, local
+  models, the wake book, Telegram, and the team stream every tab follows.
 
-- **an inbox**: every piece of work arrives as a letter: your message, another agent's quest, a report on a quest it handed out;
-- **its tools and artifacts**: what it can do, and the live objects it works on;
-- **its memory**: its conversation, saved as Markdown;
-- **its status**: `created → idle ⇄ running → disposed`, plus what it is doing right now (`activity`).
+## 2. Agents never wait on each other's threads
 
-An engine works one letter at a time. A deposit while it is idle starts the work.
+An agent runs one request at a time. A call to another agent is a quest — a brief with the requirement, the ask
+and the outcome — and the report comes back as its result. Calls in one step run together. Nothing blocks the
+desk: the owner can message any agent, and the desk's own watchers keep running.
 
-## 2. Send messages, never wait on another agent
+## 3. Every element has a twin
 
-Engines talk only by putting letters in each other's inboxes. Calling another agent hands it a quest and returns at once. The caller's turn ends, and the report comes back as a new letter that wakes it. No agent ever blocks on another, so each one is always free to show its own state and to take your next message.
+| In the kernel | On the screen |
+|---|---|
+| an agent (its agent.md, tools, artifacts) | its page: role, tools by type and view, artifacts held, runs, next prompt, model calls |
+| an agent's live state | its colour in the tree, its dot in the status bar, its activity line |
+| a run (request → steps → answer) | the thread on its page; the Telegram status message |
+| a tool call | a row in the Live feed, drawn by the tool's `view` |
+| an answer refused (gate, format) | a row in the thread and the feed, with the reason |
+| an artifact | one renderer per view, on its team's card, in Live and on its holders' pages |
+| a model call | the agent's stats: calls, latency, prompt and reply size |
+| the desk's background work | the desk log (watchers, schedule, wakes, Telegram) |
 
-## 3. Long work is supervised, not capped
-
-Agents may take as many steps as a quest needs, and a manager as many rounds; there is no fixed loop limit. Unlimited work brings risks: an agent drifting from its quest, looping on the same call, or stalling. The answer is supervision instead of a cap. A system supervisor reads every running engine's state, and every few minutes or steps sends the quest's owner a status letter with a digest of the latest work. The owner checks it against the quest: lets it run, steers it, or calls it back. The owner can always see the same thing and press Stop.
+A new kernel event or field reaches the stream and gets its view in the same change. If the kernel knows it and
+the screen cannot show it, that is a bug.
 
 ## 4. State is the interface
 
-An engine's state is one immutable snapshot, replaced on every change:
+The server keeps one immutable snapshot per agent and streams it as patches (`team/stream`). The browser keeps
+one store per element (`backend/live/`): agents, the desk (tree, boards, artifacts), the log. Components subscribe
+(`useSyncExternalStore`) and only render.
 
-- status and activity;
-- messages, streamed token by token;
-- pending approvals;
-- open quests and queued letters;
-- token metrics and context use;
-- artifact state.
-
-The worker sends changes as batched patches (about 30 per second, only what changed). The UI subscribes (`useSyncExternalStore`) and only renders.
-
-So:
-
-- **Nothing is hidden.** If the engine knows it, it is in the state; if it is
-  in the state, the UI can show it. That covers thinking, each tool call and
-  its result, a quest handed out, "Waiting for planner, critic", an approval
-  card, and the exact prompt sent (`<>`).
-- **Behaviour lives on the engine, not in components.** Components read
-  state and call engine methods (`send`, `stop`, `resolveApproval`, memory
-  actions). They never decide what an agent does.
-- **Every surface reads the same state.** The chat, the engine bar, the
-  activity line, the status bar along the bottom of every page, and the
-  headless CLI's progress lines all subscribe to it.
-  A new view is a new subscriber, never a new code path in the engine.
+- **Behaviour lives in the kernel and the desk, not in components.** Components read state and call the agent's
+  methods (`send`, `stop`, `preview`, `clearMemory`). They never decide what an agent does.
+- **Every surface reads the same state.** Home, the agent page, Live follow, the status bar, speech to speech and
+  the Telegram status all subscribe to it. A new view is a new subscriber, never a new code path in the kernel.
 
 ## 5. The owner stays in control
 
-- **Changes are approved one by one.** Every change to your files waits for
-  your approval. A declined call stays declined for that request.
-- **Anything in flight can be stopped.** Stop aborts the current work, and
-  Call back recalls quests that are still out.
-- **Results are reported honestly.** A failed tool call is recorded as a
-  failure (`ok: false`), and the agent must report it as one. A write over a
-  file must be based on the version the agent actually saw.
+- **Anything in flight can be stopped**: from the page, the status bar, Telegram (`/stop`).
+- **The desk's rules live where agents cannot write**: its `host()` guard checks every tool call.
+- **Results are reported honestly.** A failed call is recorded as a failure, a refused answer says why, and the
+  report format is checked in code.
 
-## 6. Core defines the flow; features implement it
+## 6. The prompt shows the present
 
-`backend/core/` holds the contracts and the flow: engine, artifact, tool,
-prompt template, response parsing. `backend/features/` holds the
-implementations, one folder each (filesystem, skills), registered in one
-catalogue. Core never imports a feature directly. To add a capability you
-write a feature; the flow stays as it is.
+Every step renders the whole prompt in the owner's reading order (2026-10-17): soul → role → artifacts (latest
+state only) → the request (and the owner's guidance) → earlier runs → this run's steps → tools → the response
+format. Artifacts never show a log of edits, so context stays
+small however much work happens; old step results keep head and tail.
 
-## 7. The prompt shows the present
+## 7. Identity apart from the job
 
-The complete prompt is rendered fresh for every request, in a fixed order:
-soul → role → context → history → artifacts → tools → response format →
-request.
-
-- **Artifacts show only their latest state**, never a log of edits, so
-  context stays small however much work happens.
-- **History holds finished turns.** The current request's own steps follow
-  it, so the model continues instead of starting over.
-
-## 8. Identity apart from the job
-
-The soul is who every agent is: values and character, the same in every
-role. The role (`agent.md`) is the hat for this work: what the work looks
-like, its rules, and what has been learned. See `soul-and-role.md`.
-
-## 9. One codebase, every way of running it
-
-The same engines run:
-
-- in the browser (static hosting, files in browser storage);
-- beside your folder (dev server or the `askk` program, through the host
-  API);
-- headless (`askk ask`, for scripts and cron).
-
-The app has no server state: the host only provides capabilities (reading
-and writing a folder) and never runs agents. Code that only works in one
-mode is a bug.
+The soul is who every agent is: values and character, the same in every role. The role (`agent.md` body) is the
+hat for this work: what the work looks like, its rules, and what has been learned. See `soul-and-role.md`.
 
 ## Checklist for a change
 
-- Does the new behaviour show up in engine state, so the UI can show it?
-- Does it live on the engine (or a feature), not in a component?
-- Does it block on another agent, or does it send a letter?
-- Can the owner see it, approve it, and stop it?
-- If it can run long, does it show up in the supervisor's status checks?
-- Does it work in the browser, beside a folder, and headless?
+- Does the new behaviour reach the stream, and does it have a view?
+- Does it live in the kernel or the desk, not in a component?
+- Can the owner see it and stop it?
+- Does a long or background job write to the desk log?
+- Does it run on a phone-width screen as well as a desktop?

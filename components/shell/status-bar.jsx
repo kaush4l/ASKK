@@ -3,35 +3,22 @@
 import * as React from "react"
 import { useRouter } from "next/navigation"
 
-import { describeActivity } from "@/backend/core/activity"
-import { models } from "@/backend/models/catalog"
-import { formatTokens } from "@/backend/models/metrics"
-import { detectHost } from "@/backend/platform/host"
-import { engineRegistry } from "@/backend/runtime/registry"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+import { describeActivity } from "@/backend/live/activity"
+import { detectHost } from "@/backend/live/host"
+import { registry } from "@/backend/live/registry"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { useEngineState, useEngines } from "@/hooks/use-engines"
-import { useModels } from "@/hooks/use-models"
+import { useDeskLog, useEngineState, useEngines } from "@/hooks/use-engines"
 import { engineTone, initials } from "@/lib/engine-tone"
 import { ROUTES } from "@/lib/config"
+import { agentHref } from "@/lib/nav"
 import { cn } from "@/lib/utils"
 
-// The status bar: a thin strip pinned to the bottom of every page, showing
-// live state at a glance — where ASKK runs, every agent's status, and what
-// the selected agent is doing. It only reads state (registry, engine
-// snapshots), like every other view.
+// The status bar: a thin strip pinned to the bottom of every page, showing live state at a glance — where the
+// desk runs, every agent's status, the desk's newest background line, and what the selected agent is doing and
+// what its model calls cost. It only reads state (registry, agent snapshots, the desk log), like every other view.
 //
-// Add an item: a component built on <StatusItem>, placed in the left group
-// (overall state) or the right group (the selected agent).
+// Add an item: a component built on <StatusItem>, placed in the left group (overall state) or the right group
+// (the selected agent).
 
 // One item: compact text with an optional tooltip; a button when clickable.
 function StatusItem({ tip, onClick, className, children, ...props }) {
@@ -74,14 +61,14 @@ function HostItem() {
   }, [])
   if (!host) return null
   const local = host.mode === "local"
-  const folder = local ? host.root.split(/[\\/]/).filter(Boolean).at(-1) : null
+  const name = local ? (host.desk?.name ?? host.root.split(/[\\/]/).filter(Boolean).at(-1)) : null
   return (
     <StatusItem
-      aria-label={local ? `Running on this computer, workspace ${host.root}` : "Running in the browser only"}
-      tip={local ? <span className="break-all">This computer · {host.root}</span> : "Browser only: files are kept in this browser"}
+      aria-label={local ? `Desk ${name} on this computer, workspace ${host.root}` : "No desk server"}
+      tip={local ? <span className="break-all">Desk {name} · {host.root}</span> : "No desk server answers here: start it with bun run dev"}
     >
       <Dot className={local ? "bg-emerald-500" : "bg-amber-500"} />
-      <span className="max-w-32 truncate max-sm:hidden">{local ? folder : "Browser"}</span>
+      <span className="max-w-32 truncate max-sm:hidden">{local ? name : "No desk"}</span>
     </StatusItem>
   )
 }
@@ -90,76 +77,57 @@ function EngineItem({ engine, active }) {
   const router = useRouter()
   const state = useEngineState(engine)
   const tone = engineTone(state)
-  const approvals = state?.approvals?.length ?? 0
-  const quests = state?.quests ?? []
-  const queued = state?.inbox?.length ?? 0
-  const spawned = engine.agent?.spawned ?? null // created by another agent (team artifact)
-
   return (
     <StatusItem
       onClick={() => {
-        engineRegistry.select(engine.id)
-        router.push(ROUTES.chat)
+        registry.select(engine.id)
+        router.push(agentHref(engine.name))
       }}
-      aria-label={`${engine.name}: ${tone.word}${approvals ? `, ${approvals} waiting for approval` : ""}`}
+      aria-label={`${engine.name}: ${tone.word}`}
       className={cn(active && "text-foreground")}
       tip={
         <>
           <span className="text-foreground">
             {engine.name} · {tone.word}
           </span>
-          {spawned && (
-            <span>
-              Sub-agent of {spawned.by} · {spawned.keep ? "kept on the team" : `task agent (ends after ${spawned.idle_minutes} min idle)`}
-            </span>
-          )}
+          {engine.description && <span className="line-clamp-3">{engine.description}</span>}
           {state?.error && <span className="text-destructive">{state.error}</span>}
-          {approvals > 0 && <span>{approvals} change{approvals > 1 ? "s" : ""} waiting for your approval</span>}
-          {quests.map((q) => (
-            <span key={q.id} className="truncate">
-              Quest out → {q.to}: {q.text}
-            </span>
-          ))}
-          {queued > 0 && <span>{queued} letter{queued > 1 ? "s" : ""} in its inbox</span>}
-          <span className="text-muted-foreground">Open its chat</span>
+          <span className="text-muted-foreground">Open its page</span>
         </>
       }
     >
       <Dot className={tone.dot} />
       <span className="sm:hidden">{initials(engine.name)}</span>
-      <span className={cn("max-w-24 truncate max-sm:hidden", spawned && !spawned.keep && "italic")}>
-        {spawned ? "↳ " : ""}
-        {engine.name}
-      </span>
-      {approvals > 0 && (
-        <span className="rounded-full bg-amber-500 px-1 text-[10px] leading-3.5 text-black tabular-nums">{approvals}</span>
-      )}
+      <span className="max-w-24 truncate max-sm:hidden">{engine.name}</span>
     </StatusItem>
   )
 }
 
-// Autopilot mode (registry): on, every tool call is approved without asking,
-// so scheduled runs work unattended; off, each one waits for the owner.
-function AutopilotItem({ on }) {
+// ── right ──────────────────────────────────────────────────────────────────
+
+// The desk's newest background line (watchers, schedule, wakes, Telegram); the whole log is on the Live page.
+function DeskLogItem() {
+  const router = useRouter()
+  const lines = useDeskLog()
+  const last = lines.at(-1)
+  if (!last) return null
   return (
     <StatusItem
-      onClick={() => engineRegistry.setAutopilot(!on)}
-      aria-pressed={on}
-      aria-label={on ? "Autopilot: tool calls are approved automatically. Turn off" : "Approvals: tool calls wait for you. Turn on autopilot mode"}
+      onClick={() => router.push(`${ROUTES.live}?tab=desk`)}
+      aria-label={`Desk log: ${last.text}. Open the desk log`}
       tip={
-        on
-          ? "Autopilot: every agent's tool calls are approved automatically (scheduled runs work unattended). Click to ask first again."
-          : "Agents ask before each change. Click for autopilot mode: approve every tool call automatically."
+        <>
+          <span className="text-foreground">{new Date(last.at).toLocaleTimeString()} · {last.source}</span>
+          <span className="break-words">{last.text}</span>
+          <span className="text-muted-foreground">Open the desk log</span>
+        </>
       }
-      className={cn(on && "text-amber-500")}
+      className="min-w-0 shrink max-md:hidden"
     >
-      <Dot className={on ? "bg-amber-500" : "bg-muted-foreground/40"} />
-      <span className="max-md:hidden">{on ? "Autopilot" : "Asks first"}</span>
+      <span className="max-w-64 truncate">{last.text}</span>
     </StatusItem>
   )
 }
-
-// ── right: the selected agent ──────────────────────────────────────────────
 
 function ActivityItem({ engine, state }) {
   if (!state || (state.status !== "running" && state.activity?.phase !== "waiting")) return null
@@ -171,77 +139,37 @@ function ActivityItem({ engine, state }) {
   )
 }
 
-// The selected agent's model, and a menu to switch the default model. Every
-// agent without its own `model:` uses the default, so it switches on the fly
-// (the registry reconfigures engines when the catalogue changes).
+const seconds = (ms) => (ms == null ? "—" : ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`)
+
+// The selected agent's model and its model calls (kernel step stats: count, latency, prompt size).
 function ModelItem({ engine, state }) {
-  const catalogue = useModels()
-  if (!state) return null
-  const model = engine.model
-  const fixed = engine.agent?.model ?? null
+  if (!engine || !state) return null
   const stats = state.stats
-  const window = state.contextWindow ?? stats?.contextWindow ?? null
-  const used = stats?.contextUsed ?? null
-  const percent = used != null && window ? Math.round(Math.min(100, (used / window) * 100)) : null
-  const approx = stats?.estimated ? "~" : ""
-  const speed = stats?.tokensPerSecond != null ? `${approx}${stats.tokensPerSecond.toFixed(1)} tok/s` : null
-  const tip = `${model ? `${model.key} · ${model.id}` : "No model: add one in Settings"} · context ${approx}${formatTokens(used)} of ${formatTokens(window)} tokens`
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <button
-            type="button"
-            title={tip}
-            aria-label={`Model: ${model?.key ?? "none"}. Switch the default model`}
-            className="flex h-full min-w-0 shrink-0 items-center gap-1.5 px-2 outline-none hover:bg-accent hover:text-foreground focus-visible:bg-accent focus-visible:text-foreground pointer-coarse:min-w-10 pointer-coarse:justify-center"
-          />
-        }
-      >
-        <span className={cn("max-w-32 truncate", !model && "text-destructive")}>{model?.key ?? "no model"}</span>
-        {speed && <span className="tabular-nums max-md:hidden">{speed}</span>}
-        {percent != null && <span className="tabular-nums max-md:hidden">ctx {percent}%</span>}
-      </DropdownMenuTrigger>
-      <DropdownMenuContent side="top" align="end" className="w-64">
-        <DropdownMenuGroup>
-          <DropdownMenuLabel>Default model</DropdownMenuLabel>
-          {catalogue.models.length ? (
-            <DropdownMenuRadioGroup
-              value={catalogue.default ?? ""}
-              onValueChange={(key) => {
-                if (key && key !== catalogue.default) models.setDefault(key)
-              }}
-            >
-              {catalogue.models.map((m) => (
-                <DropdownMenuRadioItem key={m.key} value={m.key} className="pointer-coarse:min-h-10">
-                  <span className="flex min-w-0 flex-col">
-                    <span className="truncate">{m.label || m.key}</span>
-                    <span className="truncate text-xs text-muted-foreground">
-                      {m.provider} · {m.id}
-                    </span>
-                  </span>
-                </DropdownMenuRadioItem>
-              ))}
-            </DropdownMenuRadioGroup>
+    <StatusItem
+      aria-label={`${engine.name}'s model: ${engine.model ?? "the desk's default"}`}
+      tip={
+        <>
+          <span className="text-foreground">{engine.name} · {engine.model ?? "the desk's default model"}</span>
+          {stats ? (
+            <>
+              <span>{stats.calls} model call{stats.calls === 1 ? "" : "s"} · last {seconds(stats.lastMs)} · average {seconds(stats.avgMs)}</span>
+              <span>last prompt {stats.promptChars?.toLocaleString()} chars · reply {stats.replyChars?.toLocaleString()} chars</span>
+            </>
           ) : (
-            <DropdownMenuLabel className="font-normal text-muted-foreground">No models: add one in Settings</DropdownMenuLabel>
+            <span>No model calls since the desk started.</span>
           )}
-        </DropdownMenuGroup>
-        {fixed && (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuLabel className="font-normal text-muted-foreground">
-              {engine.name} keeps its own model ({fixed})
-            </DropdownMenuLabel>
-          </>
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
+        </>
+      }
+    >
+      <span className="max-w-32 truncate">{engine.model ?? "default"}</span>
+      {stats && <span className="tabular-nums max-md:hidden">{stats.calls}× · {seconds(stats.lastMs)}</span>}
+    </StatusItem>
   )
 }
 
 export function StatusBar() {
-  const { engines, activeId, status, autopilot } = useEngines()
+  const { engines, activeId, status } = useEngines()
   const active = engines.find((e) => e.id === activeId) ?? null
   const state = useEngineState(active)
 
@@ -252,14 +180,14 @@ export function StatusBar() {
     >
       <div className="flex min-w-0 items-stretch overflow-x-auto">
         <HostItem />
-        {status === "loading" && <StatusItem>Starting agents…</StatusItem>}
-        {status === "error" && <StatusItem className="text-destructive">Agents failed to start</StatusItem>}
+        {status === "connecting" && <StatusItem>Connecting to the desk…</StatusItem>}
+        {status === "error" && <StatusItem className="text-destructive">The desk failed to start</StatusItem>}
         {engines.map((engine) => (
           <EngineItem key={engine.id} engine={engine} active={engine.id === activeId} />
         ))}
       </div>
       <div className="flex min-w-0 items-stretch justify-end">
-        {status === "ready" && <AutopilotItem on={autopilot} />}
+        <DeskLogItem />
         <ActivityItem engine={active} state={state} />
         <ModelItem engine={active} state={state} />
       </div>

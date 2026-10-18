@@ -1,11 +1,11 @@
-import { CheckIcon, CircleDotIcon, HandIcon, LoaderIcon, XIcon } from "lucide-react"
+import { CheckIcon, LoaderIcon, XIcon } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
+// A Live feed row's state: liveFeed (backend/live/follow.js) gives running | done, a done row ok or not
+// (2026-10-17: the retired engine's approval and skipped states had no source left).
 export function StateMark({ event, className }) {
   if (event.state === "running") return <LoaderIcon className={cn("size-3.5 shrink-0 animate-spin text-sky-500", className)} aria-label="Running" />
-  if (event.state === "approval") return <HandIcon className={cn("size-3.5 shrink-0 text-amber-500", className)} aria-label="Waiting for approval" />
-  if (event.skipped) return <CircleDotIcon className={cn("size-3.5 shrink-0 text-muted-foreground", className)} aria-label="Skipped" />
   return event.ok ? (
     <CheckIcon className={cn("size-3.5 shrink-0 text-emerald-500", className)} aria-label="Succeeded" />
   ) : (

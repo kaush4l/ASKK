@@ -2,25 +2,23 @@
 
 import { useCallback, useEffect, useRef, useSyncExternalStore } from "react"
 
-import { engineRegistry } from "@/backend/runtime/registry"
+import { kernelDesk } from "@/backend/live/desk"
+import { deskLog } from "@/backend/live/log"
+import { registry } from "@/backend/live/registry"
 
 const noopSubscribe = () => () => {}
 const nullSnapshot = () => null
 
-// Registry state ({ agents, status, engines, activeId, ... }).
-// The first caller starts the registry: agents load and engines initialize.
+// The desk this tab follows ({ status, error, connected, agents, engines, requiredId, activeId }). The first caller
+// starts the registry: it opens the desk server's team stream (backend/live/registry.js).
 export function useEngines() {
   useEffect(() => {
-    engineRegistry.start()
+    registry.start()
   }, [])
-  return useSyncExternalStore(
-    engineRegistry.subscribe,
-    engineRegistry.getSnapshot,
-    engineRegistry.getSnapshot
-  )
+  return useSyncExternalStore(registry.subscribe, registry.getSnapshot, registry.getServerSnapshot)
 }
 
-// One engine's { status, messages, error }, or null when there is no engine.
+// One agent's state ({ status, activity, messages, … }), or null when there is no agent.
 export function useEngineState(engine) {
   return useSyncExternalStore(
     engine?.subscribe ?? noopSubscribe,
@@ -29,8 +27,8 @@ export function useEngineState(engine) {
   )
 }
 
-// Every engine's state, in the order of `engines` (dashboard views that
-// read them all). The array is new only when one of the snapshots changed.
+// Every agent's state, in the order of `engines` (views that read them all). The array is new only when one of
+// the snapshots changed.
 export function useEngineStates(engines) {
   const cache = useRef({ engines: null, states: [] })
   const subscribe = useCallback(
@@ -48,4 +46,20 @@ export function useEngineStates(engines) {
     return states
   }
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
+}
+
+// The desk's tree, boards and artifacts ({ title, tree, boards, artifacts }), or null before the first snapshot.
+export function useDesk() {
+  useEffect(() => {
+    registry.start()
+  }, [])
+  return useSyncExternalStore(kernelDesk.subscribe, kernelDesk.getSnapshot, kernelDesk.getServerSnapshot)
+}
+
+// The desk's background log (watchers, schedule, wakes, Telegram), newest last.
+export function useDeskLog() {
+  useEffect(() => {
+    registry.start()
+  }, [])
+  return useSyncExternalStore(deskLog.subscribe, deskLog.getSnapshot, deskLog.getServerSnapshot)
 }

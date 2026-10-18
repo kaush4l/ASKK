@@ -3,7 +3,7 @@
 import * as React from "react"
 import { ChevronLeftIcon, FileIcon, FilePlusIcon, FolderIcon, LinkIcon, LoaderIcon, PencilIcon, Trash2Icon } from "lucide-react"
 
-import { workspace } from "@/backend/features/filesystem/workspace"
+import { workspace } from "@/backend/live/workspace"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -158,10 +158,9 @@ function NewFile({ dir, onCreate, onCancel }) {
   )
 }
 
-// Browse and edit the workspace: the folder the companion runs in (local
-// mode), or the browser workspace (static build).
+// Browse and edit the desk's workspace (its data/ folder) through the desk server.
 export function FilesPage() {
-  const [ws, setWs] = React.useState(null)
+  const [ws, setWs] = React.useState(undefined) // undefined: checking; null: no desk server
   const [dir, setDir] = React.useState(null) // { path, entries }
   const [file, setFile] = React.useState(null)
   const [creating, setCreating] = React.useState(false)
@@ -221,21 +220,21 @@ export function FilesPage() {
     setFile(await ws.read(result.path))
   }
 
-  const rootName = ws?.kind === "host" ? (ws.label.split(/[\\/]/).filter(Boolean).at(-1) ?? ws.label) : "workspace"
+  const rootName = ws ? (ws.label.split(/[\\/]/).filter(Boolean).at(-1) ?? ws.label) : "workspace"
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4 p-4 md:p-6">
       <div className="flex flex-col gap-1">
         <div className="flex flex-wrap items-center gap-2">
           <h1 className="text-2xl">Files</h1>
-          {ws && <Badge variant="outline">{ws.kind === "host" ? "This computer" : "Browser"}</Badge>}
+          {ws && <Badge variant="outline">This computer</Badge>}
         </div>
-        <p className={cn("text-sm text-muted-foreground", ws?.kind === "host" ? "break-all" : "break-words")}>
-          {!ws
+        <p className="text-sm break-all text-muted-foreground">
+          {ws === undefined
             ? "Opening the workspace…"
-            : ws.kind === "host"
+            : ws
               ? `${ws.label} · ${ws.writable ? "read + write" : "read-only"}`
-              : "Stored in this browser (OPFS). Run ASKK from source (bun run dev) to work on your own folder."}
+              : "No desk server answers here: start it with bun run dev to browse its workspace."}
         </p>
       </div>
 

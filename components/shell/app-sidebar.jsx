@@ -7,7 +7,6 @@ import { ZapIcon } from "lucide-react"
 import {
   Sidebar,
   SidebarContent,
-  SidebarFooter,
   SidebarGroup,
   SidebarGroupLabel,
   SidebarHeader,
@@ -17,7 +16,7 @@ import {
   SidebarRail,
   useSidebar,
 } from "@/components/ui/sidebar"
-import { componentItems, homeItem, settingsItem } from "@/lib/nav"
+import { componentItems, homeItem } from "@/lib/nav"
 
 function NavLink({ item, pathname }) {
   const Icon = item.icon
@@ -52,7 +51,7 @@ export function AppSidebar(props) {
               </div>
               <div className="grid flex-1 text-left text-sm leading-tight">
                 <span className="truncate font-medium">ASKK</span>
-                <span className="truncate text-xs">Client-side workspace</span>
+                <span className="truncate text-xs">Live desk</span>
               </div>
             </SidebarMenuButton>
           </SidebarMenuItem>
@@ -73,11 +72,6 @@ export function AppSidebar(props) {
           </SidebarMenu>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter>
-        <SidebarMenu>
-          <NavLink item={settingsItem} pathname={pathname} />
-        </SidebarMenu>
-      </SidebarFooter>
       <SidebarRail />
     </Sidebar>
   )

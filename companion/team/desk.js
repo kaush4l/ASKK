@@ -1,29 +1,32 @@
-// A desk: one agent team in its own folder, everything it needs inside it.
+// A desk: one agent team in its own folder, built on the kernel (backend/kernel), everything it needs inside it.
 //
 //   custom/<desk>/
-//     desk.js     the desk's init script (below): its variables and host tools
-//     agents/     index.json, soul.md, <name>/agent.md, skills/, mcp.json
-//     tools/      host-side code only this desk uses, wired by desk.js
+//     main.js     the desk's entry (below): builds its agents on the kernel in start()
+//     agents/     its agents as folders, nested by team (<team>/<agent>/agent.md + transcript)
+//     tools/      host-side code only this desk uses (its tools, watchers, artifacts)
 //     vendor/     applications only this desk uses (git-ignored with custom/)
-//     data/       the workspace: the team's shared files (agents read and write it)
-//     memory/     every engine's memory.md, history and artifacts (outside the workspace)
-//     state/      host state: settings, server.json, server.log, logs a desk's tools keep
+//     data/       the workspace: the desk's shared files (Files page, fs/*, the wake book in data/state/)
+//     state/      host state: server.json, kernel-team.jsonl, artifacts/, days/, logs its tools keep
+//   custom/memory/<desk>/   the desk's and its teams' memory and reports (kernel-team passes it to start)
 //
-// desk.js default-exports a function the host calls once at start:
+// main.js default-exports a function the host calls once at start:
 //
 //   export default function desk({ dir, env }) {
 //     return {
 //       name: "my-desk",                   // default: the folder name
-//       description: "…",
-//       port: 1112,                        // the always-on server's port (and its .next-desks/<name> build)
-//       model: { key, label, provider: "openai", base_url, id, context_length },   // the desk's default model
-//       models: { <key>: { label, provider, id, … } },   // more models its agents may name (agent.md `model:`)
-//       terminal: { programs: ["uv", "python", …], toolchains: [], timeoutSeconds: 300, backgroundMinutes: 120 },   // term.*; null = off
-//       integrations: [],                  // integrations/ it runs (default all; one Telegram listener per bot)
-//       artifacts: ["./tools/x/artifact.js"],   // modules (relative to the desk folder) whose exported Artifact
-//                                          // subclasses join the artifact catalogue (agent.md `artifacts:`)
-//       async setup({ dir, env, log }) {},  // optional startup script: once per continuous server, in the
-//                                          // background (update vendor clones, build tools, …); never blocks
+//       title, description,
+//       port: 1112,                        // its own port when it runs alone (and its .next-desks/<name> build)
+//       mcp: "./mcp.json",                 // its tool servers (mcpServers format), beside .mcp.json
+//       integrations: ["telegram"],        // integrations/ it runs (one Telegram listener per bot)
+//       terminal: { toolchains: ["python"], programs: ["make"], timeoutSeconds, backgroundMinutes },
+//                                          // its terminal sessions (host term/*: companion/capabilities/terminal.js)
+//       mounts: { desks: { root, allow: (name) => bool } },   // desks/<name>/… in its workspace = <root>/<name>/…
+//                                          // when allow(name) (fs/*, term cwd and lanes: capabilities/files.js)
+//       start: async ({ port, live, log, memory }) => ({ desk, ready?, run? }),   // builds the agents
+//                                          // (backend/kernel buildDesk); the host serves them as the team
+//                                          // (companion/team/kernel-team.js); run({wake, busy, log}) → stop
+//                                          // is its background work on a continuous server
+//       async setup({ dir, env, log }) {},  // optional: once per continuous server, in the background
 //       async host({ call, env, state, dir, root, listen }) {   // optional host tools of this desk
 //         return {
 //           wrap: (call) => call,          // wraps the MCP call (innermost first)
@@ -33,27 +36,19 @@
 //       },
 //     }
 //   }
-//
-// A folder without desk.js still loads (agents/ + data/); its memory and state
-// then live in custom/<team>/runtime/ as before.
 
-import { detectToolchains } from "../capabilities/toolchains.js"
-import { existsSync, readdirSync } from "node:fs"
+import { existsSync, readdirSync, readFileSync } from "node:fs"
 import { basename, dirname, join, resolve } from "node:path"
-import { pathToFileURL } from "node:url"
-import { TERM_BACKGROUND_MINUTES, HOST_LIMITS } from "../shared/config.js"
 
-// The desk folder of an agents folder or a desk folder, or null.
+const ENTRY = "main.js"
+const entryOf = (folder) => (existsSync(join(folder, ENTRY)) ? join(folder, ENTRY) : null)
+
+// The desk folder of a desk folder or its agents/ folder, or null.
 export function deskFolder(dir) {
   if (!dir) return null
   const full = resolve(dir)
   const folder = basename(full) === "agents" ? dirname(full) : full
-  return existsSync(join(folder, "desk.js")) ? folder : null
-}
-
-// The desk whose workspace is `root` (custom/<desk>/data), or null.
-export function deskOfRoot(root) {
-  return basename(root) === "data" ? deskFolder(dirname(root)) : null
+  return entryOf(folder) ? folder : null
 }
 
 export const deskPaths = (folder) => ({
@@ -65,20 +60,32 @@ export const deskPaths = (folder) => ({
   tools: join(folder, "tools"),
 })
 
-// Every desk in a folder (e.g. custom/): the subfolders with a desk.js, by name.
+// Every desk in a folder (e.g. custom/): the subfolders with a main.js, by name.
 export function listDesks(dir = "custom") {
   const base = resolve(dir)
   if (!existsSync(base)) return []
   return readdirSync(base, { withFileTypes: true })
-    .filter((d) => d.isDirectory() && existsSync(join(base, d.name, "desk.js")))
+    .filter((d) => d.isDirectory() && entryOf(join(base, d.name)))
     .map((d) => join(base, d.name))
     .sort()
+}
+
+// The running server of a desk, if any: { port, pid, root, desk? } from its state/server.json (kernel-team
+// announce). Scripts hand it work (scripts/send.js) instead of starting another.
+export function findDeskServer(desk) {
+  try {
+    const found = JSON.parse(readFileSync(join(desk.state, "server.json"), "utf8"))
+    process.kill(found.pid, 0) // throws when that process is gone
+    return found
+  } catch {
+    return null
+  }
 }
 
 const cache = new Map()
 const setups = new Set()
 
-// The desk's startup script (desk.js `setup`), once per process, in the background.
+// The desk's startup script (`setup`), once per process, in the background.
 export function runDeskSetup(desk, env = process.env) {
   if (!desk?.setup || setups.has(desk.folder)) return
   setups.add(desk.folder)
@@ -88,7 +95,12 @@ export function runDeskSetup(desk, env = process.env) {
     .catch((error) => log(`failed: ${error?.message ?? error}`))
 }
 
-// The desk's variables: desk.js called once per process, its answer kept.
+// A desk's config is loaded again at its next loadDesk (desks/load reloads a desk: companion/server/desks.js).
+export function forgetDesk(dir) {
+  cache.delete(deskFolder(dir) ?? resolve(dir))
+}
+
+// The desk's config: main.js called once per process, its answer kept. null when `dir` is not a desk.
 export async function loadDesk(dir, env = process.env) {
   const folder = deskFolder(dir)
   if (!folder) return null
@@ -96,54 +108,29 @@ export async function loadDesk(dir, env = process.env) {
     cache.set(
       folder,
       (async () => {
-        const create = (await import(pathToFileURL(join(folder, "desk.js")).href)).default
-        if (typeof create !== "function") throw new Error(`${folder}/desk.js must default-export a function.`)
+        const entry = entryOf(folder)
+        const create = (await import(Bun.pathToFileURL(entry).href)).default
+        if (typeof create !== "function") throw new Error(`${entry} must default-export a function.`)
         const config = (await create({ dir: folder, env })) ?? {}
-        // Toolchains (python, javascript, java, rust): only those installed here (capabilities/toolchains.js).
-        const chains = config.terminal?.toolchains?.length ? detectToolchains(config.terminal.toolchains) : null
-        const terminal = config.terminal
-          ? {
-              programs: [...new Set([...(chains?.programs ?? []), ...(config.terminal.programs ?? [])])],
-              path: chains?.path ?? null,
-              writable: chains?.writable ?? [],
-              env: chains?.env ?? {},
-              toolchains: chains ? { found: chains.found, missing: chains.missing } : null,
-              timeoutSeconds: Math.min(HOST_LIMITS.desk.termTimeoutMaxSeconds, Number(config.terminal.timeoutSeconds) || HOST_LIMITS.desk.termTimeoutSeconds),
-              backgroundMinutes: Math.max(1, Number(config.terminal.backgroundMinutes) || TERM_BACKGROUND_MINUTES),
-            }
-          : null
+        if (typeof config.start !== "function") throw new Error(`${entry}: a desk builds its agents in start({port, live, log, memory}).`)
         return {
           name: config.name ?? basename(folder),
+          title: config.title ?? null,
           description: config.description ?? "",
           port: Number(config.port) || null,
-          model: config.model?.key && config.model?.id ? config.model : null,
-          // More models the desk's agents may name (agent.md `model: <key>`), beside the default above.
-          models: Object.fromEntries(Object.entries(config.models ?? {}).filter(([, m]) => m?.id && m?.provider)),
           integrations: Array.isArray(config.integrations) ? config.integrations : null,
-          terminal,
+          // 2026-10-17: what its host API's terminal runs and which outside folders its workspace mounts.
+          terminal: config.terminal && typeof config.terminal === "object" ? config.terminal : null,
+          mounts: config.mounts?.desks?.root ? { desks: { root: resolve(folder, config.mounts.desks.root), allow: config.mounts.desks.allow } } : null,
           host: typeof config.host === "function" ? config.host : null,
-          artifacts: (Array.isArray(config.artifacts) ? config.artifacts : []).map((path) => resolve(folder, path)),
           setup: typeof config.setup === "function" ? config.setup : null,
+          start: config.start,
+          // Its own tool servers (mcpServers format).
+          mcp: typeof config.mcp === "string" ? resolve(folder, config.mcp) : null,
           ...deskPaths(folder),
         }
       })()
     )
   }
   return cache.get(folder)
-}
-
-// The artifact types of these desks (desk.js `artifacts`), joined to the
-// catalogue before any engine starts. Call after the browser shims: the
-// modules import app code.
-export async function registerDeskArtifacts(desks = []) {
-  const paths = [...new Set(desks.flatMap((d) => d?.artifacts ?? []))]
-  if (!paths.length) return []
-  const { registerArtifacts } = await import("../../backend/features/index.js")
-  const types = []
-  for (const path of paths) {
-    const module = await import(pathToFileURL(path).href)
-    types.push(...Object.values(module).filter((x) => typeof x === "function" && typeof x.type === "string"))
-  }
-  registerArtifacts(types)
-  return types.map((t) => t.type)
 }

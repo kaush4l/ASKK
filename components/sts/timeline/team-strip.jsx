@@ -1,6 +1,6 @@
 "use client"
 
-import { describeActivity } from "@/backend/core/activity"
+import { describeActivity } from "@/backend/live/activity"
 import { useEngineStates, useEngines } from "@/hooks/use-engines"
 import { cn } from "@/lib/utils"
 

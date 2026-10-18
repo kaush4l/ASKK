@@ -16,14 +16,13 @@ There are three layers, and each is reached differently:
 On iPhone and iPad, ASKK is only ever a web page, so layer A is all there
 is. Layers B and C need the local host (`bun run dev` / `askk`) on a Mac.
 
-## Built: `apple.*` tools (layer B)
+## Built: Apple actions on the host (layer B)
 
-The owner's Mac is reachable as tools, each call authorized by the owner.
-The agent proposes a request; the approval card says in plain words what it
-will do ("Add the reminder “Call Sam” to “Work”.") with the exact inputs
-below; nothing runs until the owner approves.
+The owner's Mac is reachable through the host API (capability `apple`). A desk that wants them wraps them as its
+own tools and decides, in its `host()` guard, which agent may call which action. (Until 2026-10-15 the browser
+engine offered them as `apple.*` tools with an approval card per call; that engine is archived.)
 
-| Tool | What it does | Approval |
+| Action | What it does | Personal data / side effect |
 |---|---|---|
 | `apple.shortcuts.list` | names of the owner's Shortcuts | no |
 | `apple.shortcuts.run` | run a shortcut by name, text in, text out | yes |
@@ -34,15 +33,13 @@ below; nothing runs until the owner approves.
 | `apple.reminders.list` / `.add` | Reminders | yes |
 | `apple.open` | open an http(s) or mailto link | yes |
 
-How: `backend/features/apple/tools.js` (specs, `describe`) →
-`POST /__askk/apple/run` → `companion/hardware/apple/index.js` runs a fixed program
+How: `POST /__askk/apple/run {action, inputs}` → `companion/hardware/apple/index.js` runs a fixed program
 (`shortcuts`, `say`, `osascript`, `pbcopy`/`pbpaste`, `mdfind`, `open`) with
 an argument list, never a shell; AppleScript gets the agent's text as
 `argv`, so text is data, not code. Timeout 60 s (shortcuts 5 min), output
-capped. Capability `apple` (macOS only) is listed in the header. The lead
-has these tools; add them to any agent.md under `tools:`.
+capped. Capability `apple` (macOS only) is listed in the header.
 
-Authorization is two-fold: the ASKK approval card per call, and macOS's own
+Authorization is two-fold: the desk's guard per call, and macOS's own
 permission prompt the first time an area is used (Reminders, Automation),
 naming the app that runs ASKK (the terminal for `bun run dev`).
 
@@ -88,7 +85,7 @@ model.
 
 | Capability | API | ASKK use | Notes |
 |---|---|---|---|
-| Dictation (Apple speech) | `webkitSpeechRecognition` | **in use**: chat mic (`lib/speech.js`) | Safari and every iOS browser; secure context |
+| Dictation (Apple speech) | `webkitSpeechRecognition` | **in use**: chat mic (`lib/speech/recognition.js`) | Safari and every iOS browser; secure context |
 | Spoken answers (Apple voices) | `speechSynthesis` | read answers aloud; hands-free loop with dictation | no permission needed |
 | Share | `navigator.share` | share an answer or file to Messages, Mail, Notes, AirDrop | needs a user gesture |
 | Notifications | `Notification` (+ Web Push on Home Screen apps, iOS 16.4+) | "quest finished" or "approval needed" while in another tab | Push needs a push server, which is out of scope; local notifications work while the page is open |
@@ -152,10 +149,10 @@ asked: the helper, or the terminal it runs from.
 
 - **A capability per layer item.** The host advertises what this Mac has in
   `whoami` (e.g. `apple.model`, `apple.shortcuts`, `apple.speech`).
-  `HOST_CAPABILITIES` shows it in the header, with the browser fallback.
-- **A feature folder.** `backend/features/apple/` holds the tool specs; the
-  host API does the work. Agents list tools such as `apple.shortcut.run`.
-- **Owner in control.** Side effects go through approval cards. Nothing
+  `HOST_CAPABILITIES` shows it in the header.
+- **A hardware folder.** `companion/hardware/apple/` does the work; a desk wraps the actions it wants as its own
+  tools.
+- **Owner in control.** Side effects pass the desk's guard, and every call shows in the Live feed. Nothing
   reads the Calendar, Contacts or screen unless the owner has approved that
   agent's call and macOS's own prompt.
 - **Same code in every mode.** On iPhone, iPad or a hosted site, these

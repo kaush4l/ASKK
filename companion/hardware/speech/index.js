@@ -11,17 +11,13 @@
 // Off with ASKK_SPEECH=off. Text for `say` goes on stdin, never as an
 // argument; the helper gets a temp WAV path written by this module.
 
-import { createHash } from "node:crypto"
-import { existsSync } from "node:fs"
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, rm } from "node:fs/promises"
 import { homedir, tmpdir } from "node:os"
-import { dirname, join } from "node:path"
-import { fileURLToPath } from "node:url"
+import { join } from "node:path"
 import { HttpError } from "../../shared/http.js"
 import { HOST_LIMITS } from "../../shared/config.js"
 
-const HERE = dirname(fileURLToPath(import.meta.url))
-const SOURCE = join(HERE, "asr.swift")
+const SOURCE = join(import.meta.dir, "asr.swift")
 const BIN_DIR = join(homedir(), ".askk", "bin")
 const SAMPLE_RATE = 16000
 const MAX_SECONDS = HOST_LIMITS.speech.maxUtteranceSeconds // per utterance
@@ -61,7 +57,7 @@ export async function createSpeech({ env = process.env, log = () => {} } = {}) {
   if (process.platform !== "darwin" || env.ASKK_SPEECH === "off") return null
   const say = Bun.which("say")
   const swiftc = Bun.which("swiftc")
-  const recognizes = !!swiftc && macMajor() >= 26 && existsSync(SOURCE)
+  const recognizes = !!swiftc && macMajor() >= 26 && (await Bun.file(SOURCE).exists())
   if (!say && !recognizes) return null
 
   let helper = null // { proc, pending: Map }
@@ -70,9 +66,9 @@ export async function createSpeech({ env = process.env, log = () => {} } = {}) {
   let temp = null
 
   async function binary() {
-    const hash = createHash("sha256").update(await readFile(SOURCE)).digest("hex").slice(0, 12)
+    const hash = new Bun.CryptoHasher("sha256").update(await Bun.file(SOURCE).bytes()).digest("hex").slice(0, 12)
     const path = join(BIN_DIR, `askk-speech-${hash}`)
-    if (existsSync(path)) return path
+    if (await Bun.file(path).exists()) return path
     building ??= (async () => {
       await mkdir(BIN_DIR, { recursive: true })
       log("speech: compiling the on-device recognizer (once)…")
@@ -145,12 +141,12 @@ export async function createSpeech({ env = process.env, log = () => {} } = {}) {
     temp ??= await mkdtemp(join(tmpdir(), "askk-speech-"))
     const file = join(temp, `u${++seq}.wav`)
     const started = performance.now()
-    await writeFile(file, wav(pcm))
+    await Bun.write(file, wav(pcm))
     try {
       const { text } = await ask({ path: file, locale })
       return { text, seconds: pcm.length / (SAMPLE_RATE * 2), ms: Math.round(performance.now() - started) }
     } finally {
-      rm(file, { force: true }).catch(() => {})
+      Bun.file(file).delete().catch(() => {})
     }
   }
 
@@ -179,15 +175,13 @@ export async function createSpeech({ env = process.env, log = () => {} } = {}) {
     temp ??= await mkdtemp(join(tmpdir(), "askk-speech-"))
     const file = join(temp, `s${++seq}.wav`)
     args.push("-o", file)
-    const proc = Bun.spawn(args, { stdin: new Blob([text.slice(0, MAX_SAY_CHARS)]), stdout: "ignore", stderr: "pipe" })
-    const timer = setTimeout(() => proc.kill(), TIMEOUT)
+    const proc = Bun.spawn(args, { stdin: new Blob([text.slice(0, MAX_SAY_CHARS)]), stdout: "ignore", stderr: "pipe", timeout: TIMEOUT })
     const code = await proc.exited
-    clearTimeout(timer)
     try {
       if (code !== 0) throw new SpeechError(500, `say failed: ${(await new Response(proc.stderr).text()).slice(0, 200)}`)
-      return { audio: (await readFile(file)).toString("base64"), type: "audio/wav" }
+      return { audio: (await Bun.file(file).bytes()).toBase64(), type: "audio/wav" }
     } finally {
-      rm(file, { force: true }).catch(() => {})
+      Bun.file(file).delete().catch(() => {})
     }
   }
 

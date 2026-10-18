@@ -2,7 +2,7 @@
 
 import * as React from "react"
 
-import { readWakes, WAKES_POLL_MS } from "@/backend/features/live/wakes"
+import { readWakes, WAKES_POLL_MS } from "@/backend/live/wakes"
 import { cn } from "@/lib/utils"
 
 const when = (iso) => (iso ? new Date(iso).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "")

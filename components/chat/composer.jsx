@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { ArrowUpIcon, MicIcon, MicOffIcon, SquareIcon } from "lucide-react"
+import { ArrowUpIcon, CompassIcon, ListPlusIcon, MessageCircleQuestionIcon, MicIcon, MicOffIcon, SquareIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -10,8 +10,12 @@ import { useSpeechInput } from "@/hooks/use-speech"
 import { cn } from "@/lib/utils"
 
 // The message box: a textarea with live dictation, send, and stop while the
-// engine runs. Shared by the chat page and the dashboard. Controlled: the
-// parent owns the text (the chat's prompt panel previews it).
+// engine runs. Shared by the agent page and the dashboard. Controlled: the
+// parent owns the text. With onGuide, a running agent can still be messaged:
+// Guide (Enter) is a note its next step reads, Queue is new work after the run.
+// With onAsk (2026-10-17 owner: talk with the lead about what is there and what
+// to check), Ask is a question answered now, idle or running, never a run: a
+// button beside Send (idle) or Guide and Queue (running) — Enter keeps its meaning.
 
 // Live dictation into the message box. Disabled, with the reason, where the
 // browser cannot transcribe speech.
@@ -49,6 +53,8 @@ export function Composer({
   value,
   onChange,
   onSend, // (text) => void; the box is cleared after
+  onGuide, // (text) => void, while running: a note for the run in progress (beside Queue = onSend)
+  onAsk, // (text) => void, idle or running: a question answered now (team call `chat`) — the run, if any, goes on
   onStop,
   running = false,
   disabled = false,
@@ -67,13 +73,19 @@ export function Composer({
     speech.toggle()
   }
 
-  function send() {
+  const guiding = running && !!onGuide
+  // mode: "guide" (a running agent's next step reads it), "send" (new work; queued while it runs) or "ask" (a
+  // question answered now, never a run).
+  function send(mode = guiding ? "guide" : "send") {
     const text = value.trim()
-    if (!text || running || disabled) return
+    if (!text || disabled) return
+    if (mode === "ask" ? !onAsk : running && !guiding) return
     speech.release()
     dictationBase.current = ""
     onChange("")
-    onSend(text)
+    if (mode === "ask") onAsk(text)
+    else if (mode === "guide") onGuide(text)
+    else onSend(text)
   }
 
   function onKeyDown(event) {
@@ -139,6 +151,37 @@ export function Composer({
           </Button>
         )}
       </div>
+      {(guiding || onAsk) && (
+        <div className="flex flex-wrap items-center justify-end gap-2 pt-2">
+          <span className="mr-auto min-w-0 text-xs text-muted-foreground">
+            {guiding ? "Guide: read at its next step · Queue: runs after this run" : "Send: new work"}
+            {onAsk ? " · Ask: answered now, no run" : ""}
+          </span>
+          {guiding && (
+            <>
+              <Button type="submit" size="sm" className="pointer-coarse:h-10" disabled={!value.trim() || disabled}>
+                <CompassIcon /> Guide
+              </Button>
+              <Button type="button" variant="outline" size="sm" className="pointer-coarse:h-10" disabled={!value.trim() || disabled} onClick={() => send("send")}>
+                <ListPlusIcon /> Queue
+              </Button>
+            </>
+          )}
+          {onAsk && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="pointer-coarse:h-10"
+              disabled={!value.trim() || disabled}
+              onClick={() => send("ask")}
+              title="A question answered now from what the agent sees; its run, if any, goes on"
+            >
+              <MessageCircleQuestionIcon /> Ask
+            </Button>
+          )}
+        </div>
+      )}
     </form>
   )
 }

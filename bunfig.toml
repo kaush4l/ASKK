@@ -1,0 +1,3 @@
+[test]
+# vendor/ folders (the repo's and each desk's) hold other projects' clean clones: their tests are theirs, not ASKK's.
+pathIgnorePatterns = ["**/vendor/**"]
