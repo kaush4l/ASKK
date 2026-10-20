@@ -58,6 +58,17 @@ const clipEnds = (s, n) => {
 export const CHAT_FORMAT =
   "The owner is talking with you; your run (if any) goes on without this reply. Answer in plain prose from what you see above — what is built, what runs now, what the numbers are, what is next, what to check, with paths and numbers. No calls: tools do not run here. Draw rather than describe (2026-10-18 owner: \"Only text based conversation is slow and verbose\"): to show an architecture, a flow, two options side by side or numbers, add ONE block fenced ```visual … ``` holding a visual spec as JSON ({\"kind\": \"flow\" | \"steps\" | \"matrix\" | \"line\" | \"bars\" | \"tokens\" | \"scatter\" | \"compare\", …}) or {\"show\": \"<the id of a visual in the preview>\"} (e.g. \"arch\": the architecture as its script computes it) — the owner sees it drawn under your answer; keep the prose short beside it. If the owner asks you to do, change or check something, make your reply's last line, on its own (not quoted, not in a list or a code block), GUIDE: <the note for your run in progress> when you are running, or QUEUE: <the request for a new run, for the owner to start> when idle; otherwise no such line."
 const CHAT_KEEP = 12 // exchanges kept in agent.chats
+
+// What a run read from outside (2026-10-20 review: a lesson or instruction written after reading a page is a lasting
+// prompt-injection path): the calls whose results carry text this desk did not write — the web (web.*, a browse
+// artifact's commands), another desk (desk.read, desk.ask). Each run keeps the names it called in `current.outside`
+// (a Set, handed to every tool call as ctx.outside); a quest or a dispatched job starts its member's run with the
+// caller's set (the brief may carry what the caller read), and the member's own reads join the caller's as
+// "<member>: <tool>" when that run ends (its report may carry them). The practice holds an instruction or a checklist
+// item written by such a run for the owner (builtin/practice.js); a helper it keeps (agent.spawn keep: desk) works for
+// that run only, and a kept helper's update waits on it, until the owner accepts (builtin/spawn.js).
+export const OUTSIDE_DESKS = new Set(["desk.read", "desk.ask"])
+export const readsOutside = (name, tool = null) => tool?.view === "web" || tool?.view === "browse" || OUTSIDE_DESKS.has(name) || /^(web|browse)\./.test(String(name ?? ""))
 const CHAT_SHOWN = 6 // earlier exchanges a chat's prompt shows
 const CLIP_CHAT = 800 // each side of an earlier exchange in a chat's prompt
 // A chat reply's action line: GUIDE: or QUEUE: after optional spaces (≤ 3: four make an indented code block) and **,
@@ -153,7 +164,7 @@ export class Agent {
     this.history = [] // finished runs: {from, request, answer}
     this.guidance = [] // notes for the run in progress, not yet seen by a step: {from, text, at}
     this.chats = [] // the owner's chats, newest last (≤ CHAT_KEEP): {from, text, answer, at} — never in a run's prompt
-    this.current = null // the run in progress: {request, steps} (steps: the live list), null when idle
+    this.current = null // the run in progress: {request, steps, outside} (steps: the live list; outside: readsOutside), null when idle
     this.listeners = new Map()
     this.status = "idle"
     this.context = context // spread into every tool call's ctx, under agent and signal
@@ -444,7 +455,9 @@ export class Agent {
 
   // ---- the loop -------------------------------------------------------------------------------
 
-  async ask(text, { from = "owner", signal } = {}) {
+  // outside: the caller's run's outside reads (a quest's, a dispatched job's): this run starts tainted with them and
+  // hands its own back when it ends (readsOutside above).
+  async ask(text, { from = "owner", signal, outside = null } = {}) {
     // Each run its own controller, linked to the signal it was asked with (the host's, the caller's run): either
     // aborts it, and stop() reaches every run however it was started.
     const controller = new AbortController()
@@ -456,7 +469,7 @@ export class Agent {
     const prev = this.queue ?? Promise.resolve()
     const run = prev
       .catch(() => {})
-      .then(() => this.#run({ text, from }, controller.signal))
+      .then(() => this.#run({ text, from }, controller.signal, outside))
       .finally(() => {
         this.#runs.delete(controller)
         signal?.removeEventListener?.("abort", link)
@@ -484,14 +497,16 @@ export class Agent {
     })
   }
 
-  async #run(request, signal) {
+  async #run(request, signal, caller = null) {
     this.status = "running"
     // A run stopped while it waited (queued behind another) still shows as a run that ended "stopped" — start, then
     // error, no model call — but never resets its artifacts (a checklist's run start).
     if (!signal?.aborted) for (const a of this.artifacts) a.onRunStart?.(this, request)
     this.emit("start", { request })
     const steps = []
-    this.current = { request, steps }
+    const inherited = new Set(caller ?? [])
+    const outside = new Set(inherited) // what this run read from outside, and what its caller had read before it asked
+    this.current = { request, steps, outside }
     this.reported = new Set() // the agents that answered a quest of this run (AgentTool `after`)
     const seen = new Map() // "tool input" of this run's data calls → the step that made it
     let refused = 0
@@ -535,7 +550,7 @@ export class Agent {
           this.emit("format", { note: "no calls and no answer" })
           continue
         }
-        const results = await Promise.all(reply.calls.map((c, index) => this.#call(c, signal, seen, n, index)))
+        const results = await Promise.all(reply.calls.map((c, index) => this.#call(c, signal, seen, n, index, outside)))
         steps.push({ thought: reply.thought, calls: reply.calls, results })
         // An answer beside calls (2026-10-15 market and focus sims: board write + answer in one reply, the
         // answer dropped). Beside artifact commands only, all ok, it is final once the gates pass; beside a
@@ -558,13 +573,16 @@ export class Agent {
       this.guidance = [] // a note for a run that failed or was stopped goes with it
       this.emit("error", { error: error.message })
       throw error
+    } finally {
+      // the reads this run made itself go back to the caller (its report, or what it wrote, may carry them)
+      if (caller) for (const x of outside) if (!inherited.has(x)) caller.add(`${this.name}: ${x}`)
     }
   }
 
   // index: the call's place in its step (reply.calls). The step's calls run together and their results arrive in any
   // order, so `call` and `result` both carry it, and `result` its input: the host pairs a result with its own call by
   // index, never by tool name (2026-10-17: two quote calls in one step showed each other's inputs).
-  async #call({ tool, input }, signal, seen = null, n = 0, index = 0) {
+  async #call({ tool, input }, signal, seen = null, n = 0, index = 0, outside = null) {
     // A member called with its own team's prefix is that member (resolveTool). `call` and `result` name the member
     // that ran; the step's `calls` keep the name as written.
     tool = this.resolveTool(tool)
@@ -584,13 +602,15 @@ export class Agent {
     } else if (!t) result = { tool, ok: false, output: this.#missing(tool) }
     else {
       try {
-        const out = await t.run(input ?? {}, { ...this.context, agent: this, signal })
+        const out = await t.run(input ?? {}, { ...this.context, agent: this, signal, outside })
         result = { tool, ok: true, output: typeof out === "string" ? out : JSON.stringify(out) }
       } catch (error) {
         result = { tool, ok: false, output: error.message }
       }
     }
     if (key && result.ok && !(prior && Date.now() - prior.at < REPEAT_MS)) seen.set(key, { n, at: Date.now() })
+    // marked once its result is in: a call beside it in the same step was written before that text was seen
+    if (t && outside && readsOutside(tool, t)) outside.add(tool)
     if (t?.type === "agent" && result.ok) this.reported?.add(tool)
     this.emit("result", { ...result, input: input ?? {}, index })
     return result

@@ -4,6 +4,7 @@
 
 import { describe, expect, test } from "bun:test"
 
+import { spawnTool } from "../kernel/index.js"
 import { buildBrowserDesk, browserInfer, LEAD } from "./desk.js"
 import { browserHost, cleanWorkspacePath, privateHost } from "./host.js"
 import { baseUrlProblem, fetchModels, PRESETS, readConnection, saveConnection } from "./settings.js"
@@ -207,5 +208,27 @@ describe("the browser desk", () => {
     expect((await again.call({ target: "desk", method: "schedule", args: [] })).ok).toBe(false)
     expect((await again.call({ target: "agent", method: "stop" })).value).toEqual({ stopped: 0 })
     again.terminate()
+  })
+
+  // 2026-10-20 (kernel builtin/spawn.js): a keep: desk from a run that read the web is not saved until the owner accepts.
+  test("a keep proposed by a run that read the web: kept in the store only on the owner's accept; drop leaves it for the run", async () => {
+    const store = memoryStore()
+    const { desk } = buildBrowserDesk({ store, infer: async () => reply("done", [], REPORT) })
+    const team = await createBrowserTeam({ desk, store })
+    const events = []
+    team.subscribe((e) => events.push(e))
+    const web = { agent: desk.lead, outside: new Set(["web.read"]) }
+    expect(await spawnTool().run({ name: "scribe", role: "Writes notes.", goal: "notes", keep: "desk" }, web)).toContain("for this run only — this run read the web (web.read)")
+    await spawnTool().run({ name: "other", role: "r", goal: "g", keep: "desk" }, web)
+    expect(store.get("kept", [])).toEqual([])
+    expect(events.filter((e) => e.type === "log").map((e) => e.text)).toContain("desk: agent spawned scribe (for this run; keep: desk waits for the owner — from a run that read the web: web.read): notes")
+    expect(await team.call({ target: "desk", method: "accept", args: [{ helper: "scribe" }] })).toMatchObject({ ok: true, value: { accepted: "scribe" } })
+    expect(store.get("kept")).toEqual([{ by: "agent", at: expect.any(String), input: expect.objectContaining({ name: "scribe", role: "Writes notes." }) }])
+    expect(await team.call({ target: "desk", method: "drop", args: [{ helper: "other" }] })).toMatchObject({ ok: true, value: { dropped: "other" } })
+    expect(events.filter((e) => e.type === "log").map((e) => e.text)).toEqual(expect.arrayContaining(["desk: owner kept scribe", "desk: owner dropped the keep proposed for other: not accepted"]))
+    expect(events.filter((e) => e.type === "kernel" && e.tree).at(-1).tree.agents.map((a) => [a.name, a.spawned.keep, !!a.spawned.proposed])).toEqual([["scribe", "desk", false], ["other", "run", false]])
+    expect((await team.call({ target: "agent", method: "ask", args: ["go"] })).ok).toBe(true)
+    expect(team.team.list.map((a) => a.name)).toEqual(["agent", "scribe"])
+    team.terminate()
   })
 })

@@ -5,6 +5,7 @@ import { BoxIcon, ChevronDownIcon, Maximize2Icon, PlayIcon, SquareIcon, WrenchIc
 
 import { agentVisual, artifactsFor, cardArtifacts, cardRows, currentQuest, heldTiles, holdings, namesIn, teamStatus, teamTitle, VISUAL_STATES } from "@/backend/live/desk"
 import { spawnedLine } from "@/backend/live/spawned"
+import { ProposedHelper } from "@/components/kernel/proposed-helper"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet"
@@ -60,7 +61,7 @@ export function DeskLevels({ onOpen, compact = false }) {
   if (!desk?.tree) return null
   const { tree } = desk
   const teams = new Set(teamsOf(tree))
-  const ctx = { byName, artifacts: desk.artifacts ?? {}, teams, onOpen, title: desk.title, everyone: engines.length, expand }
+  const ctx = { byName, artifacts: desk.artifacts ?? {}, teams, onOpen, title: desk.title, everyone: engines.length, expand, nodes: nodesOf(tree) }
 
   return (
     <section className="flex min-w-0 flex-col gap-3" aria-label="Desk">
@@ -80,6 +81,12 @@ export function DeskLevels({ onOpen, compact = false }) {
 
 // Every team name in the tree (an artifact owned by none of them sits on its first holder's card).
 const teamsOf = (node) => [...(node.team ? [node.team] : []), ...(node.agents ?? []).flatMap(teamsOf)]
+// Every tree node by its agent's name (a card row's node: what waits on it for the owner, ProposedHelper).
+const nodesOf = (node, out = new Map()) => {
+  out.set(node.name, node)
+  for (const c of node.agents ?? []) nodesOf(c, out)
+  return out
+}
 
 function Legend() {
   return (
@@ -134,6 +141,7 @@ function TeamCard({ node, path, ctx, desk = false, expanded, onToggle }) {
 
       <div className="flex flex-col gap-2 px-3 pb-3">
         {spawned && <p data-spawned className="break-words text-[11px] text-muted-foreground">{spawned}</p>}
+        {!desk && <ProposedHelper node={node} expanded={expanded} />}
         {node.goal && <p className={cn("text-xs text-muted-foreground", !expanded && "line-clamp-3")}>{node.goal}</p>}
 
         {/* lead */}
@@ -174,6 +182,7 @@ function TeamCard({ node, path, ctx, desk = false, expanded, onToggle }) {
             {rows.map((r) => (
               <li key={r.name} style={r.depth ? { marginLeft: `${r.depth * 0.75}rem` } : undefined} className={cn("min-w-0", r.depth > 0 && "border-l border-dashed pl-1")}>
                 <AgentRow label={r.lead ? "team" : null} name={r.name} item={byName[r.name]} onOpen={ctx.onOpen} />
+                <ProposedHelper node={ctx.nodes.get(r.name)} expanded={expanded} />
                 <HeldArtifacts name={r.name} ctx={ctx} skip={owned} />
               </li>
             ))}

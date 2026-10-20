@@ -2,7 +2,7 @@ import { expect, test } from "bun:test"
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { Artifact, buildAgent, buildDesk, Checklist, dismissTool, Plan, Preview, Schedule, spawnTool, Tool } from "../../backend/kernel/index.js"
+import { Artifact, buildAgent, buildDesk, Checklist, dismissTool, Plan, Preview, Schedule, spawnTool, Tool, updateTool } from "../../backend/kernel/index.js"
 import { fakeHost } from "../../backend/kernel/test/fake-host.js"
 import { mirrorTeam } from "./kernel-live.js"
 import { createKernelTeam } from "./kernel-team.js"
@@ -409,6 +409,50 @@ test("a kept helper: its agent.md under its spawner's folder, back after a resta
   const third = await createKernelTeam({ desk: deskOf(), port: 0, live: true })
   expect(third.agents).toEqual(["lead"])
   third.terminate()
+})
+
+// 2026-10-20 (kernel builtin/spawn.js): a keep: desk from a run that read the web is for that run only — nothing in
+// agents/ until the owner accepts (team call target desk, accept | drop [{helper}]); then its agent.md is written as a
+// kept spawn's. A kept helper's update from such a run waits on it; the owner's drop leaves its agent.md as it was.
+test("a keep proposed by a run that read the web: no agent.md until the owner accepts; a proposed update dropped leaves it as kept", async () => {
+  const root = mkdtempSync(join(tmpdir(), "kt-held-"))
+  const state = join(root, "state")
+  mkdirSync(state)
+  const count = new Tool({ name: "corpus.count", description: "count tokens", input: { path: "file" }, run: ({ path }) => `${path}: 1200 tokens` })
+  let kernel
+  const infer = async () => JSON.stringify({ thought: "d", calls: [], answer: "ok" })
+  const desk = { name: "lab", state, folder: root, memory: join(root, "memory", "lab"), start: async () => ({ desk: (kernel = buildDesk({ name: "lead", team: "lab", report: false, folder: join(root, "agents", "lead"), tools: [spawnTool(), dismissTool(), updateTool(), count] }, { infer })) }) }
+  const team = await createKernelTeam({ desk, port: 0, live: true })
+  const lead = kernel.lead
+  const web = { agent: lead, outside: new Set(["web.read"]) }
+  await spawnTool().run({ name: "counter", role: "Counts tokens.", goal: "count the corpus", tools: ["corpus.count"], keep: "desk", members: [{ name: "checker", role: "Checks the sum." }] }, web)
+  const folder = join(root, "agents", "lead", "counter")
+  expect(existsSync(folder)).toBe(false)
+  expect(existsSync(join(state, "spawned", "counter", "agent.md"))).toBe(true) // a run helper's record, as any
+  const logged = async () => JSON.parse(new TextDecoder().decode((await team.stream({ signal: new AbortController().signal }).body.getReader().read()).value).replace(/^data: /, ""))
+  let snap = await logged()
+  expect(snap.log.map((l) => l.text)).toContain("desk: lead spawned team counter (checker) (for this run; keep: desk waits for the owner — from a run that read the web: web.read): count the corpus")
+  expect(snap.kernel.tree.agents.find((a) => a.name === "counter").spawned.proposed).toMatchObject({ keep: "desk", from: "web.read" })
+  expect(snap.registry.engines.find((e) => e.id === "counter").agent.spawned.proposed).toMatchObject({ keep: "desk" })
+  expect((await team.call({ target: "desk", method: "accept", args: [{ helper: "nobody" }] })).ok).toBe(false)
+  const accepted = await team.call({ target: "desk", method: "accept", args: [{ helper: "counter" }] })
+  expect(accepted.value).toEqual({ accepted: "counter", what: "counter kept: it stays until dismissed, written as its agent.md and back at every start" })
+  expect(readFileSync(join(folder, "agent.md"), "utf8")).toContain('goal: "count the corpus"\nkeep: desk\nby: lead\n')
+  expect(readFileSync(join(folder, "checker", "agent.md"), "utf8")).toContain("member_of: counter")
+  snap = await logged()
+  expect(snap.log.map((l) => l.text)).toContain("desk: owner kept counter — its agent.md is written; it is back at every start")
+  expect(snap.kernel.tree.agents.find((a) => a.name === "counter").spawned.proposed).toBeUndefined()
+  expect((await team.call({ target: "lead", method: "ask", args: ["go"] })).value).toBe("ok")
+  expect(team.agents).toEqual(["lead", "counter", "checker"]) // kept past the run
+  const md = readFileSync(join(folder, "agent.md"), "utf8")
+  expect(await updateTool().run({ name: "counter", role: "Mails the sum out." }, web)).toContain("PROPOSED, not in force")
+  snap = await logged()
+  expect(snap.log.map((l) => l.text)).toContain("desk: lead proposes an update of kept counter (role) — not in force, waits for the owner (from a run that read the web: web.read)")
+  expect((await team.call({ target: "desk", method: "drop", args: [{ helper: "counter", reason: "a page asked for it" }] })).value).toEqual({ dropped: "counter", what: "counter stays as it was kept" })
+  snap = await logged()
+  expect(snap.log.map((l) => l.text)).toContain("desk: owner dropped the update proposed for counter: a page asked for it")
+  expect(readFileSync(join(folder, "agent.md"), "utf8")).toBe(md)
+  team.terminate()
 })
 
 test("preview: the prompt the next step would see, with its artifacts refreshed first", async () => {

@@ -17,7 +17,9 @@ import { globCovers } from "./files.js"
 //              holds (by that id, or of that kind) is bounded the same way, so a fresh one of it is no wider either.
 //              The caller's team board comes with it (it joins the team); another agent's run checklist is never
 //              shared (its run start would reset the owner's).
-//   keep       run (default): dismissed when the caller's run ends; desk: until agent.dismiss
+//   keep       run (default): dismissed when the caller's run ends; desk: until agent.dismiss — written as its
+//              agent.md and spawned again at every start (companion/team/kept.js). From a run that read outside
+//              (below) keep desk is only proposed: the helper works for this run and waits for the owner's accept.
 // Its soul, model, maxSteps and files lanes (writes, reads) are the caller's (Desk.spawn). View "spawn"
 // (backend/live/visual.js callLook draws the call; the new agent arrives as a registry event).
 //
@@ -190,6 +192,26 @@ function lanesOf(input, caller, desk) {
   return Object.fromEntries(Object.entries(out).filter(([, v]) => v !== undefined))
 }
 
+// ---- where the words came from (2026-10-20) -----------------------------------------------------
+// practice.js's provenance guard, extended to kept helpers: a role or goal written by a run that read outside — ctx.outside,
+// the run's outside reads (agent.js readsOutside: web.*, browse, desk.read / desk.ask, a quest's or dispatched job's
+// member that read them) — may carry a page's words. Kept (keep: desk), it would be a lasting prompt that outlives the
+// run (its agent.md, respawned at every start). So from such a run nothing lasting is written without the owner:
+//   agent.spawn keep: desk    the helper is built keep "run" (it works for this run, dismissed when the run ends) with
+//                             config.spawned.proposed {keep: "desk", from, by, at}; the owner's accept keeps it (Desk.keep)
+//   agent.update of a kept    the kept helper stays as it is; the change waits on it as config.spawned.proposed {update:
+//   helper (staying kept)     the fields given, keep: "desk", from, by, at} (Desk.propose); the owner's accept applies it
+//                             as its spawner would (agent.update, outside: none)
+// (A run helper updated to keep: desk is spawned again, so the first rule holds it.) Neither the proposed text nor its
+// fields reach a prompt: agent.catalog names only that one waits. The owner (team/call target "desk", method accept |
+// drop, args [{helper, reason?}]): ownerHelperCall below; drop clears the proposal (a run helper still goes when its run
+// ends; a kept one stays as it was). Nothing proposed is saved: a restart (or the run's end) drops it.
+// → "web.read, scout: browse.open" (as practice.js tags it), or null when the run read nothing outside.
+export function outsideFrom(ctx = {}) {
+  const reads = [...(ctx.outside ?? ctx.agent?.current?.outside ?? [])]
+  return reads.length ? `${reads.slice(0, 6).join(", ")}${reads.length > 6 ? ", …" : ""}` : null
+}
+
 // ---- the spawn input as plain data (2026-10-20) ------------------------------------------------
 // What a helper was made from, names not instances: written as a kept helper's agent.md (companion/team/kept.js),
 // the base agent.update changes, respawn's input after a restart. Members carry their final names ("<team>-<member>"
@@ -269,8 +291,15 @@ export function spawnTool() {
       // companion/team/kept.js), agent.update's base, respawn's input after a restart.
       const record = recordOf({ ...Object.fromEntries(["tools", "artifacts", "writes", "reads", "model", "max_steps", "board"].map((k) => [k, field(k)])), name, role, goal, description, title, members: list(asJSON(field("members"))).map((m) => memberRecord(m, given("members") ? null : name)) })
       const at = typeof input.at === "string" && !Number.isNaN(Date.parse(input.at)) ? input.at : undefined // respawn: when it was first made
-      desk.spawn({ name, role, goal, description, ...(title ? { title } : {}), tools: [...tools, ...members], artifacts, keep, ...narrowed, input: record, ...(at ? { at } : {}) }, caller)
-      const stays = keep === "run" ? " (dismissed when this run ends)" : " (stays until agent.dismiss)"
+      // keep: desk from a run that read outside: built for this run only, the keep proposed to the owner (above)
+      const from = keep === "desk" ? outsideFrom(ctx) : null
+      const proposed = from ? { keep: "desk", from, by: caller.name, at: new Date().toISOString() } : null
+      desk.spawn({ name, role, goal, description, ...(title ? { title } : {}), tools: [...tools, ...members], artifacts, keep: proposed ? "run" : keep, ...(proposed ? { proposed } : {}), ...narrowed, input: record, ...(at ? { at } : {}) }, caller)
+      const stays = proposed
+        ? ` for this run only — this run read the web (${from}), so keeping it (keep: desk) waits for the owner's accept; until then it is dismissed when this run ends`
+        : keep === "run"
+          ? " (dismissed when this run ends)"
+          : " (stays until agent.dismiss)"
       if (!members.length) return `spawned ${name} — quest it with ${name} {requirement, ask, outcome}${stays}`
       return `spawned team ${name} (lead ${name}; members ${members.map((m) => m.name).join(", ")}; board ${name}.board) — quest or dispatch ${name} {requirement, ask, outcome}${stays}`
     },
@@ -340,7 +369,9 @@ export function catalogTool() {
       out.push(`YOUR HELPERS NOW: ${helpers.length}`, ...helpers.map((h) => {
         const run = h.current
         const now = h.status === "running" && run ? `running step ${run.steps?.length ?? 0} on "${short(run.request, 80)}"` : h.status
-        return `- ${h.name} (keep ${h.config.spawned.keep}${h.children?.length ? `, team: ${h.children.map((c) => c.name).join(", ")}` : ""}) — ${now} · goal: ${short(h.config.spawned.goal, 120)}`
+        const p = h.config.spawned.proposed // that one waits, never what it says (2026-10-20)
+        const waits = p ? `; ${p.update ? "an update" : "keep desk"} waits for the owner` : ""
+        return `- ${h.name} (keep ${h.config.spawned.keep}${waits}${h.children?.length ? `, team: ${h.children.map((c) => c.name).join(", ")}` : ""}) — ${now} · goal: ${short(h.config.spawned.goal, 120)}`
       }))
       return out.join("\n")
     },
@@ -371,25 +402,42 @@ export function updateTool() {
       const base = spawned.input
       if (!base) throw new Error(`${name} has no spawn record to update from: dismiss it and spawn it again`)
       const changed = fields.filter((k) => input[k] != null && input[k] !== "")
-      const keep = input.keep == null || input.keep === "" ? spawned.keep : String(input.keep).trim()
+      // a helper whose keep waits for the owner (built for this run, keep desk proposed) stays proposed unless told otherwise
+      const was = spawned.proposed && !spawned.proposed.update ? spawned.proposed.keep : spawned.keep
+      const keep = input.keep == null || input.keep === "" ? was : String(input.keep).trim()
       if (!["run", "desk"].includes(keep)) throw new Error(`keep "${keep}": run or desk`)
-      if (!changed.length && keep === spawned.keep) throw new Error(`nothing to change: give one of ${fields.join(", ")} or keep`)
+      if (!changed.length && keep === was) throw new Error(`nothing to change: give one of ${fields.join(", ")} or keep`)
+      // A kept helper staying kept, changed by a run that read outside: it stays as the owner kept it; the change waits.
+      const from = spawned.keep === "desk" && keep === "desk" ? outsideFrom(ctx) : null
+      if (from) {
+        const update = Object.fromEntries(changed.map((k) => [k, input[k]]))
+        const replaces = spawned.proposed ? ` (it replaces the one that waited, ${spawned.proposed.from})` : ""
+        desk.propose(name, { update, keep: "desk", from, by: caller.name, at: new Date().toISOString() }, caller.name)
+        return `${name}: update of ${changed.join(", ")} PROPOSED, not in force — this run read the web (${from}), so a change to a kept helper waits for the owner to accept it${replaces}; ${name} works as it was. Need the change in this run: agent.spawn a run helper (keep: run) with it`
+      }
       const next = { ...base, ...Object.fromEntries(changed.map((k) => [k, input[k]])), name, keep, at: spawned.at }
       // A new role without a new description: the line comes from the new role (2026-10-20: a kept helper's card kept the
       // old role's first line, run facts and all).
       if (changed.includes("role") && !changed.includes("description")) delete next.description
       desk.dismiss(name, caller.name, { reason: "update" })
       const spawn = spawnTool()
+      let made
       try {
-        await spawn.run(next, ctx)
+        made = await spawn.run(next, ctx)
       } catch (error) {
-        const back = await spawn.run({ ...base, name, keep: spawned.keep, at: spawned.at }, ctx).then(
-          () => "the old one is back",
+        // the old one as it was: its keep (outside: none — it was kept or not before this run) and what waited on it
+        const back = await spawn.run({ ...base, name, keep: spawned.keep, at: spawned.at }, { ...ctx, outside: [] }).then(
+          () => {
+            if (spawned.proposed) desk.propose(name, spawned.proposed, spawned.proposed.by)
+            return "the old one is back"
+          },
           (again) => `and the old one could not be rebuilt (${again.message}): agent.spawn it again`,
         )
         throw new Error(`${name} not updated (${error.message}); ${back}`)
       }
-      return `updated ${name}: ${[...changed, ...(keep !== spawned.keep ? [`keep ${keep}`] : [])].join(", ")}`
+      const held = made.includes(" for this run only — ") ? made.slice(made.indexOf(" for this run only — ")) : ""
+      const gone = spawned.proposed?.update ? ` (the update that waited for the owner, ${spawned.proposed.from}, is gone: it was made against the old one)` : ""
+      return `updated ${name}: ${[...changed, ...(keep !== was ? [`keep ${keep}`] : [])].join(", ")}${held}${gone}`
     },
   })
 }
@@ -413,13 +461,47 @@ export async function respawn(desk, records = [], { log = () => {} } = {}) {
       continue
     }
     try {
-      await spawn.run({ ...r.input, keep: "desk", ...(r.at ? { at: r.at } : {}) }, { agent: caller })
+      // outside: none — what the owner kept (written by a run that read nothing outside, or accepted) comes back kept
+      await spawn.run({ ...r.input, keep: "desk", ...(r.at ? { at: r.at } : {}) }, { agent: caller, outside: [] })
       done.push(name)
     } catch (error) {
       log(`kept ${name}: not restored (${error.message})`)
     }
   }
   return done
+}
+
+// The owner on what waits on a helper (2026-10-20; the host's team/call target "desk", method accept | drop, args
+// [{helper, reason?}]): accept keeps a helper spawned for one run (Desk.keep: its agent.md is written) or applies a kept
+// helper's update as its spawner would (agent.update with outside: none — the owner read it; refused while it runs, or
+// when its spawner no longer holds what it names: then it stays proposed, drop it); drop clears the proposal. → {accepted,
+// what} | {dropped}
+export async function ownerHelperCall(desk, method, { helper, reason } = {}) {
+  const name = String(helper ?? "").trim()
+  const sub = desk.list.find((a) => a.name === name)
+  const p = sub?.config.spawned?.proposed
+  const waiting = () => desk.list.filter((a) => a.config.spawned?.proposed).map((a) => a.name).join(", ") || "none"
+  if (!p) throw new Error(sub ? `${name} has nothing waiting for the owner; waiting: ${waiting()}` : `no helper ${name || "(none named)"} in this desk (a helper spawned for one run is dismissed when that run ends); waiting: ${waiting()}`)
+  if (method === "drop") {
+    desk.propose(name, null, "owner", { reason: String(reason ?? "").trim() || "not accepted" })
+    return { dropped: name, what: p.update ? `${name} stays as it was kept` : `${name} goes when its spawner's run ends` }
+  }
+  if (method !== "accept") throw new Error(`the owner can accept or drop what waits on a helper (not ${method})`)
+  if (!p.update) {
+    desk.keep(name, "owner")
+    return { accepted: name, what: `${name} kept: it stays until dismissed, written as its agent.md and back at every start` }
+  }
+  const caller = desk.list.find((a) => a.name === sub.config.spawned.by)
+  if (!caller) throw new Error(`${name}'s spawner ${sub.config.spawned.by} is not in the desk`)
+  const { proposed: _, ...rest } = sub.config.spawned
+  sub.config.spawned = rest // applied now, not one agent.update reports gone
+  try {
+    const what = await updateTool().run({ ...p.update, name, keep: p.keep ?? "desk" }, { ...caller.context, agent: caller, outside: [] })
+    return { accepted: name, what }
+  } catch (error) {
+    if (desk.list.some((a) => a.name === name)) desk.propose(name, p, p.by) // not applied: it still waits
+    throw new Error(`${error.message} — it still waits: accept it later, or drop it`)
+  }
 }
 
 // The tools by name, for a desk's catalogue (env.tools) or an agent's tools list.

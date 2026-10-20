@@ -97,7 +97,8 @@ what is saved where), the twin contract.
   (`agent/reply.js` `RESPONSE_FORMAT` + `agent/report.js` `REPORT_FORMAT`, unless `config.system` replaces it), a
   tool its description, an artifact its head line, the run's state its header — a role (`config.role`) says only what
   the agent is for and how it works. `context` (`new Agent(config, {infer, tools, artifacts, context})`): spread into
-  every tool call's ctx as `{...context, agent, signal}`, so a tool reaches the host (`ctx.host`) without globals.
+  every tool call's ctx as `{...context, agent, signal, outside}` (outside: the run's outside reads, `readsOutside`), so
+  a tool reaches the host (`ctx.host`) without globals.
   Before each step's render it awaits every artifact's `refresh(agent)` (`refreshArtifacts`; a failure or a hang past
   `config.refreshMs` ?? 15 s is one line in that artifact's block, never fatal). Images (2026-10-18 owner: "the
   screenshot will be included along with the next request and the agent can iterate over in order to complete a live
@@ -246,14 +247,40 @@ what is saved where), the twin contract.
   agent capability … the multi-agent setup now becomes a checklist"; "give the agent the capability to self-reflect"):
   `builtin/practice.js` `Practice` (type `practice`, one per agent `<agent>.practice`, view `practice`, keep `file`): the
   agent's standing orders in `memory/<desk>/practice/<agent>.md` (seeded from `practice.md` beside its agent.md) —
-  Checklist / Quality / Instructions / Lessons / Tools / Changelog; each run its Checklist items + `!reflect` (gate),
-  `.tick`, `.skip`, `.edit {section, old?, new?, why}` (logged, from the next run), `.reflect {worked, missed, changes}`
-  (retro → `memory/<desk>/retros/<agent>.md`; refused when it names a change none was made); store: compose.js
-  `practiceStore`. `builtin/spawn.js` also `agent.catalog {find?}` (what a helper can be given, the helpers now),
+  Checklist / Quality / Instructions / Lessons / Tools / Pending / Changelog; each run its Checklist items + `!reflect`
+  (gate), `.tick`, `.skip`, `.edit {section, old?, new?, why}` (logged, from the next run), `.reflect {worked, missed,
+  changes}` (retro → `memory/<desk>/retros/<agent>.md`; refused when it names a change none was made); store: compose.js
+  `practiceStore`. Provenance (2026-10-20 review: a learned line written after reading a page is a lasting prompt
+  injection): each run keeps its outside reads (agent.js `readsOutside`: web.*, browse, `desk.read`/`desk.ask`;
+  `current.outside`, ctx `outside`; a quest's or dispatched job's member starts with its caller's and hands its own
+  back as `<member>: <tool>`); an edit from such a run is tagged "from a run that read the web (<tools>)" — an
+  Instructions or Checklist edit is PROPOSED (`PRACTICE_HELD`: under `## Pending` as JSON lines, ids p1, p2 … never
+  reused while the changelog names them, ≤ 12; the prompt shows only how many wait and their sections, never their
+  text) until the owner accepts it: `ownerCall("accept" | "drop", [{id, edit, reason?}])` (team call target `artifact`;
+  accept re-checks it against the file now — a line it replaces gone: refused, it stays pending); Quality, Lessons and
+  Tools lines apply at once with the tag on the line. UI: `PracticeView` (`components/views/artifact.jsx`) draws the
+  pending ones in their own dashed block, "proposed · not in force", with Accept / Drop (`practiceCall`,
+  `backend/live/desk.js`), and a tagged line's tag in amber. `builtin/spawn.js` also `agent.catalog {find?}` (what a helper can be given, the helpers now),
   `agent.update {name, …, keep?}` (rebuild from `config.spawned.input`, the spawn record; dismiss `reason: "update"`),
   `respawn(desk, records)`. Kept helpers (`keep: desk`, spawner in `agents/`): `companion/team/kept.js` writes
   `agents/<spawner>/<name>/agent.md` (+ `keep: desk`, `by`, `at`; members as subfolders), kernel-team respawns them at
-  start with their runs, dismissed → `memory/<desk>/archive/agents/<day>-<name>/`. `builtin/desks.js` `deskTools()`:
+  start with their runs, dismissed → `memory/<desk>/archive/agents/<day>-<name>/`. Kept helpers and provenance
+  (2026-10-20, the practice hold extended: a kept role is a lasting prompt too; spawn.js `outsideFrom(ctx)`): from a run
+  that read outside, `agent.spawn keep: desk` builds the helper keep `run` — it works for this run and goes when the run
+  ends — with `config.spawned.proposed {keep: "desk", from, by, at}` until the owner accepts (kernel `Desk.keep`: it and
+  its team turn keep desk, the run lease released, event `keep` → the host writes its agent.md / the tab's `kept`
+  record); `agent.update` of a kept helper staying kept leaves it as it is, the fields given waiting on it as
+  `proposed {update, keep, from, by, at}` (`Desk.propose`, event `proposal`), applied on accept as its spawner would
+  (`agent.update` with outside none; refused while it runs or when it no longer fits — it stays proposed). Chosen over
+  tagging the record (smaller: nothing tainted ever reaches `agents/` or respawn, so kept.js, readKept and respawn stay
+  as they were; the cost: a proposal is never saved — the run's end or a restart drops it). Never in a prompt:
+  `agent.catalog` says only "keep desk / an update waits for the owner". The owner: team call target `desk`, method
+  `accept | drop`, args `[{helper, reason?}]` (`ownerHelperCall`; kernel-team and the tab's team; drop: a run helper still
+  goes at its run's end, a kept one stays as kept). UI: `components/kernel/proposed-helper.jsx` `ProposedHelper` — the
+  dashed "proposed · not in force" block with what it would keep or change, where its words came from, Accept / Drop
+  (`helperCall`, `backend/live/desk.js`; `proposedOf`, `heldHelpers`, `treeNode` in `backend/live/spawned.js`; the
+  `spawnedLine` ends "keep desk / update waits for you") — under the helper's card and row on the home page and on its
+  agent page. `builtin/desks.js` `deskTools()`:
   `desk.create {name, spec, update?}` → host `desks/create` (`companion/team/scaffold.js`: config only — main.js from one
   template headed `// made by desk.create`, agents/ with practice.md, teams/, init folders — composed in a draft first;
   `update` only while the mark heads main.js, never through a link, never orphaning a folder of kept helpers; a spec's
@@ -272,7 +299,7 @@ what is saved where), the twin contract.
   (while an item is open, or no plan yet). State `{goal, revision, by, at, items: [{id, text, required, status: open
   | ticked | skipped, note, by, at}]}`.
 - `builtin/spawn.js` `spawnTool()` / `dismissTool()` (`SPAWN_TOOLS`; type and view `spawn`): `agent.spawn {name, role,
-  goal, tools?, artifacts?, keep?: run | desk}` → a helper for a stated goal (name `SPAWN_NAME`; tools ⊆ the caller's
+  goal, tools?, artifacts?, keep?: run | desk (from a run that read outside: proposed, above)}` → a helper for a stated goal (name `SPAWN_NAME`; tools ⊆ the caller's
   own or the desk catalogue `env.tools`, never its agents or artifact commands; artifacts = ids the caller holds or
   `env.artifacts` types, `{type | id, commands?}`, never another agent's run checklist; keep `run` (default): dismissed
   when the caller's run ends) → "spawned <name> — quest it with <name> {requirement, ask, outcome}";

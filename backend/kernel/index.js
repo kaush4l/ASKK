@@ -15,7 +15,7 @@ export { Desk, buildDesk, buildAgent } from "./desk/desk.js"
 // preview (the one pane: pages and the visuals visual.js checks), dispatch, web.
 export { BUILTIN, builtinKit } from "./builtin/index.js"
 export { Plan } from "./builtin/plan.js"
-export { spawnTool, dismissTool, catalogTool, updateTool, respawn, SPAWN_TOOLS, SPAWN_NAME } from "./builtin/spawn.js"
+export { spawnTool, dismissTool, catalogTool, updateTool, respawn, ownerHelperCall, outsideFrom, SPAWN_TOOLS, SPAWN_NAME } from "./builtin/spawn.js"
 export { deskTools } from "./builtin/desks.js"
 export { Practice, PRACTICE_SECTIONS, PRACTICE_MAX, parsePractice, renderPractice, checklistItem } from "./builtin/practice.js"
 export { Files, hostFiles, walkTree, expandGlob, lineDiff, globRegex, inLane, globCovers, mayContain, cleanPath, hostError } from "./builtin/files.js"

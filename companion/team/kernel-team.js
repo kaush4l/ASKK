@@ -38,7 +38,7 @@
 import { appendFileSync, existsSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs"
 import { join, relative } from "node:path"
 
-import { respawn, SPAWN_NAME } from "../../backend/kernel/index.js"
+import { ownerHelperCall, respawn, SPAWN_NAME } from "../../backend/kernel/index.js"
 import { describeActivity } from "../../backend/live/activity.js"
 import { activityOf, cut, freshState, IDLE, nextStats, rows } from "../../backend/live/team-rows.js"
 import { OWNER_CHAT_STEP } from "./kernel-status.js"
@@ -411,6 +411,12 @@ export async function createKernelTeam({ desk, port, log: hostLog = () => {}, li
       case "dismiss":
         dismissed(e)
         break
+      case "keep":
+        keptNow(e)
+        break
+      case "proposal":
+        proposal(e)
+        break
       case "start": {
         started(id, e.request)
         starts.set(id, e.request)
@@ -578,7 +584,30 @@ export async function createKernelTeam({ desk, port, log: hostLog = () => {}, li
     kernel.tree = team.tree()
     broadcast({ type: "kernel", tree: kernel.tree })
     const members = fresh.filter((x) => x !== a).map((x) => x.name)
-    log(`desk: ${e.by} spawned ${members.length ? `team ${a.name} (${members.join(", ")})` : a.name}: ${String(e.goal ?? "").split("\n")[0].slice(0, HOST_LIMITS.team.logPreviewChars)}`)
+    const waits = e.proposed ? ` (for this run; keep: desk waits for the owner — from a run that read the web: ${e.proposed.from})` : ""
+    log(`desk: ${e.by} spawned ${members.length ? `team ${a.name} (${members.join(", ")})` : a.name}${waits}: ${String(e.goal ?? "").split("\n")[0].slice(0, HOST_LIMITS.team.logPreviewChars)}`)
+  }
+  // 2026-10-20 (kernel builtin/spawn.js: a keep: desk or a kept helper's update from a run that read outside waits for the
+  // owner). Kept by the owner's accept (kernel Desk.keep): its agent.md written under its spawner's folder now, members
+  // inside, as a kept spawn's is. A proposal set or dropped (Desk.propose): its twin — the definition and the tree.
+  function keptNow(e) {
+    const a = team.agents().get(e.agent)
+    if (!a) return
+    for (const x of team.list.filter((x) => x === a || (e.team && x.config.spawned?.team === e.team))) recordSpawn(x, e)
+    describeAll()
+    broadcast({ type: "registry", registry, states: {} })
+    kernel.tree = team.tree()
+    broadcast({ type: "kernel", tree: kernel.tree })
+    log(`desk: ${e.by ?? "owner"} kept ${e.agent}${keptFolders.has(e.agent) ? " — its agent.md is written; it is back at every start" : ""}`)
+  }
+  function proposal(e) {
+    describeAll()
+    broadcast({ type: "registry", registry, states: {} })
+    kernel.tree = team.tree()
+    broadcast({ type: "kernel", tree: kernel.tree })
+    const p = e.proposed
+    if (p) log(`desk: ${e.by ?? "?"} proposes ${p.update ? `an update of kept ${e.agent} (${Object.keys(p.update).join(", ")})` : `to keep ${e.agent}`} — not in force, waits for the owner (from a run that read the web: ${p.from})`)
+    else if (e.dropped) log(`desk: ${e.by ?? "owner"} dropped the ${e.dropped === "update" ? "update" : "keep"} proposed for ${e.agent}${e.reason ? `: ${e.reason}` : ""}`)
   }
   // A dismissed agent leaves the registry (its folder and transcript stay); the artifacts only it held leave too. A
   // team leaves one agent per event, its members first (kernel Desk.dismiss), its board with the last of them.
@@ -681,8 +710,10 @@ export async function createKernelTeam({ desk, port, log: hostLog = () => {}, li
   }
   const stopWakes = wakeBook && live !== false ? startWakes({ root: desk.workspace, deliver: deliverWake, log: (line) => log(`wake: ${line}`) }) : () => {}
 
-  // Owner-level actions on the desk itself (the UI's next-run box).
-  function deskCall(method, args) {
+  // Owner-level actions on the desk itself (the UI's next-run box; 2026-10-20 the owner's accept or drop of what waits on a
+  // helper, kernel ownerHelperCall: [{helper, reason?}]).
+  async function deskCall(method, args) {
+    if (method === "accept" || method === "drop") return ok(await ownerHelperCall(team, method, args[0] ?? {}))
     if (!schedule) return fail("this desk has no schedule")
     if (method === "schedule") return ok(schedule.book(args[0] ?? {}, "owner"))
     if (method === "unschedule") return ok(schedule.clear())
@@ -700,7 +731,7 @@ export async function createKernelTeam({ desk, port, log: hostLog = () => {}, li
     if (target === "registry") return ok(null) // autopilot, model switch, agent edits: not for kernel desks
     if (target === "desk") {
       try {
-        return deskCall(method, args)
+        return await deskCall(method, args)
       } catch (error) {
         return fail(error.message)
       }

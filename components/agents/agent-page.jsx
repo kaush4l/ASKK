@@ -7,10 +7,11 @@ import { CopyIcon, SquareIcon, Trash2Icon } from "lucide-react"
 import { askChat, chatAnswer, chatShown } from "@/backend/live/agent"
 import { artifactsHeldBy } from "@/backend/live/desk"
 import { registry } from "@/backend/live/registry"
-import { spawnedLine } from "@/backend/live/spawned"
+import { spawnedLine, treeNode } from "@/backend/live/spawned"
 import { callLook } from "@/backend/live/visual"
 import { ActivityLine, ChatPair, Thread } from "@/components/agents/thread"
 import { Composer } from "@/components/chat/composer"
+import { ProposedHelper } from "@/components/kernel/proposed-helper"
 import { ArtifactsView } from "@/components/live/artifacts-view"
 import { Button } from "@/components/ui/button"
 import { CallIcon, toneOf } from "@/components/views/call-look"
@@ -147,6 +148,7 @@ function AgentDetail({ engine }) {
             {spawned}
           </p>
         )}
+        <ProposedHelper node={treeNode(desk?.tree, engine.name) ?? engine} expanded />
         <dl className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
           {engine.team && <Field label="team">{engine.team}</Field>}
           <Field label="model">{engine.model ?? "desk default"}</Field>

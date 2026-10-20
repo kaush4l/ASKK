@@ -176,6 +176,18 @@ export function dispatchRows(state, { now = Date.now() } = {}) {
 //   → {stopped: job}; rejects with the host's refusal (no such artifact or job).
 export const stopDispatchJob = (id, job) => teamCall("artifact", "stop", [{ id, job }])
 
+// The owner on a practice edit that waits (kernel builtin/practice.js, 2026-10-20: an instruction or checklist edit from
+// a run that read the web is proposed, never in force until accepted): method "accept" applies it, "drop" drops it —
+// the host's artifact route → Practice.ownerCall(method, [{id, edit}]). id: the practice's id ("agent.practice"); edit:
+// the pending edit's id ("p1"). → {accepted, what} | {dropped}; rejects with the refusal (gone, cannot apply now).
+export const practiceCall = (id, method, edit) => teamCall("artifact", method, [{ id, edit }])
+
+// The owner on what waits on a helper (kernel builtin/spawn.js ownerHelperCall, 2026-10-20: a keep: desk, or a kept
+// helper's update, from a run that read the web is proposed, never in force until accepted): method "accept" keeps it /
+// applies the update, "drop" drops the proposal — the host's team call target "desk". helper: its name.
+//   → {accepted, what} | {dropped, what}; rejects with the refusal (gone with its run, running, cannot apply now).
+export const helperCall = (method, helper, reason) => teamCall("desk", method, [{ helper, ...(reason ? { reason } : {}) }])
+
 // The next run, set by the owner (time "HH:MM" ET or ISO; goal text) — the desk's schedule.
 export const bookNextRun = ({ at, goal }) => teamCall("desk", "schedule", [{ at, goal }])
 export const clearNextRun = () => teamCall("desk", "unschedule", [])

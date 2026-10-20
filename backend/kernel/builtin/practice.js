@@ -12,7 +12,18 @@ import { Tool } from "../tool/tool.js"
 //   ## Instructions   how it works, learned: lines it added to its role
 //   ## Lessons        what a run showed, with its evidence (newest last; the oldest drop past PRACTICE_MAX.lessons)
 //   ## Tools          tools it lacks (for the owner, or a desk that writes tools): name, what, why
+//   ## Pending        edits that wait for the owner, one JSON object a line (written by the artifact; never in force)
 //   ## Changelog      every edit: when, who, what changed, why (written by the artifact, never edited)
+//
+// Where an edit came from (2026-10-20 review: a lasting line written after reading a page is a prompt-injection path
+// that outlives the run): the edit command reads the run's outside reads (ctx.outside, agent.js readsOutside: web.*,
+// browse, desk.read / desk.ask, and a quest's or dispatched job's member that read them). An edit from such a run is
+// tagged "from a run that read the web (<tools>)". An Instructions or Checklist edit so tagged is PROPOSED: kept under
+// Pending, never in the prompt (the prompt names how many wait, not their text) until the owner accepts it; a Quality,
+// Lessons or Tools line applies at once and keeps its tag on the line. Learning from what the desk itself saw stays
+// automatic. The owner (team/call target artifact): ownerCall("accept", [{id, edit}]) applies a pending edit as written
+// (re-checked against the file now: a line it replaces may be gone), ownerCall("drop", [{id, edit, reason?}]) drops it;
+// each one changelog line.
 //
 // A run starts with the Checklist's items fresh and open, plus "!reflect" (unless reflect: false): the holder's answer
 // waits while one is open (gate). Commands, id "<agent>.practice" (one per agent), view "practice", keep "file":
@@ -26,14 +37,31 @@ import { Tool } from "../tool/tool.js"
 // node fs one (memory/<desk>/practice/<agent>.md; seed: practice.md in the agent's folder; retro:
 // memory/<desk>/retros/<agent>.md). Without a store it lives in memory only (tests, a tab).
 // Twin state: {file, revision, at, run: [{id, text, required, status: open | ticked | skipped, note}], sections:
-// {checklist, quality, instructions, lessons, tools: [lines]}, changelog: [lines] ≤ 20, retros: [{at, by, worked,
-// missed, changes}] ≤ 5, edits: n this run}.
+// {checklist, quality, instructions, lessons, tools: [lines]}, pending: [{id, section, old, new, why, by, at, from}],
+// changelog: [lines] ≤ 20, retros: [{at, by, worked, missed, changes}] ≤ 5, edits: n this run}.
 
 export const PRACTICE_SECTIONS = ["checklist", "quality", "instructions", "lessons", "tools"]
-const TITLES = { checklist: "Checklist", quality: "Quality", instructions: "Instructions", lessons: "Lessons", tools: "Tools", changelog: "Changelog" }
+const TITLES = { checklist: "Checklist", quality: "Quality", instructions: "Instructions", lessons: "Lessons", tools: "Tools", pending: "Pending", changelog: "Changelog" }
 // Lines a section keeps (the oldest lessons and changelog lines drop first; a full section refuses an add).
-export const PRACTICE_MAX = { checklist: 16, quality: 16, instructions: 24, lessons: 30, tools: 12, changelog: 80 }
+export const PRACTICE_MAX = { checklist: 16, quality: 16, instructions: 24, lessons: 30, tools: 12, pending: 12, changelog: 80 }
+// The sections whose edits from a run that read the web wait for the owner: what the agent does and what done means.
+export const PRACTICE_HELD = new Set(["instructions", "checklist"])
+export const OUTSIDE_TAG = "from a run that read the web"
+const TAG_LINE = ` (${OUTSIDE_TAG})`
 const LINE_MAX = 400
+const untagged = (line) => (String(line).endsWith(TAG_LINE) ? String(line).slice(0, -TAG_LINE.length) : String(line))
+
+// A Pending line → the edit it holds, or null (a line the owner broke by hand is dropped at the next save).
+function pendingOf(line) {
+  try {
+    const e = JSON.parse(line)
+    if (!e || typeof e !== "object" || !/^p[\w-]{1,24}$/.test(String(e.id ?? "")) || !PRACTICE_HELD.has(e.section) || !clean(e.why) || (!clean(e.old) && !clean(e.new))) return null
+    const text = (v) => (clean(v) ? clean(v).slice(0, LINE_MAX) : null)
+    return { id: e.id, section: e.section, old: text(e.old), new: text(e.new), why: clean(e.why).slice(0, LINE_MAX), by: text(e.by), at: text(e.at), from: text(e.from) }
+  } catch {
+    return null
+  }
+}
 const REFLECT = { id: "reflect", text: "practice.reflect: what held, what this run missed, and the edit that fixes it (or none: why)", required: true }
 
 const clean = (s) => String(s ?? "").replace(/\s+/g, " ").trim()
@@ -41,7 +69,7 @@ const emptySections = () => Object.fromEntries(Object.keys(TITLES).map((k) => [k
 const sectionOf = (name) => {
   const key = clean(name).toLowerCase().replace(/^#+\s*/, "")
   const hit = Object.keys(TITLES).find((k) => k === key || (key.length > 2 && k.startsWith(key)))
-  return hit === "changelog" ? null : (hit ?? null)
+  return hit === "changelog" || hit === "pending" ? null : (hit ?? null)
 }
 
 // The file's sections as {key: [lines]}: "## Title" headings, "- " lines (other non-empty lines count as lines too).
@@ -92,7 +120,8 @@ export class Practice extends Artifact {
     this.clock = clock
     this.sections = emptySections()
     this.edits = 0
-    this.state = { file: store?.where ?? null, revision: 0, at: null, run: [], sections: {}, changelog: [], retros: [], edits: 0 }
+    this.pending = []
+    this.state = { file: store?.where ?? null, revision: 0, at: null, run: [], sections: {}, pending: [], changelog: [], retros: [], edits: 0 }
     this.load()
     this.reset()
   }
@@ -112,6 +141,8 @@ export class Practice extends Artifact {
     }
     const parsed = text != null ? parsePractice(text) : emptySections()
     if (text == null && this.seedLines) for (const k of PRACTICE_SECTIONS) parsed[k] = [].concat(this.seedLines[k] ?? []).map(clean).filter(Boolean)
+    this.pending = parsed.pending.map(pendingOf).filter(Boolean)
+    parsed.pending = []
     this.sections = parsed
     this.unsaved = fresh
     this.#publish()
@@ -121,7 +152,7 @@ export class Practice extends Artifact {
   save() {
     if (!this.store?.write) return true
     try {
-      this.store.write(renderPractice(this.sections, this.owner ?? this.name))
+      this.store.write(renderPractice({ ...this.sections, pending: this.pending.map((e) => JSON.stringify(e)) }, this.owner ?? this.name))
       this.unsaved = false
       this.saveError = null
       return true
@@ -156,7 +187,7 @@ export class Practice extends Artifact {
   }
 
   #publish() {
-    this.state = { ...this.state, sections: Object.fromEntries(PRACTICE_SECTIONS.map((k) => [k, [...this.sections[k]]])), changelog: this.sections.changelog.slice(-20) }
+    this.state = { ...this.state, sections: Object.fromEntries(PRACTICE_SECTIONS.map((k) => [k, [...this.sections[k]]])), pending: this.pending.map((e) => ({ ...e })), changelog: this.sections.changelog.slice(-20) }
   }
 
   open() {
@@ -173,7 +204,7 @@ export class Practice extends Artifact {
     const mark = { open: "[ ]", ticked: "[x]", skipped: "[-]" }
     const list = (k, n) => (s[k].length ? s[k].slice(-n).map((l) => `- ${l}`) : ["(none yet)"])
     return [
-      `your standing orders, kept in ${this.state.file ?? "memory"} and improved by you: work the run checklist (${this.name}.tick {id, evidence} / .skip {id, reason}), meet the quality bar before you tick, follow the instructions. When a run shows a gap — a step that was missing, a bar too low, a tool you lacked — ${this.name}.edit {section, old?, new?, why} fixes it for every later run; ${this.name}.reflect {worked, missed, changes} closes the run. Your answer waits while an item is open.`,
+      `your standing orders, kept in ${this.state.file ?? "memory"} and improved by you: work the run checklist (${this.name}.tick {id, evidence} / .skip {id, reason}), meet the quality bar before you tick, follow the instructions. When a run shows a gap — a step that was missing, a bar too low, a tool you lacked — ${this.name}.edit {section, old?, new?, why} fixes it for every later run; ${this.name}.reflect {worked, missed, changes} closes the run. Your answer waits while an item is open. An instruction or checklist edit from a run that read the web (web.*, browse, another desk, or a helper that did) waits for the owner's accept; any other line carries the tag "${OUTSIDE_TAG}".`,
       "RUN CHECKLIST",
       ...this.state.run.map((i) => `${mark[i.status]} ${i.required ? "!" : ""}${i.id}: ${i.text}${i.note ? ` ↳ ${i.note}` : ""}`),
       "QUALITY BAR",
@@ -183,12 +214,16 @@ export class Practice extends Artifact {
       "LESSONS (newest last)",
       ...list("lessons", 12),
       ...(s.tools.length ? ["TOOLS WANTED", ...list("tools", PRACTICE_MAX.tools)] : []),
+      // their count and sections only: a proposed line's text never reaches a prompt before the owner accepts it
+      ...(this.pending.length
+        ? [`PROPOSED, NOT IN FORCE: ${this.pending.length} edit${this.pending.length === 1 ? "" : "s"} ${OUTSIDE_TAG} wait${this.pending.length === 1 ? "s" : ""} for the owner (${this.pending.map((e) => `${e.id} ${e.section}`).join(", ")}) — not your orders until accepted; propose again only with new evidence`]
+        : []),
     ].join("\n")
   }
 
   brief() {
     const run = this.state.run
-    return `${run.filter((i) => i.status !== "open").length}/${run.length} done · ${this.sections.lessons.length} lessons · rev ${this.state.revision}`
+    return `${run.filter((i) => i.status !== "open").length}/${run.length} done · ${this.sections.lessons.length} lessons${this.pending.length ? ` · ${this.pending.length} pending` : ""} · rev ${this.state.revision}`
   }
 
   #close(id, status, note) {
@@ -210,18 +245,13 @@ export class Practice extends Artifact {
     if (this.sections.changelog.length > PRACTICE_MAX.changelog) this.sections.changelog.splice(0, this.sections.changelog.length - PRACTICE_MAX.changelog)
   }
 
-  edit({ section, old, new: next, why } = {}, by = null) {
-    const key = sectionOf(section)
-    if (!key) throw new Error(`section ${JSON.stringify(section ?? null)}: one of ${PRACTICE_SECTIONS.join(", ")}`)
-    const reason = clean(why)
-    if (!reason) throw new Error("why is required: the run's evidence that calls for this change")
+  // An edit checked against the section as it is now → {at, line, what} (at: the line it replaces or removes, -1 for an
+  // add; what: its changelog text), or {same: true} for an add the section has already; throws what is wrong.
+  #plan(key, was, line) {
     const lines = this.sections[key]
-    const was = clean(old)
-    let line = clean(next).replace(/^[-*]\s+/, "").slice(0, LINE_MAX)
-    if (key === "lessons" && line && !/^\d{4}-\d{2}-\d{2}/.test(line)) line = `${this.clock().toISOString().slice(0, 10)} ${line}`
-    // old: the line itself, a checklist item's id, or a part of one line only
+    // old: the line itself (its tag optional), a checklist item's id, or a part of one line only
     const find = () => {
-      const exact = lines.findIndex((l) => clean(l) === was || (key === "checklist" && checklistItem(l).id === was.replace(/^!/, "")))
+      const exact = lines.findIndex((l) => clean(l) === was || clean(untagged(l)) === was || (key === "checklist" && checklistItem(l).id === was.replace(/^!/, "")))
       if (exact >= 0) return exact
       const part = lines.map((l, i) => (clean(l).includes(was) ? i : -1)).filter((i) => i >= 0)
       if (part.length > 1) throw new Error(`"${was.slice(0, 60)}" is in ${part.length} ${key} lines: quote the whole line`)
@@ -235,30 +265,122 @@ export class Practice extends Artifact {
       const clash = lines.findIndex((l, i) => i !== at && checklistItem(l).id === id)
       if (clash >= 0) throw new Error(`checklist id ${id} exists ("${lines[clash].slice(0, 80)}"): replace it (old: ${id}) or pick another id`)
     }
-    let what
-    if (was) {
-      if (line) {
-        what = `${key} ~ "${lines[at].slice(0, 80)}" → "${line.slice(0, 120)}"`
-        lines[at] = line
-      } else {
-        what = `${key} - "${lines[at].slice(0, 120)}"`
-        lines.splice(at, 1)
-      }
-    } else {
-      if (!line) throw new Error("new is required to add a line (old + new replaces, old alone removes)")
-      if (lines.some((l) => clean(l) === line)) return `${key} has that line already`
-      if (key === "lessons" && lines.length >= PRACTICE_MAX.lessons) lines.splice(0, lines.length - PRACTICE_MAX.lessons + 1)
-      else if (lines.length >= PRACTICE_MAX[key]) throw new Error(`${key} is full (${PRACTICE_MAX[key]} lines): replace or remove one first`)
-      lines.push(line)
-      what = `${key} + "${line.slice(0, 120)}"`
+    if (was) return { at, line, what: line ? `${key} ~ "${lines[at].slice(0, 80)}" → "${line.slice(0, 120)}"` : `${key} - "${lines[at].slice(0, 120)}"` }
+    if (!line) throw new Error("new is required to add a line (old + new replaces, old alone removes)")
+    if (lines.some((l) => clean(untagged(l)) === clean(untagged(line)))) return { same: true }
+    if (key !== "lessons" && lines.length >= PRACTICE_MAX[key]) throw new Error(`${key} is full (${PRACTICE_MAX[key]} lines): replace or remove one first`)
+    return { at: -1, line, what: `${key} + "${line.slice(0, 120)}"` }
+  }
+
+  #apply(key, { at, line }) {
+    const lines = this.sections[key]
+    if (at >= 0) {
+      if (line) lines[at] = line
+      else lines.splice(at, 1)
+      return
     }
-    this.#log(by, what, reason)
-    this.edits += 1
+    if (key === "lessons" && lines.length >= PRACTICE_MAX.lessons) lines.splice(0, lines.length - PRACTICE_MAX.lessons + 1)
+    lines.push(line)
+  }
+
+  // After every change of the sections or the pending list: revision, the twin, the file. → "" or the NOT SAVED note.
+  #commit() {
     this.state = { ...this.state, revision: this.state.revision + 1, at: this.clock().toISOString(), edits: this.edits }
     this.#publish()
     const saved = this.save()
     this.changed()
-    return `${this.name}: ${what}${key === "checklist" ? " (from the next run)" : ""}${saved ? "" : ` — NOT SAVED (${this.saveError}): it holds for this run only`}`
+    return saved ? "" : ` — NOT SAVED (${this.saveError}): it holds for this run only`
+  }
+
+  // p1, p2 …: never one the changelog still names, so a stale Accept in a tab cannot land on a newer edit.
+  #pendingId() {
+    const used = [...this.pending.map((e) => e.id), ...this.sections.changelog.flatMap((l) => [...l.matchAll(/\b(?:proposed|accepted|dropped) (p\d+)\b/g)].map((m) => m[1]))]
+    return `p${Math.max(0, ...used.map((id) => Number(id.slice(1)) || 0)) + 1}`
+  }
+
+  // outside: the run's outside reads (ctx.outside, agent.js readsOutside). From such a run an Instructions or Checklist
+  // edit is proposed (PRACTICE_HELD: it waits for the owner); any other section's line applies with its tag.
+  edit({ section, old, new: next, why } = {}, by = null, { outside = null } = {}) {
+    const key = sectionOf(section)
+    if (!key) throw new Error(`section ${JSON.stringify(section ?? null)}: one of ${PRACTICE_SECTIONS.join(", ")}`)
+    const reason = clean(why)
+    if (!reason) throw new Error("why is required: the run's evidence that calls for this change")
+    const was = clean(old)
+    let line = clean(next).replace(/^[-*]\s+/, "").slice(0, LINE_MAX)
+    if (key === "lessons" && line && !/^\d{4}-\d{2}-\d{2}/.test(line)) line = `${this.clock().toISOString().slice(0, 10)} ${line}`
+    const reads = [...(outside ?? [])]
+    const from = reads.length ? `${reads.slice(0, 6).join(", ")}${reads.length > 6 ? ", …" : ""}` : null
+    const held = !!from && PRACTICE_HELD.has(key)
+    if (from && line && !held) line = `${untagged(line).slice(0, LINE_MAX - TAG_LINE.length)}${TAG_LINE}`
+    const plan = this.#plan(key, was, line)
+    if (plan.same) return `${key} has that line already`
+    const tag = from ? ` [${OUTSIDE_TAG}: ${from}]` : ""
+    if (held) {
+      const dup = this.pending.find((e) => e.section === key && e.old === (was || null) && e.new === (line || null))
+      if (dup) return `${dup.id} proposes that already: it waits for the owner`
+      if (this.pending.length >= PRACTICE_MAX.pending) throw new Error(`${this.pending.length} edits wait for the owner already (${this.pending.map((e) => e.id).join(", ")}): no more until the owner accepts or drops one`)
+      const id = this.#pendingId()
+      this.pending.push({ id, section: key, old: was || null, new: line || null, why: reason.slice(0, LINE_MAX), by: by ?? this.owner, at: this.clock().toISOString(), from })
+      this.#log(by, `proposed ${id}: ${plan.what}${tag}`, reason)
+      this.edits += 1
+      const unsaved = this.#commit()
+      return `${this.name}: ${plan.what} PROPOSED as ${id}, not in force — this run read the web (${from}), so an edit to ${key} waits for the owner to accept it${unsaved}`
+    }
+    this.#apply(key, plan)
+    this.#log(by, `${plan.what}${tag}`, reason)
+    this.edits += 1
+    const unsaved = this.#commit()
+    return `${this.name}: ${plan.what}${key === "checklist" ? " (from the next run)" : ""}${unsaved}`
+  }
+
+  // ---- the owner (team/call target artifact: ownerCall) ----
+
+  #pendingEdit(edit) {
+    const id = clean(edit)
+    const e = this.pending.find((x) => x.id === id)
+    if (!e) throw new Error(`no pending edit ${id || "(none named)"}; waiting: ${this.pending.map((x) => x.id).join(", ") || "none"}`)
+    return e
+  }
+
+  // The file read again first (the owner may have edited it by hand), unless it holds an edit the store refused.
+  #fresh() {
+    if (this.store?.read && !this.unsaved) this.load()
+  }
+
+  // A pending edit applied as the agent wrote it, checked against the section now: a line it replaces may be gone, a
+  // section full — refused, and it stays pending (drop it). → {accepted, what}
+  accept(edit, by = "owner") {
+    this.#fresh()
+    const e = this.#pendingEdit(edit)
+    let plan
+    try {
+      plan = this.#plan(e.section, e.old ?? "", e.new ?? "")
+    } catch (error) {
+      throw new Error(`${e.id} cannot apply now: ${error.message} — drop it`)
+    }
+    if (!plan.same) this.#apply(e.section, plan)
+    this.pending = this.pending.filter((x) => x !== e)
+    const what = plan.same ? `${e.section} has that line already` : plan.what
+    this.#log(by, `accepted ${e.id}: ${what}`, `proposed by ${e.by ?? "?"} ${OUTSIDE_TAG} (${e.from ?? "?"}): ${e.why}`)
+    const unsaved = this.#commit()
+    return { accepted: e.id, what: `${what}${e.section === "checklist" ? " (from the next run)" : ""}${unsaved}` }
+  }
+
+  drop(edit, reason = null, by = "owner") {
+    this.#fresh()
+    const e = this.#pendingEdit(edit)
+    this.pending = this.pending.filter((x) => x !== e)
+    const what = e.old && e.new ? `~ "${e.old.slice(0, 80)}" → "${e.new.slice(0, 120)}"` : e.new ? `+ "${e.new.slice(0, 120)}"` : `- "${e.old.slice(0, 120)}"`
+    this.#log(by, `dropped ${e.id}: ${e.section} ${what}`, clean(reason) || "not accepted")
+    this.#commit()
+    return { dropped: e.id }
+  }
+
+  ownerCall(method, args = [], from = "owner") {
+    const a = args[0] ?? {}
+    if (method === "accept") return this.accept(a.edit, from)
+    if (method === "drop") return this.drop(a.edit, a.reason, from)
+    throw new Error(`${this.name}: the owner can accept or drop a pending edit (not ${method})`)
   }
 
   reflectOn({ worked, missed, changes } = {}, by = null) {
@@ -289,9 +411,9 @@ export class Practice extends Artifact {
       new Tool({ name: `${this.name}.skip`, description: "skip a run checklist item that does not apply now", input: { id: "item id", reason: "why it does not apply" }, run: ({ id, reason } = {}) => this.#close(id, "skipped", reason) }),
       new Tool({
         name: `${this.name}.edit`,
-        description: "change your standing orders for every later run — a checklist item, a quality bar, an instruction, a lesson, a tool you lack; old + new replaces that line, new alone adds, old alone removes; why: the run's evidence",
+        description: "change your standing orders for every later run — a checklist item, a quality bar, an instruction, a lesson, a tool you lack; old + new replaces that line, new alone adds, old alone removes; why: the run's evidence. After this run read the web (or a helper's report that did), an instruction or checklist edit is proposed for the owner, not in force",
         input: { section: PRACTICE_SECTIONS.join(" | "), old: "the line to replace or remove (a checklist item's id works); optional", new: 'the new line (checklist: "id: text", "!id" = required); optional', why: "the evidence from this run that calls for it" },
-        run: (input = {}, { agent } = {}) => this.edit(input, agent?.name ?? null),
+        run: (input = {}, { agent, outside } = {}) => this.edit(input, agent?.name ?? null, { outside: outside ?? agent?.current?.outside }),
       }),
       new Tool({
         name: `${this.name}.reflect`,

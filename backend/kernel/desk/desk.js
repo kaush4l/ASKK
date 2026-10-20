@@ -190,7 +190,7 @@ export class Desk {
     // One spec as buildAgent takes it: the caller's config under its own (fields it leaves undefined stay the
     // caller's), the caller's holdings bound, its members prepared the same way (their builder: this agent).
     const prepare = (s, by, input = null) => {
-      const { keep: _, input: _input, at: _at, ...rest } = s
+      const { keep: _, input: _input, at: _at, proposed: _proposed, ...rest } = s
       const own = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined))
       const tools = (own.tools ?? []).map((t) => (isMember(t) ? (spawnName(t.name), prepare(t, own.name)) : t))
       return { ...inherited, ...own, tools, artifacts: held(own.artifacts), spawned: { by, goal, at, keep, ...(team ? { team } : {}), ...(input ? { input } : {}) } }
@@ -225,6 +225,9 @@ export class Desk {
       a.context = caller.context
       for (const tap of this.#taps) this.#hear(tap, a)
     }
+    // 2026-10-20: spec.proposed — what waits for the owner (builtin/spawn.js: keep "desk" asked by a run that read outside;
+    // the helper is built keep "run" until the owner accepts, Desk.keep), on the helper's config.spawned only.
+    if (spec.proposed && typeof spec.proposed === "object") sub.config.spawned.proposed = { ...spec.proposed }
     ;(caller.children ??= []).push(sub) // an Agent made by hand (new Desk(lead, [lead])) has no children yet
     caller.addTool(new AgentTool(sub, { description: `${name}: ${goal}` }))
     if (keep === "run") {
@@ -233,7 +236,8 @@ export class Desk {
       const done = () => {
         release()
         const go = async () => {
-          for (let round = 0; round < 50 && this.list.includes(sub); round++) {
+          // kept meanwhile (Desk.keep while its team's runs drained): it stays
+          for (let round = 0; round < 50 && this.list.includes(sub) && sub.config.spawned?.keep !== "desk"; round++) {
             const busy = subtreeOf(sub).filter(working)
             if (!busy.length) {
               try {
@@ -250,7 +254,40 @@ export class Desk {
       const release = () => offs.forEach((off) => off())
       this.#leases.set(sub.name, release)
     }
-    for (const a of built) this.#emit("spawn", { agent: a.name, by: a.config.spawned.by, goal, keep, team })
+    for (const a of built) this.#emit("spawn", { agent: a.name, by: a.config.spawned.by, goal, keep, team, ...(a.config.spawned.proposed ? { proposed: a.config.spawned.proposed } : {}) })
+    return sub
+  }
+
+  // 2026-10-20 (practice.js's provenance guard extended to kept helpers, builtin/spawn.js): a helper spawned for its
+  // caller's run kept for good — the owner's accept of a keep proposed by a run that read outside. It and its team's
+  // members turn keep "desk", the run lease is released (no dismissal when the caller's run ends), the proposal cleared;
+  // event "keep" (the host writes its agent.md, as a kept spawn's). → the helper.
+  keep(name, by = null) {
+    const sub = this.list.find((a) => a.name === name)
+    if (!sub) throw new Error(`no agent ${name} in this desk (a helper spawned for one run is dismissed when that run ends)`)
+    const spawned = sub.config.spawned
+    if (!spawned) throw new Error(`${name} is part of the desk, not a spawned helper`)
+    if (spawned.team && spawned.team !== name) throw new Error(`${name} is a member of team ${spawned.team}: keep the team (${spawned.team}), its members stay with it`)
+    if (spawned.keep === "desk") throw new Error(`${name} is kept already`)
+    for (const a of this.list.filter((x) => x === sub || (spawned.team && x.config.spawned?.team === name))) {
+      const { proposed: _, ...rest } = a.config.spawned
+      a.config.spawned = { ...rest, keep: "desk" }
+    }
+    this.#leases.get(name)?.()
+    this.#leases.delete(name)
+    this.#emit("keep", { agent: name, by, goal: spawned.goal ?? "", keep: "desk", team: spawned.team ?? null })
+    return sub
+  }
+
+  // A change to a helper that waits for the owner (2026-10-20, builtin/spawn.js: agent.update of a kept helper from a
+  // run that read outside), on its config.spawned.proposed: never in force, never in a prompt; null clears it (the
+  // owner dropped it). Event "proposal" {agent, by, proposed | null, dropped?: keep | update, reason?} for its twin.
+  propose(name, proposed, by = null, { reason = null } = {}) {
+    const sub = this.list.find((a) => a.name === name)
+    if (!sub?.config.spawned) throw new Error(sub ? `${name} is part of the desk, not a spawned helper` : `no agent ${name} in this desk`)
+    const { proposed: was = null, ...rest } = sub.config.spawned
+    sub.config.spawned = proposed ? { ...rest, proposed: { ...proposed } } : rest
+    this.#emit("proposal", { agent: name, by, proposed: proposed ?? null, ...(was && !proposed ? { dropped: was.update ? "update" : "keep" } : {}), ...(reason ? { reason } : {}) })
     return sub
   }
 

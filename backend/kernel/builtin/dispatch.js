@@ -251,7 +251,7 @@ export class Dispatch extends Artifact {
     }
     this.jobs.set(job.id, job)
     this.#publish()
-    target.ask(text, { from: holder.name, signal: job.controller.signal }).then(
+    target.ask(text, { from: holder.name, signal: job.controller.signal, outside: ctx.outside }).then(
       (answer) => this.#end(job, "done", { report: answer }),
       (error) => {
         const message = String(error?.message ?? error)

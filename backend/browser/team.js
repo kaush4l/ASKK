@@ -12,7 +12,7 @@
 //   createBrowserTeam({desk, store, title?, log?}) → Promise<{subscribe(onEvent) → off, call(body) → result, send(body),
 //                                                   work(), terminate()}>
 
-import { respawn } from "../kernel/index.js"
+import { ownerHelperCall, respawn } from "../kernel/index.js"
 import { activityOf, cut, freshState, IDLE, nextStats, rows } from "../live/team-rows.js"
 
 const MAX_MESSAGES = 200
@@ -190,7 +190,24 @@ export async function createBrowserTeam({ desk: team, store, title = "This brows
         rescan()
         kernel.tree = team.tree()
         broadcast({ type: "kernel", tree: kernel.tree })
-        log(`desk: ${e.by} spawned ${a.name}${e.keep === "desk" ? " (kept)" : ""}: ${String(e.goal ?? "").split("\n")[0].slice(0, 160)}`)
+        const waits = e.proposed ? ` (for this run; keep: desk waits for the owner — from a run that read the web: ${e.proposed.from})` : ""
+        log(`desk: ${e.by} spawned ${a.name}${e.keep === "desk" ? " (kept)" : waits}: ${String(e.goal ?? "").split("\n")[0].slice(0, 160)}`)
+        break
+      }
+      // 2026-10-20 (kernel builtin/spawn.js): kept by the owner's accept (Desk.keep) — its record saved, as a kept spawn's;
+      // a proposal set or dropped (Desk.propose) — its twin.
+      case "keep":
+      case "proposal": {
+        const s = a?.config.spawned
+        if (e.event === "keep" && s?.keep === "desk" && s.input) saveKept([...keptRecords().filter((r) => r.input?.name !== a.name), { by: s.by, at: s.at, input: s.input }])
+        describeAll()
+        broadcast({ type: "registry", registry, states: {} })
+        kernel.tree = team.tree()
+        broadcast({ type: "kernel", tree: kernel.tree })
+        const p = e.proposed
+        if (e.event === "keep") log(`desk: ${e.by ?? "owner"} kept ${id}`)
+        else if (p) log(`desk: ${e.by ?? "?"} proposes ${p.update ? `an update of kept ${id}` : `to keep ${id}`} — not in force, waits for the owner (from a run that read the web: ${p.from})`)
+        else if (e.dropped) log(`desk: ${e.by ?? "owner"} dropped the ${e.dropped} proposed for ${id}${e.reason ? `: ${e.reason}` : ""}`)
         break
       }
       case "dismiss": {
@@ -292,7 +309,15 @@ export async function createBrowserTeam({ desk: team, store, title = "This brows
 
   async function call({ target, method, args = [] } = {}) {
     if (target === "registry") return ok(null)
-    if (target === "desk") return fail("this desk runs in the browser: no schedule here (the desk server has one)")
+    if (target === "desk") {
+      // the owner on what waits on a helper (kernel ownerHelperCall, 2026-10-20); no schedule in a tab
+      if (method !== "accept" && method !== "drop") return fail("this desk runs in the browser: no schedule here (the desk server has one)")
+      try {
+        return ok(await ownerHelperCall(team, method, args[0] ?? {}))
+      } catch (error) {
+        return fail(error.message)
+      }
+    }
     if (target === "artifact") {
       const id = String(args[0]?.id ?? "")
       const x = artifacts.get(id)?.artifact

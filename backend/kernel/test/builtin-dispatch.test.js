@@ -72,6 +72,21 @@ describe("dispatch", () => {
     expect(await run("wait", { ids: ["j2"] })).toContain("j2 → data done in")
   })
 
+  test("the holder's outside reads go with the job, and the target's own come back when it ends (agent.js readsOutside)", async () => {
+    const page = new Tool({ name: "web.read", view: "web", description: "read a page", input: { url: "address" }, run: () => "page text" })
+    let k = 0
+    const data = new Agent({ name: "data", report: false }, { tools: [page], infer: async () => (k++ === 0 ? json({ thought: "read", calls: [{ tool: "web.read", input: { url: "https://example.com" } }] }) : answer("read it")) })
+    const seen = []
+    const ask = data.ask.bind(data)
+    data.ask = (text, opts) => (seen.push([...(opts.outside ?? [])]), ask(text, opts))
+    const { lead, run } = team([{ agent: data }])
+    const outside = new Set(["browse.open"]) // the holder's run read a page before it dispatched
+    await lead.tools.get("dispatch.start").run({ to: "data", ...quest("read the page") }, { agent: lead, outside })
+    expect(seen).toEqual([["browse.open"]])
+    expect(await run("wait", { ids: ["j1"] })).toContain("read it")
+    expect([...outside]).toEqual(["browse.open", "data: web.read"])
+  })
+
   test("in a run: the holder's steps go on while the job runs, its answer waits on the gate, wait delivers the report", async () => {
     const data = blocked("data")
     let during = null

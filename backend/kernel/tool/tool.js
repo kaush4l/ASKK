@@ -73,7 +73,7 @@ export class AgentTool extends Tool {
   async run(input, ctx = {}) {
     const waiting = this.after.filter((n) => ctx.agent?.reported && !ctx.agent.reported.has(n))
     if (waiting.length) throw new Error(`${this.name} works from ${waiting.join(" and ")}'s report: call ${waiting.join(", ")} first (alone), then ${this.name} with that report in the requirement`)
-    return this.agent.ask(questText(input), { from: ctx.agent?.name, signal: ctx.signal })
+    return this.agent.ask(questText(input), { from: ctx.agent?.name, signal: ctx.signal, outside: ctx.outside })
   }
 }
 

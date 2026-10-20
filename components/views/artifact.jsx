@@ -2,7 +2,7 @@
 
 import * as React from "react"
 
-import { bookNextRun, clearNextRun, dispatchRows, setDefaultGoal, stopDispatchJob } from "@/backend/live/desk"
+import { bookNextRun, clearNextRun, dispatchRows, practiceCall, setDefaultGoal, stopDispatchJob } from "@/backend/live/desk"
 import { stripAnsi } from "@/backend/live/term-lines"
 import { fullPath, sessionLabel } from "@/backend/live/workbench"
 import { PreviewCard } from "@/components/preview/card"
@@ -104,7 +104,97 @@ function ChecklistView({ state, expanded }) {
 // 2026-10-20 (kernel Practice): an agent's standing orders, kept in memory/<desk>/practice/<agent>.md and improved by the
 // agent after each run — this run's checklist (from its file, reflect last), the quality bar, the instructions it learned,
 // its lessons, the tools it lacks; open: every section, the changelog (what it changed and why) and its last retros.
-function PracticeView({ state, expanded }) {
+// Edits that wait for the owner (an instruction or checklist line written by a run that read the web) sit in their own
+// block above, marked not in force, each with Accept and Drop; a line applied from such a run shows its tag.
+const OUTSIDE_TAG = " (from a run that read the web)"
+
+function PracticeLine({ line }) {
+  const tagged = String(line).endsWith(OUTSIDE_TAG)
+  return (
+    <li className="break-words text-xs">
+      {tagged ? String(line).slice(0, -OUTSIDE_TAG.length) : line}
+      {tagged && <span className="ml-1 text-[11px] text-amber-700 dark:text-amber-400">· from a run that read the web</span>}
+    </li>
+  )
+}
+
+// The owner's Accept / Drop on a pending edit (practiceCall → the host's artifact route → Practice.ownerCall): per edit id
+// {busy} while the call is out, then the row leaves with the artifact's next state; {error}: the refusal under the row.
+function usePracticeCalls(id) {
+  const [calls, setCalls] = React.useState({})
+  const act = React.useCallback(
+    async (edit, method) => {
+      setCalls((c) => ({ ...c, [edit]: { busy: method, error: null } }))
+      try {
+        await practiceCall(id, method, edit)
+        setCalls((c) => ({ ...c, [edit]: { busy: null, error: null } }))
+      } catch (error) {
+        setCalls((c) => ({ ...c, [edit]: { busy: null, error: error?.message ?? String(error) } }))
+      }
+    },
+    [id]
+  )
+  return [calls, act]
+}
+
+function PendingEdits({ id, pending, expanded }) {
+  const [calls, act] = usePracticeCalls(id)
+  if (!pending?.length) return null
+  const rows = expanded ? pending : pending.slice(0, 2)
+  const op = (e) => (e.old && e.new ? "replace" : e.new ? "add" : "remove")
+  return (
+    <div className="mt-1.5 rounded border border-dashed border-amber-500/60 px-1.5 py-1">
+      <p className="text-[11px] text-amber-700 dark:text-amber-400">
+        proposed · not in force · waits for you · {pending.length}
+      </p>
+      <ul className="flex flex-col gap-1.5">
+        {rows.map((e) => (
+          <li key={e.id} className="flex flex-col gap-0.5 text-xs">
+            <p className="text-[11px] text-muted-foreground">
+              <span className="font-mono text-foreground/80">{e.id}</span> · {e.section} · {op(e)}
+              {e.by ? ` · by ${e.by}` : ""}
+              {e.at ? ` · ${clock(e.at)}` : ""}
+            </p>
+            {e.old && <p className="break-words text-muted-foreground line-through">{e.old}</p>}
+            {e.new && <p className="break-words">{e.new}</p>}
+            {expanded && <p className="break-words text-[11px] text-muted-foreground">why: {e.why}</p>}
+            <p className="break-words text-[11px] text-amber-700 dark:text-amber-400">from a run that read the web{e.from ? `: ${e.from}` : ""}</p>
+            <div className="flex gap-1.5">
+              <Button
+                type="button"
+                variant="outline"
+                size="xs"
+                className="h-6 px-2 text-[11px] pointer-coarse:h-10 pointer-coarse:min-w-10"
+                disabled={!id || !!calls[e.id]?.busy}
+                onClick={() => act(e.id, "accept")}
+                aria-label={`Accept practice edit ${e.id}`}
+                title={`Accept ${e.id}: it becomes one of ${e.by ?? "the agent"}'s standing orders from its next step`}
+              >
+                {calls[e.id]?.busy === "accept" ? "Accepting…" : "Accept"}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="xs"
+                className="h-6 px-2 text-[11px] pointer-coarse:h-10 pointer-coarse:min-w-10"
+                disabled={!id || !!calls[e.id]?.busy}
+                onClick={() => act(e.id, "drop")}
+                aria-label={`Drop practice edit ${e.id}`}
+                title={`Drop ${e.id}: it never applies`}
+              >
+                {calls[e.id]?.busy === "drop" ? "Dropping…" : "Drop"}
+              </Button>
+            </div>
+            {calls[e.id]?.error && <p className="break-words text-[11px] text-red-700 dark:text-red-400">Not done: {calls[e.id].error}</p>}
+          </li>
+        ))}
+      </ul>
+      {rows.length < pending.length && <p className="mt-0.5 text-[11px] text-muted-foreground">+{pending.length - rows.length} more — open the card</p>}
+    </div>
+  )
+}
+
+function PracticeView({ id, state, expanded }) {
   const s = state?.sections ?? {}
   const run = { items: (state?.run ?? []).map((i) => ({ ...i, id: `${i.required ? "!" : ""}${i.id}` })) }
   const section = (title, rows, n) =>
@@ -115,9 +205,7 @@ function PracticeView({ state, expanded }) {
         </p>
         <ul className="flex flex-col gap-0.5">
           {(expanded ? rows : rows.slice(-n)).map((l, k) => (
-            <li key={k} className="break-words text-xs">
-              {l}
-            </li>
+            <PracticeLine key={k} line={l} />
           ))}
         </ul>
       </div>
@@ -125,6 +213,7 @@ function PracticeView({ state, expanded }) {
   return (
     <div className="mt-1">
       <ChecklistView state={run} expanded={expanded} />
+      <PendingEdits id={id} pending={state?.pending} expanded={expanded} />
       {section("quality bar", s.quality, 2)}
       {expanded && section("instructions (learned)", s.instructions, 99)}
       {section("lessons", s.lessons, expanded ? 99 : 1)}
