@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { Agent, buildDesk, Checklist, parseReply, QualityMatrix, Schedule, scoreReport, Tool } from "../index.js"
+import { Agent, Artifact, buildDesk, Checklist, parseReply, QualityMatrix, Schedule, scoreReport, Tool } from "../index.js"
 
 // Scripted model: per agent, a list of replies; records every prompt.
 function scripted(script) {
@@ -191,6 +191,42 @@ describe("gates, checklist, quality, schedule", () => {
     agent.on("answer", (e) => flags.push(...e.flags))
     expect(await agent.ask("go")).toBe("no format")
     expect(flags[0]).toContain("report missing")
+  })
+
+  // 2026-10-17 (critic): the dispatch gate gave way after gateRetries and the lead's jobs outlived its run.
+  test("a hard gate reason ({reason, hard: true}) refuses every time without spending a retry; the run ends at maxSteps; soft ones still count", async () => {
+    class Hold extends Artifact {
+      constructor() {
+        super({ name: "hold" })
+        this.busy = true
+        this.soft = false
+      }
+      gate() {
+        if (this.soft) return "soft reason"
+        return this.busy ? { reason: "jobs still running", hard: true } : null
+      }
+    }
+    const hold = new Hold()
+    let n = 0
+    let frees = 5 // the step whose answer finds the hold released (0: never)
+    const infer = async () => (++n === frees && (hold.busy = false), JSON.stringify({ thought: "t", calls: [], answer: `answer ${n}` }))
+    const agent = new Agent({ name: "a", report: false, gateRetries: 1, maxSteps: 8 }, { infer, artifacts: [hold] })
+    const gates = []
+    agent.on("gate", (e) => gates.push(e.reasons))
+    expect(agent.gates("x")).toEqual(["jobs still running"]) // gates() gives the reasons as text
+    expect(await agent.ask("go")).toBe("answer 5") // refused 4 times with gateRetries 1, through once it holds no more
+    expect(gates).toEqual(Array(4).fill(["jobs still running"]))
+    // held all along: the run ends at maxSteps, never flagged through
+    hold.busy = true
+    frees = 0
+    const flags = []
+    agent.on("answer", (e) => flags.push(e.flags))
+    expect(await agent.ask("again")).toBe("(stopped after 8 steps without an answer)")
+    expect(flags).toEqual([[]])
+    // a soft reason still goes through flagged after gateRetries
+    hold.soft = true
+    expect(await agent.ask("soft")).toMatch(/^answer \d+$/)
+    expect(flags.at(-1)).toEqual(["soft reason"])
   })
 
   test("quality matrix scores member reports in code", async () => {

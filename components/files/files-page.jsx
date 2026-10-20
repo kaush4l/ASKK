@@ -188,8 +188,9 @@ export function FilesPage() {
     [ws]
   )
 
+  // ?path= opens that folder (the Projects page links a project's folder here), read in the browser after mount.
   React.useEffect(() => {
-    if (ws) open("")
+    if (ws) open(new URLSearchParams(window.location.search).get("path") ?? "")
   }, [ws, open])
 
   async function view(path) {
@@ -227,7 +228,7 @@ export function FilesPage() {
       <div className="flex flex-col gap-1">
         <div className="flex flex-wrap items-center gap-2">
           <h1 className="text-2xl">Files</h1>
-          {ws && <Badge variant="outline">This computer</Badge>}
+          {ws && <Badge variant="outline">{ws.where === "browser" ? "This browser" : "This computer"}</Badge>}
         </div>
         <p className="text-sm break-all text-muted-foreground">
           {ws === undefined

@@ -4,7 +4,7 @@ import * as React from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { CopyIcon, SquareIcon, Trash2Icon } from "lucide-react"
 
-import { askChat, chatShown } from "@/backend/live/agent"
+import { askChat, chatAnswer, chatShown } from "@/backend/live/agent"
 import { artifactsHeldBy } from "@/backend/live/desk"
 import { registry } from "@/backend/live/registry"
 import { spawnedLine } from "@/backend/live/spawned"
@@ -218,7 +218,7 @@ function AgentDetail({ engine }) {
                   <ChatPair
                     engine={engine}
                     question={chat.question}
-                    answer={chat.answer != null ? { content: chat.answer, guided: chat.guided, queued: chat.queued } : null}
+                    answer={chatAnswer(chat)}
                     pending={!!chat.pending}
                     error={chat.error}
                     onDismiss={() => setChat(null)}

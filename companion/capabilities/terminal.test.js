@@ -19,7 +19,12 @@ for (const dir of [root, state, join(desks, "alpha"), join(desks, "beta")]) mkdi
 writeFileSync(join(desks, "alpha", ".mounted"), "")
 writeFileSync(join(desks, "alpha", "README.md"), "alpha desk\n")
 writeFileSync(join(desks, "beta", "secret.txt"), "beta secret\n")
-const mounts = { desks: { root: desks, allow: (name) => existsSync(join(desks, name, ".mounted")) } }
+// A loaded project (projects.js): projects/app/ is a folder outside the workspace, beside the desk's own projects/.
+const app = join(top, "elsewhere", "app")
+mkdirSync(join(app, "src"), { recursive: true })
+writeFileSync(join(app, "README.md"), "outside app\n")
+const loaded = { folder: (name) => (name === "app" ? app : null), list: () => [{ name: "app" }] }
+const mounts = { desks: { root: desks, allow: (name) => existsSync(join(desks, name, ".mounted")) }, projects: loaded }
 
 // Programs: a progress bar with colours, a prompt that reads stdin, a long run.
 writeFileSync(
@@ -487,6 +492,20 @@ describe("H5: the sandbox", () => {
     const peek = await finished((await term.start({ command: `cat ${join(desks, "beta", "secret.txt")}` })).session)
     expect(peek.exit).not.toBe(0)
     expect(peek.tail.join("\n")).not.toContain("beta secret")
+  })
+
+  test("a loaded project: projects/app is its folder; a projects/** lane writes there, another lane does not", async () => {
+    const readme = await finished((await term.start({ command: "cat README.md", cwd: "projects/app" })).session)
+    expect(readme).toMatchObject({ exit: 0, cwd: "projects/app", tail: ["outside app"] })
+    const wrote = await finished((await term.start({ command: "cd projects/app/src && touch made.js", writes: ["projects/**"] })).session)
+    expect(wrote).toMatchObject({ exit: 0, cwd: "projects/app/src" })
+    expect(existsSync(join(app, "src", "made.js"))).toBe(true)
+    const named = await finished((await term.start({ command: "touch named.js", cwd: "projects/app", writes: ["projects/app/**"] })).session)
+    expect(named.exit).toBe(0)
+    const notLaned = await finished((await term.start({ command: "touch other.js", cwd: "projects/app", writes: ["projects/tiny/**"] })).session)
+    expect(notLaned.exit).not.toBe(0)
+    expect(existsSync(join(app, "other.js"))).toBe(false)
+    await expect(term.start({ command: "ls", cwd: "projects/nope" })).rejects.toMatchObject({ status: 400 })
   })
 })
 

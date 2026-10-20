@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { existsSync, mkdtempSync, realpathSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { allowedUrl, browserRoutes, createBrowser } from "./browser.js"
+import { allowedUrl, browserRoutes, createBrowser, sameDocument } from "./browser.js"
 
 const state = realpathSync(mkdtempSync(join(tmpdir(), "browser-test-")))
 let desk // the desk server: never shown
@@ -73,6 +73,20 @@ describe("H6: open", () => {
     await expect(browser.image(page.id, "99")).rejects.toMatchObject({ status: 404 })
     browser.close({ id: page.id })
   })
+
+  // 2026-10-18 owner: the screenshot goes with the agent's next model call.
+  test("GET browser/image: the shot for a model — a JPEG at most max px wide, base64; bad ids refused like the PNG", async () => {
+    const { page } = await browser.open({ url: `http://localhost:${app.port}/`, by: "coder", width: 800, height: 600 })
+    const img = await browserRoutes(browser).GET["browser/image"](new URLSearchParams({ id: page.id, n: "1", max: "400" }))
+    expect(img).toMatchObject({ id: page.id, n: 1, media_type: "image/jpeg" })
+    expect(img.width).toBeLessThanOrEqual(400)
+    expect(img.bytes).toBe(Buffer.from(img.data, "base64").length)
+    expect([...Buffer.from(img.data, "base64").subarray(0, 3)]).toEqual([0xff, 0xd8, 0xff])
+    expect((await browser.modelImage(page.id, "")).n).toBe(1) // none given: the latest
+    await expect(browser.modelImage("../../etc", "1")).rejects.toMatchObject({ status: 400 })
+    await expect(browser.modelImage(page.id, "99")).rejects.toMatchObject({ status: 404 })
+    browser.close({ id: page.id })
+  })
 })
 
 describe("actions", () => {
@@ -119,6 +133,16 @@ describe("actions", () => {
     expect((await browser.navigate({ id, url: `http://127.0.0.1:${app.port}/` })).page.title).toBe("Loss dashboard")
   })
 
+  // 2026-10-18: goto …/model.html#L1:2 on that very page waited for a load that never comes (504).
+  test("a goto to another #hash of the same page moves the hash, and the same URL reloads — no 504", async () => {
+    const shots = browser.list().pages.find((p) => p.id === id).shot.n
+    const r = await browser.navigate({ id, url: `http://127.0.0.1:${app.port}/#L2:attention:2` })
+    expect(r.page).toMatchObject({ url: `http://127.0.0.1:${app.port}/#L2:attention:2`, status: "open" })
+    expect(r.page.shot.n).toBeGreaterThan(shots)
+    expect((await browser.navigate({ id, url: `http://127.0.0.1:${app.port}/#L2:attention:2` })).page.status).toBe("open")
+    expect((await browser.navigate({ id, url: `http://127.0.0.1:${app.port}/` })).page.title).toBe("Loss dashboard")
+  })
+
   test("refused: navigating to a blocked URL (the page stays), bad input", async () => {
     await expect(browser.navigate({ id, url: "https://example.com/" })).rejects.toMatchObject({ status: 403 })
     expect(browser.list().pages.find((p) => p.id === id).status).toBe("open")
@@ -158,4 +182,14 @@ describe("caps and close", () => {
     expect(other.list().pages.map((p) => [p.status, p.reason])).toEqual(opened.map(() => ["closed", "the desk stopped"]))
     await expect(other.open({ url: `http://127.0.0.1:${app.port}/runs` })).rejects.toMatchObject({ status: 410 })
   }, 20000)
+})
+
+test("sameDocument: hash, reload or a real navigation", () => {
+  expect(sameDocument("http://127.0.0.1:8090/model.html#L1:2", "http://127.0.0.1:8090/model.html#L2:attention:2")).toBe("hash")
+  expect(sameDocument("http://127.0.0.1:8090/model.html#L1:2", "http://127.0.0.1:8090/model.html#L1:2")).toBe("reload")
+  expect(sameDocument("http://127.0.0.1:8090/model.html", "http://127.0.0.1:8090/model.html")).toBe("reload")
+  expect(sameDocument("http://127.0.0.1:8090/model.html#L1", "http://127.0.0.1:8090/model.html")).toBeNull()
+  expect(sameDocument("http://127.0.0.1:8090/model.html", "http://127.0.0.1:8090/model.html?fresh=1#L3")).toBeNull()
+  expect(sameDocument("http://127.0.0.1:8090/a", "http://127.0.0.1:8091/a#x")).toBeNull()
+  expect(sameDocument("", "http://127.0.0.1:8090/a#x")).toBeNull()
 })

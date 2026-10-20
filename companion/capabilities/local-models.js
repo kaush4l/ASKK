@@ -9,7 +9,12 @@
 //   const local = await createLocalModels()   null when none is installed
 //   local.providers                           ["claude-cli", …]
 //   local.models(provider)                    [{ id, context_length }]
-//   local.complete(provider, { model, prompt, signal })   async iterable of text
+//   local.complete(provider, { model, prompt, blocks?, signal })   async iterable of text
+//
+// Images (2026-10-18 owner: "the screenshot will be included along with the next request"): a chat message's
+// image_url parts with data: URLs (never a remote address) — the Claude CLI reads them through --input-format
+// stream-json (the prompt's text and images in their order, its answer the stream's result); the other CLIs and
+// Apple's model take text only, so the prompt says how many were left out.
 //
 // The CLIs are agents themselves: every one runs as a plain completion, in an
 // empty temporary folder, with its own tools, MCP servers, plugins and project
@@ -107,8 +112,32 @@ const APPLE_BRIDGE = join(APPLE_DIR, "bridge.py")
 const spawn = (argv, { cwd, env, signal }) =>
   Bun.spawn(argv, { cwd, env, stdin: "pipe", stdout: "pipe", stderr: "pipe", signal, timeout: TIMEOUT, killSignal: "SIGKILL" })
 
-async function* runCli(provider, bin, { model, prompt, signal }) {
+// The Claude CLI with images: the same flags, the input and output as stream-json (one user message of text and image
+// blocks; the answer is the result event).
+const STREAM_JSON = ["--input-format", "stream-json", "--output-format", "stream-json", "--verbose"]
+const withImages = (argv) => {
+  const at = argv.indexOf("--output-format")
+  return [...argv.slice(0, at), ...STREAM_JSON, ...argv.slice(at + 2)]
+}
+function streamAnswer(stdout) {
+  let result = null
+  for (const line of stdout.split("\n")) {
+    let event
+    try {
+      event = JSON.parse(line)
+    } catch {
+      continue
+    }
+    if (event?.type === "result") result = event
+  }
+  if (!result) throw new LocalModelError("claude finished without a result event.")
+  if (result.is_error) throw new LocalModelError(`claude: ${String(result.result ?? result.subtype ?? "error").slice(-HOST_LIMITS.localModels.errorTailChars)}`)
+  return String(result.result ?? "")
+}
+
+async function* runCli(provider, bin, { model, prompt, blocks = null, signal }) {
   const spec = CLIS[provider]
+  const images = provider === "claude-cli" && blocks?.some((b) => b.type === "image")
   const cwd = await mkdtemp(join(tmpdir(), `askk-${provider}-`))
   const out = join(cwd, "answer.txt")
   try {
@@ -116,15 +145,16 @@ async function* runCli(provider, bin, { model, prompt, signal }) {
     delete env.CLAUDECODE // a CLI started from inside Claude Code would refuse to nest
     // A model id newer than the installed CLI's catalog (claude-haiku-5-5 on 2.1.290) must reach the API instead of exiting 1.
     env.CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT = "1"
-    const proc = spawn(spec.argv(bin, model, out), { cwd, env, signal })
-    proc.stdin.write(prompt)
+    const argv = spec.argv(bin, model, out)
+    const proc = spawn(images ? withImages(argv) : argv, { cwd, env, signal })
+    proc.stdin.write(images ? `${JSON.stringify({ type: "user", message: { role: "user", content: blocks } })}\n` : prompt)
     proc.stdin.end()
     const [stdout, stderr, code] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited])
     if (signal?.aborted) return
     if (proc.signalCode) throw new LocalModelError(`${spec.binary} did not finish within ${TIMEOUT / 60_000} min.`)
     // The CLIs report their own failures (limits, sign-in, unknown model) on stdout.
     if (code !== 0) throw new LocalModelError(`${spec.binary} exited ${code}: ${(stderr || stdout).trim().slice(-HOST_LIMITS.localModels.errorTailChars) || "(no message)"}`)
-    const answer = provider === "codex-cli" ? await Bun.file(out).text().catch(() => "") : stdout
+    const answer = provider === "codex-cli" ? await Bun.file(out).text().catch(() => "") : images ? streamAnswer(stdout) : stdout
     if (!answer.trim()) throw new LocalModelError(`${spec.binary} finished without an answer.`)
     yield answer
   } finally {
@@ -180,14 +210,36 @@ export async function createLocalModels() {
       if (provider === "apple") return [{ id: "system", context_length: apple.context }]
       return CLIS[provider].models.map((id) => ({ id, context_length: CLIS[provider].context }))
     },
-    complete(provider, { model = "default", prompt, signal }) {
+    complete(provider, { model = "default", prompt, blocks = null, signal }) {
       known(provider)
       if (typeof prompt !== "string" || !prompt) throw httpError(400, "No prompt.")
+      const left = provider === "claude-cli" ? 0 : (blocks ?? []).filter((b) => b.type === "image").length
+      if (left) prompt += `\n\n(${left} screenshot${left === 1 ? "" : "s"} left out: ${provider} reads text only here)`
       if (provider === "apple") return runApple({ prompt, signal })
       if (!/^[a-z0-9][a-z0-9._:-]*$/i.test(model)) throw httpError(400, `Bad model id "${model}".`)
-      return runCli(provider, bins[provider], { model, prompt, signal })
+      return runCli(provider, bins[provider], { model, prompt, blocks, signal })
     },
   }
+}
+
+// The messages as Anthropic content blocks in their order: text, and each image_url part whose URL is a data: URL of a
+// png, jpeg, webp or gif (anything else — a remote address — is dropped, never fetched).
+const DATA_URL = /^data:(image\/(?:png|jpeg|webp|gif));base64,([A-Za-z0-9+/=]+)$/
+export function chatBlocks(messages = []) {
+  const blocks = []
+  for (const m of messages ?? []) {
+    if (typeof m?.content === "string") {
+      if (m.content) blocks.push({ type: "text", text: m.content })
+      continue
+    }
+    for (const part of m?.content ?? []) {
+      if (part?.type === "text" && part.text) blocks.push({ type: "text", text: part.text })
+      const url = part?.type === "image_url" ? String(part.image_url?.url ?? part.image_url ?? "") : ""
+      const data = url.match(DATA_URL)
+      if (data) blocks.push({ type: "image", source: { type: "base64", media_type: data[1], data: data[2] } })
+    }
+  }
+  return blocks
 }
 
 // ── the host route: OpenAI-compatible, /__askk/llm/<provider>/v1/… ───────
@@ -207,7 +259,8 @@ export function localModelRoute(local) {
     const prompt = (body.messages ?? [])
       .map((m) => (typeof m.content === "string" ? m.content : (m.content ?? []).map((part) => part.text ?? "").join("")))
       .join("\n\n")
-    const parts = local.complete(provider, { model: body.model, prompt, signal: request.signal })
+    const blocks = chatBlocks(body.messages)
+    const parts = local.complete(provider, { model: body.model, prompt, blocks: blocks.some((b) => b.type === "image") ? blocks : null, signal: request.signal })
     const id = `askk-${Date.now()}`
     const chunk = (delta, finish = null) => ({ id, object: "chat.completion.chunk", model: body.model, choices: [{ index: 0, delta, finish_reason: finish }] })
     if (!body.stream) {

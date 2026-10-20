@@ -1,13 +1,16 @@
 "use client"
 
 import * as React from "react"
-import { ChevronDownIcon, PlayIcon, SquareIcon } from "lucide-react"
+import { BoxIcon, ChevronDownIcon, Maximize2Icon, PlayIcon, SquareIcon, WrenchIcon, XIcon } from "lucide-react"
 
-import { agentVisual, artifactsFor, cardArtifacts, cardRows, currentQuest, namesIn, teamStatus, teamTitle, VISUAL_STATES } from "@/backend/live/desk"
+import { agentVisual, artifactsFor, cardArtifacts, cardRows, currentQuest, heldTiles, holdings, namesIn, teamStatus, teamTitle, VISUAL_STATES } from "@/backend/live/desk"
 import { spawnedLine } from "@/backend/live/spawned"
 import { Button } from "@/components/ui/button"
-import { ArtifactBlock } from "@/components/views/artifact"
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet"
+import { ArtifactBody } from "@/components/views/artifact"
 import { useDesk, useEngineStates, useEngines } from "@/hooks/use-engines"
+import { useIsMobile } from "@/hooks/use-mobile"
 import { cn } from "@/lib/utils"
 
 // A code desk as cards: every agent is a thread, every agent that holds agents
@@ -18,7 +21,10 @@ import { cn } from "@/lib/utils"
 // lighting up while called. The desk card (the lead) sits above the others. Every artifact sits on a card: its
 // team's, else its first holder's (artifactsFor). 2026-10-17 owner (the lead creates sub-teams at run time): a team
 // the lead spawned is a card like the others — its members as rows, a sub-team's members indented under their lead
-// (cardRows), every nested board on it (cardArtifacts), and who spawned it, for what.
+// (cardRows), every nested board on it (cardArtifacts), and who spawned it, for what. 2026-10-17 owner ("the agent card
+// will show the live artifacts which on click will expand to bigger view"): every artifact on a card is a small live
+// tile — its compact view drawn as it changes — and a click opens it big: a dialog on a wide screen, a sheet from the
+// bottom on a phone, with the artifact's whole view (the preview: the one pane, with its ask box).
 
 // Visual state → colors. Motion only while the thread works.
 const TONE = {
@@ -44,10 +50,17 @@ export function DeskLevels({ onOpen, compact = false }) {
     next.has(key) ? next.delete(key) : next.add(key)
     return next
   })
+  // the artifact opened big: {id, from} (from: the tile's button, where focus goes back), kept while the view closes
+  const [big, setBig] = React.useState(null)
+  const [bigOpen, setBigOpen] = React.useState(false)
+  const expand = React.useCallback((id, from) => {
+    setBig({ id, from })
+    setBigOpen(true)
+  }, [])
   if (!desk?.tree) return null
   const { tree } = desk
   const teams = new Set(teamsOf(tree))
-  const ctx = { byName, artifacts: desk.artifacts ?? {}, teams, onOpen, title: desk.title }
+  const ctx = { byName, artifacts: desk.artifacts ?? {}, teams, onOpen, title: desk.title, everyone: engines.length, expand }
 
   return (
     <section className="flex min-w-0 flex-col gap-3" aria-label="Desk">
@@ -60,6 +73,7 @@ export function DeskLevels({ onOpen, compact = false }) {
           return <TeamCard key={path} node={t} path={path} ctx={ctx} expanded={open.has(path)} onToggle={() => toggle(path)} />
         })}
       </div>
+      <ArtifactBig artifact={big ? (ctx.artifacts[big.id] ?? null) : null} from={big?.from} open={bigOpen && !!ctx.artifacts[big?.id]} onOpenChange={setBigOpen} />
     </section>
   )
 }
@@ -124,6 +138,7 @@ function TeamCard({ node, path, ctx, desk = false, expanded, onToggle }) {
 
         {/* lead */}
         <AgentRow label={node.agents.length ? "lead" : null} name={node.name} item={lead} onOpen={ctx.onOpen} lead />
+        <HeldArtifacts name={node.name} ctx={ctx} skip={owned} />
 
         {/* the quest the lead works */}
         <div className="rounded-md border border-dashed px-2 py-1.5">
@@ -159,17 +174,20 @@ function TeamCard({ node, path, ctx, desk = false, expanded, onToggle }) {
             {rows.map((r) => (
               <li key={r.name} style={r.depth ? { marginLeft: `${r.depth * 0.75}rem` } : undefined} className={cn("min-w-0", r.depth > 0 && "border-l border-dashed pl-1")}>
                 <AgentRow label={r.lead ? "team" : null} name={r.name} item={byName[r.name]} onOpen={ctx.onOpen} />
+                <HeldArtifacts name={r.name} ctx={ctx} skip={owned} />
               </li>
             ))}
           </ul>
         ) : null}
 
-        {/* the team's artifacts, separate, each under its id */}
-        <section className="flex flex-col gap-1.5" aria-label={`${name} artifacts`}>
-          {owned.map((a) => (
-            <ArtifactBlock key={a.id} artifact={a} expanded={expanded} />
-          ))}
-        </section>
+        {/* the team's artifacts (the desk card: the desk's own, every agent's), separate, each a live tile */}
+        {owned.length > 0 && (
+          <section className={TILES} aria-label={`${name} artifacts`}>
+            {owned.map((a) => (
+              <ArtifactTile key={a.id} artifact={a} onExpand={ctx.expand} />
+            ))}
+          </section>
+        )}
       </div>
 
       {/* expanded: the team's tree, every thread with its bubble and tools */}
@@ -201,10 +219,157 @@ function AgentRow({ label, name, item, onOpen, lead = false }) {
       {label && <span className="shrink-0 text-[11px] uppercase text-muted-foreground">{label}</span>}
       <span className={cn("shrink-0", lead ? "text-base" : "text-sm")}>{name}</span>
       {/opus/i.test(item?.engine?.agent?.model ?? "") && <span className="shrink-0 rounded border px-1 text-[10px] uppercase text-violet-300" title="Runs on Opus">opus</span>}
-      <span className={cn("min-w-0 truncate text-xs", v.state === "idle" ? "text-muted-foreground" : tone.text)}>{v.message}</span>
+      <span className={cn("min-w-0 flex-1 truncate text-xs", v.state === "idle" ? "text-muted-foreground" : tone.text)}>{v.message}</span>
+      {item?.engine && <Holdings engine={item.engine} />}
     </button>
   )
 }
+
+// How many tools and artifacts the agent holds (holdings): two small counts at the row's end, never squeezed.
+function Holdings({ engine }) {
+  const h = holdings(engine)
+  const label = `${h.tools} tool${h.tools === 1 ? "" : "s"}, ${h.artifacts} artifact${h.artifacts === 1 ? "" : "s"}${h.agents ? `, quests ${h.agents} agent${h.agents === 1 ? "" : "s"}` : ""}`
+  return (
+    <span data-holdings className="ml-auto flex shrink-0 items-center gap-1.5 text-[11px] tabular-nums text-muted-foreground" title={label} aria-label={label}>
+      <span className="flex items-center gap-0.5"><WrenchIcon className="size-3" aria-hidden />{h.tools}</span>
+      <span className="flex items-center gap-0.5"><BoxIcon className="size-3" aria-hidden />{h.artifacts}</span>
+    </span>
+  )
+}
+
+// The artifacts one agent holds, live, under its row (2026-10-17 owner: "the agent card will show the live artifacts
+// which on click will expand to bigger view"): a small tile each, drawn live by its view (backend/live/desk.js
+// heldTiles: one every agent holds — the desk's own — is on the desk card, not repeated under each agent; one the card
+// already shows as its own is not repeated either). In the expanded tree (`chips`): its id only, the same click.
+function HeldArtifacts({ name, ctx, skip = [], chips = false }) {
+  const held = heldTiles(ctx.artifacts, name, { everyone: ctx.everyone, skip: skip.map((a) => a.id) })
+  if (!held.length) return null
+  if (chips) {
+    return (
+      <ul className="flex flex-wrap justify-center gap-1 pt-1" aria-label={`${name}'s artifacts`}>
+        {held.map((a) => (
+          <li key={a.id}>
+            <ChipButton artifact={a} onExpand={ctx.expand} />
+          </li>
+        ))}
+      </ul>
+    )
+  }
+  return (
+    <div className={cn(TILES, "pb-1 pl-5")} aria-label={`${name}'s artifacts`} role="group">
+      {held.map((a) => (
+        <ArtifactTile key={a.id} artifact={a} onExpand={ctx.expand} />
+      ))}
+    </div>
+  )
+}
+
+// Tiles side by side where the card is wide (the desk card), one column in a narrow one; never wider than the card.
+const TILES = "grid min-w-0 gap-1.5 [grid-template-columns:repeat(auto-fill,minmax(min(100%,15rem),1fr))]"
+// What a click on a tile's body leaves to the body (its own controls: a job's Stop, a visual's play, a link).
+const CONTROLS = "button, a, input, select, textarea, summary, label, [role=button], [role=tab]"
+
+// One artifact small and live: its id and brief over its compact view; a click opens it big. The head is the button
+// (keyboard, screen readers, focus comes back to it when the big view closes); a click on the body opens it too,
+// unless it lands on one of the body's own controls.
+function ArtifactTile({ artifact: a, onExpand }) {
+  const ref = React.useRef(null)
+  const open = () => onExpand(a.id, ref.current)
+  return (
+    <div
+      data-tile={a.id}
+      onClick={(e) => {
+        if (!e.target.closest?.(CONTROLS)) open()
+      }}
+      className="flex min-w-0 cursor-pointer flex-col rounded-md border bg-background/40 px-2 pb-1.5 transition-colors hover:border-foreground/30 motion-reduce:transition-none"
+    >
+      <button
+        ref={ref}
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation()
+          open()
+        }}
+        aria-haspopup="dialog"
+        title={`Open ${a.id}${a.title ? ` — ${a.title}` : ""} big`}
+        className="flex min-h-8 min-w-0 items-center gap-1.5 text-left text-[11px] text-muted-foreground hover:text-foreground pointer-coarse:min-h-10"
+      >
+        <span className="shrink-0 font-mono text-foreground/80">{a.id}</span>
+        <span className="min-w-0 truncate">{a.brief || a.title}</span>
+        <Maximize2Icon className="ml-auto size-3 shrink-0" aria-hidden />
+        <span className="sr-only">open big</span>
+      </button>
+      <div className="max-h-44 min-w-0 overflow-hidden">
+        <ArtifactBody artifact={a} expanded={false} />
+      </div>
+    </div>
+  )
+}
+
+function ChipButton({ artifact: a, onExpand }) {
+  const ref = React.useRef(null)
+  return (
+    <button
+      ref={ref}
+      type="button"
+      onClick={() => onExpand(a.id, ref.current)}
+      aria-haspopup="dialog"
+      title={a.brief || a.title}
+      className="rounded border px-1.5 font-mono text-[11px] leading-5 text-muted-foreground hover:text-foreground pointer-coarse:min-h-10"
+    >
+      {a.id}
+    </button>
+  )
+}
+
+// An artifact big: its whole view — a dialog on a wide screen, a sheet from the bottom (near full height) on a phone.
+// Esc, the close button or a tap outside closes it; focus goes back to the tile it was opened from.
+function ArtifactBig({ artifact: a, from, open, onOpenChange }) {
+  const phone = useIsMobile()
+  const finalFocus = React.useCallback(() => (from?.isConnected ? from : true), [from])
+  const head = a && (
+    <div className="flex min-w-0 shrink-0 items-start gap-2 border-b px-3 py-2">
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <Title phone={phone} className="flex min-w-0 items-baseline gap-2 text-base">
+          <span className="shrink-0 font-mono">{a.id}</span>
+          <span className="min-w-0 truncate text-sm text-muted-foreground">{a.title}</span>
+        </Title>
+        <Description phone={phone} className="truncate text-xs">
+          {a.brief || `held by ${(a.holders ?? []).join(", ") || "no one"}`}
+        </Description>
+      </div>
+      <Button variant="ghost" size="icon" className="shrink-0 pointer-coarse:size-10" onClick={() => onOpenChange(false)} aria-label="Close">
+        <XIcon />
+      </Button>
+    </div>
+  )
+  const body = a && (
+    <div className="flex min-h-0 flex-1 flex-col overflow-auto px-3 pb-3">
+      <ArtifactBody artifact={a} expanded fill />
+    </div>
+  )
+  if (phone) {
+    return (
+      <Sheet open={open} onOpenChange={onOpenChange}>
+        <SheetContent side="bottom" showCloseButton={false} finalFocus={finalFocus} className="gap-0 rounded-t-xl p-0 data-[side=bottom]:h-[92svh]">
+          {head}
+          {body}
+        </SheetContent>
+      </Sheet>
+    )
+  }
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent showCloseButton={false} finalFocus={finalFocus} className="flex h-[min(88svh,60rem)] w-[min(76rem,calc(100%-2rem))] max-w-none flex-col gap-0 p-0 sm:max-w-none">
+        {head}
+        {body}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+const Title = ({ phone, ...props }) => (phone ? <SheetTitle {...props} /> : <DialogTitle {...props} />)
+const Description = ({ phone, ...props }) => (phone ? <SheetDescription {...props} /> : <DialogDescription {...props} />)
 
 // ── expanded: the tree ───────────────────────────────────────────────────
 
@@ -212,11 +377,17 @@ function TeamTree({ node, ctx, desk }) {
   return (
     <div className="flex flex-col items-center">
       <AgentNode node={node} item={ctx.byName[node.name]} onOpen={ctx.onOpen} />
+      <div className="w-full max-w-72">
+        <HeldArtifacts name={node.name} ctx={ctx} chips />
+      </div>
       {node.agents.length > 0 && <Arrow />}
       <div className={cn("grid w-full gap-3", desk ? "grid-cols-2 sm:grid-cols-3" : "grid-cols-1")}>
         {node.agents.map((m) => (
-          <div key={m.name} className="flex flex-col items-center">
+          <div key={m.name} className="flex min-w-0 flex-col items-center">
             <AgentNode node={m} label={teamTitle(m)} item={ctx.byName[m.name]} onOpen={ctx.onOpen} />
+            <div className="w-full max-w-72">
+              <HeldArtifacts name={m.name} ctx={ctx} chips />
+            </div>
           </div>
         ))}
       </div>

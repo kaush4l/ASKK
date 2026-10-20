@@ -17,12 +17,13 @@ import { Tool } from "../tool/tool.js"
 // add `writes:`); when agent.config.reads is set (agent.md `reads:` — the critic's "outputs only" lane) every read,
 // list, search and focus must fall in it, and the holder's prompt shows only what it may read. Globs are the
 // terminal sandbox's (companion/capabilities/sandbox.js laneRegex): * within a folder, ** across, a trailing / = all
-// below it, "!glob" excludes. .env* (but .env.example) and .mcp.json are never read or written.
+// below it, "!glob" excludes. .env* (but .env.example) and .mcp.json are never read or written; what git runs as code
+// (a .git config, a hook, a .git file: gitExec) is never written, whatever the lane.
 //
 // The machine only through an adapter: the default is the host (ctx.host: GET fs/list, fs/read, POST fs/write — the
 // tree is built from fs/list, which carries sizes and times); a desk may pass its own (BUILTIN.artifacts.files({adapter})):
-//   {list(path, ctx) → [{name, type: dir|file|link|other, size, mtime}], read(path, ctx) → {text, binary, truncated,
-//    size, revision} | null, write(path, text, {revision}, ctx) → {revision, created}, tree?(root, ctx) → {tree, truncated}}
+//   {list(path, ctx) → [{name, type: dir|file|link|other, size, mtime}], read(path, ctx, {tail?}) → {text, binary,
+//    truncated, size, revision, tail?, from?, head?} | null (tail: a file past the read cap from its end), write(path, text, {revision}, ctx) → {revision, created}, tree?(root, ctx) → {tree, truncated}}
 //
 // refresh(agent) (before each step, coalesced across holders, at most every REFRESH_MS unless a write made it stale)
 // pulls the tree under the root; changed() only when the twin state differs.
@@ -65,6 +66,18 @@ const secret = (path) => {
   const name = path.split("/").at(-1) ?? ""
   return name === ".mcp.json" || (/^\.env(\..+)?$/.test(name) && name !== ".env.example")
 }
+// What git runs as code (2026-10-17 critic: a member's lane "projects/*/.git/**" let it plant a core.fsmonitor command
+// or a hook that the lead's or the coder's git then ran under their wider lanes): a repository's config (config,
+// config.lock, config.worktree) and anything under its hooks/ — below any .git folder (a submodule's or a worktree's
+// too), case-insensitively (macOS) — and a .git file itself (a "gitdir:" pointer to a config elsewhere). Never written
+// through files; read as any file. Commits (objects, index, refs) stay the terminal's.
+export function gitExec(path) {
+  const parts = String(path ?? "").toLowerCase().split("/").filter(Boolean)
+  const at = parts.indexOf(".git")
+  if (at < 0) return false
+  const rest = parts.slice(at + 1)
+  return !rest.length || rest.includes("hooks") || /^config(\.lock|\.worktree)?$/.test(rest.at(-1))
+}
 
 // A lane glob as a regex on workspace paths — sandbox.js laneRegex's rules.
 export function globRegex(glob) {
@@ -93,10 +106,12 @@ export function inLane(globs, path) {
 
 // Does the lane glob `outer` cover every path `inner` matches (inner ⊆ outer)? 2026-10-17: agent.spawn narrows a
 // helper's writes:/reads: to globs its caller's lane covers. Segment-wise on "/" (a trailing / is /**): outer ** as the
-// LAST segment covers any rest, none too (the folder itself); a ** between segments covers any run of them; outer *
-// covers one inner segment without **; an outer segment with * or ? inside covers an equal one or one it matches as a
-// glob (an inner * is never taken for a ?); a literal covers only an equal segment; an inner ** only an outer **.
-// Conservative: when unsure, false. A "!glob" or an empty one is not a lane: false.
+// LAST segment covers any rest of at least one segment — never the folder itself (2026-10-17 critic: globRegex and the
+// sandbox read "projects/**" as ^projects/.*$, so a helper granted "projects" could chmod or replace the folder its
+// caller cannot touch); a ** between segments covers any run of them; outer * covers one inner segment without **; an
+// outer segment with * or ? inside covers an equal one or one it matches as a glob (an inner * is never taken for a ?);
+// a literal covers only an equal segment; an inner ** only an outer **. Conservative: when unsure, false. A "!glob" or
+// an empty one is not a lane: false.
 export function globCovers(outer, inner) {
   const split = (glob) => {
     let g = String(glob ?? "").trim()
@@ -119,7 +134,7 @@ export function globCovers(outer, inner) {
   const cover = (a, b) => {
     if (a === o.length) return b === i.length
     if (o[a] === "**") {
-      if (a === o.length - 1) return true
+      if (a === o.length - 1) return b < i.length // at least one more segment: "x/**" is not "x"
       for (let k = b; k <= i.length; k++) if (cover(a + 1, k)) return true
       return false
     }
@@ -172,9 +187,10 @@ export const hostFiles = {
     const r = await hostOf(ctx).get(`fs/list?path=${encodeURIComponent(path)}`, { signal: ctx?.signal })
     return r?.entries ?? []
   },
-  async read(path, ctx) {
+  // tail (2026-10-17): a file past the host's read cap read from its end ({…, tail, from, head}); see host fs/read.
+  async read(path, ctx, { tail = false } = {}) {
     try {
-      return await hostOf(ctx).get(`fs/read?path=${encodeURIComponent(path)}`, { signal: ctx?.signal })
+      return await hostOf(ctx).get(`fs/read?path=${encodeURIComponent(path)}${tail ? "&tail=1" : ""}`, { signal: ctx?.signal })
     } catch (e) {
       if (e?.status === 404) return null
       throw e
@@ -233,6 +249,57 @@ export async function walkTree(adapter, root, ctx, { max = TREE_MAX, depth = TRE
   }
   if (level.length && !truncated) truncated = true // folders deeper than `depth`
   return { tree, truncated }
+}
+
+const GLOB_PART = /[*?]/
+const GLOB_FILES = 2000 // entries a ** glob walks
+
+// The files a glob matches: [{path, mtime}]. A ** glob walks the tree under its fixed head; any other is listed part by
+// part (a folder that is missing matches nothing). The preview's bound scripts watch their inputs with it. (Moved here
+// from the retired charts artifact, 2026-10-18.)
+export async function expandGlob(adapter, pattern, ctx) {
+  const parts = pattern.split("/")
+  const first = parts.findIndex((p) => GLOB_PART.test(p))
+  if (first < 0) return []
+  const base = parts.slice(0, first).join("/")
+  if (parts.slice(first).some((p) => p.includes("**"))) {
+    let walked
+    try {
+      walked = await walkTree(adapter, base, ctx, { max: GLOB_FILES, depth: 12 })
+    } catch (e) {
+      if (e?.status === 404 || e?.status === 400) return []
+      throw e
+    }
+    const re = globRegex(pattern)
+    return walked.tree.filter((e) => !e.dir && re.test(e.path)).map((e) => ({ path: e.path, mtime: e.mtime }))
+  }
+  let level = [base]
+  const found = []
+  for (let i = first; i < parts.length && level.length; i++) {
+    const last = i === parts.length - 1
+    if (!GLOB_PART.test(parts[i]) && !last) {
+      level = level.map((d) => join(d, parts[i]))
+      continue
+    }
+    const re = globRegex(parts[i])
+    const lists = await mapLimit(level, PARALLEL, async (dir) => {
+      try {
+        return [dir, await adapter.list(dir, ctx)]
+      } catch (e) {
+        if (i === first && e?.status !== 404 && e?.status !== 400) throw e // the host itself failed
+        return [dir, []]
+      }
+    })
+    const next = []
+    for (const [dir, entries] of lists)
+      for (const e of entries ?? []) {
+        if (!e?.name || !re.test(e.name)) continue
+        if (last) e.type !== "dir" && found.push({ path: join(dir, e.name), mtime: Number(e.mtime) || 0 })
+        else if (e.type === "dir") next.push(join(dir, e.name))
+      }
+    level = next
+  }
+  return found
 }
 
 // ---- diffs ---------------------------------------------------------------------------------------
@@ -380,6 +447,7 @@ export class Files extends Artifact {
     const p = cleanPath(path)
     if (!p) throw new Error("path: the file to write")
     if (secret(p)) throw new Error(`${p}: ASKK's configuration (.env*, .mcp.json) — agents never write it`)
+    if (gitExec(p)) throw new Error(`${p}: git runs this as code (a .git config, hook or gitdir file) — agents never write it; commit with git in the terminal`)
     const writes = list(agent?.config?.writes)
     if (!writes.length) throw new Error(`${agent?.name ?? "this agent"} has no write lane: add writes: [globs] to its agent.md (e.g. writes: ["projects/**"]) — nothing is written without one`)
     if (!inLane(writes, p)) throw new Error(`${agent.name} writes only ${writes.join(", ")} (its writes:) — ${p} is outside its lane`)

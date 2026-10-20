@@ -26,7 +26,9 @@ export const CACHES = h(".askk", "caches") // <CACHES>/<desk>: a desk's own pack
 
 // Programs every toolchain may use (files, git, fetching a starter).
 const BASE = ["git", "ls", "cat", "head", "tail", "wc", "grep", "find", "mkdir", "echo", "which", "tree", "curl", "unzip", "tar", "diff"]
-const SYSTEM_BINS = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"]
+// /usr/sbin: sysctl, a desk's hardware probe (2026-10-17 live run: "sysctl is not installed" under launchd's PATH);
+// programs stay allowed by name, so nothing else there runs.
+const SYSTEM_BINS = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin"]
 
 function nvmBins() {
   const dir = h(".nvm/versions/node")

@@ -2,8 +2,19 @@
 
 Teams of AI agents you can watch work. The repository holds the **core** (`backend/kernel/`: the agent loop,
 tools, artifacts, teams) and the **live UI**. A **desk** — a team with its agents and tools — lives in its own
-folder under `custom/`. When the server starts a desk, the host gives it the infrastructure (files, web, MCP tool
-servers, local models, a wake book, Telegram) and every browser tab follows it live.
+folder: the core desk `desks/agent/` ships here, your own desks live under `custom/` (git-ignored). When the server
+starts a desk, the host gives it the infrastructure (files, web, MCP tool servers, local models, a wake book,
+Telegram) and every browser tab follows it live.
+
+The core desk is **one capable agent**: it does what you ask itself, makes helpers for a goal and runs them in
+parallel (`agent.spawn`, `dispatch` — a helper that earns it is kept as an `agent.md`), designs a whole desk for a
+standing job (`desk.create` → `desk.load` → `desk.ask`), and keeps a practice — its checklist, quality bar and learned
+instructions — that its own retro improves after every run. See [desks/agent/README.md](desks/agent/README.md).
+
+**Hosted version**: the static export (e.g. GitHub Pages) runs one long-running agent in the browser against a model
+you name — a local OpenAI-compatible server (Ollama, LM Studio, llama.cpp, vLLM) or a hosted one with a key. Its
+notes, practice and kept helpers stay in that browser. Run the desk server for the terminal, app previews, MCP tools
+and other desks.
 
 Everything that runs has a twin on screen: each agent has a page (its role, tools, artifacts, runs, model calls),
 each tool call shows in the Live feed drawn by its tool's view, each artifact is drawn by its view, and the desk's
@@ -13,14 +24,15 @@ background work (watchers, schedule, wakes, Telegram) streams into a desk log. S
 ## Requirements
 
 - [Bun](https://bun.com) 1.4 or newer.
-- A desk in `custom/<desk>/` (git-ignored; see `custom/README.md`) and the models it names (any OpenAI-compatible
-  server, the Anthropic API, or the claude / codex / gemini CLIs and Apple's on-device model on this Mac).
+- The models a desk names (any OpenAI-compatible server, the Anthropic API, or the claude / codex / gemini CLIs and
+  Apple's on-device model on this Mac). The core desk (`desks/agent/`) uses the Claude CLI; your desks go in
+  `custom/<desk>/` (git-ignored).
 
 ## Run
 
 ```bash
 bun install
-bun run dev                                  # every desk in custom/, http://127.0.0.1:3000
+bun run dev                                  # the core desk (desks/) and every desk in custom/, http://127.0.0.1:3000
 bun run dev -- --desks custom --port 1111    # the same on another port (the always-on launchd agent uses this)
 bun run dev -- --agents custom/<desk>        # one desk alone, on its own port and Next build folder
 ```
@@ -73,7 +85,10 @@ book and runs when the server comes up. Exit codes: `0` sent (answered with `--w
 | **Speech to speech** | Talk to the lead and hear it work (on-device recognition and voices on a Mac). |
 | **Status bar** | Where the desk runs, one dot per agent, the desk's newest background line, the selected agent's activity and model calls. |
 
-With no desk server (a static copy of the UI), every page says how to start one.
+With no desk server (a static copy of the UI), the home page offers **Run an agent in this browser**: name an
+OpenAI-compatible endpoint (a local server must allow the page's origin — `OLLAMA_ORIGINS=*`, LM Studio's CORS switch)
+and a model, and the same pages follow an agent running in the tab (`backend/browser/`). On the desk server the header's
+menu switches a tab to that agent and back.
 
 ## Host API and safety
 
@@ -110,12 +125,15 @@ backend/kernel/       the core: agent/ (Agent, reply, report), tool/ (Tool, Agen
                       util/; every element's twin(); index.js the one entry, README.md the map
 backend/live/         the live UI's client: one team/stream per tab → agents, the desk (tree, boards, artifacts),
                       the desk log; activity, visual state, the Live feed, the wake book, the workspace
+backend/browser/      the hosted version: the kernel desk run in the tab (one agent, the kit a browser can run, the
+                      host routes it needs answered in the tab, kept in localStorage) behind the same team protocol
 backend/hardware/     speech to speech (browser side)
 components/, app/     the pages (static export): home, agents, live, files, sts; views/ draws artifacts by view
 companion/            the host: server/ (host API, desks, compiled companion), team/ (desk loader, kernel-team,
                       Telegram, live status, transcripts), capabilities/, hardware/, shared/
 scripts/              dev.js (dev server), send.js (hand a desk work), build-companion.js
-custom/               desks (git-ignored): custom/README.md
+desks/                the core desks: agent/ (one capable agent)
+custom/               your desks (git-ignored): custom/README.md
 ```
 
 - [docs/philosophy.md](docs/philosophy.md): the engineering philosophy.

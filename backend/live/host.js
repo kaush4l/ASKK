@@ -4,7 +4,10 @@
 //
 //   local     `bun run dev` (scripts/dev.js) or the compiled companion (companion/server/server.js) on this
 //             machine: the same-origin host API under /__askk/ (companion/server/host-api.js) and the desk's team
-//   offline   no desk server answers (a static copy of the UI): the pages say how to start one
+//   browser   the owner runs an agent in this tab (2026-10-20: the hosted version — backend/browser/): a model named for
+//             this browser and switched on — with no desk server here, or chosen over the one that answers (`server`: its
+//             whoami, so the header offers the way back); capability `team` (the in-tab desk) only
+//   offline   no desk server answers and no model is named: the pages say how to start one, or run one in this tab
 
 import { withBase } from "@/backend/live/base-path"
 
@@ -26,12 +29,33 @@ async function call(endpoint, params = {}) {
 
 let detected = null
 
-// Probe once; a static host answers 404 (or HTML): no desk server.
+// The browser desk when no server answers: a model named for this browser (backend/browser/settings.js).
+const BROWSER = Object.freeze({ mode: "browser", name: "askk-browser", capabilities: ["team"] }) // "browser" is the host's app previews: not here
+const wanted = async () => {
+  try {
+    const [{ browserStore }, { wantsBrowserAgent }] = await Promise.all([import("@/backend/browser/storage"), import("@/backend/browser/settings")])
+    return wantsBrowserAgent(browserStore())
+  } catch {
+    return false
+  }
+}
+
+// Probe once; a static host answers 404 (or HTML): no desk server. The agent in this browser when the owner switched it
+// on — over a desk server too (the live server shows the hosted mode without another server).
 export function detectHost() {
   detected ??= call("whoami")
-    .then((who) => (who?.name === "askk-companion" ? { mode: "local", ...who } : OFFLINE))
-    .catch(() => OFFLINE)
+    .then(async (who) => {
+      const server = who?.name === "askk-companion" ? { mode: "local", ...who } : null
+      if (await wanted()) return server ? { ...BROWSER, server } : BROWSER
+      return server ?? OFFLINE
+    })
+    .catch(async () => ((await wanted()) ? BROWSER : OFFLINE))
   return detected
+}
+
+// Probe again (the owner named a model for this browser, or cleared it).
+export function resetHost() {
+  detected = null
 }
 
 export const hasCapability = (host, name) => !!host?.capabilities?.includes(name)
@@ -42,6 +66,8 @@ export const HOST_CAPABILITIES = [
   { id: "team", label: "The desk runs on this computer; every tab follows its agents live" },
   { id: "fs.read", label: "Read the desk's workspace (its data/ folder) and watch it change (fs/watch)" },
   { id: "fs.write", label: "Change files in the workspace", localOff: "Turned off (--read-only)." },
+  // 2026-10-17 owner: projects outside ASKK, each projects/<name>/ in the workspace (companion/capabilities/projects.js).
+  { id: "projects", label: "Projects of yours outside ASKK, loaded into the desk's workspace (projects/<name>/)", localOff: "This desk loads no projects (its main.js has no `projects`)." },
   // 2026-10-17: the developer view's terminal and preview (companion/capabilities/terminal.js, browser.js).
   { id: "term", label: "Terminal sessions: the desk's programs, sandboxed, kept running (term/*)", localOff: "Turned off (--read-only)." },
   { id: "browser", label: "Preview pages of apps running on this computer, with screenshots (browser/*)", localOff: "Turned off (--read-only)." },

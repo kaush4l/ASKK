@@ -4,6 +4,10 @@
 //   GET web/search?q=…&limit=…&source=…
 //        { engine, query, results: [{ title, url, snippet, source, published? }], note? }
 //   GET web/read?url=…           { url, title, text, truncated }
+//   GET web/page?url=…           { url, title, text, truncated, links: [{n, text, url}], forms: [{n, method, action,
+//                                  fields: [{name, type, value}]}] } — the page to navigate (2026-10-18 owner: "not
+//                                  just get but also be able to navigate the web"): its text with each link marked
+//                                  "[n]" and each form "[form Fn: …]", so the kernel's browse artifact can follow one
 //
 // Search sources (`source`, default web):
 //   web        SearXNG (free, open-source metasearch, AGPL) when ASKK_SEARXNG_URL
@@ -211,6 +215,93 @@ export function htmlToText(html) {
     .join("\n")
     .trim()
   return { title, text }
+}
+
+// ── HTML → a page to navigate ───────────────────────────────────────────
+// Unlike htmlToText it keeps the page's navigation (nav, header, footer): following links is the point. Every link to
+// an http(s) address is "text [n]" in the text, the same address the same n (at most LINKS_MAX); javascript:, mailto:,
+// tel: and same-page "#" links are dropped. Forms are "[form Fn: name (type), …]"; only GET forms can be submitted
+// (the kernel refuses POST: it would change something on another site). No script on the page ever runs.
+
+const LINKS_MAX = 400
+const FORMS_MAX = 20
+const FIELDS_MAX = 30
+const attr = (tag, name) => {
+  const m = tag.match(new RegExp(`\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>"']+))`, "i"))
+  return m ? decode(m[1] ?? m[2] ?? m[3] ?? "") : null
+}
+const absolute = (href, base) => {
+  if (href == null) return null
+  const raw = href.trim()
+  if (!raw || raw.startsWith("#")) return null
+  try {
+    const url = new URL(raw, base)
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null
+    url.hash = ""
+    return url.href
+  } catch {
+    return null
+  }
+}
+
+export function htmlToPage(html, pageUrl) {
+  const title = strip(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? "")
+  const base = absolute(attr(html.match(/<base\b[^>]*>/i)?.[0] ?? "", "href"), pageUrl) ?? pageUrl
+  const links = []
+  const numbers = new Map() // url -> n
+  const forms = []
+  let body = (html.match(/<body[\s\S]*<\/body>/i)?.[0] ?? html)
+    .replace(/<(script|style|noscript|svg|iframe|template)\b[\s\S]*?<\/\1>/gi, " ")
+    .replace(/<!--[\s\S]*?-->/g, " ")
+  body = body.replace(/<form\b([^>]*)>([\s\S]*?)<\/form>/gi, (_, open, inner) => {
+    if (forms.length >= FORMS_MAX) return inner
+    const method = (attr(` ${open}`, "method") ?? "get").toLowerCase() === "post" ? "post" : "get"
+    const action = absolute(attr(` ${open}`, "action") ?? "", base) ?? absolute(pageUrl, pageUrl)
+    const fields = []
+    for (const m of inner.matchAll(/<(input|textarea)\b([^>]*)>|<select\b([^>]*)>([\s\S]*?)<\/select>/gi)) {
+      const tag = ` ${m[2] ?? m[3]}`
+      const name = attr(tag, "name")
+      const type = m[1] == null ? "select" : m[1].toLowerCase() === "input" ? (attr(tag, "type") ?? "text").toLowerCase() : "textarea"
+      if (!name || ["submit", "button", "image", "reset", "file", "password"].includes(type)) continue
+      if ((type === "checkbox" || type === "radio") && !/\schecked\b/i.test(tag)) continue
+      let value = attr(tag, "value") ?? ""
+      if (type === "select") {
+        const options = [...(m[4] ?? "").matchAll(/<option\b([^>]*)>([^<]*)/gi)]
+        const chosen = options.find((o) => /\sselected\b/i.test(` ${o[1]}`)) ?? options[0]
+        value = chosen ? (attr(` ${chosen[1]}`, "value") ?? strip(chosen[2])) : ""
+      }
+      if (fields.length < FIELDS_MAX) fields.push({ name, type, value })
+    }
+    const n = `F${forms.length + 1}`
+    forms.push({ n, method, action, fields })
+    const shown = fields.filter((f) => f.type !== "hidden").map((f) => `${f.name} (${f.type})`)
+    return `\n[form ${n}${method === "post" ? " POST" : ""}: ${shown.join(", ") || "no fields"}]\n${inner.replace(/<select\b[\s\S]*?<\/select>/gi, " ").replace(/<textarea\b[\s\S]*?<\/textarea>/gi, " ")}\n`
+  })
+  body = body.replace(/<a\b([^>]*)>([\s\S]*?)<\/a>/gi, (_, open, inner) => {
+    const url = absolute(attr(` ${open}`, "href"), base)
+    const text = strip(inner) || attr(` ${open}`, "title") || attr(inner, "alt") || ""
+    if (!url) return inner
+    let n = numbers.get(url)
+    if (n == null) {
+      if (links.length >= LINKS_MAX) return inner
+      n = links.length + 1
+      numbers.set(url, n)
+      links.push({ n, text: clip(text || url, 120), url })
+    }
+    return ` ${inner} [${n}] `
+  })
+  body = body
+    .replace(/<\/(p|div|section|article|main|nav|header|footer|aside|li|tr|h[1-6]|pre|blockquote|table|ul|ol|dl|dd|dt)>|<br\s*\/?>/gi, "\n")
+    .replace(/<li[^>]*>/gi, "\n- ")
+    .replace(/<h([1-6])[^>]*>/gi, (_, n) => `\n${"#".repeat(Number(n))} `)
+    .replace(/<(td|th)[^>]*>/gi, " | ")
+  const text = decode(body.replace(/<[^>]+>/g, ""))
+    .split("\n")
+    .map((line) => line.replace(/[ \t\f\v]+/g, " ").replace(/ +\[/g, " [").replace(/\] +([.,;:!?)])/g, "]$1").trim())
+    .filter((line, i, all) => line || all[i - 1])
+    .join("\n")
+    .trim()
+  return { title, text, links, forms }
 }
 
 // ── search engines and APIs ─────────────────────────────────────────────
@@ -509,6 +600,18 @@ export function createWeb(env = process.env, deps = {}) {
       const truncated = page.text.length > MAX_TEXT
       return { url: url.href, title: page.title, text: truncated ? `${page.text.slice(0, MAX_TEXT)}\n…[truncated]` : page.text, truncated }
     },
+    // The page to navigate (htmlToPage): the same public-address checks at every hop as read; the address it landed on
+    // (after redirects) is the base its links resolve against. Not HTML: its text, no links.
+    async page(raw) {
+      const { url, response } = await fetchPublic(net, String(raw ?? ""))
+      if (!response.ok) throw new WebError(502, `${url.host} answered ${response.status}.`)
+      const type = response.headers.get("content-type") ?? ""
+      const body = await readBody(response)
+      const html = /html|xml/.test(type) || /^\s*</.test(body)
+      const page = html ? htmlToPage(body, url.href) : { title: "", text: body.trim(), links: [], forms: [] }
+      const truncated = page.text.length > MAX_TEXT
+      return { url: url.href, title: page.title, type: type.split(";")[0].trim(), text: truncated ? `${page.text.slice(0, MAX_TEXT)}\n…[truncated]` : page.text, truncated, links: page.links, forms: page.forms }
+    },
   }
 }
 
@@ -517,5 +620,6 @@ export const webRoutes = (web) => ({
   GET: {
     "web/search": (params) => web.search(params.get("q"), params.get("limit"), params.get("source") ?? undefined),
     "web/read": (params) => web.read(params.get("url")),
+    "web/page": (params) => web.page(params.get("url")),
   },
 })

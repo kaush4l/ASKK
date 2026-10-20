@@ -6,9 +6,12 @@ import { useRouter } from "next/navigation"
 import { FolderIcon } from "lucide-react"
 
 import { describeActivity } from "@/backend/live/activity"
-import { askChat, isRunRequest } from "@/backend/live/agent"
+import { askChat, chatAnswer, isRunRequest } from "@/backend/live/agent"
+import { talkOf } from "@/backend/live/talk"
 import { HOST_CAPABILITIES, detectHost, hasCapability } from "@/backend/live/host"
 import { ChatPair } from "@/components/agents/thread"
+import { DeskTalk } from "@/components/talk/desk-talk"
+import { BrowserAgentBar, BrowserAgentSetup } from "@/components/browser/browser-agent"
 import { Composer } from "@/components/chat/composer"
 import { Constellation } from "@/components/home/constellation"
 import { DeskLevels } from "@/components/kernel/desk-levels"
@@ -74,26 +77,32 @@ function Welcome({ busy }) {
   )
 }
 
-// No desk server answers here (capability `team` missing): how to start one.
+// No desk server answers here (capability `team` missing): how to start one — or (2026-10-20, the hosted version) run a
+// single agent in this tab against a model the owner names (components/browser/browser-agent.jsx).
 function Offline() {
   return (
-    <div className="mx-auto flex max-w-xl flex-col gap-2 rounded-xl border p-4 text-sm">
-      <p>No desk is running here.</p>
-      <p className="text-muted-foreground">
-        The desk runs on your computer and this page follows it. Start it from the repository with{" "}
-        <code className="font-mono text-foreground">bun run dev</code> (every desk in <code className="font-mono">custom/</code>) and open the address it prints.
-      </p>
+    <div className="mx-auto flex max-w-xl flex-col gap-4">
+      <div className="flex flex-col gap-2 rounded-xl border p-4 text-sm">
+        <p>No desk is running here.</p>
+        <p className="text-muted-foreground">
+          The desk runs on your computer and this page follows it. Start it from the repository with{" "}
+          <code className="font-mono text-foreground">bun run dev</code> and open the address it prints — or run an agent in this browser below.
+        </p>
+      </div>
+      <BrowserAgentSetup />
     </div>
   )
 }
 
 // ── ask the lead ─────────────────────────────────────────────────────────
 
-function QuickAsk({ engine, state, onOpen }) {
+function QuickAsk({ engine, state, onOpen, talking = false }) {
   const [text, setText] = React.useState("")
   const [asked, setAsked] = React.useState(null) // when this page last sent the lead a request (or guided its run)
   const [sent, setSent] = React.useState(null) // what became of the last message: queued, or guidance not delivered
-  const [chat, setChat] = React.useState(null) // the last question asked here: {question, pending} → its outcome (askChat)
+  // the last question asked here: {question, pending} → its outcome (askChat). Work its answer proposes starts only on
+  // the owner's "Queue it" (2026-10-17, amendment M1); that run's answer then shows below, as a send's does.
+  const [chat, setChat] = React.useState(null)
   const running = state?.status === "running"
   const messages = state?.messages ?? []
   const reply = asked ? [...messages].reverse().find((m) => m.role === "assistant" && m.action === "answer" && m.at && m.at >= asked) : null
@@ -138,13 +147,15 @@ function QuickAsk({ engine, state, onOpen }) {
           {sent}
         </p>
       )}
-      {chat && (
+      {/* With the talk panel below, an answered question is there (its chat rows); here only while it is on its way. */}
+      {chat && (!talking || chat.pending || chat.error) && (
         <ChatPair
           engine={engine}
           question={chat.question}
-          answer={chat.answer != null ? { content: chat.answer, guided: chat.guided, queued: chat.queued } : null}
+          answer={chatAnswer(chat)}
           pending={!!chat.pending}
           error={chat.error}
+          onQueued={() => setAsked(new Date().toISOString())}
           onDismiss={() => setChat(null)}
         />
       )}
@@ -295,6 +306,7 @@ function WorkspaceCard() {
     detectHost().then(setHost)
   }, [])
   const local = host?.mode === "local"
+  const browser = host?.mode === "browser"
   return (
     <section className="flex flex-col gap-3 motion-safe:animate-rise"
       style={{ animationDelay: "2.2s" }}
@@ -308,9 +320,9 @@ function WorkspaceCard() {
       >
         <span className="flex items-center gap-2">
           <FolderIcon className="size-4 text-muted-foreground" />
-          <span className="text-lg">{host ? (local ? (host.desk?.name ?? "This computer") : "No desk server") : "Checking…"}</span>
+          <span className="text-lg">{host ? (local ? (host.desk?.name ?? "This computer") : browser ? "This browser" : "No desk server") : "Checking…"}</span>
         </span>
-        <span className="text-sm break-all text-muted-foreground">{host ? (local ? host.root : "Start the desk server to see its workspace.") : ""}</span>
+        <span className="text-sm break-all text-muted-foreground">{host ? (local ? host.root : browser ? "The files the agent in this tab keeps, in this browser." : "Start the desk server to see its workspace.") : ""}</span>
         {local && (
           <span className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
             {HOST_CAPABILITIES.map((cap) => (
@@ -339,6 +351,7 @@ export function Dashboard() {
   const now = useNow()
   const desk = useDesk()
   const busy = states.some((s) => s?.status === "running" || s?.activity?.phase === "waiting")
+  const talk = talkOf(desk?.artifacts)
 
   const open = (engine) => router.push(agentHref(engine.name))
 
@@ -358,7 +371,11 @@ export function Dashboard() {
             <div className="mx-auto aspect-[2/1] w-full max-w-xl" aria-label="Connecting to the desk" />
           )}
         </div>
-        {status !== "offline" && <QuickAsk engine={ordered[0] ?? null} state={states[0]} onOpen={open} />}
+        {status !== "offline" && <BrowserAgentBar />}
+        {status !== "offline" && <QuickAsk engine={ordered[0] ?? null} state={states[0]} onOpen={open} talking={!!talk} />}
+        {/* 2026-10-18 owner: "The desk should be able to talk with me too" — what the desk tells and asks you, and your
+            questions to the lead, in one timeline. */}
+        {status !== "offline" && talk && <DeskTalk talk={talk} engine={ordered[0] ?? null} leadMessages={states[0]?.messages} className="max-w-xl" />}
         <LivePanel engines={ordered} states={states} onOpen={open} />
       </section>
 

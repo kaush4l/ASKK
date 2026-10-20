@@ -1,6 +1,6 @@
 // web/search with an injected fetch, DNS lookup and clock: no real network.
 import { describe, expect, test } from "bun:test"
-import { createWeb, parseArxiv, parseHn, parseWikipedia, privateAddress, webRoutes } from "./web.js"
+import { createWeb, htmlToPage, parseArxiv, parseHn, parseWikipedia, privateAddress, webRoutes } from "./web.js"
 
 // ── fixtures (trimmed real answers) ─────────────────────────────────────
 
@@ -547,5 +547,73 @@ describe("read: DNS rebinding", () => {
     // the name goes to the network, which resolves it at connect time
     expect((await web.read("https://named.example/")).title).toBe("TLS")
     expect(sent).toEqual([{ url: "https://named.example/", host: null }])
+  })
+})
+
+// ── page: a page to navigate (2026-10-18 owner: "not just get but also be able to navigate the web") ──
+
+const pageSpy = (answer) => {
+  const fetched = []
+  const fetch = async (url, init) => {
+    fetched.push(String(url))
+    return answer(url, init)
+  }
+  return { fetched, fetch }
+}
+const publicNet = (fetch) => createWeb({}, { fetch, lookup: async () => [{ address: "93.184.216.34" }], now: () => 0, sleep: async () => {} })
+
+describe("htmlToPage", () => {
+  const HTML = `<html><head><title>Notes &amp; links</title><base href="https://site.example/docs/"></head><body>
+<nav><a href="/">Home</a> <a href="rope.html#math">RoPE</a> <a href="javascript:void(0)">js</a> <a href="#top">top</a> <a href="mailto:a@b.c">mail</a></nav>
+<h1>Head</h1><p>Again <a href="rope.html">the RoPE page</a> and <a href=paper.pdf>a pdf</a>.</p>
+<form action="/search"><input name="q" value="x"><input type="hidden" name="lang" value="en"><select name="s"><option value="1">one<option value="2" selected>two</select>
+<input type=checkbox name=c checked value=on><input type=checkbox name=d><input type=password name=pw><input type=submit value=Go></form>
+<form method="POST" action="login"><input name="user"></form><script>alert("never")</script></body></html>`
+  const page = htmlToPage(HTML, "https://site.example/start")
+
+  test("links numbered once per address, resolved against <base>, fragments dropped; js/mailto/# left out", () => {
+    expect(page.title).toBe("Notes & links")
+    expect(page.links).toEqual([
+      { n: 1, text: "Home", url: "https://site.example/" },
+      { n: 2, text: "RoPE", url: "https://site.example/docs/rope.html" },
+      { n: 3, text: "a pdf", url: "https://site.example/docs/paper.pdf" },
+    ])
+    expect(page.text).toContain("Home [1] RoPE [2] js top mail")
+    expect(page.text).toContain("Again the RoPE page [2] and a pdf [3].")
+    expect(page.text).not.toContain("alert")
+  })
+
+  test("forms: GET fields with hidden ones, the selected option and checked boxes; POST marked; passwords never", () => {
+    expect(page.forms).toEqual([
+      { n: "F1", method: "get", action: "https://site.example/search", fields: [{ name: "q", type: "text", value: "x" }, { name: "lang", type: "hidden", value: "en" }, { name: "s", type: "select", value: "2" }, { name: "c", type: "checkbox", value: "on" }] },
+      { n: "F2", method: "post", action: "https://site.example/docs/login", fields: [{ name: "user", type: "text", value: "" }] },
+    ])
+    expect(page.text).toContain("[form F1: q (text), s (select), c (checkbox)]")
+    expect(page.text).toContain("[form F2 POST: user (text)]")
+    expect(page.text).not.toContain("onetwo")
+  })
+})
+
+describe("web/page", () => {
+  test("a public page: text, links against where the redirects landed, the content type", async () => {
+    const { fetched, fetch } = pageSpy((url) =>
+      String(url).endsWith("/start") ? new Response("", { status: 301, headers: { location: "https://named.example/moved/here" } }) : new Response('<title>P</title><body><a href="next">next</a></body>', { headers: { "content-type": "text/html; charset=utf-8" } }),
+    )
+    const page = await webRoutes(publicNet(fetch)).GET["web/page"](new URLSearchParams({ url: "https://named.example/start" }))
+    expect(page).toMatchObject({ url: "https://named.example/moved/here", title: "P", type: "text/html", text: "next [1]", links: [{ n: 1, text: "next", url: "https://named.example/moved/next" }], forms: [] })
+    expect(fetched).toEqual(["https://named.example/start", "https://named.example/moved/here"])
+  })
+
+  test("refuses private addresses, and a redirect to one, like read", async () => {
+    const local = createWeb({}, { fetch: () => Promise.reject(new Error("no fetch")), lookup: async () => [{ address: "127.0.0.1" }], now: () => 0, sleep: async () => {} })
+    expect((await local.page("http://localhost:1111/__askk/desks").catch((e) => e)).status).toBe(403)
+    const { fetched, fetch } = pageSpy(() => new Response("", { status: 302, headers: { location: "http://169.254.169.254/latest" } }))
+    expect((await publicNet(fetch).page("https://public.example/").catch((e) => e)).status).toBe(403)
+    expect(fetched).toEqual(["https://public.example/"])
+  })
+
+  test("not HTML: its text, no links", async () => {
+    const { fetch } = pageSpy(() => new Response("plain words", { headers: { "content-type": "text/plain" } }))
+    expect(await publicNet(fetch).page("https://public.example/a.txt")).toMatchObject({ text: "plain words", links: [], forms: [], type: "text/plain" })
   })
 })

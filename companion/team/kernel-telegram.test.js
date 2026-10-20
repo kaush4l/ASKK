@@ -375,6 +375,55 @@ test("through the real kernel team: a message during the run is owner guidance i
   team.terminate()
 })
 
+// 2026-10-17 critic: followLead took an owner chat's question row (kind "chat") for a new run, so a web Ask during a
+// Telegram-started run lost that run's reply ("No answer from the lead after N min").
+test("through the real kernel team: a web chat during a Telegram-started run still delivers that run's reply", async () => {
+  const dir = tmp()
+  let release
+  const hold = new Promise((r) => (release = r))
+  let steps = 0
+  const infer = async (prompt) => {
+    if (prompt.includes("# OWNER CHAT")) return "Still on it."
+    if (++steps === 1) await hold
+    return JSON.stringify({ thought: "t", calls: [], answer: "THE RUN ANSWER" })
+  }
+  const team = await createKernelTeam({ desk: fixtureDesk(dir, infer), port: 0, live: false })
+  const integrations = fakeIntegrations()
+  await start({ team, integrations, stateDir: join(dir, "state"), answerTimeoutMs: 2000 })
+  integrations.push({ id: 11, text: "go do the work", from: "Ana" })
+  await until(() => steps === 1)
+  // The owner asks on the web (and a member too) while the run works: chat rows, no run.
+  expect(await team.call({ target: "head", method: "chat", args: ["what are you doing?"] })).toEqual({ ok: true, value: { answer: "Still on it.", guided: false, proposed: null } })
+  expect(await team.call({ target: "helper", method: "chat", args: ["and you?"] })).toMatchObject({ ok: true })
+  release()
+  await until(() => replies(integrations).length === 1)
+  expect(replies(integrations)[0]).toEqual({ chat_id: CHAT, reply_to: 11, text: "THE RUN ANSWER" })
+  team.terminate()
+})
+
+test("an owner chat in flight is no run: a Telegram message meanwhile is new work at once (not guidance, not queued); /stop reaches the chat", async () => {
+  const dir = tmp()
+  const chats = []
+  const infer = async (prompt) => (prompt.includes("# OWNER CHAT") ? new Promise((ok) => chats.push(ok)) : JSON.stringify({ thought: "t", calls: [], answer: "done: " + prompt.slice(prompt.indexOf("# REQUEST")).split("\n")[1] }))
+  const team = await createKernelTeam({ desk: fixtureDesk(dir, infer), port: 0, live: false })
+  const integrations = fakeIntegrations()
+  const bridge = await start({ team, integrations, stateDir: join(dir, "state") })
+  const chat = team.call({ target: "head", method: "chat", args: ["what is built?"] })
+  await until(() => chats.length === 1)
+  expect(team.work().map((w) => w.step)).toEqual(["answering the owner"])
+  integrations.push({ id: 21, text: "build the parser", from: "Ana" })
+  await until(() => replies(integrations).length === 1)
+  expect(replies(integrations)[0]).toEqual({ chat_id: CHAT, reply_to: 21, text: "done: build the parser" }) // no "Queued:" note first
+  expect(bridge.logs).toContain("telegram: message #21 → head")
+  // /stop: the chat is work the owner can stop.
+  integrations.push({ id: 22, text: "/stop" })
+  await until(() => replies(integrations).length === 2)
+  expect(replies(integrations)[1].text).toBe('Stopping the head\'s run: "(owner chat) what is built?".')
+  expect(await chat).toEqual({ ok: false, error: { message: "stopped" } })
+  expect(team.work()).toEqual([])
+  team.terminate()
+})
+
 // ---- owner only -------------------------------------------------------------------------------
 
 test("intake is the owner's own account only: other chats, users, forwards are dropped, logged once, no ids", async () => {

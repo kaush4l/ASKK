@@ -1,3 +1,4 @@
+import { roleLine } from "../agent/agent.js"
 import { SPAWN_NAME, spawnName, withinHolding } from "../desk/desk.js"
 import { Tool } from "../tool/tool.js"
 import { globCovers } from "./files.js"
@@ -32,6 +33,9 @@ import { globCovers } from "./files.js"
 //              (globCovers, files.js), else "outside your lane"; the caller's "!" exclusions are appended, so none
 //              drops. A caller without reads: reads everywhere, so any reads lane is narrower.
 //   model      one the desk knows (env.models, when the desk lists them); max_steps 1–300. Default: the caller's.
+//   description / title  its one line (its twin, its card, a member's line in its lead's TOOLS) and its board's
+//              title, from the input or the template; no description → the role's first line that is not a section
+//              header (roleLine: a template role opens on "SPEC" — 2026-10-17 critic: every station showed "SPEC").
 
 export { SPAWN_NAME } // checked by Desk.spawn too (2026-10-17: it lives in desk.js, where the name is used)
 
@@ -94,6 +98,7 @@ function artifactsOf(specs, caller, desk) {
       const held = caller.artifacts.find((a) => a.id === ref)
       if (held) {
         if (held.kind === "checklist") throw new Error(`${ref} is ${held.owner ?? caller.name}'s run checklist: it is not shared (a helper's run would reset it)`)
+        if (held.kind === "practice") throw new Error(`${ref} is ${held.owner ?? caller.name}'s practice: it is not shared (give the helper its own: artifacts [practice])`)
         return { artifact: held, ...subset(withinHolding(ownOf(held), asked, held.id), gate) }
       }
       const kind = type ?? ref
@@ -156,12 +161,14 @@ function memberOf(raw, caller, desk, goal, prefix) {
     const role = text(raw.role)
     if (!role) throw new Error("role is required: what it is for and how it works")
     const members = list(raw.members).map((m) => memberOf(m, caller, desk, goal, prefix ? name : null))
+    const title = text(raw.title)
     return {
       type: "agent",
       name,
       role,
       goal,
-      description: role.split("\n")[0].slice(0, 200), // its quest tool's line on its lead's TOOLS
+      description: text(raw.description).slice(0, 200) || roleLine(role), // its quest tool's line on its lead's TOOLS
+      ...(title ? { title } : {}), // its board's, when it leads members of its own
       tools: [...toolsOf(raw.tools, caller, desk), ...members],
       artifacts: artifactsOf(raw.artifacts, caller, desk),
       ...lanesOf(raw, caller, desk),
@@ -183,6 +190,38 @@ function lanesOf(input, caller, desk) {
   return Object.fromEntries(Object.entries(out).filter(([, v]) => v !== undefined))
 }
 
+// ---- the spawn input as plain data (2026-10-20) ------------------------------------------------
+// What a helper was made from, names not instances: written as a kept helper's agent.md (companion/team/kept.js),
+// the base agent.update changes, respawn's input after a restart. Members carry their final names ("<team>-<member>"
+// for a template's), so a respawn builds them as inline members under the same names.
+const artifactRecord = (a) => {
+  if (typeof a === "string") return a.trim()
+  const out = {}
+  for (const k of ["type", "id"]) if (a?.[k] != null && a[k] !== "") out[k] = String(a[k]).trim()
+  if (a?.commands != null) out.commands = list(a.commands).map(String)
+  if (a?.gate === true || a?.gate === "true") out.gate = true
+  return out
+}
+function recordOf(src) {
+  const out = { name: src.name, description: text(src.description) || undefined, title: text(src.title) || undefined, role: text(src.role), goal: text(src.goal) || undefined }
+  const tools = list(src.tools).map((t) => String(t?.name ?? t).trim()).filter(Boolean)
+  const artifacts = list(src.artifacts).map(artifactRecord).filter((a) => (typeof a === "string" ? a : a.type || a.id))
+  if (tools.length) out.tools = tools
+  if (artifacts.length) out.artifacts = artifacts
+  for (const k of ["writes", "reads"]) if (src[k] != null && src[k] !== "") out[k] = globsOf(src[k])
+  if (src.model != null && src.model !== "") out.model = String(src.model).trim()
+  const steps = src.max_steps ?? src.maxSteps
+  if (steps != null && steps !== "") out.max_steps = Number(steps)
+  if (src.board === false || src.board === "false") out.board = false
+  if (src.members?.length) out.members = src.members
+  return Object.fromEntries(Object.entries(out).filter(([, v]) => v !== undefined))
+}
+function memberRecord(raw, prefix) {
+  const own = String(raw?.name ?? "").trim()
+  const name = prefix ? `${prefix}-${own}` : own
+  return recordOf({ ...raw, name, members: list(raw?.members).map((m) => memberRecord(m, prefix ? name : null)) })
+}
+
 export function spawnTool() {
   return new Tool({
     name: "agent.spawn",
@@ -193,6 +232,8 @@ export function spawnTool() {
       name: "lowercase, a-z 0-9 -, 2–31 chars (its quest tool's name); from a template: the template's name unless given",
       role: "what it is for and how it works (its agent.md body); from a template unless given",
       goal: "the stated goal it works toward; from a template unless given",
+      description: "its one line (its card; a member's line in its lead's TOOLS); default: the template's, else its role's first line; optional",
+      title: "its board's title when it leads members; default: the template's; optional",
       tools: "names of your own tools, or of the desk's catalogue, it may call — not your agents, not an artifact's commands; optional",
       artifacts: "ids you hold, or the desk's catalogue types, it shares (name or {type | id, commands, gate}); on one you hold with only some commands it gets those (or fewer, asked) — never a command you lack; optional",
       template: "a team from the desk's teams/ (its role, goal, tools, artifacts, lanes and members; your fields here win); optional",
@@ -222,7 +263,13 @@ export function spawnTool() {
       const narrowed = lanesOf(Object.fromEntries(["writes", "reads", "model", "max_steps", "board"].map((k) => [k, field(k)])), caller, desk)
       // Every member checked before anything is built: one that asks more than the caller holds fails the whole spawn.
       const members = list(asJSON(field("members"))).map((m) => memberOf(m, caller, desk, goal, given("members") ? null : name))
-      desk.spawn({ name, role, goal, tools: [...tools, ...members], artifacts, keep, ...narrowed }, caller)
+      const description = text(field("description")).slice(0, 200) || roleLine(role)
+      const title = text(field("title"))
+      // 2026-10-20: what was asked, as plain data (names, not instances): a kept helper's agent.md (the host writes it,
+      // companion/team/kept.js), agent.update's base, respawn's input after a restart.
+      const record = recordOf({ ...Object.fromEntries(["tools", "artifacts", "writes", "reads", "model", "max_steps", "board"].map((k) => [k, field(k)])), name, role, goal, description, title, members: list(asJSON(field("members"))).map((m) => memberRecord(m, given("members") ? null : name)) })
+      const at = typeof input.at === "string" && !Number.isNaN(Date.parse(input.at)) ? input.at : undefined // respawn: when it was first made
+      desk.spawn({ name, role, goal, description, ...(title ? { title } : {}), tools: [...tools, ...members], artifacts, keep, ...narrowed, input: record, ...(at ? { at } : {}) }, caller)
       const stays = keep === "run" ? " (dismissed when this run ends)" : " (stays until agent.dismiss)"
       if (!members.length) return `spawned ${name} — quest it with ${name} {requirement, ask, outcome}${stays}`
       return `spawned team ${name} (lead ${name}; members ${members.map((m) => m.name).join(", ")}; board ${name}.board) — quest or dispatch ${name} {requirement, ask, outcome}${stays}`
@@ -247,5 +294,133 @@ export function dismissTool() {
   })
 }
 
-// The two tools by name, for a desk's catalogue (env.tools) or an agent's tools list.
-export const SPAWN_TOOLS = { "agent.spawn": spawnTool, "agent.dismiss": dismissTool }
+// agent.catalog (2026-10-20 owner: sub-agents "might also need a special request in order to decide what tools and any
+// other metadata"): what the caller can give a helper, before it spawns one — its own tools and the desk catalogue's
+// with what each does, the artifacts it holds (with its commands) and the desk's artifact types, the team templates,
+// the models — and the helpers it has now (status, keep, goal, the step their run is at). find narrows tools and types.
+const LINE = 160
+const oneLine = (s) => String(s ?? "").replace(/\s+/g, " ").trim()
+const short = (s, n = LINE) => {
+  const t = oneLine(s)
+  return t.length > n ? `${t.slice(0, n - 1)}…` : t
+}
+export function catalogTool() {
+  return new Tool({
+    name: "agent.catalog",
+    type: "spawn",
+    view: "spawn",
+    description: "before agent.spawn: what you can give a helper — your tools and the desk's (what each does), the artifacts you hold (your commands on each) and the desk's artifact types, team templates, models — and your helpers now (status, keep, goal)",
+    input: { find: "words that narrow the tools and types listed (any word matches); optional" },
+    run: (input = {}, ctx = {}) => {
+      const { caller, desk } = homeOf(ctx, "agent.catalog")
+      const env = desk.ctx?.env ?? {}
+      const words = String(input.find ?? "").toLowerCase().split(/[\s,]+/).filter(Boolean)
+      const hit = (...parts) => !words.length || words.some((w) => parts.join(" ").toLowerCase().includes(w))
+      const mine = [...caller.tools.values()].filter((t) => t.type !== "agent" && t.type !== "artifact")
+      const own = new Set(mine.map((t) => t.name))
+      const describe = (entry) => (entry && typeof entry === "object" && "description" in entry ? entry.description : "")
+      const out = []
+      const yours = mine.filter((t) => hit(t.name, t.description))
+      out.push(`YOUR TOOLS (give by name)${words.length ? ` matching ${words.join(" ")}` : ""}: ${yours.length}`, ...yours.map((t) => `- ${t.name} — ${short(t.description)}`))
+      const desks = Object.entries(env.tools ?? {}).filter(([name, e]) => !own.has(name) && hit(name, describe(e)))
+      out.push(`THE DESK'S TOOLS you do not hold (give by name): ${desks.length}`, ...desks.slice(0, 60).map(([name, e]) => `- ${name}${describe(e) ? ` — ${short(describe(e))}` : ""}`))
+      const held = caller.artifacts.filter((a) => a.kind !== "checklist" && a.kind !== "practice" && a !== (caller.board ?? caller.parentBoard))
+      out.push("ARTIFACTS YOU HOLD (give by id; commands: yours on it, a helper gets these or fewer)", ...held.map((a) => {
+        const cmds = caller.holding?.get(a.id)?.commands ?? a.commands().map((t) => (t.name.startsWith(`${a.id}.`) ? t.name.slice(a.id.length + 1) : t.name))
+        return `- ${a.id} (${a.kind}) — ${short(a.brief?.() ?? "", 80) || a.title}${cmds.length ? ` · commands: ${cmds.join(", ")}` : " · read only"}`
+      }))
+      const types = Object.keys(env.artifacts ?? {}).filter((k) => hit(k)).sort()
+      if (types.length) out.push(`ARTIFACT TYPES (a fresh one, or the desk's shared one by type): ${types.join(", ")}`)
+      const templates = Object.entries(env.templates ?? {})
+      if (templates.length) out.push("TEAM TEMPLATES (agent.spawn {template})", ...templates.map(([k, t]) => `- ${k} — ${short(t?.description ?? roleLine(t?.role ?? ""), 120)}${t?.members?.length ? ` · members: ${t.members.map((m) => m.name).join(", ")}` : ""}`))
+      const models = env.models == null ? null : Array.isArray(env.models) ? env.models : Object.keys(env.models)
+      out.push(`MODELS: ${models ? models.join(", ") : "any"} (yours: ${caller.config.model ?? "the desk's default"})`)
+      out.push(`LANES: writes ${globsOf(caller.config.writes).join(", ") || "none"} · reads ${caller.config.reads == null ? "everywhere" : globsOf(caller.config.reads).join(", ") || "none"}`)
+      const helpers = (caller.children ?? []).filter((c) => c.config.spawned)
+      out.push(`YOUR HELPERS NOW: ${helpers.length}`, ...helpers.map((h) => {
+        const run = h.current
+        const now = h.status === "running" && run ? `running step ${run.steps?.length ?? 0} on "${short(run.request, 80)}"` : h.status
+        return `- ${h.name} (keep ${h.config.spawned.keep}${h.children?.length ? `, team: ${h.children.map((c) => c.name).join(", ")}` : ""}) — ${now} · goal: ${short(h.config.spawned.goal, 120)}`
+      }))
+      return out.join("\n")
+    },
+  })
+}
+
+// agent.update (2026-10-20 owner: the retro "should be able to update instructions or the tools … it may have
+// missed"): a helper the caller spawned, rebuilt with the fields given changed (role, goal, tools, artifacts, lanes,
+// model, max_steps, keep: desk keeps it — its agent.md is written; keep: run lets a kept one go with this run). Its
+// spawn record is the base; refused while it runs. The old one is dismissed ("update": a kept helper's folder stays and
+// is rewritten) and the new one spawned; when the new spec fails, the old one is spawned again and the error returned.
+export function updateTool() {
+  const fields = ["role", "goal", "description", "title", "tools", "artifacts", "writes", "reads", "model", "max_steps", "members", "board"]
+  return new Tool({
+    name: "agent.update",
+    type: "spawn",
+    view: "spawn",
+    description: "change a helper you spawned — its role (instructions), goal, tools, artifacts, lanes, model or max_steps — or keep it (keep: desk: it stays across runs and restarts, written as its agent.md); only the fields given change",
+    input: { name: "the helper's name", role: "optional", goal: "optional", description: "optional", tools: "the whole new list; optional", artifacts: "the whole new list; optional", writes: "optional", reads: "optional", model: "optional", max_steps: "optional", keep: "run | desk; optional" },
+    run: async (input = {}, ctx = {}) => {
+      const { caller, desk } = homeOf(ctx, "agent.update")
+      const name = String(input.name ?? "").trim()
+      const helper = desk.list.find((a) => a.name === name)
+      if (!helper) throw new Error(`no helper ${name}; yours: ${(caller.children ?? []).filter((c) => c.config.spawned).map((c) => c.name).join(", ") || "none"}`)
+      const spawned = helper.config.spawned
+      if (!spawned) throw new Error(`${name} is part of the desk, not a spawned helper: its agent.md is the owner's`)
+      if (spawned.by !== caller.name) throw new Error(`${name} was spawned by ${spawned.by}: only ${spawned.by} updates it`)
+      const base = spawned.input
+      if (!base) throw new Error(`${name} has no spawn record to update from: dismiss it and spawn it again`)
+      const changed = fields.filter((k) => input[k] != null && input[k] !== "")
+      const keep = input.keep == null || input.keep === "" ? spawned.keep : String(input.keep).trim()
+      if (!["run", "desk"].includes(keep)) throw new Error(`keep "${keep}": run or desk`)
+      if (!changed.length && keep === spawned.keep) throw new Error(`nothing to change: give one of ${fields.join(", ")} or keep`)
+      const next = { ...base, ...Object.fromEntries(changed.map((k) => [k, input[k]])), name, keep, at: spawned.at }
+      // A new role without a new description: the line comes from the new role (2026-10-20: a kept helper's card kept the
+      // old role's first line, run facts and all).
+      if (changed.includes("role") && !changed.includes("description")) delete next.description
+      desk.dismiss(name, caller.name, { reason: "update" })
+      const spawn = spawnTool()
+      try {
+        await spawn.run(next, ctx)
+      } catch (error) {
+        const back = await spawn.run({ ...base, name, keep: spawned.keep, at: spawned.at }, ctx).then(
+          () => "the old one is back",
+          (again) => `and the old one could not be rebuilt (${again.message}): agent.spawn it again`,
+        )
+        throw new Error(`${name} not updated (${error.message}); ${back}`)
+      }
+      return `updated ${name}: ${[...changed, ...(keep !== spawned.keep ? [`keep ${keep}`] : [])].join(", ")}`
+    },
+  })
+}
+
+// After a restart: the kept helpers (records [{by, input, at}], parents before their own helpers) spawned again by
+// the agents that made them, each bounded by its spawner's holdings as at its first spawn. One that cannot be (its
+// spawner gone, a tool no longer there) is skipped with a log line; the rest go on. → the names spawned.
+export async function respawn(desk, records = [], { log = () => {} } = {}) {
+  const spawn = spawnTool()
+  const done = []
+  for (const r of records) {
+    const name = r?.input?.name
+    const caller = desk.list.find((a) => a.name === r?.by)
+    if (!name) continue
+    if (!caller) {
+      log(`kept ${name}: its spawner ${r?.by ?? "?"} is not in the desk — not restored`)
+      continue
+    }
+    if (desk.list.some((a) => a.name === name)) {
+      log(`kept ${name}: an agent of that name is in the desk already — not restored`)
+      continue
+    }
+    try {
+      await spawn.run({ ...r.input, keep: "desk", ...(r.at ? { at: r.at } : {}) }, { agent: caller })
+      done.push(name)
+    } catch (error) {
+      log(`kept ${name}: not restored (${error.message})`)
+    }
+  }
+  return done
+}
+
+// The tools by name, for a desk's catalogue (env.tools) or an agent's tools list.
+export const SPAWN_TOOLS = { "agent.spawn": spawnTool, "agent.dismiss": dismissTool, "agent.catalog": catalogTool, "agent.update": updateTool }

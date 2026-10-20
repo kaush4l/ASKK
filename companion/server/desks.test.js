@@ -234,6 +234,9 @@ describe("POST desks/load", () => {
     expect(res.status).toBe(403)
     expect((await res.json()).error).toBe("This server is read-only (--read-only): it loads no desks.")
     expect(existsSync(join(roRoot, "ro2", "state"))).toBe(false)
+    // A check imports the desk's code: none on a read-only server.
+    const check = await readOnly.handleApi(new Request("http://localhost:4998/__askk/desks/check", { method: "POST", headers: { host: "localhost:4998", origin: "http://localhost:4998", "content-type": "application/json" }, body: JSON.stringify({ name: "ro" }) }))
+    expect(check.status).toBe(403)
   })
 
   test("desks/select still switches desks with the same checks", async () => {
@@ -244,5 +247,52 @@ describe("POST desks/load", () => {
     expect((await desks.handleApi(request("desks/select", { method: "POST", body: { name: "beta" }, type: "text/plain;x=application/json" }))).status).toBe(403)
     expect((await desks.handleApi(request("desks/select", { method: "POST", body: { name: "beta" }, type: "application/json; charset=utf-8" }))).status).toBe(200)
     expect((await desks.handleApi(request("desks/select", { method: "POST", body: { name: "nope" } }))).status).toBe(404)
+  })
+})
+
+// 2026-10-20: the kit's desk.* tools reach these (backend/kernel/builtin/desks.js): a desk written from a spec and
+// loaded, work given with wait (an id at once, polled), another desk's workspace read through its own fs/*.
+describe("desks/create, desks/ask (waited, polled), desks/read", () => {
+  test("a desk from a spec composes and loads; an ask with wait answers through its id; a folder and a file read", async () => {
+    const spec = { title: "Gamma", description: "a desk from a spec", lead: { name: "lead", description: "answers", role: "Answers.", tools: [], artifacts: ["practice"] } }
+    const made = await call("desks/create", { method: "POST", body: { name: "gamma", spec } })
+    expect(made.status).toBe(200)
+    expect(made.body).toMatchObject({ name: "gamma", hosted: false, written: expect.arrayContaining(["main.js", "agents/lead/agent.md", "README.md"]) })
+    expect(made.body.check.tree.name).toBe("lead")
+    expect((await call("desks/create", { method: "POST", body: { name: "gamma", spec } })).status).toBe(409)
+    expect((await load("gamma")).body).toMatchObject({ name: "gamma", reloaded: false })
+    expect((await call("desks/check", { method: "POST", body: { name: "gamma" } })).body.lead).toBe("lead")
+
+    const asked = await call("desks/ask", { method: "POST", body: { name: "alpha", text: "say ok", wait: true } })
+    const id = asked.body.id // read before the matcher below (bun's toMatchObject puts its matcher into the object)
+    expect(id).toMatch(/^ask-/)
+    expect(asked.body.status).toBe("running")
+    let run
+    await until(async () => (run = (await call(`desks/ask?id=${id}`)).body).status !== "running")
+    expect(run).toMatchObject({ desk: "alpha", status: "done", answer: "alpha-lead ok", by: "owner" })
+    expect((await call("desks/ask?id=nope")).status).toBe(404)
+    expect((await call("desks/ask", { method: "POST", body: { name: "nope", text: "x" } })).status).toBe(404)
+
+    const alpha = desks.hosted.get("alpha").desk
+    mkdirSync(join(alpha.workspace, "notes"), { recursive: true })
+    writeFileSync(join(alpha.workspace, "notes", "x.md"), "hello")
+    expect((await call("desks/read", { method: "POST", body: { name: "alpha", path: "notes/x.md" } })).body).toMatchObject({ path: "notes/x.md", text: "hello" })
+    expect((await call("desks/read", { method: "POST", body: { name: "alpha", path: "notes" } })).body.entries.map((e) => e.name)).toEqual(["x.md"])
+    expect((await call("desks/read", { method: "POST", body: { name: "alpha", path: "../../x" } })).status).toBeGreaterThanOrEqual(400)
+  })
+
+  test("no ask loops: a desk waiting on another is not asked back with a wait; one desk asks another at most 6 times in 10 minutes", async () => {
+    const waited = await call("desks/ask", { method: "POST", desk: "gamma", body: { name: "alpha", text: "say ok", wait: true } })
+    expect(waited.status).toBe(200)
+    const back = await call("desks/ask", { method: "POST", desk: "alpha", body: { name: "gamma", text: "and you?", wait: true } })
+    expect(back.status).toBe(409)
+    expect(back.body.error).toContain("gamma is waiting on alpha's answer")
+    await until(async () => (await call(`desks/ask?id=${waited.body.id}`)).body.status !== "running")
+    for (let k = 0; k < 5; k++) expect((await call("desks/ask", { method: "POST", desk: "gamma", body: { name: "alpha", text: `again ${k}` } })).status).toBe(200)
+    const loop = await call("desks/ask", { method: "POST", desk: "gamma", body: { name: "alpha", text: "once more" } })
+    expect(loop.status).toBe(429)
+    expect(loop.body.error).toContain("gamma asked alpha 6 times in 10 minutes")
+    // The owner's own asks are never counted.
+    expect((await call("desks/ask", { method: "POST", body: { name: "alpha", text: "owner asks" } })).status).toBe(200)
   })
 })

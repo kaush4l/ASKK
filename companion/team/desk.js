@@ -7,7 +7,8 @@
 //     vendor/     applications only this desk uses (git-ignored with custom/)
 //     data/       the workspace: the desk's shared files (Files page, fs/*, the wake book in data/state/)
 //     state/      host state: server.json, kernel-team.jsonl, artifacts/, days/, logs its tools keep
-//   custom/memory/<desk>/   the desk's and its teams' memory and reports (kernel-team passes it to start)
+//   memory/<desk>/          at ASKK's root (companion/shared/paths.js memoryFolder): the desk's and its teams' memory and
+//                           reports (kernel-team passes it to start) and its loaded projects (projects.json)
 //
 // main.js default-exports a function the host calls once at start:
 //
@@ -22,6 +23,9 @@
 //                                          // its terminal sessions (host term/*: companion/capabilities/terminal.js)
 //       mounts: { desks: { root, allow: (name) => bool } },   // desks/<name>/… in its workspace = <root>/<name>/…
 //                                          // when allow(name) (fs/*, term cwd and lanes: capabilities/files.js)
+//       projects: true | { name: path },   // projects outside ASKK it works on, as projects/<name>/ in its workspace:
+//                                          // these at start (paths relative to the desk folder), and true or not, the
+//                                          // owner's loads (host projects/load; capabilities/projects.js)
 //       start: async ({ port, live, log, memory }) => ({ desk, ready?, run? }),   // builds the agents
 //                                          // (backend/kernel buildDesk); the host serves them as the team
 //                                          // (companion/team/kernel-team.js); run({wake, busy, log}) → stop
@@ -39,6 +43,7 @@
 
 import { existsSync, readdirSync, readFileSync } from "node:fs"
 import { basename, dirname, join, resolve } from "node:path"
+import { memoryFolder } from "../shared/paths.js"
 
 const ENTRY = "main.js"
 const entryOf = (folder) => (existsSync(join(folder, ENTRY)) ? join(folder, ENTRY) : null)
@@ -55,12 +60,24 @@ export const deskPaths = (folder) => ({
   folder,
   agents: join(folder, "agents"),
   workspace: join(folder, "data"),
-  memory: join(folder, "memory"),
+  memory: memoryFolder(basename(folder)),
   state: join(folder, "state"),
   tools: join(folder, "tools"),
 })
 
 // Every desk in a folder (e.g. custom/): the subfolders with a main.js, by name.
+// The core desks ASKK ships (2026-10-20: desks/agent, the single capable agent), hosted beside the local ones.
+export const CORE_DESKS = resolve(import.meta.dir, "..", "..", "desks")
+
+// The desks a server hosts: the core desks (desks/) and the local ones (--desks, default custom/: never pushed); a local
+// desk named like a core one wins. only: just these names.
+export function hostedDeskFolders({ desks = "custom", core = CORE_DESKS, only = null } = {}) {
+  const local = listDesks(desks)
+  const names = new Set(local.map((f) => basename(f)))
+  const shipped = core ? listDesks(core).filter((f) => !names.has(basename(f))) : []
+  return [...shipped, ...local].filter((f) => !only || only.has(basename(f)))
+}
+
 export function listDesks(dir = "custom") {
   const base = resolve(dir)
   if (!existsSync(base)) return []
@@ -122,12 +139,15 @@ export async function loadDesk(dir, env = process.env) {
           // 2026-10-17: what its host API's terminal runs and which outside folders its workspace mounts.
           terminal: config.terminal && typeof config.terminal === "object" ? config.terminal : null,
           mounts: config.mounts?.desks?.root ? { desks: { root: resolve(folder, config.mounts.desks.root), allow: config.mounts.desks.allow } } : null,
+          // Projects outside ASKK (true: the owner loads them; {name: path}: these too, at start).
+          projects: config.projects === true || (config.projects && typeof config.projects === "object") ? config.projects : null,
           host: typeof config.host === "function" ? config.host : null,
           setup: typeof config.setup === "function" ? config.setup : null,
           start: config.start,
           // Its own tool servers (mcpServers format).
           mcp: typeof config.mcp === "string" ? resolve(folder, config.mcp) : null,
           ...deskPaths(folder),
+          memory: memoryFolder(config.name ?? basename(folder), env),
         }
       })()
     )

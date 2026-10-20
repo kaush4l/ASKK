@@ -50,6 +50,7 @@ test("a spawn or dismiss call has its own look (2026-10-17: agent.spawn / agent.
   expect(callLook({ kind: "tool", view: "spawn", name: "agent.dismiss" }).kind).toBe("spawn")
   expect(callLook({ kind: "agent", view: "quest", name: "counter" }).kind).toBe("quest") // the helper itself is quested
   expect(CALL_KINDS).toContain("spawn")
+  expect(callLook({ name: "talk.ask", type: "dev", view: "talk" })).toEqual({ kind: "talk", tone: "rose", icon: "messages-square" })
 })
 
 test("current quest: an owner chat is not a run's request (2026-10-17: kind chat)", async () => {
@@ -100,14 +101,14 @@ test("cardArtifacts: a team card has its board, and every nested sub-team's boar
     "lead.board": { id: "lead.board", owner: "lead", view: "board", holders: ["lead"] },
     "model.board": { id: "model.board", owner: "model", view: "board", holders: ["model", "model-architect", "layer"] },
     "layer.board": { id: "layer.board", owner: "layer", view: "board", holders: ["layer", "layer-probe"] },
-    charts: { id: "charts", owner: null, view: "chart", holders: ["lead", "model"] },
+    plan: { id: "plan", owner: null, view: "checklist", holders: ["lead", "model"] },
     dispatch: { id: "dispatch", owner: null, view: "dispatch", holders: ["lead"] },
   }
   const teams = new Set(["lead", "model", "layer"])
   expect(cardArtifacts(artifacts, spawnedTree.agents[1], { teams }).map((a) => a.id)).toEqual(["model.board", "layer.board"]) // its own first
-  // the lead's card: its board and the kit's charts and dispatch (no owner: on their first holder's card), plan order
+  // the lead's card: its board and the kit's plan and dispatch (no owner: on their first holder's card), reading order
   const { artifactsFor } = await import("./desk.js")
-  expect(artifactsFor(artifacts, { team: "lead", lead: "lead", teams }).map((a) => a.id)).toEqual(["dispatch", "charts", "lead.board"])
+  expect(artifactsFor(artifacts, { team: "lead", lead: "lead", teams }).map((a) => a.id)).toEqual(["plan", "dispatch", "lead.board"])
 })
 
 test("dispatchRows: running first (longest on top), then ended newest first; elapsed or how long it took", async () => {
@@ -135,4 +136,50 @@ test("teamTitle: a title of its own, else the team (not the kernel's default \"<
   expect(teamTitle({ name: "model", team: "model", title: "model board" })).toBe("model")
   expect(teamTitle({ name: "planner", team: null, title: null })).toBe("planner")
   expect(teamTitle(null)).toBe("")
+})
+
+test("stopDispatchJob: the owner stops one job — team call target artifact, method stop, args [{id, job}] (amendment M3)", async () => {
+  const { stopDispatchJob } = await import("./desk.js")
+  const realFetch = globalThis.fetch
+  const calls = []
+  let reply = { ok: true, value: { stopped: "j2" } }
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url, body: JSON.parse(init.body) })
+    return new Response(JSON.stringify(reply), { headers: { "content-type": "application/json" } })
+  }
+  try {
+    expect(await stopDispatchJob("dispatch", "j2")).toEqual({ stopped: "j2" })
+    expect(calls).toEqual([{ url: "/__askk/team/call", body: { target: "artifact", method: "stop", args: [{ id: "dispatch", job: "j2" }] } }])
+    reply = { ok: false, error: { message: "no job j9" } }
+    await expect(stopDispatchJob("dispatch", "j9")).rejects.toThrow("no job j9")
+  } finally {
+    globalThis.fetch = realFetch
+  }
+})
+
+test("heldTiles: an agent's live tiles — less the desk-wide ones every agent holds and the card's own; the preview first", async () => {
+  const { heldTiles } = await import("./desk.js")
+  const artifacts = {
+    files: { id: "files", view: "files", holders: ["lead", "coder", "critic"] },
+    preview: { id: "preview", view: "preview", holders: ["lead", "coder"] },
+    plan: { id: "plan", view: "checklist", holders: ["lead", "coder"] },
+    "dev.board": { id: "dev.board", owner: "dev", view: "board", holders: ["lead", "coder"] },
+    stage: { id: "stage", view: "stage", holders: ["lead"] }, // an old one (before the restart): a tile like any other
+  }
+  expect(heldTiles(artifacts, "coder", { everyone: 3 }).map((a) => a.id)).toEqual(["preview", "plan", "dev.board"])
+  expect(heldTiles(artifacts, "coder", { everyone: 3, skip: ["dev.board"] }).map((a) => a.id)).toEqual(["preview", "plan"])
+  expect(heldTiles(artifacts, "lead", { everyone: 3 }).map((a) => a.id)).toEqual(["preview", "plan", "dev.board", "stage"])
+  expect(heldTiles(artifacts, "critic", { everyone: 1 }).map((a) => a.id)).toEqual(["files"]) // one agent: nothing is desk-wide
+  expect(heldTiles(null, "lead")).toEqual([])
+})
+
+test("holdings: an agent's own tools, its artifacts and its agents — artifact commands and quests not counted as tools", async () => {
+  const { holdings } = await import("./desk.js")
+  const engine = {
+    artifacts: ["files", "plan"],
+    tools: [{ name: "web.search", kind: "tool" }, { name: "files.read", kind: "tool" }, { name: "plan.tick", kind: "tool" }, { name: "coder", kind: "agent" }],
+  }
+  expect(holdings(engine)).toEqual({ tools: 1, artifacts: 2, agents: 1 })
+  expect(holdings(null)).toEqual({ tools: 0, artifacts: 0, agents: 0 })
+  expect(holdings({ artifacts: [{ id: "talk" }], tools: [] })).toEqual({ tools: 0, artifacts: 1, agents: 0 })
 })

@@ -57,11 +57,22 @@ export function parseReport(text) {
   return { verdict: field("VERDICT") ?? lines.find(Boolean) ?? "", confidence: Number.isFinite(n) ? n : null }
 }
 
+// A thread row that starts a run: the request (the owner's, a quest, the schedule's…) — never the owner's guidance
+// (it joins the run in progress) nor an owner chat's question (kind "chat": one model call beside the runs). The one
+// predicate on the server (2026-10-17 critic: a chat row read as a run — the Telegram reply of the run in progress was
+// lost, /status showed the chat's question as the last run's goal); backend/live/agent.js isRunRequest in the tab.
+export const isRunRequest = (m) => m?.role === "user" && m.kind !== "guidance" && m.kind !== "chat"
+
+// An owner chat in flight is listed in the team's work() (kernel-team.js) with this step: it is stoppable work, but no
+// run — new work sent meanwhile starts at once, never "queued" behind it.
+export const OWNER_CHAT_STEP = "answering the owner"
+export const isRunWork = (w) => w?.step !== OWNER_CHAT_STEP
+
 // The lead's current run (or its last one): when it started, its goal and who asked.
 export function leadRun({ lead, states }) {
   const s = states?.[lead]
   const messages = s?.messages ?? []
-  const request = (s?.working?.request && messages.find((m) => m.id === s.working.request)) || findLast(messages, (m) => m.role === "user" && m.kind !== "guidance")
+  const request = (s?.working?.request && messages.find((m) => m.id === s.working.request)) || findLast(messages, isRunRequest)
   if (!request) return null
   return { startedAt: ms(s?.working?.at ?? request.at), goal: request.content, from: request.from ?? "owner" }
 }
@@ -135,7 +146,7 @@ function agentNow(name, { states, registry, since }) {
   const messages = s?.messages ?? []
   const inRun = (m) => ms(m.at) >= since - 1000
   const running = s?.status === "running"
-  const started = running || messages.some((m) => m.role === "user" && inRun(m))
+  const started = running || messages.some((m) => isRunRequest(m) && inRun(m))
   const answer = findLast(messages, (m) => m.action === "answer" && inRun(m))
   if (running) {
     const sub = registry?.agents?.find((a) => a.name === name)?.agents ?? []

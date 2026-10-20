@@ -71,13 +71,22 @@ test("the workbench shows for a desk with a files, terminal or preview artifact;
   expect(Object.keys(picked.others).sort()).toEqual(["notes", "plan"])
 })
 
-test("tabs: preview pages, then open + modified files newest first, one per path, newest change kept", () => {
+test("tabs: the one Preview tab, then open + modified files newest first, one per path, newest change kept", () => {
   const tabs = workbenchTabs({ files, preview })
-  expect(tabs.map((t) => t.id)).toEqual(["preview:p1", "preview:p2", "file:projects/llm/train.py", "file:projects/llm/runs/1/log.txt", "file:projects/llm/README.md"])
+  expect(tabs.map((t) => t.id)).toEqual(["preview", "file:projects/llm/train.py", "file:projects/llm/runs/1/log.txt", "file:projects/llm/README.md"])
   const train = tabs.find((t) => t.path === "projects/llm/train.py")
   expect(train.modified.diff).toBe("+c")
   expect(train.open.by).toBe("coder")
-  expect(tabs[1]).toMatchObject({ name: "localhost:8002", closed: true })
+  // 2026-10-17 owner: one preview pane — its pages and visuals are the pane's own strip, not a tab each
+  expect(tabs[0]).toMatchObject({ kind: "preview", name: "Preview", items: 2, open: 0, at: Date.parse("2026-10-17T10:04:00Z") })
+  expect(workbenchTabs({ files }).some((t) => t.kind === "preview")).toBe(false)
+})
+
+test("tabs: the Preview tab's time is the preview's newest change (a visual drawn, a question), so follow can pick it", () => {
+  const drawn = { ...preview, state: { ...preview.state, visuals: [{ id: "flow", title: "The line", visual: { kind: "steps", steps: [] }, at: "2026-10-17T10:30:00Z" }], current: { kind: "visual", id: "flow" }, asks: [{ id: "q1", text: "why?", at: "2026-10-17T10:31:00Z", answer: null }] } }
+  const tabs = workbenchTabs({ files, preview: drawn })
+  expect(tabs[0]).toMatchObject({ id: "preview", items: 3, open: 1, at: Date.parse("2026-10-17T10:31:00Z") })
+  expect(followTab(tabs)).toBe("preview") // newer than the last file change (10:05)
 })
 
 test("tabs: the owner's pinned files join; a dismissed tab stays closed until its file changes again", () => {
@@ -223,13 +232,13 @@ test("choose: the owner's pick while paused, else what the pane showed when it p
 
 // 2026-10-17, observed: a click on an editor tab paused follow, and the terminal went on switching sessions.
 test("paneIds: a pause freezes every pane; the owner's pick moves only its own pane", () => {
-  const lists = { tab: ["file:a", "file:b"], file: ["file:a", "file:b"], page: ["preview:p1"], session: ["r06", "git", "r07"] }
-  let followed = { tab: "file:b", file: "file:b", page: "preview:p1", session: "r06" }
+  const lists = { tab: ["file:a", "file:b"], file: ["file:a", "file:b"], page: ["page:p1"], session: ["r06", "git", "r07"] }
+  let followed = { tab: "file:b", file: "file:b", page: "page:p1", session: "r06" }
   expect(paneIds({ following: true, followed, lists })).toEqual(followed)
   const frozen = paneIds({ following: true, followed, lists }) // what showed when the owner clicked
   const chosen = { tab: "file:a", file: "file:a", page: null, session: null } // the owner clicked file a's tab
-  followed = { tab: "file:b", file: "file:b", page: "preview:p1", session: "git" } // then git printed
-  expect(paneIds({ following: false, chosen, frozen, followed, lists })).toEqual({ tab: "file:a", file: "file:a", page: "preview:p1", session: "r06" })
+  followed = { tab: "file:b", file: "file:b", page: "page:p1", session: "git" } // then git printed
+  expect(paneIds({ following: false, chosen, frozen, followed, lists })).toEqual({ tab: "file:a", file: "file:a", page: "page:p1", session: "r06" })
   expect(paneIds({ following: true, chosen, frozen, followed, lists })).toEqual(followed)
 })
 

@@ -4,12 +4,19 @@ import * as React from "react"
 import { CheckIcon, MinusIcon } from "lucide-react"
 
 import { HOST_CAPABILITIES, detectHost, hasCapability } from "@/backend/live/host"
+import { readConnection, setBrowserAgent } from "@/backend/browser/settings"
+import { registry } from "@/backend/live/registry"
+import { BrowserAgentSetup } from "@/components/browser/browser-agent"
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
+import { browserStore } from "@/backend/browser/storage"
+import { useEngines } from "@/hooks/use-engines"
 import { withBase } from "@/backend/live/base-path"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuGroup,
+  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
@@ -67,12 +74,15 @@ function DeskWork({ work = [] }) {
 export function HostStatus() {
   const [host, setHost] = React.useState(null)
   const [desks, setDesks] = React.useState(null)
+  const [setup, setSetup] = React.useState(false) // the "run an agent in this browser" form, over a desk server
+  // 2026-10-20: probed again when the desk this tab follows changes (the owner started or stopped an agent in this browser).
+  const { status } = useEngines()
   React.useEffect(() => {
     detectHost().then((found) => {
       setHost(found)
       if (found.mode === "local") loadDesks().then(setDesks)
     })
-  }, [])
+  }, [status])
   // Each desk's running workflow: refreshed while the page is visible and whenever the menu opens.
   const refresh = React.useCallback(() => {
     if (host?.mode === "local" && document.visibilityState === "visible") loadDesks().then((d) => d && setDesks(d))
@@ -83,73 +93,110 @@ export function HostStatus() {
   }, [refresh])
   if (!host) return null
   const local = host.mode === "local"
-  const current = desks?.desks?.length ? (host.desk?.name ?? desks.current) : null
+  const browser = host.mode === "browser" // the hosted version: a single agent in this tab (backend/browser/)
+  const model = browser ? readConnection(browserStore()) : null
+  const current = local && desks?.desks?.length ? (host.desk?.name ?? desks.current) : null // the server's desk: not while this tab runs its own
   const busy = !!desks?.desks?.find((d) => d.name === current)?.work?.length
 
   return (
-    <DropdownMenu onOpenChange={(open) => open && refresh()}>
-      <DropdownMenuTrigger
-        render={
-          <Button variant="outline" size="sm" className="gap-2 pointer-coarse:h-10" aria-label="Where ASKK is running" />
-        }
-      >
-        <span className={cn("size-2 rounded-full", local ? "bg-emerald-500" : "bg-amber-500", busy && "animate-pulse bg-sky-500")} />
-        {current ?? (local ? "This computer" : "No desk")}
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-80 max-w-[calc(100vw-2rem)]">
-        {current && (
-          <>
-            <DropdownMenuGroup>
-              <DropdownMenuLabel>Desk — every desk keeps running; this picks the one you see</DropdownMenuLabel>
-              <DropdownMenuRadioGroup value={current} onValueChange={(name) => name !== current && switchDesk(name)}>
-                {desks.desks.map((desk) => (
-                  <DropdownMenuRadioItem key={desk.name} value={desk.name} className="pointer-coarse:min-h-10">
-                    <span className="flex flex-col">
-                      <span>{desk.name}</span>
-                      {desk.description && <span className="text-xs text-muted-foreground">{desk.description}</span>}
-                      <DeskWork work={desk.work} />
-                    </span>
-                  </DropdownMenuRadioItem>
-                ))}
-              </DropdownMenuRadioGroup>
-            </DropdownMenuGroup>
-            <DropdownMenuSeparator />
-          </>
-        )}
-        <DropdownMenuGroup>
-          <DropdownMenuLabel className="flex flex-col gap-1">
-            <span className="text-sm text-foreground">{local ? "The desk runs on this computer" : "No desk server answers here"}</span>
-            <span className="font-normal break-all">
-              {local
-                ? `Workspace: ${host.root}${host.runtime ? ` · State: ${host.runtime}` : ""}`
-                : "Start the desk server from the repository (bun run dev) and open the address it prints."}
-            </span>
-          </DropdownMenuLabel>
-        </DropdownMenuGroup>
-        <DropdownMenuSeparator />
-        <ul className="flex flex-col gap-2 p-2 text-sm">
-          {HOST_CAPABILITIES.map((cap) => {
-            const on = hasCapability(host, cap.id)
-            return (
-              <li key={cap.id} className="flex gap-2">
-                {on ? (
-                  <CheckIcon className="mt-0.5 size-4 shrink-0 text-emerald-500" aria-label="Available" />
-                ) : (
-                  <MinusIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-label="Not available" />
-                )}
-                <span className="flex flex-col">
-                  <span className={cn(!on && "text-muted-foreground")}>{cap.label}</span>
-                  {!on && (
-                    <span className="text-xs text-muted-foreground">
-                      {local ? (cap.localOff ?? "Not on this server.") : "Needs the desk server."}
-                    </span>
+    <>
+      <DropdownMenu onOpenChange={(open) => open && refresh()}>
+        <DropdownMenuTrigger
+          render={
+            <Button variant="outline" size="sm" className="gap-2 pointer-coarse:h-10" aria-label="Where ASKK is running" />
+          }
+        >
+          <span className={cn("size-2 rounded-full", local || browser ? "bg-emerald-500" : "bg-amber-500", busy && "animate-pulse bg-sky-500")} />
+          {current ?? (local ? "This computer" : browser ? "This browser" : "No desk")}
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-80 max-w-[calc(100vw-2rem)]">
+          {current && (
+            <>
+              <DropdownMenuGroup>
+                <DropdownMenuLabel>Desk — every desk keeps running; this picks the one you see</DropdownMenuLabel>
+                <DropdownMenuRadioGroup value={current} onValueChange={(name) => name !== current && switchDesk(name)}>
+                  {desks.desks.map((desk) => (
+                    <DropdownMenuRadioItem key={desk.name} value={desk.name} className="pointer-coarse:min-h-10">
+                      <span className="flex flex-col">
+                        <span>{desk.name}</span>
+                        {desk.description && <span className="text-xs text-muted-foreground">{desk.description}</span>}
+                        <DeskWork work={desk.work} />
+                      </span>
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+              </DropdownMenuGroup>
+              <DropdownMenuSeparator />
+            </>
+          )}
+          <DropdownMenuGroup>
+            <DropdownMenuLabel className="flex flex-col gap-1">
+              <span className="text-sm text-foreground">{local ? "The desk runs on this computer" : browser ? "A single agent runs in this browser" : "No desk server answers here"}</span>
+              <span className="font-normal break-all">
+                {local
+                  ? `Workspace: ${host.root}${host.runtime ? ` · State: ${host.runtime}` : ""}`
+                  : browser
+                    ? `Model: ${model?.model ?? "?"} at ${model ? new URL(model.base_url).host : "?"} (Change on the home page). Its notes and standing orders stay in this browser; the terminal, app previews and other desks need the desk server (bun run dev).`
+                    : "Start the desk server from the repository (bun run dev) and open the address it prints — or run an agent in this browser from the home page."}
+              </span>
+            </DropdownMenuLabel>
+          </DropdownMenuGroup>
+          <DropdownMenuSeparator />
+          <ul className="flex flex-col gap-2 p-2 text-sm">
+            {HOST_CAPABILITIES.map((cap) => {
+              const on = hasCapability(host, cap.id)
+              return (
+                <li key={cap.id} className="flex gap-2">
+                  {on ? (
+                    <CheckIcon className="mt-0.5 size-4 shrink-0 text-emerald-500" aria-label="Available" />
+                  ) : (
+                    <MinusIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-label="Not available" />
                   )}
-                </span>
-              </li>
-            )
-          })}
-        </ul>
-      </DropdownMenuContent>
-    </DropdownMenu>
+                  <span className="flex flex-col">
+                    <span className={cn(!on && "text-muted-foreground")}>{browser && cap.id === "team" ? "An agent runs in this tab; every page follows it" : cap.label}</span>
+                    {!on && (
+                      <span className="text-xs text-muted-foreground">
+                        {local ? (cap.localOff ?? "Not on this server.") : "Needs the desk server."}
+                      </span>
+                    )}
+                  </span>
+                </li>
+              )
+            })}
+          </ul>
+          {/* 2026-10-20: the agent in this browser (backend/browser/) — over the desk server too, so its mode is tried on the
+              live server, never on another one. */}
+          {(local || (browser && host.server)) && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuGroup>
+                {local ? (
+                  <DropdownMenuItem className="pointer-coarse:min-h-10" onClick={() => setSetup(true)}>
+                    Run an agent in this browser…
+                  </DropdownMenuItem>
+                ) : (
+                  <DropdownMenuItem
+                    className="pointer-coarse:min-h-10"
+                    onClick={async () => {
+                      setBrowserAgent(browserStore(), false)
+                      await registry.restart()
+                    }}
+                  >
+                    Back to the desk server
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuGroup>
+            </>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <Dialog open={setup} onOpenChange={setSetup}>
+        <DialogContent className="max-h-[90svh] overflow-y-auto">
+          <DialogTitle className="sr-only">Run an agent in this browser</DialogTitle>
+          <DialogDescription className="sr-only">Name an OpenAI-compatible endpoint and a model; the agent runs in this tab.</DialogDescription>
+          <BrowserAgentSetup className="border-0 p-0" onDone={() => setSetup(false)} />
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }

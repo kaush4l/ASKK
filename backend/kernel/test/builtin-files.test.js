@@ -45,6 +45,43 @@ describe("lanes", () => {
     await expect(lead.run("write", { path: ".mcp.json", content: "{}" })).rejects.toThrow("agents never write it")
   })
 
+  // 2026-10-17 (critic): a member's lane "projects/*/.git/**" planted a core.fsmonitor command that the lead's git ran.
+  test("what git runs as code — a .git config, a hook, a .git file — is never written, whatever the lane; it is still read", async () => {
+    const host = fakeHost({ files: { ...WORKSPACE, "projects/x/.git/config": "[core]\n\tbare = false\n", "projects/x/.git/HEAD": "ref: refs/heads/main\n" } })
+    const files = new Files({ clock })
+    const trainer = holder("trainer", files, { writes: ["projects/*/.git/**", "projects/**", "**"] }, host)
+    const refused = [
+      "projects/x/.git/config",
+      "projects/x/.git/config.lock",
+      "projects/x/.git/config.worktree",
+      "projects/x/.git/hooks/post-commit",
+      "projects/x/.git/hooks/pre-commit.sample",
+      "projects/x/.git/hooks",
+      "projects/x/.GIT/CONFIG", // macOS: one file whatever the case
+      "projects/x/.git/modules/sub/config", // a submodule's
+      "projects/x/.git/modules/sub/hooks/post-checkout",
+      "projects/x/.git/worktrees/w/config.worktree",
+      ".git/config",
+      "projects/y/.git", // a .git file: "gitdir: <a config elsewhere>"
+    ]
+    for (const path of refused)
+      for (const [cmd, input] of [
+        ["write", { content: "[core]\n\tfsmonitor = sh -c evil\n" }],
+        ["append", { text: "[core]\n\tfsmonitor = sh -c evil" }],
+        ["edit", { old: "bare = false", new: "fsmonitor = evil" }],
+      ])
+        await expect([path, cmd, await trainer.run(cmd, { path, ...input }).catch((e) => e.message)]).toEqual([path, cmd, `${path.replace(/^\.?\/+/, "")}: git runs this as code (a .git config, hook or gitdir file) — agents never write it; commit with git in the terminal`])
+    expect(host.fs.get("projects/x/.git/config")).toBe("[core]\n\tbare = false\n")
+    expect(host.calls.some((c) => c.path === "fs/write")).toBe(false)
+    // reads stay; the rest of .git (refs, HEAD, objects) and look-alikes outside .git stay writable in the lane
+    expect(await trainer.run("read", { path: "projects/x/.git/config" })).toContain("bare = false")
+    expect(await trainer.run("write", { path: "projects/x/.git/HEAD", content: "ref: refs/heads/dev" })).toStartWith("wrote projects/x/.git/HEAD")
+    expect(await trainer.run("write", { path: "projects/x/config", content: "lr = 3e-4" })).toStartWith("created projects/x/config")
+    expect(await trainer.run("write", { path: "projects/x/hooks/notes.md", content: "x" })).toStartWith("created projects/x/hooks/notes.md")
+    expect(await trainer.run("write", { path: "projects/x/.github/config", content: "x" })).toStartWith("created")
+    expect(await trainer.run("write", { path: "projects/x/.gitignore", content: "out/" })).toStartWith("created")
+  })
+
   test("reads: restricts read, list, search, focus and what the prompt shows — the critic never sees the code", async () => {
     const host = fakeHost({ files: WORKSPACE })
     const files = new Files({ clock })

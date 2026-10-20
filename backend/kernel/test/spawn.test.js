@@ -3,7 +3,7 @@
 // taps added before it existed, never gets more than its caller, and is not dismissed while it runs.
 
 import { describe, expect, test } from "bun:test"
-import { Artifact, buildDesk, Checklist, dismissTool, Plan, SPAWN_NAME, spawnTool, Tool } from "../index.js"
+import { Artifact, buildDesk, catalogTool, Checklist, dismissTool, Plan, Practice, respawn, SPAWN_NAME, spawnTool, Tool, updateTool } from "../index.js"
 
 const quest = (ask) => ({ requirement: "the corpus is data/tiny.txt", ask, outcome: "the number" })
 
@@ -243,5 +243,83 @@ describe("Desk.spawn through agent.spawn", () => {
     await h.ask("go")
     await desk.lead.ask("go")
     expect(seen).toEqual(["spawn"])
+  })
+})
+
+// 2026-10-20: the capability around spawn — agent.catalog (what a helper can be given), agent.update (a helper rebuilt
+// with changed fields, or kept), respawn (kept helpers made again after a restart from their records).
+describe("agent.catalog, agent.update, respawn", () => {
+  const run = (tool, input, agent) => tool.run(input, { agent })
+  const kit = () => deskOf(async () => JSON.stringify({ thought: "d", calls: [], answer: "ok" }))
+
+  test("catalog: the caller's tools and the desk's with what each does, held artifacts with commands, models, lanes, helpers", async () => {
+    const desk = kit()
+    const lead = desk.lead
+    await run(spawnTool(), { name: "counter", role: "Counts.", goal: "count the corpus", tools: ["corpus.count"], keep: "desk" }, lead)
+    const out = await run(catalogTool(), {}, lead)
+    expect(out).toContain("YOUR TOOLS (give by name): 3")
+    expect(out).toContain("- corpus.count — count tokens")
+    expect(out).toContain("THE DESK'S TOOLS you do not hold (give by name): 1\n- lab.reset — wipe the lab")
+    expect(out).toContain("- plan (plan) — no plan yet · commands: write, tick, skip")
+    expect(out).not.toContain("lead.checklist") // a run checklist is never given
+    expect(out).toContain("ARTIFACT TYPES (a fresh one, or the desk's shared one by type): notes")
+    expect(out).toContain("MODELS: any (yours: opus)")
+    expect(out).toContain("LANES: writes projects/** · reads everywhere")
+    expect(out).toContain("YOUR HELPERS NOW: 1\n- counter (keep desk) — idle · goal: count the corpus")
+    const narrowed = await run(catalogTool(), { find: "wipe" }, lead)
+    expect(narrowed).toContain("YOUR TOOLS (give by name) matching wipe: 0")
+    expect(narrowed).toContain("- lab.reset — wipe the lab")
+  })
+
+  test("update: changed fields rebuild the helper (its record the base); keep switches; only its spawner; a bad change restores the old one", async () => {
+    const desk = kit()
+    const lead = desk.lead
+    const events = []
+    desk.on((e) => (e.event === "spawn" || e.event === "dismiss" ? events.push(`${e.event}:${e.agent}${e.reason ? `:${e.reason}` : ""}`) : null))
+    await run(spawnTool(), { name: "counter", role: "Counts.", goal: "count the corpus", tools: ["corpus.count"] }, lead)
+    const first = desk.agents().get("counter")
+    expect(first.config.spawned.keep).toBe("run")
+    expect(await run(updateTool(), { name: "counter", role: "Counts, then checks the sum.", keep: "desk" }, lead)).toBe("updated counter: role, keep desk")
+    const next = desk.agents().get("counter")
+    expect(next).not.toBe(first)
+    expect(next.config.role).toBe("Counts, then checks the sum.")
+    expect(next.config.description).toBe("Counts, then checks the sum.") // from the new role
+    expect(next.config.spawned).toMatchObject({ keep: "desk", at: first.config.spawned.at, input: { role: "Counts, then checks the sum.", tools: ["corpus.count"], goal: "count the corpus" } })
+    expect(lead.tools.get("counter").agent).toBe(next)
+    expect(events).toEqual(["spawn:counter", "dismiss:counter:update", "spawn:counter"])
+    await expect(run(updateTool(), { name: "counter" }, lead)).rejects.toThrow("nothing to change")
+    await expect(run(updateTool(), { name: "counter", tools: ["no.such"] }, lead)).rejects.toThrow("counter not updated (unknown tool no.such")
+    expect(desk.agents().get("counter").config.spawned.input.tools).toEqual(["corpus.count"]) // the old one is back
+    await expect(run(updateTool(), { name: "coder", role: "x" }, lead)).rejects.toThrow("coder is part of the desk")
+    const coder = desk.agents().get("coder")
+    await run(spawnTool(), { name: "mine", role: "r", goal: "g" }, coder)
+    await expect(run(updateTool(), { name: "mine", role: "x" }, lead)).rejects.toThrow("mine was spawned by coder: only coder updates it")
+  })
+
+  test("respawn: kept helpers made again by their spawners from their records; a missing spawner or tool is skipped with a line", async () => {
+    const desk = kit()
+    const lines = []
+    const done = await respawn(
+      desk,
+      [
+        { by: "lead", at: "2026-10-19T12:00:00.000Z", input: { name: "scout", role: "Scouts.", goal: "scout", tools: ["corpus.count"], members: [{ name: "eye", role: "Looks.", tools: ["corpus.count"] }] } },
+        { by: "ghost", input: { name: "lost", role: "r", goal: "g" } },
+        { by: "lead", input: { name: "bad", role: "r", goal: "g", tools: ["no.such"] } },
+        { by: "lead", input: { name: "coder", role: "r", goal: "g" } },
+      ],
+      { log: (l) => lines.push(l) },
+    )
+    expect(done).toEqual(["scout"])
+    const scout = desk.agents().get("scout")
+    expect(scout.config.spawned).toMatchObject({ by: "lead", keep: "desk", at: "2026-10-19T12:00:00.000Z", team: "scout" })
+    expect(desk.agents().get("eye").config.spawned).toMatchObject({ by: "scout", team: "scout" })
+    expect(lines).toEqual(["kept lost: its spawner ghost is not in the desk — not restored", expect.stringContaining("kept bad: not restored (unknown tool no.such"), "kept coder: an agent of that name is in the desk already — not restored"])
+  })
+
+  test("a caller's practice is never a helper's: its run would reset the caller's checklist and its edits rewrite the caller's orders", async () => {
+    const desk = deskOf(async () => "", { artifacts: [(agent) => new Practice({ id: `${agent.name}.practice`, owner: agent.name, seed: { checklist: ["!x: y"] } })] })
+    const spawn = (input) => spawnTool().run({ role: "r", goal: "g", ...input }, { agent: desk.lead }).catch((e) => e.message)
+    expect(await spawn({ name: "ok", artifacts: ["lead.practice"] })).toBe("lead.practice is lead's practice: it is not shared (give the helper its own: artifacts [practice])")
+    expect([...desk.agents().keys()]).toEqual(["lead", "coder"])
   })
 })

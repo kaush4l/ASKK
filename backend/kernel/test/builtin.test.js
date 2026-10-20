@@ -3,7 +3,7 @@
 // resolving the catalogue at run time; board: false.
 
 import { describe, expect, test } from "bun:test"
-import { BUILTIN, buildDesk, builtinKit, Charts, Dispatch, Files, Plan, Preview, Terminal, Tool } from "../index.js"
+import { BUILTIN, buildDesk, builtinKit, deskTools, Dispatch, Files, Plan, Preview, Terminal, Tool } from "../index.js"
 import { fakeHost } from "./fake-host.js"
 
 const clock = () => new Date("2026-10-17T14:00:00Z")
@@ -14,8 +14,8 @@ const quest = (ask) => ({ requirement: "a kit test", ask, outcome: "one line" })
 
 describe("BUILTIN", () => {
   test("the catalogue: tools and artifact types by name, each a factory of desk options", () => {
-    expect(Object.keys(BUILTIN.tools)).toEqual(["web.search", "web.read", "agent.spawn", "agent.dismiss"])
-    expect(Object.keys(BUILTIN.artifacts)).toEqual(["files", "terminal", "preview", "plan", "dispatch", "charts"])
+    expect(Object.keys(BUILTIN.tools)).toEqual(["web.search", "web.read", "agent.spawn", "agent.dismiss", "agent.catalog", "agent.update", "desk.list", "desk.create", "desk.check", "desk.load", "desk.ask", "desk.read", "desk.propose"]) // 2026-10-20: catalog, update and the desk tools
+    expect(Object.keys(BUILTIN.artifacts)).toEqual(["files", "terminal", "preview", "plan", "dispatch", "browse", "talk", "practice"]) // 2026-10-20: practice; 2026-10-17: no stage — the preview is the one pane; 2026-10-18: no charts (a dashboard is a page in it), browse and talk added
     const kit = builtinKit({ clock })
     for (const t of Object.values(kit.tools)) expect(t).toBeInstanceOf(Tool)
     expect(kit.tools["web.search"]).toMatchObject({ name: "web.search", type: "function", view: "web" })
@@ -26,7 +26,6 @@ describe("BUILTIN", () => {
     expect(kit.artifacts.preview(agent, {})).toBeInstanceOf(Preview)
     expect(kit.artifacts.plan(agent, {})).toBeInstanceOf(Plan)
     expect(kit.artifacts.dispatch(agent, {})).toBeInstanceOf(Dispatch)
-    expect(kit.artifacts.charts(agent, {})).toBeInstanceOf(Charts)
   })
 
   test("one instance per desk and id: every holder of files shares it; {type, id} is another; a second desk its own", () => {
@@ -90,8 +89,9 @@ describe("BUILTIN", () => {
     expect(keys(terminal.state)).toEqual(["sessions"])
     expect(keys(terminal.state.sessions[0])).toEqual(["id", "name", "command", "cwd", "agent", "slot", "lease", "runs", "status", "exit", "startedAt", "endedAt", "urls", "tail"])
     const preview = twin.preview
-    expect(preview).toMatchObject({ kind: "preview", view: "preview", keep: "file" })
-    expect(keys(preview.state)).toEqual(["pages"])
+    expect(preview).toMatchObject({ kind: "preview", view: "preview", keep: "always" })
+    expect(keys(preview.state)).toEqual(["pages", "visuals", "current", "trail", "asks", "revision"])
+    expect(preview.state.current).toMatchObject({ kind: "page", id: preview.state.pages[0].id })
     expect(keys(preview.state.pages[0])).toEqual(["id", "url", "title", "status", "by", "at", "shot", "console", "errors"])
     expect(keys(preview.state.pages[0].shot)).toEqual(["n", "at", "width", "height", "url"])
     const plan = twin.plan
@@ -102,9 +102,9 @@ describe("BUILTIN", () => {
     for (const [name, view] of [["files.read", "files"], ["terminal.run", "terminal"], ["preview.open", "preview"]]) expect(coder.tools.get(name)).toMatchObject({ type: "dev", view })
   })
 
-  // 2026-10-17: dispatch (work that runs while its holder works) and charts (the observation desk's graphs).
-  test("dispatch and charts: one instance per desk and id; their twin states as the spec's", async () => {
-    const host = fakeHost({ files: { "projects/x/results.tsv": "run_id\tval_bpb\nr1\t1.3\nr2\t1.25\n" } })
+  // 2026-10-17: dispatch (work that runs while its holder works).
+  test("dispatch: one instance per desk and id; its twin state as the spec's", async () => {
+    const host = fakeHost()
     const kit = builtinKit({ clock })
     let release
     const held = new Promise((ok) => (release = ok))
@@ -113,30 +113,25 @@ describe("BUILTIN", () => {
       return JSON.stringify({ thought: "done", calls: [], answer: `${agent.name} done` })
     }
     const desk = buildDesk(
-      { name: "lead", report: false, artifacts: ["dispatch", "charts"], tools: [{ type: "agent", name: "data", report: false, artifacts: ["dispatch", "charts", { type: "charts", id: "probes" }] }] },
+      { name: "lead", report: false, artifacts: ["dispatch"], tools: [{ type: "agent", name: "data", report: false, artifacts: ["dispatch", { type: "dispatch", id: "probes" }] }] },
       { infer, artifacts: kit.artifacts, context: { host } },
     )
     const all = desk.artifacts()
-    expect([...all.keys()]).toEqual(["dispatch", "charts", "lead.board", "probes"])
+    expect([...all.keys()]).toEqual(["dispatch", "lead.board", "probes"])
     expect(all.get("dispatch").holders).toEqual(["lead", "data"])
-    expect(all.get("charts").holders).toEqual(["lead", "data"])
-    expect(all.get("probes").artifact).not.toBe(all.get("charts").artifact)
+    expect(all.get("probes").holders).toEqual(["data"])
+    expect(all.get("probes").artifact).not.toBe(all.get("dispatch").artifact)
     expect(builtinKit().artifacts.dispatch({ name: "x" }, {})).not.toBe(all.get("dispatch").artifact)
     const lead = desk.lead
     const run = (tool, input) => lead.tools.get(tool).run(input, { ...lead.context, agent: lead })
     expect(await run("dispatch.start", { to: "data", ...quest("which shard?") })).toStartWith("j1 → data started")
-    await run("charts.plot", { id: "bpb", file: "projects/x/results.tsv", x: "run_id", y: "val_bpb" })
     const twin = desk.twin().artifacts
     const keys = (o) => Object.keys(o)
     expect(twin.dispatch).toMatchObject({ kind: "dispatch", view: "dispatch", keep: "file", brief: "1 running · 0 done", holders: ["lead", "data"] })
     expect(keys(twin.dispatch.state)).toEqual(["jobs"])
     expect(keys(twin.dispatch.state.jobs[0])).toEqual(["id", "to", "by", "ask", "status", "startedAt", "endedAt", "report", "error"])
     expect(twin.dispatch.state.jobs[0]).toMatchObject({ id: "j1", to: "data", by: "lead", ask: "which shard?", status: "running", startedAt: "2026-10-17T14:00:00.000Z" })
-    expect(twin.charts).toMatchObject({ kind: "charts", view: "chart", keep: "always", brief: "1 chart" })
-    expect(keys(twin.charts.state)).toEqual(["charts"])
-    expect(keys(twin.charts.state.charts[0])).toEqual(["id", "title", "kind", "x", "y", "file", "by", "series", "updatedAt", "error"])
-    expect(keys(twin.charts.state.charts[0].series[0])).toEqual(["name", "points"])
-    for (const [name, view] of [["dispatch.start", "dispatch"], ["dispatch.wait", "dispatch"], ["charts.plot", "chart"]]) expect(lead.tools.get(name)).toMatchObject({ type: "dev", view })
+    for (const [name, view] of [["dispatch.start", "dispatch"], ["dispatch.wait", "dispatch"]]) expect(lead.tools.get(name)).toMatchObject({ type: "dev", view })
     expect(lead.gates("x").join()).toContain("1 job still running: j1 → data")
     release()
     expect(await run("dispatch.wait", {})).toMatch(/^j1 → data done in \d+s:\ndata done$/)
@@ -164,5 +159,19 @@ describe("BUILTIN", () => {
     expect(scout.artifacts.find((a) => a.id === "terminal")).toBe(desk.lead.artifacts.find((a) => a.id === "terminal"))
     expect(scout.config.board).toBe(false) // a helper of a caller kept off the board is kept off it too
     expect(seen).toHaveLength(1)
+  })
+})
+
+describe("desk.read", () => {
+  test("a reader with a reads: lane reads another desk only where its lane names desks/<name>/…", async () => {
+    const posted = []
+    const host = { post: async (route, body) => (posted.push([route, body]), { path: body.path, text: "brief" }) }
+    const read = deskTools()["desk.read"]
+    const as = (reads) => ({ host, agent: { name: "helper", config: reads ? { reads } : {} } })
+    expect(await read.run({ name: "notes-desk", path: "./out//brief.md" }, as(null))).toBe("notes-desk: out/brief.md\nbrief")
+    await expect(read.run({ name: "notes-desk", path: "out/brief.md" }, as(["notes/**"]))).rejects.toThrow("helper reads only notes/** (its reads:) — desks/notes-desk/out/brief.md is outside its lane")
+    expect(await read.run({ name: "notes-desk", path: "out/brief.md" }, as(["desks/notes-desk/**"]))).toContain("brief")
+    await expect(read.run({ name: "notes-desk", path: "../x" }, as(null))).rejects.toThrow('".." is not a workspace path')
+    expect(posted.map(([r, b]) => `${r} ${b.path}`)).toEqual(["desks/read out/brief.md", "desks/read out/brief.md"])
   })
 })

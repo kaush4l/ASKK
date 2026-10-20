@@ -51,6 +51,10 @@ next-env.d.ts
 /vendor/
 /integrations/
 /custom/
+# Every desk's memory and reports (memory/<desk>/, its loaded projects in projects.json): local only, never pushed
+/memory/
+# The agents' files in a project they work on (.agents/ ignores itself there too)
+.agents/
 
 # Local editor settings (.vscode/settings.json hides custom/'s own git repo from Source Control)
 /.vscode/
@@ -63,3 +67,12 @@ next-env.d.ts
 
 # Local Claude Code loop state
 .claude/*.local.md
+
+# the core desks (desks/): what they write at run time stays local
+/desks/*/data/
+/desks/*/state/
+/desks/*/proposed/
+/desks/**/transcript.jsonl
+/desks/**/history/
+# a core desk's kept helpers (agents/<lead>/<helper>/: keep: desk, written at run time) are local too
+/desks/agent/agents/agent/*/

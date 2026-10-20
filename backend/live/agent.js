@@ -5,8 +5,10 @@
 //   state: { status, activity, messages, error, revision, live, working, stats }
 //   messages: { role: user | assistant | tool, action?: tool | answer | gate, kind?: guidance | chat, … } — the run's trail
 //   2026-10-17: kind chat — the owner's question and the agent's answer (team call `chat`), a pair beside the runs:
-//   { role: user, kind: chat, from, content } then { role: assistant, kind: chat, content, guided, queued }. Neither
+//   { role: user, kind: chat, from, content } then { role: assistant, kind: chat, content, guided, proposed }. Neither
 //   starts a run nor is one's request (isRunRequest); a thread draws the pair as one Q/A row (threadItems).
+//   2026-10-17 (amendment M1): a chat never starts a run. Its QUEUE: line (or a GUIDE: line with no run to guide) comes
+//   back as `proposed`, and the owner starts that work with one click ("Queue it": queueProposal → send).
 
 import { IDLE } from "@/backend/live/activity"
 import { teamCall } from "@/backend/live/stream"
@@ -29,42 +31,70 @@ const patchMessages = (messages, { from, items }) => [...messages.slice(0, from)
 // progress nor an owner chat (2026-10-17: a chat row would have read as the working request and the run's start).
 export const isRunRequest = (m) => m?.role === "user" && m.kind !== "guidance" && m.kind !== "chat"
 
+// One line of text: runs of whitespace as one space (a proposal compared, or shown in a note).
+const oneLine = (text) => String(text ?? "").replace(/\s+/g, " ").trim()
+
 // A thread's rows in order, each owner chat folded into one item with the answer that followed it:
-//   → [{ type: "message", message } | { type: "chat", id, question: message | null, answer: message | null }]
+//   → [{ type: "message", message } | { type: "chat", id, question: message | null, answer: message | null, taken }]
 // The host appends the pair together; an answer arriving after other rows still pairs with the open question.
+// taken (2026-10-17, amendment M1): the answer's proposed work already started — a later run request says the same —
+// so the thread offers no second "Queue it" for it after a reload.
 export function threadItems(messages = []) {
   const items = []
   let open = null // the newest question still waiting for its answer
-  for (const m of messages) {
+  for (const [i, m] of messages.entries()) {
     if (m?.kind !== "chat") {
       items.push({ type: "message", message: m })
       continue
     }
     if (m.role === "user") {
-      open = { type: "chat", id: m.id, question: m, answer: null }
+      open = { type: "chat", id: m.id, question: m, answer: null, taken: false }
       items.push(open)
-    } else if (open) {
+      continue
+    }
+    const taken = !!m.proposed && messages.slice(i + 1).some((r) => isRunRequest(r) && oneLine(r.content) === oneLine(m.proposed))
+    if (open) {
       open.answer = m
+      open.taken = taken
       open = null
-    } else items.push({ type: "chat", id: m.id, question: null, answer: m })
+    } else items.push({ type: "chat", id: m.id, question: null, answer: m, taken })
   }
   return items
 }
 
-// What became of a chat besides its answer: a note for the run in progress, or new work the host started.
-export function chatNote({ guided, queued } = {}) {
-  if (guided) return "→ guidance: its run reads it at the next step"
-  if (queued) return `→ queued: ${String(queued).replace(/\s+/g, " ").trim()}`
-  return null
+// What became of a chat besides its answer: its GUIDE: line went into the run in progress (2026-10-17, amendment M1:
+// work it proposed is not a note but an action, "Queue it").
+export function chatNote({ guided } = {}) {
+  return guided ? "→ added to the run as guidance" : null
 }
 
-// Ask an agent a question (team call `chat`); never throws: { question, answer, guided, queued } or { question, error }.
+// Ask an agent a question (team call `chat`); never throws: { question, answer, guided, proposed } or { question, error }.
+// proposed: the work its answer proposes (a QUEUE: line, or a GUIDE: line with no run to guide), for the owner to queue.
 export async function askChat(engine, question) {
   try {
     const value = (await engine.chat(question)) ?? {}
-    return { question, answer: String(value.answer ?? ""), guided: !!value.guided, queued: value.queued || null, error: null }
+    return { question, answer: String(value.answer ?? ""), guided: !!value.guided, proposed: oneLine(value.proposed) || null, visual: value.visual ?? null, visualError: value.visualError ?? null, error: null }
   } catch (error) {
-    return { question, answer: null, guided: false, queued: null, error: error?.message ?? String(error) }
+    return { question, answer: null, guided: false, proposed: null, error: error?.message ?? String(error) }
+  }
+}
+
+// An askChat outcome as the answer a ChatPair draws ({ content, guided, proposed }, the chat row's shape); null while
+// it is pending or when it failed.
+export const chatAnswer = (outcome) => (outcome?.answer != null ? { content: outcome.answer, guided: !!outcome.guided, proposed: outcome.proposed ?? null, visual: outcome.visual ?? null, visualError: outcome.visualError ?? null } : null)
+
+// "Queue it" (2026-10-17, amendment M1): the work a chat answer proposed, sent by the owner as new work for the agent
+// (team call `send`, as the composer's Send: it runs now, or after the run in progress). Never throws:
+//   → { sent: text, error: null } | { sent: null, error }
+export async function queueProposal(engine, proposed) {
+  const text = oneLine(proposed)
+  if (!text) return { sent: null, error: "nothing proposed" }
+  if (!engine) return { sent: null, error: "no agent to send it to" }
+  try {
+    await engine.send(text)
+    return { sent: text, error: null }
+  } catch (error) {
+    return { sent: null, error: error?.message ?? String(error) }
   }
 }
 
@@ -133,9 +163,12 @@ export class AgentView {
     return teamCall(this.id, method, args)
   }
 
-  // Work for the agent, without waiting for the answer.
+  // Work for the agent, without waiting for the answer. Returns the call (resolves once the host took it, rejects with
+  // its refusal) for a caller that says what became of it (queueProposal); a caller that drops it hears nothing.
   send(text) {
-    this.#call("send", [text]).catch(() => {})
+    const call = this.#call("send", [text])
+    call.catch(() => {})
+    return call
   }
 
   // Work for the agent; resolves with its answer.
@@ -164,8 +197,9 @@ export class AgentView {
 
   // A question answered now (2026-10-17 owner: "talk with the lead to understand what is currently already there and
   // what I want to check"): one model call beside its run, which goes on — never a new run of its own. Resolves
-  // { answer, guided, queued }: guided — the answer's GUIDE line became a note for the run in progress; queued — the
-  // request for a new run the host started from its QUEUE line.
+  // { answer, guided, proposed }: guided — the answer's GUIDE line became a note for the run in progress; proposed —
+  // the work its QUEUE line (or a GUIDE line with no run to guide) proposes; the host starts nothing, the owner may
+  // queue it (2026-10-17, amendment M1).
   chat(text) {
     return this.#call("chat", [text])
   }

@@ -6,6 +6,10 @@
 // `runs` counted, 409 while it runs unless `replace`); its `lease` (2026-10-17) is refused (409, the host's reason) while
 // another running session holds it.
 //
+// readCap (2026-10-17, P1): fs/read returns only the first readCap chars of a longer file (truncated), or with tail=1
+// its last ones from a whole line ({tail, from, head}), as the host does past its read cap. touch(path, mtime?) moves a
+// file's mtime (a script rewrote it); mtimes is the map.
+//
 //   const host = fakeHost({ files: {"projects/x/train.py": "…"}, onStart: (body) => ({status, exit, tail}) })
 
 const fail = (method, path, status, message) => Object.assign(new Error(`${method} ${path}: HTTP ${status} ${JSON.stringify({ error: message })}`), { status })
@@ -16,7 +20,7 @@ const revisionOf = (text) => {
 }
 const bytes = (text) => new TextEncoder().encode(String(text)).length
 
-export function fakeHost({ files = {}, binary = [], onStart = null, search = null, read = null, clock = () => Date.now() } = {}) {
+export function fakeHost({ files = {}, binary = [], onStart = null, search = null, read = null, page = null, readCap = null, clock = () => Date.now() } = {}) {
   const fs = new Map(Object.entries(files)) // path -> text
   const mtimes = new Map([...fs.keys()].map((p, i) => [p, 1_700_000_000_000 + i]))
   const binaries = new Set(binary)
@@ -46,15 +50,25 @@ export function fakeHost({ files = {}, binary = [], onStart = null, search = nul
       const name = p.slice(prefix.length).split("/")[0]
       if (seen.has(name)) continue
       const full = prefix + name
-      seen.set(name, fs.has(full) ? { name, type: "file", size: bytes(fs.get(full)), mtime: mtimes.get(full) + 0.25 } : { name, type: "dir", size: 96, mtime: 1_600_000_000_000 })
+      seen.set(name, fs.has(full) ? { name, type: "file", size: bytes(fs.get(full)), mtime: (mtimes.get(full) ?? 1_700_000_000_000) + 0.25 } : { name, type: "dir", size: 96, mtime: 1_600_000_000_000 })
     }
     return { path, entries: [...seen.values()] }
   }
-  function readFile(path) {
+  function readFile(path, tail = false) {
     if (!fs.has(path)) throw fail("GET", `fs/read?path=${encodeURIComponent(path)}`, isDir(path) ? 400 : 404, isDir(path) ? "Not a file." : `Not found: ${path}`)
     const text = fs.get(path)
     const bin = binaries.has(path)
+    if (readCap != null && !bin && text.length > readCap) {
+      if (!tail) return { path, size: bytes(text), binary: false, truncated: true, text: text.slice(0, readCap), revision: revisionOf(text) }
+      const start = text.length - readCap
+      const nl = text.indexOf("\n", start - 1) // a "\n" right before the cut: the first line is whole
+      const from = nl < 0 ? start : nl + 1
+      return { path, size: bytes(text), binary: false, truncated: true, tail: true, from, head: text.split("\n")[0], text: text.slice(from), revision: null }
+    }
     return { path, size: bytes(text), binary: bin, truncated: false, text: bin ? null : text, revision: revisionOf(text) }
+  }
+  function touch(path, mtime = null) {
+    mtimes.set(path, mtime ?? Math.max(...mtimes.values(), 1_700_000_000_000) + 1000)
   }
   function write({ path, text, revision }) {
     if (/(^|\/)\.env(\..+)?$/.test(path) && !path.endsWith(".env.example")) throw fail("POST", "fs/write", 403, ".env is ASKK's configuration; only the owner edits it.")
@@ -131,7 +145,7 @@ export function fakeHost({ files = {}, binary = [], onStart = null, search = nul
       case "fs/list":
         return list(q("path") ?? "")
       case "fs/read":
-        return readFile(q("path") ?? "")
+        return readFile(q("path") ?? "", q("tail") === "1")
       case "term/list": {
         const tail = q("tail") == null ? 50 : Number(q("tail"))
         return { sessions: [...sessions].reverse().map((s) => summary(s, tail)), policy: { programs: ["bun", "python", "uv"], toolchains: ["python", "javascript"], missing: [] } }
@@ -142,12 +156,22 @@ export function fakeHost({ files = {}, binary = [], onStart = null, search = nul
       }
       case "browser/list":
         return { pages: [...pages].reverse().map(pageSummary) }
+      case "browser/image": {
+        // the shot for a model (host: a JPEG ≤ max px wide, base64): here its bytes name the page and shot
+        const p = pages.find((x) => x.id === q("id"))
+        const k = Number(q("n")) || p?.shot?.n
+        if (!p?.shot || k > p.shot.n || k < 1) throw fail("GET", path, 404, `No screenshot ${q("n")} of ${q("id")}.`)
+        return { id: p.id, n: k, media_type: "image/jpeg", width: 1280, height: 800, bytes: 9, data: btoa(`${p.id}#${k}`) }
+      }
       case "web/search":
         if (!search) throw fail("GET", path, 500, "no search")
         return search({ q: q("q"), limit: Number(q("limit")), source: q("source") })
       case "web/read":
         if (!read) throw fail("GET", path, 500, "no read")
         return read(q("url"))
+      case "web/page":
+        if (!page) throw fail("GET", path, 500, "no page")
+        return page(q("url"))
       default:
         throw fail("GET", path, 404, `No route ${url.pathname}`)
     }
@@ -217,5 +241,5 @@ export function fakeHost({ files = {}, binary = [], onStart = null, search = nul
     }
   }
 
-  return { get, post, calls, fs, sessions, pages }
+  return { get, post, calls, fs, sessions, pages, mtimes, touch }
 }

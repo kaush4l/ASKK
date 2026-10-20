@@ -118,9 +118,15 @@ function cachedBlocks(prompt, cacheAt) {
   return blocks
 }
 
+// 2026-10-18 owner ("the screenshot will be included along with the next request and the agent can iterate"): images
+// ride after the prompt's text, each its caption then the picture — `images: [{media_type, data (base64), caption?}]`.
+const openaiContent = (prompt, images) =>
+  images.length ? [{ type: "text", text: prompt }, ...images.flatMap((i) => [{ type: "text", text: `(${i.caption || "screenshot"})` }, { type: "image_url", image_url: { url: `data:${i.media_type};base64,${i.data}` } }])] : prompt
+const anthropicImages = (images) => images.flatMap((i) => [{ type: "text", text: `(${i.caption || "screenshot"})` }, { type: "image", source: { type: "base64", media_type: i.media_type, data: i.data } }])
+
 const PROTOCOLS = {
   openai: {
-    async stream(model, prompt, { signal, emit }) {
+    async stream(model, prompt, { images = [], signal, emit }) {
       const response = await request(`${openaiBase(model)}/chat/completions`, {
         method: "POST",
         headers: openaiHeaders(model),
@@ -129,7 +135,7 @@ const PROTOCOLS = {
           stream: true,
           stream_options: { include_usage: true },
           ...(model.max_tokens ? { max_tokens: Number(model.max_tokens) } : {}),
-          messages: [{ role: "user", content: prompt }],
+          messages: [{ role: "user", content: openaiContent(prompt, images) }],
         }),
         signal,
       })
@@ -164,7 +170,7 @@ const PROTOCOLS = {
   },
 
   anthropic: {
-    async stream(model, prompt, { cacheAt = [], signal, emit }) {
+    async stream(model, prompt, { cacheAt = [], images = [], signal, emit }) {
       const response = await request(`${anthropicBase(model)}/messages`, {
         method: "POST",
         headers: anthropicHeaders(model),
@@ -172,7 +178,7 @@ const PROTOCOLS = {
           model: model.id,
           stream: true,
           max_tokens: Number(model.max_tokens) || DEFAULT_MAX_TOKENS,
-          messages: [{ role: "user", content: cachedBlocks(prompt, cacheAt) }],
+          messages: [{ role: "user", content: [...cachedBlocks(prompt, cacheAt), ...anthropicImages(images)] }],
         }),
         signal,
       })
@@ -227,12 +233,13 @@ function protocol(model) {
 }
 
 // `model.backup`: tried once when the model fails before any text arrived. Never after a stop or a partial answer.
-export async function complete({ model, prompt, cacheAt = [], signal, onDelta }) {
+export async function complete({ model, prompt, cacheAt = [], images = [], signal, onDelta }) {
   let raw = ""
   let reasoning = ""
   const attempt = (connection) =>
     protocol(connection).stream(connection, prompt, {
       cacheAt,
+      images,
       signal,
       emit: (content, thinking) => {
         raw += content

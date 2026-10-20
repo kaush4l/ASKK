@@ -14,7 +14,9 @@ import {
   FolderTreeIcon,
   AppWindowIcon,
   UserPlusIcon,
-  PresentationIcon,
+  MessagesSquareIcon,
+  BlocksIcon,
+  NotebookPenIcon,
 } from "lucide-react"
 
 import { callLook } from "@/backend/live/visual"
@@ -39,7 +41,9 @@ export const CALL_ICONS = {
   "folder-tree": FolderTreeIcon, // 2026-10-17: files, preview and spawn calls drew the wrench
   "app-window": AppWindowIcon,
   "user-plus": UserPlusIcon,
-  presentation: PresentationIcon, // 2026-10-17: stage calls
+  "messages-square": MessagesSquareIcon,
+  blocks: BlocksIcon, // 2026-10-20: desk.* calls
+  "notebook-pen": NotebookPenIcon, // 2026-10-20: practice commands
 }
 
 // Tone → classes. -500 borders read on white and on OLED black; text pairs a dark shade (light) with a light one (dark).
@@ -55,7 +59,8 @@ export const CALL_TONES = {
   teal: { text: "text-teal-700 dark:text-teal-300", border: "border-teal-500/70", dot: "bg-teal-500" },
   indigo: { text: "text-indigo-700 dark:text-indigo-300", border: "border-indigo-500/70", dot: "bg-indigo-500" },
   pink: { text: "text-pink-700 dark:text-pink-300", border: "border-pink-500/70", dot: "bg-pink-500" },
-  fuchsia: { text: "text-fuchsia-700 dark:text-fuchsia-300", border: "border-fuchsia-500/70", dot: "bg-fuchsia-500" },
+  rose: { text: "text-rose-700 dark:text-rose-300", border: "border-rose-500/70", dot: "bg-rose-500" },
+  lime: { text: "text-lime-700 dark:text-lime-300", border: "border-lime-500/70", dot: "bg-lime-500" },
 }
 
 export const toneOf = (look) => CALL_TONES[look?.tone] ?? CALL_TONES.amber

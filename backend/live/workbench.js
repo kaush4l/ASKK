@@ -7,22 +7,25 @@
 //                op, added, removed, diff}], focus: {path, by, at} | null}
 //     terminal  {sessions: [{id, name, command, cwd, agent, slot, lease, runs, status, exit, startedAt, endedAt, urls,
 //                tail}]}
-//     preview   {pages: [{id, url, title, status, by, at, shot: {n, at, width, height, url} | null, console, errors}]}
+//     preview   {pages: [{id, url, title, status, by, at, shot: {n, at, width, height, url} | null, console, errors}],
+//                visuals, current, asks, revision} (backend/live/preview.js reads the rest: the one preview pane)
 //
 //   hasWorkbench(artifacts), pickWorkbench(artifacts) → {files, terminal, preview, others}
-//   workbenchTabs({files, preview, pinned, dismissed, max}) → tabs, preview pages first, then files newest first
+//   workbenchTabs({files, preview, pinned, dismissed, max}) → tabs: the one Preview tab first, then files newest first
 //   mergeSessions(twin, polled) → the terminal's sessions, the twin's with what term/list polls know sooner
 //   sessionTabs(sessions) → the Terminal pane's tabs: at most two per agent (its main and long sessions), stable order
 //   sessionLabel(session) → a tab's name: "coder · main", else the session's name
 //   followTab(tabs), noteOutput(seen, sessions, now), followSession(sessions, seen, {tieMs}), followShot(pages)
 //   choose({following, chosen, followed, shown, ids}) → the id a pane shows
-//   paneIds({following, chosen, frozen, followed, lists}) → {tab, file, page, session}: what every pane shows
+//   paneIds({following, chosen, frozen, followed, lists}) → {tab, file, page, session}: what every pane shows (page: the
+//   preview pane's item key, "page:<id>" | "visual:<id>")
 //   fullPath(root, path), twinTree(files), flattenTree(base, entries), fileMarks(files), treeRows(entries, …)
 //   fileLines(text, max), diffRows(diff), changedLines(text, diff, {added}) → Set of 1-based lines the diff added
 //   (past the twin's 80-line cut too), diffCut(diff, {added, removed}) → what that cut left out, or null
 //   shotSrc(shot), consoleErrors(page), canFrame(url, self)
 
 import { withBase } from "@/backend/live/base-path"
+import { openAsks, previewActivity, previewItems } from "@/backend/live/preview"
 import { LIMITS } from "@/lib/config"
 
 export const WORKBENCH_VIEWS = ["files", "terminal", "preview"]
@@ -43,11 +46,12 @@ export function pickWorkbench(artifacts) {
   return { ...panes, others: Object.fromEntries(all.filter((a) => !shown.has(a.id)).map((a) => [a.id, a])) }
 }
 
-// The tab strip: one tab per preview page, then every open or modified file (and the ones the owner opened from the
-// tree: `pinned` [{path, at}]), one tab per path, newest first. `dismissed` (Map path → ms): a tab the owner closed
-// stays closed until its file is opened or modified again.
+// The tab strip: the one Preview tab (2026-10-17 owner: "There will be need for only one preview pane" — its pages and
+// visuals are the pane's own strip, no longer a tab each), then every open or modified file (and the ones the owner
+// opened from the tree: `pinned` [{path, at}]), one tab per path, newest first. `dismissed` (Map path → ms): a tab the
+// owner closed stays closed until its file is opened or modified again.
 //   file tab    {id: "file:<path>", kind: "file", path, name, at, open, modified, pinned}
-//   preview tab {id: "preview:<page id>", kind: "preview", page, name, at, closed}
+//   preview tab {id: "preview", kind: "preview", name: "Preview", at (its newest change), items, open (questions)}
 export function workbenchTabs({ files, preview, pinned = [], dismissed = new Map(), max = LIMITS.ui.workbench.maxTabs } = {}) {
   const state = files?.state ?? {}
   const byPath = new Map()
@@ -67,22 +71,12 @@ export function workbenchTabs({ files, preview, pinned = [], dismissed = new Map
     .filter((t) => !(dismissed.get(t.path) >= t.at))
     .sort((a, b) => b.at - a.at || a.path.localeCompare(b.path))
     .slice(0, max)
-  const pageTabs = (preview?.state?.pages ?? [])
-    .filter((p) => p?.id != null)
-    .map((page) => ({ id: `preview:${page.id}`, kind: "preview", page, name: page.title || hostOf(page.url) || `page ${page.id}`, at: Math.max(toMs(page.shot?.at), toMs(page.at)), closed: page.status === "closed" }))
-    .sort((a, b) => b.at - a.at)
-  return [...pageTabs, ...fileTabs]
+  const previewTab = preview ? [{ id: "preview", kind: "preview", name: "Preview", at: previewActivity(preview.state), items: previewItems(preview.state).length, open: openAsks(preview.state) }] : []
+  return [...previewTab, ...fileTabs]
 }
 
-const hostOf = (url) => {
-  try {
-    return new URL(url).host
-  } catch {
-    return ""
-  }
-}
-
-// Following, the editor shows the newest activity: the file last opened or modified, or the page last shot.
+// Following, the editor shows the newest activity: the file last opened or modified, or the preview's last change (a
+// page shot, a visual drawn, a question answered).
 export function followTab(tabs) {
   let best = null
   for (const t of tabs ?? []) if (!best || t.at > best.at) best = t
@@ -174,7 +168,7 @@ export function followSession(sessions = [], seen = new Map(), { tieMs = LIMITS.
   return best.id
 }
 
-// Following, the preview shows the page shot last.
+// The page shot last (an old preview twin's current page: backend/live/preview.js currentRef).
 export function followShot(pages = []) {
   let best = null
   for (const p of pages) {

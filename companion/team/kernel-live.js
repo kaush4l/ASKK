@@ -24,7 +24,7 @@
 // Watch runs (request `from` "watch…": the desk's own watch reruns the lead every few minutes all day)
 // get no status message at all, and /status skips them for the last run.
 
-import { clip, leadRun, parseReport, renderStatus, runOutcome } from "./kernel-status.js"
+import { clip, isRunRequest, leadRun, parseReport, renderStatus, runOutcome } from "./kernel-status.js"
 
 const MIN_INTERVAL_MS = 3000
 const PER_MINUTE = 20
@@ -36,9 +36,10 @@ const HIDDEN = new Set(["board", "memory"]) // artifacts the mirror drops: big, 
 const redact = (text) => String(text).replace(/-?\d{6,}/g, "<id>")
 const isWatch = (from) => String(from ?? "").startsWith("watch")
 
-// What the status needs of a message: the quest (role user), the report (VERDICT + CONFIDENCE).
+// What the status needs of a message: the quest (role user), the report (VERDICT + CONFIDENCE). kind stays (2026-10-17
+// critic: without it isRunRequest could not tell a run's request from guidance or an owner chat's question).
 function slim(m) {
-  const out = { id: m.id, role: m.role, action: m.action ?? null, at: m.at ?? null, from: m.from ?? null }
+  const out = { id: m.id, role: m.role, kind: m.kind ?? null, action: m.action ?? null, at: m.at ?? null, from: m.from ?? null }
   if (m.error) out.error = clip(m.error, 300)
   if (m.role === "user") out.content = clip(m.content, 400)
   else if (m.action === "answer") {
@@ -161,17 +162,17 @@ export function startLiveStatus({
   // The lead's last run that is not a watch run, with its own outcome (its answer, before the next run).
   function lastRun() {
     const messages = view.states[view.lead]?.messages ?? []
-    const runStart = (m) => m.role === "user" && m.kind !== "guidance" // guidance joins the run in progress
-    const i = messages.findLastIndex((m) => runStart(m) && !isWatch(m.from))
+    // A run starts at its request (isRunRequest: guidance joins the run in progress, an owner chat is beside the runs).
+    const i = messages.findLastIndex((m) => isRunRequest(m) && !isWatch(m.from))
     if (i < 0) return null
     const m = messages[i]
-    const next = messages.findIndex((x, j) => j > i && runStart(x))
+    const next = messages.findIndex((x, j) => j > i && isRunRequest(x))
     const own = { lead: view.lead, states: { [view.lead]: { messages: next < 0 ? messages : messages.slice(0, next) } } }
     const startedAt = Date.parse(m.at)
     return { startedAt, goal: m.content, from: m.from ?? "owner", outcome: runOutcome(own, startedAt) }
   }
   // A run is worth a message once a team works on it or it lasts past the grace.
-  const due = (run) => run.id != null || run.force || now() - run.startedAt >= graceMs || Object.keys(view.states).some((name) => name !== view.lead && (view.states[name].status === "running" || view.states[name].messages.some((m) => m.role === "user" && Date.parse(m.at) >= run.startedAt - 1000)))
+  const due = (run) => run.id != null || run.force || now() - run.startedAt >= graceMs || Object.keys(view.states).some((name) => name !== view.lead && (view.states[name].status === "running" || view.states[name].messages.some((m) => isRunRequest(m) && Date.parse(m.at) >= run.startedAt - 1000)))
 
   function onEvent(e) {
     if (e.type === "snapshot") {

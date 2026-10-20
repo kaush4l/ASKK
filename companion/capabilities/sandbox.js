@@ -17,6 +17,7 @@ import { mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync,
 import { homedir, tmpdir } from "node:os"
 import { dirname, isAbsolute, join, resolve } from "node:path"
 import { httpError } from "../shared/http.js"
+import { memoryRoot } from "../shared/paths.js"
 
 const HOME = homedir()
 export const APP = resolve(import.meta.dir, "../..") // the repo root (its custom/ holds every desk's code and state)
@@ -158,6 +159,23 @@ export const NEVER_WRITE = [
   ".gradle/init.d", ".gradle/init.gradle", ".gradle/init.gradle.kts", ".gradle/gradle.properties", ".m2/settings.xml", ".npmrc",
 ].map((p) => join(HOME, p))
 
+// A repository's config and hooks, in any folder (SBPL regexes on real paths): what git reads to run a program of its
+// own (core.fsmonitor, core.hooksPath, a hook) — never written by a sandboxed program, whatever its lane.
+// 2026-10-17 (critic: config and hooks alone were not enough — a lane writing .git/commondir moved git's config and
+// hooks to a folder of its own; a projects/** lane renamed .git away, rewrote its config and renamed it back; a folder
+// renamed into .git/modules/<name> carried a submodule's config and hooks with it): also every place git finds them
+// from — the .git entry itself (made, renamed, removed, or a "gitdir:" file in its place: git init and clone are
+// host-side), commondir, and the git folders of submodules (modules/) and linked worktrees (worktrees/). The sandbox
+// matches these case-insensitively on a case-insensitive volume (.GIT is .git). Commits write objects, the index, refs
+// and logs as before; a hard link to a denied file is refused too (macOS checks the link's source).
+export const GIT_NEVER_WRITE = [
+  "/\\.git$",
+  "/\\.git/config(\\.[^/]*)?$", // config, config.lock, config.worktree(.lock)
+  "/\\.git/commondir$",
+  "/\\.git/(hooks|modules|worktrees)$",
+  "/\\.git/(hooks|modules|worktrees)/",
+]
+
 // root: the workspace; extra: more writable folders (toolchain caches, mounted desks the caller may write); lane: the
 // caller's write globs under root — null: all of root is writable (the owner's own sessions); an array (even empty):
 // only what it names (2026-10-17: [] means none of the workspace, so an agent without `writes:` writes nothing there).
@@ -189,9 +207,22 @@ export function sandboxProfile(root, extra = [], lane = null, { readable = [], l
     ...denyWrites.map((r) => `(deny file-write* (regex #"${String(r).replace(/"/g, "")}"))`),
     ...(denied.length ? [`(deny file-write* ${denied.map((p) => `(subpath "${escape(p)}")`).join(" ")})`] : []),
     `(deny file-write* (regex #"/\\.env$") (regex #"/\\.env\\.[^/]*$") (regex #"/\\.mcp\\.json$"))`,
+    // 2026-10-17 (critic: a lane holding projects/*/.git/** put a core.fsmonitor command in .git/config, or a hook in
+    // .git/hooks, and the next `git status` / `git commit` of an agent with a wider lane ran it under that lane): no
+    // sandboxed program, in any lane, writes a repository's config (its lock, its worktree config) or its hooks folder or
+    // anything in it, nor the .git entry, commondir, modules/ or worktrees/ that would point git elsewhere
+    // (GIT_NEVER_WRITE). Commits still write objects, the index and refs; a new repository is made host-side, outside
+    // the sandbox (the dev desk's project.init runs git init).
+    ...GIT_NEVER_WRITE.map((r) => `(deny file-write* (regex #"${r}"))`),
+    // 2026-10-17 (live run: every `uv run` failed "Failed to initialize cache … uv/sdists-v9/.git: Operation not
+    // permitted"): a toolchain cache (extra) or the temp folder may hold a plain .git FILE — uv's marker that keeps git
+    // out of its cache buckets. Only that entry: a cache's .git/config, hooks or commondir stay denied, and nobody runs
+    // git in a cache.
+    ...[...extra, tmp].filter(Boolean).map((p) => `(allow file-write* (regex #"${laneRegex(p, "**/.git").replace(/"/g, "")}"))`),
     // Contents only (file-read-data): path lookups and stat through custom/ must
-    // still work, or SQLite and venv interpreters cannot open files in the workspace.
-    `(deny file-read-data (subpath "${escape(join(HOME, ".ssh"))}") ${[...new Set([join(APP, "custom"), ...hidden])].map((p) => `(subpath "${escape(p)}")`).join(" ")} (literal "${escape(join(APP, ".mcp.json"))}"))`,
+    // still work, or SQLite and venv interpreters cannot open files in the workspace. memory/ (every desk's memory,
+    // 2026-10-17: moved out of custom/) stays unread like custom/: a desk's tools read it, never its programs.
+    `(deny file-read-data (subpath "${escape(join(HOME, ".ssh"))}") ${[...new Set([join(APP, "custom"), memoryRoot(), ...hidden])].map((p) => `(subpath "${escape(p)}")`).join(" ")} (literal "${escape(join(APP, ".mcp.json"))}"))`,
     `(allow file-read-data (subpath "${escape(root)}"))`,
     ...readable.map((p) => `(allow file-read-data (subpath "${escape(p)}"))`),
     ...listable.map((p) => `(allow file-read-data (literal "${escape(p)}"))`),

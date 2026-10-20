@@ -2,7 +2,8 @@ import { expect, test } from "bun:test"
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { Artifact, buildAgent, buildDesk, Checklist, dismissTool, Plan, Schedule, spawnTool, Tool } from "../../backend/kernel/index.js"
+import { Artifact, buildAgent, buildDesk, Checklist, dismissTool, Plan, Preview, Schedule, spawnTool, Tool } from "../../backend/kernel/index.js"
+import { fakeHost } from "../../backend/kernel/test/fake-host.js"
 import { mirrorTeam } from "./kernel-live.js"
 import { createKernelTeam } from "./kernel-team.js"
 
@@ -145,17 +146,24 @@ test("owner guidance: delivered to a running agent, seen at its next step, a thr
   team.terminate()
 })
 
-test("every desk gets its own folder in the shared memory folder: custom/memory/<desk>/", async () => {
+test("every desk gets its own folder in the memory folder at ASKK's root: memory/<desk>/ (ASKK_MEMORY moves it)", async () => {
   const root = mkdtempSync(join(tmpdir(), "desks-"))
+  const before = process.env.ASKK_MEMORY
+  process.env.ASKK_MEMORY = join(root, "mem")
   const seen = []
-  for (const name of ["alpha", "beta"]) {
-    const fx = fixtureDesk()
-    const start = fx.desk.start
-    const desk = { ...fx.desk, name, folder: join(root, name), start: (opts) => (seen.push(opts.memory), start(opts)) }
-    const team = await createKernelTeam({ desk, port: 0, live: false })
-    team.terminate?.()
+  try {
+    for (const [name, memory] of [["alpha"], ["beta"], ["gamma", join(root, "own")]]) {
+      const fx = fixtureDesk()
+      const start = fx.desk.start
+      const desk = { ...fx.desk, name, folder: join(root, "custom", name), ...(memory ? { memory } : {}), start: (opts) => (seen.push(opts.memory), start(opts)) }
+      const team = await createKernelTeam({ desk, port: 0, live: false })
+      team.terminate?.()
+    }
+  } finally {
+    if (before === undefined) delete process.env.ASKK_MEMORY
+    else process.env.ASKK_MEMORY = before
   }
-  expect(seen).toEqual([join(root, "memory", "alpha"), join(root, "memory", "beta")])
+  expect(seen).toEqual([join(root, "mem", "alpha"), join(root, "mem", "beta"), join(root, "own")])
 })
 
 test("the snapshot's definitions and artifact views are the kernel twins, in the fields the browser reads", async () => {
@@ -254,7 +262,9 @@ test("a spawned agent reaches every tab: registry with its state, the tree, its 
   }
   const count = new Tool({ name: "corpus.count", description: "count tokens", input: { path: "file" }, run: ({ path }) => `${path}: 1200 tokens` })
   const plan = new Plan()
-  const spec = { name: "lead", team: "lab", report: false, folder: join(root, "agents", "lead"), artifacts: [plan], tools: [spawnTool(), dismissTool(), count, { type: "agent", name: "coder", report: false }] }
+  // The lead's folder outside the desk's agents/: its keep: desk helper is recorded under state/spawned/ (a helper whose
+  // spawner is in agents/ is written there as a kept agent.md — the next test).
+  const spec = { name: "lead", team: "lab", report: false, folder: join(root, "lead"), artifacts: [plan], tools: [spawnTool(), dismissTool(), count, { type: "agent", name: "coder", report: false }] }
   const env = { infer, artifacts: { notes: (agent) => Object.assign(new Artifact({ name: `${agent.name}.notes` }), { keep: "always" }) } }
   const desk = { name: "lab", state, folder: root, start: async () => ({ desk: buildDesk(spec, env) }) }
   const team = await createKernelTeam({ desk, port: 0, live: true })
@@ -345,6 +355,62 @@ test("a spawned agent reaches every tab: registry with its state, the tree, its 
   team.terminate()
 })
 
+// 2026-10-20 owner ("The agent might want to keep the sub-agents alive … written as .MD files in the same folder"): a
+// keep: desk helper of an agent in the desk's agents/ is written as agents/<lead>/<name>/agent.md (its team's members
+// as subfolders), its transcript beside it; a restart spawns it again with its runs; dismissed, the folder moves to
+// memory/<desk>/archive/agents/.
+test("a kept helper: its agent.md under its spawner's folder, back after a restart with its runs, archived when dismissed", async () => {
+  const root = mkdtempSync(join(tmpdir(), "kt-kept-"))
+  const state = join(root, "state")
+  const memory = join(root, "memory", "lab")
+  mkdirSync(state)
+  const quest = (ask) => ({ requirement: "the corpus is data/tiny.txt", ask, outcome: "the count" })
+  const count = new Tool({ name: "corpus.count", description: "count tokens", input: { path: "file" }, run: ({ path }) => `${path}: 1200 tokens` })
+  const script = {
+    lead: [
+      { thought: "a kept team", calls: [{ tool: "agent.spawn", input: { name: "counter", role: "Counts tokens.", goal: "count the corpus", description: "counts the corpus", tools: ["corpus.count"], artifacts: ["notes"], model: "haiku", keep: "desk", members: [{ name: "checker", role: "Checks the sum.", tools: ["corpus.count"] }] } }] },
+      { thought: "ask it", calls: [{ tool: "counter", input: quest("how many tokens?") }] },
+      { thought: "done", calls: [], answer: "1200 tokens" },
+    ],
+    counter: [{ thought: "done", calls: [], answer: "1200" }],
+  }
+  const infer = async (_, agent) => JSON.stringify(script[agent.name]?.shift() ?? { thought: "d", calls: [], answer: "ok" })
+  const build = () => buildDesk({ name: "lead", team: "lab", report: false, folder: join(root, "agents", "lead"), tools: [spawnTool(), dismissTool(), count] }, { infer, artifacts: { notes: (agent) => Object.assign(new Artifact({ name: `${agent.name}.notes` }), { keep: "always" }) } })
+  const deskOf = () => ({ name: "lab", state, folder: root, memory, start: async () => ({ desk: build() }) })
+  const team = await createKernelTeam({ desk: deskOf(), port: 0, live: true })
+  expect((await team.call({ target: "lead", method: "ask", args: ["count the corpus"] })).value).toBe("1200 tokens")
+  const folder = join(root, "agents", "lead", "counter")
+  const md = readFileSync(join(folder, "agent.md"), "utf8")
+  expect(md).toStartWith('---\nname: counter\ndescription: "counts the corpus"\ngoal: "count the corpus"\nkeep: desk\nby: lead\nat: "')
+  expect(md).toContain('model: haiku\ntools: ["corpus.count"]\nartifacts: ["notes"]\nagents: ["checker"]\n---\nCounts tokens.\n')
+  expect(readFileSync(join(folder, "checker", "agent.md"), "utf8")).toBe('---\nname: checker\nmember_of: counter\ntools: ["corpus.count"]\nartifacts: []\n---\nChecks the sum.\n')
+  expect(readFileSync(join(folder, "transcript.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l).answer)).toEqual(["1200"])
+  expect(existsSync(join(state, "spawned", "counter"))).toBe(false)
+  team.terminate()
+
+  // A restart: the kept team is spawned again by its spawner, its runs restored from the transcript beside it.
+  const again = await createKernelTeam({ desk: deskOf(), port: 0, live: true })
+  expect(again.agents).toEqual(["lead", "counter", "checker"])
+  const snap = JSON.parse(new TextDecoder().decode((await again.stream({ signal: new AbortController().signal }).body.getReader().read()).value).replace(/^data: /, ""))
+  expect(snap.registry.engines.find((e) => e.id === "counter").agent).toMatchObject({ folder: join("agents", "lead", "counter"), model: "haiku", spawned: { by: "lead", keep: "desk", team: "counter" } })
+  expect(snap.states.counter.messages.find((m) => m.action === "answer")?.content).toBe("1200")
+  expect(snap.log.map((l) => l.text)).toContain("desk: kept helpers back: counter")
+  expect(readFileSync(join(folder, "agent.md"), "utf8")).toBe(md) // rewritten as it was (its first time kept)
+
+  // Dismissed for good: the folder (members inside) moves to memory/<desk>/archive/agents/.
+  script.lead.push({ thought: "go", calls: [{ tool: "agent.dismiss", input: { name: "counter" } }] }, { thought: "done", calls: [], answer: "dismissed" })
+  expect((await again.call({ target: "lead", method: "ask", args: ["let it go"] })).value).toBe("dismissed")
+  expect(existsSync(folder)).toBe(false)
+  const day = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date())
+  const archived = join(memory, "archive", "agents", `${day}-counter`)
+  expect(readFileSync(join(archived, "agent.md"), "utf8")).toBe(md)
+  expect(existsSync(join(archived, "checker", "agent.md"))).toBe(true)
+  again.terminate()
+  const third = await createKernelTeam({ desk: deskOf(), port: 0, live: true })
+  expect(third.agents).toEqual(["lead"])
+  third.terminate()
+})
+
 test("preview: the prompt the next step would see, with its artifacts refreshed first", async () => {
   let n = 0
   const tail = Object.assign(new Artifact({ name: "tail" }), { refresh: async () => void n++, render: () => `refreshed ${n}` })
@@ -413,7 +479,7 @@ const until = async (ok) => {
 
 // 2026-10-17 owner ("I want to be able to talk with the lead to understand what is currently already there and what I
 // want to check"): team/call chat is one model call beside the runs (kernel Agent.chat).
-test("chat: the answer beside the runs — two chat rows, its model call in the stats; QUEUE: starts a run (work()), GUIDE: reaches the run in progress; a failed chat fails", async () => {
+test("chat: the answer beside the runs — two chat rows, its model call in the stats; QUEUE: is a proposal the host never starts, GUIDE: reaches the run in progress; a failed chat fails", async () => {
   const root = mkdtempSync(join(tmpdir(), "kt-chat-"))
   const state = join(root, "state")
   const folder = join(root, "agents", "lead")
@@ -438,12 +504,17 @@ test("chat: the answer beside the runs — two chat rows, its model call in the 
   const reader = team.stream({ signal: new AbortController().signal }).body.getReader()
   await reader.read() // the snapshot
 
-  // Idle: the answer comes back, and its QUEUE: line is a run started here.
-  expect(await team.call({ target: "lead", method: "chat", args: ["what is built?"] })).toEqual({ ok: true, value: { answer: "Built: the tokenizer and a 2-layer model; val_bpb 1.41.", guided: false, queued: "check the loss curve of run r3" } })
+  // Idle: the answer comes back, and its QUEUE: line is a proposal — never started by the host (2026-10-17 critic).
+  expect(await team.call({ target: "lead", method: "chat", args: ["what is built?"] })).toEqual({ ok: true, value: { answer: "Built: the tokenizer and a 2-layer model; val_bpb 1.41.", guided: false, proposed: "check the loss curve of run r3" } })
+  await Bun.sleep(30)
+  expect(team.work()).toEqual([])
+  expect(looking).toBe(false)
+  // The owner starts it (the UI's "Queue it": a send of the proposal).
+  team.send({ text: "check the loss curve of run r3" })
   await until(() => looking)
   expect(team.work()).toEqual([expect.objectContaining({ agent: "lead", run: "check the loss curve of run r3" })])
   // Running: the GUIDE: line reaches the run in progress; the chat's prompt showed that run and the earlier exchange.
-  expect(await team.call({ target: "lead", method: "chat", args: ["what are you doing?", { from: "telegram" }] })).toEqual({ ok: true, value: { answer: "Running step 1: reading the curve.", guided: true, queued: null } })
+  expect(await team.call({ target: "lead", method: "chat", args: ["what are you doing?", { from: "telegram" }] })).toEqual({ ok: true, value: { answer: "Running step 1: reading the curve.", guided: true, proposed: null } })
   const asked = prompts.filter((p) => p.includes("# OWNER CHAT")).at(-1)
   expect(asked).toContain("# REQUEST (from owner)\ncheck the loss curve of run r3")
   expect(asked).toContain("> owner: what is built?")
@@ -459,9 +530,9 @@ test("chat: the answer beside the runs — two chat rows, its model call in the 
   const rows = events.filter((e) => e.id === "lead").flatMap((e) => e.patch.messages?.items ?? [])
   expect(rows.filter((m) => m.kind === "chat").map(({ id, at, ...m }) => m)).toEqual([
     { role: "user", kind: "chat", from: "owner", content: "what is built?" },
-    { role: "assistant", kind: "chat", content: "Built: the tokenizer and a 2-layer model; val_bpb 1.41.", guided: false, queued: "check the loss curve of run r3" },
+    { role: "assistant", kind: "chat", content: "Built: the tokenizer and a 2-layer model; val_bpb 1.41.", guided: false, proposed: "check the loss curve of run r3" },
     { role: "user", kind: "chat", from: "telegram", content: "what are you doing?" },
-    { role: "assistant", kind: "chat", content: "Running step 1: reading the curve.", guided: true, queued: null },
+    { role: "assistant", kind: "chat", content: "Running step 1: reading the curve.", guided: true, proposed: null },
   ])
   // The guidance reached the run: its row, and the next step's prompt.
   expect(rows.find((m) => m.kind === "guidance")).toMatchObject({ role: "user", from: "telegram", content: "compare r3 with r2" })
@@ -473,12 +544,139 @@ test("chat: the answer beside the runs — two chat rows, its model call in the 
   // Two chats and two steps: four model calls.
   expect(events.filter((e) => e.id === "lead" && e.patch.stats).at(-1).patch.stats).toMatchObject({ calls: 4, promptChars: expect.any(Number) })
   const logs = events.filter((e) => e.type === "log").map((e) => e.text)
-  for (const line of ["desk: owner asks lead: what is built?", "desk: owner → lead: check the loss curve of run r3", "desk: telegram asks lead: what are you doing?", "desk: lead did not answer owner's chat (model down)"]) expect(logs).toContain(line)
+  for (const line of ["desk: owner asks lead: what is built?", "desk: lead proposes to owner (not started): check the loss curve of run r3", "desk: owner → lead: check the loss curve of run r3", "desk: telegram asks lead: what are you doing?", "desk: lead did not answer owner's chat (model down)"]) expect(logs).toContain(line)
   // The run's transcript holds its own rows only (request, step, guidance, result): a restored thread keeps its times.
   const run = JSON.parse(readFileSync(join(folder, "transcript.jsonl"), "utf8").trim().split("\n").at(-1))
   expect(run).toMatchObject({ request: "check the loss curve of run r3", answer: "r3 beats r2", guidance: [{ pos: 1, from: "telegram", text: "compare r3 with r2" }] })
   expect(run.times.length).toBe(4)
   team.terminate()
+})
+
+// 2026-10-17 critic: a chat in flight was outside stop and work(), and its late QUEUE:/GUIDE: line started a run after
+// the owner's Stop.
+test("chat in flight: listed in work() until it ends; stop reaches it (it fails \"stopped\"); its late reply starts nothing", async () => {
+  const replies = []
+  let releaseStep
+  const stepHeld = new Promise((r) => (releaseStep = r))
+  const runs = []
+  const infer = (prompt) => {
+    if (prompt.includes("# OWNER CHAT")) return new Promise((ok) => replies.push(ok))
+    runs.push(prompt.match(/# REQUEST[^\n]*\n([^\n]*)/)?.[1])
+    return stepHeld.then(() => JSON.stringify({ thought: "t", calls: [], answer: "done" }))
+  }
+  const team = await createKernelTeam({ desk: { name: "d", state: mkdtempSync(join(tmpdir(), "kt-chatstop-")), start: async () => ({ desk: buildDesk({ name: "lead", team: "desk", report: false, tools: [{ type: "agent", name: "coder", report: false }] }, { infer }) }) }, port: 0, live: false })
+  const reader = team.stream({ signal: new AbortController().signal }).body.getReader()
+  await reader.read()
+
+  // Idle: a chat in flight is work (the lead's, then a member's), never a run.
+  const first = team.call({ target: "lead", method: "chat", args: ["what is built?\nand what next?"] })
+  const second = team.call({ target: "coder", method: "chat", args: ["are you busy?"] })
+  await until(() => replies.length === 2)
+  expect(team.work()).toEqual([
+    { agent: "lead", lead: true, run: "(owner chat) what is built?", step: "answering the owner", since: expect.any(String) },
+    { agent: "coder", lead: false, run: "(owner chat) are you busy?", step: "answering the owner", since: expect.any(String) },
+  ])
+  // The owner stops the lead: its chat ends "stopped"; the member's goes on.
+  expect(await team.call({ target: "lead", method: "stop" })).toEqual({ ok: true, value: { stopped: 1 } })
+  expect(await first).toEqual({ ok: false, error: { message: "stopped" } })
+  expect(team.work().map((w) => w.agent)).toEqual(["coder"])
+  // The stopped chat's reply arrives late with a QUEUE: line: no run starts.
+  replies[0]("Built: the tokenizer.\nQUEUE: train the model")
+  replies[1]("Idle.")
+  expect(await second).toEqual({ ok: true, value: { answer: "Idle.", guided: false, proposed: null } })
+  await Bun.sleep(30)
+  expect(team.work()).toEqual([])
+  expect(runs).toEqual([])
+
+  // Running: the owner chats, then stops — the run and the chat; the chat's late GUIDE: line reaches nothing and starts
+  // nothing.
+  const asked = team.call({ target: "lead", method: "ask", args: ["first job"] })
+  await until(() => runs.length === 1)
+  const third = team.call({ target: "lead", method: "chat", args: ["please do the thing"] })
+  await until(() => replies.length === 3)
+  expect(team.work().map((w) => [w.agent, w.step])).toEqual([["lead", expect.any(String)], ["lead", "answering the owner"]])
+  expect(await team.call({ target: "lead", method: "stop" })).toEqual({ ok: true, value: { stopped: 2 } })
+  expect(await third).toEqual({ ok: false, error: { message: "stopped" } })
+  releaseStep()
+  expect(await asked).toEqual({ ok: false, error: { message: "stopped" } })
+  replies[2]("I'll adjust.\nGUIDE: switch to plan B")
+  await Bun.sleep(30)
+  expect(team.work()).toEqual([])
+  expect(runs).toEqual(["first job"])
+  const events = await drain(reader)
+  const rows = events.filter((e) => e.id === "lead").flatMap((e) => e.patch.messages?.items ?? [])
+  expect(rows.some((m) => m.kind === "guidance" || m.kind === "chat")).toBe(false) // a stopped chat leaves no rows
+  const logs = events.filter((e) => e.type === "log").map((e) => e.text)
+  expect(logs).toContain("desk: owner stops lead: 1 owner chat stopped")
+  expect(logs).toContain("desk: owner stops lead: 1 run and 1 owner chat stopped")
+  expect(logs).toContain("desk: lead did not answer owner's chat (stopped)")
+  team.terminate()
+})
+
+// 2026-10-17 critic: a live view froze while every holder waited (its refresh ran only before a holder's step). An artifact
+// with a numeric `poll` is refreshed by the host while a tab is on the stream.
+test("poll: an artifact with poll ms is refreshed with a holder while a tab is connected, never without one; a failure is one log line a minute; terminate ends it", async () => {
+  const calls = []
+  let fail = false
+  class Gauge extends Artifact {
+    poll = 20
+    async refresh(agent) {
+      calls.push(agent.name)
+      if (fail) throw new Error("host down")
+      this.state = { value: (this.state.value ?? 0) + 1 }
+      this.changed()
+    }
+  }
+  const gauge = Object.assign(new Gauge({ name: "desk.gauge" }), { keep: "run" })
+  const quiet = Object.assign(new Gauge({ name: "desk.quiet" }), { keep: "run", poll: null }) // no poll: never refreshed by the host
+  const infer = async () => JSON.stringify({ thought: "t", calls: [], answer: "ok" })
+  const team = await createKernelTeam({ desk: { name: "d", state: mkdtempSync(join(tmpdir(), "kt-poll-")), start: async () => ({ desk: buildDesk({ name: "lead", team: "desk", report: false, artifacts: [gauge, quiet] }, { infer }) }) }, port: 0, live: false, pollMinMs: 10 })
+  await Bun.sleep(80)
+  expect(calls).toEqual([]) // no tab: no polls
+
+  // The tab: every event it gets, read in the background (the polls keep the stream busy).
+  const tab = new AbortController()
+  const reader = team.stream({ signal: tab.signal }).body.getReader()
+  const events = []
+  ;(async () => {
+    const decoder = new TextDecoder()
+    for (;;) {
+      const { value, done } = await reader.read().catch(() => ({ done: true }))
+      if (done) return
+      for (const line of decoder.decode(value).split("\n\n")) if (line.startsWith("data: ")) events.push(JSON.parse(line.slice(6)))
+    }
+  })()
+  await until(() => calls.length >= 3)
+  expect(new Set(calls)).toEqual(new Set(["lead"])) // its holder, though the lead takes no step
+  await until(() => events.filter((e) => e.type === "kernel" && e.artifact?.id === "desk.gauge").length >= 3)
+  const twins = events.filter((e) => e.type === "kernel" && e.artifact?.id === "desk.gauge").map((e) => e.artifact.state.value)
+  expect(twins).toEqual([...twins].sort((a, b) => a - b)) // the twin follows every refresh
+  expect(events.some((e) => e.type === "kernel" && e.artifact?.id === "desk.quiet")).toBe(false)
+
+  // Failures: one desk-log line, however many polls fail within the minute.
+  fail = true
+  const failedFrom = calls.length
+  await until(() => calls.length >= failedFrom + 4)
+  const logs = events.filter((e) => e.type === "log").map((e) => e.text)
+  expect(logs.filter((l) => l.startsWith("desk: desk.gauge refresh failed (host down)"))).toHaveLength(1)
+
+  // The last tab gone: the polls stop.
+  tab.abort()
+  await Bun.sleep(30)
+  const afterClose = calls.length
+  await Bun.sleep(100)
+  expect(calls.length).toBe(afterClose)
+
+  // A tab again: polls again; terminate ends them even while the tab stays.
+  fail = false
+  const again = team.stream({ signal: new AbortController().signal }).body.getReader()
+  await again.read()
+  await until(() => calls.length > afterClose)
+  team.terminate()
+  await Bun.sleep(30)
+  const afterTerminate = calls.length
+  await Bun.sleep(100)
+  expect(calls.length).toBe(afterTerminate)
 })
 
 // 2026-10-17: stop reached only the runs the host started; a member running its lead's quest went on.
@@ -548,7 +746,7 @@ test("a team spawn: one registry event with every member's state, a folder each 
   const infer = async (_, agent) => JSON.stringify(script[agent.name].shift())
   const templates = { probe: { name: "probe", role: "Leads the probe.", goal: "watch layer 3", artifacts: ["notes"], members: [{ name: "watcher", role: "Watches." }, { name: "gauge", role: "Measures.", board: false }] } }
   const env = { infer, templates, artifacts: { notes: (agent) => Object.assign(new Artifact({ name: `${agent.name}.notes` }), { keep: "always" }) } }
-  const spec = { name: "lead", team: "lab", report: false, folder: join(root, "agents", "lead"), tools: [spawnTool(), dismissTool(), { type: "agent", name: "coder", report: false }] }
+  const spec = { name: "lead", team: "lab", report: false, folder: join(root, "lead"), tools: [spawnTool(), dismissTool(), { type: "agent", name: "coder", report: false }] }
   const team = await createKernelTeam({ desk: { name: "lab", state, folder: root, start: async () => ({ desk: buildDesk(spec, env) }) }, port: 0, live: true })
   const reader = team.stream({ signal: new AbortController().signal }).body.getReader()
   await reader.read()
@@ -596,3 +794,47 @@ test("a team spawn: one registry event with every member's state, a folder each 
   expect(team.agents).toEqual(["lead", "coder"])
   team.terminate()
 })
+
+test("2026-10-17 the owner's open, back and rerun on the preview route through team/call target artifact, awaited (files read, a script run), never a run", async () => {
+  const tok = (t) => JSON.stringify({ kind: "steps", steps: [`token ${t}`] })
+  let host
+  host = fakeHost({
+    files: { "projects/x/out/tok/0.json": tok(0), "projects/x/out/tok/1.json": tok(1), "projects/x/out/trace.json": JSON.stringify({ kind: "tokens", tokens: [{ text: "a", open: { id: "tok", params: { t: 1 } } }] }), "projects/x/ckpt/a.safetensors": "w" },
+    onStart: (body) => {
+      const t = /--t (\S+)/.exec(body.command)?.[1]
+      if (t != null) host.fs.set(`projects/x/out/tok/${t}.json`, tok(t))
+      return { status: "exited", exit: 0, lines: ["ok"] }
+    },
+  })
+  const preview = new Preview({ clock: () => new Date("2026-10-17T23:30:00Z") })
+  let desk = null
+  const infer = async () => JSON.stringify({ thought: "done", calls: [], answer: "ok" })
+  const spec = { name: "lead", report: false, writes: ["projects/x/out/**"], reads: ["projects/x/**"], artifacts: [preview] }
+  const deskSpec = { state: mkdtempSync(join(tmpdir(), "kt-drill-")), workspace: "/tmp", start: async () => ({ desk: (desk = buildDesk(spec, { infer, context: { host } })) }) }
+  const team = await createKernelTeam({ desk: deskSpec, port: 0, live: false })
+  const lead = desk.lead
+  const show = (input) => lead.tools.get("preview.show").run(input, { ...lead.context, agent: lead })
+  await show({ id: "trace", title: "Trace", visual: { file: "projects/x/out/trace.json" } })
+  await show({ id: "tok", title: "Token", visual: { file: "projects/x/out/tok/{t}.json", params: { t: 0 } }, bind: { command: "python trace.py --t {t}", watch: ["projects/x/ckpt/*.safetensors"] } })
+  await lead.tools.get("preview.focus").run({ id: "trace" }, { ...lead.context, agent: lead })
+  const call = (method, arg = {}) => team.call({ target: "artifact", method, args: [{ id: "preview", ...arg }] })
+  // open: the file for those params read before the answer comes back
+  const opened = await call("open", { visual: "tok", params: { t: 1 } })
+  expect(opened).toEqual({ ok: true, value: { current: { kind: "visual", id: "tok", params: { t: "1" } }, trail: [{ kind: "visual", id: "trace" }] } })
+  expect(preview.state.visuals.find((v) => v.id === "tok").visual).toMatchObject({ file: "projects/x/out/tok/1.json", steps: [{ title: "token 1" }] })
+  // open for params whose file is missing: its bound script runs, then the file is read — all before the answer
+  await call("open", { visual: "tok", params: { t: 5 } })
+  expect(host.calls.filter((c) => c.path === "term/start").map((c) => c.body.command)).toEqual(["python trace.py --t 5"])
+  expect(preview.state.visuals.find((v) => v.id === "tok").visual.steps).toEqual([{ title: "token 5" }])
+  // back, rerun
+  expect((await call("back")).value.current).toEqual({ kind: "visual", id: "tok", params: { t: "1" } })
+  const rr = await call("rerun", { visual: "tok" })
+  expect(rr.ok).toBe(true)
+  expect(rr.value.bind).toMatchObject({ exit: 0, error: null, ran: "python trace.py --t 1" })
+  expect(await call("rerun", { visual: "trace" })).toEqual({ ok: false, error: { message: "trace has no bound script (preview.show … bind) — nothing to run" } })
+  expect(await call("open", { visual: "tok", params: { t: "-rf" } })).toEqual({ ok: false, error: { message: 'params.t: "-rf" — letters, digits, . _ - (at most 40, not starting with -)' } })
+  // none of it ran the lead
+  expect(lead.busy).toBeFalsy()
+  expect(preview.state.asks).toEqual([])
+})
+

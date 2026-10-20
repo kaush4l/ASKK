@@ -46,6 +46,15 @@ export function artifactsHeldBy(artifacts, agentName) {
     .sort((a, b) => rank(a) - rank(b) || a.id.localeCompare(b.id))
 }
 
+// The live tiles under an agent's row on its card (2026-10-17 owner: "the agent card will show the live artifacts which
+// on click will expand to bigger view"): what it holds, in reading order — less one every agent of the desk holds
+// (`everyone`: the desk's agent count; those are the desk card's own) and those the card already shows as its own
+// (`skip`: ids).
+export function heldTiles(artifacts, agentName, { everyone = 0, skip = [] } = {}) {
+  const shown = new Set(skip)
+  return artifactsHeldBy(artifacts, agentName).filter((a) => !shown.has(a.id) && !(everyone > 1 && (a.holders?.length ?? 0) >= everyone))
+}
+
 // The board of a team path ("desk/world") in the boards tree.
 export function boardAt(boards, path) {
   const parts = path.split("/")
@@ -79,9 +88,10 @@ export function currentQuest(state) {
 }
 
 // A card's artifacts: the team's own (board, memory, any the desk owns) and its lead's (checklist,
-// quality). Ordered for reading by view: the desk's lists, checklist, the dispatched jobs and the charts (2026-10-17:
-// the line's work in flight and its graphs read right under the plan), quality, board, schedule, text.
-const ORDER = ["list", "checklist", "dispatch", "chart", "quality", "board", "schedule", "text"]
+// quality). Ordered for reading by view: the preview first (2026-10-17: the one pane the owner and the agents both
+// watch), the desk's lists, checklist, the dispatched jobs (2026-10-17: the line's work in flight read right under the
+// plan), quality, board, schedule, text.
+const ORDER = ["preview", "list", "checklist", "dispatch", "quality", "board", "schedule", "text"]
 const rank = (a) => (ORDER.includes(a.view) ? ORDER.indexOf(a.view) : ORDER.length)
 // teams: every team name in the tree — an artifact no team owns (a lone agent's memory) sits on its first holder's card.
 export function artifactsFor(artifacts, { team, lead, teams = null }) {
@@ -160,7 +170,24 @@ export function dispatchRows(state, { now = Date.now() } = {}) {
     .map(({ start, end, ...row }) => row)
 }
 
+// The owner stops one dispatched job (2026-10-17, amendment M3: before, only the whole station could be stopped, and
+// every other job queued on it died too): the host's artifact route → the dispatch artifact's ownerCall("stop",
+// [{id, job}], "owner") → Dispatch.stop(job) by the owner. id: the dispatch artifact's id; job: the row's id ("j2").
+//   → {stopped: job}; rejects with the host's refusal (no such artifact or job).
+export const stopDispatchJob = (id, job) => teamCall("artifact", "stop", [{ id, job }])
+
 // The next run, set by the owner (time "HH:MM" ET or ISO; goal text) — the desk's schedule.
 export const bookNextRun = ({ at, goal }) => teamCall("desk", "schedule", [{ at, goal }])
 export const clearNextRun = () => teamCall("desk", "unschedule", [])
 export const setDefaultGoal = (goal) => teamCall("desk", "defaultGoal", [goal])
+
+// 2026-10-18 owner ("a small indicator of the number of tools and artifacts every agent has"): what an agent holds,
+// counted from its definition (AgentView) — `tools`: its own tools (an artifact's commands and quests to other agents
+// not counted), `artifacts`: the artifacts it holds, `agents`: the agents it quests.
+export function holdings(engine) {
+  const held = (engine?.artifacts ?? []).map((a) => (typeof a === "string" ? a : a?.id)).filter(Boolean)
+  const ids = new Set(held)
+  const tools = engine?.tools ?? []
+  const own = tools.filter((t) => t.kind !== "agent" && !ids.has(String(t.name).split(".")[0]))
+  return { tools: own.length, artifacts: held.length, agents: tools.filter((t) => t.kind === "agent").length }
+}

@@ -14,13 +14,12 @@
 
 import { createServer } from "node:http" // Next's adapter only (see "Next.js renders the pages" below)
 import { parseArgs } from "node:util"
-import { basename } from "node:path"
 import next from "next"
 
 import { API_PREFIX } from "../companion/server/host-api.js"
 import { hostDesks } from "../companion/server/desks.js"
 import { DESK_OPTIONS, deskDirFrom } from "../companion/shared/args.js"
-import { listDesks, loadDesk } from "../companion/team/desk.js"
+import { hostedDeskFolders, loadDesk } from "../companion/team/desk.js"
 import { DEFAULT_PORT } from "../companion/shared/config.js"
 
 const { values: args } = parseArgs({
@@ -52,7 +51,7 @@ if (alone) {
   port = Number(args.port ?? desk.port ?? process.env.PORT ?? DEFAULT_PORT)
 } else {
   const only = args.only ? new Set(args.only.split(",").map((s) => s.trim()).filter(Boolean)) : null
-  folders = listDesks(args.desks ?? "custom").filter((f) => !only || only.has(basename(f)))
+  folders = hostedDeskFolders({ desks: args.desks ?? "custom", only }) // the core desks (desks/) and the local ones
   port = Number(args.port ?? process.env.PORT ?? DEFAULT_PORT)
 }
 if (!folders.length) {

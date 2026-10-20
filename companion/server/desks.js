@@ -19,15 +19,20 @@ import { dirname, join, resolve } from "node:path"
 
 import { API_PREFIX, createHostApi } from "./host-api.js"
 import { DESK_NAME, forgetModules } from "../team/compose.js"
-import { findDeskServer, forgetDesk, loadDesk } from "../team/desk.js"
+import { CORE_DESKS, findDeskServer, forgetDesk, loadDesk } from "../team/desk.js"
+import { checkDesk, proposeTool, scaffoldDesk } from "../team/scaffold.js"
 import { createKernelTeam } from "../team/kernel-team.js"
 import { runReport, startKernelTelegram } from "../team/kernel-telegram.js"
 import { ownerIdFrom } from "../shared/telegram-owner.js"
 import { DESK_COOKIE, DESK_HEADER } from "../shared/config.js"
 import { httpError } from "../shared/http.js"
 
-export async function hostDesks({ folders, port, defaultDesk = null, readOnly = false, root = null, log = (line) => console.error(line) }) {
-  const deskRoot = resolve(root ?? dirname(resolve(folders[0])))
+// root: the local desks' folder (desks/load and desks/create work there; default custom/ beside the repo's desks/, else
+// the first hosted folder's parent); core: the core desks' folder (desks/), where desks/load also finds a desk.
+export async function hostDesks({ folders, port, defaultDesk = null, readOnly = false, root = null, core = CORE_DESKS, log = (line) => console.error(line) }) {
+  const localFolder = folders.find((f) => resolve(dirname(resolve(f))) !== resolve(core))
+  const deskRoot = resolve(root ?? (localFolder ? dirname(resolve(localFolder)) : join(dirname(resolve(core)), "custom")))
+  mkdirSync(deskRoot, { recursive: true }) // desks/create writes here even before the first local desk
   const desks = await Promise.all(folders.map((folder) => loadDesk(folder)))
   // Integration listeners (Telegram, …): a desk listens for the integrations it names that no other hosted desk names
   // too — one listener per bot (a second poller gets 409s).
@@ -72,6 +77,14 @@ export async function hostDesks({ folders, port, defaultDesk = null, readOnly = 
   const allowedHosts = () => new Set([`127.0.0.1:${port}`, `localhost:${port}`, `[::1]:${port}`])
   const sameOriginJson = (request) => allowedHosts().has((request.headers.get("origin") ?? "").replace(/^http:\/\//, "")) && !!request.headers.get("content-type")?.startsWith("application/json") // host-api.js's rule
 
+  // Asks one desk gave another with wait (desks/ask): id → {status, answer, error, …}, the newest 50.
+  const asks = new Map()
+  let askSeq = 0
+  // Every desk-to-desk ask in the last ASK_WINDOW_MS ({by, to, at}): the loop guard's count.
+  const askLog = []
+  const ASK_BURST = 6
+  const ASK_WINDOW_MS = 10 * 60_000
+
   // ---- desks/load: a desk hosted (or reloaded) without a restart ---------------------------------
 
   // One load at a time: two reloads of one desk never interleave.
@@ -104,11 +117,13 @@ export async function hostDesks({ folders, port, defaultDesk = null, readOnly = 
   // folder on the machine, and clear that folder's modules. Checked before anything is read or created.
   function deskFolderOf(name) {
     if (typeof name !== "string" || !DESK_NAME.test(name)) throw httpError(400, `name: a desk's folder name in ${deskRoot} (${DESK_NAME}).`)
-    const asked = join(deskRoot, name)
+    // A local desk, else a core one (desks/) of that name.
+    const base = !existsSync(join(deskRoot, name)) && core && existsSync(join(core, name)) ? core : deskRoot
+    const asked = join(base, name)
     const real = realOf(asked)
     if (!real) throw httpError(404, `No desk "${name}": ${asked} does not exist.`)
-    const folder = join(realOf(deskRoot), name)
-    if (real !== folder) throw httpError(403, `Desk "${name}" is a link (${asked} → ${real}); a desk is a real folder in ${deskRoot}.`)
+    const folder = join(realOf(base), name)
+    if (real !== folder) throw httpError(403, `Desk "${name}" is a link (${asked} → ${real}); a desk is a real folder in ${base}.`)
     const main = join(folder, "main.js")
     if (!existsSync(main)) throw httpError(404, `No desk "${name}": ${main} does not exist.`)
     if (realOf(main) !== main) throw httpError(403, `Desk "${name}": main.js is a link; a desk's main.js is its own file.`)
@@ -177,6 +192,11 @@ export async function hostDesks({ folders, port, defaultDesk = null, readOnly = 
     if (!allowedHosts().has(request.headers.get("host"))) return Response.json({ error: "Host capabilities answer on localhost only." }, { status: 421 })
     const list = () => [...hosted.values()].map(({ desk, team }) => ({ name: desk.name, description: desk.description, work: team.work() }))
     if (path === "desks" && request.method === "GET") return Response.json({ current: pick(request), default: fallback(), desks: list() })
+    // desks/ask?id=: a waited ask's state (desk.ask polls it: a run can outlast any one request).
+    if (path === "desks/ask" && request.method === "GET") {
+      const run = asks.get(new URL(request.url).searchParams.get("id") ?? "")
+      return run ? Response.json(run) : Response.json({ error: "No such ask (asks are kept while the server runs, the newest 50)." }, { status: 404 })
+    }
     if (request.method !== "POST") return Response.json({ error: "Not found." }, { status: 404 })
     if (!sameOriginJson(request)) return Response.json({ error: path === "desks/load" ? "Desk loads need a same-origin JSON request." : "Desk switches need a same-origin JSON request." }, { status: 403 })
     let body
@@ -199,12 +219,86 @@ export async function hostDesks({ folders, port, defaultDesk = null, readOnly = 
         return Response.json({ error: error.message }, { status: error.status ?? 500 })
       }
     }
+    // 2026-10-20 owner ("for any kind of desk setup, it should be simple enough to request it and the agent figuring out
+    // the good ways of creating the desk"): the kit's desk.* tools (backend/kernel/builtin/desks.js). desks/create
+    // {name, spec, update?} writes a desk from a spec (companion/team/scaffold.js: config only, checked before it is
+    // put in place); desks/check {name} composes one; desks/propose {name, file, code, why} keeps tool code an agent
+    // wants under proposed/tools/ (never loaded); desks/ask {name, text, agent?, wait?} gives a hosted desk work (its lead,
+    // or that agent) — wait: {id} at once, and GET desks/ask?id= says {status: running | done | failed, answer, error}
+    // (2026-10-20: one request held for a whole run timed out); desks/read {name, path} reads a hosted desk's workspace
+    // file, or lists a folder (its own host API's fs/read, fs/list: the same containment). by: the asking desk.
+    const by = request.headers.get(DESK_HEADER) ?? "owner"
+    const answer = async (fn) => {
+      try {
+        return Response.json(await fn())
+      } catch (error) {
+        return Response.json({ error: error.message }, { status: error.status ?? 500 })
+      }
+    }
+    if (path === "desks/create" || path === "desks/propose") {
+      if (readOnly) return Response.json({ error: "This server is read-only (--read-only): it writes no desks." }, { status: 403 })
+      if (path === "desks/propose") return answer(() => proposeTool({ root: deskRoot, name: body?.name, file: body?.file, code: body?.code, why: body?.why, by }))
+      return answer(async () => {
+        const made = await scaffoldDesk({ root: deskRoot, name: body?.name, spec: body?.spec, update: body?.update === true, by })
+        log(`desks: ${by} ${body?.update ? "updated" : "created"} desk ${body.name} (${made.written.length} files)`)
+        return { name: body.name, folder: `custom/${body.name}`, written: made.written, check: made.check, hosted: hosted.has(body.name) }
+      })
+    }
+    if (path === "desks/check") {
+      // Composing imports the desk's main.js and tools: code runs, so a read-only server checks none.
+      if (readOnly) return Response.json({ error: "This server is read-only (--read-only): it checks no desks (a check runs their code)." }, { status: 403 })
+      return answer(() => checkDesk(deskFolderOf(body?.name), { name: body?.name }))
+    }
+    if (path === "desks/ask") {
+      return answer(async () => {
+        const entry = hosted.get(body?.name)
+        if (!entry) throw httpError(404, `Desk "${body?.name}" is not hosted: desks/load it first.`)
+        if (body?.name === by) throw httpError(400, "A desk asks another desk, not itself.")
+        const text = String(body?.text ?? "").trim()
+        if (!text) throw httpError(400, "text: the work for the desk.")
+        const from = `desk:${by}`
+        // No ask loops (2026-10-20 review): a desk waiting on this one is never asked back with a wait (both would wait
+        // until max_minutes), and one desk asks another at most ASK_BURST times in ASK_WINDOW_MS (queued ping-pong).
+        if (by !== "owner") {
+          const now = Date.now()
+          while (askLog.length && now - askLog[0].at > ASK_WINDOW_MS) askLog.shift()
+          if (askLog.filter((a) => a.by === by && a.to === body.name).length >= ASK_BURST) throw httpError(429, `${by} asked ${body.name} ${ASK_BURST} times in ${ASK_WINDOW_MS / 60000} minutes: a loop? Read what it wrote (desk.read) or tell the owner.`)
+          const waiting = [...asks.values()].find((a) => a.status === "running" && a.by === body.name && a.desk === by)
+          if (body?.wait && waiting) throw httpError(409, `${body.name} is waiting on ${by}'s answer (${waiting.id}): answer it instead of asking back.`)
+          askLog.push({ by, to: body.name, at: now })
+        }
+        if (!body?.wait) return entry.team.send({ text, agent: body?.agent ?? null, from })
+        const id = `ask-${Date.now().toString(36)}-${++askSeq}`
+        const run = { id, desk: body.name, agent: body?.agent ?? null, by, text: text.slice(0, 300), status: "running", answer: null, error: null, at: new Date().toISOString(), ended: null }
+        asks.set(id, run)
+        for (const old of [...asks.keys()].slice(0, Math.max(0, asks.size - 50))) asks.delete(old)
+        entry.team
+          .call({ target: body?.agent || null, method: "ask", args: [text, { from }] })
+          .then((r) => Object.assign(run, r?.ok === false ? { status: "failed", error: r.error?.message ?? "failed" } : { status: "done", answer: r?.value ?? r }))
+          .catch((error) => Object.assign(run, { status: "failed", error: error.message }))
+          .finally(() => (run.ended = new Date().toISOString()))
+        return { id, status: "running" }
+      })
+    }
+    if (path === "desks/read") {
+      return answer(async () => {
+        const entry = hosted.get(body?.name)
+        if (!entry) throw httpError(404, `Desk "${body?.name}" is not hosted.`)
+        const at = String(body?.path ?? "")
+        const get = (route) => entry.api.handle(new Request(`http://localhost:${port}${API_PREFIX}${route}?path=${encodeURIComponent(at)}`, { headers: { host: `localhost:${port}` } }))
+        let res = await get("fs/read")
+        if (res.status === 400) res = await get("fs/list") // a folder
+        const out = await res.json().catch(() => null)
+        if (!res.ok) throw httpError(res.status, out?.error ?? `HTTP ${res.status}`)
+        return out
+      })
+    }
     return Response.json({ error: "Not found." }, { status: 404 })
   }
 
   function handleApi(request) {
     const path = new URL(request.url).pathname.slice(API_PREFIX.length)
-    if (path === "desks" || path === "desks/select" || path === "desks/load") return desksEndpoint(request, path)
+    if (path === "desks" || path.startsWith("desks/")) return desksEndpoint(request, path)
     const name = pick(request)
     if (reloading.has(name) || !hosted.has(name)) return Response.json({ error: `Desk "${name}" is ${reloading.has(name) ? "reloading" : "not hosted"}; try again in a moment.` }, { status: 503 })
     return hosted.get(name).api.handle(request)

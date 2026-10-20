@@ -9,10 +9,28 @@
 
 import { withBase } from "@/backend/live/base-path"
 
+// 2026-10-20 (the hosted version): a desk run in this tab (backend/browser/team.js) speaks the same protocol; while one
+// is in use, the stream and the calls go to it instead of the desk server.
+let local = null
+export function setLocalTeam(team) {
+  local = team ?? null
+}
+export const localTeam = () => local
+
 // onEvent(event) for every event; EventSource reconnects on its own and every (re)connect starts with a
 // snapshot. onError() when the connection drops. Returns close().
+// One stream per tab: a new one closes the last (2026-10-17: each hot reload's fresh registry opened another and none
+// closed — six open streams took every HTTP/1.1 connection to the host, and the owner's calls queued forever).
+const OPEN = "__askkTeamStream"
 export function connectTeam(onEvent, onError = () => {}) {
+  globalThis[OPEN]?.close()
+  if (local) {
+    const off = local.subscribe(onEvent)
+    globalThis[OPEN] = { close: off }
+    return off
+  }
   const source = new EventSource(withBase("/__askk/team/stream"))
+  globalThis[OPEN] = source
   source.onmessage = ({ data }) => {
     let event
     try {
@@ -27,6 +45,11 @@ export function connectTeam(onEvent, onError = () => {}) {
 }
 
 export async function teamCall(target, method, args = []) {
+  if (local) {
+    const result = await local.call({ target, method, args })
+    if (!result.ok) throw new Error(result.error?.message ?? "Team call failed")
+    return result.value
+  }
   const response = await fetch(withBase("/__askk/team/call"), {
     method: "POST",
     headers: { "content-type": "application/json" },

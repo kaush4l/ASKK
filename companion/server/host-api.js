@@ -8,9 +8,17 @@
 // Endpoints:
 //   GET whoami                 { name, version, desk, root, runtime, capabilities, platform, localModels }
 //   GET wakes                  { path, open, recent } the desk's wake book (companion/shared/wakes.js)
+//   GET projects               { projects: [{ name, path, source, at, missing, setup, workspace }], file } — the desk's
+//        projects outside ASKK (main.js `projects`; capabilities/projects.js), each projects/<name>/ in fs/* and term/*
+//   POST projects/load { path, name?, setup? }   { project, created, setup } — load a folder outside ASKK (absolute
+//        or ~/…; never the home folder or above it, a system folder, ~/.<dot> or ~/Library, ASKK itself); its
+//        .agents/ is made, ignoring itself; setup (default: when it has no .agents/project.md yet) gives the lead its
+//        first-setup run (from the owner) → "sent" | "skipped" | the reason it was not sent
+//   POST projects/unload { name }   { name } — the desk forgets a project the owner loaded (its folder is untouched)
 //   (fs/* below: companion/capabilities/files.js; with the desk's `mounts`, desks/<name>/… is a mounted desk's folder)
 //   GET fs/list?path=<rel>     { path, entries: [{ name, type, size, mtime }] }
 //   GET fs/read?path=<rel>     { path, size, binary, truncated, text, revision }
+//       &tail=1: a file past the read cap read from its end { …, tail: true, from, head (its first line), revision: null }
 //   GET fs/tree?path=<rel>     { path, entries: [{ name, type, children?, skipped?, omitted? }] }
 //        Names only, every level. Heavy folders (TREE_SKIP) are listed but
 //        not expanded (skipped: true); past MAX_TREE entries the rest of a
@@ -27,16 +35,17 @@
 //        recursive, gathered 300 ms; .git, node_modules, .venv, __pycache__, .cache left out
 //   (term/* below: companion/capabilities/terminal.js — sessions in a PTY under sandbox-exec, kept running; the
 //   desk's main.js `terminal: { toolchains, programs, timeoutSeconds, backgroundMinutes }` sets what runs)
-//   POST term/start { command, cwd?, name?, agent?, writes?, wait?, slot?, replace? }   { session } — one program or
-//        an `&&` chain (no shell), cwd in the workspace; writes: the caller's lane (globs); wait: seconds to wait for
-//        its exit; slot ("main", "long"): run it in the agent's session of that slot (same id, appended), 409 while
-//        that one runs unless replace (stopped first)
+//   POST term/start { command, cwd?, name?, agent?, writes?, wait?, slot?, replace?, lease? }   { session } — one
+//        program or an `&&` chain (no shell), cwd in the workspace; writes: the caller's lane (globs); wait: seconds
+//        to wait for its exit; slot ("main", "long"): run it in the agent's session of that slot (same id, appended),
+//        409 while that one runs unless replace (stopped first); lease ("gpu", 2026-10-17): 409 while another running
+//        session of the desk holds it
 //   POST term/write { id, text, raw? }   { session } — stdin of the running program ("\n" appended unless raw)
 //   POST term/wait { id, seconds, until? }   { session, matched, timedOut, line? } — until it exits, a new
 //        output line holds `until` (literal text, or [texts] where any one is enough: ≤ 300 chars each, ≤ 8; 400
 //        otherwise), or seconds (≤ 600) pass
 //   POST term/stop { id }      { session } — SIGTERM to its process group, SIGKILL after the grace
-//   GET term/list?tail=50      { sessions, policy } — session: { id, name, command, cwd, agent, slot, runs, status
+//   GET term/list?tail=50      { sessions, policy } — session: { id, name, command, cwd, agent, slot, lease, runs, status
 //        (running|exited|stopped|failed), exit, startedAt, endedAt, urls, tail (its current command's lines) };
 //        policy.cache: the desk's own package caches (~/.askk/caches/<desk>; the user's are never written)
 //   GET term/read?id=&lines=   { session, lines } — the session's last lines, its scrollback (\r rewrites a line, no
@@ -59,6 +68,7 @@
 //        { id }   { lines }   POST browser/close { id }   { page }
 //   GET browser/list           { pages }
 //   GET browser/shot?id=&n=    the screenshot (image/png; state/browser/<id>/<n>.png, by id and number only)
+//   GET browser/image?id=&n=&max=   the same shot for a model: JPEG ≤ max px wide (1280), base64 JSON (an agent's next step)
 //   GET apple/actions          { actions: [{ id, available }] } — macOS only
 //   POST apple/run { action, inputs }   { text } — run one Apple action
 //        (companion/hardware/apple/index.js: Shortcuts, speech, notifications, clipboard,
@@ -72,6 +82,7 @@
 //        source web (SearXNG if ASKK_SEARXNG_URL, else DuckDuckGo; on failure the wikipedia + arxiv + hn
 //        fallback, engine "fallback", note says why) | wikipedia | arxiv | hn
 //   GET web/read?url=          { url, title, text } — a public page as text
+//   GET web/page?url=          { url, title, text, links: [{n, text, url}], forms } — a page to navigate (browse.*)
 //        (companion/capabilities/web.js: per-engine queues, retries, cooling, cache)
 //   GET mcp/tools              { servers: [{ name, ok, error?, approval, tools }] }
 //   POST mcp/call { server, tool, arguments }   { text, isError } — call one tool on an MCP server (.mcp.json, the
@@ -101,12 +112,14 @@
 // preview pages never show the desk server's own ports (a page same-origin with this API could POST to it). Both
 // end with the desk: close() stops every session and closes every page (a reload, companion/server/desks.js).
 
+import { existsSync } from "node:fs"
 import { realpath } from "node:fs/promises"
 import { join, resolve } from "node:path"
 import { createApple } from "../hardware/apple/index.js"
 import { loadHardware } from "../hardware/index.js"
 import { createFiles } from "../capabilities/files.js"
 import { createTerm, termRoutes } from "../capabilities/terminal.js"
+import { projectRegistry } from "../capabilities/projects.js"
 import { browserRoutes, createBrowser } from "../capabilities/browser.js"
 import { createWeb, webRoutes } from "../capabilities/web.js"
 import { loadIntegrations } from "../capabilities/integrations.js"
@@ -115,6 +128,7 @@ import { createMcp } from "../capabilities/mcp.js"
 import { runDeskSetup } from "../team/desk.js"
 import { wakesRoutes } from "../shared/wakes.js"
 import { httpError, json } from "../shared/http.js"
+import { APP_ROOT } from "../shared/paths.js"
 
 export const VERSION = "0.2.0"
 import { API_PREFIX, DESKS_PORT, HOST_LIMITS } from "../shared/config.js"
@@ -132,6 +146,7 @@ export async function createHostApi({
   integrationsDir = resolve(process.cwd(), "integrations"),
   listen = false, // run integration listeners (a continuous server)
   hostPorts = [], // more ports of desk servers (desks.js: every hosted desk's), or a function returning them
+  projectRules = {}, // { home, system }: what a loaded project may not be (capabilities/projects.js; a test's own)
 }) {
   const root = await realpath(resolve(rootArg))
   const apple = await createApple()
@@ -181,8 +196,26 @@ export async function createHostApi({
           call: (server, tool, args) => (deskServer.has(server) ? deskServer.get(server).call(tool, args) : guarded(server, tool, args)),
         }
       : null
+  // 2026-10-17: terminal sessions and preview pages live here, per desk, so they outlast agent steps and runs and
+  // end with the desk (close()). The desk server's ports: no program connects to them, no page shows them.
+  const hostLog = (line) => (team?.log ? team.log(line) : console.error(line))
+  // 2026-10-17 owner ("the project can be outside of our project"): projects outside ASKK, each projects/<name>/ in the
+  // desk's workspace (fs/*, term/*) — main.js `projects` at start, the owner's loads in memory/<desk>/projects.json.
+  const projects = desk?.projects
+    ? projectRegistry({
+        file: desk.memory ? join(desk.memory, "projects.json") : null,
+        seed: desk.projects === true ? null : desk.projects,
+        base: desk.folder,
+        local: (name) => existsSync(join(root, "projects", name)),
+        askkRoot: APP_ROOT,
+        ...projectRules,
+        log: hostLog,
+      })
+    : null
+  const mounts = projects ? { ...(desk?.mounts ?? {}), projects } : (desk?.mounts ?? null)
   const capabilities = [
     ...(readOnly ? ["fs.read"] : ["fs.read", "fs.write"]),
+    ...(projects ? ["projects"] : []),
     ...(local ? ["models.local"] : []),
     ...(apple ? ["apple"] : []),
     ...(speech ? ["speech"] : []),
@@ -192,13 +225,10 @@ export async function createHostApi({
     "wakes",
     ...(readOnly ? [] : ["term", "browser"]),
   ]
-  const files = createFiles({ root, readOnly, mounts: desk?.mounts ?? null })
-  // 2026-10-17: terminal sessions and preview pages live here, per desk, so they outlast agent steps and runs and
-  // end with the desk (close()). The desk server's ports: no program connects to them, no page shows them.
-  const hostLog = (line) => (team?.log ? team.log(line) : console.error(line))
+  const files = createFiles({ root, readOnly, mounts })
   const deskPorts = () =>
     [...new Set([port, DESKS_PORT, desk?.port, ...((typeof hostPorts === "function" ? hostPorts() : hostPorts) ?? [])].map(Number))].filter((n) => Number.isInteger(n) && n > 0)
-  const term = readOnly ? null : createTerm({ root, state: runtime, policy: desk?.terminal ?? null, mounts: desk?.mounts ?? null, hostPorts: deskPorts, log: hostLog })
+  const term = readOnly ? null : createTerm({ root, state: runtime, policy: desk?.terminal ?? null, mounts, hostPorts: deskPorts, log: hostLog })
   const browser = readOnly ? null : createBrowser({ state: runtime, blockedPorts: deskPorts, log: hostLog })
   const localModel = local ? localModelRoute(local) : null
   const allowedHosts = new Set([`127.0.0.1:${port}`, `localhost:${port}`, `[::1]:${port}`])
@@ -213,6 +243,25 @@ export async function createHostApi({
     ...wakesRoutes(root).GET,
     ...(term ? termRoutes(term).GET : {}),
     ...(browser ? browserRoutes(browser).GET : {}),
+    ...(projects ? { projects: () => ({ projects: projects.list().map((p) => ({ ...p, workspace: `projects/${p.name}` })), file: desk.memory ? join(desk.memory, "projects.json") : null }) } : {}),
+  }
+  // A project just loaded: the lead's first-setup run, from the owner (skill project-setup in the desk that has it).
+  const setupText = ({ name, path }) =>
+    `Set up the project ${name}, loaded from ${path}: it is projects/${name}/ in your workspace. Load the project-setup skill and follow it: learn what the project is and how it runs, write projects/${name}/.agents/project.md, start its live preview, then tell me what you found and what you would work on first.`
+  async function loadProject({ path, name, setup } = {}) {
+    const { entry, created } = projects.load({ path, name })
+    const fresh = !existsSync(join(entry.path, ".agents", "project.md"))
+    let sent = "skipped"
+    if (team && (setup === true || (setup !== false && fresh))) {
+      try {
+        const r = await team.send({ text: setupText(entry), from: "owner" }) // {ok, value} | {ok: false, error}
+        sent = r?.ok === false ? (r.error?.message ?? "not sent") : "sent"
+      } catch (error) {
+        sent = error.message
+      }
+    }
+    hostLog(`projects: owner ${created ? "loaded" : "reopened"} ${entry.name} (${entry.path})${sent === "sent" ? " → lead: first setup" : ""}`)
+    return { project: { ...entry, workspace: `projects/${entry.name}` }, created, setup: sent }
   }
   const POST = {
     ...files.POST,
@@ -222,6 +271,16 @@ export async function createHostApi({
     ...(speech ? { "speech/transcribe": (body) => speech.transcribe(body), "speech/say": (body) => speech.speak(body) } : {}),
     ...(mcp ? { "mcp/call": ({ server, tool, arguments: args }) => mcp.call(server, tool, args) } : {}),
     ...(team ? { "team/call": (body) => team.call(body), "team/send": (body) => team.send(body) } : {}),
+    ...(projects && !readOnly
+      ? {
+          "projects/load": loadProject,
+          "projects/unload": ({ name }) => {
+            projects.unload(String(name ?? ""))
+            hostLog(`projects: owner unloaded ${name}`)
+            return { name }
+          },
+        }
+      : {}),
   }
 
   // ── requests ──────────────────────────────────────────────────────────

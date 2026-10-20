@@ -1,4 +1,4 @@
-import { Agent } from "../agent/agent.js"
+import { Agent, roleLine } from "../agent/agent.js"
 import { SharedBoard } from "../artifact/board.js"
 import { AgentTool, Tool } from "../tool/tool.js"
 
@@ -160,16 +160,24 @@ export class Desk {
   // config copied unless its own spec sets it, config.spawned {by: its builder, goal, at, keep, team: the helper's
   // name}), every one is bounded by the caller's holdings, keep run dismisses the whole team, and the desk emits one
   // spawn event per agent, the helper first.
+  // 2026-10-17 (critic): a team board's id is "<team>.board", and a team's name need not be an agent's (a convention
+  // desk's lead leads the team named after the desk): a name — the helper's or a member's — whose board id is already
+  // in the desk is refused before anything is built (a second "<desk>.board" had no twin and misreported holders).
   spawn(spec, caller) {
     if (!caller || caller.home !== this || !this.list.includes(caller)) throw new Error("spawn: the caller is not an agent of this desk")
     const name = spawnName(spec?.name)
     if (caller.tools.has(name)) throw new Error(`${caller.name} already has a tool named ${name}`)
+    const ids = new Set([...this.boards().map((b) => b.id), ...this.artifacts().keys()])
+    const teams = (s) => [s.team ?? s.name, ...(s.tools ?? []).filter(isMember).flatMap(teams)]
+    for (const t of teams({ ...spec, name })) if (ids.has(`${t}.board`)) throw new Error(`${t}.board exists: pick another team name`)
     const goal = String(spec?.goal ?? "").trim()
     const keep = spec?.keep === "desk" ? "desk" : "run"
     const c = caller.config
     // board: a caller kept off its team's board (board: false) spawns helpers kept off it too.
     const inherited = Object.fromEntries(["soul", "model", "models", "fallbacks", "maxSteps", "report", "system", "writes", "reads", "board"].filter((k) => c[k] !== undefined).map((k) => [k, c[k]]))
-    const at = new Date().toISOString()
+    // 2026-10-20: spec.at — when a kept helper was first made (respawn after a restart); spec.input — the spawn input as
+    // plain data (agent.spawn's record), kept on the helper's config.spawned for its agent.md and agent.update.
+    const at = typeof spec?.at === "string" && !Number.isNaN(Date.parse(spec.at)) ? spec.at : new Date().toISOString()
     const team = (spec.tools ?? []).some(isMember) ? name : null
     const ownOf = (x) => caller.holding?.get(x.id)?.commands ?? null
     const held = (list) =>
@@ -181,18 +189,18 @@ export class Desk {
       })
     // One spec as buildAgent takes it: the caller's config under its own (fields it leaves undefined stay the
     // caller's), the caller's holdings bound, its members prepared the same way (their builder: this agent).
-    const prepare = (s, by) => {
-      const { keep: _, ...rest } = s
+    const prepare = (s, by, input = null) => {
+      const { keep: _, input: _input, at: _at, ...rest } = s
       const own = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined))
       const tools = (own.tools ?? []).map((t) => (isMember(t) ? (spawnName(t.name), prepare(t, own.name)) : t))
-      return { ...inherited, ...own, tools, artifacts: held(own.artifacts), spawned: { by, goal, at, keep, ...(team ? { team } : {}) } }
+      return { ...inherited, ...own, tools, artifacts: held(own.artifacts), spawned: { by, goal, at, keep, ...(team ? { team } : {}), ...(input ? { input } : {}) } }
     }
     const names = new Set(this.ctx.names)
     const before = this.list.length
     let sub
     let built
     try {
-      sub = buildAgent({ ...prepare(spec, caller.name), goal }, this.ctx, { parentBoard: caller.board ?? caller.parentBoard ?? null, depth: (caller.depth ?? 0) + 1 })
+      sub = buildAgent({ ...prepare(spec, caller.name, spec.input && typeof spec.input === "object" ? structuredClone(spec.input) : null), goal }, this.ctx, { parentBoard: caller.board ?? caller.parentBoard ?? null, depth: (caller.depth ?? 0) + 1 })
       built = this.list.slice(before) // the helper first, then its members (buildAgent's order)
       for (const a of built)
         for (const x of a.artifacts) {
@@ -251,7 +259,8 @@ export class Desk {
   // owner or the host. Refused while it, or a helper of its, runs. 2026-10-17: a team goes whole — dismissing its
   // lead takes every member (they are its children) and unlinks each team board from the board above; a member alone
   // is refused, whoever asks.
-  dismiss(name, by = null) {
+  // reason (2026-10-20): "update" — agent.update rebuilds it at once (the host keeps a kept helper's folder); in the event.
+  dismiss(name, by = null, { reason = null } = {}) {
     const sub = this.list.find((a) => a.name === name)
     if (!sub) throw new Error(`no agent ${name} in this desk`)
     const spawned = sub.config.spawned
@@ -279,7 +288,7 @@ export class Desk {
       for (const x of a.artifacts) x.detach?.(a)
       a.board?.detach() // its team's board leaves the board above (the parent's snapshot no longer lists it)
       a.home = null
-      this.#emit("dismiss", { agent: a.name, by: a === sub ? (by ?? spawned.by) : a.config.spawned?.by, goal: a.config.spawned?.goal ?? "" })
+      this.#emit("dismiss", { agent: a.name, by: a === sub ? (by ?? spawned.by) : a.config.spawned?.by, goal: a.config.spawned?.goal ?? "", keep: a.config.spawned?.keep ?? "run", team: a.config.spawned?.team ?? null, ...(reason ? { reason } : {}) })
     }
     return going.map((a) => a.name)
   }
@@ -294,10 +303,10 @@ export class Desk {
       goal: agent.board?.state.goal ?? null,
       model: agent.config.model ?? null,
       desk: agent.desk ?? null,
-      description: agent.config.description ?? String(agent.config.role ?? "").split("\n")[0],
+      description: agent.config.description ?? roleLine(agent.config.role),
       tools: [...agent.tools.values()].filter((t) => t.type !== "agent" && t.type !== "artifact").map((t) => ({ name: t.name, type: t.type })),
       spawned: agent.config.spawned ?? null,
-      agents: agent.children.map((c) => this.tree(c)),
+      agents: (agent.children ?? []).map((c) => this.tree(c)),
     }
   }
 }

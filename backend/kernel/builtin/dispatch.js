@@ -17,10 +17,14 @@ import { QUEST_INPUT, questText, Tool } from "../tool/tool.js"
 //                                     get the signal (only the holder that started it; the owner through stop(id))
 //   dispatch.list                     the holder's jobs, one line each
 //
-// A holder's run that is stopped (its signal aborts) stops the jobs it started; one that ends normally cannot:
-// gate(agent) refuses the holder's answer while any of its jobs runs. A report shown in a wait or read result is
-// delivered: the prompt drops it, a later wait does not show it again. Commands are type dev (never answered from the
-// run's data cache).
+// A holder's run that is stopped (its signal aborts) stops the jobs it started. gate(agent) refuses the holder's answer
+// while any of its jobs runs — a hard reason ({reason, hard: true}: Agent never lets it through after gateRetries).
+// 2026-10-17 (critic: a lead answered past two refusals, or ran out of steps, and its stations kept working beyond its
+// stop): no job outlives the holder's run — when that run ends for any reason (an answer, flagged or at maxSteps, an
+// error, a stop) the jobs it left running stop with "<holder>'s run ended while it ran" (attach listens to the holder's
+// answer and error; detach drops the listeners). The owner stops one job: ownerCall("stop", [{id, job}]) (the host's
+// team/call target artifact). A report shown in a wait or read result is delivered: the prompt drops it, a later wait
+// does not show it again. Commands are type dev (never answered from the run's data cache).
 // Twin state: {jobs: [{id, to, by, ask ≤ 300, status: running | done | failed | stopped, startedAt, endedAt,
 //   report ≤ 4000, error}] ≤ 40, newest first}; changed() on each transition only (a job starts, a job ends).
 // Prompt (the holder's own jobs only): the running ones with their target's state, the finished reports not yet
@@ -74,6 +78,7 @@ export class Dispatch extends Artifact {
     this.state = { jobs: [] }
     this.jobs = new Map() // id -> job (oldest first)
     this.n = 0
+    this.holders = new Map() // holder name -> drops its run-end listeners (attach / detach)
   }
 
   // ---- jobs ----
@@ -122,9 +127,36 @@ export class Dispatch extends Artifact {
     return this.#halt(job, by == null ? "stopped by the owner" : `stopped by ${by}`)
   }
 
-  // A spawned holder dismissed: the jobs it left running go with it.
+  // The owner acts on the twin (the host's team/call {target: "artifact", method, args: [{id, job}]}): "stop" stops that
+  // one job (its error names the owner) → {stopped: job}. 2026-10-17 (critic): stopping the target agent was the only
+  // way, and it ended every other run queued on it. An unknown method, job, or one not running → throws.
+  ownerCall(method, args = [], _from = "owner") {
+    if (method !== "stop") throw new Error(`${this.name}: the owner can stop a job (not ${method})`)
+    const id = String(args[0]?.job ?? "").trim()
+    if (!id) throw new Error("job: the job to stop (j3)")
+    const job = this.jobs.get(id)
+    if (!job) throw new Error(`no job ${id}`)
+    if (job.status !== "running") throw new Error(`${id} is not running (${job.status})`)
+    this.stop(id, null)
+    return { stopped: id }
+  }
+
+  // A holder's run ends (an answer — flagged or at maxSteps — or an error, a stop): the jobs it left running stop.
+  attach(agent) {
+    if (!agent?.name || typeof agent.on !== "function") return
+    this.holders.get(agent.name)?.()
+    const ended = () => {
+      for (const j of this.#own(agent.name)) this.#halt(j, `${agent.name}'s run ended while it ran`)
+    }
+    const offs = [agent.on("answer", ended), agent.on("error", ended)]
+    this.holders.set(agent.name, () => offs.forEach((off) => off()))
+  }
+
+  // A spawned holder dismissed: the jobs it left running go with it, and its run-end listeners.
   detach(agent) {
     for (const j of this.#own(agent?.name)) this.#halt(j, `${agent.name} was dismissed`)
+    this.holders.get(agent?.name)?.()
+    this.holders.delete(agent?.name)
   }
 
   // The agent `to` names: one of the holder's quest tools (a member written with its team's prefix is that member).
@@ -326,12 +358,13 @@ export class Dispatch extends Artifact {
 
   // ---- gate ----
 
-  // The holder answers only when none of its jobs runs (their reports are the work it answers from).
+  // The holder answers only when none of its jobs runs (their reports are the work it answers from). Hard: never let
+  // through after gateRetries (Agent), so a run that ends with jobs running ends only at maxSteps, an error or a stop.
   gate(agent) {
     const running = this.#own(agent?.name).filter((j) => j.status === "running")
     if (!running.length) return null
     const one = running.length === 1
-    return `${plural(running.length, "job")} still running: ${running.map((j) => `${j.id} → ${j.to} (${since(this.#now() - j.t0)})`).join(", ")}: ${this.name}.wait for ${one ? "its report" : "their reports"} or ${this.name}.stop ${one ? "it" : "them"}`
+    return { reason: `${plural(running.length, "job")} still running: ${running.map((j) => `${j.id} → ${j.to} (${since(this.#now() - j.t0)})`).join(", ")}: ${this.name}.wait for ${one ? "its report" : "their reports"} or ${this.name}.stop ${one ? "it" : "them"}`, hard: true }
   }
 
   // ---- views ----

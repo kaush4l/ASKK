@@ -5,12 +5,14 @@ import { PanelRightCloseIcon, PanelRightOpenIcon } from "lucide-react"
 import { usePanelRef } from "react-resizable-panels"
 
 import { LiveTree } from "@/backend/live/fs-watch"
+import { currentRef, itemKey, previewItems } from "@/backend/live/preview"
 import { TermActivity } from "@/backend/live/term-stream"
-import { followSession, followShot, followTab, mergeSessions, noteOutput, paneIds, pickWorkbench, sessionTabs, workbenchTabs } from "@/backend/live/workbench"
+import { followSession, followTab, mergeSessions, noteOutput, paneIds, pickWorkbench, sessionTabs, workbenchTabs } from "@/backend/live/workbench"
 import { GuideBox } from "@/components/live/guide-box"
 import { FeedList, LiveHeader, LiveTabs } from "@/components/live/live-side"
 import { EditorPane } from "@/components/live/workbench/editor-pane"
 import { FilesPane } from "@/components/live/workbench/files-pane"
+import { PreviewPane } from "@/components/live/workbench/preview-pane"
 import { TerminalPane } from "@/components/live/workbench/terminal-pane"
 import { Button } from "@/components/ui/button"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup, useResizableLayout } from "@/components/ui/resizable"
@@ -18,10 +20,12 @@ import { LIMITS } from "@/lib/config"
 import { cn } from "@/lib/utils"
 
 // The Live page as a workbench, for a desk whose agents hold the inbuilt files / terminal / preview artifacts
-// (2026-10-17, the owner's sketch): Files left; the tab strip of open and modified files and preview pages over the
-// open tab; the Terminal below it; the feed, call panel, other artifacts and guide box in a collapsible 4th slot. Panels
-// resize and keep their layout. Phone: one window at a time from a tab bar. The Following toggle drives which file,
-// session and page show (backend/live/workbench.js chooses); any click of the owner's pauses it.
+// (2026-10-17, the owner's sketch): Files left; the tab strip of open and modified files and the one Preview tab over
+// the open tab (the preview: one pane for its pages and the agents' visuals, the owner's questions — 2026-10-17 owner:
+// "There will be need for only one preview pane"); the Terminal below it; the feed, call panel, other artifacts and
+// guide box in a collapsible 4th slot. Panels resize and keep their layout. Phone: one window at a time from a tab bar.
+// The Following toggle drives which file, session and preview item show (backend/live/workbench.js chooses); any click
+// of the owner's pauses it.
 
 const PANE = { overflow: "hidden" } // a pane scrolls inside itself, never its panel
 const noSubscribe = () => () => {}
@@ -72,8 +76,9 @@ function useTermActivity(enabled) {
 
 const NONE = { tab: null, file: null, page: null, session: null }
 
-// What the panes show: the tabs, and the tab / session / page in view — followed, or while follow is paused the
-// owner's pick, else what the pane showed when it paused (backend/live/workbench.js paneIds).
+// What the panes show: the tabs, and the tab / session / preview item in view — followed (the preview: the item the
+// agents put in the pane, its `current`), or while follow is paused the owner's pick, else what the pane showed when it
+// paused (backend/live/workbench.js paneIds).
 function useWorkbench({ files, terminal, preview }, { following, setFollowing }) {
   const [pinned, setPinned] = React.useState([])
   const [dismissed, setDismissed] = React.useState(() => new Map())
@@ -82,7 +87,7 @@ function useWorkbench({ files, terminal, preview }, { following, setFollowing })
   const [wasFollowing, setWasFollowing] = React.useState(following)
   const tabs = React.useMemo(() => workbenchTabs({ files, preview, pinned, dismissed }), [files, preview, pinned, dismissed])
   const fileTabs = React.useMemo(() => tabs.filter((t) => t.kind === "file"), [tabs])
-  const pageTabs = React.useMemo(() => tabs.filter((t) => t.kind === "preview"), [tabs])
+  const items = React.useMemo(() => previewItems(preview?.state), [preview])
   const activity = useTermActivity(!!terminal)
   const polled = activity?.sessions ?? null
   // at most two tabs per agent: its main session and its long one (backend/live/workbench.js sessionTabs)
@@ -91,9 +96,8 @@ function useWorkbench({ files, terminal, preview }, { following, setFollowing })
   const seenRef = React.useRef(new Map())
   const seen = React.useMemo(() => (seenRef.current = noteOutput(seenRef.current, outputs)), [outputs])
 
-  const shotId = followShot(preview?.state?.pages ?? [])
-  const followed = { tab: followTab(tabs), file: followTab(fileTabs), page: shotId == null ? null : `preview:${shotId}`, session: followSession(sessions, seen) }
-  const lists = { tab: tabs.map((t) => t.id), file: fileTabs.map((t) => t.id), page: pageTabs.map((t) => t.id), session: sessions.map((s) => s.id) }
+  const followed = { tab: followTab(tabs), file: followTab(fileTabs), page: itemKey(currentRef(preview?.state)), session: followSession(sessions, seen) }
+  const lists = { tab: tabs.map((t) => t.id), file: fileTabs.map((t) => t.id), page: items.map((i) => i.key), session: sessions.map((s) => s.id) }
   // Follow resumed: the owner's earlier picks and the freeze go. Paused: every pane stays on what it showed.
   if (wasFollowing !== following) {
     setWasFollowing(following)
@@ -109,14 +113,19 @@ function useWorkbench({ files, terminal, preview }, { following, setFollowing })
   return {
     tabs,
     fileTabs,
-    pageTabs,
+    items,
     tab: tabs.find((t) => t.id === ids.tab) ?? null,
     fileTab: fileTabs.find((t) => t.id === ids.file) ?? null,
-    pageTab: pageTabs.find((t) => t.id === ids.page) ?? null,
+    itemKey: ids.page,
     sessions,
     session: sessions.find((s) => s.id === ids.session) ?? null,
     pickTab(t) {
-      setChosen((c) => ({ ...c, tab: t.id, [t.kind === "file" ? "file" : "page"]: t.id }))
+      setChosen((c) => ({ ...c, tab: t.id, ...(t.kind === "file" ? { file: t.id } : {}) }))
+      pause()
+    },
+    // the owner's pick in the preview pane's strip (or an answer's item)
+    pickItem(key) {
+      setChosen((c) => ({ ...c, page: key }))
       pause()
     },
     closeTab(t) {
@@ -148,10 +157,12 @@ export function Workbench({ live }) {
   const wide = useWide()
   const tree = useLiveTree(panes.files?.state?.root ?? "", !!panes.files && wide !== null)
   if (wide === null) return null
-  return wide ? <DesktopBench live={live} panes={panes} bench={bench} tree={tree} /> : <PhoneBench live={live} panes={panes} bench={bench} tree={tree} />
+  // the one preview pane, following with the page (its pick pauses every pane, as any of the owner's clicks)
+  const preview = panes.preview ? <PreviewPane artifact={panes.preview} artifacts={artifacts} follow={{ following: live.following, key: bench.itemKey, pick: bench.pickItem }} /> : null
+  return wide ? <DesktopBench live={live} panes={panes} bench={bench} tree={tree} preview={preview} /> : <PhoneBench live={live} panes={panes} bench={bench} tree={tree} preview={preview} />
 }
 
-function DesktopBench({ live, panes, bench, tree }) {
+function DesktopBench({ live, panes, bench, tree, preview }) {
   const outer = useResizableLayout("live.workbench")
   const center = useResizableLayout("live.workbench.center")
   const side = useResizableLayout("live.workbench.side")
@@ -182,7 +193,8 @@ function DesktopBench({ live, panes, bench, tree }) {
                   onPick={bench.pickTab}
                   onClose={bench.closeTab}
                   live={tree}
-                  empty={panes.files || panes.preview ? "No open files or pages yet. Files the agents open or change, and pages they preview, show here as tabs." : "This desk has no files or preview artifact."}
+                  preview={preview}
+                  empty={panes.files || panes.preview ? "No open files yet. Files the agents open or change show here as tabs; the Preview tab shows their pages and visuals." : "This desk has no files or preview artifact."}
                 />
               </ResizablePanel>
               <ResizableHandle />
@@ -220,9 +232,9 @@ function DesktopBench({ live, panes, bench, tree }) {
   )
 }
 
-function PhoneBench({ live, panes, bench, tree }) {
+function PhoneBench({ live, panes, bench, tree, preview }) {
   const [win, setWin] = React.useState("editor")
-  const counts = { editor: bench.fileTabs.length, preview: bench.pageTabs.length, terminal: bench.sessions.length, feed: live.events.length }
+  const counts = { editor: bench.fileTabs.length, preview: bench.items.length, terminal: bench.sessions.length, feed: live.events.length }
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2 p-3">
       <LiveHeader live={live} />
@@ -256,9 +268,7 @@ function PhoneBench({ live, panes, bench, tree }) {
         {win === "editor" && (
           <EditorPane tabs={bench.fileTabs} tab={bench.fileTab} onPick={bench.pickTab} onClose={bench.closeTab} live={tree} empty={panes.files ? "No open files yet. Files the agents open or change show here." : "This desk has no files artifact."} />
         )}
-        {win === "preview" && (
-          <EditorPane tabs={bench.pageTabs} tab={bench.pageTab} onPick={bench.pickTab} onClose={bench.closeTab} live={tree} empty={panes.preview ? "No pages yet. Pages the agents preview show here." : "This desk has no preview artifact."} />
-        )}
+        {win === "preview" && (preview ?? <p className="p-3 text-xs text-muted-foreground">This desk has no preview artifact.</p>)}
         {win === "terminal" && <TerminalPane terminal={panes.terminal} sessions={bench.sessions} session={bench.session} onPick={bench.pickSession} />}
         {win === "feed" && (
           <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-2">

@@ -1,13 +1,16 @@
 "use client"
 
 import * as React from "react"
-import { BotIcon, CheckIcon, ChevronRightIcon, MessageCircleQuestionIcon, UserIcon, XIcon } from "lucide-react"
+import { BotIcon, CheckIcon, ChevronRightIcon, ListPlusIcon, MessageCircleQuestionIcon, UserIcon, XIcon } from "lucide-react"
 
 import { describeActivity } from "@/backend/live/activity"
-import { chatNote, threadItems } from "@/backend/live/agent"
+import { chatNote, queueProposal, threadItems } from "@/backend/live/agent"
 import { eventTarget, questAsk, toolCall } from "@/backend/live/follow"
 import { callLook } from "@/backend/live/visual"
+import { shotSrc } from "@/backend/live/workbench"
+import { TalkVisual } from "@/components/talk/talk-visual"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { CallIcon, toneOf } from "@/components/views/call-look"
 import { cn } from "@/lib/utils"
@@ -16,7 +19,8 @@ import { cn } from "@/lib/utils"
 // or a quest from the agent above, the schedule, a wake, Telegram), each step (its thought and calls), each call's
 // result, answers the kernel refused (gate), the owner's guidance to the run in progress, and the answer. Calls, gates
 // and guidance look as they do in the Live feed and on the canvas: callLook (backend/live/visual.js) by call kind.
-// 2026-10-17: the owner's chats (team call `chat`: a question answered beside the run) as one compact Q/A row each.
+// 2026-10-17: the owner's chats (team call `chat`: a question answered beside the run) as one compact Q/A row each;
+// work an answer proposes waits for the owner's "Queue it" (amendment M1).
 
 function Detail({ label, children, mono = false }) {
   return (
@@ -91,10 +95,51 @@ function GuidanceEvent({ message }) {
   )
 }
 
+// The work a chat answer proposed (2026-10-17, amendment M1: the host never starts a run from a chat): the owner starts
+// it with one click — "Queue it" sends it as new work (queueProposal → engine.send: it runs now, or after the run in
+// progress). taken: a later run request already says it (threadItems), so no second click is offered.
+function ProposedWork({ engine, proposed, taken = false, onQueued }) {
+  const [sent, setSent] = React.useState({ busy: false, sent: null, error: null })
+  const done = taken || !!sent.sent
+  async function queue() {
+    if (sent.busy || done) return
+    setSent({ busy: true, sent: null, error: null })
+    const out = await queueProposal(engine, proposed)
+    setSent({ busy: false, ...out })
+    if (out.sent) onQueued?.(out.sent)
+  }
+  return (
+    <div data-proposed className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
+      <p className="min-w-0 flex-1 basis-48 break-words text-muted-foreground">
+        <span className="text-foreground/80">Proposed work:</span> {proposed}
+      </p>
+      {done ? (
+        <span className="text-primary">→ queued as new work{engine?.name ? ` for ${engine.name}` : ""}</span>
+      ) : (
+        <Button
+          type="button"
+          variant="outline"
+          size="xs"
+          className="pointer-coarse:h-10 pointer-coarse:px-3"
+          disabled={sent.busy || !engine}
+          onClick={queue}
+          title={`Send this to ${engine?.name ?? "the agent"} as new work: it runs now, or after the run in progress`}
+        >
+          <ListPlusIcon /> {sent.busy ? "Queueing…" : "Queue it"}
+        </Button>
+      )}
+      {sent.error && <p className="basis-full text-destructive">Not queued: {sent.error}</p>}
+    </div>
+  )
+}
+
 // An owner chat (kind chat): the question and the agent's answer as one compact row — no run started (ChatPair also
-// draws the inline answer under the home page's and the Live page's Ask). pending: asked, no answer yet.
-//   question / answer: { content, from?, at?, guided?, queued? } (thread rows), or plain text
-export function ChatPair({ engine, question, answer, pending = false, error = null, onDismiss, className }) {
+// draws the inline answer under the home page's and the Live page's Ask). pending: asked, no answer yet. Under the
+// answer: "→ added to the run as guidance" when its GUIDE: line reached the run, else the work it proposed with
+// "Queue it" (taken: already queued; onQueued(text) once the owner queued it here).
+//   question / answer: { content, from?, at?, guided?, proposed? } (thread rows; chatAnswer for an askChat outcome),
+//   or plain text
+export function ChatPair({ engine, question, answer, pending = false, error = null, taken = false, onQueued, onDismiss, className }) {
   const q = typeof question === "string" ? { content: question } : question
   const a = typeof answer === "string" ? { content: answer } : answer
   const note = a ? chatNote(a) : null
@@ -120,6 +165,8 @@ export function ChatPair({ engine, question, answer, pending = false, error = nu
             {engine?.name && <span className="text-xs text-muted-foreground">{engine.name}: </span>}
             {a.content || "(no answer)"}
           </p>
+          {(a.visual || a.visualError) && <TalkVisual visual={a.visual} error={a.visualError} />}
+          {a.proposed && <ProposedWork engine={engine} proposed={a.proposed} taken={taken} onQueued={onQueued} />}
           {(note || at) && (
             <p className="flex flex-wrap gap-x-2 text-[11px] text-muted-foreground">
               {note && <span className="text-primary">{note}</span>}
@@ -150,9 +197,33 @@ function Message({ engine, message }) {
         ) : (
           <p className="whitespace-pre-wrap break-words">{message.content}</p>
         )}
+        {message.images?.length > 0 && <SeenShots images={message.images} />}
         {message.error && <span className="text-xs text-destructive">{message.error}</span>}
         {message.at && <span className={cn("text-[10px] tabular-nums", isUser ? "opacity-60" : "text-muted-foreground")}>{new Date(message.at).toLocaleString()}</span>}
       </div>
+    </div>
+  )
+}
+
+// The screenshots this step's model call saw (2026-10-18 owner: "the screenshot will be included along with the next
+// request … and I can also observe it"): each as the model got it, its caption under it; a click opens it whole.
+function SeenShots({ images }) {
+  return (
+    <div className="flex min-w-0 flex-wrap gap-2">
+      {images.map((img, i) => {
+        const src = shotSrc(img)
+        return (
+          <figure key={`${img.page ?? ""}-${img.n ?? i}`} className="flex max-w-full min-w-0 flex-col gap-0.5 sm:max-w-80">
+            {src ? (
+              <a href={src} target="_blank" rel="noreferrer" aria-label={`Open screenshot ${img.n ?? ""} the model saw`}>
+                {/* eslint-disable-next-line @next/next/no-img-element -- a host route, not a static asset (static export) */}
+                <img src={src} alt={img.caption || "a screenshot the model saw"} loading="lazy" className="h-auto max-h-48 w-full rounded-md border object-contain object-left-top" />
+              </a>
+            ) : null}
+            <figcaption className="text-[10px] break-words text-muted-foreground">model saw: {img.caption || `screenshot ${img.n ?? ""}`}</figcaption>
+          </figure>
+        )
+      })}
     </div>
   )
 }
@@ -181,7 +252,7 @@ export function Thread({ engine, messages, empty }) {
     <div className="flex flex-col gap-4">
       {threadItems(messages).map((item, i) =>
         item.type === "chat" ? (
-          <ChatPair key={item.id ?? `chat-${i}`} engine={engine} question={item.question} answer={item.answer} className="self-stretch sm:mx-11" />
+          <ChatPair key={item.id ?? `chat-${i}`} engine={engine} question={item.question} answer={item.answer} taken={item.taken} className="self-stretch sm:mx-11" />
         ) : (
           <Message key={item.message.id ?? i} engine={engine} message={item.message} />
         )

@@ -5,28 +5,28 @@ import { AppWindowIcon, FileTextIcon, XIcon } from "lucide-react"
 
 import { changedLines, diffCut, diffRows, fileLines } from "@/backend/live/workbench"
 import { workspace } from "@/backend/live/workspace"
-import { clock, Empty, StatusDot } from "@/components/live/workbench/pane"
-import { PreviewView } from "@/components/live/workbench/preview-pane"
+import { clock, Empty } from "@/components/live/workbench/pane"
 import { LIMITS } from "@/lib/config"
 import { cn } from "@/lib/utils"
 
 const MAX_LINES = LIMITS.ui.workbench.fileLines
 
-// The center pane: the tab strip (preview pages, then open and modified files, newest first) over the open tab — a
-// file's text or a page's preview.
-export function EditorPane({ tabs, tab, onPick, onClose, live, empty }) {
+// The center pane: the tab strip (the one Preview tab, then open and modified files, newest first) over the open tab — a
+// file's text, or the one preview pane (`preview`: components/live/workbench/preview-pane.jsx, 2026-10-17 owner: "There
+// will be need for only one preview pane").
+export function EditorPane({ tabs, tab, onPick, onClose, live, empty, preview = null }) {
   return (
     <section aria-label="Editor" className="flex min-h-0 flex-1 flex-col">
       <TabStrip tabs={tabs} active={tab?.id} onPick={onPick} onClose={onClose} />
       {!tab && <Empty>{empty}</Empty>}
       {tab?.kind === "file" && <FileView key={tab.path} tab={tab} live={live} />}
-      {tab?.kind === "preview" && <PreviewView key={tab.page.id} page={tab.page} />}
+      {tab?.kind === "preview" && preview}
     </section>
   )
 }
 
-// One row of tabs; it scrolls sideways inside itself, never the page. A modified file has a dot; a closed page is
-// muted.
+// One row of tabs; it scrolls sideways inside itself, never the page. A modified file has a dot; the Preview tab counts
+// the owner's open questions.
 export function TabStrip({ tabs, active, onPick, onClose }) {
   const stripRef = React.useRef(null)
   const activeRef = React.useRef(null)
@@ -41,7 +41,7 @@ export function TabStrip({ tabs, active, onPick, onClose }) {
   }, [active])
   if (!tabs.length) return null
   return (
-    <div ref={stripRef} role="tablist" aria-label="Open files and pages" className="relative flex min-w-0 shrink-0 overflow-x-auto border-b [scrollbar-width:thin]">
+    <div ref={stripRef} role="tablist" aria-label="Open files and the preview" className="relative flex min-w-0 shrink-0 overflow-x-auto border-b [scrollbar-width:thin]">
       {tabs.map((t) => (
         <div
           key={t.id}
@@ -53,13 +53,17 @@ export function TabStrip({ tabs, active, onPick, onClose }) {
             role="tab"
             aria-selected={t.id === active}
             onClick={() => onPick(t)}
-            title={t.kind === "file" ? t.path : t.page.url}
-            className={cn("flex min-h-9 max-w-56 items-center gap-1.5 pl-2.5 text-xs pointer-coarse:min-h-10", t.kind === "file" ? "pr-1" : "pr-2.5", t.closed && "opacity-60")}
+            title={t.kind === "file" ? t.path : `The preview: the app's pages and the agents' visuals (${t.items ?? 0})`}
+            className={cn("flex min-h-9 max-w-56 items-center gap-1.5 pl-2.5 text-xs pointer-coarse:min-h-10", t.kind === "file" ? "pr-1" : "pr-2.5")}
           >
             {t.kind === "preview" ? <AppWindowIcon className="size-3.5 shrink-0" aria-hidden /> : <FileTextIcon className="size-3.5 shrink-0" aria-hidden />}
             <span className="truncate">{t.name}</span>
             {t.kind === "file" && t.modified && <span className="size-1.5 shrink-0 rounded-full bg-amber-500" aria-label="modified" />}
-            {t.kind === "preview" && <StatusDot status={t.page.status} />}
+            {t.kind === "preview" && t.open > 0 && (
+              <span className="shrink-0 rounded-full border border-amber-500/60 px-1 text-[10px] leading-4 text-amber-700 tabular-nums dark:text-amber-300" aria-label={`${t.open} open question${t.open === 1 ? "" : "s"}`}>
+                {t.open}
+              </span>
+            )}
           </button>
           {t.kind === "file" && (
             <button

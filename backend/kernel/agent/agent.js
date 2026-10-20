@@ -1,6 +1,7 @@
 import { checkReport, REPORT_FORMAT } from "./report.js"
 import { parseReply, RESPONSE_FORMAT } from "./reply.js"
 import { AgentTool, QUEST_INPUT } from "../tool/tool.js"
+import { readVisual } from "../builtin/visual.js"
 
 // Agent: one configurable ReAct loop.
 //
@@ -25,9 +26,13 @@ import { AgentTool, QUEST_INPUT } from "../tool/tool.js"
 // 2026-10-17 owner ("I want to be able to talk with the lead to understand what is currently already there and what I
 // want to check"): chat(text) is one model call beside the runs — the agent answers from what its prompt shows (the
 // run in progress, its artifacts, earlier runs) without starting, waiting for or changing a run, except a GUIDE: line
-// (guidance for the run in progress); a QUEUE: line is a request the host may start. current: the run in progress
+// (guidance for the run in progress); a QUEUE: line is a proposal the owner may start. current: the run in progress
 // ({request, steps}, null when idle). stop(): every run of this agent — in progress or queued, whoever started it (the
-// host, a lead's quest) — ends "stopped" at its next step boundary; a model call in flight is not waited for.
+// host, a lead's quest) — ends "stopped" at its next step boundary, and every chat in flight with it; a model call in
+// flight is not waited for.
+// 2026-10-17 (critic): an action is only the reply's own last line (parseChat) — a GUIDE:/QUEUE: line quoted from a
+// file, in a code fence, a blockquote or a list never acts; a QUEUE (or a GUIDE with no run left to guide) comes back as
+// `proposed`, and no run starts from a chat — the owner starts it with one click.
 
 
 // Prompt budget (bonsai): what the model needs to act, nothing it can do without.
@@ -35,6 +40,8 @@ const CLIP_OLD_STEP = 700 // a tool result older than the last two steps keeps t
 const CLIP_HISTORY = 400 // a past run's request and answer
 const REPEAT_MS = 3 * 60_000 // the same data call within this answers from the earlier result
 const REFRESH_MS = 15_000 // an artifact's refresh(agent) longer than this (config.refreshMs) is a failed refresh: the step goes on
+const IMAGES_MAX = 3 // images in one model call (2026-10-18: the preview's screenshots)
+const IMAGE_BYTES = 3_500_000 // one image's bytes at most (a provider's limit is 5 MB)
 // Guidance that arrived while the model wrote its answer: the answer waits one step so the note is read.
 const HELD = "answer held: the owner's guidance arrived while you wrote it — read # OWNER GUIDANCE, then answer"
 const clip = (s, n) => (String(s).length > n ? `${String(s).slice(0, n)}…` : String(s))
@@ -49,15 +56,20 @@ const clipEnds = (s, n) => {
 
 // The owner's chat (Agent.chat): how to answer, last in its prompt where # RESPONSE is in a step's.
 export const CHAT_FORMAT =
-  "The owner is talking with you; your run (if any) goes on without this reply. Answer in plain prose from what you see above — what is built, what runs now, what the numbers are, what is next, what to check, with paths and numbers. No calls: tools do not run here. If the owner asks you to do, change or check something, end with one line `GUIDE: <the note for your run in progress>` when you are running, or `QUEUE: <the request for a new run>` when idle; otherwise no such line."
+  "The owner is talking with you; your run (if any) goes on without this reply. Answer in plain prose from what you see above — what is built, what runs now, what the numbers are, what is next, what to check, with paths and numbers. No calls: tools do not run here. Draw rather than describe (2026-10-18 owner: \"Only text based conversation is slow and verbose\"): to show an architecture, a flow, two options side by side or numbers, add ONE block fenced ```visual … ``` holding a visual spec as JSON ({\"kind\": \"flow\" | \"steps\" | \"matrix\" | \"line\" | \"bars\" | \"tokens\" | \"scatter\" | \"compare\", …}) or {\"show\": \"<the id of a visual in the preview>\"} (e.g. \"arch\": the architecture as its script computes it) — the owner sees it drawn under your answer; keep the prose short beside it. If the owner asks you to do, change or check something, make your reply's last line, on its own (not quoted, not in a list or a code block), GUIDE: <the note for your run in progress> when you are running, or QUEUE: <the request for a new run, for the owner to start> when idle; otherwise no such line."
 const CHAT_KEEP = 12 // exchanges kept in agent.chats
 const CHAT_SHOWN = 6 // earlier exchanges a chat's prompt shows
 const CLIP_CHAT = 800 // each side of an earlier exchange in a chat's prompt
-// The last GUIDE:/QUEUE: line of a chat reply (a model may wrap it in ` or **).
-const CHAT_ACTION = /^[\s>*`_-]*(GUIDE|QUEUE)\s*:\s*\**\s*(.*?)[\s*`_]*$/
+// A chat reply's action line: GUIDE: or QUEUE: after optional spaces (≤ 3: four make an indented code block) and **,
+// the note after it (a closing ** dropped). Never after >, -, *, a number or a backtick (a quote, a list, code).
+const CHAT_ACTION = /^ {0,3}(?:\*\*\s*)?(GUIDE|QUEUE)\s*(?:\*\*)?\s*:\s*(?:\*\*)?\s*(.*?)\s*(?:\*\*)?\s*$/
+const FENCE = /^ {0,3}(```|~~~)/ // a code fence's open or close line
 
-// A chat reply → {answer, action, note}: the last GUIDE:/QUEUE: line taken out of the prose. A reply in the run's JSON
-// shape (a model used to it) gives its answer field.
+// A chat reply → {answer, action, note}: an action only from the reply's final non-empty line, when that line is
+// outside any code fence, not a blockquote's lazy continuation (the line above it starts with >) and is a GUIDE:/QUEUE:
+// line itself (CHAT_ACTION) — it leaves the answer. Every other line stays in the answer untouched and acts on nothing
+// (2026-10-17 critic: a QUEUE: line quoted from notes.md inside a fence started a run as the owner's). A reply in the
+// run's JSON shape (a model used to it) gives its answer field.
 function parseChat(raw) {
   let text = String(raw ?? "").trim()
   if (text.startsWith("{")) {
@@ -66,14 +78,56 @@ function parseChat(raw) {
       if (typeof o?.answer === "string") text = o.answer.trim()
     } catch {}
   }
+  const none = { answer: text, action: null, note: "" }
   const lines = text.split("\n")
-  for (let i = lines.length - 1; i >= 0; i--) {
-    const hit = lines[i].match(CHAT_ACTION)
-    if (!hit) continue
-    lines.splice(i, 1)
-    return { answer: lines.join("\n").trim(), action: hit[1].toUpperCase(), note: hit[2].trim() }
+  let last = lines.length - 1
+  while (last >= 0 && !lines[last].trim()) last--
+  if (last < 0) return none
+  const hit = lines[last].match(CHAT_ACTION)
+  if (!hit?.[2].trim()) return none // no action line, or one with nothing to do (it stays in the answer)
+  const fenced = lines.slice(0, last).filter((l) => FENCE.test(l)).length % 2 === 1 // an open fence above it
+  const quoted = last > 0 && /^\s*>/.test(lines[last - 1]) // `> …` then this line: the quote goes on
+  if (fenced || quoted) return none
+  return { answer: lines.slice(0, last).join("\n").trim(), action: hit[1].toUpperCase(), note: hit[2].trim() }
+}
+
+// A chat answer's drawing: the first block fenced ```visual (or ~~~visual) outside any other fence → {answer without it,
+// visual} (readVisual: a checked spec or {show: id}); one that does not read stays out of the answer and its error comes
+// back as visualError (the owner sees why nothing is drawn). No block → {answer, visual: null}.
+export function chatVisual(answer) {
+  const lines = String(answer ?? "").split("\n")
+  let open = null // the fence that opened a block we are inside of
+  for (let i = 0; i < lines.length; i++) {
+    const f = lines[i].match(/^ {0,3}(```|~~~)\s*(\S*)/)
+    if (!f) continue
+    if (open) {
+      if (lines[i].trim().startsWith(open)) open = null
+      continue
+    }
+    if (f[2].toLowerCase() !== "visual") {
+      open = f[1]
+      continue
+    }
+    const end = lines.findIndex((l, j) => j > i && l.trim().startsWith(f[1]))
+    if (end < 0) break
+    const body = lines.slice(i + 1, end).join("\n")
+    const rest = [...lines.slice(0, i), ...lines.slice(end + 1)].join("\n").replace(/\n{3,}/g, "\n\n").trim()
+    try {
+      return { answer: rest, visual: readVisual(body) }
+    } catch (error) {
+      return { answer: rest, visual: null, visualError: error.message }
+    }
   }
-  return { answer: text, action: null, note: "" }
+  return { answer: String(answer ?? ""), visual: null }
+}
+
+// An agent's one line when no description is given: its role's first line that is not a section header (a line of
+// capitals and spaces — SPEC, RUNBOOK, OWNER CHAT — maybe after # or before :), ≤ 200 chars; "" when there is none.
+// 2026-10-17 (critic): every station template's role opens on "SPEC", and each spawned station and member showed it as
+// its description (twin, tree, its line in its lead's TOOLS).
+export function roleLine(role) {
+  const lines = String(role ?? "").split("\n").map((l) => l.trim()).filter(Boolean)
+  return (lines.find((l) => !/^#*\s*[A-Z][A-Z ]*:?$/.test(l)) ?? "").slice(0, 200)
 }
 
 // A tool's twin; a tool object that is not a kernel Tool (a desk's own builder) as the same fields.
@@ -84,6 +138,7 @@ const toolTwin = (t) =>
 
 export class Agent {
   #runs = new Set() // the AbortController of every run accepted and not ended (in progress or queued): stop() aborts them
+  #chats = new Map() // the AbortController of every chat in flight -> {from, text, at}: stop() aborts them too
 
   constructor(config, { infer, tools = [], artifacts = [], context = {} } = {}) {
     if (!config?.name) throw new Error("agent needs a name")
@@ -159,6 +214,33 @@ export class Agent {
     )
   }
 
+  // The images this step's model call carries (2026-10-18 owner: "the screenshot will be included along with the next
+  // request and the agent can iterate over in order to complete a live artifact and I can also observe it"): each
+  // artifact's images(agent) — the preview's newest screenshot of the page this agent last acted on, once per shot —
+  // at most IMAGES_MAX, each ≤ IMAGE_BYTES; a failure or a hang past refreshMs drops that artifact's images, never
+  // the step. Each {media_type, data (base64), caption, ref}: the model gets the data, the step event only the ref.
+  async collectImages() {
+    const found = await Promise.all(
+      this.artifacts.map(async (a) => {
+        if (typeof a.images !== "function") return []
+        let timer = null
+        try {
+          const ms = this.config.refreshMs ?? REFRESH_MS
+          const got = await Promise.race([a.images(this), new Promise((_, no) => (timer = setTimeout(() => no(new Error("timeout")), ms)))])
+          return Array.isArray(got) ? got : []
+        } catch {
+          return []
+        } finally {
+          clearTimeout(timer)
+        }
+      }),
+    )
+    return found
+      .flat()
+      .filter((i) => i && typeof i.data === "string" && /^image\/(png|jpeg|webp|gif)$/.test(i.media_type ?? "") && i.data.length * 0.75 <= IMAGE_BYTES)
+      .slice(0, IMAGES_MAX)
+  }
+
   // ---- twin -----------------------------------------------------------------------------------
 
   // The agent as plain data (companion/team/kernel-team.js streams it as the agent's definition): what it is
@@ -170,7 +252,7 @@ export class Agent {
       element: "agent",
       id: this.name,
       name: this.name,
-      description: this.config.description ?? String(this.config.role ?? "").split("\n")[0].slice(0, 200),
+      description: this.config.description ?? roleLine(this.config.role),
       role: String(this.config.role ?? ""),
       model: this.config.model ?? null,
       team: this.teamPath ?? "",
@@ -180,7 +262,7 @@ export class Agent {
       agents: tools.filter((t) => t.type === "agent").map((t) => t.name),
       artifacts: this.artifacts.map((a) => a.id),
       // 2026-10-17: an agent spawned at run time (Desk.spawn): who spawned it, for what goal, when, how long it stays.
-      spawned: this.config.spawned ?? null,
+      spawned: this.config.spawned ? (({ input, ...rest }) => rest)(this.config.spawned) : null, // its spawn record stays on config (agent.update, a kept helper's agent.md)
       status: this.status,
     }
   }
@@ -249,14 +331,29 @@ export class Agent {
   // (config.minCalls: an agent that works from data answers only after its tools ran — 2026-10-15: a
   // model replied "no tool access" and answered from the brief's numbers).
   gates(answer, steps = []) {
-    const reasons = this.artifacts.map((a) => a.gate?.(this, answer)).filter(Boolean)
+    return this.#gates(answer, steps).reasons
+  }
+
+  // The reasons as text, and hard: an artifact's gate() returns a reason (text) or {reason, hard: true} — a hard one
+  // refuses the answer however often it comes and never counts toward gateRetries; the run still ends at maxSteps
+  // (2026-10-17 critic: the dispatch gate gave way after two refusals and the lead's jobs outlived its run).
+  #gates(answer, steps = []) {
+    const reasons = []
+    let hard = false
+    for (const a of this.artifacts) {
+      const got = a.gate?.(this, answer)
+      const reason = got && typeof got === "object" ? String(got.reason ?? "").trim() : got ? String(got) : ""
+      if (!reason) continue
+      reasons.push(reason)
+      if (typeof got === "object" && got.hard) hard = true
+    }
     const ran = steps.reduce((n, s) => n + (s.calls?.length ?? 0), 0)
     if (this.config.minCalls && ran < this.config.minCalls) reasons.push(`no tool called yet: your tools are listed under # TOOLS — call them ("call:" lines) and answer from their results`)
     if (this.config.report) {
       const missing = checkReport(answer)
       if (missing.length) reasons.push(`report missing ${missing.join(", ")} — answer in the REPORT format`)
     }
-    return reasons
+    return { reasons, hard }
   }
 
   // ---- owner guidance -------------------------------------------------------------------------
@@ -281,41 +378,57 @@ export class Agent {
   // ---- the owner's chat -----------------------------------------------------------------------
 
   // One model call outside the run queue: never waits for, blocks or changes the run in progress, except the reply's
-  // last line `GUIDE: <note>` while it runs (this.guide: guided true); `QUEUE: <request>` — or GUIDE while idle — comes
-  // back as queued (the host starts that run; the kernel does not). Both lines leave the answer. Kept in this.chats (≤
-  // CHAT_KEEP), never in a run's prompt. Emits chat {from, text, answer, guided, queued, ms, prompt_chars,
-  // reply_chars}; a model call that throws rejects, without the event. Two chats may run at once.
+  // last line `GUIDE: <note>` while it runs (this.guide: guided true); `QUEUE: <request>` — or GUIDE with no run in
+  // progress — comes back as proposed (2026-10-17 critic: nothing starts a run from a chat — the owner does, with one
+  // click). Only the reply's own last line acts (parseChat); it leaves the answer. Kept in this.chats (≤ CHAT_KEEP),
+  // never in a run's prompt. Emits chat {from, text, answer, guided, proposed, ms, prompt_chars, reply_chars}; a model
+  // call that throws rejects, without the event. Two chats may run at once; stop() ends every chat in flight: it
+  // rejects "stopped", without the event, and a GUIDE it carried is never delivered.
   async chat(text, { from = "owner" } = {}) {
     const said = String(text ?? "").trim()
     if (!said) throw new Error("a chat needs text")
-    await this.refreshArtifacts()
-    const run = this.current
-    const prompt = this.render(run?.request ?? null, run?.steps ?? [], { chat: { from, text: said } })
-    const t0 = Date.now()
-    const raw = await this.infer(prompt, this)
-    const ms = Date.now() - t0
-    const reply = String(raw ?? "")
-    const { answer, action, note } = parseChat(reply)
-    let guided = false
-    let queued = null
-    if (note && action === "GUIDE") guided = this.guide(note, from) // false: no run in progress any more
-    if (note && (action === "QUEUE" || (action === "GUIDE" && !guided))) queued = note
-    this.chats.push({ from, text: said, answer, at: Date.now() })
-    if (this.chats.length > CHAT_KEEP) this.chats.splice(0, this.chats.length - CHAT_KEEP)
-    const out = { answer, guided, queued, ms, prompt_chars: prompt.length, reply_chars: reply.length }
-    this.emit("chat", { from, text: said, ...out })
-    return out
+    const controller = new AbortController()
+    this.#chats.set(controller, { from, text: said, at: Date.now() })
+    try {
+      await this.refreshArtifacts()
+      if (controller.signal.aborted) throw new Error("stopped")
+      const run = this.current
+      const prompt = this.render(run?.request ?? null, run?.steps ?? [], { chat: { from, text: said } })
+      const t0 = Date.now()
+      const raw = await this.#infer(prompt, controller.signal)
+      if (controller.signal.aborted) throw new Error("stopped") // stopped as the reply came: it acts on nothing
+      const ms = Date.now() - t0
+      const reply = String(raw ?? "")
+      const parsed = parseChat(reply)
+      const { action, note } = parsed
+      const { answer, visual, visualError } = chatVisual(parsed.answer)
+      const guided = action === "GUIDE" ? this.guide(note, from) : false // false: no run in progress any more
+      const proposed = action === "QUEUE" || (action === "GUIDE" && !guided) ? note : null
+      this.chats.push({ from, text: said, answer, at: Date.now() })
+      if (this.chats.length > CHAT_KEEP) this.chats.splice(0, this.chats.length - CHAT_KEEP)
+      const out = { answer, ...(visual ? { visual } : {}), ...(visualError ? { visualError } : {}), guided, proposed, ms, prompt_chars: prompt.length, reply_chars: reply.length }
+      this.emit("chat", { from, text: said, ...out })
+      return out
+    } finally {
+      this.#chats.delete(controller)
+    }
+  }
+
+  // The chats in flight, oldest first: [{from, text, at}] (the host lists them as work the owner can stop).
+  get chatting() {
+    return [...this.#chats.values()].map((c) => ({ ...c }))
   }
 
   // ---- stop -----------------------------------------------------------------------------------
 
   // Every run of this agent — the one in progress and each queued behind it, whoever started it (the host, a lead's
   // quest, a dispatch) — ends with "stopped": the running one at its next step boundary (its model call in flight is
-  // not waited for), a queued one when its turn comes, without a model call. → how many runs it stopped. reason: the
-  // abort's (ctx.signal.reason for a tool that honours the signal).
+  // not waited for), a queued one when its turn comes, without a model call. Every chat in flight ends "stopped" at
+  // once (its reply, when it comes, is dropped). → how many runs and chats it stopped. reason: the abort's
+  // (ctx.signal.reason for a tool that honours the signal).
   stop(reason = "stopped by the owner") {
     let n = 0
-    for (const c of this.#runs)
+    for (const c of [...this.#runs, ...this.#chats.keys()])
       if (!c.signal.aborted) {
         c.abort(reason)
         n++
@@ -354,11 +467,11 @@ export class Agent {
 
   // The model call of a step, raced with the run's signal: a stop does not wait for a reply that may take minutes
   // (the reply, when it comes, is dropped).
-  #infer(prompt, signal) {
+  #infer(prompt, signal, images = []) {
     if (signal?.aborted) return Promise.reject(new Error("stopped"))
     let reply
     try {
-      reply = Promise.resolve(this.infer(prompt, this))
+      reply = Promise.resolve(images.length ? this.infer(prompt, this, { images }) : this.infer(prompt, this))
     } catch (error) {
       reply = Promise.reject(error)
     }
@@ -389,13 +502,17 @@ export class Agent {
         if (signal?.aborted) throw new Error("stopped")
         const shown = this.guidance.length // the notes this prompt shows: read once the model replies
         const prompt = this.render(request, steps)
+        const images = await this.collectImages()
+        if (signal?.aborted) throw new Error("stopped")
         this.emit("think", { n })
         const t0 = Date.now()
-        const raw = await this.#infer(prompt, signal)
+        const raw = await this.#infer(prompt, signal, images)
         this.guidance.splice(0, shown)
         const reply = parseReply(raw)
-        // ms, prompt_chars, reply_chars: the model call behind this step (the UI's stats per agent).
-        this.emit("step", { n, thought: reply.thought, calls: reply.calls, answer: reply.answer, ms: Date.now() - t0, prompt_chars: prompt.length, reply_chars: String(raw ?? "").length })
+        // ms, prompt_chars, reply_chars: the model call behind this step (the UI's stats per agent); images: what the
+        // model saw with it (refs only — the UI shows each screenshot; never the data).
+        const looked = images.length ? { images: images.map((i) => ({ caption: i.caption ?? "", ...(i.ref ?? {}) })) } : {}
+        this.emit("step", { n, thought: reply.thought, calls: reply.calls, answer: reply.answer, ms: Date.now() - t0, prompt_chars: prompt.length, reply_chars: String(raw ?? "").length, ...looked })
         if (reply.answer != null && !reply.calls.length) {
           const answer = String(reply.answer)
           if (this.#guided(n)) {
@@ -403,9 +520,10 @@ export class Agent {
             this.emit("gate", { reasons: ["owner guidance arrived while it answered"], held: true })
             continue
           }
-          const reasons = this.gates(answer, steps)
+          const { reasons, hard } = this.#gates(answer, steps)
           if (!reasons.length) return this.#finish(request, answer, [], steps)
-          if (refused++ < this.config.gateRetries) {
+          // A hard reason refuses without spending a retry (the run still ends at maxSteps); the rest count.
+          if (hard || refused++ < this.config.gateRetries) {
             this.emit("gate", { reasons })
             steps.push({ thought: reply.thought || "answer", results: [{ tool: "gate", ok: false, output: `answer refused: ${reasons.join("; ")}` }] })
             continue

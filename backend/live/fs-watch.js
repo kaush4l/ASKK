@@ -9,6 +9,7 @@
 //     changes, `changed` the paths of the last one (the editor re-reads the file it shows when its path is there)
 
 import { withBase } from "@/backend/live/base-path"
+import { detectHost } from "@/backend/live/host"
 import { whileVisible } from "@/backend/live/visible"
 import { flattenTree } from "@/backend/live/workbench"
 import { workspace } from "@/backend/live/workspace"
@@ -42,6 +43,22 @@ export function watchFiles(path, onChange, { EventSource: ES = globalThis.EventS
   return () => source.close()
 }
 
+// The server's watch, unless this tab runs its own agent (browser mode: its files live in this browser, never on the
+// server's disk — the files twin's tree is drawn, as on a server without fs/watch).
+function watchHere(path, onChange, options = {}) {
+  let close = null
+  let done = false
+  detectHost().then((host) => {
+    if (done) return
+    if (host?.mode === "browser") return options.onError?.(true)
+    close = watchFiles(path, onChange, options)
+  })
+  return () => {
+    done = true
+    close?.()
+  }
+}
+
 const readTree = async (root) => (await (await workspace())?.tree(root)) ?? null
 
 export class LiveTree {
@@ -55,7 +72,7 @@ export class LiveTree {
   #stop = null
   #gone = false // fs/watch refused (no route here): the twin's tree from now on
 
-  constructor(root, { read = readTree, watch = watchFiles, debounceMs = LIMITS.ui.workbench.treeRefreshMs, document: doc = globalThis.document } = {}) {
+  constructor(root, { read = readTree, watch = watchHere, debounceMs = LIMITS.ui.workbench.treeRefreshMs, document: doc = globalThis.document } = {}) {
     this.root = String(root ?? "").replace(/^\/+|\/+$/g, "")
     this.read = read
     this.watch = watch

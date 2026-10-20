@@ -214,3 +214,44 @@ describe("the desk's main.js", () => {
     }
   })
 })
+
+// 2026-10-17 owner ("I can load a new project location and the agent can work on the project"): a desk with
+// `projects` loads a folder outside ASKK — projects/<name>/ in fs/* — kept in memory/<desk>/projects.json, its .agents/
+// made (ignoring itself), and the lead gets its first-setup run.
+describe("projects: load a folder outside ASKK", () => {
+  test("GET projects, POST projects/load → mounted, saved, .agents/ made, setup sent; unload; read-only cannot load", async () => {
+    const outsideApp = join(top, "elsewhere", "shop")
+    mkdirSync(outsideApp, { recursive: true })
+    writeFileSync(join(outsideApp, "README.md"), "shop\n")
+    const sent = []
+    const team = { log: () => {}, send: (body) => (sent.push(body), { ok: true, value: { agent: "lead", queued: true } }) }
+    const desk = { ...deskOf(), projects: true, memory: join(top, "memory", "host-test") }
+    const rules = { projectRules: { home: join(top, "home"), system: [] } }
+    const own = await createHostApi({ root: desk.workspace, desk, team, port: PORT, ...isolated, ...rules })
+    const ro = await createHostApi({ root: desk.workspace, desk, port: PORT, readOnly: true, ...isolated, ...rules })
+    try {
+      expect((await call(own, "whoami")).body.capabilities).toContain("projects")
+      expect((await call(own, "projects")).body.projects).toEqual([])
+      const loaded = await own.handle(request("projects/load", { method: "POST", body: { path: outsideApp } }))
+      const value = await loaded.json()
+      expect(loaded.status).toBe(200)
+      expect(value).toMatchObject({ created: true, setup: "sent", project: { name: "shop", path: outsideApp, source: "owner", workspace: "projects/shop" } })
+      expect(sent[0].from).toBe("owner")
+      expect(sent[0].text).toMatch(/projects\/shop\/.*project-setup/)
+      expect(readFileSync(join(outsideApp, ".agents", ".gitignore"), "utf8")).toMatch(/^\*$/m)
+      expect(JSON.parse(readFileSync(join(desk.memory, "projects.json"), "utf8")).projects.shop.path).toBe(outsideApp)
+      expect((await call(own, "fs/read?path=projects/shop/README.md")).body.text).toBe("shop\n")
+      expect((await call(own, "projects")).body.projects.map((p) => [p.name, p.setup, p.workspace])).toEqual([["shop", false, "projects/shop"]])
+      const refused = await own.handle(request("projects/load", { method: "POST", body: { path: join(top, "home-missing") } }))
+      expect(refused.status).toBe(404)
+      expect((await ro.handle(request("projects/load", { method: "POST", body: { path: outsideApp } }))).status).toBe(404)
+      expect((await call(ro, "projects")).body.projects.map((p) => p.name)).toEqual(["shop"])
+      const gone = await own.handle(request("projects/unload", { method: "POST", body: { name: "shop" } }))
+      expect(await gone.json()).toEqual({ name: "shop" })
+      expect((await call(own, "fs/read?path=projects/shop/README.md")).status).toBe(404)
+    } finally {
+      await own.close()
+      await ro.close()
+    }
+  })
+})

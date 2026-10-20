@@ -12,10 +12,14 @@ import { cn } from "@/lib/utils"
 // The message box: a textarea with live dictation, send, and stop while the
 // engine runs. Shared by the agent page and the dashboard. Controlled: the
 // parent owns the text. With onGuide, a running agent can still be messaged:
-// Guide (Enter) is a note its next step reads, Queue is new work after the run.
+// Guide is a note its next step reads, Queue is new work after the run.
 // With onAsk (2026-10-17 owner: talk with the lead about what is there and what
-// to check), Ask is a question answered now, idle or running, never a run: a
-// button beside Send (idle) or Guide and Queue (running) — Enter keeps its meaning.
+// to check), Ask is a question answered now, idle or running, never a run.
+// 2026-10-18 owner ("The desk is supposed to interact with me. I posted a question
+// in the lead chat. I want to be able talk with the lead to understand the goal and
+// direction" — a question typed while the lead ran went in as a Guide note and was
+// never answered): while running, Enter ASKS (the lead answers here; its answer may
+// pass a note to the run, GUIDE:), and Guide and Queue are buttons. Idle: Enter sends.
 
 // Live dictation into the message box. Disabled, with the reason, where the
 // browser cannot transcribe speech.
@@ -74,9 +78,10 @@ export function Composer({
   }
 
   const guiding = running && !!onGuide
+  const asking = running && !!onAsk // Enter asks while it runs
   // mode: "guide" (a running agent's next step reads it), "send" (new work; queued while it runs) or "ask" (a
   // question answered now, never a run).
-  function send(mode = guiding ? "guide" : "send") {
+  function send(mode = asking ? "ask" : guiding ? "guide" : "send") {
     const text = value.trim()
     if (!text || disabled) return
     if (mode === "ask" ? !onAsk : running && !guiding) return
@@ -154,12 +159,17 @@ export function Composer({
       {(guiding || onAsk) && (
         <div className="flex flex-wrap items-center justify-end gap-2 pt-2">
           <span className="mr-auto min-w-0 text-xs text-muted-foreground">
-            {guiding ? "Guide: read at its next step · Queue: runs after this run" : "Send: new work"}
-            {onAsk ? " · Ask: answered now, no run" : ""}
+            {asking ? "Enter asks: answered now, the run goes on · Guide: a note its next step reads · Queue: runs after this run" : guiding ? "Guide: read at its next step · Queue: runs after this run" : "Send: new work"}
+            {onAsk && !asking ? " · Ask: answered now, no run" : ""}
           </span>
+          {asking && (
+            <Button type="submit" size="sm" className="pointer-coarse:h-10" disabled={!value.trim() || disabled} title="A question answered now from what the agent sees; its run goes on">
+              <MessageCircleQuestionIcon /> Ask
+            </Button>
+          )}
           {guiding && (
             <>
-              <Button type="submit" size="sm" className="pointer-coarse:h-10" disabled={!value.trim() || disabled}>
+              <Button type={asking ? "button" : "submit"} variant={asking ? "outline" : "default"} size="sm" className="pointer-coarse:h-10" disabled={!value.trim() || disabled} onClick={asking ? () => send("guide") : undefined}>
                 <CompassIcon /> Guide
               </Button>
               <Button type="button" variant="outline" size="sm" className="pointer-coarse:h-10" disabled={!value.trim() || disabled} onClick={() => send("send")}>
@@ -167,7 +177,7 @@ export function Composer({
               </Button>
             </>
           )}
-          {onAsk && (
+          {onAsk && !asking && (
             <Button
               type="button"
               variant="outline"

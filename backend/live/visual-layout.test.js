@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
-import { cellColor, extent, flowLayout, frameCount, linePaths, matrixRange, paletteOf, scale, scatterScales } from "./visual-layout.js"
+import { CELL_TEXT_PX, cellColor, HIT_PX, hitStroke, cellInk, cellText, extent, flowLayout, frameCount, linePaths, matrixRange, paletteOf, scale, scatterScales, tokenColorOf, tokenHeat, tokenRange } from "./visual-layout.js"
 
-describe("stage visual geometry", () => {
+describe("preview visual geometry", () => {
   test("scale and extent: finite numbers only; a flat domain maps to the middle", () => {
     expect(scale([0, 10], [0, 100])(5)).toBe(50)
     expect(scale([3, 3], [0, 100])(3)).toBe(50)
@@ -61,4 +61,40 @@ describe("stage visual geometry", () => {
     const color = paletteOf(["dec-only", "enc-dec", "dec-only"])
     expect([color("dec-only"), color("enc-dec")]).toEqual(["#d946ef", "#38bdf8"])
   })
+
+  test("2026-10-17 token heat: by surprisal (hot = surprising), p (hot = unlikely) or entropy; a translucent tint; the range", () => {
+    const v = { tokens: [{ text: "a", p: 0.5, surprisal: 1 }, { text: "b", p: 0.01, surprisal: 6.64 }, { text: "c" }] }
+    expect(tokenColorOf(v)).toBe("surprisal")
+    expect(tokenColorOf({ tokens: [{ p: 0.5 }] })).toBe("p")
+    expect(tokenColorOf({ tokens: [{ text: "x" }] })).toBeNull()
+    expect(tokenColorOf({ ...v, color: "entropy" })).toBe("entropy")
+    expect(tokenRange(v)).toEqual([0, 6.64])
+    expect(tokenRange({ ...v, range: [0, 16] })).toEqual([0, 16])
+    expect(tokenRange(v, "p")).toEqual([0, 1])
+    expect(tokenHeat(v.tokens[1], "surprisal", [0, 6.64]).level).toBe(1)
+    expect(tokenHeat(v.tokens[0], "p", [0, 1]).level).toBe(0.5)
+    expect(tokenHeat(v.tokens[1], "p", [0, 1]).level).toBeCloseTo(0.99)
+    expect(tokenHeat(v.tokens[2], "surprisal", [0, 6.64])).toBeNull()
+    expect(tokenHeat(v.tokens[1], "surprisal", [0, 6.64]).bg).toBe("oklch(0.72 0.17 50.0 / 0.560)")
+  })
+
+  test("2026-10-17 matrix cells: a frame's own text, else the visual's; ink that reads on the cell", () => {
+    const v = { cells: [["a", "b"]], frames: [{ values: [[0, 1]] }, { values: [[0, 1]], cells: [["x", "y"]] }] }
+    expect(cellText(v, v.frames[0], 0, 1)).toBe("b")
+    expect(cellText(v, v.frames[1], 0, 1)).toBe("y")
+    expect(cellText({ frames: [] }, {}, 0, 0)).toBe("")
+    expect(CELL_TEXT_PX).toBe(24)
+    expect(cellInk(1, [0, 1])).toBe("oklch(0.15 0 0)") // the bright end: dark ink
+    expect(cellInk(0, [0, 1])).toBe("oklch(0.95 0 0)")
+    expect(cellInk(null, [0, 1])).toBe("oklch(0.9 0 0)")
+  })
+
+  test("2026-10-17 touch targets: a transparent stroke makes a small mark ≥ 40 px across on a coarse pointer, nothing on a fine one", () => {
+    expect(HIT_PX).toBe(40)
+    expect(hitStroke(false, 1, 10)).toBe(0)
+    expect(hitStroke(true, 1, 10)).toBe(30) // a 10-unit point drawn 1:1: 10 + 30 = 40 px
+    expect(hitStroke(true, 0.5, 9)).toBe(71) // a label drawn at half size: (9 + 71) × 0.5 = 40 px
+    expect(hitStroke(true, 2, 50)).toBe(0) // already big enough
+  })
 })
+

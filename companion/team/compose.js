@@ -25,7 +25,7 @@
 // start, handed to buildDesk as env.templates (spawn inputs: agent.spawn {template}) with env.models (the model names a
 // spawn may ask for).
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs"
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from "node:fs"
 import { basename, dirname, join, resolve, sep } from "node:path"
 
 import { Artifact, buildDesk, builtinKit, Checklist, complete, defineTool, SPAWN_NAME, Tool } from "../../backend/kernel/index.js"
@@ -171,20 +171,23 @@ const LOCAL = new Set(["claude-cli", "codex-cli", "gemini-cli", "apple"])
 // config.models), else `models`, else `fallback`. Local providers go through the host (hostClient: the one path).
 export function llmInfer({ models, fallback, port, desk, onUsage }) {
   const host = hostClient({ port, desk })
-  return async (prompt, agent) => {
+  // options.images (2026-10-18: the preview's screenshots, Agent.collectImages): on the local wire as OpenAI image_url
+  // parts (data: URLs only), else to the kernel's complete.
+  return async (prompt, agent, { images = [] } = {}) => {
     const key = agent.config.model
     const model = agent.config.models?.[key] ?? models?.[key] ?? models?.[fallback]
     if (!model) throw new Error(`${agent.name}: no model`)
     const t0 = Date.now()
     let raw
     if (LOCAL.has(model.provider)) {
-      const body = { model: model.id, stream: false, messages: [{ role: "user", content: prompt }] }
+      const content = images.length ? [{ type: "text", text: prompt }, ...images.flatMap((i) => [{ type: "text", text: `(${i.caption || "screenshot"})` }, { type: "image_url", image_url: { url: `data:${i.media_type};base64,${i.data}` } }])] : prompt
+      const body = { model: model.id, stream: false, messages: [{ role: "user", content }] }
       const out = await host.post(`llm/${model.provider}/v1/chat/completions`, body).catch((error) => {
         throw new Error(`${model.id}: ${error.message}`)
       })
       raw = out?.choices?.[0]?.message?.content ?? ""
-    } else raw = (await complete({ model, prompt })).raw
-    onUsage?.({ agent: agent.name, model: model.id, ms: Date.now() - t0, prompt_chars: prompt.length, reply_chars: raw.length })
+    } else raw = (await complete({ model, prompt, images })).raw
+    onUsage?.({ agent: agent.name, model: model.id, ms: Date.now() - t0, prompt_chars: prompt.length, reply_chars: raw.length, ...(images.length ? { images: images.length } : {}) })
     return raw
   }
 }
@@ -192,12 +195,12 @@ export function llmInfer({ models, fallback, port, desk, onUsage }) {
 // infer that tries the agent's model, then each fallback in order; every failure is a desk log line, so the owner
 // sees which model answered.
 function withFallbacks(infer, { defaultModel, fallbacks, log }) {
-  return async (prompt, agent) => {
+  return async (prompt, agent, options) => {
     const keys = [agent.config.model ?? defaultModel, ...(agent.config.fallbacks ?? fallbacks)].filter((k, i, all) => k && all.indexOf(k) === i)
     let last
     for (const [i, key] of keys.entries()) {
       try {
-        return await infer(prompt, { name: agent.name, config: { ...agent.config, model: key } })
+        return await infer(prompt, { name: agent.name, config: { ...agent.config, model: key } }, options)
       } catch (error) {
         last = error
         log(`model: ${agent.name}: ${key} failed (${String(error.message).slice(0, 120)})${keys[i + 1] ? ` — trying ${keys[i + 1]}` : ""}`)
@@ -264,6 +267,41 @@ export class Report extends Artifact {
   }
 }
 
+// practice's store (the kernel's Practice, 2026-10-20): the agent's standing orders in memory/<desk>/practice/<agent>.md,
+// seeded from practice.md beside its agent.md (the owner's first version, config) until the agent's own exists; its
+// retros appended to memory/<desk>/retros/<agent>.md. memoryOf() → the desk's memory folder (a mounted desk's own),
+// read at each call. No memory folder: kept in the artifact only.
+export function practiceStore(agent, memoryOf) {
+  const memory = () => memoryOf?.() ?? null
+  const fileOf = () => (memory() ? join(memory(), "practice", `${agent.name}.md`) : null)
+  const mem = memory()
+  return {
+    where: mem ? `memory/${basename(mem)}/practice/${agent.name}.md` : null,
+    read: () => {
+      const file = fileOf()
+      return file && existsSync(file) ? readFileSync(file, "utf8") : null
+    },
+    write: (text) => {
+      const file = fileOf()
+      if (!file) return
+      mkdirSync(dirname(file), { recursive: true })
+      const tmp = `${file}.${process.pid}.tmp`
+      writeFileSync(tmp, text)
+      renameSync(tmp, file)
+    },
+    seed: () => {
+      const file = agent.config?.folder ? join(agent.config.folder, "practice.md") : null
+      return file && existsSync(file) ? readFileSync(file, "utf8") : null
+    },
+    retro: (entry) => {
+      if (!memory()) return
+      const dir = join(memory(), "retros")
+      mkdirSync(dir, { recursive: true })
+      appendFileSync(join(dir, `${agent.name}.md`), `${entry}\n`)
+    },
+  }
+}
+
 // The built-in artifact types, by the name an agent.md uses (checklist: its own key; artifacts: [report]).
 export const ARTIFACT_TYPES = {
   checklist: () => (agent, { items }) => Object.assign(new Checklist({ id: `${agent.name}.checklist`, title: `${agent.name} checklist`, items: list(items).map(String), owner: teamOf(agent) }), { keep: "run" }),
@@ -277,7 +315,7 @@ export const ARTIFACT_TYPES = {
 // it off its team's board (2026-10-17).
 const KEYS = new Set(["name", "description", "title", "goal", "team", "model", "max_steps", "min_calls", "writes", "reads", "board", "tools", "agents", "desks", "checklist", "artifacts", "after", "role", "folder"])
 // The keys an agent.md artifacts: entry for a kit type takes (a desk's own type may take more: its spec is handed over).
-const KIT_KEYS = new Set(["type", "id", "commands", "gate"])
+const KIT_KEYS = new Set(["type", "id", "commands", "gate", "reflect"]) // reflect: false — a practice without the run's retro item
 
 // The one lead of a desk: the one folder in agents/ with an agent.md.
 function leadFolder(folder) {
@@ -514,7 +552,8 @@ export async function composeDesk({ folder, deskRoot, name, port, infer, context
   const owners = new Map() // agent name → its desk folder name
   const memories = new Map() // mounted desk name → its memory folder
   // The kit, bound once for this composed desk (its shared files / terminal / preview / plan), under the desk's own.
-  const kit = builtinKit({ memory: ctx.memory, ...builtin })
+  // practice: each agent's standing orders in its own desk's memory folder (a mounted desk's agents: that desk's).
+  const kit = builtinKit({ memory: ctx.memory, practiceStore: (agent) => practiceStore(agent, () => memories.get(owners.get(agent.name)) ?? ctx.memory), ...builtin })
   const owns = new Map() // desk folder → its tools/ catalogue
   const o = { deskRoot: resolve(deskRoot ?? dirname(root)), tools: { ...kit.tools, ...tools }, kitTools: kit.tools, kit: kit.artifacts, artifacts: artifactTypes(ctx.memory, artifacts, kit.artifacts), vars, models, defaultModel, maxSteps, owners, memories, owns, memoryRoot: ctx.memory ? dirname(ctx.memory) : null }
   const spec = await deskSpec(root, o, [basename(root)])
@@ -538,7 +577,11 @@ export async function composeDesk({ folder, deskRoot, name, port, infer, context
 // adapter}) for its own workspace adapter); tools: a catalogue after tools/ (then the kit); builtin: the kit's desk
 // options (clock, the files tree's first root). start({infer}) takes a stub model (tests).
 //   export default conventionDesk({ title: "My desk", description: "what it is for" })
-export function conventionDesk({ name, title, description = "", port, models = MODELS, defaultModel = "opus", fallbacks = ["sonnet"], maxSteps, artifacts = {}, tools = {}, builtin } = {}) {
+// init (2026-10-20 owner: "Every desk will have the agents, any specific tools, an initialization method which will
+// help us initialize any of the dependencies or write in a script and then return a desk object which will be run by
+// the framework"): async ({dir, memory, log, host, port}) → awaited at every start before the agents are built — make
+// folders, write a script into data/, check a dependency; a throw fails the start (desks/load keeps the old version).
+export function conventionDesk({ name, title, description = "", port, models = MODELS, defaultModel = "opus", fallbacks = ["sonnet"], maxSteps, artifacts = {}, tools = {}, builtin, init } = {}) {
   return ({ dir }) => {
     const deskName = name ?? basename(dir)
     return defined({
@@ -549,6 +592,7 @@ export function conventionDesk({ name, title, description = "", port, models = M
       // Its compose options: a desk that mounts this one composes its subtree with them (and scripts/desk.js check).
       compose: defined({ models, defaultModel, fallbacks, maxSteps, artifacts, tools, builtin }),
       start: async ({ port: at = port, log = () => {}, memory = null, infer } = {}) => {
+        if (typeof init === "function") await init({ dir, memory, log, host: at ? hostClient({ port: at, desk: deskName }) : null, port: at })
         infer ??= withFallbacks(llmInfer({ models, fallback: defaultModel, port: at, desk: deskName }), { defaultModel, fallbacks, log })
         const desk = await composeDesk({ folder: dir, name: deskName, port: at, infer, models, defaultModel, maxSteps, artifacts, tools, builtin, context: { host: hostClient({ port: at, desk: deskName }), memory, log } })
         return { desk }

@@ -18,6 +18,9 @@
 //   POST browser/close { id }                         { page }
 //   GET  browser/list                                 { pages } newest first (closed ones too, a few)
 //   GET  browser/shot?id=&n=                          the PNG (image/png; n given: cached for good; none: the latest)
+//   GET  browser/image?id=&n=&max=                    { id, n, media_type, width, height, bytes, data } — the same shot
+//           for a model's eyes (2026-10-18 owner: "the screenshot will be included along with the next request"): a
+//           JPEG at most `max` px wide (default 1280, 320–1568; a retina 2560 shot halves), base64
 //   page: { id, url, title, status: open|closed, reason?, by, at, width, height,
 //           shot: { n, at, width, height, url: "/__askk/browser/shot?id=<id>&n=<n>" } | null,
 //           console: [the last 20 lines], errors: count of error lines }
@@ -145,6 +148,18 @@ const textOf = (v) => {
 }
 
 // state: the desk's state folder (screenshots); blockedPorts() → the ports no page may show (the desk server's).
+// "hash": the same document at another #fragment; "reload": the very same URL; null: a real navigation.
+export function sameDocument(current, target) {
+  try {
+    const a = new URL(current)
+    const b = new URL(target)
+    if (a.origin !== b.origin || a.pathname !== b.pathname || a.search !== b.search) return null
+    return a.hash === b.hash ? "reload" : b.hash ? "hash" : null
+  } catch {
+    return null
+  }
+}
+
 export function createBrowser({ state, blockedPorts = () => [], log = () => {} }) {
   const shotsDir = join(state, "browser")
   const pages = new Map() // id -> page
@@ -219,7 +234,8 @@ export function createBrowser({ state, blockedPorts = () => [], log = () => {} }
     const until = Date.now() + B.navTimeoutMs
     while (Date.now() < until && p.status === "open" && p.view.loading) await sleep(50)
     const url = p.status === "open" ? p.view.url : ""
-    if (url && url !== p.url) navigated(p, url)
+    // the view's url never carries a hash move (navigate's same-document path keeps p.url's): only another document counts
+    if (url && url.split("#")[0] !== String(p.url ?? "").split("#")[0]) navigated(p, url)
   }
 
   async function shim(p) {
@@ -337,9 +353,22 @@ export function createBrowser({ state, blockedPorts = () => [], log = () => {} }
 
   const done = (p) => (value) => ({ ...(value ?? {}), page: summary(p) })
 
+  // 2026-10-18 (the dev desk's lead: "preview.goto …/model.html#L1:2" → 504): a URL that differs from the page's only
+  // by its #hash (or not at all) is the same document — no load event ever comes — so it moves the hash (or reloads)
+  // in the page instead; the action still settles and shoots.
   async function navigate({ id, url } = {}) {
     const p = page(id)
     const target = check(url)
+    const same = sameDocument(p.view.url || p.url, target)
+    if (same === "hash") {
+      // the view's url does not follow a hash change: the page's url is set here (the same document, already allowed)
+      const move = async () => {
+        await timed(p.view.evaluate(`location.hash = ${JSON.stringify(new URL(target).hash)}`), B.actionTimeoutMs, "the page did not answer")
+        p.url = target
+      }
+      return act(p, move).then(done(p))
+    }
+    if (same === "reload") return act(p, () => timed(p.view.evaluate("location.reload()"), B.actionTimeoutMs, "the page did not answer")).then(done(p))
     return act(p, () => timed(p.view.navigate(target), B.navTimeoutMs, `${target} did not load in ${B.navTimeoutMs / 1000} s`)).then(done(p))
   }
   async function click({ id, selector, x, y } = {}) {
@@ -404,19 +433,32 @@ export function createBrowser({ state, blockedPorts = () => [], log = () => {} }
     return new Response(file, { headers: { "content-type": "image/png", "cache-control": latest ? "no-store" : "public, max-age=31536000, immutable" } })
   }
 
+  // GET browser/image: the shot as a model reads it — scaled down (Bun.Image), JPEG, base64 in JSON (the kernel has no Bun).
+  async function modelImage(id, n, max) {
+    const png = await image(id, n)
+    const width = Math.max(320, Math.min(1568, Math.floor(Number(max)) || 1280))
+    const source = new Bun.Image(new Uint8Array(await png.arrayBuffer()))
+    const meta = await source.metadata()
+    const jpeg = await (meta.width > width ? source.resize(width) : source).jpeg({ quality: 80 }).bytes()
+    const out = await new Bun.Image(jpeg).metadata()
+    const num = n === null || n === undefined || n === "" ? pages.get(id)?.shot?.n : Number(n)
+    return { id, n: num, media_type: "image/jpeg", width: out.width, height: out.height, bytes: jpeg.length, data: Buffer.from(jpeg).toString("base64") }
+  }
+
   // The desk stops: its pages close (later opens are refused).
   function closeAll() {
     closed = true
     for (const p of openPages()) shut(p, "the desk stopped")
   }
 
-  return { open, navigate, click, type, press, scroll, evaluate, text, shot, console: consoleLines, close, list, image, closeAll }
+  return { open, navigate, click, type, press, scroll, evaluate, text, shot, console: consoleLines, close, list, image, modelImage, closeAll }
 }
 
 export const browserRoutes = (browser) => ({
   GET: {
     "browser/list": () => browser.list(),
     "browser/shot": (params) => browser.image(params.get("id"), params.get("n")),
+    "browser/image": (params) => browser.modelImage(params.get("id"), params.get("n"), params.get("max")),
   },
   POST: {
     "browser/open": (body) => browser.open(body),

@@ -1,7 +1,7 @@
 // The workspace files (capabilities `fs.read`, `fs.write`), served by the
 // host API (companion/server/host-api.js):
 //
-//   GET fs/list?path=  GET fs/tree?path=  GET fs/read?path=
+//   GET fs/list?path=  GET fs/tree?path=  GET fs/read?path=[&tail=1]  (tail: a file past the read cap from its end)
 //   POST fs/write { path, text, revision? }   POST fs/delete { path, recursive?, revision? }
 //   GET fs/watch?path=   Server-Sent Events: ready { path }, then change { paths } (debounced, workspace paths)
 //
@@ -14,6 +14,10 @@
 // desks/<name>/… is <root>/<name>/… when allow(name) — a desk's projects, worked on like its own files.
 // Any other desks/<name> is refused; a mounted folder is its own real folder (a link is refused) and its paths stay
 // inside it, like the workspace's. The terminal (terminal.js) resolves cwd and lanes the same way (deskMounts).
+// Loaded projects (2026-10-17 owner: "the project can be outside of our project"; host `mounts.projects`, the desk's
+// registry: projects.js): projects/<name>/… is that project's real folder when <name> is loaded — beside the desk's own
+// projects/ folders, which stay where they are (projects/ lists both; a loaded name wins). workspaceMounts() is every
+// mount point: desks/ (only the mounted desks) and projects/ (an overlay).
 
 import { realpathSync, statSync, readdirSync, watch as watchFs } from "node:fs"
 import { lstat, mkdir, readdir, realpath, rename, rm } from "node:fs/promises"
@@ -31,12 +35,20 @@ const TREE_SKIP = new Set([".git", "node_modules", ".next", "out", "dist", "buil
 // Changes inside these are never reported by fs/watch (a build or an install would flood every tab).
 const WATCH_SKIP = new Set([".git", "node_modules", ".venv", "__pycache__", ".cache"])
 export const MOUNT = "desks" // the workspace folder mounted desks appear under
+export const PROJECTS = "projects" // the workspace folder loaded projects appear in, beside the desk's own
 const DESK_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/
 
 // Short SHA-256 of a file's bytes (same as the app's revisionOf).
 const revisionOf = (bytes) => new Bun.CryptoHasher("sha256").update(bytes).digest("hex").slice(0, 16)
 
 const readBytes = (path) => Bun.file(path).bytes()
+const isDir = (path) => {
+  try {
+    return statSync(path).isDirectory()
+  } catch {
+    return false
+  }
+}
 const stat = (path) => Bun.file(path).stat()
 
 // A desk's mounts (main.js `mounts.desks`), or null: folder(name) → the real folder of desks/<name> (null when not
@@ -79,19 +91,63 @@ export function deskMounts(mounts) {
   return { base, folder, list }
 }
 
-// root: the workspace, already realpath-resolved; mounts: the desk's main.js `mounts` (above).
+// Every mount point of a workspace, or null: desks/ (virtual: it holds only the mounted desks) and projects/ (an
+// overlay: the loaded projects beside the desk's own folders). Each point: {prefix, overlay, what, folder(name) → real |
+// null, list() → [{name, real}]}; nameOf(abs) → the workspace path of a real path inside a mounted folder, else null;
+// all() → every mounted folder [{prefix, name, real}]; mounted(parts) → the point a workspace path is inside a mounted
+// folder of (desks/ alone counts: it is virtual), else null.
+export function workspaceMounts(mounts) {
+  const points = []
+  const desks = deskMounts(mounts)
+  if (desks) points.push({ prefix: MOUNT, overlay: false, what: "mounted desk", base: desks.base, folder: desks.folder, list: desks.list })
+  const loaded = mounts?.projects
+  if (loaded && typeof loaded.folder === "function" && typeof loaded.list === "function") {
+    const folder = (name) => {
+      try {
+        return loaded.folder(name) ?? null
+      } catch {
+        return null
+      }
+    }
+    const list = () => {
+      try {
+        return loaded.list().flatMap(({ name }) => {
+          const real = folder(name)
+          return real ? [{ name, real }] : []
+        })
+      } catch {
+        return []
+      }
+    }
+    points.push({ prefix: PROJECTS, overlay: true, what: "loaded project", folder, list })
+  }
+  if (!points.length) return null
+  const at = (prefix) => points.find((p) => p.prefix === prefix) ?? null
+  const all = () => points.flatMap((p) => p.list().map((d) => ({ ...d, prefix: p.prefix })))
+  const nameOf = (abs) => {
+    for (const d of all()) if (within(d.real, abs)) return [d.prefix, d.name, ...relative(d.real, abs).split(sep)].filter(Boolean).join("/")
+    return null
+  }
+  const mounted = (parts) => {
+    const p = at(parts[0])
+    if (!p) return null
+    if (!p.overlay) return p
+    return parts.length > 1 && p.folder(parts[1]) ? p : null
+  }
+  const names = (p) => p.list().map((d) => d.name).join(", ") || "none"
+  return { points, at, all, nameOf, mounted, names }
+}
+
+// root: the workspace, already realpath-resolved; mounts: the desk's main.js `mounts` (above) and the host's
+// `projects` (the desk's registry of loaded projects).
 export function createFiles({ root, readOnly = false, mounts = null }) {
-  const mount = deskMounts(mounts)
+  const mount = workspaceMounts(mounts)
   // ── paths ─────────────────────────────────────────────────────────────
 
-  // A real path as the workspace names it: root-relative, or desks/<name>/… inside a mounted desk.
+  // A real path as the workspace names it: root-relative, or desks/<name>/… (projects/<name>/…) inside a mounted folder.
   const relPath = (abs) => {
     if (within(root, abs)) return relative(root, abs).split(sep).join("/")
-    if (mount && within(mount.base, abs)) {
-      const [name, ...rest] = relative(mount.base, abs).split(sep)
-      if (mount.folder(name)) return [MOUNT, name, ...rest].filter(Boolean).join("/")
-    }
-    return abs
+    return mount?.nameOf(abs) ?? abs
   }
   const refused = () => new HttpError(403, "Path is outside the workspace.")
   const pathParts = (rel) => {
@@ -99,24 +155,31 @@ export function createFiles({ root, readOnly = false, mounts = null }) {
     if (parts.includes("..")) throw refused()
     return parts
   }
-  const mounted = (parts) => !!mount && parts[0] === MOUNT
-  // Where a workspace path lives: { base, target } — base: the workspace, or a mounted desk's real folder;
-  // { virtual: true } for desks/ itself (the mounted desks, listed).
+  const mounted = (parts) => mount?.mounted(parts) ?? null
+  // Where a workspace path lives: { base, target, point? } — base: the workspace, or a mounted folder's real folder
+  // (point: its mount point); { virtual: true, point } for desks/ itself (the mounted desks, listed), and for projects/
+  // when the desk has no folder of its own there (the loaded projects alone).
   function locate(rel) {
     const raw = String(rel ?? "")
     const named = raw.split(/[\\/]/).filter((p) => p && p !== ".")
-    if (!mounted(named)) return { base: root, target: resolve(root, `.${sep}${raw}`) }
+    const point = mounted(named)
+    if (!point) {
+      const overlay = mount?.at(named[0])
+      const target = resolve(root, `.${sep}${raw}`)
+      if (overlay?.overlay && named.length === 1 && !isDir(target)) return { virtual: true, point: overlay }
+      return { base: root, target }
+    }
     const parts = pathParts(raw)
-    if (parts.length === 1) return { virtual: true }
-    const real = mount.folder(parts[1])
-    if (!real) throw new HttpError(403, `${MOUNT}/${parts[1]} is not a mounted desk (mounted: ${mount.list().map((d) => d.name).join(", ") || "none"}).`)
-    return { base: real, target: join(real, ...parts.slice(2)) }
+    if (parts.length === 1) return { virtual: true, point }
+    const real = point.folder(parts[1])
+    if (!real) throw new HttpError(403, `${point.prefix}/${parts[1]} is not a ${point.what} (${point.prefix}: ${mount.names(point)}).`)
+    return { base: real, target: join(real, ...parts.slice(2)), point }
   }
 
-  // Resolve an existing workspace path, refusing anything outside its root (the workspace or a mounted desk).
+  // Resolve an existing workspace path, refusing anything outside its root (the workspace or a mounted folder).
   async function inRoot(rel = "") {
-    const { virtual, base, target } = locate(rel)
-    if (virtual) return { virtual: true }
+    const { virtual, base, target, point } = locate(rel)
+    if (virtual) return { virtual: true, point }
     let real
     try {
       real = await realpath(target)
@@ -124,11 +187,11 @@ export function createFiles({ root, readOnly = false, mounts = null }) {
       throw new HttpError(404, `Not found: ${rel || "."}`)
     }
     if (!within(base, real)) throw refused()
-    return { real, base }
+    return { real, base, point }
   }
   const existing = async (rel) => {
     const at = await inRoot(rel)
-    if (at.virtual) throw new HttpError(400, `${MOUNT}/ holds the mounted desks; name one: ${MOUNT}/<name>/…`)
+    if (at.virtual) throw new HttpError(400, `${at.point.prefix}/ holds the ${at.point.what}s; name one: ${at.point.prefix}/<name>/…`)
     return at.real
   }
 
@@ -137,8 +200,11 @@ export function createFiles({ root, readOnly = false, mounts = null }) {
   async function writeTarget(rel) {
     const parts = pathParts(rel)
     if (!parts.length) throw new HttpError(400, "A file path is required.")
-    const { virtual, base, target } = locate(parts.join("/"))
-    if (virtual || (mounted(parts) && parts.length < 3)) throw new HttpError(400, `A file path inside a mounted desk is required: ${MOUNT}/<name>/<file>.`)
+    const { virtual, base, target, point } = locate(parts.join("/"))
+    if (virtual || (point && parts.length < 3)) {
+      const p = point ?? mount.at(parts[0])
+      throw new HttpError(400, `A file path inside a ${p.what} is required: ${p.prefix}/<name>/<file>.`)
+    }
     let ancestor = dirname(target)
     while (true) {
       try {
@@ -175,12 +241,14 @@ export function createFiles({ root, readOnly = false, mounts = null }) {
   // ── fs ────────────────────────────────────────────────────────────────
 
   const order = { dir: 0, link: 1, file: 2, other: 3 }
-  // desks/ as a folder: the mounted desks, never a real folder of the workspace.
-  const mountEntries = () => mount.list().map(({ name, real }) => ({ name, type: "dir", size: 0, mtime: statSync(real).mtimeMs, mount: true }))
+  // A mount point's folders as entries: desks/ (never a real folder of the workspace), the loaded projects in projects/.
+  const mountEntries = (point) => point.list().map(({ name, real }) => ({ name, type: "dir", size: 0, mtime: statSync(real).mtimeMs, mount: true }))
+  // The overlay point whose folder `dir` is (the workspace's projects/), else null.
+  const overlayAt = (dir) => mount?.points.find((p) => p.overlay && dir === join(root, p.prefix)) ?? null
 
   async function list(rel) {
     const at = await inRoot(rel)
-    if (at.virtual) return { path: MOUNT, entries: mountEntries() }
+    if (at.virtual) return { path: at.point.prefix, entries: mountEntries(at.point) }
     const dir = at.real
     if (!(await stat(dir)).isDirectory()) throw new HttpError(400, "Not a folder.")
     const names = await readdir(dir)
@@ -196,8 +264,19 @@ export function createFiles({ root, readOnly = false, mounts = null }) {
       })
     )
     let found = entries.filter(Boolean)
-    // The workspace root lists desks/ when desks are mounted (what it holds is theirs, not the workspace's).
-    if (mount && dir === root) found = [...found.filter((e) => e.name !== MOUNT), { name: MOUNT, type: "dir", size: 0, mtime: 0, mount: true }]
+    // The workspace root lists desks/ when desks are mounted (what it holds is theirs, not the workspace's), and
+    // projects/ when projects are loaded and the desk has none of its own; projects/ lists the loaded ones too.
+    if (mount && dir === root) {
+      for (const p of mount.points) {
+        if (!p.overlay) found = [...found.filter((e) => e.name !== p.prefix), { name: p.prefix, type: "dir", size: 0, mtime: 0, mount: true }]
+        else if (!found.some((e) => e.name === p.prefix) && p.list().length) found.push({ name: p.prefix, type: "dir", size: 0, mtime: 0, mount: true })
+      }
+    }
+    const overlay = overlayAt(dir)
+    if (overlay) {
+      const loaded = mountEntries(overlay)
+      found = [...found.filter((e) => !loaded.some((l) => l.name === e.name)), ...loaded]
+    }
     return { path: relPath(dir), entries: found.sort((a, b) => order[a.type] - order[b.type] || a.name.localeCompare(b.name)) }
   }
 
@@ -213,7 +292,8 @@ export function createFiles({ root, readOnly = false, mounts = null }) {
           entries.push({ name: null, type: "omitted", omitted: names.length - i })
           break
         }
-        if (mount && dir === root && entry === MOUNT) continue // the mounted desks stand in for it (below)
+        if (mount && dir === root && mount.points.some((p) => !p.overlay && p.prefix === entry)) continue // the mounted desks stand in for it (below)
+        if (overlayAt(dir)?.folder(entry)) continue // a loaded project stands in for it (below)
         budget--
         let info
         try {
@@ -226,25 +306,59 @@ export function createFiles({ root, readOnly = false, mounts = null }) {
         else if (TREE_SKIP.has(entry)) entries.push({ name: entry, type, skipped: true })
         else entries.push({ name: entry, type, children: await walk(join(dir, entry)) })
       }
-      if (mount && dir === root) entries.push({ name: MOUNT, type: "dir", mount: true, children: await desks() })
+      if (mount && dir === root) {
+        for (const p of mount.points) {
+          if (!p.overlay) entries.push({ name: p.prefix, type: "dir", mount: true, children: await folders(p) })
+          else if (!isDir(join(root, p.prefix)) && p.list().length) entries.push({ name: p.prefix, type: "dir", mount: true, children: await folders(p) })
+        }
+      }
+      const overlay = overlayAt(dir)
+      if (overlay) entries.push(...(await folders(overlay)))
       return entries.sort((a, b) => (order[a.type] ?? 4) - (order[b.type] ?? 4) || (a.name ?? "").localeCompare(b.name ?? ""))
     }
-    async function desks() {
+    async function folders(point) {
       const out = []
-      for (const { name, real } of mount.list()) {
+      for (const { name, real } of point.list()) {
         budget--
         out.push({ name, type: "dir", mount: true, children: await walk(real) })
       }
       return out
     }
-    if (at.virtual) return { path: MOUNT, entries: await desks() }
+    if (at.virtual) return { path: at.point.prefix, entries: await folders(at.point) }
     return { path: relPath(at.real), entries: await walk(at.real) }
   }
 
-  async function read(rel) {
+  // tail (2026-10-17, a live metrics.jsonl past the read cap froze its chart): a file larger than MAX_READ is read from
+  // its end — its last MAX_READ bytes, the partial first line dropped — with `head` (the file's first line: a TSV/CSV
+  // header), `from` (the byte the text starts at) and `tail: true`; revision null (the whole file is not hashed).
+  async function read(rel, { tail = false } = {}) {
     const path = await existing(rel)
     const info = await stat(path)
     if (!info.isFile()) throw new HttpError(400, "Not a file.")
+    if (tail && info.size > MAX_READ) {
+      const file = Bun.file(path)
+      const sniff = new Uint8Array(await file.slice(0, HOST_LIMITS.files.binarySniffBytes).arrayBuffer())
+      if (sniff.includes(0)) return { path: relPath(path), size: info.size, binary: true, truncated: true, tail: true, text: null, revision: null }
+      // one byte before the cut too: when it is "\n" the cut falls on a line's start and that first line is whole
+      const start = info.size - MAX_READ
+      const bytes = new Uint8Array(await file.slice(start - 1, info.size).arrayBuffer())
+      const nl = bytes.indexOf(10)
+      const from = nl < 0 ? start : start + nl
+      const first = new Uint8Array(await file.slice(0, Math.min(info.size, 64 * 1024)).arrayBuffer())
+      const end = first.indexOf(10)
+      const decode = (b) => new TextDecoder().decode(b)
+      return {
+        path: relPath(path),
+        size: info.size,
+        binary: false,
+        truncated: true,
+        tail: true,
+        from,
+        head: decode(first.subarray(0, end < 0 ? first.length : end)).replace(/\r$/, ""),
+        text: decode(nl < 0 ? bytes.subarray(1) : bytes.subarray(nl + 1)),
+        revision: null,
+      }
+    }
     const all = await readBytes(path)
     const bytes = all.subarray(0, MAX_READ)
     const binary = bytes.subarray(0, HOST_LIMITS.files.binarySniffBytes).includes(0)
@@ -287,7 +401,8 @@ export function createFiles({ root, readOnly = false, mounts = null }) {
   async function remove({ path: rel, recursive = false, revision }) {
     const parts = pathParts(rel)
     if (!parts.length) throw new HttpError(400, "The workspace root cannot be deleted.")
-    if (mounted(parts) && parts.length < 3) throw new HttpError(403, "A mounted desk (or desks/ itself) is not deleted through the workspace.")
+    const point = mounted(parts)
+    if (point && parts.length < 3) throw new HttpError(403, `A ${point.what} (or ${point.prefix}/ itself) is not deleted through the workspace.`)
     const parent = await existing(parts.slice(0, -1).join("/"))
     const target = join(parent, parts.at(-1))
     if (PROTECTED(parts.at(-1))) throw new HttpError(403, `${parts.at(-1)} is ASKK's configuration; only the owner edits it.`)
@@ -320,8 +435,10 @@ export function createFiles({ root, readOnly = false, mounts = null }) {
     if (streams.size >= HOST_LIMITS.files.watchers) throw new HttpError(429, `${HOST_LIMITS.files.watchers} file watches are open on this desk already.`)
     const at = await inRoot(rel)
     if (!at.virtual && !(await stat(at.real)).isDirectory()) throw new HttpError(400, "Not a folder.")
-    const folders = at.virtual ? mount.list().map((d) => d.real) : [at.real, ...(mount && at.real === root ? mount.list().map((d) => d.real) : [])]
-    const shown = at.virtual ? MOUNT : relPath(at.real)
+    const folders = at.virtual
+      ? at.point.list().map((d) => d.real)
+      : [at.real, ...(mount && at.real === root ? mount.all().map((d) => d.real) : []), ...(overlayAt(at.real)?.list().map((d) => d.real) ?? [])]
+    const shown = at.virtual ? at.point.prefix : relPath(at.real)
     const encoder = new TextEncoder()
     let controller = null
     let timer = null
@@ -391,7 +508,7 @@ export function createFiles({ root, readOnly = false, mounts = null }) {
   return {
     GET: {
       "fs/list": (params) => list(params.get("path") ?? ""),
-      "fs/read": (params) => read(params.get("path") ?? ""),
+      "fs/read": (params) => read(params.get("path") ?? "", { tail: params.get("tail") === "1" }),
       "fs/tree": (params) => tree(params.get("path") ?? ""),
     },
     POST: readOnly ? {} : { "fs/write": write, "fs/delete": remove },

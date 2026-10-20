@@ -1,7 +1,8 @@
 // The desk's workspace (its data/ folder) as the Files page sees it, through the host API (companion/capabilities/
-// files.js). null when no desk server answers here.
+// files.js); in browser mode (the hosted version's agent in this tab) the same calls over this browser's store
+// (backend/browser/host.js). null when neither answers here.
 //
-//   const ws = await workspace()       // { label, writable, list, read, tree, write, remove } | null
+//   const ws = await workspace()       // { label, where: computer | browser, writable, list, read, tree, write, remove } | null
 //   await ws.list(path)                 { path, entries: [{ name, type, size, mtime }] }
 //   await ws.read(path)                 { path, size, binary, truncated, text, revision }
 //   await ws.tree(path)                 { path, entries: [{ name, type, children?, skipped?, omitted? }] }
@@ -11,6 +12,8 @@
 // Paths are workspace-relative ("days/2026-10-15", "" = root); ".." is refused. `revision` is the content hash
 // read: a write passing it is refused (ConflictError) if the file changed since; null requires a new file.
 
+import { browserHost } from "@/backend/browser/host"
+import { browserStore } from "@/backend/browser/storage"
 import { withBase } from "@/backend/live/base-path"
 import { detectHost, hasCapability } from "@/backend/live/host"
 
@@ -44,21 +47,49 @@ async function api(endpoint, { params, body } = {}) {
   return data
 }
 
+// The tab's own agent's workspace: its files in this browser (what its files artifact writes).
+function browserWorkspace() {
+  const host = browserHost({ store: browserStore() })
+  const call = (run) => run().catch((error) => {
+    if (error?.status === 409) throw new ConflictError(error.message)
+    throw error
+  })
+  return {
+    label: "this browser",
+    where: "browser",
+    writable: true,
+    list: (path = "") => call(() => host.get(`fs/list?${new URLSearchParams({ path: normalizePath(path) })}`)),
+    read: (path) => call(async () => ({ binary: false, truncated: false, ...(await host.get(`fs/read?${new URLSearchParams({ path: normalizePath(path) })}`)) })),
+    tree: (path = "") => call(() => host.get(`fs/tree?${new URLSearchParams({ path: normalizePath(path) })}`)),
+    write: (path, text, { revision } = {}) => call(() => host.post("fs/write", { path: normalizePath(path), text, ...(revision !== undefined ? { revision } : {}) })),
+    remove: (path, { recursive = false, revision } = {}) => call(() => host.post("fs/delete", { path: normalizePath(path), recursive, ...(revision !== undefined ? { revision } : {}) })),
+  }
+}
+
+// Built for the host detectHost answers now (it is cached until resetHost: the header's switch to this browser's agent
+// and back changes which workspace the Files page shows).
 let current = null
+let forHost = null
 
 export function workspace() {
-  current ??= detectHost().then((host) =>
-    hasCapability(host, "fs.read")
-      ? {
-          label: host.root,
-          writable: hasCapability(host, "fs.write"),
-          list: (path = "") => api("fs/list", { params: { path: normalizePath(path) } }),
-          read: (path) => api("fs/read", { params: { path: normalizePath(path) } }),
-          tree: (path = "") => api("fs/tree", { params: { path: normalizePath(path) } }),
-          write: (path, text, { revision } = {}) => api("fs/write", { body: { path: normalizePath(path), text, ...(revision !== undefined ? { revision } : {}) } }),
-          remove: (path, { recursive = false, revision } = {}) => api("fs/delete", { body: { path: normalizePath(path), recursive, ...(revision !== undefined ? { revision } : {}) } }),
-        }
-      : null
-  )
-  return current
+  return detectHost().then((host) => {
+    if (current && forHost === host) return current
+    forHost = host
+    current =
+      host?.mode === "browser"
+        ? browserWorkspace()
+        : hasCapability(host, "fs.read")
+          ? {
+              label: host.root,
+              where: "computer",
+              writable: hasCapability(host, "fs.write"),
+              list: (path = "") => api("fs/list", { params: { path: normalizePath(path) } }),
+              read: (path) => api("fs/read", { params: { path: normalizePath(path) } }),
+              tree: (path = "") => api("fs/tree", { params: { path: normalizePath(path) } }),
+              write: (path, text, { revision } = {}) => api("fs/write", { body: { path: normalizePath(path), text, ...(revision !== undefined ? { revision } : {}) } }),
+              remove: (path, { recursive = false, revision } = {}) => api("fs/delete", { body: { path: normalizePath(path), recursive, ...(revision !== undefined ? { revision } : {}) } }),
+            }
+          : null
+    return current
+  })
 }

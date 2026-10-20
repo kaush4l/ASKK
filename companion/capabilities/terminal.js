@@ -41,7 +41,7 @@
 // stopped first, so its own lease never blocks it). A command without a lease is never held back.
 //
 // A command is one program with its arguments, or several joined by `&&` (run in order, each in a fresh PTY, stopping
-// at the first failure); `cd <dir>` moves inside the workspace (or a mounted desk, desks/<name>: files.js deskMounts).
+// at the first failure); `cd <dir>` moves inside the workspace (or a mounted folder: desks/<name>, a loaded project projects/<name>: files.js workspaceMounts).
 // No shell: pipes, redirects, `;`, `$(…)` and backticks are refused; only the desk's programs run (its toolchains' and
 // its `programs`, main.js `terminal`); work is never destroyed (sandbox.js refuseDestructive). Every program runs under
 // sandbox-exec (sandbox.js sandboxProfile): it writes only the caller's lane (`writes`: globs under the workspace; none
@@ -73,7 +73,7 @@ import { HOST_LIMITS, SSE_PING_MS } from "../shared/config.js"
 import { httpError } from "../shared/http.js"
 import { appendJsonl } from "../shared/jsonl.js"
 import { within } from "../shared/paths.js"
-import { deskMounts, MOUNT } from "./files.js"
+import { workspaceMounts } from "./files.js"
 import { groupBook, killGroup, laneRegex, privateTmp, refuseDestructive, removeTmp, sandboxProfile, splitCommand, trackGroup, untrackGroup } from "./sandbox.js"
 import { CACHES, detectToolchains } from "./toolchains.js"
 
@@ -223,7 +223,7 @@ const segment =(glob) => new RegExp(`^${String(glob).replace(/[.+^${}()|[\]\\]/g
 // programs, timeoutSeconds, backgroundMinutes }); mounts: main.js `mounts`; hostPorts() → the desk server's ports.
 export function createTerm({ root, state, policy = null, mounts = null, hostPorts = () => [], log = () => {}, desk = null, caches = CACHES }) {
   const realRoot = realpathSync(root)
-  const mount = deskMounts(mounts)
+  const mount = workspaceMounts(mounts) // desks/<name> (mounted desks) and projects/<name> (loaded projects)
   const cfg = policy ?? {}
   const logDir = join(state, "terminal")
   const rowsPath = join(state, "terminal.jsonl")
@@ -271,18 +271,14 @@ export function createTerm({ root, state, policy = null, mounts = null, hostPort
 
   // ── paths ─────────────────────────────────────────────────────────────
 
-  // A real folder as the workspace names it ("." the root, desks/<name>/… a mounted desk); null outside them.
+  // A real folder as the workspace names it ("." the root, desks/<name>/… a mounted desk, projects/<name>/… a loaded
+  // project); null outside them.
   function show(abs) {
     if (within(realRoot, abs)) return relative(realRoot, abs).split(sep).join("/") || "."
-    if (mount && within(mount.base, abs)) {
-      const [name, ...rest] = relative(mount.base, abs).split(sep)
-      if (mount.folder(name)) return [MOUNT, name, ...rest].filter(Boolean).join("/")
-    }
-    return null
+    return mount?.nameOf(abs) ?? null
   }
-  const mountedNames = () => mount?.list().map((d) => d.name).join(", ") || "none"
   // A workspace folder, `path` taken from `from` (a real folder show() names): the real folder, inside the workspace
-  // or a mounted desk (realpath-contained: a link out of them is refused).
+  // or a mounted folder (realpath-contained: a link out of them is refused).
   function folder(path, from = realRoot) {
     const rel = String(path ?? ".").trim() || "."
     const named = isAbsolute(rel) ? show(resolve(rel)) : posix.normalize(posix.join(show(from) ?? ".", rel.replace(/\\/g, "/")))
@@ -290,10 +286,11 @@ export function createTerm({ root, state, policy = null, mounts = null, hostPort
     const parts = named.split("/").filter((p) => p && p !== ".")
     let base = realRoot
     let abs = join(realRoot, ...parts)
-    if (mount && parts[0] === MOUNT) {
-      if (parts.length === 1) throw httpError(400, `${MOUNT}/ holds the mounted desks; name one: ${MOUNT}/<name> (mounted: ${mountedNames()}).`)
-      base = mount.folder(parts[1])
-      if (!base) throw httpError(403, `${MOUNT}/${parts[1]} is not a mounted desk (mounted: ${mountedNames()}).`)
+    const point = mount?.mounted(parts)
+    if (point) {
+      if (parts.length === 1) throw httpError(400, `${point.prefix}/ holds the ${point.what}s; name one: ${point.prefix}/<name> (${mount.names(point)}).`)
+      base = point.folder(parts[1])
+      if (!base) throw httpError(403, `${point.prefix}/${parts[1]} is not a ${point.what} (${mount.names(point)}).`)
       abs = join(base, ...parts.slice(2))
     }
     let real
@@ -314,10 +311,10 @@ export function createTerm({ root, state, policy = null, mounts = null, hostPort
     if (!ok) throw httpError(400, 'writes: a list of globs under the workspace, e.g. ["projects/**"].')
     return writes.map((g) => g.trim())
   }
-  // What a lane reaches in the mounted desks: every one is readable; the lane's globs that name desks/<name>/… (or
-  // start with **) become write rules on that desk's real folder; no lane writes them all.
+  // What a lane reaches in the mounted folders: every one is readable; the lane's globs that name desks/<name>/… or
+  // projects/<name>/… (or start with **) become write rules on that folder's real path; no lane writes them all.
   function mountAccess(lane) {
-    const desks = mount?.list() ?? []
+    const desks = mount?.all() ?? []
     const allow = []
     const deny = []
     for (const d of desks) {
@@ -326,7 +323,7 @@ export function createTerm({ root, state, policy = null, mounts = null, hostPort
         const parts = g.split("/")
         let rest = null
         if (parts[0] === "**") rest = g
-        else if (parts[0] === MOUNT && parts.length > 1 && segment(parts[1]).test(d.name)) rest = parts.slice(2).join("/") || "**"
+        else if (parts[0] === d.prefix && parts.length > 1 && segment(parts[1]).test(d.name)) rest = parts.slice(2).join("/") || "**"
         if (rest !== null) (raw.startsWith("!") ? deny : allow).push(laneRegex(d.real, rest))
       }
     }
@@ -340,7 +337,7 @@ export function createTerm({ root, state, policy = null, mounts = null, hostPort
       readable: m.readable,
       listable: m.listable,
       never: [...t.path, ...t.never],
-      hidden: [...(mount ? [mount.base] : []), state],
+      hidden: [...(mount?.points.filter((p) => p.base).map((p) => p.base) ?? []), state],
       tmp: tmpDir(),
       blockPorts: ports(),
       allowWrites: m.allow,

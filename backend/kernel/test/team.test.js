@@ -4,6 +4,7 @@
 // narrowed (globCovers, builtin/files.js), and the team goes whole.
 
 import { describe, expect, test } from "bun:test"
+import { roleLine } from "../agent/agent.js"
 import { AgentTool, Artifact, buildDesk, dismissTool, globCovers, inLane, Plan, spawnTool, Tool } from "../index.js"
 
 const quest = (ask) => ({ requirement: "layer 3 of the tiny model", ask, outcome: "the number" })
@@ -85,7 +86,7 @@ describe("globCovers: is one lane glob inside another", () => {
       ["projects/**", "projects/tiny/runs/1/metrics.jsonl"],
       ["projects/", "projects/a.md"], // a trailing / is /**
       ["./projects/**", "projects/a/**"],
-      ["projects/**", "projects"], // a last ** covers none too: the folder itself
+      ["projects/**", "projects/a"], // a last ** covers one segment or more
       ["a/*", "a/b"],
       ["a/*", "a/*"],
       ["a*", "a?"],
@@ -113,13 +114,21 @@ describe("globCovers: is one lane glob inside another", () => {
       ["projects/**", "!projects/a"],
       ["", "a"],
       ["a", ""],
+      // 2026-10-17 (critic): a last ** needs one more segment — "x/**" (^x/.*$) never matches the folder x itself
+      ["projects/**", "projects"],
+      ["projects/", "projects"],
+      ["a/b/", "a/b"],
+      ["projects/*/out/**", "projects/*/out"],
+      ["a/*/**", "a/b"],
+      ["a/*/**", "a/*"],
     ])
       expect([outer, inner, globCovers(outer, inner)]).toEqual([outer, inner, false])
   })
 
   test("what it says is covered is in the lane (inLane) for every sample path the inner glob takes", () => {
-    const paths = ["projects/tiny/eval/x.json", "projects/tiny/train.py", "projects/a/b/eval/c", "shared/x/notes.md", "shared/notes.md", "a/b", "a/b/c", "a/x/y/b", "notes-a.md", "notes-.md", "desks/dev/.project.json"]
-    const globs = ["projects/**", "projects/*/eval/**", "shared/*/notes.md", "shared/**", "a/*", "a/**", "a/**/b", "a/*/b", "notes-*.md", "notes-a.md", "**", "desks/**", "desks/*/.project.json"]
+    // bare folders too (projects, a, projects/tiny/eval…): a lane that names the folder entry itself is wider
+    const paths = ["projects/tiny/eval/x.json", "projects/tiny/train.py", "projects/a/b/eval/c", "shared/x/notes.md", "shared/notes.md", "a/b", "a/b/c", "a/x/y/b", "notes-a.md", "notes-.md", "desks/dev/.project.json", "projects", "projects/tiny", "projects/tiny/eval", "projects/tiny/out", "shared", "shared/x", "a", "desks", "desks/dev"]
+    const globs = ["projects/**", "projects/*/eval/**", "shared/*/notes.md", "shared/**", "a/*", "a/**", "a/**/b", "a/*/b", "notes-*.md", "notes-a.md", "**", "desks/**", "desks/*/.project.json", "projects", "projects/", "projects/*", "projects/*/out", "projects/*/out/**", "a/b", "a/b/", "a/*/**", "shared", "desks/*"]
     for (const outer of globs)
       for (const inner of globs) {
         if (!globCovers(outer, inner)) continue
@@ -185,7 +194,11 @@ describe("agent.spawn {members}: a sub-team under its caller", () => {
       expect(a.config.soul).toBe("You work on the lab desk.")
       expect(a.config.maxSteps).toBe(9)
       expect(a.config.writes).toEqual(lead.config.writes)
-      expect(a.config.spawned).toEqual({ by: a === probe ? "lead" : "probe", goal: "watch layer 3", at: expect.any(String), keep: "desk", team: "probe" })
+      const { input, ...spawned } = a.config.spawned
+      expect(spawned).toEqual({ by: a === probe ? "lead" : "probe", goal: "watch layer 3", at: expect.any(String), keep: "desk", team: "probe" })
+      // 2026-10-20: the top of the spawn carries its input as plain data (names), members inside it
+      if (a === probe) expect(input.members.map((m) => m.name)).toEqual(["grads", "acts"])
+      else expect(input).toBeUndefined()
     }
     expect([probe.config.model, grads.config.model, acts.config.model]).toEqual(["opus", "opus", "haiku"])
     expect(grads.depth).toBe(2)
@@ -210,7 +223,7 @@ describe("agent.spawn {members}: a sub-team under its caller", () => {
     const { desk } = deskOf(async () => "")
     expect(await spawnAs(desk.lead, { name: "solo" })).toBe("spawned solo — quest it with solo {requirement, ask, outcome} (stays until agent.dismiss)")
     const solo = desk.agents().get("solo")
-    expect(solo.config.spawned).toEqual({ by: "lead", goal: "g", at: expect.any(String), keep: "desk" })
+    expect(solo.config.spawned).toEqual({ by: "lead", goal: "g", at: expect.any(String), keep: "desk", input: { name: "solo", role: "r", goal: "g", description: "r" } })
     expect(solo.board).toBeNull()
   })
 })
@@ -410,5 +423,75 @@ describe("a team goes whole", () => {
     expect(lead.board.children).toContain(board)
     board.detach()
     expect(lead.board.children).not.toContain(board)
+  })
+})
+
+// 2026-10-17 (critic): every station template's role opens on "SPEC", and each spawned station and member showed "SPEC"
+// as its description; the template's description and title were dropped; a team named after the desk's own team got a
+// second "<team>.board" that the host never streamed.
+const STATION = {
+  name: "station",
+  description: "Data station lead: the corpus and the tokenizer, measured and handed off.",
+  title: "Data station",
+  role: "SPEC\nQuestion: is the data clean?\nRUNBOOK\n1. dispatch the curator.",
+  goal: "a clean corpus",
+  members: [
+    { name: "curator", description: "Curates the corpus: sources, dedup, the val shard.", role: "SPEC\nQuestion: which tokens do we train on?" },
+    { name: "tokenizer", role: "SPEC\n\n# OWNER CHAT:\nTrains the BPE tokenizer and measures bytes per token." },
+  ],
+}
+
+describe("names, descriptions and board titles", () => {
+  test("roleLine: the first role line that is not a section header", () => {
+    expect(roleLine("SPEC\nQuestion: is the data clean?")).toBe("Question: is the data clean?")
+    expect(roleLine("# RUNBOOK\nOWNER CHAT:\n\n  Do it.")).toBe("Do it.")
+    expect(roleLine("Watches layer 3.\nCharts first.")).toBe("Watches layer 3.")
+    expect(roleLine("SPEC\nRUNBOOK")).toBe("")
+    expect(roleLine(undefined)).toBe("")
+    expect(roleLine(`${"x".repeat(250)}\nmore`)).toHaveLength(200)
+  })
+
+  test("a template's description and title reach the twin, the tree, the board and its lead's TOOLS; without one, the role's first line that is not a header", async () => {
+    const { infer, prompts } = scripted({ station: [{ thought: "done", calls: [], answer: "ok" }] })
+    const { desk } = deskOf(infer, { env: { templates: { station: STATION } } })
+    const lead = desk.lead
+    expect(await spawnAs(lead, { template: "station" })).toContain("spawned team station (lead station; members station-curator, station-tokenizer; board station.board)")
+    const [station, curator, tokenizer] = ["station", "station-curator", "station-tokenizer"].map((n) => desk.agents().get(n))
+    expect(station.twin().description).toBe(STATION.description)
+    expect(station.board.title).toBe("Data station")
+    expect(desk.tree().agents.find((n) => n.name === "station")).toMatchObject({ description: STATION.description, title: "Data station" })
+    expect(curator.twin().description).toBe("Curates the corpus: sources, dedup, the val shard.")
+    expect(tokenizer.twin().description).toBe("Trains the BPE tokenizer and measures bytes per token.")
+    expect(station.tools.get("station-curator").description).toBe("Curates the corpus: sources, dedup, the val shard.")
+    await desk.agents().get("station").ask("go")
+    expect(prompts.station[0]).toContain("- station-curator {requirement, ask, outcome} — Curates the corpus: sources, dedup, the val shard.")
+    expect(prompts.station[0]).toContain("- station-tokenizer {requirement, ask, outcome} — Trains the BPE tokenizer and measures bytes per token.")
+    expect(prompts.station[0]).toContain("# station.board — Data station")
+    for (const a of [station, curator, tokenizer]) expect(JSON.stringify([a.twin().description, desk.tree(a).description])).not.toContain("SPEC")
+    // the input's own description and title win; none at all → the role's first line that is not a header
+    expect(await spawnAs(lead, { template: "station", name: "st2", description: "Second station.", title: "Station two" })).toContain("spawned team st2")
+    expect(desk.agents().get("st2").config.description).toBe("Second station.")
+    expect(desk.agents().get("st2").board.title).toBe("Station two")
+    expect(await spawnAs(lead, { name: "solo", role: "SPEC\nQuestion: which layer drifts?" })).toContain("spawned solo")
+    expect(desk.agents().get("solo").twin().description).toBe("Question: which layer drifts?")
+    expect(await spawnAs(lead, { name: "crew", role: "Leads.", members: [{ name: "m1", role: "RULES\nReads the logs.", title: "ignored: no members of its own" }] })).toContain("spawned team crew")
+    expect(desk.agents().get("crew").board.title).toBe("crew board") // no title given: as before
+    expect(desk.agents().get("m1").twin().description).toBe("Reads the logs.")
+  })
+
+  test("a team name whose board id is already in the desk is refused before anything is built (the helper's or a member's)", async () => {
+    const { desk } = deskOf(async () => "") // the lead leads team "lab": lab.board
+    const lead = desk.lead
+    const before = { agents: [...desk.agents().keys()], names: [...desk.ctx.names], children: [...lead.board.children], tools: [...lead.tools.keys()] }
+    expect(lead.board.id).toBe("lab.board")
+    expect(await spawnAs(lead, { name: "lab", members: [{ name: "m1", role: "r" }] })).toBe("ERROR lab.board exists: pick another team name")
+    expect(await spawnAs(lead, { name: "lab" })).toBe("ERROR lab.board exists: pick another team name") // a helper too
+    expect(await spawnAs(lead, { name: "crew", members: [{ name: "lab", role: "r" }] })).toBe("ERROR lab.board exists: pick another team name")
+    expect(() => desk.spawn({ name: "lab", role: "r", goal: "g", keep: "desk" }, lead)).toThrow("lab.board exists: pick another team name")
+    expect({ agents: [...desk.agents().keys()], names: [...desk.ctx.names], children: [...lead.board.children], tools: [...lead.tools.keys()] }).toEqual(before)
+    // a spawned team's board is taken too, while it stays
+    expect(await spawnAs(lead, { name: "crew", members: [{ name: "m1", role: "r" }] })).toContain("spawned team crew")
+    expect(desk.boards().map((b) => b.id)).toEqual(["lab.board", "crew.board"])
+    expect(new Set(desk.boards().map((b) => b.id)).size).toBe(desk.boards().length)
   })
 })

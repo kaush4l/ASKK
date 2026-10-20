@@ -41,7 +41,7 @@ import { join } from "node:path"
 
 import { whyNotOwnerEvent } from "../shared/telegram-owner.js"
 import { startLiveStatus } from "./kernel-live.js"
-import { deskBriefs } from "./kernel-status.js"
+import { deskBriefs, isRunRequest, isRunWork } from "./kernel-status.js"
 
 const INTEGRATION = "telegram"
 const POLL_WAIT_MS = 25_000
@@ -88,9 +88,10 @@ function stateFile(file) {
   }
 }
 
-// The lead's runs from the team's stream. A run starts with a user message (request + sender) and
+// The lead's runs from the team's stream. A run starts with its request row (isRunRequest: request + sender) and
 // ends with an answer (or an error) before the next one starts, so the answer after our request's
-// start is ours. wait(from, text) → { answer: Promise<{answer, error}>, cancel }.
+// start is ours. wait(from, text) → { answer: Promise<{answer, error}>, cancel }. 2026-10-17 critic: an owner chat's
+// question (kind "chat") or guidance is no run's start — a web Ask during a Telegram-started run lost that run's reply.
 function followLead(team, signal) {
   const waiting = [] // in hand-off order
   let lead = null
@@ -101,8 +102,8 @@ function followLead(team, signal) {
   const seq = (id) => Number(String(id ?? "").replace(/^\D+/, "")) || 0
 
   function take(m) {
-    if (m.role === "user" && m.kind !== "guidance") {
-      // a new run (guidance joins the run in progress)
+    if (isRunRequest(m)) {
+      // a new run (guidance joins the run in progress; a chat is beside the runs)
       const i = waiting.findIndex((w) => w.from === (m.from ?? "owner") && w.text === m.content)
       current = i >= 0 ? waiting.splice(i, 1)[0] : null
     } else if (m.role === "assistant" && m.action === "answer" && current) {
@@ -258,6 +259,10 @@ export async function startKernelTelegram({
     await notify(greeting)
   }
 
+  // The lead's run in progress or waiting to start (team.work()): an owner chat in flight is listed there too (stoppable
+  // by /stop) but is no run — a message meanwhile is new work that starts at once, never guidance or "queued".
+  const leadRunning = () => team.work?.().find((w) => w.agent === lead && isRunWork(w))
+
   // One owner message: to the lead, its answer back as a reply. The synchronous part (cursor, hand-off)
   // runs in arrival order, so the lead's queue keeps the owner's order.
   async function handle(event) {
@@ -281,7 +286,7 @@ export async function startKernelTelegram({
       return void (await reply(`/queue needs the work after it: /queue <what the ${lead} should do after its run>.`).catch((error) => log(`telegram: /queue note failed: ${redact(error.message)}`)))
     }
     const from = `telegram:${event.from || "owner"}`
-    const busy = team.work?.().find((w) => w.agent === lead)
+    const busy = leadRunning()
     if (busy && !queue) {
       save()
       if (await guide(text, from, busy, reply, id)) return
@@ -313,7 +318,7 @@ export async function startKernelTelegram({
     const entry = { key, id, text: oneLine(text, PREVIEW_CHARS), at: new Date().toISOString() }
     state.pending.push(entry)
     save()
-    const busy = team.work?.().find((w) => w.agent === lead)
+    const busy = leadRunning()
     const waiter = follow.wait(from, text)
     let timer
     let body

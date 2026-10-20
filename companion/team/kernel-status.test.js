@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { STATUS_LIMIT, deskBriefs, elapsed, parseReport, renderStatus, runOutcome, teamBlocks } from "./kernel-status.js"
+import { STATUS_LIMIT, deskBriefs, elapsed, isRunRequest, isRunWork, leadRun, parseReport, renderStatus, runOutcome, teamBlocks } from "./kernel-status.js"
 import { T0, artifact, failure, finished, quest, report, tree, wave1, withError } from "./kernel-status.fixtures.js"
 import { agentVisual } from "../../backend/live/visual.js"
 import { agentVisual as uiVisual } from "../../backend/live/desk.js"
@@ -77,6 +77,29 @@ test("idle: the last run, its age", () => {
   const text = renderStatus({ desk: "demo-desk", ...f, now: T0 + 3 * 3600_000, run: { phase: "idle" } })
   expect(text.split("\n")[0]).toBe("<b>demo-desk</b> · IDLE · last run 3h 00m ago")
   expect(text).toContain("✅ <b>head</b> — TRADE: DELTA 0DTE 118P")
+})
+
+// 2026-10-17 critic: an owner chat's question (kind "chat") read as the lead's run request, and a member's chat marked
+// it started in a live run.
+test("an owner chat is no run's request: isRunRequest; leadRun skips it; a member's chat does not start its team", () => {
+  for (const kind of [undefined, "request", "quest"]) expect(isRunRequest({ role: "user", kind })).toBe(true)
+  for (const m of [{ role: "user", kind: "guidance" }, { role: "user", kind: "chat" }, { role: "assistant", kind: "chat" }, { role: "assistant", action: "answer" }, null]) expect(isRunRequest(m)).toBe(false)
+  expect([{ step: "answering the owner" }, { step: "waiting to start" }, { step: "Calling tool x…" }].map(isRunWork)).toEqual([false, true, true])
+  const chat = (sec, content) => [
+    { id: `chat-q${sec}`, role: "user", kind: "chat", from: "owner", content, at: new Date(T0 + sec * 1000).toISOString() },
+    { id: `chat-a${sec}`, role: "assistant", kind: "chat", content: "the plan stands", guided: false, proposed: null, at: new Date(T0 + sec * 1000).toISOString() },
+  ]
+  // Idle, after a chat: the last run is still the run.
+  const f = finished()
+  f.states.head.messages.push(...chat(4000, "what is built so far?"))
+  expect(leadRun(f).goal).toContain("Read the market and plan today")
+  const idle = renderStatus({ desk: "demo-desk", ...f, now: T0 + 3 * 3600_000, run: { phase: "idle" } })
+  expect(idle).toContain("✅ <b>head</b> — TRADE: DELTA 0DTE 118P")
+  expect(idle).not.toContain("what is built")
+  // Live: the owner chats with a member of a team not started; the team stays "Not started".
+  const w = wave1()
+  w.states.grader = { ...w.states.grader, messages: [...w.states.grader.messages, ...chat(100, "are you busy?")] }
+  expect(show(w)).toContain("Not started: Price, Case, Review")
 })
 
 test("over the limit it collapses, then cuts whole lines; never past the limit", () => {

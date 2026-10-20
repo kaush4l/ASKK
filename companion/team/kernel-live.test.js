@@ -227,6 +227,35 @@ test("an artifact changed in this run is not 'earlier'; a stopped run says STOPP
   expect(t.calls.at(-1).text).toContain("⏹ <b>head</b> — stopped by the owner")
 })
 
+// 2026-10-17 critic: slim() dropped `kind`, so lastRun, due and agentNow took an owner chat's question (kind "chat")
+// for a run's request — /status showed the chat as the last run's goal with "no answer".
+test("an owner chat is no run: /status after a chat shows the real last run; a member's chat does not start it in a live run", async () => {
+  const team = scriptedTeam()
+  const t = fakeTransport()
+  const { view } = mirrorTeam(team, new AbortController().signal, () => {})
+  const live = await start(team, t)
+  team.update("head", {}, [{ role: "user", kind: "chat", from: "owner", content: "what is built so far?" }, { role: "assistant", kind: "chat", content: "The plan: DELTA.", guided: false, proposed: null }])
+  await until(() => view.states.head.messages.some((m) => m.kind === "chat"))
+  expect(view.states.head.messages.filter((m) => m.kind === "chat").map((m) => [m.role, m.kind])).toEqual([["user", "chat"], ["assistant", "chat"]]) // the mirror keeps kind
+  expect(await live.refresh()).toBe("idle")
+  await until(() => t.calls.length === 1)
+  expect(t.calls[0].text).toContain("<i>Read the market and plan today")
+  expect(t.calls[0].text).toContain("✅ <b>head</b> — TRADE: DELTA 0DTE 118P")
+  expect(t.calls[0].text).not.toContain("what is built")
+  // A live run: a member's chat does not mark it (or its team) started, and no message is due for it.
+  const team2 = scriptedTeam()
+  const t2 = fakeTransport()
+  await start(team2, t2, { graceMs: 60_000, heartbeatMs: 20 })
+  team2.start("head", "Plan today", "telegram:Owner")
+  team2.update("wire", {}, [{ role: "user", kind: "chat", from: "owner", content: "are you busy?" }, { role: "assistant", kind: "chat", content: "No." }])
+  await pause(120)
+  expect(t2.calls).toEqual([]) // within the grace, no team at work: not due
+  team2.start("news-lead", "go", "head") // a real quest: due
+  await until(() => t2.calls.length === 1)
+  expect(t2.calls[0].text).toContain("News")
+  expect(t2.calls[0].text).not.toContain("wire —")
+})
+
 test("watch runs get no message and no edits; /status skips them; the next real run is as before", async () => {
   const team = scriptedTeam()
   const t = fakeTransport()

@@ -3,7 +3,7 @@
 import * as React from "react"
 import { CompassIcon, ListPlusIcon, MessageCircleQuestionIcon, SendIcon } from "lucide-react"
 
-import { askChat } from "@/backend/live/agent"
+import { askChat, chatAnswer } from "@/backend/live/agent"
 import { ChatPair } from "@/components/agents/thread"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -11,7 +11,12 @@ import { Textarea } from "@/components/ui/textarea"
 // A message to the agent that made the call. Idle, it starts new work. Working, two ways: Guide — a note its next
 // step reads, inside the run in progress (team call `guide`) — or Queue — new work it runs after the current run (a
 // kernel agent runs one request at a time). Ask, idle or working (2026-10-17 owner: talk with the lead about what is
-// there and what to check): a question answered here and now (team call `chat`), never a run; its run goes on.
+// there and what to check): a question answered here and now (team call `chat`), never a run; its run goes on. Work
+// the answer proposes starts only when the owner clicks its "Queue it" (ChatPair; 2026-10-17, amendment M1).
+// 2026-10-18 owner ("The desk is supposed to interact with me. I posted a question in the lead chat. I want to be able
+// talk with the lead to understand the goal and direction" — the question went in as a Guide note, unanswered): while
+// it runs, Ask is the primary action (Enter / ⌘↵) — the lead answers here, and its answer may pass a note to the run;
+// Guide and Queue are the other buttons.
 export function GuideBox({ engine, state }) {
   const [text, setText] = React.useState("")
   const [note, setNote] = React.useState(null)
@@ -54,14 +59,14 @@ export function GuideBox({ engine, state }) {
   }
   function submit(event) {
     event.preventDefault()
-    if (running) guide()
+    if (running) ask()
     else queue()
   }
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-1.5 border-t pt-3">
       <label htmlFor="guide" className="text-xs text-muted-foreground">
-        {running ? `Message ${engine.name}: guide this run (read at its next step), queue new work after it, or ask a question` : `Message ${engine.name} (idle: Send starts new work, Ask answers now)`}
+        {running ? `Talk with ${engine.name}: Ask is answered here while its run goes on · Guide: a note its next step reads · Queue: new work after it` : `Message ${engine.name} (idle: Send starts new work, Ask answers now)`}
       </label>
       <div className="flex items-end gap-2">
         <Textarea
@@ -70,9 +75,9 @@ export function GuideBox({ engine, state }) {
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit(e)
+            if (e.key === "Enter" && (running ? !e.shiftKey : e.metaKey || e.ctrlKey)) submit(e)
           }}
-          placeholder={running ? "A note for the run in progress" : "A message to this agent"}
+          placeholder={running ? `Ask ${engine.name} about the goal, the direction, what it is doing…` : "A message to this agent"}
           className="min-h-10 text-base md:text-sm"
         />
         {!running && (
@@ -84,7 +89,10 @@ export function GuideBox({ engine, state }) {
       <div className="flex flex-wrap justify-end gap-2">
         {running && (
           <>
-            <Button type="submit" size="sm" className="pointer-coarse:h-10" disabled={!content || busy}>
+            <Button type="submit" size="sm" className="pointer-coarse:h-10" disabled={!content || !!chat?.pending} title="A question answered here now; its run goes on">
+              <MessageCircleQuestionIcon /> Ask
+            </Button>
+            <Button type="button" variant="outline" size="sm" className="pointer-coarse:h-10" disabled={!content || busy} onClick={guide}>
               <CompassIcon /> Guide
             </Button>
             <Button type="button" variant="outline" size="sm" className="pointer-coarse:h-10" disabled={!content} onClick={queue}>
@@ -92,15 +100,17 @@ export function GuideBox({ engine, state }) {
             </Button>
           </>
         )}
-        <Button type="button" variant="outline" size="sm" className="pointer-coarse:h-10" disabled={!content} onClick={ask} title="A question answered now; its run, if any, goes on">
-          <MessageCircleQuestionIcon /> Ask
-        </Button>
+        {!running && (
+          <Button type="button" variant="outline" size="sm" className="pointer-coarse:h-10" disabled={!content} onClick={ask} title="A question answered now; no run">
+            <MessageCircleQuestionIcon /> Ask
+          </Button>
+        )}
       </div>
       {chat && (
         <ChatPair
           engine={engine}
           question={chat.question}
-          answer={chat.answer != null ? { content: chat.answer, guided: chat.guided, queued: chat.queued } : null}
+          answer={chatAnswer(chat)}
           pending={!!chat.pending}
           error={chat.error}
           onDismiss={() => setChat(null)}

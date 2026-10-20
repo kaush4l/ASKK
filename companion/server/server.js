@@ -9,13 +9,13 @@
 // The UI stays a static export (out/); this serves it and hosts the desks (companion/server/desks.js). Listens on
 // 127.0.0.1 only.
 
-import { basename, extname, resolve, sep } from "node:path"
+import { extname, resolve, sep } from "node:path"
 import { parseArgs } from "node:util"
 
 import { API_PREFIX, VERSION } from "./host-api.js"
 import { hostDesks } from "./desks.js"
 import { DESK_OPTIONS, deskDirFrom } from "../shared/args.js"
-import { listDesks, loadDesk } from "../team/desk.js"
+import { hostedDeskFolders, loadDesk } from "../team/desk.js"
 
 // The app: embedded when compiled (assets.gen.js maps URL path -> file), else read from out/ next to this file
 // (run `bun --bun next build` first).
@@ -46,7 +46,7 @@ if (alone) {
   port = Number(args.port ?? desk.port ?? 7717)
 } else {
   const only = args.only ? new Set(args.only.split(",").map((s) => s.trim()).filter(Boolean)) : null
-  folders = listDesks(args.desks ?? "custom").filter((f) => !only || only.has(basename(f)))
+  folders = hostedDeskFolders({ desks: args.desks ?? "custom", only }) // the core desks (desks/) and the local ones
   port = Number(args.port ?? 7717)
 }
 if (!folders.length) {

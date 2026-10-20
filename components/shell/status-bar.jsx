@@ -56,19 +56,21 @@ const Dot = ({ className }) => <span aria-hidden className={cn("size-2 shrink-0 
 
 function HostItem() {
   const [host, setHost] = React.useState(null)
+  const { status } = useEngines() // probed again when the tab's desk changes (2026-10-20: an agent in this browser)
   React.useEffect(() => {
     detectHost().then(setHost)
-  }, [])
+  }, [status])
   if (!host) return null
   const local = host.mode === "local"
+  const browser = host.mode === "browser"
   const name = local ? (host.desk?.name ?? host.root.split(/[\\/]/).filter(Boolean).at(-1)) : null
   return (
     <StatusItem
-      aria-label={local ? `Desk ${name} on this computer, workspace ${host.root}` : "No desk server"}
-      tip={local ? <span className="break-all">Desk {name} · {host.root}</span> : "No desk server answers here: start it with bun run dev"}
+      aria-label={local ? `Desk ${name} on this computer, workspace ${host.root}` : browser ? "An agent runs in this browser" : "No desk server"}
+      tip={local ? <span className="break-all">Desk {name} · {host.root}</span> : browser ? "A single agent runs in this tab against the model you named; the terminal and other desks need the desk server" : "No desk server answers here: start it with bun run dev, or run an agent in this browser"}
     >
-      <Dot className={local ? "bg-emerald-500" : "bg-amber-500"} />
-      <span className="max-w-32 truncate max-sm:hidden">{local ? name : "No desk"}</span>
+      <Dot className={local || browser ? "bg-emerald-500" : "bg-amber-500"} />
+      <span className="max-w-32 truncate max-sm:hidden">{local ? name : browser ? "This browser" : "No desk"}</span>
     </StatusItem>
   )
 }

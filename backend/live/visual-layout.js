@@ -1,6 +1,6 @@
-// The stage visuals' geometry (kernel builtin/visual.js specs → positions, scales, colours), pure so it is tested without
-// a tab; components/stage/visual.jsx draws and animates what these return. Every scale is fixed over all of a visual's
-// frames, so a replay compares like with like.
+// The preview visuals' geometry (kernel builtin/visual.js specs → positions, scales, colours), pure so it is tested
+// without a tab; components/preview/visual.jsx draws and animates what these return. Every scale is fixed over all of a
+// visual's frames, so a replay compares like with like.
 
 // Map [d0, d1] onto [r0, r1] (a flat domain maps to the middle).
 export function scale([d0, d1], [r0, r1]) {
@@ -129,3 +129,51 @@ export function paletteOf(names) {
   for (const n of names) if (!seen.includes(n)) seen.push(n)
   return (name) => PALETTE[Math.max(0, seen.indexOf(name)) % PALETTE.length]
 }
+
+// ---- 2026-10-17: token heat and matrix cell text ----
+
+// What a tokens visual heats by: its color, else surprisal when a token has one, else p when one has it, else nothing.
+export function tokenColorOf(v) {
+  if (v?.color) return v.color
+  const tokens = v?.tokens ?? []
+  return tokens.some((t) => t?.surprisal != null) ? "surprisal" : tokens.some((t) => t?.p != null) ? "p" : null
+}
+
+// The heat's scale: the visual's range, else p's [0, 1], else [0, the largest value] (surprisal and entropy in bits).
+export function tokenRange(v, color = tokenColorOf(v)) {
+  if (Array.isArray(v?.range) && v.range.length === 2) return v.range
+  if (color === "p" || !color) return [0, 1]
+  const [, hi] = extent((v?.tokens ?? []).map((t) => t?.[color]))
+  return [0, Math.max(hi, 1e-9)]
+}
+
+// A token's heat: {level 0..1 (hot = surprising: high surprisal or entropy, low p), bg} | null. The background is a
+// translucent tint (violet, cool → orange, hot), so the token's text reads on black and on white.
+export function tokenHeat(t, color, [lo, hi]) {
+  const x = color ? t?.[color] : null
+  if (x == null || !Number.isFinite(x)) return null
+  const u = hi === lo ? 0.5 : Math.max(0, Math.min(1, (x - lo) / (hi - lo)))
+  const level = color === "p" ? 1 - u : u
+  return { level, bg: `oklch(0.72 0.17 ${(290 - 240 * level).toFixed(1)} / ${(0.06 + 0.5 * level).toFixed(3)})` }
+}
+
+// A matrix cell's text: the frame's own cells, else the visual's ("" when none).
+export const cellText = (v, frame, i, j) => (frame?.cells ?? v?.cells)?.[i]?.[j] ?? ""
+
+// A cell at least this wide (px in the drawing) shows its text.
+export const CELL_TEXT_PX = 24
+
+// Ink that reads on a cell's colour (cellColor's lightness): dark on the bright end, light on the dark.
+export function cellInk(value, [lo, hi], diverging = false) {
+  if (value == null || !Number.isFinite(value)) return "oklch(0.9 0 0)"
+  const t = diverging ? Math.min(1, Math.abs(value) / (Math.max(Math.abs(lo), Math.abs(hi)) || 1)) : hi === lo ? 0.5 : Math.max(0, Math.min(1, (value - lo) / (hi - lo)))
+  const light = diverging ? 0.16 + 0.6 * t : 0.18 + 0.7 * t
+  return light > 0.62 ? "oklch(0.15 0 0)" : "oklch(0.95 0 0)"
+}
+
+// A touch target (2026-10-17 critic: a scatter point, a line point, a matrix link label were ≤ 10 px on a phone): the
+// transparent stroke that makes a mark of `size` drawing units at least HIT_PX across on a coarse pointer (scale:
+// screen px per drawing unit); 0 on a fine pointer.
+export const HIT_PX = 40
+export const hitStroke = (coarse, scale, size) => (coarse ? Math.max(0, HIT_PX / Math.max(Number(scale) || 1, 0.05) - size) : 0)
+

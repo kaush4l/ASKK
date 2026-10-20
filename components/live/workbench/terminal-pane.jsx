@@ -63,7 +63,9 @@ export function TerminalPane({ terminal, sessions, session, onPick }) {
   )
 }
 
-function SessionView({ session: listed }) {
+// One session's live output (also the preview pane's {terminal} item, 2026-10-17: a build or log session the agents put
+// before the owner).
+export function SessionView({ session: listed }) {
   const term = useTerm(listed.id)
   // a slot session's current command: the stream hears its next one (run) before the twin and the polls do
   const session = (term?.session?.runs ?? 0) >= (listed.runs ?? 1) ? { ...listed, ...term.session } : listed

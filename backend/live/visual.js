@@ -66,8 +66,10 @@ const LOOKS = {
   guidance: { tone: "orange", icon: "compass" },
   spawn: { tone: "pink", icon: "user-plus" }, // 2026-10-17: agent.spawn / agent.dismiss — a helper made or let go
   files: { tone: "teal", icon: "folder-tree" }, // 2026-10-17: the inbuilt files artifact's commands (read, write, edit …)
-  preview: { tone: "indigo", icon: "app-window" }, // 2026-10-17: the inbuilt preview artifact's commands (open, click, shot …)
-  stage: { tone: "fuchsia", icon: "presentation" }, // 2026-10-17: the stage's commands (show, scene, go, reply) — what the owner watches
+  preview: { tone: "indigo", icon: "app-window" }, // 2026-10-17: the inbuilt preview artifact's commands (open, click, shot; show, focus, answer: the one pane the owner watches)
+  talk: { tone: "rose", icon: "messages-square" }, // 2026-10-18: talk.say / talk.ask — the desk tells or asks the owner
+  desk: { tone: "lime", icon: "blocks" }, // 2026-10-20: desk.create / check / load / ask / propose — a desk made, hosted or given work
+  practice: { tone: "violet", icon: "notebook-pen" }, // 2026-10-20: <agent>.practice tick / edit / reflect — an agent's standing orders, improved by it
 }
 export const CALL_KINDS = Object.keys(LOOKS)
 
@@ -79,10 +81,12 @@ function callKind({ kind, type, view, name = "" } = {}) {
   if (kind === "guidance" || view === "guidance") return "guidance"
   if (kind === "agent" || type === "agent" || view === "quest") return "quest"
   if (view === "spawn" || type === "spawn") return "spawn"
+  if (view === "desk" || type === "desk") return "desk"
+  if (view === "practice") return "practice"
   if (type === "mcp") return "mcp"
-  if (view === "web" || type === "web" || String(name).startsWith("web.")) return "web"
+  if (view === "web" || view === "browse" || type === "web" || String(name).startsWith("web.")) return "web"
   if (view === "terminal" || type === "terminal") return "terminal"
-  if (view === "files" || view === "preview" || view === "stage") return view
+  if (view === "files" || view === "preview" || view === "talk") return view
   if (ARTIFACT_VIEWS.has(view)) return view
   if (type === "artifact") return "artifact"
   if (view === "data") return "data"

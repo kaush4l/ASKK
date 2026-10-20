@@ -295,3 +295,97 @@ describe("dispatch", () => {
     expect(dispatch.brief()).toBe("0 running · 42 done")
   })
 })
+
+// 2026-10-17 (critic): a lead answered past gateRetries (or ran out of steps) and its stations kept working beyond its
+// stop; the owner had no way to stop one job.
+describe("dispatch: no job outlives its holder's run; the owner stops one job", () => {
+  // A lead that dispatches to data at its first step, then replies `later(n)` at every step after.
+  function holder(later, config = {}) {
+    const data = blocked("data")
+    const dispatch = new Dispatch()
+    let n = 0
+    const lead = new Agent(
+      { name: "lead", report: false, ...config },
+      { infer: async () => json(++n === 1 ? { thought: "hand it off", calls: [{ tool: "dispatch.start", input: { to: "data", ...quest("train for an hour") } }] } : later(n)), tools: [data.agent] },
+    ).addArtifact(dispatch)
+    const gates = []
+    lead.on("gate", (e) => gates.push(e.reasons[0]))
+    const flags = []
+    lead.on("answer", (e) => flags.push(e.flags))
+    return { data, dispatch, lead, gates, flags }
+  }
+  const jobs = (dispatch) => dispatch.state.jobs.map((j) => [j.id, j.status, j.error])
+
+  test("gateRetries spent: the dispatch gate is hard, the answer is never let through, the run ends at maxSteps and its job stops", async () => {
+    const { data, dispatch, lead, gates, flags } = holder(() => ({ thought: "answer early", calls: [], answer: "finished" }), { gateRetries: 2, maxSteps: 6 })
+    expect(await lead.ask("work")).toBe("(stopped after 6 steps without an answer)")
+    expect(gates).toHaveLength(5) // every early answer refused, past gateRetries
+    expect(gates[4]).toStartWith("1 job still running: j1 → data")
+    expect(flags).toEqual([[]])
+    expect(jobs(dispatch)).toEqual([["j1", "stopped", "lead's run ended while it ran"]])
+    await data.step({ thought: "a step", calls: [{ tool: "nothing", input: {} }] }) // the target's step ends; the next sees the stop
+    await until(() => data.agent.status === "error")
+    expect(data.agent.busy).toBe(false)
+  })
+
+  test("maxSteps without an answer: the job stops with the run", async () => {
+    const { data, dispatch, lead } = holder(() => ({ thought: "other work", calls: [{ tool: "dispatch.list", input: {} }] }), { maxSteps: 3 })
+    expect(await lead.ask("work")).toBe("(stopped after 3 steps without an answer)")
+    expect(jobs(dispatch)).toEqual([["j1", "stopped", "lead's run ended while it ran"]])
+    expect(lead.stop()).toBe(0) // nothing left to reach
+    await data.step({ thought: "a step", calls: [{ tool: "nothing", input: {} }] })
+    await until(() => !data.agent.busy)
+  })
+
+  test("a stopped run, a run that fails, and the holder's next run: no job is left running", async () => {
+    const { dispatch, lead } = holder(() => ({ thought: "wait", calls: [{ tool: "dispatch.wait", input: { seconds: 1800 } }] }))
+    const run = lead.ask("work").catch((e) => e.message)
+    await until(() => dispatch.state.jobs.length && lead.current?.steps.length === 1)
+    expect(lead.stop()).toBe(1)
+    expect(await run).toBe("stopped")
+    expect(jobs(dispatch)).toEqual([["j1", "stopped", "lead's run was stopped"]])
+    // a run whose model call throws: its job ends with it
+    const failing = holder((n) => {
+      throw new Error(`model down at step ${n}`)
+    })
+    expect(await failing.lead.ask("work").catch((e) => e.message)).toBe("model down at step 2")
+    expect(jobs(failing.dispatch)).toEqual([["j1", "stopped", "lead's run ended while it ran"]])
+    // a job started outside a run (the twin's tests) holds the holder's next run's answer, and ends with that run
+    const { run: start, lead: other, dispatch: d2 } = team([blocked("probe")])
+    await start("start", { to: "probe", ...quest("rms?") })
+    expect(await other.ask("go")).toBe("(stopped after 12 steps without an answer)")
+    expect(jobs(d2)).toEqual([["j1", "stopped", "lead's run ended while it ran"]])
+  })
+
+  test("detach drops the holder's run-end listeners; attach again replaces them", () => {
+    const dispatch = new Dispatch()
+    const lead = new Agent({ name: "lead", report: false }, { infer: async () => answer("x") })
+    const count = () => (lead.listeners.get("answer")?.size ?? 0) + (lead.listeners.get("error")?.size ?? 0)
+    lead.addArtifact(dispatch)
+    expect(count()).toBe(2)
+    dispatch.attach(lead)
+    expect(count()).toBe(2)
+    dispatch.detach(lead)
+    expect(count()).toBe(0)
+    expect(dispatch.holders.size).toBe(0)
+  })
+
+  test("ownerCall stop: that one job stops (its error names the owner), the other queued on the same agent goes on; anything else throws", async () => {
+    const data = blocked("data")
+    const { run, dispatch } = team([data])
+    await run("start", { to: "data", ...quest("shard 1?") })
+    await run("start", { to: "data", ...quest("shard 2?") }) // queued behind j1's run
+    await until(() => data.waiting)
+    expect(dispatch.ownerCall("stop", [{ id: "dispatch", job: "j1" }], "owner")).toEqual({ stopped: "j1" })
+    expect(dispatch.state.jobs.find((j) => j.id === "j1")).toMatchObject({ status: "stopped", error: "stopped by the owner" })
+    expect(dispatch.state.jobs.find((j) => j.id === "j2")).toMatchObject({ status: "running" })
+    expect(() => dispatch.ownerCall("stop", [{ id: "dispatch", job: "j1" }])).toThrow("j1 is not running (stopped)")
+    expect(() => dispatch.ownerCall("stop", [{ id: "dispatch", job: "j9" }])).toThrow("no job j9")
+    expect(() => dispatch.ownerCall("stop", [{ id: "dispatch" }])).toThrow("job: the job to stop")
+    expect(() => dispatch.ownerCall("start", [{ id: "dispatch", job: "j2" }])).toThrow("dispatch: the owner can stop a job (not start)")
+    // j1's run ends at its step; j2 then runs and reports
+    await data.step({ thought: "a step", calls: [{ tool: "nothing", input: {} }] })
+    await data.release("shard 2 is clean")
+    expect(await run("wait", { ids: ["j2"] })).toContain("j2 → data done in")
+  })
+})

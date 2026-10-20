@@ -9,7 +9,7 @@
 
 import { AgentView } from "@/backend/live/agent"
 import { kernelDesk } from "@/backend/live/desk"
-import { detectHost, hasCapability } from "@/backend/live/host"
+import { detectHost, hasCapability, resetHost } from "@/backend/live/host"
 import { deskLog } from "@/backend/live/log"
 import { connectTeam } from "@/backend/live/stream"
 
@@ -33,8 +33,12 @@ export class Registry {
   getSnapshot = () => this.#state
   getServerSnapshot = () => INITIAL
 
+  // A view that subscribes starts the registry (start is a no-op once started). 2026-10-17: a hot reload re-creates this
+  // module while the views stay mounted — their mount effect never runs again, and the new registry sat idle
+  // ("Connecting to the desk…") until a manual reload; React subscribes again to the new instance, so it starts here.
   subscribe = (listener) => {
     this.#listeners.add(listener)
+    queueMicrotask(() => this.start())
     return () => this.#listeners.delete(listener)
   }
 
@@ -48,6 +52,12 @@ export class Registry {
     this.#set({ status: "connecting" })
     const host = await detectHost().catch(() => null)
     if (!hasCapability(host, "team")) return this.#set({ status: "offline" })
+    // 2026-10-20 (the hosted version): no desk server, a model named for this browser — the desk runs in this tab.
+    if (host.mode === "browser") {
+      const { startBrowserDesk } = await import("@/backend/browser/start")
+      const team = await startBrowserDesk().catch((error) => (this.#set({ status: "error", error: error.message }), null))
+      if (!team) return this.#state.status === "error" ? undefined : this.#set({ status: "offline" })
+    }
     connectTeam(
       (event) => this.apply(event),
       () => this.#set({ connected: false }),
@@ -82,6 +92,17 @@ export class Registry {
       engines,
       activeId,
     })
+  }
+
+  // Start again from scratch (the owner named a model for this browser, or cleared it): the views follow the new desk.
+  async restart() {
+    resetHost()
+    const { stopBrowserDesk } = await import("@/backend/browser/start")
+    await stopBrowserDesk() // the old team ends before a new one restores from the same store
+    for (const e of this.#state.engines) e.dispose()
+    this.#state = INITIAL
+    for (const listener of this.#listeners) listener()
+    return this.start()
   }
 
   select(id) {
