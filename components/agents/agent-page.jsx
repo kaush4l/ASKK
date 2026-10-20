@@ -283,6 +283,12 @@ function ToolList({ tools, active }) {
                     <CallIcon look={look} className="size-3.5" />
                     <span className="min-w-0 break-all font-mono">{t.name}</span>
                     {t.view && <span className="rounded border px-1 text-[10px] text-muted-foreground">{t.view}</span>}
+                    {/* 2026-10-20 (tool.js readsOutside): its results are text from outside — what such a run would make lasting waits for you */}
+                    {t.outside && (
+                      <span className="rounded border border-amber-500/60 px-1 text-[10px] text-amber-700 dark:text-amber-400" title="Its results count as outside reads: practice instructions, kept helpers and desks from a run that called it wait for your accept">
+                        outside
+                      </span>
+                    )}
                     {active.has(t.name) && <span className={cn("text-xs", toneOf(look).text)}>in use</span>}
                   </div>
                   {t.description && <p className="mt-1 text-xs text-muted-foreground">{t.description}</p>}

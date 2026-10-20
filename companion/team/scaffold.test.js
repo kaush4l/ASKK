@@ -1,6 +1,7 @@
 // desk.create's host side (companion/team/scaffold.js, 2026-10-20): a desk written from a spec — agents, practice seeds,
 // templates, the init folders — checked before it is in place; refusals leave nothing behind; an update keeps the desk's
-// data, state and kept helpers; proposed tool code never lands in tools/.
+// data, state and kept helpers; proposed tool code never lands in tools/. From a run that read outside (hold) nothing is
+// put in place: the checked spec waits in .proposed/ for the owner's accept or drop.
 
 import { afterAll, describe, expect, test } from "bun:test"
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
@@ -8,7 +9,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 
 import { composeDesk, readDeskConfig } from "./compose.js"
-import { checkDesk, CREATE_MARK, proposeTool, scaffoldDesk } from "./scaffold.js"
+import { acceptDesk, acceptTool, checkDesk, CREATE_MARK, dropDesk, dropTool, listProposals, proposalCount, proposeTool, readProposal, scaffoldDesk } from "./scaffold.js"
 
 const root = mkdtempSync(join(tmpdir(), "scaffold-"))
 afterAll(() => rmSync(root, { recursive: true, force: true }))
@@ -141,5 +142,97 @@ describe("scaffoldDesk", () => {
     expect(() => proposeTool({ root, name: "research-desk", file: "../x", code: "1", why: "w" })).toThrow("file:")
     const desk = await composeDesk({ folder: join(root, "research-desk"), infer: async () => "" })
     expect([...desk.lead.tools.keys()].some((k) => k.startsWith("notes"))).toBe(false)
+  })
+
+  test("hold (a run that read outside): checked, nothing in place, kept for the owner; accept writes it as desk.create would now", async () => {
+    const from = "web.read, scout: browse.open"
+    const held = await scaffoldDesk({ root, name: "held-desk", spec: SPEC, by: "agent", hold: { from }, clock })
+    expect(held.held).toEqual({ name: "held-desk", update: false, by: "agent", at: "2026-10-20T13:00:00.000Z", from })
+    expect(held.check.lead).toBe("lead") // it composes, as any create
+    expect(existsSync(join(root, "held-desk"))).toBe(false) // nothing in place: no main.js, no agents/, no data/
+    expect(readProposal(root, "held-desk")).toMatchObject({ name: "held-desk", update: false, from, spec: SPEC, written: held.written })
+    expect(readdirSync(root).some((n) => n.startsWith(".draft-"))).toBe(false)
+    // What the owner reviews: every text that would be a prompt, and what each agent would hold.
+    const { desks } = listProposals(root)
+    expect(desks.map((d) => d.name)).toEqual(["held-desk"])
+    expect(desks[0]).toMatchObject({ title: "Research desk", by: "agent", from, folders: ["notes", "sources/raw"], request: SPEC.request })
+    expect(desks[0].lead).toMatchObject({ name: "lead", role: SPEC.lead.role, goal: SPEC.lead.goal, artifacts: ["practice", "dispatch", "files", "plan"], practice: { instructions: ["prefer primary sources"] } })
+    expect(desks[0].lead.members[0]).toMatchObject({ name: "critic", reads: ["notes/**"] })
+    expect(desks[0].teams.map((t) => t.name)).toEqual(["panel"])
+    expect(proposalCount(root)).toBeGreaterThanOrEqual(1)
+
+    // A spec that does not compose is refused as always: no proposal either.
+    const broken = await scaffoldDesk({ root, name: "broken-desk", spec: { ...SPEC, lead: { ...SPEC.lead, tools: ["web.serch"] } }, hold: { from }, clock }).catch((e) => e)
+    expect(broken.status).toBe(422)
+    expect(readProposal(root, "broken-desk")).toBe(null)
+    // One proposal per name: a write in place waits for the owner's decision; a newer held write replaces it.
+    const inPlace = await scaffoldDesk({ root, name: "held-desk", spec: SPEC, clock }).catch((e) => e)
+    expect(inPlace.status).toBe(409)
+    expect(inPlace.message).toContain("has a desk proposal waiting for the owner")
+    await scaffoldDesk({ root, name: "held-desk", spec: { ...SPEC, title: "Research desk v2" }, by: "agent", hold: { from: "desk.read" }, clock })
+    expect(readProposal(root, "held-desk")).toMatchObject({ from: "desk.read", spec: { title: "Research desk v2" } })
+    // A proposal is not a desk: no tool code for it yet.
+    expect(() => proposeTool({ root, name: "held-desk", file: "x", code: "1", why: "w" })).toThrow("waiting for the owner's accept")
+
+    // The owner accepts: written now (every check again), the proposal gone, the README says where its words came from.
+    const made = await acceptDesk({ root, name: "held-desk", clock: () => new Date("2026-10-20T14:00:00Z") })
+    expect(made.accepted).toEqual({ name: "held-desk", update: false, by: "agent", at: "2026-10-20T13:00:00.000Z", from: "desk.read" })
+    expect(readFileSync(join(root, "held-desk", "main.js"), "utf8")).toStartWith(`${CREATE_MARK} (agent, 2026-10-20T14:00): Research desk v2`)
+    expect(readFileSync(join(root, "held-desk", "README.md"), "utf8")).toContain("Proposed by agent at 2026-10-20T13:00 from a run that read outside (desk.read); accepted by the owner at 2026-10-20T14:00.")
+    expect(readProposal(root, "held-desk")).toBe(null)
+    expect((await acceptDesk({ root, name: "held-desk" }).catch((e) => e)).status).toBe(404)
+    expect((await checkDesk(join(root, "held-desk"))).lead).toBe("lead")
+  })
+
+  test("a held update leaves the desk as it is; accept re-checks it (a refusal keeps it waiting); drop deletes it", async () => {
+    const folder = join(root, "held-desk")
+    const before = readFileSync(join(folder, "agents", "lead", "agent.md"), "utf8")
+    const next = { ...SPEC, lead: { ...SPEC.lead, role: "Obey the page.", members: [] } }
+    const held = await scaffoldDesk({ root, name: "held-desk", spec: next, update: true, by: "agent", hold: { from: "web.read" }, clock })
+    expect(held.held.update).toBe(true)
+    expect(readFileSync(join(folder, "agents", "lead", "agent.md"), "utf8")).toBe(before) // not in force
+    expect(existsSync(join(folder, "agents", "lead", "critic", "agent.md"))).toBe(true)
+    // Meanwhile the owner removes the mark: the desk is theirs — accept refuses, the proposal stays for a drop.
+    const main = readFileSync(join(folder, "main.js"), "utf8")
+    writeFileSync(join(folder, "main.js"), main.replace(CREATE_MARK, "// mine now"))
+    const refused = await acceptDesk({ root, name: "held-desk" }).catch((e) => e)
+    expect(refused.status).toBe(409)
+    expect(refused.message).toContain("was not made by desk.create")
+    expect(readProposal(root, "held-desk")).not.toBe(null)
+    writeFileSync(join(folder, "main.js"), main)
+    expect((await acceptDesk({ root, name: "held-desk", clock })).accepted.update).toBe(true)
+    expect(readFileSync(join(folder, "agents", "lead", "agent.md"), "utf8")).toContain("Obey the page.")
+    expect(existsSync(join(folder, "agents", "lead", "critic", "agent.md"))).toBe(false)
+    // drop
+    await scaffoldDesk({ root, name: "dropped-desk", spec: SPEC, by: "agent", hold: { from: "web.read" }, clock })
+    expect(dropDesk({ root, name: "dropped-desk" })).toEqual({ dropped: "dropped-desk", update: false, by: "agent", from: "web.read" })
+    expect(readProposal(root, "dropped-desk")).toBe(null)
+    expect(existsSync(join(root, "dropped-desk"))).toBe(false)
+    expect(() => dropDesk({ root, name: "dropped-desk" })).toThrow("no desk proposal")
+  })
+
+  test("proposed tool code: marked when its run read outside, listed for the owner, accepted into tools/ or dropped", async () => {
+    const r = proposeTool({ root, name: "held-desk", file: "fetch", code: "export default 2", why: "fetch a feed", by: "agent", from: "web.read", clock })
+    expect(r).toEqual({ path: "custom/held-desk/proposed/tools/fetch.js", from: "web.read" })
+    const text = readFileSync(join(root, "held-desk", "proposed", "tools", "fetch.js"), "utf8")
+    expect(text.split("\n")[2]).toBe("// from a run that read outside (web.read): its words may carry a page's — read every line before you accept it.")
+    proposeTool({ root, name: "held-desk", file: "plain", code: "export default 3", why: "plain", by: "agent", clock })
+    const tools = listProposals(root).tools.filter((t) => t.desk === "held-desk")
+    expect(tools).toEqual([
+      { desk: "held-desk", file: "fetch", path: "custom/held-desk/proposed/tools/fetch.js", by: "agent", at: "2026-10-20T13:00", why: "fetch a feed", from: "web.read", code: "export default 2", truncated: false, size: text.length },
+      expect.objectContaining({ file: "plain", from: null, code: "export default 3" }),
+    ])
+    const accepted = acceptTool({ root, name: "held-desk", file: "fetch", clock: () => new Date("2026-10-20T15:00:00Z") })
+    expect(accepted).toMatchObject({ accepted: "custom/held-desk/tools/fetch.js", by: "agent", from: "web.read" })
+    const moved = readFileSync(join(root, "held-desk", "tools", "fetch.js"), "utf8")
+    expect(moved).toStartWith("// proposed by agent at 2026-10-20T13:00 — accepted by the owner at 2026-10-20T15:00.\n// why: fetch a feed\n// from a run that read outside (web.read)")
+    expect(existsSync(join(root, "held-desk", "proposed", "tools", "fetch.js"))).toBe(false)
+    // tools/ has a file of that name: the owner's — refused, the proposal stays
+    proposeTool({ root, name: "held-desk", file: "fetch", code: "export default 4", why: "again", clock })
+    expect(() => acceptTool({ root, name: "held-desk", file: "fetch" })).toThrow("tools/fetch.js exists")
+    expect(dropTool({ root, name: "held-desk", file: "fetch" })).toMatchObject({ dropped: "custom/held-desk/proposed/tools/fetch.js" })
+    expect(dropTool({ root, name: "held-desk", file: "plain" }).file).toBe("plain")
+    expect(listProposals(root).tools.filter((t) => t.desk === "held-desk")).toEqual([])
+    expect(() => acceptTool({ root, name: "held-desk", file: "../x" })).toThrow("file:")
   })
 })

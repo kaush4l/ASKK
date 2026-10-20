@@ -25,8 +25,22 @@ const spec = {
 describe("twin: tools", () => {
   test("Tool.twin is its spec as an element", () => {
     const t = new Tool({ name: "web.read", view: "web", description: "a page as text", input: { url: "the page" }, run: () => "" })
-    expect(t.twin()).toEqual({ element: "tool", id: "web.read", name: "web.read", type: "function", view: "web", description: "a page as text", input: { url: "the page" } })
-    expect(t.spec()).toEqual({ name: "web.read", type: "function", view: "web", description: "a page as text", input: { url: "the page" } })
+    expect(t.twin()).toEqual({ element: "tool", id: "web.read", name: "web.read", type: "function", view: "web", description: "a page as text", input: { url: "the page" }, outside: true })
+    expect(t.spec()).toEqual({ name: "web.read", type: "function", view: "web", description: "a page as text", input: { url: "the page" }, outside: true })
+  })
+
+  // 2026-10-20: whether a tool's results count as outside reads (tool.js readsOutside) — the web, another desk, every MCP
+  // tool unless built outside: false, a desk's own tool built outside: true — is in its twin (the agent page marks it).
+  test("outside: the web, desk.read / desk.ask, MCP tools (unless outside: false), a tool built outside: true", () => {
+    const spec = (o) => new Tool({ run: () => "", ...o }).spec().outside ?? false
+    expect(spec({ name: "rh.get_quotes", type: "mcp" })).toBe(true)
+    expect(spec({ name: "calc.add", type: "mcp", outside: false })).toBe(false)
+    expect(spec({ name: "desk.read", type: "desk", view: "desk" })).toBe(true)
+    expect(spec({ name: "notes.save" })).toBe(false)
+    expect(spec({ name: "news.fetch", outside: true })).toBe(true)
+    expect(spec({ name: "web.fetch", outside: false })).toBe(false) // the tool's own word wins over its name
+    expect(defineTool({ name: "news.read", description: "x", run: () => "", outside: true }).outside).toBe(true)
+    expect(() => defineTool({ name: "news.read", description: "x", run: () => "", outside: "yes" })).toThrow("outside must be true or false")
   })
 
   test("AgentTool.twin carries the agent it wraps", () => {

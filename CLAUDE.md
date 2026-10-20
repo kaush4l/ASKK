@@ -131,8 +131,14 @@ what is saved where), the twin contract.
   commands take the artifact's view. A call to another agent is a brief `{requirement, ask, outcome}`
   (`QUEST_INPUT`, `questText`, refused without them). The same data call twice in a run within 3 min answers from
   the first; an artifact called by name returns its view; old step results keep head and tail. `defineTool({name,
-  description, input, run, view?, type?})`: the shape a desk's `tools/<name>.js` default-exports, checked at load
-  (name `TOOL_NAME`, description, run, input `{field: "text"}`).
+  description, input, run, view?, type?, outside?})`: the shape a desk's `tools/<name>.js` default-exports, checked at load
+  (name `TOOL_NAME`, description, run, input `{field: "text"}`). `readsOutside(name, tool)` (2026-10-20, moved here from
+  agent.js): whether a tool's results are text this desk did not write — view web or browse, `desk.read`/`desk.ask`, and
+  every MCP tool (type `mcp`; decision 2026-10-20: a tool server's answer is an issue, a mail, a filing, a page — the
+  kernel cannot tell which servers read the world, so every one counts, as the MCP spec's `openWorldHint` defaults to
+  true); a tool built `outside: false` never counts (a desk wrapping a closed-world tool, e.g. annotations
+  `openWorldHint: false`), `outside: true` always (a desk's own tool that fetches a page); `spec()` carries `outside:
+  true` when it counts (the agent page's tool list marks it "outside").
 - `artifact/artifact.js` `Artifact` (latest state in every prompt, `commands()`, `gate()`, `live()` → `{view, data}`,
   `snapshot()`/`restore()`, `keep`: day | always | run | file; optional `refresh(agent)`, `attach(agent, options)`,
   `detach(agent)`; a refreshed artifact calls `changed()` only when its twin state differs; optional `poll` (ms,
@@ -251,7 +257,7 @@ what is saved where), the twin contract.
   (gate), `.tick`, `.skip`, `.edit {section, old?, new?, why}` (logged, from the next run), `.reflect {worked, missed,
   changes}` (retro → `memory/<desk>/retros/<agent>.md`; refused when it names a change none was made); store: compose.js
   `practiceStore`. Provenance (2026-10-20 review: a learned line written after reading a page is a lasting prompt
-  injection): each run keeps its outside reads (agent.js `readsOutside`: web.*, browse, `desk.read`/`desk.ask`;
+  injection): each run keeps its outside reads (tool.js `readsOutside`: web.*, browse, `desk.read`/`desk.ask`, MCP tools;
   `current.outside`, ctx `outside`; a quest's or dispatched job's member starts with its caller's and hands its own
   back as `<member>: <tool>`); an edit from such a run is tagged "from a run that read the web (<tools>)" — an
   Instructions or Checklist edit is PROPOSED (`PRACTICE_HELD`: under `## Pending` as JSON lines, ids p1, p2 … never
@@ -287,8 +293,23 @@ what is saved where), the twin contract.
   text never leaves main.js's one comment line), `desk.check`, `desk.load`, `desk.ask {name, text, wait?}` (host
   `desks/ask`: wait → an id, polled with GET `desks/ask?id=`; desk to desk: never asked back with a wait while it waits on
   the asker (409), ≤ 6 asks per pair in 10 min (429)), `desk.read {name, path}` (host `desks/read`: another desk's
-  workspace through its own fs/*; a reader with `reads:` only where its lane names `desks/<name>/…`), `desk.list`, `desk.propose` (tool code → `custom/<desk>/proposed/tools/`, never loaded; the owner moves it
-  into tools/). `conventionDesk({init})`: `async ({dir, memory, log, host, port})` before the agents are built.
+  workspace through its own fs/*; a reader with `reads:` only where its lane names `desks/<name>/…`), `desk.list`, `desk.propose` (tool code → `custom/<desk>/proposed/tools/`, never loaded; the owner accepts
+  it on the home page, or moves it into tools/). Desks and provenance (2026-10-20, the hold extended: a desk's roles,
+  practice seeds and main.js are prompts at every start of it): from a run that read outside, `desk.create` sends
+  `outside` (`outsideFrom`) and the host writes nothing in place — the draft is checked as always (composes; an update's
+  mark and kept helpers) and the spec kept as `custom/.proposed/<name>.json` {name, update, by, at, from, spec, written,
+  check} (scaffold.js `hold`; a dot folder: never a desk, never loaded, never in a prompt — the tool's answer names the
+  hold, not the text); `desks/load` of a desk that is only a proposal → 409 "waits for the owner" (and at start it has no
+  folder to host); a held update leaves the desk as it is (a load answers `proposed {by, at, from}`); one proposal per
+  name: a newer held write replaces it, a write in place waits (409). The owner's accept (`acceptDesk`) writes it as
+  desk.create would now — every check again, a refusal keeps it waiting — and loads it (an update: only where hosted);
+  drop deletes it. `desk.propose` from such a run marks its file (`// from a run that read outside (<tools>): …`).
+  Chosen over a marker in the desk folder (smaller: nothing tainted ever reaches `custom/<name>/`, so the loader, the
+  start-up listing and `--agents` need no check; the cost: an accepted spec is written then, not reviewed as files). UI:
+  `components/kernel/proposed-desks.jsx` `ProposedDesks` on the home page (pure `backend/live/proposals.js`:
+  `loadProposals`, `proposalCall`, `agentRows`, `acceptNote`) — each held desk's agents with role, goal, holdings and
+  practice, each proposed tool's code, where its words came from, Accept / Drop; the header's desk menu counts them (GET
+  desks → `proposals`). `conventionDesk({init})`: `async ({dir, memory, log, host, port})` before the agents are built.
   The core desk `desks/agent/` (tracked, hosted beside the local `custom/` desks: `companion/team/desk.js`
   `hostedDeskFolders`, `CORE_DESKS`; a local desk named like a core one wins; desks/load finds either; desks/create writes
   into the local folder): one agent with the kit — routes itself / helpers / a new desk — and its practice.md seed.
@@ -346,7 +367,7 @@ what is saved where), the twin contract.
   `hold.test.js` (refresh, commands subset), `plan.test.js`, `spawn.test.js`, `builtin.test.js` (the catalogue, sharing,
   the twin states), `builtin-files.test.js`, `builtin-terminal.test.js`, `builtin-preview.test.js` (pages, visuals,
   the owner's asks: the stage's tests moved in), `builtin-web.test.js`, `builtin-browse.test.js`, `builtin-talk.test.js` (each over
-  `test/fake-host.js`), `builtin-visual.test.js` (`checkVisual`), `builtin-dispatch.test.js`,
+  `test/fake-host.js`), `builtin-visual.test.js` (`checkVisual`), `builtin-dispatch.test.js`, `builtin-desks.test.js` (desk.* provenance: `outside` sent, the hold named; an MCP result taints the run),
   `team.test.js` (spawned teams, templates, lanes, `globCovers`), `chat.test.js` (`Agent.chat`); `agent.test.js` also
   `Agent.stop` (queued runs, a quested member).
 
@@ -396,7 +417,10 @@ Code more than one desk may use lives in `custom/shared/`. `custom/` is git-igno
   integrations (one Telegram listener per bot: a desk listens for the integrations no other hosted desk names);
   `handleApi` (`desks`, `desks/select`, `desks/load`; 2026-10-20 `desks/create`, `desks/check`, `desks/propose`,
   `desks/ask` (+ GET `desks/ask?id=`), `desks/read` — the kit's desk.* tools; `--read-only`: no create, propose or
-  check — a check runs the desk's code), `announce` (each desk's `state/server.json`),
+  check — a check runs the desk's code; the body's `outside` holds a desk for the owner (scaffold.js), the asking desk's
+  log says so; GET `desks/proposed` → `{desks, tools}` (`listProposals`), POST `desks/accept | desks/drop {name, tool?,
+  reason?}` — the page only: a request with `x-askk-desk` (a desk's tools and scripts) is refused 403; accept a desk →
+  written + loaded `{loaded | loadError}`, a tool → moved into tools/ and its hosted desk loaded again), `announce` (each desk's `state/server.json`),
   `startTelegram`, `load(name)` (root: the hosted folders' parent; a reload ends the old team's streams so tabs
   reconnect, `forgetDesk` + `require.cache` under the folder; tested in `desks.test.js`). Used by `scripts/dev.js`
   and `server/server.js`. `findDeskServer(desk)` (desk.js) finds a running one.

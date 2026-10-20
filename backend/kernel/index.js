@@ -4,7 +4,7 @@
 export { Agent, CHAT_FORMAT } from "./agent/agent.js"
 export { parseReply, RESPONSE_FORMAT } from "./agent/reply.js"
 export { REPORT_FORMAT, REPORT_FIELDS, checkReport, parseReport, scoreReport } from "./agent/report.js"
-export { Tool, AgentTool, QUEST_INPUT, questText, defineTool, TOOL_NAME } from "./tool/tool.js"
+export { Tool, AgentTool, QUEST_INPUT, questText, defineTool, TOOL_NAME, readsOutside, OUTSIDE_DESKS } from "./tool/tool.js"
 export { Artifact } from "./artifact/artifact.js"
 export { SharedBoard } from "./artifact/board.js"
 export { Checklist } from "./artifact/checklist.js"

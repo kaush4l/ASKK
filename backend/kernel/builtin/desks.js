@@ -1,5 +1,6 @@
 import { Tool } from "../tool/tool.js"
 import { cleanPath, inLane, mayContain } from "./files.js"
+import { outsideFrom } from "./spawn.js"
 
 // desk.* (2026-10-20 owner: "we want to give this desk create capable tool as a default agent. Now for any kind of desk
 // setup, it should be simple enough to request it and the agent figuring out the good ways of creating the desk"): an
@@ -15,6 +16,15 @@ import { cleanPath, inLane, mayContain } from "./files.js"
 //   desk.read {name, path}            a hosted desk's workspace file, or a folder's listing (read only)
 //   desk.propose {name, file, code, why}  tool code the desk lacks → custom/<name>/proposed/tools/<file>.js, for the
 //                                     owner to accept (moved into tools/); never loaded by an agent
+//
+// Provenance (2026-10-20, practice.js's and spawn.js's hold extended to desks): a desk's agents' roles, practice seeds
+// and main.js are prompts at every start of it — a lasting prompt injection when a run that read outside wrote them
+// (ctx.outside, tool.js readsOutside: web.*, browse, desk.read / desk.ask, MCP tools). So from such a run desk.create
+// sends `outside` (outsideFrom: "web.read, scout: browse.open") and the host writes nothing in place: the spec is
+// checked (it composes) and kept as a proposal (companion/team/scaffold.js, custom/.proposed/<name>.json) until the
+// owner's Accept on the home page writes it (re-checked then) and loads it; desk.load refuses a desk that is only a
+// proposal. desk.propose's code never loads anyway; from such a run its file says where its words came from, for the
+// owner who reads it before accepting it. The words held never reach a prompt: the answer names the hold, not the text.
 const ASK_MINUTES = 30
 const ASK_POLL_MS = 5000
 const sleep = (ms, signal) =>
@@ -66,12 +76,21 @@ export function deskTools() {
       name: "desk.create",
       type: "desk",
       view: "desk",
-      description: `write a new desk custom/<name>/ from a spec — its lead (goal, role, checklist and quality bar as practice, the tools and artifacts it needs: start with one capable lead that spawns helpers; add fixed members only for a workflow that never changes), team templates, init folders — checked before it is put in place (a spec that does not compose writes nothing and says why); then desk.load it and desk.ask it. update: true rewrites a desk desk.create made (its data, memory and kept helpers stay). Spec: ${SPEC}`,
+      description: `write a new desk custom/<name>/ from a spec — its lead (goal, role, checklist and quality bar as practice, the tools and artifacts it needs: start with one capable lead that spawns helpers; add fixed members only for a workflow that never changes), team templates, init folders — checked before it is put in place (a spec that does not compose writes nothing and says why); then desk.load it and desk.ask it. update: true rewrites a desk desk.create made (its data, memory and kept helpers stay). From a run that read outside (the web, another desk, an MCP tool) it is checked but held for the owner's accept, not written. Spec: ${SPEC}`,
       input: { name: "the desk's folder name: lowercase-words (e.g. research-desk)", spec: "the spec object (above), or its JSON", update: "true to rewrite a desk desk.create made; optional" },
       run: async (input = {}, ctx = {}) => {
         const spec = jsonish(input.spec)
-        const made = await need(ctx, "desk.create").post("desks/create", { name: String(input.name ?? "").trim(), spec, update: input.update === true || input.update === "true" })
-        return [`${input.update ? "updated" : "created"} ${made.folder}/: ${made.written.join(", ")}`, "composes:", checkText(made.check), made.hosted ? `hosted already: desk.load {name: "${made.name}"} reloads it` : `next: desk.load {name: "${made.name}"}, then desk.ask it`].join("\n")
+        const update = input.update === true || input.update === "true"
+        const from = outsideFrom(ctx)
+        const made = await need(ctx, "desk.create").post("desks/create", { name: String(input.name ?? "").trim(), spec, update, ...(from ? { outside: from } : {}) })
+        if (made.held)
+          return [
+            `held for the owner — ${update ? `the update of ${made.folder}/` : `${made.folder}/`} composes but is NOT written: this run read outside (${made.held.from}), so the desk (its roles, practice, main.js: prompts at every start) waits for the owner's Accept on the home page; ${update ? "it runs as it was until then" : "desk.load refuses it until then"}`,
+            "composes:",
+            checkText(made.check),
+            "next: tell the owner (talk.say, or your answer) what the desk is for and that it waits for their accept; go on without it",
+          ].join("\n")
+        return [`${update ? "updated" : "created"} ${made.folder}/: ${made.written.join(", ")}`, "composes:", checkText(made.check), made.hosted ? `hosted already: desk.load {name: "${made.name}"} reloads it` : `next: desk.load {name: "${made.name}"}, then desk.ask it`].join("\n")
       },
     }),
     "desk.check": new Tool({
@@ -90,7 +109,7 @@ export function deskTools() {
       input: { name: "the desk's folder name" },
       run: async ({ name } = {}, ctx = {}) => {
         const r = await need(ctx, "desk.load").post("desks/load", { name: String(name ?? "").trim() })
-        return `${r.reloaded ? "reloaded" : "loaded"} ${r.name}: ${r.agents} agents`
+        return `${r.reloaded ? "reloaded" : "loaded"} ${r.name}: ${r.agents} agents${r.proposed ? ` — as it is on disk; an update proposed by ${r.proposed.by} waits for the owner (not in force)` : ""}`
       },
     }),
     "desk.ask": new Tool({
@@ -145,7 +164,11 @@ export function deskTools() {
       view: "desk",
       description: "propose tool code a desk lacks (export default defineTool({name, description, input, run}) — docs/standard.md): kept in custom/<name>/proposed/tools/<file>.js for the owner, who moves it into tools/ to accept it; tell the owner (talk.ask) what it unlocks",
       input: { name: "the desk", file: "the file's name (e.g. notes)", code: "the whole file", why: "what the desk cannot do without it" },
-      run: async (input = {}, ctx = {}) => `proposed ${(await need(ctx, "desk.propose").post("desks/propose", input)).path} — not loaded until the owner moves it into tools/`,
+      run: async (input = {}, ctx = {}) => {
+        const from = outsideFrom(ctx)
+        const r = await need(ctx, "desk.propose").post("desks/propose", { name: input.name, file: input.file, code: input.code, why: input.why, ...(from ? { outside: from } : {}) })
+        return `proposed ${r.path} — not loaded until the owner accepts it (the home page's proposals, or moved into tools/)${r.from ? `; marked: from a run that read outside (${r.from}) — the owner reads every line before accepting it` : ""}`
+      },
     }),
   }
 }

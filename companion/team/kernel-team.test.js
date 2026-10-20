@@ -98,7 +98,7 @@ test("every kernel element reaches the stream: definitions, tool views, refused 
   expect(lead.role).toBe("Read the page.\nThen answer.")
   expect(lead.folder).toBe("agents/lead")
   expect(lead.artifacts).toContain("lead.checklist")
-  expect(lead.tools.find((t) => t.name === "web.page")).toEqual({ name: "web.page", type: "function", view: "web", description: "a page as text", input: { url: "the page" } })
+  expect(lead.tools.find((t) => t.name === "web.page")).toEqual({ name: "web.page", type: "function", view: "web", description: "a page as text", input: { url: "the page" }, outside: true }) // its results count as outside reads (tool.js readsOutside)
   expect(lead.tools.find((t) => t.name === "lead.checklist.tick").view).toBe("checklist") // an artifact command draws as its artifact
   expect(first.log.map((l) => [l.source, l.text])).toContainEqual(["watch", "watch: 3 movers"])
 

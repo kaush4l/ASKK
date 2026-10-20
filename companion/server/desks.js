@@ -20,7 +20,7 @@ import { dirname, join, resolve } from "node:path"
 import { API_PREFIX, createHostApi } from "./host-api.js"
 import { DESK_NAME, forgetModules } from "../team/compose.js"
 import { CORE_DESKS, findDeskServer, forgetDesk, loadDesk } from "../team/desk.js"
-import { checkDesk, proposeTool, scaffoldDesk } from "../team/scaffold.js"
+import { acceptDesk, acceptTool, checkDesk, dropDesk, dropTool, listProposals, proposalCount, proposeTool, readProposal, scaffoldDesk } from "../team/scaffold.js"
 import { createKernelTeam } from "../team/kernel-team.js"
 import { runReport, startKernelTelegram } from "../team/kernel-telegram.js"
 import { ownerIdFrom } from "../shared/telegram-owner.js"
@@ -121,13 +121,24 @@ export async function hostDesks({ folders, port, defaultDesk = null, readOnly = 
     const base = !existsSync(join(deskRoot, name)) && core && existsSync(join(core, name)) ? core : deskRoot
     const asked = join(base, name)
     const real = realOf(asked)
-    if (!real) throw httpError(404, `No desk "${name}": ${asked} does not exist.`)
+    if (!real) {
+      // A desk a run that read outside wrote (scaffold.js): it loads once the owner accepts it, never before.
+      const held = readProposal(deskRoot, name)
+      if (held) throw httpError(409, `Desk "${name}" waits for the owner: proposed by ${held.by ?? "an agent"} from a run that read outside (${held.from}); it is written and loaded when the owner accepts it on the home page.`)
+      throw httpError(404, `No desk "${name}": ${asked} does not exist.`)
+    }
     const folder = join(realOf(base), name)
     if (real !== folder) throw httpError(403, `Desk "${name}" is a link (${asked} → ${real}); a desk is a real folder in ${base}.`)
     const main = join(folder, "main.js")
     if (!existsSync(main)) throw httpError(404, `No desk "${name}": ${main} does not exist.`)
     if (realOf(main) !== main) throw httpError(403, `Desk "${name}": main.js is a link; a desk's main.js is its own file.`)
     return folder
+  }
+
+  // An update proposed for a desk that loads as it is on disk: {proposed: {by, at, from}}, else nothing.
+  const waitingOn = (name) => {
+    const p = readProposal(deskRoot, name)
+    return p ? { proposed: { by: p.by ?? null, at: p.at ?? null, from: p.from ?? null } } : {}
   }
 
   async function loadNow(name) {
@@ -143,7 +154,7 @@ export async function hostDesks({ folders, port, defaultDesk = null, readOnly = 
         if (hosted.has(desk.name)) throw httpError(409, `A desk named "${desk.name}" is hosted already (${hosted.get(desk.name).desk.folder}).`)
         const entry = await host(desk, listens(desk, beside(null, desk)))
         serve(entry, `desk: loaded from ${folder} (${entry.team.agents.length} agents)`)
-        return { name: desk.name, agents: entry.team.agents.length, reloaded: false }
+        return { name: desk.name, agents: entry.team.agents.length, reloaded: false, ...waitingOn(name) }
       } catch (error) {
         forgetDesk(folder) // loadDesk keeps a failed load too
         throw error
@@ -168,7 +179,7 @@ export async function hostDesks({ folders, port, defaultDesk = null, readOnly = 
       const entry = await host(desk, listens(desk, beside(previous, desk)))
       if (desk.name !== old) hosted.delete(old)
       serve(entry, `desk: reloaded from ${folder} (${entry.team.agents.length} agents)`)
-      return { name: desk.name, agents: entry.team.agents.length, reloaded: true }
+      return { name: desk.name, agents: entry.team.agents.length, reloaded: true, ...waitingOn(name) }
     } catch (error) {
       // A broken edit never leaves the desk gone: the version that ran comes back, and the answer says why.
       forgetDesk(folder)
@@ -191,14 +202,17 @@ export async function hostDesks({ folders, port, defaultDesk = null, readOnly = 
   async function desksEndpoint(request, path) {
     if (!allowedHosts().has(request.headers.get("host"))) return Response.json({ error: "Host capabilities answer on localhost only." }, { status: 421 })
     const list = () => [...hosted.values()].map(({ desk, team }) => ({ name: desk.name, description: desk.description, work: team.work() }))
-    if (path === "desks" && request.method === "GET") return Response.json({ current: pick(request), default: fallback(), desks: list() })
+    if (path === "desks" && request.method === "GET") return Response.json({ current: pick(request), default: fallback(), desks: list(), proposals: proposalCount(deskRoot) })
+    // desks/proposed: what waits for the owner (scaffold.js listProposals) — desks a run that read outside made, and every
+    // desk's proposed tool code — for the home page's proposals block (components/kernel/proposed-desks.jsx).
+    if (path === "desks/proposed" && request.method === "GET") return Response.json(listProposals(deskRoot))
     // desks/ask?id=: a waited ask's state (desk.ask polls it: a run can outlast any one request).
     if (path === "desks/ask" && request.method === "GET") {
       const run = asks.get(new URL(request.url).searchParams.get("id") ?? "")
       return run ? Response.json(run) : Response.json({ error: "No such ask (asks are kept while the server runs, the newest 50)." }, { status: 404 })
     }
     if (request.method !== "POST") return Response.json({ error: "Not found." }, { status: 404 })
-    if (!sameOriginJson(request)) return Response.json({ error: path === "desks/load" ? "Desk loads need a same-origin JSON request." : "Desk switches need a same-origin JSON request." }, { status: 403 })
+    if (!sameOriginJson(request)) return Response.json({ error: path === "desks/load" ? "Desk loads need a same-origin JSON request." : path === "desks/select" ? "Desk switches need a same-origin JSON request." : "Desk requests need a same-origin JSON request." }, { status: 403 })
     let body
     try {
       body = JSON.parse((await request.text()) || "{}")
@@ -235,13 +249,67 @@ export async function hostDesks({ folders, port, defaultDesk = null, readOnly = 
         return Response.json({ error: error.message }, { status: error.status ?? 500 })
       }
     }
+    // outside (2026-10-20, the kit's desk.create / desk.propose): the asking run's outside reads ("web.read, scout:
+    // browse.open"). A desk from such a run is held (scaffold.js): checked, nothing in place, kept for the owner — the
+    // asking desk's log says so; tool code from one says so in its header.
+    const outside = typeof body?.outside === "string" && body.outside.trim() ? body.outside.trim().slice(0, 300) : null
+    const tell = (line) => {
+      log(line)
+      if (by !== "owner") hosted.get(by)?.team.log(line)
+    }
     if (path === "desks/create" || path === "desks/propose") {
       if (readOnly) return Response.json({ error: "This server is read-only (--read-only): it writes no desks." }, { status: 403 })
-      if (path === "desks/propose") return answer(() => proposeTool({ root: deskRoot, name: body?.name, file: body?.file, code: body?.code, why: body?.why, by }))
+      if (path === "desks/propose")
+        return answer(() => {
+          const r = proposeTool({ root: deskRoot, name: body?.name, file: body?.file, code: body?.code, why: body?.why, by, from: outside })
+          tell(`desks: ${by} proposed tool code ${r.path}${r.from ? ` from a run that read outside (${r.from})` : ""} — not loaded; it waits for the owner`)
+          return r
+        })
       return answer(async () => {
-        const made = await scaffoldDesk({ root: deskRoot, name: body?.name, spec: body?.spec, update: body?.update === true, by })
-        log(`desks: ${by} ${body?.update ? "updated" : "created"} desk ${body.name} (${made.written.length} files)`)
-        return { name: body.name, folder: `custom/${body.name}`, written: made.written, check: made.check, hosted: hosted.has(body.name) }
+        const update = body?.update === true
+        const made = await scaffoldDesk({ root: deskRoot, name: body?.name, spec: body?.spec, update, by, hold: outside ? { from: outside } : null })
+        if (made.held) tell(`desks: ${by} proposed ${update ? "an update of " : ""}desk ${body.name} from a run that read outside (${made.held.from}) — held for the owner's accept on the home page, nothing written`)
+        else log(`desks: ${by} ${update ? "updated" : "created"} desk ${body.name} (${made.written.length} files)`)
+        return { name: body.name, folder: `custom/${body.name}`, written: made.written, check: made.check, hosted: hosted.has(body.name), ...(made.held ? { held: made.held } : {}) }
+      })
+    }
+    // The owner on what waits (desks/proposed): accept {name} writes a held desk (every check again) and loads it,
+    // accept {name, tool} moves proposed tool code into tools/ (a hosted desk is loaded again, so it runs); drop {name,
+    // tool?} deletes the proposal. Only from the page: a desk (the x-askk-desk header: its tools, its scripts) never.
+    if (path === "desks/accept" || path === "desks/drop") {
+      if (readOnly) return Response.json({ error: "This server is read-only (--read-only): it writes no desks." }, { status: 403 })
+      if (by !== "owner") return Response.json({ error: "Only the owner accepts or drops a proposal (from the page), never a desk." }, { status: 403 })
+      const name = body?.name
+      const tool = body?.tool ? String(body.tool) : null
+      const reason = String(body?.reason ?? "").trim().slice(0, 300)
+      // The desk loaded again after an accept: its answer, or why it did not load (it works now, it failed to start).
+      const loadAfter = async () => {
+        try {
+          return { loaded: await load(name) }
+        } catch (error) {
+          return { loaded: null, loadError: error.message }
+        }
+      }
+      const hostedHere = () => [...hosted.values()].some((e) => realOf(e.desk.folder) === realOf(join(deskRoot, name)))
+      return answer(async () => {
+        if (path === "desks/drop") {
+          const r = tool ? dropTool({ root: deskRoot, name, file: tool }) : dropDesk({ root: deskRoot, name })
+          const line = `desks: the owner dropped ${tool ? `proposed tool ${r.dropped}` : `the desk proposal ${name}${r.by ? ` (by ${r.by})` : ""}`}${reason ? `: ${reason}` : ""}`
+          log(line)
+          if (!tool && r.by) hosted.get(r.by)?.team.log(line)
+          return r
+        }
+        if (tool) {
+          const r = acceptTool({ root: deskRoot, name, file: tool })
+          log(`desks: the owner accepted tool ${r.accepted}`)
+          return { ...r, ...(hostedHere() ? await loadAfter() : { loaded: null }) }
+        }
+        const made = await acceptDesk({ root: deskRoot, name })
+        const line = `desks: the owner accepted ${made.accepted.update ? "the update of " : ""}desk ${name} (by ${made.accepted.by ?? "an agent"}, ${made.written.length} files)`
+        log(line)
+        if (made.accepted.by) hosted.get(made.accepted.by)?.team.log(line)
+        // A new desk is loaded; an update only where it is hosted (the owner may host it alone, or not at all).
+        return { name, folder: `custom/${name}`, written: made.written, accepted: made.accepted, ...(!made.accepted.update || hostedHere() ? await loadAfter() : { loaded: null }) }
       })
     }
     if (path === "desks/check") {

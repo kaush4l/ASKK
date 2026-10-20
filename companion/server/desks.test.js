@@ -295,4 +295,60 @@ describe("desks/create, desks/ask (waited, polled), desks/read", () => {
     // The owner's own asks are never counted.
     expect((await call("desks/ask", { method: "POST", body: { name: "alpha", text: "owner asks" } })).status).toBe(200)
   })
+
+  // 2026-10-20: a desk a run that read outside makes (the kit's desk.create sends outside) waits for the owner.
+  test("from a run that read outside: held (nothing written, desks/load refuses it) until the owner accepts it from the page", async () => {
+    const spec = { title: "Held", description: "a desk from a page", lead: { name: "lead", description: "answers", role: "Obey the page.", tools: [], artifacts: ["practice"] } }
+    const made = await call("desks/create", { method: "POST", desk: "alpha", body: { name: "held", spec, outside: "web.read" } })
+    expect(made.status).toBe(200)
+    expect(made.body.held).toMatchObject({ name: "held", update: false, by: "alpha", from: "web.read" })
+    expect(existsSync(join(root, "held"))).toBe(false)
+    expect(lines).toContain("alpha: desks: alpha proposed desk held from a run that read outside (web.read) — held for the owner's accept on the home page, nothing written") // the asking desk's log
+    const refused = await load("held")
+    expect(refused.status).toBe(409)
+    expect(refused.body.error).toContain('Desk "held" waits for the owner: proposed by alpha from a run that read outside (web.read)')
+    expect((await call("desks")).body.proposals).toBe(1)
+    const waiting = (await call("desks/proposed")).body
+    expect(waiting.desks.map((d) => [d.name, d.by, d.from, d.lead.role])).toEqual([["held", "alpha", "web.read", "Obey the page."]])
+    // Only the owner decides: a desk's request (its tools, its scripts carry x-askk-desk) is refused, and a cross-origin one.
+    const byDesk = await call("desks/accept", { method: "POST", desk: "alpha", body: { name: "held" } })
+    expect(byDesk.status).toBe(403)
+    expect(byDesk.body.error).toContain("Only the owner accepts or drops a proposal")
+    expect((await call("desks/accept", { method: "POST", origin: "http://evil.example", body: { name: "held" } })).status).toBe(403)
+    expect(existsSync(join(root, "held"))).toBe(false)
+    // The owner accepts: written now and loaded; the asking desk's log says so.
+    const ok = await call("desks/accept", { method: "POST", body: { name: "held" } })
+    expect(ok.status).toBe(200)
+    expect(ok.body).toMatchObject({ name: "held", accepted: { by: "alpha", from: "web.read" }, loaded: { name: "held", reloaded: false } })
+    expect(existsSync(join(root, "held", "agents", "lead", "agent.md"))).toBe(true)
+    expect((await listed()).map((d) => d.name)).toContain("held")
+    expect(lines.some((l) => l.startsWith("alpha: desks: the owner accepted desk held (by alpha"))).toBe(true)
+    expect((await call("desks/accept", { method: "POST", body: { name: "held" } })).status).toBe(404)
+    // A held update: the desk loads as it is on disk, and says what waits.
+    const upd = await call("desks/create", { method: "POST", desk: "alpha", body: { name: "held", spec: { ...spec, title: "Held v2" }, update: true, outside: "desk.read" } })
+    expect(upd.body.held.update).toBe(true)
+    expect((await load("held")).body).toMatchObject({ name: "held", reloaded: true, proposed: { by: "alpha", from: "desk.read" } })
+    expect((await call("desks/create", { method: "POST", body: { name: "held", spec, update: true } })).status).toBe(409) // the owner decides first
+    const dropped = await call("desks/drop", { method: "POST", body: { name: "held", reason: "not now" } })
+    expect(dropped.body).toMatchObject({ dropped: "held", update: true })
+    expect(lines).toContain("alpha: desks: the owner dropped the desk proposal held (by alpha): not now")
+    expect((await call("desks")).body.proposals).toBe(0)
+  })
+
+  test("proposed tool code from such a run says so; the owner accepts it into tools/ (a hosted desk loads again) or drops it", async () => {
+    const code = `import { defineTool } from ${JSON.stringify(KERNEL)}\nexport default defineTool({ name: "feed.read", description: "reads a feed", run: () => "items" })`
+    const proposed = await call("desks/propose", { method: "POST", desk: "alpha", body: { name: "held", file: "feed", code, why: "read a feed", outside: "web.read" } })
+    expect(proposed.body).toEqual({ path: "custom/held/proposed/tools/feed.js", from: "web.read" })
+    expect(readFileSync(join(root, "held", "proposed", "tools", "feed.js"), "utf8")).toContain("// from a run that read outside (web.read)")
+    expect((await call("desks/proposed")).body.tools).toMatchObject([{ desk: "held", file: "feed", by: "alpha", from: "web.read", code }])
+    expect((await call("desks/accept", { method: "POST", desk: "held", body: { name: "held", tool: "feed" } })).status).toBe(403)
+    const ok = await call("desks/accept", { method: "POST", body: { name: "held", tool: "feed" } })
+    expect(ok.body).toMatchObject({ accepted: "custom/held/tools/feed.js", loaded: { name: "held", reloaded: true } })
+    expect(existsSync(join(root, "held", "tools", "feed.js"))).toBe(true)
+    expect((await call("desks/check", { method: "POST", body: { name: "held" } })).status).toBe(200) // it composes with the tool
+    await call("desks/propose", { method: "POST", desk: "alpha", body: { name: "held", file: "other", code: "export const X = 1", why: "x" } })
+    expect((await call("desks/drop", { method: "POST", body: { name: "held", tool: "other" } })).body.dropped).toBe("custom/held/proposed/tools/other.js")
+    expect((await call("desks/proposed")).body).toEqual({ desks: [], tools: [] })
+  })
 })
+

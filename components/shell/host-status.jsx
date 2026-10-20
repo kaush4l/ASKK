@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { useRouter } from "next/navigation"
 import { CheckIcon, MinusIcon } from "lucide-react"
 
 import { HOST_CAPABILITIES, detectHost, hasCapability } from "@/backend/live/host"
@@ -23,7 +24,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { API_PREFIX, LIMITS } from "@/lib/config"
+import { API_PREFIX, LIMITS, ROUTES } from "@/lib/config"
 import { cn } from "@/lib/utils"
 
 // The desks one server hosts (scripts/dev.js --desks): GET desks, or null
@@ -75,6 +76,7 @@ export function HostStatus() {
   const [host, setHost] = React.useState(null)
   const [desks, setDesks] = React.useState(null)
   const [setup, setSetup] = React.useState(false) // the "run an agent in this browser" form, over a desk server
+  const router = useRouter()
   // 2026-10-20: probed again when the desk this tab follows changes (the owner started or stopped an agent in this browser).
   const { status } = useEngines()
   React.useEffect(() => {
@@ -126,6 +128,12 @@ export function HostStatus() {
                   ))}
                 </DropdownMenuRadioGroup>
               </DropdownMenuGroup>
+              {/* 2026-10-20: desks and tool code a run that read outside proposed (GET desks → proposals) — on Home. */}
+              {desks.proposals > 0 && (
+                <DropdownMenuItem className="text-amber-700 pointer-coarse:min-h-10 dark:text-amber-400" onClick={() => router.push(ROUTES.home)}>
+                  {desks.proposals} proposal{desks.proposals === 1 ? " waits" : "s wait"} for you — on Home
+                </DropdownMenuItem>
+              )}
               <DropdownMenuSeparator />
             </>
           )}

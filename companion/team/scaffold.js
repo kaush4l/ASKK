@@ -9,10 +9,22 @@
 // No code an agent wrote is ever written here: main.js comes from one template with the spec's values as JSON, and
 // tool code an agent wants goes to proposed/tools/ (proposeTool) — the owner moves a file into tools/ to accept it.
 //
-//   scaffoldDesk({root, name, spec, by, update})  → {folder, written, check}; refused (400/409) before anything is
-//                                                  written, or (422) when the draft does not compose — nothing left behind
+//   scaffoldDesk({root, name, spec, by, update, hold?})  → {folder, written, check, held?}; refused (400/409) before
+//                                                  anything is written, or (422) when the draft does not compose — nothing
+//                                                  left behind; hold {from}: checked, kept as a proposal, nothing in place
 //   checkDesk(folder, {name})                     → {name, lead, tree, tools, templates} (scripts/desk.js check's answer)
-//   proposeTool({root, name, file, code, why, by}) → {path}
+//   proposeTool({root, name, file, code, why, by, from?}) → {path, from}
+//   acceptDesk / dropDesk({root, name})           the owner on a held desk; acceptTool / dropTool({root, name, file}) on
+//   listProposals(root) → {desks, tools}          proposed tool code; what waits for the owner, for the home page
+//
+// Provenance (2026-10-20, the practice's and kept helpers' hold extended to desks): a desk's roles, practice seeds and
+// main.js are prompts at every start of it. From a run that read outside (the kit's desk.create sends `outside`: the
+// run's outside reads, tool.js readsOutside) nothing is put in place: the draft is checked as always (it composes, an
+// update's mark and kept helpers too) and the spec kept as <root>/.proposed/<name>.json {name, update, by, at, from,
+// spec, written, check} — a dot folder: never a desk (listDesks needs a main.js, DESK_NAME no dot), never loaded, never
+// in a prompt. The owner's accept (desks/accept) writes it as desk.create would now — every check again, a refusal keeps
+// it waiting — and drops the file; drop deletes it. One proposal per name: a newer held write replaces it, a write in
+// place waits until the owner has decided (409). Proposed tool code from such a run says so in its header.
 //
 // spec: {title, description, request?, model?, max_steps?, folders?: [workspace folders init makes],
 //        lead: AGENT, teams?: [AGENT (a template: its members too)]}
@@ -38,6 +50,23 @@ const stepsOk = (v) => v == null || (Number.isInteger(Number(v)) && Number(v) >=
 const ownFolder = (root, name) => realpathSync(join(root, name)) === join(realpathSync(root), name)
 // Desks being written now, in this process: a second create or update of one waits for none — it is refused.
 const writing = new Set()
+export const PROPOSED = ".proposed"
+const proposalFile = (root, name) => join(root, PROPOSED, `${name}.json`)
+// The desk proposal waiting under that name, or null.
+export function readProposal(root, name) {
+  if (typeof name !== "string" || !DESK_NAME.test(name)) return null
+  try {
+    return JSON.parse(readFileSync(proposalFile(root, name), "utf8"))
+  } catch {
+    return null
+  }
+}
+const writeAtomic = (to, text) => {
+  mkdirSync(dirname(to), { recursive: true })
+  const tmp = `${to}.${process.pid}.tmp`
+  writeFileSync(tmp, text)
+  renameSync(tmp, to)
+}
 const yaml = (v) => JSON.stringify(v)
 const lines = (v) => (v == null ? [] : Array.isArray(v) ? v : String(v).split("\n")).map((x) => String(x).replace(/^\s*[-*]\s+/, "").trim()).filter(Boolean)
 const names = (v) => (v == null ? [] : Array.isArray(v) ? v : String(v).split(",")).map((x) => (typeof x === "string" ? x.trim() : x)).filter((x) => x !== "")
@@ -77,7 +106,8 @@ function agentMd(a, { lead = false } = {}) {
 // Every file of the desk, by its path in the desk folder.
 // compose: the import specifier of companion/team/compose.js from the desk folder ("../../companion/team/compose.js" for
 // custom/<name>/).
-export function deskFiles(name, spec, { by = null, at = new Date().toISOString(), compose = "../../companion/team/compose.js" } = {}) {
+// accepted: {by, at, from} of the proposal the owner accepted (README says where its words came from).
+export function deskFiles(name, spec, { by = null, at = new Date().toISOString(), compose = "../../companion/team/compose.js", accepted = null } = {}) {
   const files = {}
   const put = (base, a, opts) => {
     files[`${base}/agent.md`] = agentMd(a, opts)
@@ -122,6 +152,7 @@ export function deskFiles(name, spec, { by = null, at = new Date().toISOString()
     String(spec.description ?? "").trim(),
     "",
     `Made by desk.create (${by ?? "an agent"}, ${at.slice(0, 10)})${request ? ` from the request: "${request.split("\n")[0].slice(0, 300)}"` : ""}.`,
+    ...(accepted ? ["", `Proposed by ${accepted.by ?? "an agent"} at ${String(accepted.at ?? "").slice(0, 16)} from a run that read outside (${oneLine(accepted.from)}); accepted by the owner at ${at.slice(0, 16)}.`] : []),
     "",
     "## Agents",
     "",
@@ -156,7 +187,9 @@ export async function checkDesk(folder, { name } = {}) {
   return { name: name ?? config.name ?? desk.lead.name, lead: desk.lead.name, tree: desk.twin().tree, tools, templates }
 }
 
-export async function scaffoldDesk({ root, name, spec, by = null, update = false, clock = () => new Date() }) {
+export const scaffoldDesk = ({ root, name, spec, by = null, update = false, hold = null, clock = () => new Date() }) => scaffold({ root, name, spec, by, update, hold, clock })
+
+async function scaffold({ root, name, spec, by, update, hold, clock, accepted = null }) {
   if (typeof name !== "string" || !DESK_NAME.test(name)) throw fail(400, `name: a desk's folder name (${DESK_NAME}), e.g. "research-desk"`)
   if (!spec || typeof spec !== "object") throw fail(400, "spec: {title, description, lead: {name, description, role, …}, teams?, folders?}")
   if (!spec.lead) throw fail(400, "spec.lead is required: the desk's lead agent {name, description, role, goal, tools, artifacts, practice, members?}")
@@ -176,21 +209,24 @@ export async function scaffoldDesk({ root, name, spec, by = null, update = false
     if (!ownFolder(root, name)) throw fail(403, `custom/${name}/ is a link: never written through`)
     if (!existsSync(main) || !readFileSync(main, "utf8").startsWith(CREATE_MARK)) throw fail(409, `custom/${name}/ was not made by desk.create (or its owner removed the mark): it is the owner's — never rewritten here`)
   } else if (update) throw fail(404, `custom/${name}/ does not exist: create it (update: false)`)
+  // One proposal per name: a held write replaces it (the newest wins); a write in place waits for the owner's decision.
+  const waiting = readProposal(root, name)
+  if (waiting && !hold && !accepted) throw fail(409, `custom/${name}/ has a desk proposal waiting for the owner (by ${waiting.by ?? "an agent"}, from a run that read outside): it is written only when the owner accepts or drops it`)
 
   if (writing.has(name)) throw fail(409, `custom/${name}/ is being written by another desk.create now: try again when it is done`)
   writing.add(name)
   try {
-    return await writeDesk({ root, name, spec, by, update, clock, folder })
+    return await writeDesk({ root, name, spec, by, update, clock, folder, hold, accepted })
   } finally {
     writing.delete(name)
   }
 }
 
-async function writeDesk({ root, name, spec, by, update, clock, folder }) {
+async function writeDesk({ root, name, spec, by, update, clock, folder, hold, accepted }) {
   const at = clock().toISOString()
   // From the real folder (main.js is imported by its real path: a /var → /private/var link would break the specifier).
   const compose = relative(join(realpathSync(root), name), join(realpathSync(import.meta.dir), "compose.js")).split("\\").join("/")
-  const files = deskFiles(name, spec, { by, at, compose: compose.startsWith(".") ? compose : `./${compose}` })
+  const files = deskFiles(name, spec, { by, at, compose: compose.startsWith(".") ? compose : `./${compose}`, accepted })
   // The draft beside the desks (main.js imports ../../companion/…): composed before anything is put in place.
   const draftName = `.draft-${name}-${process.pid}-${Math.random().toString(36).slice(2, 8)}`
   const draft = join(root, draftName)
@@ -212,13 +248,14 @@ async function writeDesk({ root, name, spec, by, update, clock, folder }) {
     }
     // In place: a new desk whole; an update rewrites main.js, README.md, agents/ and teams/ files (its state, data,
     // transcripts and tools stay; a kept helper's agent.md — its spawner's — stays too).
+    let going = []
     if (update) {
       const walk = (dir) => (existsSync(dir) ? readdirSync(dir, { withFileTypes: true }).flatMap((d) => (d.isDirectory() ? walk(join(dir, d.name)) : d.name === "agent.md" || d.name === "practice.md" ? [join(dir, d.name)] : [])) : [])
       const keptMd = (f) => {
         const md = f.replace(/practice\.md$/, "agent.md")
         return existsSync(md) && /^keep: desk$/m.test(readFileSync(md, "utf8").split("\n---")[0])
       }
-      const going = [...walk(join(folder, "agents")), ...walk(join(folder, "teams"))].filter((f) => !keptMd(f))
+      going = [...walk(join(folder, "agents")), ...walk(join(folder, "teams"))].filter((f) => !keptMd(f))
       // An agent the new spec drops whose folder holds kept helpers: they would never be respawned (kernel-team reads
       // kept helpers under loaded agents only) — refused, nothing written.
       const staying = new Set(Object.keys(files).filter((p) => p.endsWith("/agent.md")).map((p) => dirname(join(folder, p))))
@@ -226,37 +263,186 @@ async function writeDesk({ root, name, spec, by, update, clock, folder }) {
         const kept = walk(dirname(f)).filter((k) => k !== f && k.endsWith("agent.md") && keptMd(k))
         if (kept.length) throw fail(409, `${relative(folder, dirname(f))} holds kept helpers (${kept.map((k) => relative(dirname(f), dirname(k))).join(", ")}): keep that agent in the spec, or dismiss them first — nothing written`)
       }
-      for (const f of going) rmSync(f, { force: true })
     }
-    for (const [path, text] of Object.entries(files)) {
-      const to = join(folder, path)
-      mkdirSync(dirname(to), { recursive: true })
-      const tmp = `${to}.${process.pid}.tmp`
-      writeFileSync(tmp, text)
-      renameSync(tmp, to)
+    const written = Object.keys(files).sort()
+    // Held (a run that read outside): checked, kept for the owner — nothing in place (above).
+    if (hold) {
+      const held = { name, update, by, at, from: oneLine(hold.from ?? "outside").slice(0, 300) }
+      writeAtomic(proposalFile(root, name), `${JSON.stringify({ ...held, spec, written, check }, null, 2)}\n`)
+      return { folder, written, check, held }
     }
+    for (const f of going) rmSync(f, { force: true })
+    for (const [path, text] of Object.entries(files)) writeAtomic(join(folder, path), text)
     mkdirSync(join(folder, "tools"), { recursive: true })
     mkdirSync(join(folder, "data"), { recursive: true })
-    return { folder, written: Object.keys(files).sort(), check }
+    return { folder, written, check }
   } finally {
     rmSync(draft, { recursive: true, force: true })
   }
 }
 
 // Tool code an agent wants for a desk: written to proposed/tools/<file>.js with why, never into tools/ (code under
-// tools/ runs as the desk server once loaded: the owner accepts a proposal by moving it there).
-export function proposeTool({ root, name, file, code, why, by = null, clock = () => new Date() }) {
-  if (typeof name !== "string" || !DESK_NAME.test(name)) throw fail(400, "name: the desk's folder name")
-  const folder = join(root, name)
-  if (!existsSync(join(folder, "main.js"))) throw fail(404, `no desk custom/${name}/`)
-  if (!ownFolder(root, name)) throw fail(403, `custom/${name}/ is a link: never written through`)
+// tools/ runs as the desk server once loaded: the owner accepts a proposal — acceptTool, or by moving it there). from: the
+// proposing run's outside reads — its header then says where its words came from.
+const NOT_LOADED = " — not loaded: the owner moves it to tools/ to accept it."
+const HEAD_BY = /^\/\/ proposed by (.*) at (\S+) — /
+const HEAD_WHY = /^\/\/ why: (.*)$/
+const HEAD_FROM = /^\/\/ from a run that read outside \((.*)\): /
+const toolBase = (file) => {
   const base = String(file ?? "").trim().replace(/\.js$/, "")
   if (!/^[a-z][a-z0-9-]{0,40}$/.test(base)) throw fail(400, `file: a tool file's name, e.g. "notes" (proposed/tools/notes.js)`)
+  return base
+}
+const deskOf = (root, name) => {
+  if (typeof name !== "string" || !DESK_NAME.test(name)) throw fail(400, "name: the desk's folder name")
+  const folder = join(root, name)
+  if (!existsSync(join(folder, "main.js"))) throw fail(404, readProposal(root, name) ? `custom/${name}/ is a desk proposal waiting for the owner's accept: not a desk yet` : `no desk custom/${name}/`)
+  if (!ownFolder(root, name)) throw fail(403, `custom/${name}/ is a link: never written through`)
+  return folder
+}
+export function proposeTool({ root, name, file, code, why, by = null, from = null, clock = () => new Date() }) {
+  const folder = deskOf(root, name)
+  const base = toolBase(file)
   if (!String(code ?? "").trim()) throw fail(400, "code: the tool file (export default defineTool({...}), docs/standard.md)")
   if (!String(why ?? "").trim()) throw fail(400, "why: what the desk cannot do without it")
   const dir = join(folder, "proposed", "tools")
   mkdirSync(dir, { recursive: true })
   const path = join(dir, `${base}.js`)
-  writeFileSync(path, `// proposed by ${oneLine(by ?? "an agent")} at ${clock().toISOString().slice(0, 16)} — not loaded: the owner moves it to tools/ to accept it.\n// why: ${oneLine(why).slice(0, 600)}\n${String(code)}\n`)
-  return { path: `custom/${name}/proposed/tools/${base}.js` }
+  const source = from ? oneLine(from).slice(0, 300) : null
+  const head = [`// proposed by ${oneLine(by ?? "an agent")} at ${clock().toISOString().slice(0, 16)}${NOT_LOADED}`, `// why: ${oneLine(why).slice(0, 600)}`, ...(source ? [`// from a run that read outside (${source}): its words may carry a page's — read every line before you accept it.`] : [])]
+  writeFileSync(path, `${head.join("\n")}\n${String(code)}\n`)
+  return { path: `custom/${name}/proposed/tools/${base}.js`, from: source }
+}
+
+// A proposed tool file as the owner reviews it: who, when, why, where its words came from, its code (header lines off).
+function readProposedTool(root, name, base) {
+  const text = readFileSync(join(root, name, "proposed", "tools", `${base}.js`), "utf8")
+  const rows = text.split("\n")
+  let k = 0
+  const by = rows[k]?.match(HEAD_BY)
+  if (by) k++
+  const why = rows[k]?.match(HEAD_WHY)
+  if (why) k++
+  const from = rows[k]?.match(HEAD_FROM)
+  if (from) k++
+  const code = rows.slice(k).join("\n").replace(/\n$/, "")
+  return { desk: name, file: base, path: `custom/${name}/proposed/tools/${base}.js`, by: by?.[1] ?? null, at: by?.[2] ?? null, why: why?.[1] ?? null, from: from?.[1] ?? null, code: code.slice(0, 20000), truncated: code.length > 20000, size: text.length }
+}
+
+// The owner accepts proposed tool code: moved into tools/ (its header says the owner accepted it), refused when tools/
+// has a file of that name. It runs once the desk is loaded again (desks/load).
+export function acceptTool({ root, name, file, clock = () => new Date() }) {
+  const folder = deskOf(root, name)
+  const base = toolBase(file)
+  const src = join(folder, "proposed", "tools", `${base}.js`)
+  if (!existsSync(src)) throw fail(404, `no proposed tool custom/${name}/proposed/tools/${base}.js`)
+  if (realpathSync(src) !== join(realpathSync(folder), "proposed", "tools", `${base}.js`)) throw fail(403, "a proposed tool file that is a link is never moved")
+  const to = join(folder, "tools", `${base}.js`)
+  if (existsSync(to)) throw fail(409, `custom/${name}/tools/${base}.js exists: the owner's — drop the proposal, or move it by hand`)
+  const proposal = readProposedTool(root, name, base)
+  const text = readFileSync(src, "utf8")
+  const [first, ...rest] = text.split("\n")
+  writeAtomic(to, [first.replace(NOT_LOADED, ` — accepted by the owner at ${clock().toISOString().slice(0, 16)}.`), ...rest].join("\n"))
+  rmSync(src, { force: true })
+  return { accepted: `custom/${name}/tools/${base}.js`, desk: name, file: base, by: proposal.by, from: proposal.from }
+}
+
+export function dropTool({ root, name, file }) {
+  const folder = deskOf(root, name)
+  const base = toolBase(file)
+  const src = join(folder, "proposed", "tools", `${base}.js`)
+  if (!existsSync(src)) throw fail(404, `no proposed tool custom/${name}/proposed/tools/${base}.js`)
+  rmSync(src, { force: true })
+  return { dropped: `custom/${name}/proposed/tools/${base}.js`, desk: name, file: base }
+}
+
+// ---- desk proposals: the owner's side --------------------------------------------------------------
+
+// The owner accepts a held desk: written as desk.create would write it now (every check again; a refusal keeps the
+// proposal waiting), then the proposal goes. → scaffoldDesk's answer + accepted {name, update, by, at, from}.
+export async function acceptDesk({ root, name, clock = () => new Date() }) {
+  const p = readProposal(root, name)
+  if (!p) throw fail(404, `no desk proposal "${name}" (accepted or dropped already?)`)
+  const accepted = { name, update: !!p.update, by: p.by ?? null, at: p.at ?? null, from: p.from ?? null }
+  const made = await scaffold({ root, name, spec: p.spec, by: p.by ?? null, update: !!p.update, hold: null, clock, accepted })
+  rmSync(proposalFile(root, name), { force: true })
+  return { ...made, accepted }
+}
+
+export function dropDesk({ root, name }) {
+  const p = readProposal(root, name)
+  if (!p) throw fail(404, `no desk proposal "${name}" (accepted or dropped already?)`)
+  rmSync(proposalFile(root, name), { force: true })
+  return { dropped: name, update: !!p.update, by: p.by ?? null, from: p.from ?? null }
+}
+
+// An agent spec as the owner reviews it: every text that would be a prompt (role, goal, description, practice lines)
+// and what it would hold.
+const holdingName = (x) => (typeof x === "string" ? x.trim() : x && typeof x === "object" ? String(x.id ?? x.type ?? "") : String(x))
+function agentReview(a = {}) {
+  const p = a.practice ?? {}
+  return {
+    name: String(a.name ?? ""),
+    description: String(a.description ?? ""),
+    role: String(a.role ?? ""),
+    ...(a.goal ? { goal: String(a.goal) } : {}),
+    ...(a.model ? { model: String(a.model) } : {}),
+    tools: names(a.tools).map(holdingName),
+    artifacts: names(a.artifacts).map(holdingName),
+    ...(a.writes != null ? { writes: names(a.writes).map(String) } : {}),
+    ...(a.reads != null ? { reads: names(a.reads).map(String) } : {}),
+    practice: { checklist: lines(p.checklist), quality: lines(p.quality), instructions: lines(p.instructions) },
+    members: (a.members ?? []).map(agentReview),
+  }
+}
+
+// Everything that waits for the owner under root: the desk proposals (newest first) and every desk's proposed tool code.
+export function listProposals(root) {
+  const desks = []
+  const dir = join(root, PROPOSED)
+  for (const f of existsSync(dir) ? readdirSync(dir).filter((n) => n.endsWith(".json")) : []) {
+    const p = readProposal(root, f.slice(0, -5))
+    if (!p?.spec) continue
+    const s = p.spec
+    desks.push({
+      name: p.name,
+      update: !!p.update,
+      by: p.by ?? null,
+      at: p.at ?? null,
+      from: p.from ?? null,
+      title: String(s.title ?? p.name),
+      description: String(s.description ?? ""),
+      request: String(s.request ?? ""),
+      model: s.model ?? null,
+      folders: names(s.folders).map(String),
+      lead: agentReview(s.lead),
+      teams: (s.teams ?? []).map(agentReview),
+      written: p.written ?? [],
+      tree: p.check?.tree ?? null,
+    })
+  }
+  desks.sort((a, b) => String(b.at).localeCompare(String(a.at)))
+  const tools = []
+  for (const d of existsSync(root) ? readdirSync(root, { withFileTypes: true }) : []) {
+    if (!d.isDirectory() || !DESK_NAME.test(d.name)) continue
+    const at = join(root, d.name, "proposed", "tools")
+    if (!existsSync(join(root, d.name, "main.js")) || !existsSync(at) || !ownFolder(root, d.name)) continue
+    for (const f of readdirSync(at).filter((n) => /^[a-z][a-z0-9-]{0,40}\.js$/.test(n)).sort()) {
+      try {
+        tools.push(readProposedTool(root, d.name, f.slice(0, -3)))
+      } catch {} // gone between the listing and the read
+    }
+  }
+  return { desks, tools }
+}
+
+// How many proposals wait (GET desks: the header's count), without reading them.
+export function proposalCount(root) {
+  const dir = join(root, PROPOSED)
+  let n = existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith(".json")).length : 0
+  for (const d of existsSync(root) ? readdirSync(root, { withFileTypes: true }) : []) {
+    const at = join(root, d.name, "proposed", "tools")
+    if (d.isDirectory() && DESK_NAME.test(d.name) && existsSync(at)) n += readdirSync(at).filter((f) => f.endsWith(".js")).length
+  }
+  return n
 }

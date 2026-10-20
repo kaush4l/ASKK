@@ -1,22 +1,35 @@
 // Tool: the one contract for anything an agent can call — a function, an MCP server's tool, another
 // agent. `type` says which ("function" | "mcp" | "agent" | "artifact" | a desk's own); the agent sees
 // them all in one TOOLS list and calls them the same way. `view` says how the live UI draws a call
-// (quest | checklist | schedule | web | board | data | text …; null = the UI picks by type).
+// (quest | checklist | schedule | web | board | data | text …; null = the UI picks by type). `outside` says whether its
+// results are text this desk did not write (readsOutside below); null = by its kind.
+
+// What a run read from outside (2026-10-20 review: a lesson or instruction written after reading a page is a lasting
+// prompt-injection path): the calls whose results carry text this desk did not write — the web (web.*, a browse
+// artifact's commands), another desk (desk.read, desk.ask), and an MCP tool (2026-10-20: type "mcp" — a tool server's
+// answer is an issue, a mail, a filing, a page: the kernel cannot tell which servers read the world, so every one
+// counts, as the MCP spec's openWorldHint defaults to true). A tool built with `outside: false` never counts (a desk
+// wrapping a closed-world tool, e.g. one whose annotations say openWorldHint: false); one with `outside: true` always
+// does (a desk's own tool that fetches a page). Agent runs keep what they called (agent.js current.outside).
+export const OUTSIDE_DESKS = new Set(["desk.read", "desk.ask"])
+export const readsOutside = (name, tool = null) =>
+  tool?.outside ?? (tool?.view === "web" || tool?.view === "browse" || tool?.type === "mcp" || OUTSIDE_DESKS.has(name) || /^(web|browse)\./.test(String(name ?? "")))
 
 export class Tool {
-  constructor({ name, description = "", input = {}, run, type = "function", view = null }) {
+  constructor({ name, description = "", input = {}, run, type = "function", view = null, outside = null }) {
     if (!name) throw new Error("tool needs a name")
     this.name = name
     this.type = type
     this.view = view
+    this.outside = typeof outside === "boolean" ? outside : null
     this.description = description
     this.input = input // {field: "what it means"}
     if (run) this._run = run
   }
 
-  // What the live UI shows of it (the agent page's tool list).
+  // What the live UI shows of it (the agent page's tool list); outside: true when its results count as outside reads.
   spec() {
-    return { name: this.name, type: this.type, view: this.view, description: this.description, input: this.input }
+    return { name: this.name, type: this.type, view: this.view, description: this.description, input: this.input, ...(readsOutside(this.name, this) ? { outside: true } : {}) }
   }
 
   // Its twin on the UI: the spec as an element of the kernel (Agent.twin lists its tools' twins).
@@ -103,7 +116,7 @@ const inline = (o) => (Array.isArray(o) ? o.join(", ") : Object.entries(o).map((
 // name: lowercase words, dot-separated parts ("web.read", "desk.board-write"); input: {field: "what it means"}.
 export const TOOL_NAME = /^[a-z][a-z0-9_-]*(\.[a-z0-9_-]+)*$/
 
-export function defineTool({ name, description, input = {}, run, view = null, type = "function" } = {}) {
+export function defineTool({ name, description, input = {}, run, view = null, type = "function", outside = null } = {}) {
   if (!name) throw new Error("defineTool: name is required")
   if (typeof name !== "string" || !TOOL_NAME.test(name)) throw new Error(`defineTool: name "${name}" must match ${TOOL_NAME} (lowercase, dot-separated parts)`)
   if (typeof description !== "string" || !description.trim()) throw new Error(`defineTool ${name}: description is required (what the tool does, for the agent)`)
@@ -112,5 +125,6 @@ export function defineTool({ name, description, input = {}, run, view = null, ty
   if (!plain) throw new Error(`defineTool ${name}: input must be a plain object {field: "what it means"}`)
   const bad = Object.entries(input).filter(([, v]) => typeof v !== "string").map(([k]) => k)
   if (bad.length) throw new Error(`defineTool ${name}: input ${bad.join(", ")} must be text (what the field means)`)
-  return new Tool({ name, description, input, run, view, type })
+  if (outside != null && typeof outside !== "boolean") throw new Error(`defineTool ${name}: outside must be true or false (whether its results are text from outside the desk)`)
+  return new Tool({ name, description, input, run, view, type, outside })
 }

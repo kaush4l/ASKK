@@ -15,6 +15,7 @@ import { BrowserAgentBar, BrowserAgentSetup } from "@/components/browser/browser
 import { Composer } from "@/components/chat/composer"
 import { Constellation } from "@/components/home/constellation"
 import { DeskLevels } from "@/components/kernel/desk-levels"
+import { ProposedDesks } from "@/components/kernel/proposed-desks"
 import { useDesk, useEngineStates, useEngines } from "@/hooks/use-engines"
 import { LIMITS, ROUTES } from "@/lib/config"
 import { agentHref } from "@/lib/nav"
@@ -376,6 +377,8 @@ export function Dashboard() {
         {/* 2026-10-18 owner: "The desk should be able to talk with me too" — what the desk tells and asks you, and your
             questions to the lead, in one timeline. */}
         {status !== "offline" && talk && <DeskTalk talk={talk} engine={ordered[0] ?? null} leadMessages={states[0]?.messages} className="max-w-xl" />}
+        {/* 2026-10-20: what a run that read outside made (a desk, tool code), held until you accept it. */}
+        {status !== "offline" && <ProposedDesks className="max-w-xl" />}
         <LivePanel engines={ordered} states={states} onOpen={open} />
       </section>
 

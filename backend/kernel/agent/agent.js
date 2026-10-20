@@ -1,6 +1,6 @@
 import { checkReport, REPORT_FORMAT } from "./report.js"
 import { parseReply, RESPONSE_FORMAT } from "./reply.js"
-import { AgentTool, QUEST_INPUT } from "../tool/tool.js"
+import { AgentTool, OUTSIDE_DESKS, QUEST_INPUT, readsOutside } from "../tool/tool.js"
 import { readVisual } from "../builtin/visual.js"
 
 // Agent: one configurable ReAct loop.
@@ -59,16 +59,16 @@ export const CHAT_FORMAT =
   "The owner is talking with you; your run (if any) goes on without this reply. Answer in plain prose from what you see above — what is built, what runs now, what the numbers are, what is next, what to check, with paths and numbers. No calls: tools do not run here. Draw rather than describe (2026-10-18 owner: \"Only text based conversation is slow and verbose\"): to show an architecture, a flow, two options side by side or numbers, add ONE block fenced ```visual … ``` holding a visual spec as JSON ({\"kind\": \"flow\" | \"steps\" | \"matrix\" | \"line\" | \"bars\" | \"tokens\" | \"scatter\" | \"compare\", …}) or {\"show\": \"<the id of a visual in the preview>\"} (e.g. \"arch\": the architecture as its script computes it) — the owner sees it drawn under your answer; keep the prose short beside it. If the owner asks you to do, change or check something, make your reply's last line, on its own (not quoted, not in a list or a code block), GUIDE: <the note for your run in progress> when you are running, or QUEUE: <the request for a new run, for the owner to start> when idle; otherwise no such line."
 const CHAT_KEEP = 12 // exchanges kept in agent.chats
 
-// What a run read from outside (2026-10-20 review: a lesson or instruction written after reading a page is a lasting
-// prompt-injection path): the calls whose results carry text this desk did not write — the web (web.*, a browse
-// artifact's commands), another desk (desk.read, desk.ask). Each run keeps the names it called in `current.outside`
-// (a Set, handed to every tool call as ctx.outside); a quest or a dispatched job starts its member's run with the
-// caller's set (the brief may carry what the caller read), and the member's own reads join the caller's as
-// "<member>: <tool>" when that run ends (its report may carry them). The practice holds an instruction or a checklist
-// item written by such a run for the owner (builtin/practice.js); a helper it keeps (agent.spawn keep: desk) works for
-// that run only, and a kept helper's update waits on it, until the owner accepts (builtin/spawn.js).
-export const OUTSIDE_DESKS = new Set(["desk.read", "desk.ask"])
-export const readsOutside = (name, tool = null) => tool?.view === "web" || tool?.view === "browse" || OUTSIDE_DESKS.has(name) || /^(web|browse)\./.test(String(name ?? ""))
+// What a run read from outside (tool/tool.js readsOutside: web.*, browse, desk.read / desk.ask, an MCP tool, a tool built
+// with outside: true): each run keeps the names it called in `current.outside` (a Set, handed to every tool call as
+// ctx.outside); a quest or a dispatched job starts its member's run with the caller's set (the brief may carry what the
+// caller read), and the member's own reads join the caller's as "<member>: <tool>" when that run ends (its report may
+// carry them). The practice holds an instruction or a checklist item written by such a run for the owner
+// (builtin/practice.js); a helper it keeps (agent.spawn keep: desk) works for that run only, and a kept helper's update
+// waits on it, until the owner accepts (builtin/spawn.js); a desk it creates or updates (desk.create) waits for the
+// owner's accept before it is written, and tool code it proposes (desk.propose) says where its words came from
+// (builtin/desks.js).
+export { OUTSIDE_DESKS, readsOutside }
 const CHAT_SHOWN = 6 // earlier exchanges a chat's prompt shows
 const CLIP_CHAT = 800 // each side of an earlier exchange in a chat's prompt
 // A chat reply's action line: GUIDE: or QUEUE: after optional spaces (≤ 3: four make an indented code block) and **,
