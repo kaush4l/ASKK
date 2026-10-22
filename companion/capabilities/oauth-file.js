@@ -8,14 +8,22 @@
 // refreshed second would be locked out. Every refresh runs under an exclusive
 // flock on ".<file>.lock" beside it and re-reads the file inside the lock, so
 // another program following the same protocol can share it.
+//
+// The lock never blocks the server (2026-10-20: two refreshes in one process opened the lock file twice; flock locks
+// per open file, so the second blocking flock waited on the first — which could never finish, the event loop being
+// stuck in that call — and the whole server froze for 15 minutes in session). One refresh per file runs in this
+// process (the others await it), the lock is taken with LOCK_NB and polled up to `lockWaitMs`, and the token
+// endpoint has `refreshMs` to answer.
 
 import { closeSync, openSync } from "node:fs"
 import { chmod, rename, writeFile } from "node:fs/promises"
 import { basename, dirname, join } from "node:path"
 import { HOST_LIMITS } from "../shared/config.js"
 
-const MARGIN = HOST_LIMITS.oauth.refreshMarginSeconds // seconds: refresh this long before the access token dies
+const LIMITS = HOST_LIMITS.oauth
+const MARGIN = LIMITS.refreshMarginSeconds // seconds: refresh this long before the access token dies
 const LOCK_EX = 2
+const LOCK_NB = 4
 const LOCK_UN = 8
 
 let libc = null
@@ -26,8 +34,20 @@ async function flock(fd, op) {
       flock: { args: [FFIType.i32, FFIType.i32], returns: FFIType.i32 },
     }).symbols
   }
-  if (libc.flock(fd, op) !== 0) throw new Error("Cannot lock the OAuth token file.")
+  return libc.flock(fd, op) === 0
 }
+
+// The exclusive lock without ever blocking: tried at once (LOCK_NB), again every pollMs until waitMs has passed.
+export async function lockFile(fd, { waitMs = LIMITS.lockWaitMs, pollMs = LIMITS.lockPollMs } = {}) {
+  const until = Date.now() + waitMs
+  for (;;) {
+    if (await flock(fd, LOCK_EX | LOCK_NB)) return
+    if (Date.now() >= until) throw new Error(`Cannot lock the OAuth token file: another program held it for ${Math.round(waitMs / 1000)} s.`)
+    await Bun.sleep(pollMs)
+  }
+}
+
+export const unlockFile = (fd) => flock(fd, LOCK_UN)
 
 const read = async (file) => {
   const source = Bun.file(file)
@@ -37,10 +57,12 @@ const read = async (file) => {
 
 const fresh = (data, now = Date.now() / 1000) => (data.expires_at ?? 0) - now > MARGIN && data.tokens?.access_token
 
-async function refresh(file) {
+async function refreshLocked(file, options) {
   const fd = openSync(join(dirname(file), `.${basename(file)}.lock`), "a", 0o600)
+  let locked = false
   try {
-    await flock(fd, LOCK_EX)
+    await lockFile(fd, options)
+    locked = true
     const data = await read(file) // inside the lock: another program may have refreshed
     if (fresh(data)) return data.tokens.access_token
     const token = data.tokens?.refresh_token
@@ -51,6 +73,7 @@ async function refresh(file) {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: token, client_id: client }),
+      signal: AbortSignal.timeout(options?.refreshMs ?? LIMITS.refreshMs),
     })
     if (!response.ok) {
       // invalid_grant: the owner must authorize again. The body never holds the token.
@@ -67,9 +90,16 @@ async function refresh(file) {
     await rename(writing, file)
     return next.access_token
   } finally {
-    await flock(fd, LOCK_UN).catch(() => {})
+    if (locked) await unlockFile(fd).catch(() => {})
     closeSync(fd)
   }
+}
+
+// One refresh per file in this process: a second caller awaits the one in flight.
+const inflight = new Map()
+export function refresh(file, options) {
+  if (!inflight.has(file)) inflight.set(file, refreshLocked(file, options).finally(() => inflight.delete(file)))
+  return inflight.get(file)
 }
 
 // `${VAR}` from the environment.

@@ -55,7 +55,7 @@ const CLIS = {
   "claude-cli": {
     binary: "claude",
     context: 200_000,
-    models: ["default", "opus", "sonnet", "haiku", "claude-opus-5-5", "claude-haiku-5-5"],
+    models: ["default", "opus", "sonnet", "haiku", "claude-fable-5-1", "claude-opus-5-5", "claude-haiku-5-5"],
     argv: (bin, model) => [
       bin, "-p", "--output-format", "text",
       "--tools", "", "--strict-mcp-config", "--setting-sources", "",

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { createResearch, researchArgv, researchEnv, researchEvents, researchRoute } from "./research.js"
+import { createResearch, MARKET_TOOLS, marketConfig, researchArgv, researchEnv, researchEvents, researchRoute } from "./research.js"
 
 const lines = (...events) => events.map((e) => JSON.stringify(e)).join("\n") + "\n"
 const assistant = (...content) => ({ type: "assistant", message: { content } })
@@ -107,4 +107,47 @@ test("a caller that leaves mid-stream kills the CLI", async () => {
   expect((await it.next()).value.type).toBe("tool")
   await it.return()
   expect(killed).toBe("SIGKILL")
+})
+
+test("market: argv adds only the bridge's six read tools and its config; without it, no MCP at all", () => {
+  const plain = researchArgv("claude", {})
+  expect(plain).not.toContain("--mcp-config")
+  expect(plain[plain.indexOf("--allowedTools") + 1]).toBe("WebSearch,WebFetch")
+  const a = researchArgv("claude", { mcpConfig: "/tmp/x/.market-mcp.json" })
+  expect(a[a.indexOf("--tools") + 1]).toBe("WebSearch,WebFetch") // built-in tools unchanged: never Bash or files
+  expect(a[a.indexOf("--allowedTools") + 1].split(",")).toEqual(["WebSearch", "WebFetch", ...MARKET_TOOLS])
+  expect(MARKET_TOOLS).toEqual(["mcp__market__quotes", "mcp__market__bars", "mcp__market__option_chain", "mcp__market__option_instruments", "mcp__market__option_quotes", "mcp__market__index_quote"])
+  expect(a).toContain("--strict-mcp-config")
+  expect(a[a.indexOf("--mcp-config") + 1]).toBe("/tmp/x/.market-mcp.json")
+  expect(a[a.indexOf("--append-system-prompt") + 1]).toContain("read-only market-data tools")
+  const cfg = marketConfig({ port: 1111, desk: "trade-card", bun: "/bin/bun" }).mcpServers.market
+  expect(cfg).toMatchObject({ type: "stdio", command: "/bin/bun" })
+  expect(cfg.args.slice(1)).toEqual(["--port", "1111", "--desk", "trade-card"])
+  expect(cfg.args[0]).toEndWith("market-bridge.js")
+})
+
+test("market: a bridge read is a tool event with its symbols; other MCP tools are not reported", () => {
+  const ev = researchEvents(JSON.stringify(assistant({ type: "tool_use", name: "mcp__market__quotes", input: { symbols: ["SPY", "QQQ"] } }, { type: "tool_use", name: "mcp__other__x", input: {} })))
+  expect(ev).toEqual([{ type: "tool", name: "mcp__market__quotes", query: "robinhood quotes SPY QQQ" }])
+})
+
+test("market: the route sets the bridge from the host (never the body), refuses it where unavailable, refuses other tools", async () => {
+  const seen = {}
+  const research = createResearch({ bin: "b", spawn: fakeSpawn(lines(RESULT), { seen }) })
+  const post = (body) => new Request("http://localhost:1/__askk/llm/research", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })
+  const off = researchRoute(research)
+  expect((await off(post({ prompt: "p", tools: ["market"] }), true)).status).toBe(403)
+  expect((await off(post({ prompt: "p", tools: ["bash"] }), true)).status).toBe(400)
+  const on = researchRoute(research, { market: { port: 1111, desk: "trade-card" } })
+  await (await on(post({ prompt: "p", tools: ["market"], market: { port: 9, desk: "evil" } }), true)).text()
+  expect(seen.argv).toContain("--mcp-config")
+  const cfgPath = seen.argv[seen.argv.indexOf("--mcp-config") + 1]
+  expect(cfgPath.startsWith(seen.opts.cwd)).toBe(true) // in the call's own temp folder, removed after
+  await (await on(post({ prompt: "p" }), true)).text()
+  expect(seen.argv).not.toContain("--mcp-config") // not asked: no bridge
+})
+
+test("an order-tool call is a tool event too", () => {
+  const line = JSON.stringify({ type: "assistant", message: { content: [{ type: "tool_use", name: "mcp__market__place_option_order", input: { quantity: 1, price: 1.2 } }] } })
+  expect(researchEvents(line)).toEqual([{ type: "tool", name: "mcp__market__place_option_order", query: "robinhood place_option_order x1 @1.2" }])
 })

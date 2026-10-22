@@ -91,7 +91,7 @@
 //   GET llm/<provider>/v1/models, POST llm/<provider>/v1/chat/completions
 //        OpenAI-compatible: the claude/codex/gemini CLIs and Apple's on-device
 //        model (companion/capabilities/local-models.js); capability models.local
-//   POST llm/research { prompt, model?, max_turns?, seconds?, system? }   NDJSON events (start, tool, note, ping,
+//   POST llm/research { prompt, model?, max_turns?, seconds?, system?, tools?: ["market"] }   NDJSON events (start, tool, note, ping,
 //        result | error): the Claude CLI with WebSearch/WebFetch only, bounded turns and seconds, killed when the
 //        caller stops (companion/capabilities/research.js); capability models.research
 //   GET team/stream            Server-Sent Events: the desk's team (companion/team/kernel-team.js): snapshot, then
@@ -237,7 +237,8 @@ export async function createHostApi({
   const term = readOnly ? null : createTerm({ root, state: runtime, policy: desk?.terminal ?? null, mounts, hostPorts: deskPorts, log: hostLog })
   const browser = readOnly ? null : createBrowser({ state: runtime, blockedPorts: deskPorts, log: hostLog })
   const localModel = local ? localModelRoute(local) : null
-  const researchCall = research ? researchRoute(research) : null
+  // the market bridge (tools: ["market"]) calls back into this host as this desk; never on a read-only server
+  const researchCall = research ? researchRoute(research, { market: !readOnly && desk?.name && mcp ? { port, desk: desk.name } : null }) : null
   const allowedHosts = new Set([`127.0.0.1:${port}`, `localhost:${port}`, `[::1]:${port}`])
 
   const GET = {

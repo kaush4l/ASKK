@@ -130,15 +130,17 @@ export const HOST_LIMITS = {
   // fs/write body (companion/server/host-api.js); requests up to 2x are read
   hostApi: { writeBytes: 8 * 1024 * 1024 },
   // shared OAuth token files (companion/capabilities/oauth-file.js)
-  oauth: { refreshMarginSeconds: 600 },
+  // lockWaitMs: how long a refresh waits for another program's lock (polled, never blocking); refreshMs: the token
+  // endpoint's answer (2026-10-20: a blocking flock froze the whole server for 15 minutes in session)
+  oauth: { refreshMarginSeconds: 600, lockWaitMs: 30_000, lockPollMs: 100, refreshMs: 20_000 },
   // integration events (companion/capabilities/integrations.js)
   integrations: { keepEvents: 200, longPollMs: 25000 },
   // CLI / Apple local models (companion/capabilities/local-models.js)
   localModels: { timeoutMs: 15 * 60000, pingMs: 5000, errorTailChars: 500 },
-  // MCP client (companion/capabilities/mcp.js)
-  mcp: { requestTimeoutMs: 60000, callTimeoutMs: 5 * 60000, resultChars: 60000, stderrTailChars: 2000, maxTools: 1000 },
   // research calls (companion/capabilities/research.js): the Claude CLI with WebSearch/WebFetch only, one stage per call
   research: { defaultTurns: 8, maxTurns: 24, defaultSeconds: 300, minSeconds: 30, maxSeconds: 900, promptChars: 400_000, systemChars: 8000, noteChars: 600, inputChars: 300, sources: 40, errorTailChars: 500, pingMs: 5000 },
+  // MCP client (companion/capabilities/mcp.js)
+  mcp: { requestTimeoutMs: 60000, callTimeoutMs: 5 * 60000, resultChars: 60000, stderrTailChars: 2000, maxTools: 1000 },
   // wake book (companion/team/wakes.js)
   wakes: { bookBytes: 32 * 1024, keepClosed: 40, listRecent: 20 },
   // team server (companion/team/team.js, team-worker.js)

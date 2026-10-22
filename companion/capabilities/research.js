@@ -2,27 +2,41 @@
 // that reads the web and writes one document in one call (2026-10-21: the kernel's text-only completions made every
 // fetch a whole ReAct step).
 //
-//   POST /__askk/llm/research {prompt, model?, max_turns?, seconds?, system?}   → NDJSON, one event per line:
+//   POST /__askk/llm/research {prompt, model?, max_turns?, seconds?, system?, tools?: ["market"]}   → NDJSON:
 //     {type: "start", model, max_turns, seconds}
 //     {type: "tool", name: "WebSearch" | "WebFetch", query?, url?}      each search or page it reads, as it happens
 //     {type: "note", text}                                               its words between tools (clipped)
 //     {type: "result", text, turns, ms, cost_usd, sources: [{name, query?, url?}]}   or {type: "error", message}
 //     {type: "ping"}                                                     keep-alive while it works
 //
-// Never Bash, files, MCP or a permission bypass: `--tools` lists only the two web tools, `--allowedTools` approves
-// only them, `--permission-mode dontAsk` refuses anything else, `--strict-mcp-config` with no config, no settings or
+// Never Bash, files or a permission bypass: `--tools` lists only the two web tools, `--allowedTools` approves only them
+// (and, with `tools: ["market"]`, the read-only market bridge's six tools — market-bridge.js over stdio, which calls back
+// into this host's mcp/call as the desk, so the broker token stays here and the desk's guard applies; 2026-10-22),
+// `--permission-mode dontAsk` refuses anything else, `--strict-mcp-config` with no other MCP server, no settings or
 // project instructions, an empty temporary folder, a scrubbed environment (no desk secrets). Bounded by turns and
 // seconds; the request's signal (the caller stopped) kills it. What it reads is outside text: a desk tool built on
 // it is `outside: true` (backend/kernel/tool/tool.js readsOutside).
 
-import { mkdtemp, rm } from "node:fs/promises"
+import { mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
+import { BRIDGE_NAMES, ORDER_NAMES } from "./market-bridge.js"
 import { HOST_LIMITS } from "../shared/config.js"
 import { httpError, json } from "../shared/http.js"
 
 const L = HOST_LIMITS.research
 export const RESEARCH_TOOLS = ["WebSearch", "WebFetch"]
+export const MARKET_TOOLS = BRIDGE_NAMES.map((n) => `mcp__market__${n}`)
+export const ORDER_TOOLS = ORDER_NAMES.map((n) => `mcp__market__${n}`)
+const BRIDGE = join(import.meta.dir, "market-bridge.js")
+const MARKET_NOTE =
+  "You also have read-only market-data tools (mcp__market__quotes, bars, option_chain, option_instruments, option_quotes, " +
+  "index_quote): live broker data. Use them for prices, bars, option contracts and the VIX instead of the web, and cite " +
+  "them as robinhood (tool) with the time in the answer."
+
+// The MCP config for the market bridge: one stdio server, this Bun running market-bridge.js against this host as the desk.
+// orders: the order account (the host's ASKK_ORDER_ACCOUNT) when the call asked for orders, else false
+export const marketConfig = ({ port, desk, orders = false, bun = process.execPath }) => ({ mcpServers: { market: { type: "stdio", command: bun, args: [BRIDGE, "--port", String(port), "--desk", String(desk), ...(orders ? ["--orders", String(orders)] : [])] } } })
 const SYSTEM =
   "You are one stage of a sequential pipeline run by an external engine. Your only tools are WebSearch and WebFetch. " +
   "Do the research the stage asks for, then reply with the stage's document only — no questions back, no offers, no " +
@@ -34,14 +48,17 @@ const clip = (s, n) => {
   return t.length > n ? `${t.slice(0, n - 1)}…` : t
 }
 
-// The command line: only the web tools, bounded turns, no MCP, no settings.
-export function researchArgv(bin, { model = "default", maxTurns = L.defaultTurns, system = "" } = {}) {
+// The command line: only the web tools (plus the market bridge's when `mcpConfig` names its file), bounded turns, no
+// other MCP, no settings.
+export function researchArgv(bin, { model = "default", maxTurns = L.defaultTurns, system = "", mcpConfig = null, orders = false } = {}) {
+  const allowed = mcpConfig ? [...RESEARCH_TOOLS, ...MARKET_TOOLS, ...(orders ? ORDER_TOOLS : [])] : RESEARCH_TOOLS
+  const base = mcpConfig ? `${SYSTEM}\n\n${MARKET_NOTE}` : SYSTEM
   return [
     bin, "-p", "--output-format", "stream-json", "--verbose",
-    "--tools", RESEARCH_TOOLS.join(","), "--allowedTools", RESEARCH_TOOLS.join(","),
+    "--tools", RESEARCH_TOOLS.join(","), "--allowedTools", allowed.join(","),
     "--permission-mode", "dontAsk", "--max-turns", String(maxTurns),
-    "--strict-mcp-config", "--setting-sources", "",
-    "--append-system-prompt", system ? `${SYSTEM}\n\n${system}` : SYSTEM,
+    "--strict-mcp-config", ...(mcpConfig ? ["--mcp-config", mcpConfig] : []), "--setting-sources", "",
+    "--append-system-prompt", system ? `${base}\n\n${system}` : base,
     ...(model && model !== "default" ? ["--model", model] : []),
   ]
 }
@@ -69,6 +86,10 @@ export function researchEvents(line, { maxTurns } = {}) {
     for (const c of e.message?.content ?? []) {
       if (c?.type === "tool_use" && RESEARCH_TOOLS.includes(c.name)) {
         out.push({ type: "tool", name: c.name, ...(c.input?.query ? { query: clip(c.input.query, L.inputChars) } : {}), ...(c.input?.url ? { url: clip(c.input.url, L.inputChars) } : {}) })
+      } else if (c?.type === "tool_use" && (MARKET_TOOLS.includes(c.name) || ORDER_TOOLS.includes(c.name))) {
+        // a market-bridge call: its symbol(s), or an order's quantity and limit, as the chip's words
+        const what = [c.input?.symbol, ...(Array.isArray(c.input?.symbols) ? c.input.symbols : []), c.input?.expiry, c.input?.type, c.input?.interval, c.input?.order_id, c.input?.quantity != null ? `x${c.input.quantity}` : null, c.input?.price != null ? `@${c.input.price}` : null].filter(Boolean).join(" ")
+        out.push({ type: "tool", name: c.name, query: clip(`${c.name.replace("mcp__market__", "robinhood ")}${what ? ` ${what}` : ""}`, L.inputChars) })
       } else if (c?.type === "text" && c.text?.trim()) out.push({ type: "note", text: clip(c.text, L.noteChars) })
     }
     return out
@@ -86,7 +107,8 @@ export function researchEvents(line, { maxTurns } = {}) {
 export function createResearch({ bin, spawn = Bun.spawn, env = process.env } = {}) {
   if (!bin) return null
   return {
-    async *run({ prompt, model = "default", max_turns, seconds, system = "", signal } = {}) {
+    // market: {port, desk} — set by the route (never from the request body) when the stage asked for tools: ["market"]
+    async *run({ prompt, model = "default", max_turns, seconds, system = "", signal, market = null } = {}) {
       if (typeof prompt !== "string" || !prompt.trim()) throw httpError(400, "No prompt.")
       if (prompt.length > L.promptChars) throw httpError(413, `Prompt too long (${L.promptChars} characters max).`)
       if (!/^[a-z0-9][a-z0-9._:-]*$/i.test(String(model))) throw httpError(400, `Bad model id "${model}".`)
@@ -95,11 +117,16 @@ export function createResearch({ bin, spawn = Bun.spawn, env = process.env } = {
       const ms = clamp(seconds, L.minSeconds, L.maxSeconds, L.defaultSeconds) * 1000
       yield { type: "start", model, max_turns: maxTurns, seconds: ms / 1000 }
       const cwd = await mkdtemp(join(tmpdir(), "askk-research-"))
+      let mcpConfig = null
+      if (market) {
+        mcpConfig = join(cwd, ".market-mcp.json")
+        await writeFile(mcpConfig, JSON.stringify(marketConfig(market)))
+      }
       const sources = []
       let last = null
       let proc = null
       try {
-        proc = spawn(researchArgv(bin, { model, maxTurns, system }), { cwd, env: researchEnv(env, bin), stdin: "pipe", stdout: "pipe", stderr: "pipe", signal, timeout: ms, killSignal: "SIGKILL" })
+        proc = spawn(researchArgv(bin, { model, maxTurns, system, mcpConfig, orders: !!market?.orders }), { cwd, env: researchEnv(env, bin), stdin: "pipe", stdout: "pipe", stderr: "pipe", signal, timeout: ms, killSignal: "SIGKILL" })
         proc.stdin.write(prompt)
         proc.stdin.end()
         const stderr = new Response(proc.stderr).text()
@@ -135,7 +162,8 @@ export function createResearch({ bin, spawn = Bun.spawn, env = process.env } = {
 }
 
 // The host route: POST llm/research → NDJSON. sameOrigin comes from host-api's checks.
-export function researchRoute(research) {
+// market: {port, desk} of this host, or null (a read-only server, or no desk): a body's tools: ["market"] is refused then.
+export function researchRoute(research, { market = null } = {}) {
   return async function researchCall(request, sameOrigin) {
     if (request.method !== "POST") return json(405, { error: "Method not allowed." })
     if (!sameOrigin) return json(403, { error: "Research calls need a same-origin request." })
@@ -143,7 +171,14 @@ export function researchRoute(research) {
     if (Number(request.headers.get("content-length") ?? 0) > L.promptChars * 4 + 20000) return json(413, { error: "Too large." })
     const body = await request.json().catch(() => null)
     if (!body) return json(400, { error: "Invalid JSON body." })
-    const events = research.run({ ...body, signal: request.signal })
+    const tools = body.tools == null ? [] : body.tools
+    if (!Array.isArray(tools) || tools.some((t) => t !== "market" && t !== "orders")) return json(400, { error: 'tools: a list of "market" (the read-only market bridge) and "orders" (its order tools, through the desk\'s order guard)' })
+    const wants = tools.length > 0
+    const orderAccount = process.env.ASKK_ORDER_ACCOUNT?.trim() || null
+    if (tools.includes("orders") && !orderAccount) return json(403, { error: "No order account on this server (ASKK_ORDER_ACCOUNT in .env)." })
+    if (wants && !market) return json(403, { error: "The market bridge is not available on this server (read-only or no desk)." })
+    const { tools: _t, market: _m, ...rest } = body // a caller never names the port or desk itself
+    const events = research.run({ ...rest, market: wants ? { ...market, orders: tools.includes("orders") ? orderAccount : false } : null, signal: request.signal })
     const first = await events.next() // a bad request fails here, as a plain HTTP error
     const encoder = new TextEncoder()
     const stream = new ReadableStream({
