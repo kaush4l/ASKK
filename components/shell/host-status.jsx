@@ -72,6 +72,9 @@ function DeskWork({ work = [] }) {
 // Where the app runs: on this computer (host API) or browser only, and per
 // host capability whether it is here or what stands in for it. When the
 // server hosts several desks, the button names the desk and switches it.
+// The last two folders of a path (the whole path is the hover title).
+const shortPath = (p) => (p ? `…/${String(p).split("/").filter(Boolean).slice(-2).join("/")}` : "?")
+
 export function HostStatus() {
   const [host, setHost] = React.useState(null)
   const [desks, setDesks] = React.useState(null)
@@ -115,13 +118,13 @@ export function HostStatus() {
           {current && (
             <>
               <DropdownMenuGroup>
-                <DropdownMenuLabel>Desk — every desk keeps running; this picks the one you see</DropdownMenuLabel>
+                <DropdownMenuLabel title="Every desk keeps running; this picks the one you see">Desk</DropdownMenuLabel>
                 <DropdownMenuRadioGroup value={current} onValueChange={(name) => name !== current && switchDesk(name)}>
                   {desks.desks.map((desk) => (
                     <DropdownMenuRadioItem key={desk.name} value={desk.name} className="pointer-coarse:min-h-10">
-                      <span className="flex flex-col">
+                      <span className="flex min-w-0 flex-col" title={desk.description || undefined}>
                         <span>{desk.name}</span>
-                        {desk.description && <span className="text-xs text-muted-foreground">{desk.description}</span>}
+                        {desk.description && <span className="line-clamp-1 text-xs text-muted-foreground">{desk.description}</span>}
                         <DeskWork work={desk.work} />
                       </span>
                     </DropdownMenuRadioItem>
@@ -140,9 +143,9 @@ export function HostStatus() {
           <DropdownMenuGroup>
             <DropdownMenuLabel className="flex flex-col gap-1">
               <span className="text-sm text-foreground">{local ? "The desk runs on this computer" : browser ? "A single agent runs in this browser" : "No desk server answers here"}</span>
-              <span className="font-normal break-all">
+              <span className="font-normal break-all" title={local ? `Workspace: ${host.root}${host.runtime ? ` · State: ${host.runtime}` : ""}` : undefined}>
                 {local
-                  ? `Workspace: ${host.root}${host.runtime ? ` · State: ${host.runtime}` : ""}`
+                  ? `Workspace: ${shortPath(host.root)}`
                   : browser
                     ? `Model: ${model?.model ?? "?"} at ${model ? new URL(model.base_url).host : "?"} (Change on the home page). Its notes and standing orders stay in this browser; the terminal, app previews and other desks need the desk server (bun run dev).`
                     : "Start the desk server from the repository (bun run dev) and open the address it prints — or run an agent in this browser from the home page."}
@@ -150,7 +153,7 @@ export function HostStatus() {
             </DropdownMenuLabel>
           </DropdownMenuGroup>
           <DropdownMenuSeparator />
-          <ul className="flex flex-col gap-2 p-2 text-sm">
+          <ul className="grid grid-cols-2 gap-x-3 gap-y-1.5 p-2 text-sm">
             {HOST_CAPABILITIES.map((cap) => {
               const on = hasCapability(host, cap.id)
               return (
@@ -160,13 +163,8 @@ export function HostStatus() {
                   ) : (
                     <MinusIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-label="Not available" />
                   )}
-                  <span className="flex flex-col">
-                    <span className={cn(!on && "text-muted-foreground")}>{browser && cap.id === "team" ? "An agent runs in this tab; every page follows it" : cap.label}</span>
-                    {!on && (
-                      <span className="text-xs text-muted-foreground">
-                        {local ? (cap.localOff ?? "Not on this server.") : "Needs the desk server."}
-                      </span>
-                    )}
+                  <span className={cn(!on && "text-muted-foreground")} title={on ? cap.label : `${cap.label} — ${local ? (cap.localOff ?? "Not on this server.") : "Needs the desk server."}`}>
+                    {browser && cap.id === "team" ? "Agent in this tab" : (cap.short ?? cap.label)}
                   </span>
                 </li>
               )

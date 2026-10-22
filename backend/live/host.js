@@ -61,20 +61,20 @@ export function resetHost() {
 export const hasCapability = (host, name) => !!host?.capabilities?.includes(name)
 
 // What the desk server gives the desk and this page, for the header's host menu and the home page: per capability,
-// what it does; `localOff` says why it can be missing on a running server.
+// what it does (`short`: the header menu's word for it, the label its hover); `localOff` says why it can be missing on a running server.
 export const HOST_CAPABILITIES = [
-  { id: "team", label: "The desk runs on this computer; every tab follows its agents live" },
-  { id: "fs.read", label: "Read the desk's workspace (its data/ folder) and watch it change (fs/watch)" },
-  { id: "fs.write", label: "Change files in the workspace", localOff: "Turned off (--read-only)." },
+  { id: "team", short: "Live team", label: "The desk runs on this computer; every tab follows its agents live" },
+  { id: "fs.read", short: "Read workspace", label: "Read the desk's workspace (its data/ folder) and watch it change (fs/watch)" },
+  { id: "fs.write", short: "Write workspace", label: "Change files in the workspace", localOff: "Turned off (--read-only)." },
   // 2026-10-17 owner: projects outside ASKK, each projects/<name>/ in the workspace (companion/capabilities/projects.js).
-  { id: "projects", label: "Projects of yours outside ASKK, loaded into the desk's workspace (projects/<name>/)", localOff: "This desk loads no projects (its main.js has no `projects`)." },
+  { id: "projects", short: "Projects", label: "Projects of yours outside ASKK, loaded into the desk's workspace (projects/<name>/)", localOff: "This desk loads no projects (its main.js has no `projects`)." },
   // 2026-10-17: the developer view's terminal and preview (companion/capabilities/terminal.js, browser.js).
-  { id: "term", label: "Terminal sessions: the desk's programs, sandboxed, kept running (term/*)", localOff: "Turned off (--read-only)." },
-  { id: "browser", label: "Preview pages of apps running on this computer, with screenshots (browser/*)", localOff: "Turned off (--read-only)." },
-  { id: "web", label: "Search the web and read pages (web/search, web/read)" },
-  { id: "mcp", label: "Tool servers: the desk's MCP servers and integrations", localOff: "No MCP server or integration configured." },
-  { id: "models.local", label: "Models this Mac runs: the claude, codex and gemini CLIs, Apple on-device" },
-  { id: "wakes", label: "The wake book (state/wakes.jsonl): runs booked for later" },
-  { id: "apple", label: "Your Mac: Shortcuts, Reminders, Spotlight, speech, clipboard", localOff: "macOS only." },
-  { id: "speech", label: "Speech on this Mac: on-device recognition (any browser) and Mac voices", localOff: "macOS 26+ only (ASKK_SPEECH=off turns it off)." },
+  { id: "term", short: "Terminal", label: "Terminal sessions: the desk's programs, sandboxed, kept running (term/*)", localOff: "Turned off (--read-only)." },
+  { id: "browser", short: "Page previews", label: "Preview pages of apps running on this computer, with screenshots (browser/*)", localOff: "Turned off (--read-only)." },
+  { id: "web", short: "Web search", label: "Search the web and read pages (web/search, web/read)" },
+  { id: "mcp", short: "Tool servers (MCP)", label: "Tool servers: the desk's MCP servers and integrations", localOff: "No MCP server or integration configured." },
+  { id: "models.local", short: "Local models", label: "Models this Mac runs: the claude, codex and gemini CLIs, Apple on-device" },
+  { id: "wakes", short: "Wake book", label: "The wake book (state/wakes.jsonl): runs booked for later" },
+  { id: "apple", short: "Mac actions", label: "Your Mac: Shortcuts, Reminders, Spotlight, speech, clipboard", localOff: "macOS only." },
+  { id: "speech", short: "Speech", label: "Speech on this Mac: on-device recognition (any browser) and Mac voices", localOff: "macOS 26+ only (ASKK_SPEECH=off turns it off)." },
 ]
