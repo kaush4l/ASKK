@@ -9,7 +9,13 @@
 //                    desk's records and live data, before or between the judged steps; always run fresh (never reused)
 //   kind: research   one host llm/research call (the Claude CLI with web tools; `tools` adds host bridges): the step's
 //                    body is its prompt, it ends in a typed ```data block
-//   kind: agent      a quest to one of the desk's agents (`agent: <name>`): the agent's answer is the step's document
+//   kind: agent      a quest to one of the desk's agents (`agent: <name>`): the agent's answer is the step's document;
+//                    without `agent:` (2026-10-22 owner: "make each step in the workflow like an agent … the agent loop
+//                    within the phase loop") a STEP AGENT: the workflow spawns `<flow>-<id>` for the run (Desk.spawn,
+//                    managed) with the step's `tools` (the desk's catalogue by name), `artifacts`, `model`, `max_steps`,
+//                    `min_calls`; its ReAct loop is drawn like any agent's (its page, thread, Live feed rows); the step's
+//                    ```data contract is its gate (StepContract: the answer refused with the problems, `retries` + 1
+//                    times); the run's stop and deadline end it; it stays until the next run (its thread readable)
 // A judged step (research | agent) may name: `schema` (its ```data shape: `schemas: {name: {validate(raw) → {value,
 // problems}, example?, labels?}}`), `derive` (`derive: {name: (value, ctx) → {code, problems}}`: code computes from the
 // data), `check` (`checks: {name: (text, ctx) → {problems, …}}`: the whole document checked, e.g. a card to its numbers;
@@ -42,7 +48,7 @@ const FILE = /^(\d{2})-([a-z][a-z0-9-]*)\.md$/
 const FRONT = /^---\n([\s\S]*?)\n---\n?/
 const KINDS = ["code", "research", "agent", "phase"]
 const SETTLED = new Set(["done", "reused", "failed", "skipped", "stopped"])
-const STEP_KEYS = new Set(["id", "title", "from", "after", "inputs", "max_turns", "seconds", "model", "status", "check", "schema", "derive", "kind", "code", "tools", "agent", "report", "artifacts", "max_steps"])
+const STEP_KEYS = new Set(["id", "title", "from", "after", "inputs", "max_turns", "seconds", "model", "status", "check", "schema", "derive", "kind", "code", "tools", "agent", "report", "artifacts", "max_steps", "min_calls"])
 export const WORKFLOW_DEFAULTS = { deadline_minutes: 60, retries: 1, critical: [], past_deadline: [] }
 
 const clip = (s, n) => (String(s ?? "").length > n ? `${String(s).slice(0, n - 1)}…` : String(s ?? ""))
@@ -95,6 +101,7 @@ export function parseStep(text, file = "step.md", { parseYaml = defaultYaml } = 
     report: list(meta.report),
     artifacts: list(meta.artifacts),
     max_steps: meta.max_steps == null ? null : Number(meta.max_steps),
+    min_calls: meta.min_calls == null ? null : Number(meta.min_calls),
     body,
     file,
   }
@@ -125,11 +132,14 @@ export function checkSteps(steps, known = {}) {
       s.n = 0
     } else {
       if (s.code != null) throw new Error(`${s.file}: code is for kind: code steps`)
-      if ((s.kind === "agent" || s.kind === "phase") && !s.agent) throw new Error(`${s.file}: kind ${s.kind} needs agent: <name>`)
+      if (s.kind === "phase" && !s.agent) throw new Error(`${s.file}: kind ${s.kind} needs agent: <name>`)
+      s.own = s.kind === "agent" && !s.agent
+      if (s.own && s.max_steps != null && !(s.max_steps >= 1 && s.max_steps <= 60)) throw new Error(`${s.file}: max_steps 1..60`)
+      if (s.own && s.min_calls != null && !(s.min_calls >= 0 && s.min_calls <= 20)) throw new Error(`${s.file}: min_calls 0..20`)
       if (s.kind === "research" && !(s.max_turns >= 1 && s.max_turns <= 24)) throw new Error(`${s.file}: max_turns 1..24`)
       if (s.kind === "research" && !(s.seconds >= 30 && s.seconds <= 900)) throw new Error(`${s.file}: seconds 30..900`)
       for (const [key, reg] of [["schema", known.schemas], ["derive", known.derive], ["check", known.checks]]) if (reg && s[key] != null && !(s[key] in reg)) throw new Error(`${s.file}: ${key} ${s[key]} — known: ${Object.keys(reg).join(", ") || "none"}`)
-      if (known.tools && s.kind !== "phase") for (const t of s.tools) if (!known.tools.includes(t)) throw new Error(`${s.file}: tools ${t} — known: ${known.tools.join(", ") || "none"}`)
+      if (known.tools && s.kind !== "phase" && !s.own) for (const t of s.tools) if (!known.tools.includes(t)) throw new Error(`${s.file}: tools ${t} — known: ${known.tools.join(", ") || "none"}`)
       s.n ??= ++n
     }
     seen.add(s.id)
@@ -322,6 +332,34 @@ export function etNow(d) {
   return { date, hm, minutes: Number(parts.hour) * 60 + Number(parts.minute), stamp: `${date}-${parts.hour}${parts.minute}`, label: `${date} ${hm} ET` }
 }
 
+// A step agent's contract (2026-10-22): the step's ```data (or its check) as the agent's gate — an answer whose document
+// fails code's check is refused with the problems, so the agent fixes it inside its own loop (soft: after the agent's
+// gateRetries it goes through flagged and the problems flow on, as a research step's do). Keep file: never saved.
+export class StepContract extends Artifact {
+  constructor({ name, step, check }) {
+    super({ name, title: `${step.id} — the step's contract` })
+    this.kind = "contract"
+    this.view = "text"
+    this.keep = "file"
+    this.step = step
+    this.check = check
+    this.state = { step: step.id, schema: step.schema ?? null, check: step.check ?? null, tries: 0, problems: [] }
+  }
+  render() {
+    const what = this.step.check ? `the whole document (check ${this.step.check})` : this.step.schema ? `its \`\`\`data block (schema ${this.step.schema})` : "its \`\`\`data block"
+    return `# ${this.name} — your answer is step ${this.step.id}'s document; code checks ${what} before it is taken${this.state.problems.length ? `\nlast answer refused (${this.state.tries}): ${this.state.problems.map((p) => clip(p, 200)).join("; ")}` : ""}`
+  }
+  brief() {
+    return this.state.tries ? `${this.state.tries} checked · ${this.state.problems.length ? `${this.state.problems.length} problems` : "ok"}` : "not answered yet"
+  }
+  gate(agent, answer) {
+    const c = this.check(String(answer ?? ""))
+    this.state = { ...this.state, tries: this.state.tries + 1, problems: (c.problems ?? []).slice(0, 12) }
+    this.changed()
+    return this.state.problems.length ? `the desk's code checked your document: ${this.state.problems.join("; ")} — write the whole document and its \`\`\`data block again with every problem fixed` : null
+  }
+}
+
 export class Workflow extends Artifact {
   // id/title: the artifact's; load(): {settings, steps} read fresh at every run (a bad file fails the run naming it), or
   // steps: a fixed list; folder: what the twin calls the steps' home; host: hostClient (research steps: host.stream
@@ -352,6 +390,7 @@ export class Workflow extends Artifact {
     this.active = null
     this.ran = new WeakSet()
     this.stopped = new WeakSet()
+    this.stepAgents = new Map() // step agent name → its desk (dismissed at the next run)
     this.timer = null
     this.n = 0
     this.state = { date: this.time(this.clock()).date, status: "idle", run: null, stages: [], result: null, runs: [], log: null, config: null }
@@ -371,7 +410,7 @@ export class Workflow extends Artifact {
   configTwin() {
     try {
       const wf = this.load()
-      return { folder: this.folder, settings: this.settings(wf), steps: wf.steps.map((x) => ({ file: x.file ?? null, id: x.id, n: x.n, kind: x.kind, title: x.title, after: x.after ?? [], inputs: x.inputs ?? [], schema: x.schema ?? null, derive: x.derive ?? null, code: x.code ?? null, agent: x.agent ?? null, check: x.check ?? null, model: x.kind === "research" ? x.model : null, max_turns: x.kind === "research" ? x.max_turns : null, seconds: x.kind === "research" ? x.seconds : null, status: x.status ?? null, ...(x.kind === "phase" ? { report: x.report ?? [], tools: x.tools ?? [], artifacts: x.artifacts ?? [], max_steps: x.max_steps ?? null } : {}) })), error: null }
+      return { folder: this.folder, settings: this.settings(wf), steps: wf.steps.map((x) => ({ file: x.file ?? null, id: x.id, n: x.n, kind: x.kind, title: x.title, after: x.after ?? [], inputs: x.inputs ?? [], schema: x.schema ?? null, derive: x.derive ?? null, code: x.code ?? null, agent: x.agent ?? null, check: x.check ?? null, model: x.kind === "research" ? x.model : null, max_turns: x.kind === "research" ? x.max_turns : null, seconds: x.kind === "research" ? x.seconds : null, status: x.status ?? null, ...(x.kind === "phase" || x.own ? { report: x.report ?? [], tools: x.tools ?? [], artifacts: x.artifacts ?? [], max_steps: x.max_steps ?? null } : {}), ...(x.own ? { own: true, min_calls: x.min_calls ?? null, step_agent: `${this.name}-${x.id}`.slice(0, 31).replace(/-+$/, "") } : {}) })), error: null }
     } catch (error) {
       return { folder: this.folder, settings: null, steps: [], error: clip(error.message, 400) }
     }
@@ -504,7 +543,7 @@ export class Workflow extends Artifact {
     const s = wf.steps.find((x) => x.id === id)
     if (!s) throw new Error(`no step ${id} (steps: ${wf.steps.map((x) => x.id).join(", ")})`)
     const pick = (k) => (s[k] == null || (Array.isArray(s[k]) && !s[k].length) ? null : s[k])
-    return { step: id, file: s.file ?? null, n: s.n, kind: s.kind, title: s.title, after: s.after ?? [], inputs: s.inputs ?? [], tools: s.tools ?? [], code: pick("code"), agent: pick("agent"), schema: s.kind === "code" ? null : pick("schema"), derive: s.kind === "code" ? null : pick("derive"), check: pick("check"), model: s.kind === "research" ? s.model : null, max_turns: s.kind === "research" ? s.max_turns : null, seconds: s.kind === "research" ? s.seconds : null, status: pick("status"), from: s.from ?? [], body: s.body ?? "", example: s.kind === "code" ? null : this.stepExample(s) }
+    return { step: id, file: s.file ?? null, n: s.n, kind: s.kind, title: s.title, after: s.after ?? [], inputs: s.inputs ?? [], tools: s.tools ?? [], code: pick("code"), agent: pick("agent"), schema: s.kind === "code" ? null : pick("schema"), derive: s.kind === "code" ? null : pick("derive"), check: pick("check"), model: s.kind === "research" ? s.model : null, max_turns: s.kind === "research" ? s.max_turns : null, seconds: s.kind === "research" ? s.seconds : null, status: pick("status"), ...(s.own ? { own: true, artifacts: s.artifacts ?? [], max_steps: s.max_steps ?? null, min_calls: s.min_calls ?? null, step_agent: `${this.name}-${s.id}`.slice(0, 31).replace(/-+$/, "") } : {}), from: s.from ?? [], body: s.body ?? "", example: s.kind === "code" ? null : this.stepExample(s) }
   }
   // The ```data example a step's prompt shows (a desk with its own schemas overrides).
   stepExample(s) {
@@ -600,6 +639,7 @@ export class Workflow extends Artifact {
     const controller = new AbortController()
     const signal = ctx.signal ? AbortSignal.any([ctx.signal, controller.signal]) : controller.signal
     this.active = { id, controller, current }
+    this.dropStepAgents()
     const source = String(current?.request?.from ?? ctx.agent?.name ?? "owner")
     const runDir = `runs/${t.date}/${t.hm.replace(":", "")}-${id}`
     if (this.state.date !== t.date) {
@@ -607,7 +647,7 @@ export class Workflow extends Artifact {
       this.onNewDay(t.date)
     }
     if (!from || !outputs.has(judged.find((s) => s.check)?.id)) this.state.result = null
-    const row = (s) => ({ id: s.id, n: s.n, title: s.title, after: s.after, kind: s.kind, status: outputs.has(s.id) ? "reused" : "waiting", started: null, ms: null, turns: null, cost_usd: null, tools: 0, sources: [], head: outputs.has(s.id) ? clip(outputs.get(s.id).text, HEAD) : "", error: null, file: outputs.get(s.id)?.file ?? null, gate: outputs.get(s.id)?.problems?.length ? { ok: false, problems: outputs.get(s.id).problems, retried: true } : null })
+    const row = (s) => ({ id: s.id, n: s.n, title: s.title, after: s.after, kind: s.kind, status: outputs.has(s.id) ? "reused" : "waiting", started: null, ms: null, turns: null, cost_usd: null, tools: 0, sources: [], head: outputs.has(s.id) ? clip(outputs.get(s.id).text, HEAD) : "", error: null, file: outputs.get(s.id)?.file ?? null, agent: null, refused: 0, gate: outputs.get(s.id)?.problems?.length ? { ok: false, problems: outputs.get(s.id).problems, retried: true } : null })
     this.state = { ...this.state, status: "running", run: { id, by: source, from, note: note ? clip(note, 600) : null, request: clip(ctx.request ?? current?.request?.text ?? note ?? "", 2000), started: t0.toISOString(), ended: null, deadline: new Date(+t0 + this.cfg.deadline_minutes * 60000).toISOString() }, stages: steps.map(row), config: this.configTwin(), ...this.extraTwin() }
     const base = { steps, outputs, inputs: {}, now: t.label, date: t.date, t, extra: note ? String(note) : null, runDir, from, agent: ctx.agent ?? null, caller: ctx.owner ? null : (ctx.agent ?? null), signal }
     let after = {}
@@ -708,9 +748,12 @@ export class Workflow extends Artifact {
     this.log(`${this.name}: stage ${s.n} ${s.id} started`)
     this.touch(true)
     const expect = s.check && this.plug.decide ? this.plug.decide(this.contextOf(base), s) : null
+    ;(base.expects ??= {})[s.id] = expect
     const pctx = { ...base, expect, schemas: this.plug.schemas, vars: { date: base.date, now: base.now } }
-    if (s.kind === "phase") pctx.vars.request = this.state.run?.request ?? ""
-    const first = s.kind === "phase" ? renderPhase(s, pctx) : this.plug.render ? this.plug.render(s, pctx, this) : renderStep(s, pctx)
+    // a step agent with report fields (a phases file's `kind: agent` phase) reads and answers like a phase
+    const phased = s.kind === "phase" || (s.own && s.report?.length > 0)
+    if (phased) pctx.vars.request = this.state.run?.request ?? ""
+    const first = phased ? renderPhase(s, pctx) : this.plug.render ? this.plug.render(s, pctx, this) : renderStep(s, pctx)
     const promptFile = this.store.write(`${base.runDir}/${String(s.n).padStart(2, "0")}-${s.id}.prompt.md`, first)
     r.flow = { in: this.plug.flow ? this.plug.flow(s, pctx, this) : flowStep(s, pctx), prompt_chars: first.length, prompt: promptFile }
     let prompt = first
@@ -731,7 +774,7 @@ export class Workflow extends Artifact {
         continue
       }
       checked = this.checkStep(s, last.text, base, expect)
-      if (checked.problems.length && attempt < this.cfg.retries) {
+      if (checked.problems.length && attempt < this.cfg.retries && !s.own) {
         retried = true
         this.log(`${this.name}: ${s.id} check failed (${clip(checked.problems.join("; "), 300)}) — asking once more`)
         prompt = `${first}\n\n<check_failed note="the desk's code checked your ${s.check ?? "```data block"}">\n${checked.problems.map((p) => `- ${p}`).join("\n")}\n</check_failed>\nWrite the whole ${s.check ?? "document and its ```data block"} again so every problem above is fixed.`
@@ -807,6 +850,72 @@ export class Workflow extends Artifact {
     }
   }
 
+  // A step agent (kind agent, no agent: named): spawned for this run under the workflow's holder (Desk.spawn, managed —
+  // no quest tool, no lease; its page, thread and Live feed rows like any agent's), its request the step's prompt, its
+  // gate the step's contract, its run ended by the workflow's stop or deadline. → {type: result, text, turns} | error.
+  async callStepAgent(s, prompt, r, base) {
+    const caller = base.agent
+    const home = caller?.home
+    if (!home?.spawn) return { type: "error", message: `step ${s.id}: no desk to spawn its agent in (the workflow has no holder)` }
+    const name = `${this.name}-${s.id}`.slice(0, 31).replace(/-+$/, "")
+    this.dropStepAgents(name)
+    const contract = new StepContract({ name: `${name}.contract`, step: s, check: (text) => this.checkStep(s, text, base, base.expects?.[s.id] ?? null) })
+    const role = `You are step ${s.n} of the ${this.name} workflow (${s.id}: ${s.title}): an agent of your own for this step of this run. Work the request with your tools; ${s.report?.length && !s.check && !s.schema ? `answer with the phase report (${s.report.join(", ")})` : "answer with the step's whole document, ending in its \`\`\`data block"} — the desk's code checks it (${name}.contract) before your answer is taken, and the next steps read it.`
+    const spec = { name, role, goal: `${this.name} step ${s.id}: ${s.title}`, tools: s.tools ?? [], artifacts: [...(s.artifacts ?? []), { artifact: contract }], maxSteps: s.max_steps ?? 12, minCalls: s.min_calls ?? ((s.tools ?? []).length ? 1 : 0), gateRetries: this.cfg.retries + 1, report: false, system: null, board: false, managed: true, ...(s.model && s.model !== "default" ? { model: s.model } : {}) }
+    let sub
+    try {
+      sub = home.spawn(spec, caller)
+    } catch (error) {
+      return { type: "error", message: `step ${s.id}: its agent was not built: ${error.message}` }
+    }
+    this.stepAgents.set(name, home)
+    r.agent = name
+    let turns = 0
+    const offs = [
+      sub.on("step", () => {
+        turns++
+        r.turns = (r.turns ?? 0) + 1
+        this.touch()
+      }),
+      sub.on("call", (e) => {
+        r.tools++
+        const i = e.input ?? {}
+        if (/^(web|browse)\./.test(e.tool) || i.url || i.q || i.query) r.sources = [...r.sources, { name: e.tool, ...(i.q || i.query ? { query: String(i.q ?? i.query) } : {}), ...(i.url ? { url: String(i.url) } : {}) }].slice(-SOURCES)
+        this.touch()
+      }),
+      sub.on("gate", () => {
+        r.refused = (r.refused ?? 0) + 1
+        r.gate = { ok: false, problems: contract.state.problems.slice(0, 8), retried: true }
+        this.log(`${this.name}: ${s.id} check failed (${clip(contract.state.problems.join("; "), 300)}) — its agent was refused and goes on`)
+        this.touch(true)
+      }),
+    ]
+    const left = Date.parse(this.state.run?.deadline ?? "") - this.clock().getTime()
+    const signal = Number.isFinite(left) && !s.check && !this.cfg.past_deadline.includes(s.id) ? AbortSignal.any([base.signal, AbortSignal.timeout(Math.max(60000, left))]) : base.signal
+    try {
+      const answer = await sub.ask(prompt, { from: `${this.name}:${s.id}`, signal, outside: caller?.current?.outside ?? null })
+      return { type: "result", text: String(answer ?? ""), turns: 0 }
+    } catch (error) {
+      return { type: "error", message: base.signal.aborted ? "stopped" : signal.aborted ? "the run's deadline passed" : error.message }
+    } finally {
+      for (const off of offs) off()
+      r.turns = turns
+    }
+  }
+
+  // The previous run's step agents leave the desk (one name: only that one); one still running stays until it ends.
+  dropStepAgents(only = null) {
+    for (const [name, home] of [...this.stepAgents]) {
+      if (only && name !== only) continue
+      try {
+        home.dismiss(name)
+        this.stepAgents.delete(name)
+      } catch (error) {
+        if (/no agent/.test(error.message)) this.stepAgents.delete(name)
+      }
+    }
+  }
+
   // A word on the done line after the reads (trade-card: the card's DECISION). Default none.
   stepNote() {
     return ""
@@ -821,6 +930,7 @@ export class Workflow extends Artifact {
   async call(s, prompt, r, base) {
     const { signal } = base
     if (s.kind === "phase") return this.callPhase(s, prompt, base)
+    if (s.own) return this.callStepAgent(s, prompt, r, base)
     if (s.kind === "agent") {
       const agents = base.agent?.home?.agents?.() ?? []
       const target = (Array.isArray(agents) ? agents : [...(agents.values?.() ?? Object.values(agents))]).find((a) => a.name === s.agent)
@@ -843,7 +953,7 @@ export class Workflow extends Artifact {
   // A judged step's document checked: the named check (the whole text), else its ```data validated and derived.
   // → {data, code, problems, check}. A desk may override (trade-card keeps its own block reader and messages).
   checkStep(s, text, base, expect) {
-    if (s.kind === "phase") {
+    if (s.kind === "phase" || (s.own && s.report?.length > 0 && !s.check && !s.schema)) {
       const missing = missingReport(s, text)
       return { data: null, code: null, problems: missing.length ? [`report fields missing: ${missing.join(", ")}`] : [] }
     }

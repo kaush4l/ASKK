@@ -107,3 +107,12 @@ test("the report: its text, file and run when the workflow wrote one; none other
   expect(pipelineView({ stages: [], report: { text: "# Trade card", file: "f.md", run: "r1", at: "2026-10-22T12:45:00Z" } }).report).toEqual({ text: "# Trade card", file: "f.md", run: "r1", at: "08:45" })
   expect(pipelineView({ stages: [] }).report).toBeNull()
 })
+
+import { configView } from "./pipeline.js"
+
+test("a step agent stage: its config line and its stage's agent link", () => {
+  const c = configView({ folder: "workflow/", steps: [{ id: "pattern", kind: "agent", own: true, tools: ["web.search", "market.look"], max_steps: 14, after: [], inputs: [], schema: "pattern" }] })
+  expect(c.steps[0].runs).toBe("step agent · tools web.search, market.look · ≤ 14 steps")
+  const v = pipelineView({ status: "running", stages: [{ id: "pattern", n: 2, status: "running", agent: "workflow-pattern", refused: 1, started: new Date().toISOString() }] })
+  expect(v.stages[0]).toMatchObject({ agent: "workflow-pattern", refused: 1 })
+})

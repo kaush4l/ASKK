@@ -26,3 +26,10 @@ test("inline: bold, italic, code; snake_case words stay text", () => {
     { t: "text", v: " — CONFIRMED_BY_TODAY_DATA" },
   ])
 })
+
+test("a wrapped list item: its indented continuation stays in the item", () => {
+  const b = mdBlocks("- first line of the item\n  continues here\n- second")
+  expect(b).toHaveLength(1)
+  expect(b[0].items).toHaveLength(2)
+  expect(JSON.stringify(b[0].items[0])).toContain("continues here")
+})

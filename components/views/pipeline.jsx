@@ -1,11 +1,15 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
 
+import { describeActivity } from "@/backend/live/activity"
 import { pipelineCall, pipelineView, stageDetail, stepFile } from "@/backend/live/pipeline"
 import { Markdown } from "@/components/views/markdown"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { useEngines, useEngineState } from "@/hooks/use-engines"
+import { agentHref } from "@/lib/nav"
 
 // A desk's staged workflow (view "pipeline": a desk's own workflow artifact): each stage one research call —
 // its status, time, and the web reads it made as they happen; the result it wrote (drawn as markdown, never HTML);
@@ -193,6 +197,7 @@ export function PipelineView({ id, state, expanded }) {
                     {s.more > 0 && <span className="text-[11px] text-muted-foreground">+{s.more}</span>}
                   </div>
                 )}
+                {s.agent && <StepAgent name={s.agent} refused={s.refused} />}
                 {s.error && <p className="text-[11px] break-words text-red-700 dark:text-red-400">{s.error}</p>}
                 <StageFlow stage={s} id={id} />
                 {s.head && <pre className="max-h-48 overflow-auto rounded-md border px-2 py-1 font-sans text-[11px] leading-4 whitespace-pre-wrap text-muted-foreground">{s.head}</pre>}
@@ -284,6 +289,25 @@ function WorkflowConfig({ id, config, open }) {
 // One step of the workflow folder: its line, and on a click the file as written — the prompt (markdown, its {{vars}} as
 // the file has them), the ```data contract it must end with, and how it is wired (kind, what it waits on and reads, its
 // tools, its check, its limits).
+// A stage run by its own agent (kind agent: the workflow spawned it for the run): a link to its page — its thread, its
+// tool calls, its model calls — with its live status and what it does now; "refused" counts its contract's gate.
+function StepAgent({ name, refused }) {
+  const { engines } = useEngines()
+  const engine = engines.find((e) => e.name === name) ?? null
+  const st = useEngineState(engine)
+  const doing = st?.status === "running" && st?.activity ? describeActivity(st.activity) : ""
+  return (
+    <p className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-[11px]">
+      <Link href={agentHref(name)} className="inline-flex min-h-6 items-center rounded border px-1.5 font-mono text-sky-700 pointer-coarse:min-h-10 dark:text-sky-400">
+        agent {name}
+      </Link>
+      <span className="text-muted-foreground">{engine ? (st?.status ?? "idle") : "not on the desk now"}</span>
+      {doing ? <span className="min-w-0 truncate text-muted-foreground">· {doing}</span> : null}
+      {refused > 0 && <span className="text-amber-600 dark:text-amber-300">· contract refused {refused}×</span>}
+    </p>
+  )
+}
+
 function StepRow({ id, step: x }) {
   const [open, setOpen] = React.useState(false)
   const [tab, setTab] = React.useState(x.kind === "code" ? "wiring" : "prompt")
@@ -302,13 +326,14 @@ function StepRow({ id, step: x }) {
   const tabs = [...(x.kind === "code" ? [] : [["prompt", "Prompt"], ["contract", "Contract"]]), ["wiring", "Wiring"]]
   const wiring = f
     ? [
-        ["kind", f.kind === "code" ? `code: ${f.code}` : f.kind === "agent" ? `agent: ${f.agent}` : "research call"],
+        ["kind", f.kind === "code" ? `code: ${f.code}` : f.own ? `step agent ${f.step_agent}` : f.kind === "agent" ? `agent: ${f.agent}` : "research call"],
         ["title", f.title],
         ["after", f.after.join(", ") || "—"],
         ["reads", f.inputs.join(", ") || "—"],
         ["tools", f.tools.join(", ") || "—"],
         ["check", [f.check && `check ${f.check}`, f.schema && `schema ${f.schema}`, f.derive && `derive ${f.derive}`].filter(Boolean).join(" · ") || "—"],
         ...(f.kind === "research" ? [["limits", `${f.max_turns} turns · ${f.seconds}s · model ${f.model}`]] : []),
+        ...(f.own ? [["loop", `≤ ${f.max_steps ?? 12} steps · ≥ ${f.min_calls ?? (f.tools.length ? 1 : 0)} tool calls · model ${f.model ?? "default"}${f.artifacts?.length ? ` · holds ${f.artifacts.join(", ")}` : ""}`]] : []),
         ...(f.from.length ? [["from", f.from.join("; ")]] : []),
       ]
     : []

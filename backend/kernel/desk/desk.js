@@ -172,6 +172,9 @@ export class Desk {
     for (const t of teams({ ...spec, name })) if (ids.has(`${t}.board`)) throw new Error(`${t}.board exists: pick another team name`)
     const goal = String(spec?.goal ?? "").trim()
     const keep = spec?.keep === "desk" ? "desk" : "run"
+    // 2026-10-22 (workflow step agents): managed — the spawner keeps it (a workflow builds one per step and dismisses it
+    // at its next run): no quest tool on the caller, no lease on the caller's run
+    const managed = spec?.managed === true
     const c = caller.config
     // board: a caller kept off its team's board (board: false) spawns helpers kept off it too.
     const inherited = Object.fromEntries(["soul", "model", "models", "fallbacks", "maxSteps", "report", "system", "writes", "reads", "board"].filter((k) => c[k] !== undefined).map((k) => [k, c[k]]))
@@ -190,10 +193,10 @@ export class Desk {
     // One spec as buildAgent takes it: the caller's config under its own (fields it leaves undefined stay the
     // caller's), the caller's holdings bound, its members prepared the same way (their builder: this agent).
     const prepare = (s, by, input = null) => {
-      const { keep: _, input: _input, at: _at, proposed: _proposed, ...rest } = s
+      const { keep: _, input: _input, at: _at, proposed: _proposed, managed: _managed, ...rest } = s
       const own = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined))
       const tools = (own.tools ?? []).map((t) => (isMember(t) ? (spawnName(t.name), prepare(t, own.name)) : t))
-      return { ...inherited, ...own, tools, artifacts: held(own.artifacts), spawned: { by, goal, at, keep, ...(team ? { team } : {}), ...(input ? { input } : {}) } }
+      return { ...inherited, ...own, tools, artifacts: held(own.artifacts), spawned: { by, goal, at, keep, ...(team ? { team } : {}), ...(input ? { input } : {}), ...(managed && s === spec ? { managed: true } : {}) } }
     }
     const names = new Set(this.ctx.names)
     const before = this.list.length
@@ -229,8 +232,8 @@ export class Desk {
     // the helper is built keep "run" until the owner accepts, Desk.keep), on the helper's config.spawned only.
     if (spec.proposed && typeof spec.proposed === "object") sub.config.spawned.proposed = { ...spec.proposed }
     ;(caller.children ??= []).push(sub) // an Agent made by hand (new Desk(lead, [lead])) has no children yet
-    caller.addTool(new AgentTool(sub, { description: `${name}: ${goal}` }))
-    if (keep === "run") {
+    if (!managed) caller.addTool(new AgentTool(sub, { description: `${name}: ${goal}` }))
+    if (keep === "run" && !managed) {
       // The caller's run ends (answer or error): the helper goes — with its team — once their runs have ended too
       // (a member may still answer a quest or a dispatch when the caller answers: wait for every queue, then again).
       const done = () => {

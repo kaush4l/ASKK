@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { parsePlot, runnerCall, runnerCharts, runnerRows, runnerStatus, startRunner } from "./runners.js"
+import { parsePlot, runnerCall, runnerCharts, runnerGate, runnerRows, runnerStatus, startRunner, windowText } from "./runners.js"
 
 test("the chart: price-scale plots over the price, the others in the lower panel, fire marks placed", () => {
   const chart = { t: ["10:30", "10:35", "10:40", "10:45"], c: [100, 101, 102, 101.5], plots: { ema: [null, 100.5, 101.2, 101.4], rsi: [50, 60, 72, 65] }, marks: [2] }
@@ -25,6 +25,49 @@ test("each runner's state in a word, the holding and near ones first", () => {
   expect(parsePlot("ema9=ema(close, 9); hi: highest(high, 20)\nbad")).toEqual({ ema9: "ema(close, 9)", hi: "highest(high, 20)" })
 })
 
+// The desk's twins (custom/trading-team tests, qqq-nflx-cool): a runner on 10-21 10:15–11:00 gated on NFLX. Before the
+// fix every one of these read "holds" in green, because the status keyed on last.cond alone.
+test("a windowed, gated runner: sleeps, held, holds only when the gate holds too, window closed past until", () => {
+  const r = { status: "running", warn: 2, symbol: "QQQ", when: "cross_below(close, 717.2)", gate: { symbol: "NFLX", when: "close < 62.1" }, on: "2026-10-21", from: "10:15", until: "11:00" }
+  const at = (iso) => new Date(iso)
+  // 15:30 on 10-20: the cross is true on an observed read, the runner sleeps until its day
+  const asleep = { ...r, last: { cond: true, effective: false, observed: true, sleeping: "10-21 10:15" } }
+  expect(runnerStatus(asleep, at("2026-10-20T19:30:00Z"))).toEqual({ word: "sleeps", tone: "paused", detail: "until 10-21 10:15" })
+  expect(runnerStatus(asleep, at("2026-10-21T14:05:00Z"))).toMatchObject({ word: "sleeps", detail: "until 10:15" }) // its day, before from
+  // a twin without on/from (saved by a desk whose clock the tab does not share): last.sleeping says it
+  expect(runnerStatus({ status: "running", last: { cond: true, sleeping: "10:15" } })).toMatchObject({ word: "sleeps", detail: "until 10:15" })
+  // 10:20 on 10-21: the cross holds, the gate is false — held, never "holds"
+  const held = { ...r, last: { cond: true, effective: false, gate: { cond: false, value: 63.4 }, held: "gate false: NFLX close 63.4", sleeping: null } }
+  expect(runnerStatus(held, at("2026-10-21T14:20:00Z"))).toEqual({ word: "held", tone: "running", detail: "gate false: NFLX close 63.4" })
+  // cond true but effective false without a held line (an older twin): still held, from the gate it read
+  expect(runnerStatus({ ...r, last: { cond: true, effective: false, gate: { cond: null, value: null } } }, at("2026-10-21T14:20:00Z"))).toMatchObject({ word: "held", detail: "gate unread: NFLX close —" })
+  // both hold on the same bar
+  expect(runnerStatus({ ...r, last: { cond: true, effective: true, gate: { cond: true, value: 61.9 } } }, at("2026-10-21T14:30:00Z"))).toMatchObject({ word: "holds", tone: "holds" })
+  // a runner saved before gates carries cond alone: it still holds
+  expect(runnerStatus({ status: "running", last: { cond: true } })).toMatchObject({ word: "holds" })
+  // past until on its day (resumed, or the owner's "now"): it reads, never fires
+  const late = { ...r, last: { cond: true, effective: true, gate: { cond: true, value: 61.9 } } }
+  expect(runnerStatus(late, at("2026-10-21T15:05:00Z"))).toEqual({ word: "window closed", tone: "paused", detail: "at 11:00 · reads, never fires" })
+  expect(runnerStatus(late, at("2026-10-22T14:00:00Z"))).toMatchObject({ word: "window closed", detail: "10-21 has passed · reads, never fires" })
+  expect(runnerStatus({ status: "running", until: "11:30", last: { cond: false } }, at("2026-10-21T15:05:00Z"))).toMatchObject({ word: "watching" }) // no on: today's window still open
+  expect(runnerStatus({ ...late, status: "expired" })).toMatchObject({ word: "expired", tone: "done", detail: "at 11:00 ET" })
+  // the held and sleeping ones never rank with the holding ones
+  const rows = runnerRows({ runners: [{ id: "s", ...asleep, on: "2026-10-22" }, { id: "h", ...held }, { id: "x", status: "running", last: { cond: true } }] }, at("2026-10-21T14:20:00Z"))
+  expect(rows.map((x) => [x.r.id, x.s.word])).toEqual([["x", "holds"], ["h", "held"], ["s", "sleeps"]])
+})
+
+test("the window and the gate as the card draws them", () => {
+  expect(windowText({ on: "2026-10-21", from: "10:15", until: "11:00" })).toBe("on 10-21 · from 10:15 · until 11:00")
+  expect(windowText({ until: "11:30" })).toBe("until 11:30")
+  expect(windowText({})).toBe("")
+  expect(runnerGate({ last: { cond: true } })).toBeNull()
+  const gate = { symbol: "NFLX", when: "close < 62.1" }
+  expect(runnerGate({ gate, last: { gate: { cond: false, value: 63.4 } } })).toEqual({ symbol: "NFLX", when: "close < 62.1", value: 63.4, holds: false, word: "false" })
+  expect(runnerGate({ gate, last: { gate: { cond: true, value: 61.9 } } })).toMatchObject({ holds: true, word: "holds" })
+  expect(runnerGate({ gate, last: { gate: { cond: null, value: null } } })).toMatchObject({ holds: null, word: "unread" })
+  expect(runnerGate({ gate })).toMatchObject({ value: null, holds: null, word: "not read yet" })
+})
+
 test("the owner's calls go to the artifact", async () => {
   const realFetch = globalThis.fetch
   const calls = []
@@ -42,4 +85,17 @@ test("the owner's calls go to the artifact", async () => {
   } finally {
     globalThis.fetch = realFetch
   }
+})
+
+// 2026-10-22: kernel Runners (backend/kernel/builtin/runners.js) — a watcher's own run state on the same card
+import { checkLine } from "./runners.js"
+
+test("a kernel runner: the check line, error, paused and waiting words", () => {
+  const base = { id: "spy", status: "running", checks: 3, checked_at: "2026-10-22T14:03:00Z", next_at: "2026-10-22T14:04:00Z", errors: 0, last: { value: 771.4, against: 772.5, cond: false } }
+  expect(checkLine(base)).toBe("check #3 · 10:03 ET · next 10:04 · now 771.4 vs 772.5")
+  expect(checkLine({ id: "x" })).toBe("")
+  expect(runnerStatus({ ...base, status: "error", error: "quote failed" })).toMatchObject({ word: "error", tone: "error", detail: "quote failed" })
+  expect(runnerStatus({ ...base, status: "paused", paused_why: "CPI" })).toMatchObject({ word: "paused", detail: "CPI" })
+  expect(runnerStatus({ ...base, last: { ...base.last, waiting: "after qqq-bounce fires" } })).toMatchObject({ word: "waiting", detail: "after qqq-bounce fires" })
+  expect(runnerStatus({ ...base, last: { value: null, cond: null, note: "outside 10:00–14:30 ET" } })).toMatchObject({ word: "resting", detail: "outside 10:00–14:30 ET" })
 })

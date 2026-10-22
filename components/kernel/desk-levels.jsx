@@ -333,7 +333,7 @@ function ChipButton({ artifact: a, onExpand }) {
 
 // An artifact big: its whole view — a dialog on a wide screen, a sheet from the bottom (near full height) on a phone.
 // Esc, the close button or a tap outside closes it; focus goes back to the tile it was opened from.
-function ArtifactBig({ artifact: a, from, open, onOpenChange }) {
+export function ArtifactBig({ artifact: a, from, open, onOpenChange }) {
   const phone = useIsMobile()
   const finalFocus = React.useCallback(() => (from?.isConnected ? from : true), [from])
   const head = a && (

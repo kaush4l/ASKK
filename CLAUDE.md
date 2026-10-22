@@ -93,7 +93,13 @@ what is saved where), the twin contract.
   after `gateRetries` refusals the answer goes through flagged); the run still ends at `maxSteps`. `guide(text, from)` (running only, else false): a note the next step's prompt shows
   under `# OWNER GUIDANCE` right after the request, once. The prompt's order (2026-10-17 owner): soul → `# YOU ARE` +
   role → artifacts → `# REQUEST` (+ `# OWNER GUIDANCE`) → `# EARLIER RUNS` → `# WORK DONE ON THIS REQUEST` →
-  `# TOOLS` → `# RESPONSE` (map: `backend/kernel/README.md` (d)). Every prompt part carries its own instructions: `# RESPONSE`
+  `# TOOLS` → `# RESPONSE` (map: `backend/kernel/README.md` (d)). Compaction (2026-10-22 owner: "if it is 90%, we autocompress and send the
+  compressed + goal"): before each step's model call, a prompt at `COMPACT_AT` (0.9) of `agent.budget`
+  (`config.contextChars`, else `contextBudget(config.model)`: apple 12k, small local 100k, else 400k chars) folds the
+  run's steps but the newest two and its `# EARLIER RUNS` into one summary step (tool `compact`; one model call, else
+  clipped in code), `# REQUEST`/`# OWNER GUIDANCE` verbatim; event `compact {before_chars, after_chars, budget,
+  steps_folded, runs_folded, mode: model | clip, error?}` → a thread / Live feed row (`team-rows.js` `compactLine`, kind
+  `compact`); tests `compact.test.js`. Every prompt part carries its own instructions: `# RESPONSE`
   (`agent/reply.js` `RESPONSE_FORMAT` + `agent/report.js` `REPORT_FORMAT`, unless `config.system` replaces it), a
   tool its description, an artifact its head line, the run's state its header — a role (`config.role`) says only what
   the agent is for and how it works. `context` (`new Agent(config, {infer, tools, artifacts, context})`): spread into
@@ -130,7 +136,7 @@ what is saved where), the twin contract.
   how the live UI draws a call (quest | checklist | schedule | web | board | list | data | text …); an artifact's
   commands take the artifact's view. A call to another agent is a brief `{requirement, ask, outcome}`
   (`QUEST_INPUT`, `questText`, refused without them). The same data call twice in a run within 3 min answers from
-  the first; an artifact called by name returns its view; old step results keep head and tail. `defineTool({name,
+  the first; an artifact called by name returns its view; old step results keep head and tail (an old result that leads with a `line`/`lines` summary keeps it whole: `clipOld`). `defineTool({name,
   description, input, run, view?, type?, outside?})`: the shape a desk's `tools/<name>.js` default-exports, checked at load
   (name `TOOL_NAME`, description, run, input `{field: "text"}`). `readsOutside(name, tool)` (2026-10-20, moved here from
   agent.js): whether a tool's results are text this desk did not write — view web or browse, `desk.read`/`desk.ask`, and
@@ -322,6 +328,23 @@ what is saved where), the twin contract.
   kind `phase` = that agent's whole run (`callPhase`) on `renderPhase` (`# PHASE`, `# BOARD` of earlier reports,
   `# PHASE REPORT`), `missingReport` re-asks; owner `run [{id, request}]` (the pipeline view's Run box); `Agent.removeArtifact`.
   Demo `desks/agent/phases/brief.md`; tests `phases.test.js`.
+- 2026-10-22 owner ("make each step in the workflow like an agent … the agent loop within the phase loop"): step agents —
+  a step file (`NN-<id>.md` or a phases file's `## <id>`) with `kind: agent` and no `agent:` is spawned by the workflow
+  for the run as `<flow>-<id>` (`callStepAgent`: `Desk.spawn` under the holder, `managed: true` = no quest tool on the
+  caller, no lease; dismissed at the next run, `dropStepAgents`), its frontmatter like an agent .md (`tools` from the
+  desk's catalogue by name, `artifacts`, `model`, `max_steps` 1–60, `min_calls`), its request the rendered step prompt
+  (with `report:` fields: `renderPhase`), its ```data / check / report the gate of a `StepContract` artifact
+  (`<name>.contract`, soft, `gateRetries` = retries + 1; still failing: through flagged, problems flow on); the run's
+  stop and deadline end it. Twin: a stage row's `agent` and `refused`; config `own`, `step_agent`. UI: the pipeline
+  stage links to its agent with its live status (`StepAgent`, `components/views/pipeline.jsx`); kernel-team draws it as
+  any spawned agent. Tests `step-agent.test.js`. Runners (2026-10-22 owner: "the tool can run periodically and have its
+  own run state … running, paused and current state"): `builtin/runners.js` `Runners` (view and kind `runners`, keep
+  `always`) — periodic checks a desk plugs in (`check(r, shared, now)`, `prepare(due)`, `onFire(r, res, now)`; the desk's
+  run loop calls `tick()`), each runner's state kept by the kernel: status running | paused | fired | expired | error
+  (3 failed checks in a row) | stopped, `checks`, `checked_at`, `next_at`, `last {value, against, cond, waiting, note,
+  prox {gap, pace, eta}}`, `fires`; commands `<id>.pause {id, reason}`, `.resume`, `.check`; owner pause | resume | now |
+  stop | remove `[{id, runner}]`; the prompt one line per runner. UI: the runners view (`checkLine`, Check now). Tests
+  `builtin-runners.test.js`.
 - `builtin/plan.js` `Plan` (extends `Checklist`): the desk's checklist written at run time (the planner's): id
   `plan`, view `checklist`, keep `always`, no reset on run start; `plan.write {goal, items}` ("id: text" lines, "!" =
   required; replaces the open items, keeps a ticked/skipped item still listed, bumps `revision`, records `by`),
@@ -377,7 +400,7 @@ what is saved where), the twin contract.
   the twin states), `builtin-files.test.js`, `builtin-terminal.test.js`, `builtin-preview.test.js` (pages, visuals,
   the owner's asks: the stage's tests moved in), `builtin-web.test.js`, `builtin-browse.test.js`, `builtin-talk.test.js` (each over
   `test/fake-host.js`), `builtin-visual.test.js` (`checkVisual`), `builtin-dispatch.test.js`, `builtin-desks.test.js` (desk.* provenance: `outside` sent, the hold named; an MCP result taints the run),
-  `team.test.js` (spawned teams, templates, lanes, `globCovers`), `chat.test.js` (`Agent.chat`); `agent.test.js` also
+  `team.test.js` (spawned teams, templates, lanes, `globCovers`), `chat.test.js` (`Agent.chat`), `compact.test.js` (prompt compaction); `agent.test.js` also
   `Agent.stop` (queued runs, a quested member).
 
 ## Desks (`custom/<desk>/`)
@@ -543,7 +566,18 @@ Code more than one desk may use lives in `custom/shared/`. `custom/` is git-igno
   `note`, `ping`, then `result {text, turns, ms, cost_usd, sources}` or `error`: the Claude CLI with `--tools` and
   `--allowedTools` WebSearch,WebFetch only, `--permission-mode dontAsk`, `--strict-mcp-config`, no settings, an empty
   temp folder, a scrubbed env (no desk secrets), never Bash or a bypass; the caller's abort or leaving kills it; a desk
-  tool on it is `outside: true`; `hostClient.stream(path, body, {signal, onEvent})` reads it), `apple`
+  tool on it is `outside: true`; `hostClient.stream(path, body, {signal, onEvent})` reads it. 2026-10-22 owner ("give it
+  the Robin Hood MCP tools for any live market data"): body `tools: ["market"]` adds the read-only market bridge —
+  `capabilities/market-bridge.js`, a stdio MCP server written into the call's temp `--mcp-config` (still
+  `--strict-mcp-config`), whose six tools (`mcp__market__quotes|bars|option_chain|option_instruments|option_quotes|
+  index_quote`, arguments checked, a fixed allowlist) are the only ones added to `--allowedTools`; it answers by POSTing
+  this host's `mcp/call` (robinhood) as the desk, so the broker token never reaches the CLI and the desk's guard applies;
+  the route sets the port and desk itself (a body's own are dropped) and refuses `market` on a `--read-only` server; each
+  bridge read is a `tool` event "robinhood <tool> <symbols>"). 2026-10-22 owner ("the local Robin Hood tools to gather all the
+data and also place the orders"): body `tools: ["orders"]` also gives the bridge `--orders <ASKK_ORDER_ACCOUNT>` and five
+order tools (`portfolio`, `option_positions`, `option_orders`, `place_option_order` — limit only, legs checked —
+`cancel_option_order`), each still the desk's `mcp/call`, so the desk's guard decides (trade-card: trading-team's order
+guard, .env caps, one shared `state/orders.jsonl`); 403 with no order account), `apple`
   (macOS: fixed programs with argument lists, never a shell, `hardware/apple/`; 2026-10-21 `notes.latest {folder}` (the
   newest note's title and text, ≤ 120K) and `notes.add {folder, title, markdown}` (Bun.markdown → the note's HTML body)
   — Automation asks once), `speech` (`hardware/speech/`),

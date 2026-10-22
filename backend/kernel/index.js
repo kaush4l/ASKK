@@ -1,7 +1,7 @@
 // The kernel: agent loop, artifacts, tools, callbacks, teams. Plain JS, no host or worker
 // dependency, so the same code runs in a tab, a worker, a Bun server and a test.
 // The one entry from outside the kernel: import from here, never from a file in its folders (map: README.md).
-export { Agent, CHAT_FORMAT } from "./agent/agent.js"
+export { Agent, CHAT_FORMAT, COMPACT_AT, contextBudget } from "./agent/agent.js"
 export { parseReply, RESPONSE_FORMAT } from "./agent/reply.js"
 export { REPORT_FORMAT, REPORT_FIELDS, checkReport, parseReport, scoreReport } from "./agent/report.js"
 export { Tool, AgentTool, QUEST_INPUT, questText, defineTool, TOOL_NAME, readsOutside, OUTSIDE_DESKS } from "./tool/tool.js"
@@ -24,8 +24,10 @@ export { Preview } from "./builtin/preview.js"
 export { Dispatch } from "./builtin/dispatch.js"
 export { Browse, PART as BROWSE_PART } from "./builtin/browse.js"
 export { Talk } from "./builtin/talk.js"
-export { Workflow, WORKFLOW_DEFAULTS, parseStep, checkSteps, parseWorkflowFiles, parsePhasesFile, renderPhase, missingReport, downstream, fencedJson, renderStep, flowStep, memoryStore, etNow } from "./builtin/workflow.js"
+export { Workflow, StepContract, WORKFLOW_DEFAULTS, parseStep, checkSteps, parseWorkflowFiles, parsePhasesFile, renderPhase, missingReport, downstream, fencedJson, renderStep, flowStep, memoryStore, etNow } from "./builtin/workflow.js"
 export { checkParams, checkVisual, linksOf, metaLine, readVisual, visualBrief, VISUAL_KINDS } from "./builtin/visual.js"
 export { webSearchTool, webReadTool, WEB_TOOLS } from "./builtin/web.js"
 export { complete, contextWindow, listModels } from "./model/llm.js"
 export { narrowText, READ_CHARS, FIND_CHARS, FIND_AROUND } from "./util/text.js"
+export { parseYamlish } from "./util/yamlish.js"
+export { Runners } from "./builtin/runners.js"

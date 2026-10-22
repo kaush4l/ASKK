@@ -13,7 +13,7 @@ max_steps: 16
 Find what is known about {{request}}: three to six sources, each read, not only searched. Every finding carries its source.
 
 ## outline
-agent: agent
+kind: agent
 report: outline, open_questions
 max_steps: 6
 

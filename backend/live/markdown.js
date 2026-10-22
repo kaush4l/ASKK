@@ -91,7 +91,12 @@ export function mdBlocks(text, { max = 600 } = {}) {
     if (item(line)) {
       const ordered = !!item(line)[2]
       const items = []
-      while (i < lines.length && item(lines[i]) && !!item(lines[i])[2] === ordered) items.push(mdInline(item(lines[i++])[3]))
+      // an indented line under an item continues it (a wrapped item, as stage prompts are written)
+      while (i < lines.length && item(lines[i]) && !!item(lines[i])[2] === ordered) {
+        let text = item(lines[i++])[3]
+        while (i < lines.length && /^\s{2,}\S/.test(lines[i]) && !item(lines[i])) text += ` ${lines[i++].trim()}`
+        items.push(mdInline(text))
+      }
       blocks.push({ type: ordered ? "ol" : "ul", items })
       continue
     }

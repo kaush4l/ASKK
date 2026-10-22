@@ -49,7 +49,8 @@ describe("workflow files", () => {
     expect(wf.steps.map((s) => [s.id, s.kind, s.n, s.after])).toEqual([["state", "code", 0, []], ["read", "research", 1, ["state"]], ["ask", "agent", 2, ["read"]]])
     expect(() => parseWorkflowFiles([{ name: "01-x.md", text: "---\nid: x\nschema: nope\n---\nX" }], { known: plugins() })).toThrow("schema nope — known: score")
     expect(() => parseWorkflowFiles([{ name: "01-x.md", text: "---\nid: y\n---\nX" }])).toThrow("named after its file")
-    expect(() => parseWorkflowFiles([{ name: "01-x.md", text: "---\nid: x\nkind: agent\n---\nX" }])).toThrow("kind agent needs agent")
+    expect(parseWorkflowFiles([{ name: "01-x.md", text: "---\nid: x\nkind: agent\ntools: [web.search]\nmax_steps: 6\nmin_calls: 2\n---\nX" }]).steps[0]).toMatchObject({ own: true, tools: ["web.search"], max_steps: 6, min_calls: 2 }) // a step agent
+    expect(() => parseWorkflowFiles([{ name: "01-x.md", text: "---\nid: x\nkind: agent\nmax_steps: 99\n---\nX" }])).toThrow("max_steps 1..60")
     expect(() => parseWorkflowFiles([{ name: "01-x.md", text: "---\nid: x\nwat: 1\n---\nX" }])).toThrow("unknown keys wat")
     expect(() => checkSteps([{ id: "a", after: ["b"] }])).toThrow("not an earlier step")
   })

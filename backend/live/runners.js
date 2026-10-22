@@ -1,9 +1,14 @@
 // A desk's live runners (an artifact with view "runners": code's formulas on live bars, each calling the lead back when
 // its condition holds — a desk's own artifact class). Pure helpers for its UI twin
 // (components/views/runners.jsx): the chart's geometry, each runner's state in a word and a tone, the owner's calls.
-//   state.runners[]: { id, symbol, source, interval, every, when, plot, then, repeat, warn, until, why, set_by, status,
-//                      error, last: {at, price, cond, values, prox: {gap, pace, eta}, warming}, fires: [{at, kind}],
-//                      chart: {t: [label], c: [close], plots: {name: [value]}, marks: [index], source, interval} }
+//   state.runners[]: { id, symbol, source, interval, every, when, plot, then, repeat, warn, until ("HH:MM" ET), on
+//                      ("YYYY-MM-DD": the ET day it is live), from ("HH:MM" ET), gate ({symbol, when}: a second name's
+//                      formula that must hold on the same bar), why, set_by, status (running | paused | fired | stopped |
+//                      expired), error, last: {at, price, cond (the when), effective (cond and the gate together), gate:
+//                      {cond, value} | null, held (the cond holds, the gate does not: why), sleeping (what it sleeps
+//                      until: before its day or from), observed, values, prox: {gap, pace, eta}, warming},
+//                      fires: [{at, kind}], chart: {t: [label], c: [close], plots: {name: [value]}, marks: [index], source,
+//                      interval} }   (on, from, gate and last.effective/held/sleeping optional: older twins lack them)
 
 import { teamCall } from "@/backend/live/stream"
 
@@ -66,15 +71,62 @@ export function runnerCharts(chart, { width = 360, height = 150, lowerHeight = 5
 
 export const clockOf = (iso) => (iso ? new Date(iso).toLocaleTimeString("en-US", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hour12: false }) : "")
 const lastFire = (r) => (r?.fires ?? []).filter((f) => f.kind === "fire").at(-1) ?? null
+const etDay = (d) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date(d))
+const etHM = (d) => new Date(d).toLocaleTimeString("en-US", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hourCycle: "h23" })
 
-// One runner's state: {word, tone, detail}. tone: holds | near | running | warming | paused | done | error.
-export function runnerStatus(r) {
+// The window, as the desk reads it (custom/trading-team/tools/runners.js sleepsUntil): before its day or its from-time a
+// runner sleeps — computed and charted, never fired. → what it sleeps until ("10-21 10:15" | "10-21" | "10:15"), else
+// null. A twin without on/from falls back to what the desk's last read said.
+export function sleepsUntil(r, now = new Date()) {
+  if (!r?.on && !r?.from) return r?.last?.sleeping ?? null
+  const day = etDay(now)
+  if (r.on && day < r.on) return `${r.on.slice(5)}${r.from ? ` ${r.from}` : ""}`
+  if (r.from && (!r.on || day === r.on) && etHM(now) < r.from) return r.from
+  return null
+}
+
+// Running past its window — after its until on its day, or past its day — it reads, never fires (the desk's "window
+// closed"). → why, else null.
+function windowClosed(r, now) {
+  if (r?.status !== "running") return null
+  const day = etDay(now)
+  if (r.on && day > r.on) return `${r.on.slice(5)} has passed`
+  if (r.until && (!r.on || day === r.on) && etHM(now) > r.until) return `at ${r.until}`
+  return null
+}
+
+// "on 10-21 · from 10:15 · until 11:00" ("" without a window).
+export const windowText = (r) => [r?.on ? `on ${r.on.slice(5)}` : "", r?.from ? `from ${r.from}` : "", r?.until ? `until ${r.until}` : ""].filter(Boolean).join(" · ")
+
+// The gate as the card draws it: null without one, else {symbol, when, value (the gate bar's close it read), holds: true |
+// false | null, word}. Unread: no gate bar of the runner's bar's session yet; not read yet: no read since it was set.
+export function runnerGate(r) {
+  if (!r?.gate) return null
+  const g = r.last?.gate ?? null
+  const holds = g?.cond ?? null
+  return { symbol: r.gate.symbol, when: r.gate.when, value: g?.value ?? null, holds, word: !g ? "not read yet" : holds === true ? "holds" : holds === false ? "false" : "unread" }
+}
+
+// One runner's state: {word, tone, detail}. tone: holds | near | running | warming | paused | done | error. "holds" only
+// when the condition and its gate hold together on its bar (last.effective; a twin saved before gates: last.cond); a
+// sleeping runner, one held by its gate and one past its window never read "holds". `now`: the clock its window is read at.
+export function runnerStatus(r, now = new Date()) {
   const l = r?.last ?? null
-  if (r?.status && r.status !== "running") return { word: r.status, tone: r.status === "paused" ? "paused" : "done", detail: r.status === "fired" && lastFire(r) ? `at ${clockOf(lastFire(r).at)} ET` : "" }
+  if (r?.status === "error") return { word: "error", tone: "error", detail: r.error ?? "" }
+  if (r?.status && r.status !== "running") return { word: r.status, tone: r.status === "paused" ? "paused" : "done", detail: r.status === "fired" && lastFire(r) ? `at ${clockOf(lastFire(r).at)} ET` : r.status === "expired" && r.until ? `at ${r.until} ET` : r.status === "paused" ? (r.paused_why ?? "") : r.status === "stopped" ? (r.stop_why ?? "") : "" }
   if (r?.error) return { word: "error", tone: "error", detail: r.error }
+  const sleeping = sleepsUntil(r, now)
+  if (sleeping) return { word: "sleeps", tone: "paused", detail: `until ${sleeping}` }
+  const closed = windowClosed(r, now)
+  if (closed) return { word: "window closed", tone: "paused", detail: `${closed} · reads, never fires` }
   if (!l) return { word: "starting", tone: "warming", detail: "" }
   if (l.warming) return { word: "warming", tone: "warming", detail: l.warming }
-  if (l.cond === true) return { word: "holds", tone: "holds", detail: "" }
+  if (l.waiting) return { word: "waiting", tone: "running", detail: l.waiting } // a kernel runner held by its condition
+  if (l.note && l.cond == null) return { word: "resting", tone: "paused", detail: l.note } // e.g. outside its window
+  const g = l.gate
+  const held = l.held ?? (l.cond === true && l.effective === false ? `gate ${g?.cond == null ? "unread" : "false"}: ${r.gate?.symbol ?? "?"} close ${g?.value ?? "—"}` : null)
+  if (held) return { word: "held", tone: "running", detail: held }
+  if ((l.effective ?? l.cond) === true) return { word: "holds", tone: "holds", detail: "" }
   const p = l.prox
   if (p && p.gap > 0) {
     const near = p.eta != null && p.eta <= Math.max(2, r.warn ?? 0)
@@ -84,13 +136,21 @@ export function runnerStatus(r) {
   return { word: "watching", tone: "running", detail: l.cond == null ? "no reading yet" : "" }
 }
 
+// A kernel runner's own run state in one line (backend/kernel/builtin/runners.js): "check #14 · 10:41 ET · next 10:42 ·
+// now 771.4 vs 772.5" ("" for a twin without it: a desk's own runners).
+export function checkLine(r) {
+  if (r?.checks == null) return ""
+  const l = r.last
+  return [`check #${r.checks}`, r.checked_at ? `${clockOf(r.checked_at)} ET` : "not read yet", r.status === "running" && r.next_at ? `next ${clockOf(r.next_at)}` : null, l?.value != null ? `now ${l.value}${l.against != null ? ` vs ${l.against}` : ""}` : null, r.errors ? `${r.errors} errors in a row` : null].filter(Boolean).join(" · ")
+}
+
 export const intervalLabel = (min) => (!finite(min) ? String(min ?? "") : min % 10080 === 0 ? `${min / 10080}w` : min % 1440 === 0 ? `${min / 1440}d` : min % 60 === 0 ? `${min / 60}h` : `${min}m`)
 export const everyLabel = (e) => (e === "bar" ? "each bar" : e === "tick" ? "each tick" : `every ${intervalLabel(e)}`)
 
 // Holding and near first, then the running ones, the stopped ones last.
-export function runnerRows(state) {
+export function runnerRows(state, now = new Date()) {
   const rank = { holds: 0, near: 1, running: 2, warming: 3, error: 4, paused: 5, done: 6 }
-  return (state?.runners ?? []).map((r) => ({ r, s: runnerStatus(r) })).sort((a, b) => (rank[a.s.tone] ?? 9) - (rank[b.s.tone] ?? 9))
+  return (state?.runners ?? []).map((r) => ({ r, s: runnerStatus(r, now) })).sort((a, b) => (rank[a.s.tone] ?? 9) - (rank[b.s.tone] ?? 9))
 }
 
 // "ema9=ema(close, 9); hi=highest(high, 20)" → {ema9: "ema(close, 9)", hi: "highest(high, 20)"}

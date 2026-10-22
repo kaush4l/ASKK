@@ -2,7 +2,7 @@
 
 import * as React from "react"
 
-import { clockOf, everyLabel, intervalLabel, parsePlot, runnerCall, runnerCharts, runnerRows, startRunner, testRunner } from "@/backend/live/runners"
+import { checkLine, clockOf, everyLabel, intervalLabel, parsePlot, runnerCall, runnerCharts, runnerGate, runnerRows, startRunner, testRunner, windowText } from "@/backend/live/runners"
 import { PALETTE } from "@/backend/live/visual-layout"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -10,8 +10,9 @@ import { cn } from "@/lib/utils"
 
 // The runners view (an artifact with view "runners": code's live formulas, each calling the lead back when its condition
 // holds — backend/live/runners.js has the shape). Closed on a card: one line per runner with its price sparkline; open:
-// each runner's live chart (the price, its plotted values, the bars its condition turned true), where it stands, and the
-// owner's controls — pause, resume, compute now, stop, remove — and a form to start or test one.
+// each runner's live chart (the price, its plotted values, the bars its condition turned true), where it stands, its
+// window (on / from / until) and its gate (a second name's formula, its last value), and the owner's controls — pause,
+// resume, compute now, stop, remove — and a form to start or test one (with a window and a gate).
 
 const TONE = {
   holds: "bg-emerald-500",
@@ -51,12 +52,12 @@ export function RunnersView({ id, state, expanded }) {
   return (
     <div className="@container mt-1 flex min-w-0 flex-col gap-2">
       <p className="text-[11px] break-words text-muted-foreground">
-        {state?.poll?.at ? `quotes ${clockOf(state.poll.at)} ET · ${(state.poll.symbols ?? []).join(" ") || "none"}` : "no quote read yet"}
+        {state?.poll?.at ? `quotes ${clockOf(state.poll.at)} ET · ${(state.poll.symbols ?? []).join(" ") || "none"}` : rows.some(({ r }) => r.checks != null) ? `${rows.filter(({ r }) => r.status === "running").length} running · ${rows.filter(({ r }) => r.status === "paused").length} paused` : "no quote read yet"}
         {state?.poll?.error ? <span className="text-red-700 dark:text-red-400"> · {state.poll.error}</span> : null}
-        {` · ${(state?.fired ?? []).filter((f) => f.kind === "fire").length} fired today`}
+        {` · ${state?.fired ? state.fired.filter((f) => f.kind === "fire").length : rows.reduce((n, { r }) => n + (r.fires ?? []).filter((f) => f.kind === "fire").length, 0)} fired`}
       </p>
-      <NewRunner id={id} />
-      {!rows.length && <p className="text-xs text-muted-foreground">no runners — start one above, or an agent does ({id}.start)</p>}
+      {state?.can?.start !== false && !rows.some(({ r }) => r.checks != null) && <NewRunner id={id} />}
+      {!rows.length && <p className="text-xs text-muted-foreground">no runners — an agent sets them</p>}
       <ul className="grid min-w-0 grid-cols-1 gap-2 @3xl:grid-cols-2">
         {rows.map(({ r, s }) => (
           <RunnerCard key={r.id} r={r} s={s} busy={calls[r.id]} onCall={(method) => call(method, r.id)} />
@@ -71,6 +72,8 @@ function RunnerCard({ r, s, busy, onCall }) {
   const color = colorOf(names)
   const running = r.status === "running"
   const fires = (r.fires ?? []).slice(-4)
+  const gate = runnerGate(r)
+  const hours = windowText(r)
   return (
     <li className="min-w-0 rounded-md border px-2 py-1.5">
       <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
@@ -78,7 +81,6 @@ function RunnerCard({ r, s, busy, onCall }) {
         <span className="min-w-0 truncate font-mono text-sm text-foreground">{r.id}</span>
         <span className="shrink-0 text-xs text-muted-foreground">
           {r.symbol} · {intervalLabel(r.interval)} · {r.source} · {everyLabel(r.every)}
-          {r.until ? ` · until ${r.until}` : ""}
         </span>
         <span className={cn("shrink-0 rounded-sm border px-1 text-[11px]", s.tone === "holds" && "border-emerald-500/60 text-emerald-600 dark:text-emerald-400", s.tone === "near" && "border-amber-400/60 text-amber-600 dark:text-amber-300", s.tone === "error" && "border-red-500/60 text-red-700 dark:text-red-400")}>{s.word}</span>
         {s.detail && <span className="min-w-0 truncate text-[11px] text-muted-foreground">{s.detail}</span>}
@@ -87,11 +89,23 @@ function RunnerCard({ r, s, busy, onCall }) {
         when {r.when}{" "}
         <span className="text-muted-foreground">
           → {r.then}
-          {r.repeat === "edge" ? " each time" : " once"}
+          {r.repeat === "edge" || r.repeat === true ? " each time" : " once"}
           {r.warn ? ` · heads-up ${r.warn} bars ahead` : ""}
         </span>
       </p>
+      {gate && (
+        <p className="font-mono text-[11px] break-words text-foreground/80">
+          and gate {gate.symbol} {gate.when}{" "}
+          <span className={cn("font-sans", gate.holds === true ? "text-emerald-600 dark:text-emerald-400" : gate.holds === false ? "text-amber-600 dark:text-amber-300" : "text-muted-foreground")}>
+            · {gate.value != null ? `${fmt(gate.value)} ` : ""}
+            {gate.word}
+          </span>
+          <span className="font-sans text-muted-foreground"> · both on the same bar</span>
+        </p>
+      )}
+      {hours && <p className="text-[11px] break-words text-muted-foreground">window {hours} ET</p>}
       {r.why && <p className="text-[11px] break-words text-muted-foreground">{r.why}</p>}
+      {checkLine(r) && <p className="text-[11px] break-words text-muted-foreground tabular-nums">{checkLine(r)}</p>}
       <div className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-[11px] tabular-nums">
         <span className="text-foreground">{fmt(r.last?.price)}</span>
         {names.map((n) => (
@@ -102,12 +116,12 @@ function RunnerCard({ r, s, busy, onCall }) {
         {r.last?.at && <span className="text-muted-foreground">computed {clockOf(r.last.at)} ET</span>}
         <span className="text-muted-foreground">[{r.set_by}]</span>
       </div>
-      <Chart chart={r.chart} color={color} />
+      {(r.chart || r.checks == null) && <Chart chart={r.chart} color={color} />}
       {fires.length > 0 && <p className="text-[11px] break-words text-muted-foreground">{fires.map((f) => `${f.kind === "warn" ? "heads-up" : "fired"} ${clockOf(f.at)} @${fmt(f.price)}`).join(" · ")}</p>}
       {r.error && <p className="text-[11px] break-words text-red-700 dark:text-red-400">{r.error}</p>}
       <div className="mt-1 flex flex-wrap gap-1">
-        {running ? <Control label="Pause" busy={busy} onClick={() => onCall("pause")} /> : <Control label="Resume" busy={busy} onClick={() => onCall("resume")} />}
-        {running && <Control label="Compute now" busy={busy} onClick={() => onCall("now")} />}
+        {running ? <Control label="Pause" busy={busy} onClick={() => onCall("pause")} /> : r.status !== "expired" && !(r.ends_at && Date.parse(r.ends_at) <= Date.now()) && <Control label="Resume" busy={busy} onClick={() => onCall("resume")} />}
+        {running && <Control label={r.checks != null ? "Check now" : "Compute now"} busy={busy} onClick={() => onCall("now")} />}
         {running && <Control label="Stop" busy={busy} onClick={() => onCall("stop")} variant="destructive" />}
         <Control label="Remove" busy={busy} onClick={() => onCall("remove")} variant="ghost" />
       </div>
@@ -206,22 +220,33 @@ const FIELDS = [
   ["every", "computes", "bar | tick | 1m"],
   ["source", "source", "auto | quotes | bars"],
   ["warn", "heads-up bars", "2"],
+  ["on", "on (ET day)", "YYYY-MM-DD"],
+  ["from", "from (ET)", "HH:MM"],
+  ["until", "until (ET)", "HH:MM"],
+  ["gateSymbol", "gate symbol", "NFLX"],
 ]
 
-// The owner starts or tests a runner: the same spec the agents give <id>.start.
+// The owner starts or tests a runner: the same spec the agents give <id>.start (a window and a gate are fields, never
+// prose in why: an empty one is left out).
 function NewRunner({ id }) {
-  const [form, setForm] = React.useState({ id: "", symbol: "", interval: "5m", every: "bar", source: "", warn: "", when: "", plot: "", then: "wake", repeat: "once" })
+  const [form, setForm] = React.useState({ id: "", symbol: "", interval: "5m", every: "bar", source: "", warn: "", on: "", from: "", until: "", gateSymbol: "", gateWhen: "", when: "", plot: "", then: "wake", repeat: "once" })
   const [out, setOut] = React.useState(null)
   const [busy, setBusy] = React.useState(false)
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
-  const spec = () => ({ ...form, source: form.source && form.source !== "auto" ? form.source : undefined, warn: form.warn || undefined, plot: parsePlot(form.plot) })
+  const spec = () => {
+    const { gateSymbol, gateWhen, ...rest } = form
+    const gate = gateSymbol.trim() && gateWhen.trim() ? { symbol: gateSymbol.trim(), when: gateWhen.trim() } : undefined
+    return { ...rest, source: form.source && form.source !== "auto" ? form.source : undefined, warn: form.warn || undefined, on: form.on.trim() || undefined, from: form.from.trim() || undefined, until: form.until.trim() || undefined, gate, plot: parsePlot(form.plot) }
+  }
   const run = async (kind) => {
     setBusy(true)
     setOut(null)
     try {
       const v = kind === "test" ? await testRunner(id, spec()) : await startRunner(id, spec())
       const values = Object.entries(v.values ?? {}).map(([k, x]) => `${k} ${x}`).join(", ")
-      setOut({ ok: true, text: kind === "test" ? `holds ${v.holds} · ${v.bars} bars · price ${v.price}${values ? ` · ${values}` : ""}${v.proximity?.gap > 0 ? ` · ${v.proximity.gap} to go` : ""} · turned true ${v.times_turned_true}× ${(v.turned_true ?? []).slice(-3).join(", ")}` : `started: ${v.runner}` })
+      const gate = v.gate ? ` · gate ${v.gate.symbol} ${v.gate.holds == null ? "unread" : v.gate.holds}${v.gate.value != null ? ` @${v.gate.value}` : ""}` : ""
+      const hours = `${v.window ? ` · ${v.window}` : ""}${v.sleeps ? ` · sleeps ${v.sleeps}` : ""}`
+      setOut({ ok: true, text: kind === "test" ? `holds ${v.holds}${gate}${hours} · ${v.bars} bars · price ${v.price}${values ? ` · ${values}` : ""}${v.proximity?.gap > 0 ? ` · ${v.proximity.gap} to go` : ""} · turned true ${v.times_turned_true}× ${(v.turned_true ?? []).slice(-3).join(", ")}` : `started: ${v.runner}` })
     } catch (error) {
       setOut({ ok: false, text: error?.message ?? String(error) })
     } finally {
@@ -252,6 +277,10 @@ function NewRunner({ id }) {
         <label className="flex flex-col text-[11px] text-muted-foreground">
           when (the condition)
           <Input value={form.when} onChange={set("when")} placeholder="cross_above(close, vwap()) and rsi(close, 14) < 70" className="h-8 font-mono text-base md:text-xs pointer-coarse:h-10" />
+        </label>
+        <label className="flex flex-col text-[11px] text-muted-foreground">
+          gate when (on the gate symbol's bars, the same bar)
+          <Input value={form.gateWhen} onChange={set("gateWhen")} placeholder="close < 62.1" className="h-8 font-mono text-base md:text-xs pointer-coarse:h-10" />
         </label>
         <label className="flex flex-col text-[11px] text-muted-foreground">
           plot (name=formula; …)

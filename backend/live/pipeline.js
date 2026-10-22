@@ -106,7 +106,7 @@ export function configView(config) {
     : []
   const steps = (config.steps ?? []).map((x) => ({
     ...x,
-    runs: x.kind === "code" ? `code: ${x.code}` : x.kind === "phase" ? [`agent ${x.agent}`, x.tools?.length ? `grants ${x.tools.join(", ")}` : null, x.artifacts?.length ? `+ ${x.artifacts.join(", ")}` : null, x.max_steps ? `≤ ${x.max_steps} steps` : null].filter(Boolean).join(" · ") : [x.model && x.model !== "default" ? x.model : null, `${x.max_turns} turns`, `${x.seconds}s`].filter(Boolean).join(" · "),
+    runs: x.kind === "code" ? `code: ${x.code}` : x.own ? ["step agent", x.tools?.length ? `tools ${x.tools.join(", ")}` : null, x.artifacts?.length ? `+ ${x.artifacts.join(", ")}` : null, x.max_steps ? `≤ ${x.max_steps} steps` : null].filter(Boolean).join(" · ") : x.kind === "phase" ? [`agent ${x.agent}`, x.tools?.length ? `grants ${x.tools.join(", ")}` : null, x.artifacts?.length ? `+ ${x.artifacts.join(", ")}` : null, x.max_steps ? `≤ ${x.max_steps} steps` : null].filter(Boolean).join(" · ") : [x.model && x.model !== "default" ? x.model : null, `${x.max_turns} turns`, `${x.seconds}s`].filter(Boolean).join(" · "),
     waits: x.after?.length ? x.after.join(", ") : null,
     reads: x.inputs?.length ? x.inputs.join(", ") : null,
     contract: x.kind === "code" ? null : x.kind === "phase" ? (x.report?.length ? `report ${x.report.join(", ")}` : "") : [x.check ? `check ${x.check}` : null, x.schema ? `schema ${x.schema}` : null, x.derive && x.derive !== x.schema ? `derive ${x.derive}` : x.derive ? "derive" : null].filter(Boolean).join(" · "),
@@ -154,6 +154,8 @@ export function pipelineView(state, { now = Date.now(), chips = 6 } = {}) {
       error: x.error ?? null,
       kind: x.kind ?? "research",
       gate: x.gate ?? null,
+      agent: x.agent ?? null, // a step agent's name (kind agent, the workflow spawned it): its page and live status
+      refused: x.refused ?? 0,
       flow: flowOf(x.flow),
       file: (s.config?.steps ?? []).find((c) => c.id === x.id)?.file ?? null,
     }
