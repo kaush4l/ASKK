@@ -9,6 +9,7 @@ import { Preview } from "./preview.js"
 import { catalogTool, dismissTool, spawnTool, updateTool } from "./spawn.js"
 import { Terminal } from "./terminal.js"
 import { webReadTool, webSearchTool } from "./web.js"
+import { Workflow } from "./workflow.js"
 
 // The inbuilt kit (2026-10-17 owner: everything is an independent inbuilt tool or artifact any agent attaches by
 // name): a catalogue every desk gets under its own tools and artifact types (companion/team/compose.js merges it; the
@@ -79,6 +80,12 @@ export const BUILTIN = {
     // tools or any kind of quality guidelines it may have missed"): one per agent (id <agent>.practice) — its run
     // checklist, quality bar, learned instructions, lessons and the tools it lacks, kept in a file it edits itself
     // (deskOptions.practiceStore(agent) → {read, write, seed?, retro?, where}: compose.js binds memory/<desk>/practice/)
+    // workflow (view pipeline; 2026-10-22 owner: "a configurable workflow"): a staged pipeline the desk declares as files
+    // (<desk>/<id>/NN-<step>.md: code steps the desk names, research calls, quests to its agents), each judged step's
+    // typed ```data checked and re-asked once; run / read, the owner's stop. deskOptions.workflowSource(id) → {load,
+    // store, folder} (compose.js binds the desk folder and memory/<desk>/<id>/); the desk's own code steps, schemas and
+    // checks: deskOptions.workflowPlugins?.(id)
+    workflow: perDesk("workflow", (o) => new Workflow({ id: o.id, clock: o.clock, ...(o.workflowSource?.(o.id) ?? {}), ...(o.workflowPlugins?.(o.id) ?? {}) })),
     practice: (o = {}) => (agent, spec = {}) => new Practice({ id: `${agent.name}.practice`, owner: agent.name, store: o.practiceStore?.(agent) ?? null, seed: spec?.seed ?? null, reflect: spec?.reflect, clock: o.clock }),
   },
 }

@@ -28,9 +28,9 @@
 // spawn may ask for).
 
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from "node:fs"
-import { basename, dirname, join, resolve, sep } from "node:path"
+import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path"
 
-import { Artifact, buildDesk, builtinKit, Checklist, complete, defineTool, SPAWN_NAME, Tool } from "../../backend/kernel/index.js"
+import { Artifact, buildDesk, builtinKit, Checklist, complete, defineTool, parsePhasesFile, parseWorkflowFiles, SPAWN_NAME, Tool } from "../../backend/kernel/index.js"
 import { API_PREFIX, DESK_HEADER } from "../shared/config.js"
 import { AGENT_FILE_NAMES, agentFile, deskLead } from "./layout.js"
 
@@ -355,6 +355,48 @@ export const ARTIFACT_TYPES = {
 
 // ---- compose -----------------------------------------------------------------------------------
 
+// The kit's workflow artifact for a desk (2026-10-22): its steps are <desk folder>/<id>/NN-<step>.md (read fresh at each
+// run: an edit applies to the next one), its run files memory/<desk>/<id>/runs/… (none: kept in memory). plugins: the
+// desk's own code steps, schemas, derive, checks (main.js `builtin.workflowPlugins(id)`), checked against the files.
+export function workflowSource(root, memoryOf, plugins = () => ({})) {
+  return (id) => {
+    const dir = join(root, id)
+    const known = () => {
+      const p = plugins(id) ?? {}
+      return { code: p.code ?? {}, schemas: p.schemas ?? {}, derive: p.derive ?? {}, checks: p.checks ?? {} }
+    }
+    const phases = join(root, "phases", `${id}.md`)
+    const load = () => {
+      // a phases file (2026-10-22): phases/<id>.md, one file, ## per phase (parsePhasesFile)
+      if (existsSync(phases)) return parsePhasesFile(readFileSync(phases, "utf8"), { file: `phases/${id}.md`, known: known() })
+      if (!existsSync(dir)) throw new Error(`${id}/: no workflow folder in the desk (NN-<step>.md files)`)
+      const files = readdirSync(dir).filter((f) => f.endsWith(".md")).map((name) => ({ name, text: readFileSync(join(dir, name), "utf8") }))
+      return parseWorkflowFiles(files, { known: known() })
+    }
+    const base = () => (memoryOf() ? join(memoryOf(), id) : null)
+    const mem = new Map()
+    const store = {
+      write(rel, text) {
+        const b = base()
+        if (!b) return mem.set(rel, String(text)) && rel
+        const f = isAbsolute(rel) ? rel : join(b, rel)
+        mkdirSync(dirname(f), { recursive: true })
+        writeFileSync(f, text)
+        return f
+      },
+      read(where) {
+        if (mem.has(where)) return mem.get(where)
+        try {
+          return readFileSync(where, "utf8")
+        } catch {
+          return null
+        }
+      },
+    }
+    return { load, store, folder: existsSync(phases) ? `phases/${id}.md` : `${id}/` }
+  }
+}
+
 // The agent.md keys composeDesk reads (readAgentFolder adds role and folder); any other key is a typo. writes / reads:
 // the agent's files lanes (globs; reads: set = it reads only there — the critic's "outputs only"); board: false keeps
 // it off its team's board (2026-10-17).
@@ -610,7 +652,7 @@ export async function composeDesk({ folder, deskRoot, name, port, infer, context
   const memories = new Map() // mounted desk name → its memory folder
   // The kit, bound once for this composed desk (its shared files / terminal / preview / plan), under the desk's own.
   // practice: each agent's standing orders in its own desk's memory folder (a mounted desk's agents: that desk's).
-  const kit = builtinKit({ memory: ctx.memory, practiceStore: (agent) => practiceStore(agent, () => memories.get(owners.get(agent.name)) ?? ctx.memory), ...builtin })
+  const kit = builtinKit({ memory: ctx.memory, practiceStore: (agent) => practiceStore(agent, () => memories.get(owners.get(agent.name)) ?? ctx.memory), workflowSource: workflowSource(root, () => ctx.memory, builtin.workflowPlugins), ...builtin })
   const owns = new Map() // desk folder → its tools/ catalogue
   const toolFiles = new Map() // tool name → the file that defines it (desks' tools/, agents' tools.js): one each
   const o = { deskRoot: resolve(deskRoot ?? dirname(root)), tools: { ...kit.tools, ...tools }, kitTools: kit.tools, kit: kit.artifacts, artifacts: artifactTypes(ctx.memory, artifacts, kit.artifacts), vars, models, defaultModel, maxSteps, owners, memories, owns, toolFiles, memoryRoot: ctx.memory ? dirname(ctx.memory) : null }

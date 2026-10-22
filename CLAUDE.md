@@ -316,6 +316,12 @@ what is saved where), the twin contract.
   `hostedDeskFolders`, `CORE_DESKS`; a local desk named like a core one wins; desks/load finds either; desks/create writes
   into the local folder): one agent with the kit — routes itself / helpers / a new desk — `desks/agent/agent/agent.md`
   (the standard layout) and its practice.md seed; its history.md and kept helpers (`agent/<name>/`) are git-ignored.
+- 2026-10-22 owner ("a phases.MD file … a multi-agent workflow where the agents work in a sequence"): phases
+  (`docs/phases.md`) — `<desk>/phases/<flow>.md`, one file, `## <id>` per phase (agent, after, tools/artifacts granted
+  for the phase, report fields, max_steps), held as `{type: workflow, id: <flow>}`; workflow.js `parsePhasesFile`, step
+  kind `phase` = that agent's whole run (`callPhase`) on `renderPhase` (`# PHASE`, `# BOARD` of earlier reports,
+  `# PHASE REPORT`), `missingReport` re-asks; owner `run [{id, request}]` (the pipeline view's Run box); `Agent.removeArtifact`.
+  Demo `desks/agent/phases/brief.md`; tests `phases.test.js`.
 - `builtin/plan.js` `Plan` (extends `Checklist`): the desk's checklist written at run time (the planner's): id
   `plan`, view `checklist`, keep `always`, no reset on run start; `plan.write {goal, items}` ("id: text" lines, "!" =
   required; replaces the open items, keeps a ticked/skipped item still listed, bumps `revision`, records `by`),

@@ -204,6 +204,17 @@ export class Agent {
     return this
   }
 
+  // The reverse of addArtifact (a workflow phase hands an artifact for one phase, 2026-10-22): its commands go, detach().
+  removeArtifact(id) {
+    const artifact = this.artifacts.find((a) => a.id === id)
+    if (!artifact) return false
+    for (const t of artifact.commands()) this.tools.delete(t.name)
+    this.artifacts = this.artifacts.filter((a) => a !== artifact)
+    this.holding.delete(id)
+    artifact.detach?.(this)
+    return true
+  }
+
   // Every artifact's refresh(agent), together, before a step renders: host-backed state (a terminal's tail, a file
   // tree) is read here so render() stays synchronous. A refresh that throws or passes REFRESH_MS is noted in that
   // artifact's prompt block (refreshFailed) and the step goes on with its last state.

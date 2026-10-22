@@ -15,7 +15,7 @@ const quest = (ask) => ({ requirement: "a kit test", ask, outcome: "one line" })
 describe("BUILTIN", () => {
   test("the catalogue: tools and artifact types by name, each a factory of desk options", () => {
     expect(Object.keys(BUILTIN.tools)).toEqual(["web.search", "web.read", "agent.spawn", "agent.dismiss", "agent.catalog", "agent.update", "desk.list", "desk.create", "desk.check", "desk.load", "desk.ask", "desk.read", "desk.propose"]) // 2026-10-20: catalog, update and the desk tools
-    expect(Object.keys(BUILTIN.artifacts)).toEqual(["files", "terminal", "preview", "plan", "dispatch", "browse", "talk", "practice"]) // 2026-10-20: practice; 2026-10-17: no stage — the preview is the one pane; 2026-10-18: no charts (a dashboard is a page in it), browse and talk added
+    expect(Object.keys(BUILTIN.artifacts)).toEqual(["files", "terminal", "preview", "plan", "dispatch", "browse", "talk", "workflow", "practice"]) // 2026-10-22: workflow; 2026-10-20: practice; 2026-10-17: no stage — the preview is the one pane; 2026-10-18: no charts (a dashboard is a page in it), browse and talk added
     const kit = builtinKit({ clock })
     for (const t of Object.values(kit.tools)) expect(t).toBeInstanceOf(Tool)
     expect(kit.tools["web.search"]).toMatchObject({ name: "web.search", type: "function", view: "web" })
