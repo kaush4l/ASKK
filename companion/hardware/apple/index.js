@@ -2,7 +2,7 @@
 // for the host API (companion/server/host-api.js). macOS only.
 //
 //   const apple = await createApple()   null when not on macOS
-//   apple.actions                       [{ id, available }]
+//   apple.actions                       [{ id, available }]  (… notes.latest {folder}, notes.add {folder, title, markdown})
 //   await apple.run(id, inputs)         { text } — the result, as text for the agent
 //
 // Every action runs a fixed program with an argument list (never a shell),
@@ -42,7 +42,7 @@ async function exec(argv, { stdin, timeout = TIMEOUT } = {}) {
   return out
 }
 
-const clip = (s) => (s.length > MAX_OUTPUT ? `${s.slice(0, MAX_OUTPUT)}\n… (cut at ${MAX_OUTPUT} characters)` : s)
+const clip = (s, max = MAX_OUTPUT) => (s.length > max ? `${s.slice(0, max)}\n… (cut at ${max} characters)` : s)
 
 // AppleScript with the agent's text as arguments (`on run argv`), so text is
 // data, never code.
@@ -78,6 +78,32 @@ const REMINDERS_LIST = `on run argv
       set out to out & linefeed & "- " & (name of r)
     end repeat
     return out
+  end tell
+end run`
+
+// Notes (2026-10-21: a desk's daily note read from and mirrored to a Notes folder): the newest
+// note of a folder by creation date (its title, then its text), and a new note (body HTML: its first line the title).
+const NOTES_LATEST = `on run argv
+  set theFolder to item 1 of argv
+  tell application "Notes"
+    if not (exists folder theFolder) then return ""
+    set theNotes to notes of folder theFolder
+    if (count of theNotes) is 0 then return ""
+    set latest to item 1 of theNotes
+    repeat with n in theNotes
+      if creation date of n > creation date of latest then set latest to contents of n
+    end repeat
+    return (name of latest) & linefeed & (plaintext of latest)
+  end tell
+end run`
+
+const NOTES_ADD = `on run argv
+  set theFolder to item 1 of argv
+  set theBody to item 2 of argv
+  tell application "Notes"
+    if not (exists folder theFolder) then make new folder with properties {name:theFolder}
+    set n to make new note at folder theFolder with properties {body:theBody}
+    return "Added note " & (name of n) & " to " & theFolder
   end tell
 end run`
 
@@ -162,6 +188,21 @@ const ACTIONS = {
     run: async ({ title, notes, list }) =>
       osascript(REMINDERS_ADD, [text(title, "title", HOST_LIMITS.apple.reminderTitleChars), optional(notes, "notes", HOST_LIMITS.apple.notesChars) ?? "", optional(list, "list", HOST_LIMITS.apple.titleChars) ?? ""]),
   },
+  "notes.latest": {
+    tool: "osascript",
+    max: HOST_LIMITS.apple.noteChars,
+    run: async ({ folder }) => {
+      const out = await osascript(NOTES_LATEST, [text(folder, "folder", HOST_LIMITS.apple.titleChars)])
+      return out.trim() ? out : `No note in Notes › ${folder}.`
+    },
+  },
+  "notes.add": {
+    tool: "osascript",
+    run: async ({ folder, title, markdown }) => {
+      const body = `<h1>${Bun.escapeHTML(text(title, "title", HOST_LIMITS.apple.titleChars))}</h1>${Bun.markdown.html(text(markdown, "markdown", HOST_LIMITS.apple.noteChars))}`
+      return osascript(NOTES_ADD, [text(folder, "folder", HOST_LIMITS.apple.titleChars), body])
+    },
+  },
   open: {
     tool: "open",
     run: async ({ url }) => {
@@ -189,7 +230,7 @@ export async function createApple() {
     async run(id, inputs = {}) {
       if (!ACTIONS[id]) throw new AppleError(`Unknown Apple action "${id}".`)
       if (!available.has(id)) throw new AppleError(`${ACTIONS[id].tool} is not available on this Mac.`)
-      return { text: clip(String(await ACTIONS[id].run(inputs ?? {})).trim()) }
+      return { text: clip(String(await ACTIONS[id].run(inputs ?? {})).trim(), ACTIONS[id].max) }
     },
   }
 }

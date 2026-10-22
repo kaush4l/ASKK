@@ -152,7 +152,37 @@ export function hostClient({ port, desk = null, fetch: fetcher = globalThis.fetc
       return text
     }
   }
-  return { base, desk, get: (path, opts) => request("GET", path, undefined, opts), post: (path, body, opts) => request("POST", path, body, opts) }
+  // stream(path, body, {signal, onEvent}): a POST whose answer is NDJSON (llm/research) — each event to onEvent as it
+  // comes; resolves with the last event.
+  async function stream(path, body, { signal, onEvent = () => {} } = {}) {
+    const res = await fetcher(`${base}${API_PREFIX}${String(path).replace(/^\/+/, "")}`, { method: "POST", headers: { ...(desk ? { [DESK_HEADER]: desk } : {}), Origin: base, "Content-Type": "application/json" }, signal, body: JSON.stringify(body ?? {}) })
+    if (!res.ok) throw Object.assign(new Error(`POST ${path}: HTTP ${res.status} ${(await res.text()).slice(0, 200)}`), { status: res.status })
+    let last = null
+    let buffer = ""
+    const take = (line) => {
+      if (!line.trim()) return
+      let event
+      try {
+        event = JSON.parse(line)
+      } catch {
+        return
+      }
+      if (event?.type === "ping") return // keep-alive only
+      last = event
+      onEvent(event)
+    }
+    for await (const chunk of res.body.pipeThrough(new TextDecoderStream())) {
+      buffer += chunk
+      let at
+      while ((at = buffer.indexOf("\n")) >= 0) {
+        take(buffer.slice(0, at))
+        buffer = buffer.slice(at + 1)
+      }
+    }
+    take(buffer)
+    return last
+  }
+  return { base, desk, get: (path, opts) => request("GET", path, undefined, opts), post: (path, body, opts) => request("POST", path, body, opts), stream }
 }
 
 // ---- models ------------------------------------------------------------------------------------

@@ -91,6 +91,9 @@
 //   GET llm/<provider>/v1/models, POST llm/<provider>/v1/chat/completions
 //        OpenAI-compatible: the claude/codex/gemini CLIs and Apple's on-device
 //        model (companion/capabilities/local-models.js); capability models.local
+//   POST llm/research { prompt, model?, max_turns?, seconds?, system? }   NDJSON events (start, tool, note, ping,
+//        result | error): the Claude CLI with WebSearch/WebFetch only, bounded turns and seconds, killed when the
+//        caller stops (companion/capabilities/research.js); capability models.research
 //   GET team/stream            Server-Sent Events: the desk's team (companion/team/kernel-team.js): snapshot, then
 //                              state / kernel / log events — capability team
 //   POST team/send { text, agent?, from? }   { ok, value: { engine, agent, queued } } — work for an agent without
@@ -123,7 +126,8 @@ import { projectRegistry } from "../capabilities/projects.js"
 import { browserRoutes, createBrowser } from "../capabilities/browser.js"
 import { createWeb, webRoutes } from "../capabilities/web.js"
 import { loadIntegrations } from "../capabilities/integrations.js"
-import { createLocalModels, localModelRoute } from "../capabilities/local-models.js"
+import { createLocalModels, findBinary, localModelRoute } from "../capabilities/local-models.js"
+import { createResearch, researchRoute } from "../capabilities/research.js"
 import { createMcp } from "../capabilities/mcp.js"
 import { runDeskSetup } from "../team/desk.js"
 import { wakesRoutes } from "../shared/wakes.js"
@@ -153,6 +157,7 @@ export async function createHostApi({
   const { speech } = await loadHardware({ log: (line) => console.log(line) }) // hardware/: optional, per machine
   const web = createWeb()
   const local = await createLocalModels() // claude/codex/gemini CLIs, Apple on-device
+  const research = createResearch({ bin: await findBinary("claude") }) // the Claude CLI with web tools only
   const mcpServers = await createMcp({ files: [mcpFile, ...(desk?.mcp ? [desk.mcp] : [])] })
   // A desk may limit the integrations it runs (desk `integrations: [...]`): one Telegram bot can have only one
   // listener, so a second desk declares none.
@@ -217,6 +222,7 @@ export async function createHostApi({
     ...(readOnly ? ["fs.read"] : ["fs.read", "fs.write"]),
     ...(projects ? ["projects"] : []),
     ...(local ? ["models.local"] : []),
+    ...(research ? ["models.research"] : []),
     ...(apple ? ["apple"] : []),
     ...(speech ? ["speech"] : []),
     "web",
@@ -231,6 +237,7 @@ export async function createHostApi({
   const term = readOnly ? null : createTerm({ root, state: runtime, policy: desk?.terminal ?? null, mounts, hostPorts: deskPorts, log: hostLog })
   const browser = readOnly ? null : createBrowser({ state: runtime, blockedPorts: deskPorts, log: hostLog })
   const localModel = local ? localModelRoute(local) : null
+  const researchCall = research ? researchRoute(research) : null
   const allowedHosts = new Set([`127.0.0.1:${port}`, `localhost:${port}`, `[::1]:${port}`])
 
   const GET = {
@@ -303,6 +310,7 @@ export async function createHostApi({
       if (request.method === "GET" && endpoint === "fs/watch") return await files.watch(url.searchParams, request)
       const llm = local && endpoint.match(/^llm\/([a-z-]+)\/v1\/(models|chat\/completions)$/)
       if (llm) return await localModel(request, llm[1], llm[2], sameOrigin)
+      if (researchCall && endpoint === "llm/research") return await researchCall(request, sameOrigin)
       if (request.method === "GET") {
         const handler = GET[endpoint]
         if (!handler) return json(404, { error: "Unknown endpoint." })

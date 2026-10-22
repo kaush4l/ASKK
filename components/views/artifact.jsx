@@ -8,6 +8,7 @@ import { fullPath, sessionLabel } from "@/backend/live/workbench"
 import { PreviewCard } from "@/components/preview/card"
 import { DeskTalk } from "@/components/talk/desk-talk"
 import { RunnersView } from "@/components/views/runners"
+import { PipelineView } from "@/components/views/pipeline"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
@@ -34,6 +35,7 @@ const VIEWS = {
   talk: TalkView,
   runners: RunnersView, // a desk's live formulas: each runner's chart, where it stands, the owner's controls (components/views/runners.jsx)
   practice: PracticeView, // 2026-10-20: an agent's standing orders it improves itself — this run's checklist, its bar, what it learned
+  pipeline: PipelineView, // 2026-10-21: a desk's staged workflow — each stage a research call, its web reads live, the result, the owner's Stop (components/views/pipeline.jsx)
 }
 
 // One artifact under its id, its brief (one line, from code) heading it; compact in a closed card, whole open.

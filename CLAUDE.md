@@ -517,8 +517,17 @@ Code more than one desk may use lives in `custom/shared/`. `custom/` is git-igno
   in an empty temp folder, prompt on stdin, and Apple's on-device model, `capabilities/local-models.js`; images
   (2026-10-18): a message's `image_url` parts with data: URLs only (`chatBlocks`; a remote address is dropped, never
   fetched) reach the Claude CLI as stream-json image blocks (`--input-format stream-json`, the answer its result
-  event); the other CLIs and Apple's model read text only — the prompt says how many were left out), `apple`
-  (macOS: fixed programs with argument lists, never a shell, `hardware/apple/`), `speech` (`hardware/speech/`),
+  event); the other CLIs and Apple's model read text only — the prompt says how many were left out), `models.research`
+  (2026-10-21: a staged desk researches in one call per stage instead of one ReAct step per fetch —
+  `capabilities/research.js`, `POST llm/research {prompt, model?,
+  max_turns? (1–24, 8), seconds? (30–900, 300), system?}` → NDJSON `start`, `tool {name, query?, url?}` as it reads,
+  `note`, `ping`, then `result {text, turns, ms, cost_usd, sources}` or `error`: the Claude CLI with `--tools` and
+  `--allowedTools` WebSearch,WebFetch only, `--permission-mode dontAsk`, `--strict-mcp-config`, no settings, an empty
+  temp folder, a scrubbed env (no desk secrets), never Bash or a bypass; the caller's abort or leaving kills it; a desk
+  tool on it is `outside: true`; `hostClient.stream(path, body, {signal, onEvent})` reads it), `apple`
+  (macOS: fixed programs with argument lists, never a shell, `hardware/apple/`; 2026-10-21 `notes.latest {folder}` (the
+  newest note's title and text, ≤ 120K) and `notes.add {folder, title, markdown}` (Bun.markdown → the note's HTML body)
+  — Automation asks once), `speech` (`hardware/speech/`),
   `team`. A GET handler may answer with its own `Response` (a stream, an image); `close()` (a desk reload) stops its
   tool servers, listeners, watches, pages and terminal sessions. Security: Host header must be localhost:port (DNS
   rebinding), cross-origin refused, POST needs same-origin Origin + JSON, realpath containment (no symlink escapes,
@@ -605,7 +614,11 @@ Code more than one desk may use lives in `custom/shared/`. `custom/` is git-igno
   a nested `Dialog`), close and open-in-new-tab, its shot and why where it cannot be framed (`enlargeOf`).
   `components/views/artifact.jsx`: one renderer per artifact view (list, checklist, quality, board, schedule,
   text, memory, table, files, terminal, preview and `dispatch`: a row per job, status dot, `j2 → data`, the ask, elapsed, the report expandable, a Stop on
-  each running row (`stopDispatchJob`); `runners` (2026-10-19, `components/views/runners.jsx`, pure `backend/live/runners.js`:
+  each running row (`stopDispatchJob`); `pipeline` (2026-10-21, `components/views/pipeline.jsx`, pure
+  `backend/live/pipeline.js`: a desk's staged workflow — a dot per stage, each stage's time and web reads as chips live,
+  the result drawn by `components/views/markdown.jsx` (`backend/live/markdown.js` `mdBlocks`: markdown as data → React
+  elements, never HTML; links http(s) only), proposed learnings with Accept / Drop, the owner's Stop (`pipelineCall`:
+  team call target `artifact`)); `runners` (2026-10-19, `components/views/runners.jsx`, pure `backend/live/runners.js`:
   a desk's live formulas — each runner's chart (price, the plots on its scale, the others in a lower panel, the bars its
   condition turned true), its state in a word (`runnerStatus`: holds | near | watching | warming …, how far and how many bars),
   the owner's pause / resume / compute now / stop / remove (`runnerCall`) and a start-or-test form (`startRunner`,

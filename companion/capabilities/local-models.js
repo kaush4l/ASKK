@@ -41,7 +41,7 @@ class LocalModelError extends HttpError {
 }
 
 // Cron and launchd hand over a bare PATH: look where installers put things too.
-async function findBinary(name) {
+export async function findBinary(name) {
   const onPath = Bun.which(name)
   if (onPath) return onPath
   const usual = [join(homedir(), ".local/bin"), "/opt/homebrew/bin", "/usr/local/bin"]
