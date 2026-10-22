@@ -185,7 +185,7 @@ export class AgentView {
     return this.#call("preview", [text])
   }
 
-  // Forget its earlier runs (the transcript beside its agent.md stays).
+  // Forget its earlier runs (the history.md beside its .md stays).
   clearMemory() {
     return this.#call("clearMemory")
   }

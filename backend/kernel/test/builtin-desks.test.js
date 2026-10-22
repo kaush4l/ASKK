@@ -11,7 +11,7 @@ function fakeDeskHost() {
   const calls = []
   const check = { name: "probe", lead: "lead", tree: { name: "lead", description: "answers", agents: [] }, tools: { lead: ["web.read"] }, templates: {} }
   const answers = {
-    "desks/create": (b) => ({ name: b.name, folder: `custom/${b.name}`, written: ["README.md", "agents/lead/agent.md", "main.js"], check, hosted: false, ...(b.outside ? { held: { name: b.name, update: !!b.update, by: "agent", at: "2026-10-20T13:00:00.000Z", from: b.outside } } : {}) }),
+    "desks/create": (b) => ({ name: b.name, folder: `custom/${b.name}`, written: ["README.md", "lead/lead.md", "main.js"], check, hosted: false, ...(b.outside ? { held: { name: b.name, update: !!b.update, by: "agent", at: "2026-10-20T13:00:00.000Z", from: b.outside } } : {}) }),
     "desks/propose": (b) => ({ path: `custom/${b.name}/proposed/tools/${b.file}.js`, from: b.outside ?? null }),
     "desks/load": (b) => ({ name: b.name, agents: 1, reloaded: true, proposed: { by: "agent", at: "2026-10-20T13:00:00.000Z", from: "web.read" } }),
   }
@@ -25,7 +25,7 @@ describe("desk.create / desk.propose: the run's outside reads go to the host", (
     const host = fakeDeskHost()
     const out = await tools["desk.create"].run({ name: "probe", spec: SPEC }, { host, outside: new Set() })
     expect(host.calls[0]).toEqual({ path: "desks/create", body: { name: "probe", spec: SPEC, update: false } })
-    expect(out).toStartWith("created custom/probe/: README.md, agents/lead/agent.md, main.js")
+    expect(out).toStartWith("created custom/probe/: README.md, lead/lead.md, main.js")
   })
 
   test("from a run that read the web: outside sent, the answer says it is held and not written (never the held text)", async () => {

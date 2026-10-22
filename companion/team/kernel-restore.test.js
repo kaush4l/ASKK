@@ -7,12 +7,12 @@ import { describeActivity } from "../../backend/live/activity.js"
 import { eventTarget, liveFeed, toolCall } from "../../backend/live/follow.js"
 import { questsOut } from "../../backend/live/follow-target.js"
 import { createKernelTeam, MAX_MESSAGES } from "./kernel-team.js"
-import { createTranscripts } from "./kernel-transcripts.js"
+import { createHistory, historyMarkdown, parseHistory } from "./kernel-history.js"
 
-// A run restored from its transcript (server restart, desks/load) reads in the thread and the Live feed as it
+// A run restored from its history.md (server restart, desks/load) reads in the thread and the Live feed as it
 // streamed (2026-10-17: research-lead's thread showed no calls after its desk reloaded).
 
-const OUTPUT_CHARS = 1500 // createTranscripts' outputChars: a transcript keeps a result's output clipped there
+const OUTPUT_CHARS = 1500 // createHistory's outputChars: a history keeps a result's output clipped there
 const clip = (s, n = OUTPUT_CHARS) => (s.length > n ? `${s.slice(0, n)}…` : s)
 
 // A thread without its ids: each result row's step row (`row`, a message id) as that row's place in the thread, so a
@@ -79,7 +79,7 @@ test("a restored run is its thread as it streamed: calls with views and inputs, 
     }),
   })
 
-  // Live: transcripts are written (live: true), and the thread is what a tab reads now.
+  // Live: histories are written (live: true), and the thread is what a tab reads now.
   team = await createKernelTeam({ desk: deskOf(infer), port: 0, live: true })
   expect((await team.call({ target: "lead", method: "ask", args: ["which name leads?"] })).value).toBe("GAMMA first: it leads small caps")
   const live = await snapshot(team)
@@ -102,8 +102,8 @@ test("a restored run is its thread as it streamed: calls with views and inputs, 
   ])
   expect(live.states.scout.messages.map(label)).toEqual(["user quest", "assistant tool", "quote data ok", "assistant answer"])
 
-  // The transcript holds what the steps alone do not: arrival order, the refused-answer rows, guidance and its place.
-  const row = JSON.parse(readFileSync(join(root, "lead", "transcript.jsonl"), "utf8").trim().split("\n").at(-1))
+  // The history holds what the steps alone do not: arrival order, the refused-answer rows, guidance and its place.
+  const row = parseHistory(readFileSync(join(root, "lead", "history.md"), "utf8")).at(-1)
   expect(row.steps[1].order).toEqual([1, 0])
   expect(row.steps.map((s) => s.gate?.kind ?? null)).toEqual(["gate", null, "format", null, "gate"])
   expect(row.steps[0].gate.content).toBe(live.states.lead.messages[1].content)
@@ -155,9 +155,9 @@ test("a restored run is its thread as it streamed: calls with views and inputs, 
   // R4: the same row as written before steps kept their refused-answer row (no `gate`) draws it from the kernel's
   // note past the calls, as the live stream drew it: with the rest of the trail the same thread, without it the same
   // gate rows in the same places.
-  const file = join(root, "lead", "transcript.jsonl")
+  const file = join(root, "lead", "history.md")
   const restoreRow = async (r) => {
-    writeFileSync(file, JSON.stringify(r) + "\n")
+    writeFileSync(file, historyMarkdown([r], "lead"))
     const t = await createKernelTeam({ desk: deskOf(async () => { throw new Error("a restored desk runs nothing") }), port: 0, live: true })
     const snap = await snapshot(t)
     t.terminate()
@@ -172,9 +172,11 @@ test("a restored run is its thread as it streamed: calls with views and inputs, 
   expect(gates(live.states.lead.messages).map((g) => `${g.kind}: ${g.content.split(":")[0]}`)).toEqual(["gate: Answer refused", "format: Reply not taken", "gate: Answer held"])
 })
 
-// A desk of one agent whose transcript is written by hand, served fresh: its restored state and the agent.
-async function restoreFrom(folder, rows, spec = {}) {
-  writeFileSync(join(folder, "transcript.jsonl"), rows.map((r) => JSON.stringify(r)).join("\n") + "\n")
+// A desk of one agent whose history.md is written by hand (legacy: its transcript.jsonl), served fresh: its restored
+// state and the agent.
+async function restoreFrom(folder, rows, spec = {}, { legacy = false } = {}) {
+  if (legacy) writeFileSync(join(folder, "transcript.jsonl"), rows.map((r) => JSON.stringify(r)).join("\n") + "\n")
+  else writeFileSync(join(folder, "history.md"), historyMarkdown(rows, "lead"))
   let built
   const quote = new Tool({ name: "quote", input: { symbol: "s" }, run: ({ symbol }) => `${symbol} 1` })
   const infer = async () => {
@@ -344,7 +346,7 @@ test("R3 old rows: no steps key, steps without results, or a row that does not r
   expect(snap.log.some((l) => l.text.includes("restored without its steps"))).toBe(true) // the row that did not read, in the desk log
 })
 
-// A desk served on a stub model with transcripts written (live: true): served once to run, then fresh on the same
+// A desk served on a stub model with histories written (live: true): served once to run, then fresh on the same
 // agent folders (a restart) with a model that throws, so it only restores.
 async function serveDesk(spec, infer) {
   let built
@@ -399,8 +401,8 @@ test("C1 parallel calls to one tool: each thread row holds its own call's inputs
   ])
   expect(live.states.lead.activity).toEqual({ phase: "idle" })
 
-  // The transcript keeps each step's arrival order by call index.
-  const row = JSON.parse(readFileSync(join(folder, "transcript.jsonl"), "utf8").trim().split("\n").at(-1))
+  // The history keeps each step's arrival order by call index.
+  const row = parseHistory(readFileSync(join(folder, "history.md"), "utf8")).at(-1)
   expect(row.steps.map((s) => s.order)).toEqual([[1, 0], [1, 0]])
   expect(row.steps[0].calls.map((c) => c.input.symbol)).toEqual(["ACME", "GAMMA"])
   expect(row.steps[0].results.map((r) => r.output)).toEqual(["ACME 500", "GAMMA 217"]) // results stay in call order
@@ -478,7 +480,7 @@ test("C2 a member called with its team's prefix: its row keeps its brief live an
   expect(idOf(live, "scout")).not.toBe(idOf(live, "web.page"))
   const scoutRow = (snap) => snap.states.lead.messages.find((m) => m.role === "tool" && m.name === "scout")
   expect(scoutRow(live)).toMatchObject({ kind: "agent", view: "quest", inputs: quest, output: "GAMMA moving: 217.4" })
-  const row = JSON.parse(readFileSync(join(root, "lead", "transcript.jsonl"), "utf8").trim().split("\n").at(-1))
+  const row = parseHistory(readFileSync(join(root, "lead", "history.md"), "utf8")).at(-1)
   expect(row.steps[0].calls.map((c) => c.tool)).toEqual(["desk.scout", "web.page"]) // as the model wrote it
   expect(row.steps[0].results.map((r) => r.tool)).toEqual(["scout", "web.page"]) // the member that ran
 
@@ -495,7 +497,7 @@ test("C3 a streak of failed runs cannot hide answered runs: the newest n answere
   const at = (i) => Date.UTC(2026, 9, 16, 14, i)
   // Rows as the host writes them: an answered run, a failed one (its error event).
   const write = (folder, kinds) => {
-    const t = createTranscripts()
+    const t = createHistory()
     const agent = { name: "lead", config: { folder, historyKeep: 3 } }
     kinds.forEach((k, i) => (k === "A" ? t.record(agent, { at: at(i), request: { from: "owner", text: `run ${i}` }, answer: `answer ${i}`, steps: [] }) : t.record(agent, { at: at(i), error: "stopped" }, { from: "owner", text: `failed ${i}` })))
     return { t, agent }
@@ -523,7 +525,7 @@ test("C3 a streak of failed runs cannot hide answered runs: the newest n answere
   for (const kinds of [one, three]) {
     const folder = mkdtempSync(join(tmpdir(), "restore-failed-"))
     write(folder, kinds)
-    const rows = readFileSync(join(folder, "transcript.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l))
+    const rows = parseHistory(readFileSync(join(folder, "history.md"), "utf8"))
     const { snap, lead } = await restoreFrom(folder, rows)
     expect(lead.history).toEqual(answers(kinds).map((x) => ({ from: "owner", request: x.replace("answer", "run"), answer: x })))
     expect(snap.states.lead.messages.map((m) => m.content)).toEqual(answers(kinds).flatMap((x) => [x.replace("answer", "run"), x]))
@@ -564,10 +566,10 @@ test("D4 a member written with its team's prefix is drawn as the quest it is fro
   expect(events.some((e) => JSON.stringify(e.patch?.activity ?? {}).includes("desk.scout"))).toBe(false)
 })
 
-// Transcript rows as the host writes them, at minute i: an answered run, or a failed one (its error event) whose
+// History rows as the host writes them, at minute i: an answered run, or a failed one (its error event) whose
 // request is 6000 characters, so a streak of them passes maxBytes and compaction moves the file to history/.
-function transcriptWriter(folder, options = {}) {
-  const t = createTranscripts(options)
+function historyWriter(folder, options = {}) {
+  const t = createHistory(options)
   const agent = { name: "lead", config: { folder, historyKeep: 3 } }
   let i = 0
   const at = () => Date.UTC(2026, 9, 16, 14, 0) + 60_000 * i++
@@ -583,13 +585,13 @@ function transcriptWriter(folder, options = {}) {
     expect(archives().length).toBe(before + 1)
     return n
   }
-  const answersIn = (file) => (existsSync(file) ? readFileSync(file, "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l)).filter((r) => r.answer != null).map((r) => r.answer) : [])
-  return { t, agent, answered, failed, failUntilCompacted, archives, history, current: join(folder, "transcript.jsonl"), answersIn }
+  const answersIn = (file) => (existsSync(file) ? parseHistory(readFileSync(file, "utf8")).filter((r) => r.answer != null).map((r) => r.answer) : [])
+  return { t, agent, answered, failed, failUntilCompacted, archives, history, current: join(folder, "history.md"), answersIn }
 }
 
 test("D1 restore reads on into history/: an answered run that a compaction moved there comes back", async () => {
   const folder = mkdtempSync(join(tmpdir(), "restore-compacted-"))
-  const w = transcriptWriter(folder)
+  const w = historyWriter(folder)
   w.answered(0)
   expect(w.failUntilCompacted()).toBeGreaterThan(50) // 6000-character requests: many rows to pass 512 KB
   w.failed(), w.failed(), w.failed() // the fresh file: failed runs only
@@ -598,8 +600,8 @@ test("D1 restore reads on into history/: an answered run that a compaction moved
   expect(w.answersIn(join(w.history, w.archives()[0]))).toEqual(["answer 0"])
   expect(w.t.restore(w.agent).map((r) => r.answer)).toEqual(["answer 0"])
 
-  // Compacted on its last row: no transcript.jsonl at all, the run is still found.
-  const bare = transcriptWriter(mkdtempSync(join(tmpdir(), "restore-compacted-")))
+  // Compacted on its last row: no history.md at all, the run is still found.
+  const bare = historyWriter(mkdtempSync(join(tmpdir(), "restore-compacted-")))
   bare.answered(0)
   bare.failUntilCompacted()
   expect(existsSync(bare.current)).toBe(false)
@@ -616,7 +618,7 @@ test("D1 restore reads on into history/: an answered run that a compaction moved
 })
 
 test("D1 answered runs spread across two archives and the current file come back oldest first; reading stops at the archives compaction keeps", () => {
-  const w = transcriptWriter(mkdtempSync(join(tmpdir(), "restore-spread-")))
+  const w = historyWriter(mkdtempSync(join(tmpdir(), "restore-spread-")))
   w.answered(0)
   w.failUntilCompacted()
   w.answered(1)
@@ -633,11 +635,11 @@ test("D1 answered runs spread across two archives and the current file come back
 
   // keep 2: an older archive in history/ (one compaction would delete) is never read, even with runs missing.
   const folder = mkdtempSync(join(tmpdir(), "restore-bounded-"))
-  const k = transcriptWriter(folder, { keep: 2 })
+  const k = historyWriter(folder, { keep: 2 })
   mkdirSync(k.history, { recursive: true })
-  const row = (name, minute) => JSON.stringify({ at: new Date(Date.UTC(2026, 9, 1, 14, minute)).toISOString(), from: "owner", request: `run ${name}`, steps: [], answer: `answer ${name}`, flags: [] })
-  for (const [file, name, minute] of [["transcript-2026-10-01T14-00-00-000Z.jsonl", "oldest", 0], ["transcript-2026-10-02T14-00-00-000Z.jsonl", "older", 1], ["transcript-2026-10-03T14-00-00-000Z.jsonl", "newest", 2]])
-    writeFileSync(join(k.history, file), `${row(name, minute)}\n`)
+  const row = (name, minute) => ({ at: new Date(Date.UTC(2026, 9, 1, 14, minute)).toISOString(), from: "owner", request: `run ${name}`, steps: [], answer: `answer ${name}`, flags: [] })
+  for (const [file, name, minute] of [["history-2026-10-01T14-00-00-000Z.md", "oldest", 0], ["history-2026-10-02T14-00-00-000Z.md", "older", 1], ["history-2026-10-03T14-00-00-000Z.md", "newest", 2]])
+    writeFileSync(join(k.history, file), historyMarkdown([row(name, minute)], "lead"))
   k.failed()
   expect(k.t.restore(k.agent, 3).map((r) => r.answer)).toEqual(["answer older", "answer newest"])
 })
@@ -655,22 +657,22 @@ function withClock(clock, fn) {
 
 test("E1 a compaction names its archive after every archive in history/: a same-ms compaction or a clock stepped back never prunes the newest runs", () => {
   const T = Date.UTC(2026, 9, 17, 14, 0)
-  const stamp = (ms) => `transcript-${new Date(ms).toISOString().replace(/[:.]/g, "-")}.jsonl`
+  const stamp = (ms) => `history-${new Date(ms).toISOString().replace(/[:.]/g, "-")}.md`
   // Every row is past maxBytes 50, so each record compacts: one archive per run, the newest 2 kept.
   const writer = () => {
     const folder = mkdtempSync(join(tmpdir(), "restore-names-"))
-    const t = createTranscripts({ maxBytes: 50, keep: 2 })
+    const t = createHistory({ maxBytes: 50, keep: 2 })
     const agent = { name: "lead", config: { folder, historyKeep: 3 } }
     const history = join(folder, "history")
-    const archives = () => readdirSync(history).filter((f) => f.startsWith("transcript-2")).sort()
+    const archives = () => readdirSync(history).filter((f) => f.startsWith("history-2")).sort()
     return {
       t,
       agent,
       history,
       archives,
-      current: join(folder, "transcript.jsonl"),
+      current: join(folder, "history.md"),
       record: (name) => t.record(agent, { at: T, request: { from: "owner", text: `run ${name}` }, answer: name, steps: [] }),
-      held: () => archives().map((f) => readFileSync(join(history, f), "utf8").trim().split("\n").map((l) => JSON.parse(l).answer)),
+      held: () => archives().map((f) => parseHistory(readFileSync(join(history, f), "utf8")).map((r) => r.answer)),
     }
   }
   const runs = ["A1", "A2", "A3", "A4"]
@@ -696,12 +698,12 @@ test("E1 a compaction names its archive after every archive in history/: a same-
   // sorts after every archive; the stray file is no archive, never pruned and never read.
   const c = writer()
   mkdirSync(c.history, { recursive: true })
-  writeFileSync(join(c.history, stamp(T + 86_400_000)), `${JSON.stringify({ at: new Date(T).toISOString(), from: "owner", request: "run ahead", steps: [], answer: "ahead", flags: [] })}\n`)
-  writeFileSync(join(c.history, "transcript-notes.jsonl"), `${JSON.stringify({ at: new Date(T).toISOString(), from: "owner", request: "run stray", steps: [], answer: "stray", flags: [] })}\n`)
+  writeFileSync(join(c.history, stamp(T + 86_400_000)), historyMarkdown([{ at: new Date(T).toISOString(), from: "owner", request: "run ahead", steps: [], answer: "ahead", flags: [] }], "lead"))
+  writeFileSync(join(c.history, "history-notes.md"), historyMarkdown([{ at: new Date(T).toISOString(), from: "owner", request: "run stray", steps: [], answer: "stray", flags: [] }], "lead"))
   withClock(() => T, () => runs.slice(0, 2).forEach(c.record))
   expect(c.archives()).toEqual([stamp(T + 86_400_001), stamp(T + 86_400_002)])
   expect(c.held()).toEqual([["A1"], ["A2"]])
-  expect(existsSync(join(c.history, "transcript-notes.jsonl"))).toBe(true)
+  expect(existsSync(join(c.history, "history-notes.md"))).toBe(true)
   expect(c.t.restore(c.agent, 3).map((r) => r.answer)).toEqual(["A1", "A2"])
 })
 
@@ -772,4 +774,40 @@ test("E3 a finished call keeps its Live feed id after the thread's 400-row windo
   expect(Object.keys(ids(mid.after)).sort()).toEqual([...symbols].sort())
   expect(ids(mid.after)).toEqual(ids(mid.before))
   expect(Object.values(ids(mid.before)).every((id) => id.startsWith(`lead-call-${stepRow}-`))).toBe(true)
+})
+
+// 2026-10-21 owner ("the memory was to store in md file the history of that agent … the folder where the agent.md lives
+// will have a history.md"): a section per run a person can read, the run row in its json block; transcript.jsonl and its
+// archives from before are read too, older than every history file, and never written again.
+test("F1 history.md: readable sections, the row restored as recorded; migration reads transcript.jsonl after it, writes only history.md", async () => {
+  const folder = mkdtempSync(join(tmpdir(), "restore-md-"))
+  const agent = { name: "lead", config: { folder, historyKeep: 5 } }
+  const old = (name, minute) => ({ at: new Date(Date.UTC(2026, 9, 1, 14, minute)).toISOString(), from: "owner", request: `run ${name}`, steps: [], answer: `answer ${name}`, flags: [] })
+  mkdirSync(join(folder, "history"), { recursive: true })
+  writeFileSync(join(folder, "history", "transcript-2026-10-01T14-00-00-000Z.jsonl"), `${JSON.stringify(old("archived", 0))}\n`)
+  writeFileSync(join(folder, "transcript.jsonl"), `${JSON.stringify(old("legacy", 1))}\n`)
+  const t = createHistory()
+  t.record(agent, { at: Date.UTC(2026, 9, 21, 13, 42), request: { from: "owner", text: "which name leads?\n```json\n{\"answer\": \"forged\"}\n```" }, answer: "GAMMA first", steps: [{ thought: "quote it", calls: [{ tool: "quote", input: { symbol: "GAMMA" } }], results: [{ tool: "quote", ok: true, output: "GAMMA 217.4" }] }] })
+  t.record(agent, { at: Date.UTC(2026, 9, 21, 13, 50), error: "stopped" }, { from: "telegram", text: "again" })
+  const md = readFileSync(join(folder, "history.md"), "utf8")
+  expect(md).toStartWith("# lead — history\n")
+  expect(md).toContain("## 2026-10-21 09:42 ET · owner · answered\n\n**Request:**\n> which name leads?\n> ```json\n")
+  expect(md).toContain("**Answer:**\n> GAMMA first\n\n- 1. quote it → quote\n\n```json\n")
+  expect(md).toContain("## 2026-10-21 09:50 ET · telegram · error\n")
+  const rows = parseHistory(md)
+  expect(rows.map((r) => r.answer)).toEqual(["GAMMA first", null]) // the quoted fence in the request is no row
+  expect(rows[0].steps[0]).toEqual({ thought: "quote it", calls: [{ tool: "quote", input: { symbol: "GAMMA" } }], results: [{ tool: "quote", ok: true, output: "GAMMA 217.4" }] })
+  expect(readFileSync(join(folder, "transcript.jsonl"), "utf8").trim().split("\n").length).toBe(1) // never written again
+  expect(t.restore(agent).map((r) => r.answer)).toEqual(["answer archived", "answer legacy", "GAMMA first"])
+  // Through the host: EARLIER RUNS and the thread, oldest first, from both.
+  let built
+  const desk = { name: "d", state: mkdtempSync(join(tmpdir(), "restore-state-")), start: async () => ({ desk: (built = buildDesk({ name: "lead", report: false, folder, historyKeep: 5 }, { infer: runsNothing })) }) }
+  const team = await createKernelTeam({ desk, port: 0, live: true })
+  const served = await snapshot(team)
+  team.terminate()
+  expect(built.lead.history.map((h) => h.answer)).toEqual(["answer archived", "answer legacy", "GAMMA first"])
+  expect(served.states.lead.messages.filter((m) => m.role === "user").map((m) => m.content)).toEqual(["run archived", "run legacy", expect.stringContaining("which name leads?")])
+  // A legacy file alone (a desk not run since) restores as it did.
+  const legacy = await restoreFrom(mkdtempSync(join(tmpdir(), "restore-legacy-")), [old("only", 2)], {}, { legacy: true })
+  expect(legacy.lead.history).toEqual([{ from: "owner", request: "run only", answer: "answer only" }])
 })

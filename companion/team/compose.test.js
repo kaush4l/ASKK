@@ -34,7 +34,7 @@ const recorder = (desk) => {
   return events
 }
 
-// A desk folder in the temp root: agents/<lead>/agent.md (+ members), tools/<file>, a main.js.
+// A desk folder in the temp root in the legacy layout: agents/<lead>/agent.md (+ members), tools/<file>, a main.js.
 function tempDesk(root, name, { agents, tools = {} }) {
   const folder = join(root, name)
   for (const [path, text] of Object.entries(agents)) {
@@ -75,7 +75,7 @@ describe("composeDesk: sample-desk", () => {
     expect(tree).toMatchObject({ name: "lead", team: "sample-desk", title: "Sample board", desk: null })
     expect(tree.agents.map((a) => a.name)).toEqual(["alpha", "beta"])
     const [lead, alpha, beta] = ["lead", "alpha", "beta"].map((n) => desk.agents().get(n))
-    expect(lead.config).toMatchObject({ maxSteps: 8, folder: join(SAMPLE, "agents", "lead") })
+    expect(lead.config).toMatchObject({ maxSteps: 8, folder: join(SAMPLE, "lead") })
     expect(alpha.config).toMatchObject({ model: "haiku", minCalls: 1, maxSteps: 30 })
     expect(beta.config.maxSteps).toBe(30)
     expect(lead.artifacts.map((a) => a.id)).toEqual(["lead.checklist", "lead.report", "sample-desk.board"])
@@ -150,8 +150,8 @@ describe("composeDesk: mounted desks", () => {
   })
 
   test("readAgentFolder reads desks: as desk names", () => {
-    expect(readAgentFolder(join(SAMPLE, "agents", "lead", "beta")).desks).toEqual(["mini-desk"])
-    expect(readAgentFolder(join(SAMPLE, "agents", "lead")).agents.map((a) => a.name)).toEqual(["alpha", "beta"])
+    expect(readAgentFolder(join(SAMPLE, "lead", "beta")).desks).toEqual(["mini-desk"])
+    expect(readAgentFolder(join(SAMPLE, "lead")).agents.map((a) => a.name)).toEqual(["alpha", "beta"])
     const root = join(tmp, "names")
     tempDesk(root, "x", { agents: { lx: md("name: lx\ndesks: [Bad_Name]") } })
     expect(() => readAgentFolder(join(root, "x", "agents", "lx"))).toThrow('desks: "Bad_Name" — each is a desk folder name')
@@ -216,6 +216,94 @@ describe("composeDesk: what it refuses", () => {
     await expect(composeDesk({ folder: join(root, "k3"), infer: scripted({}) })).rejects.toThrow("l: unknown artifact ledger; types: browse, checklist, dispatch, files, plan, practice, preview, report, talk, terminal")
     tempDesk(root, "k4", { agents: { a: md("name: a"), b: md("name: b") } })
     await expect(composeDesk({ folder: join(root, "k4"), infer: scripted({}) })).rejects.toThrow("a desk has one lead folder with an agent.md (found a, b)")
+  })
+})
+
+// 2026-10-21 owner ("create agent will follow the standard of <desk>/<agent>/<agent>.md for configurations and tools.js"):
+// the lead directly in the desk folder, members nested, each agent's own tools.js attached to it; the legacy agents/
+// layout (tempDesk above, fixtures/mini-desk) composes unchanged.
+// A desk in the standard layout: {"<lead>": md, "<lead>/<member>": md} → <path>/<name>.md; tools.js per agent path.
+function standardDesk(root, name, { agents = {}, agentTools = {}, tools = {}, files = {} }) {
+  const folder = join(root, name)
+  for (const [path, text] of Object.entries(agents)) {
+    mkdirSync(join(folder, path), { recursive: true })
+    writeFileSync(join(folder, path, `${path.split("/").pop()}.md`), text)
+  }
+  for (const [path, src] of Object.entries(agentTools)) writeFileSync(join(folder, path, "tools.js"), src)
+  mkdirSync(join(folder, "tools"), { recursive: true })
+  for (const [file, src] of Object.entries(tools)) writeFileSync(join(folder, "tools", file), src)
+  for (const [path, text] of Object.entries(files)) {
+    mkdirSync(join(folder, path, ".."), { recursive: true })
+    writeFileSync(join(folder, path), text)
+  }
+  writeFileSync(join(folder, "main.js"), "export default () => ({ start: async () => ({}) })\n")
+  return folder
+}
+const toolsSrc = (...names) => `import { defineTool } from ${JSON.stringify(KERNEL)}\nexport default [${names.map((n) => `defineTool({ name: ${JSON.stringify(n)}, description: "own ${n}", input: {}, run: async () => "ran ${n}" })`).join(", ")}]\n`
+
+describe("the standard layout: <desk>/<lead>/<lead>.md, tools.js per agent", () => {
+  const root = join(tmp, "standard")
+
+  test("the lead and its members as <name>/<name>.md; each agent's tools.js attached to it alone, beside what tools: lists", async () => {
+    const folder = standardDesk(root, "s1", {
+      agents: { boss: md("name: boss\nagents: [scout]\ntools: [desk.echo, boss.plan]"), "boss/scout": md("description: finds things\ntools: [desk.echo]") },
+      agentTools: { boss: toolsSrc("boss.plan", "boss.sum"), "boss/scout": toolsSrc("scout.find") },
+      tools: { "echo.js": toolSrc("desk.echo") },
+    })
+    const infer = scripted({ scout: [{ thought: "find", calls: [{ tool: "scout.find", input: {} }] }] })
+    const desk = await composeDesk({ folder, infer })
+    const [boss, scout] = ["boss", "scout"].map((n) => desk.agents().get(n))
+    expect([...boss.tools.keys()]).toEqual(["boss.plan", "boss.sum", "desk.echo", "scout", "s1.board.write"]) // its own first, listed once
+    expect([...scout.tools.keys()]).toEqual(["scout.find", "desk.echo", "s1.board.write"]) // named after its folder (no name: key)
+    expect(scout.config).toMatchObject({ folder: join(folder, "boss", "scout"), description: "finds things" })
+    expect(boss.config.folder).toBe(join(folder, "boss"))
+    const events = recorder(desk)
+    await scout.ask("find it")
+    expect(events.find((e) => e.event === "result" && e.tool === "scout.find")).toMatchObject({ ok: true, output: "ran scout.find" })
+    // scripts/desk.js check says which layout it read
+    const out = Bun.spawnSync(["bun", "scripts/desk.js", "check", folder], { cwd: resolve(import.meta.dir, "../..") })
+    expect(JSON.parse(out.stdout.toString())).toMatchObject({ layout: "standard", lead: "boss" })
+  })
+
+  test("a tool name defined twice in the desk — two agents' tools.js, or a tools.js and tools/ — fails naming both files", async () => {
+    const twice = standardDesk(root, "s2", { agents: { boss: md("name: boss\nagents: [scout]"), "boss/scout": md("name: scout") }, agentTools: { boss: toolsSrc("x.dup"), "boss/scout": toolsSrc("x.dup") } })
+    await expect(composeDesk({ folder: twice, infer: scripted({}) })).rejects.toThrow(`${join(twice, "boss", "scout", "tools.js")}: tool x.dup is defined in ${join(twice, "boss", "tools.js")} too`)
+    const desk = standardDesk(root, "s3", { agents: { boss: md("name: boss") }, agentTools: { boss: toolsSrc("desk.echo") }, tools: { "echo.js": toolSrc("desk.echo") } })
+    await expect(composeDesk({ folder: desk, infer: scripted({}) })).rejects.toThrow(`${join(desk, "boss", "tools.js")}: tool desk.echo is defined in ${join(realpathSync(desk), "tools", "echo.js")} too`)
+    const bad = standardDesk(root, "s4", { agents: { boss: md("name: boss") }, agentTools: { boss: "export default 3\n" } })
+    await expect(composeDesk({ folder: bad, infer: scripted({}) })).rejects.toThrow(`${join(bad, "boss", "tools.js")}: the default export is not a Tool`)
+  })
+
+  test("lead discovery: one folder with its <name>.md; none or several fail listing them; reserved and dot folders are never the lead", async () => {
+    const none = standardDesk(root, "d1", { files: { "data/data.md": md("name: data"), "tools/tools.md": md("name: tools"), ".hidden/.hidden.md": md("name: hidden"), "notes/readme.md": "# notes" } })
+    await expect(composeDesk({ folder: none, infer: scripted({}) })).rejects.toThrow(`${none}: no lead agent — a desk holds its lead as <lead>/<lead>.md`)
+    const two = standardDesk(root, "d2", { agents: { aa: md("name: aa"), bb: md("name: bb") } })
+    await expect(composeDesk({ folder: two, infer: scripted({}) })).rejects.toThrow("a desk has one lead folder (<lead>/<lead>.md); found 2: aa, bb")
+    // An agents/ folder with no agent in it (a moved desk's leftover history) is not the legacy layout.
+    const moved = standardDesk(root, "d3", { agents: { boss: md("name: boss") }, files: { "agents/old/transcript.jsonl": "" } })
+    expect((await composeDesk({ folder: moved, infer: scripted({}) })).lead.name).toBe("boss")
+    // agent.md in a standard folder is read (migration); a <name>.md must carry its folder's name
+    const migrating = standardDesk(root, "d4", { files: { "boss/agent.md": md("name: boss\nagents: [helper]"), "boss/helper/agent.md": md("name: helper") } })
+    expect([...(await composeDesk({ folder: migrating, infer: scripted({}) })).agents().keys()]).toEqual(["boss", "helper"])
+    const misnamed = standardDesk(root, "d5", { agents: { boss: md("name: chief") } })
+    await expect(composeDesk({ folder: misnamed, infer: scripted({}) })).rejects.toThrow(`${join(misnamed, "boss", "boss.md")}: name chief — an agent is named after its folder (boss/boss.md)`)
+    const history = standardDesk(root, "d6", { agents: { boss: md("name: boss\nagents: [history]") }, files: { "boss/history/history.md": md("name: history") } })
+    await expect(composeDesk({ folder: history, infer: scripted({}) })).rejects.toThrow("an agent folder is never named history")
+  })
+
+  test("teams/<team>/<team>.md is a template; a template's tools.js is refused (its tools come from the catalogue)", async () => {
+    const folder = standardDesk(root, "t1", { agents: { boss: md('name: boss\nwrites: ["shared/**"]\ntools: [agent.spawn]') }, files: { "teams/crew/crew.md": md("name: crew\nagents: [hand]"), "teams/crew/hand/hand.md": md("name: hand") } })
+    const desk = await composeDesk({ folder, infer: scripted({}) })
+    expect(desk.ctx.env.templates.crew).toMatchObject({ name: "crew", members: [{ name: "hand" }] })
+    writeFileSync(join(folder, "teams", "crew", "tools.js"), toolsSrc("crew.x"))
+    await expect(composeDesk({ folder, infer: scripted({}) })).rejects.toThrow(`${join(folder, "teams", "crew", "tools.js")}: a team template takes its tools from the desk's catalogue`)
+  })
+
+  test("the legacy layout still composes (agents/<lead>/agent.md), and a standard desk mounts a legacy one", async () => {
+    const { compose } = await readDeskConfig(MINI) // fixtures/mini-desk: agents/mini/agent.md
+    expect((await composeDesk({ folder: MINI, ...compose, infer: scripted({}) })).lead.config.folder).toBe(join(MINI, "agents", "mini"))
+    const desk = await composeDesk({ folder: SAMPLE, infer: scripted({}) }) // standard, mounting mini-desk
+    expect(desk.agents().get("mini").config.folder).toBe(join(MINI, "agents", "mini"))
   })
 })
 
@@ -411,7 +499,7 @@ describe("the inbuilt kit, attached by name (kit-desk)", () => {
     await refused("t13", { tm: md("name: tm\nreads: {a: 1}") }, 'reads: globs (a list of workspace paths, e.g. ["projects/**"])')
     await refused("t14", { tm: md("name: tm\nboard: no") }, "board: false keeps it off its team's board")
     await refused("t15", { tm: md("name: tm", "") }, "t15/teams/tm/agent.md: no role")
-    await refused("t16", { tm: null }, `${join(root, "t16", "teams", "tm")}: no agent.md`)
+    await refused("t16", { tm: null }, `${join(root, "t16", "teams", "tm")}: no tm.md`)
     // A good one composes beside them.
     const desk = await withTeams("ok", { tm: lead, "tm/m": md("name: m\nwrites: [shared/t/**]\nartifacts: [files]") })
     expect(desk.ctx.env.templates.tm.members).toEqual([{ name: "m", role: "A fixture agent.", tools: [], artifacts: ["files"], writes: ["shared/t/**"], members: [] }])

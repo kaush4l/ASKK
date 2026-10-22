@@ -1,14 +1,16 @@
 // A desk: one agent team in its own folder, built on the kernel (backend/kernel), everything it needs inside it.
 //
-//   custom/<desk>/
+//   custom/<desk>/ (or desks/<desk>/, the core desks)
 //     main.js     the desk's entry (below): builds its agents on the kernel in start()
-//     agents/     its agents as folders, nested by team (<team>/<agent>/agent.md + transcript)
+//     <lead>/     its lead (2026-10-21, the standard): <lead>.md, tools.js, practice.md, history.md; members nested
+//                 as <member>/<member>.md (layout.js; the legacy layout: agents/<lead>/agent.md, members nested)
 //     tools/      host-side code only this desk uses (its tools, watchers, artifacts)
 //     vendor/     applications only this desk uses (git-ignored with custom/)
 //     data/       the workspace: the desk's shared files (Files page, fs/*, the wake book in data/state/)
 //     state/      host state: server.json, kernel-team.jsonl, artifacts/, days/, logs its tools keep
-//   memory/<desk>/          at ASKK's root (companion/shared/paths.js memoryFolder): the desk's and its teams' memory and
-//                           reports (kernel-team passes it to start) and its loaded projects (projects.json)
+//   memory/<desk>/          at ASKK's root (companion/shared/paths.js memoryFolder): the desk's and its teams' memory —
+//                           reports, practice, <team>/board.md — (kernel-team passes it to start) and its loaded
+//                           projects (projects.json)
 //
 // main.js default-exports a function the host calls once at start:
 //
@@ -44,11 +46,12 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs"
 import { basename, dirname, join, resolve } from "node:path"
 import { memoryFolder } from "../shared/paths.js"
+import { agentTreeRoot } from "./layout.js"
 
 const ENTRY = "main.js"
 const entryOf = (folder) => (existsSync(join(folder, ENTRY)) ? join(folder, ENTRY) : null)
 
-// The desk folder of a desk folder or its agents/ folder, or null.
+// The desk folder of a desk folder or its (legacy) agents/ folder, or null.
 export function deskFolder(dir) {
   if (!dir) return null
   const full = resolve(dir)
@@ -58,19 +61,19 @@ export function deskFolder(dir) {
 
 export const deskPaths = (folder) => ({
   folder,
-  agents: join(folder, "agents"),
+  agents: agentTreeRoot(folder), // the lead's folder (agents/ in the legacy layout)
   workspace: join(folder, "data"),
   memory: memoryFolder(basename(folder)),
   state: join(folder, "state"),
   tools: join(folder, "tools"),
 })
 
-// Every desk in a folder (e.g. custom/): the subfolders with a main.js, by name.
 // The core desks ASKK ships (2026-10-20: desks/agent, the single capable agent), hosted beside the local ones.
 export const CORE_DESKS = resolve(import.meta.dir, "..", "..", "desks")
 
 // The desks a server hosts: the core desks (desks/) and the local ones (--desks, default custom/: never pushed); a local
-// desk named like a core one wins. only: just these names.
+// desk named like a core one wins; no local folder (or an empty one): the core desks alone (2026-10-21 owner: "the
+// default mode where we read the default single agent folder"). only: just these names.
 export function hostedDeskFolders({ desks = "custom", core = CORE_DESKS, only = null } = {}) {
   const local = listDesks(desks)
   const names = new Set(local.map((f) => basename(f)))
@@ -78,6 +81,7 @@ export function hostedDeskFolders({ desks = "custom", core = CORE_DESKS, only = 
   return [...shipped, ...local].filter((f) => !only || only.has(basename(f)))
 }
 
+// Every desk in a folder (e.g. custom/): the subfolders with a main.js, by name; none when the folder is missing.
 export function listDesks(dir = "custom") {
   const base = resolve(dir)
   if (!existsSync(base)) return []

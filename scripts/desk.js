@@ -2,7 +2,8 @@
 //
 //   bun scripts/desk.js check <desk folder>
 //        composes it as the server would (companion/team/compose.js composeDesk, with its main.js's compose options), with a
-//        stub model and no host, and prints { name, lead, tree: desk.twin().tree, tools: {agent: [tool names]},
+//        stub model and no host, and prints { name, layout: standard (<lead>/<lead>.md) | legacy (agents/<lead>/agent.md),
+//        lead, tree: desk.twin().tree, tools: {agent: [tool names]},
 //        templates: {team: its lead and members as agent.spawn {template} names them} }; exit 0, or the reason on
 //        stderr and exit 1 (a bad teams/ template fails it too: composeDesk checks them). Nothing runs: no model is
 //        called, no tool either.
@@ -10,6 +11,7 @@
 import { resolve } from "node:path"
 
 import { composeDesk, readDeskConfig } from "../companion/team/compose.js"
+import { deskLead } from "../companion/team/layout.js"
 
 const USAGE = "usage: bun scripts/desk.js check <desk folder>"
 
@@ -30,7 +32,7 @@ async function main() {
   const desk = await composeDesk({ folder, name: config.name, infer, ...c })
   const tools = Object.fromEntries([...desk.agents().values()].map((a) => [a.name, [...a.tools.keys()]]))
   const templates = Object.fromEntries(Object.entries(desk.ctx.env.templates ?? {}).map(([key, t]) => [key, team(t)]))
-  console.log(JSON.stringify({ name: config.name ?? desk.lead.name, lead: desk.lead.name, tree: desk.twin().tree, tools, templates }, null, 2))
+  console.log(JSON.stringify({ name: config.name ?? desk.lead.name, layout: deskLead(folder).layout, lead: desk.lead.name, tree: desk.twin().tree, tools, templates }, null, 2))
 }
 
 main().then(

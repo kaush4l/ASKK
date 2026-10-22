@@ -72,7 +72,10 @@ next-env.d.ts
 /desks/*/data/
 /desks/*/state/
 /desks/*/proposed/
-/desks/**/transcript.jsonl
+# each agent's runs (history.md beside its .md, rotated into history/; transcript.jsonl before 2026-10-21): local
+/desks/**/history.md
 /desks/**/history/
-# a core desk's kept helpers (agents/<lead>/<helper>/: keep: desk, written at run time) are local too
-/desks/agent/agents/agent/*/
+/desks/**/transcript.jsonl
+# a core desk's kept helpers (<lead>/<helper>/<helper>.md: keep: desk, written at run time) are local too
+/desks/agent/agent/*/
+/desks/agent/agents/

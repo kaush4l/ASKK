@@ -1,12 +1,14 @@
 // Compose a desk from files (the standard, docs/standard.md): agents as folders, tools as files, desks mounted in
 // desks, built on the kernel (backend/kernel buildDesk). Host side: it reads the disk (fs, Bun.YAML).
 //
-//   custom/<desk>/main.js              export default conventionDesk({ title, description })
-//   custom/<desk>/agents/<lead>/agent.md   frontmatter + role; members as subfolders (agents: [a, b])
-//   custom/<desk>/tools/<name>.js      export default defineTool({ name, description, input, view?, run })
-//   custom/<desk>/teams/<team>/agent.md    a team template (members as subfolders): spawned at run time, never at start
+//   <desk>/main.js                     export default conventionDesk({ title, description })
+//   <desk>/<lead>/<lead>.md            frontmatter + role; members as subfolders <lead>/<member>/<member>.md (agents: [a, b])
+//   <desk>/<lead>/tools.js             the agent's own tools (defineTool, or an array): attached to it, names unique
+//   <desk>/tools/<name>.js             export default defineTool({ name, description, input, view?, run })
+//   <desk>/teams/<team>/<team>.md      a team template (members as subfolders): spawned at run time, never at start
+//   legacy (2026-10-21: every desk made before; read unchanged): <desk>/agents/<lead>/agent.md, members' agent.md
 //
-//   readAgentFolder(folder, vars)      an agent.md tree as plain definitions (+ desks: the desks mounted under it)
+//   readAgentFolder(folder, vars)      an agent's .md tree as plain definitions (+ desks: the desks mounted under it)
 //   loadTools(dir)                     {name: Tool} from every dir/*.js, imported fresh
 //   hostClient({port, desk, fetch?})   {get, post} on the host API (/__askk/), as that desk: tools reach the host
 //                                      only through it (ctx.host)
@@ -30,6 +32,7 @@ import { basename, dirname, join, resolve, sep } from "node:path"
 
 import { Artifact, buildDesk, builtinKit, Checklist, complete, defineTool, SPAWN_NAME, Tool } from "../../backend/kernel/index.js"
 import { API_PREFIX, DESK_HEADER } from "../shared/config.js"
+import { AGENT_FILE_NAMES, agentFile, deskLead } from "./layout.js"
 
 const FRONT = /^---\n([\s\S]*?)\n---\n?/
 const list = (v) => (v == null ? [] : [].concat(v))
@@ -38,11 +41,18 @@ export const DESK_NAME = /^[a-z][a-z0-9-]*$/ // a desk's folder name (mounts, de
 
 // ---- agents ------------------------------------------------------------------------------------
 
-// agents/<lead>/agent.md (+ one folder per member, nested): frontmatter + role. {{key}} takes vars[key].
-// desks: the names of desks mounted under this agent (composeDesk mounts them from the desks' folder).
+// An agent's folder (+ one folder per member, nested): <name>/<name>.md — or agent.md, the legacy layout and a
+// migration — frontmatter + role. {{key}} takes vars[key]. desks: the names of desks mounted under this agent (composeDesk
+// mounts them from the desks' folder). A <name>.md agent is named after its folder (no name: the folder's); its
+// tools.js (the agent's own tools) is loaded by composeDesk. FILE / TOOLS: the .md read and the tools.js beside it.
+export const FILE = Symbol("file")
+export const TOOLS = Symbol("tools.js")
 export function readAgentFolder(folder, vars = {}) {
-  const file = join(folder, "agent.md")
-  if (!existsSync(file)) throw new Error(`no agent.md in ${folder}`)
+  const file = agentFile(folder)
+  if (!file) {
+    const why = AGENT_FILE_NAMES.has(basename(folder)) ? ` — an agent folder is never named ${basename(folder)} (its ${basename(folder)}.md sits beside its own .md)` : ""
+    throw new Error(`no ${basename(folder)}.md (or agent.md) in ${folder}${why}`)
+  }
   const text = readFileSync(file, "utf8")
   const m = text.match(FRONT)
   if (!m) throw new Error(`${file}: no frontmatter`)
@@ -53,10 +63,15 @@ export function readAgentFolder(folder, vars = {}) {
   } catch (error) {
     throw new Error(`${file}: frontmatter is not YAML (${error.message})`)
   }
+  const own = basename(file) !== "agent.md" // the standard: <name>/<name>.md
+  if (own && meta.name == null) meta.name = basename(folder)
   for (const k of ["description", "goal", "title"]) meta[k] = fill(meta[k])
   if (meta.artifacts) meta.artifacts = JSON.parse(fill(JSON.stringify(meta.artifacts)))
   const def = { ...meta, role: fill(text.slice(m[0].length).trim()), folder }
+  def[FILE] = file
+  if (existsSync(join(folder, "tools.js"))) def[TOOLS] = join(folder, "tools.js")
   if (!def.name) throw new Error(`${file}: no name`)
+  if (own && String(def.name) !== basename(folder)) throw new Error(`${file}: name ${def.name} — an agent is named after its folder (${basename(folder)}/${basename(folder)}.md)`)
   def.agents = list(meta.agents).map((sub) => readAgentFolder(join(folder, String(sub)), vars))
   def.desks = list(meta.desks)
   const bad = def.desks.filter((d) => typeof d !== "string" || !DESK_NAME.test(d))
@@ -114,9 +129,9 @@ export async function loadToolFile(file) {
 
 // {name: Tool} from every dir/*.js (not *.test.js; helpers live in subfolders). A missing dir is no tools; a name
 // defined twice throws naming both files.
-export async function loadTools(dir) {
+// from: {name: file} filled as they load (composeDesk names both files when an agent's tools.js takes a desk tool's name).
+export async function loadTools(dir, from = {}) {
   const out = {}
-  const from = {}
   if (!existsSync(dir)) return out
   const real = ownPath(dir, "a desk's tools/ folder")
   forgetModules(real) // helpers under tools/ come back fresh with the tools that import them
@@ -347,20 +362,15 @@ const KEYS = new Set(["name", "description", "title", "goal", "team", "model", "
 // The keys an agent.md artifacts: entry for a kit type takes (a desk's own type may take more: its spec is handed over).
 const KIT_KEYS = new Set(["type", "id", "commands", "gate", "reflect"]) // reflect: false — a practice without the run's retro item
 
-// The one lead of a desk: the one folder in agents/ with an agent.md.
-function leadFolder(folder) {
-  const dir = join(folder, "agents")
-  const leads = existsSync(dir) ? readdirSync(dir, { withFileTypes: true }).filter((d) => d.isDirectory() && existsSync(join(dir, d.name, "agent.md"))).map((d) => d.name) : []
-  if (leads.length !== 1) throw new Error(`${dir}: a desk has one lead folder with an agent.md (found ${leads.length ? leads.join(", ") : "none"})`)
-  return join(dir, leads[0])
-}
+// The one lead of a desk (layout.js deskLead): <desk>/<lead>/<lead>.md, or agents/<lead>/agent.md (legacy).
+const leadFolder = (folder) => deskLead(folder).folder
 
 // Drop undefined fields: the kernel's defaults (maxSteps 12, …) are spread under the spec.
 const defined = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined))
 
 // A desk's main.js answer, imported fresh: a convention desk's compose options are its `compose` field.
 export async function readDeskConfig(folder) {
-  if (!existsSync(join(folder, "main.js"))) throw new Error(`${folder}: no main.js — a desk is a folder with main.js, agents/ and tools/`)
+  if (!existsSync(join(folder, "main.js"))) throw new Error(`${folder}: no main.js — a desk is a folder with main.js, its lead (<lead>/<lead>.md) and tools/`)
   const real = ownPath(folder, "a desk folder")
   const entry = ownPath(join(real, "main.js"), "a desk's main.js")
   forgetModules(real)
@@ -389,7 +399,9 @@ const realOf = (p) => {
 // models, memory; `mounts`: the desk folder names from the outermost desk to this one (a cycle check); `owners`:
 // agent name → the desk it belongs to (its ctx after the build).
 async function deskSpec(folder, o, mounts) {
-  const own = await loadTools(join(folder, "tools"))
+  const from = {}
+  const own = await loadTools(join(folder, "tools"), from)
+  for (const [name, file] of Object.entries(from)) o.toolFiles?.set(name, file) // tool names are unique across the desk
   o.owns?.set(resolve(folder), own) // composeDesk hands the outermost desk's catalogue to buildDesk (agent.spawn)
   const deskName = basename(folder)
   const lead = readAgentFolder(leadFolder(folder), o.vars)
@@ -397,27 +409,41 @@ async function deskSpec(folder, o, mounts) {
 }
 
 async function specOf(def, o, lead = false) {
-  const where = `${def.folder}/agent.md`
+  const where = def[FILE] ?? `${def.folder}/agent.md`
   const unknown = Object.keys(def).filter((k) => !KEYS.has(k))
   if (unknown.length) throw new Error(`${where}: unknown key ${unknown.join(", ")} (keys: ${[...KEYS].filter((k) => k !== "role" && k !== "folder").join(", ")})`)
   const model = def.model ?? o.defaultModel
   if (o.models && model != null && !Object.hasOwn(o.models, model)) throw new Error(`${def.name}: unknown model ${model}; models: ${Object.keys(o.models).join(", ")}`)
   o.owners.set(def.name, o.deskName)
 
-  const tools = list(def.tools).map((name) => {
+  // Its own tools.js (2026-10-21): attached to this agent, whatever its tools: lists; a name taken by another agent's
+  // tools.js or the desk's tools/ is an Error naming both files.
+  const mine = def[TOOLS] ? await loadToolFile(def[TOOLS]) : []
+  for (const t of mine) {
+    const other = o.toolFiles?.get(t.name)
+    if (other) throw new Error(`${def[TOOLS]}: tool ${t.name} is defined in ${other} too (tool names are unique across a desk)`)
+    o.toolFiles?.set(t.name, def[TOOLS])
+  }
+  const ownNames = new Set(mine.map((t) => t.name))
+  const tools = list(def.tools).filter((name) => !ownNames.has(name)).map((name) => {
     if (typeof name !== "string") throw new Error(`${where}: tools are names (${JSON.stringify(name)})`)
     const tool = o.own[name] ?? o.tools[name]
     // A tool from another copy of the kernel module (not instanceof here) goes in as is, through a factory.
     if (tool) return tool instanceof Tool || typeof tool === "function" ? tool : () => tool
     const available = [...new Set([...Object.keys(o.own), ...Object.keys(o.tools)])].sort()
-    throw new Error(`${def.name}: unknown tool ${name}; available: ${available.join(", ") || "none"} (${o.deskName}/tools/*.js, then the host's catalogue)`)
+    throw new Error(`${def.name}: unknown tool ${name}; available: ${available.join(", ") || "none"} (its own tools.js, ${o.deskName}/tools/*.js, then the host's catalogue)`)
   })
+  tools.unshift(...mine)
   const members = []
   for (const sub of def.agents) members.push({ type: "agent", ...(await specOf(sub, o)) })
   for (const name of def.desks) {
     if (o.mounts.includes(name)) throw new Error(`${def.name}: desks: ${[...o.mounts, name].join(" → ")} is a cycle`)
     const folder = join(o.deskRoot, name)
-    if (!existsSync(join(folder, "main.js")) || !existsSync(join(folder, "agents"))) throw new Error(`${def.name}: desks: no desk ${name} (${folder} needs main.js and agents/)`)
+    let hasLead = false
+    try {
+      hasLead = !!deskLead(folder)
+    } catch {}
+    if (!existsSync(join(folder, "main.js")) || !hasLead) throw new Error(`${def.name}: desks: no desk ${name} (${folder} needs main.js and its lead: <lead>/<lead>.md)`)
     if (realOf(folder) !== join(realOf(o.deskRoot), name)) throw new Error(`${def.name}: desks: ${name} is a link (${folder} → ${realOf(folder)}); a mounted desk is a real folder beside this one`)
     // The mounted desk composes with its own main.js options (models, artifact types, tool catalogue) and memory.
     // maxSteps: its own, else the kernel's; fallbacks: its own (a desk without compose options keeps the parent's).
@@ -486,7 +512,8 @@ const MAX_STEPS = 300 // agent.spawn's bound (backend/kernel/builtin/spawn.js)
 // commands), a model from its models, lanes as globs. prefix: the name a member's is joined to ("<team>-<member>", as
 // agent.spawn names it), which must pass SPAWN_NAME too; seen: the names of the whole template (one each).
 function templateOf(def, o, prefix = null, seen = new Set()) {
-  const where = `${def.folder}/agent.md`
+  const where = def[FILE] ?? `${def.folder}/agent.md`
+  if (def[TOOLS]) throw new Error(`${def[TOOLS]}: a team template takes its tools from the desk's catalogue (tools/, by name in tools:), not a tools.js`)
   const unknown = Object.keys(def).filter((k) => !KEYS.has(k))
   if (unknown.length) throw new Error(`${where}: unknown key ${unknown.join(", ")} (keys: ${[...KEYS].filter((k) => k !== "role" && k !== "folder" && !(k in NOT_IN_TEMPLATE)).join(", ")})`)
   for (const [k, why] of Object.entries(NOT_IN_TEMPLATE)) if (def[k] != null && !(Array.isArray(def[k]) && !def[k].length)) throw new Error(`${where}: ${k} is not for a team template (${why})`)
@@ -495,7 +522,7 @@ function templateOf(def, o, prefix = null, seen = new Set()) {
   if (seen.has(name)) throw new Error(`${where}: ${name} twice in this template`)
   seen.add(name)
   if (!String(def.role ?? "").trim()) throw new Error(`${where}: no role — the body under the frontmatter says what it is for and how it works`)
-  if (prefix && def.goal != null) throw new Error(`${where}: goal is the team's (its lead's agent.md); a member works toward it`)
+  if (prefix && def.goal != null) throw new Error(`${where}: goal is the team's (its lead's .md); a member works toward it`)
   if (o.models && def.model != null && !Object.hasOwn(o.models, def.model)) throw new Error(`${where}: unknown model ${def.model}; models: ${Object.keys(o.models).join(", ")}`)
   if (def.max_steps != null && !(Number.isInteger(def.max_steps) && def.max_steps >= 1 && def.max_steps <= MAX_STEPS)) throw new Error(`${where}: max_steps: a whole number from 1 to ${MAX_STEPS}`)
   for (const k of ["writes", "reads"]) {
@@ -549,8 +576,8 @@ function templateOf(def, o, prefix = null, seen = new Set()) {
   })
 }
 
-// A desk's teams/: {<team>: spawn input} from each teams/<team>/agent.md (its members in subfolders, agents: [a, b]),
-// named after its folder; {} without teams/. A folder there without an agent.md is an error (a template that never
+// A desk's teams/: {<team>: spawn input} from each teams/<team>/<team>.md (or agent.md; its members in subfolders, agents:
+// [a, b]), named after its folder; {} without teams/. A folder there without one is an error (a template that never
 // loads would be a team the lead cannot staff).
 function readTemplates(folder, o) {
   const dir = join(folder, "teams")
@@ -558,9 +585,9 @@ function readTemplates(folder, o) {
   const out = {}
   for (const d of readdirSync(dir, { withFileTypes: true }).filter((x) => x.isDirectory()).sort((a, b) => a.name.localeCompare(b.name))) {
     const at = join(dir, d.name)
-    if (!existsSync(join(at, "agent.md"))) throw new Error(`${at}: no agent.md — a team template is teams/<team>/agent.md (members in subfolders)`)
+    if (!agentFile(at)) throw new Error(`${at}: no ${d.name}.md — a team template is teams/<team>/<team>.md (members in subfolders)`)
     const def = readAgentFolder(at, o.vars)
-    if (def.name !== d.name) throw new Error(`${at}/agent.md: name ${def.name} — a template is named after its folder (${d.name}): agent.spawn {template: "${d.name}"}`)
+    if (def.name !== d.name) throw new Error(`${def[FILE]}: name ${def.name} — a template is named after its folder (${d.name}): agent.spawn {template: "${d.name}"}`)
     out[d.name] = templateOf(def, o)
   }
   return out
@@ -576,7 +603,7 @@ function readTemplates(folder, o) {
 export async function composeDesk({ folder, deskRoot, name, port, infer, context = {}, tools = {}, artifacts = {}, vars = {}, models, defaultModel, maxSteps, builtin = {} } = {}) {
   if (!folder) throw new Error("composeDesk: folder is required")
   const root = resolve(folder)
-  if (!existsSync(join(root, "agents"))) throw new Error(`${root}: no agents/ folder`)
+  deskLead(root) // the lead's folder, or an Error that says what it found
   const deskName = name ?? basename(root)
   const ctx = { host: port ? hostClient({ port, desk: deskName }) : null, desk: deskName, memory: null, log: () => {}, ...context }
   const owners = new Map() // agent name → its desk folder name
@@ -585,7 +612,8 @@ export async function composeDesk({ folder, deskRoot, name, port, infer, context
   // practice: each agent's standing orders in its own desk's memory folder (a mounted desk's agents: that desk's).
   const kit = builtinKit({ memory: ctx.memory, practiceStore: (agent) => practiceStore(agent, () => memories.get(owners.get(agent.name)) ?? ctx.memory), ...builtin })
   const owns = new Map() // desk folder → its tools/ catalogue
-  const o = { deskRoot: resolve(deskRoot ?? dirname(root)), tools: { ...kit.tools, ...tools }, kitTools: kit.tools, kit: kit.artifacts, artifacts: artifactTypes(ctx.memory, artifacts, kit.artifacts), vars, models, defaultModel, maxSteps, owners, memories, owns, memoryRoot: ctx.memory ? dirname(ctx.memory) : null }
+  const toolFiles = new Map() // tool name → the file that defines it (desks' tools/, agents' tools.js): one each
+  const o = { deskRoot: resolve(deskRoot ?? dirname(root)), tools: { ...kit.tools, ...tools }, kitTools: kit.tools, kit: kit.artifacts, artifacts: artifactTypes(ctx.memory, artifacts, kit.artifacts), vars, models, defaultModel, maxSteps, owners, memories, owns, toolFiles, memoryRoot: ctx.memory ? dirname(ctx.memory) : null }
   const spec = await deskSpec(root, o, [basename(root)])
   // The outermost desk's teams/ (checked against its catalogue, as its lead's agents are): what agent.spawn {template}
   // builds at run time.
@@ -601,8 +629,8 @@ export async function composeDesk({ folder, deskRoot, name, port, infer, context
   return desk
 }
 
-// What a convention desk's main.js default-exports: the desk named after its folder, composed from agents/ and
-// tools/ (composeDesk), its models the host's local CLIs with fallbacks. artifacts: the desk's own artifact types
+// What a convention desk's main.js default-exports: the desk named after its folder, composed from its lead's folder
+// and tools/ (composeDesk), its models the host's local CLIs with fallbacks. artifacts: the desk's own artifact types
 // ({type: (agent, spec) => Artifact}; one named like a kit type replaces it — e.g. files: BUILTIN.artifacts.files({
 // adapter}) for its own workspace adapter); tools: a catalogue after tools/ (then the kit); builtin: the kit's desk
 // options (clock, the files tree's first root). start({infer}) takes a stub model (tests).

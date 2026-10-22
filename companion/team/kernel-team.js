@@ -7,8 +7,9 @@
 // format, guide, answer, error) as the state the UI reads (status, activity, messages, working, stats).
 // The owner's message to the lead (or any agent) runs it, as do the desk's schedule and its own
 // background work (start's run({wake, busy, log})). Messages live in memory and in
-// state/kernel-team.jsonl (one row per event); each agent's runs also in its transcript beside its
-// agent.md (kernel-transcripts.js), restored at start with every step as it streamed.
+// state/kernel-team.jsonl (one row per event); each agent's runs also in its history.md beside its
+// .md (kernel-history.js), restored at start with every step as it streamed. Each team's board is
+// memory/<desk>/<team>/board.md (board-file.js), restored at every start.
 
 //
 // Every kernel element reaches the UI (the owner follows the trail): agents with their definition (role, folder,
@@ -16,7 +17,7 @@
 // per agent, every artifact, and the desk's background log (watchers, schedule, wakes, Telegram) as `log` events.
 //
 // 2026-10-17: the agent set is not fixed at start. An agent spawned at run time (kernel Desk.spawn, tool agent.spawn)
-// gets its state, a folder under <desk state>/spawned/<name>/ (an agent.md record, so its transcript records), and
+// gets its state, a folder under <desk state>/spawned/<name>/ (an agent.md record, so its history.md records), and
 // reaches every tab as {type: "registry", registry, states: {<name>: state}} then {type: "kernel", tree}; the
 // artifacts are scanned again (new ones watched, holders re-sent). A dismissed one leaves the registry, its own
 // artifacts leave as {type: "kernel", tree, removed: [ids]}. work() and the agent count read the live list. A spawned
@@ -35,18 +36,20 @@
 // 2026-10-17 (critic: a live view froze while every holder waited on a long run): an artifact with a numeric `poll`
 // (ms; the preview's) is refreshed by the host — x.refresh(a holder) every poll ms — while at least one tab is on the stream.
 
-import { appendFileSync, existsSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs"
-import { join, relative } from "node:path"
+import { appendFileSync, existsSync, mkdirSync, renameSync, writeFileSync, readFileSync, rmSync } from "node:fs"
+import { dirname, join, relative } from "node:path"
 
 import { ownerHelperCall, respawn, SPAWN_NAME } from "../../backend/kernel/index.js"
 import { describeActivity } from "../../backend/live/activity.js"
 import { activityOf, cut, freshState, IDLE, nextStats, rows } from "../../backend/live/team-rows.js"
 import { OWNER_CHAT_STEP } from "./kernel-status.js"
-import { createTranscripts } from "./kernel-transcripts.js"
+import { boardMarkdown, readBoardFile } from "./board-file.js"
+import { createHistory } from "./kernel-history.js"
 import { archiveKept, keptFolderOf, readKept, writeKept } from "./kept.js"
+import { agentTreeRoot } from "./layout.js"
 import { retryWake, startWakes, wakesPath } from "../shared/wakes.js"
 import { SSE_PING_MS, HOST_LIMITS } from "../shared/config.js"
-import { memoryFolder } from "../shared/paths.js"
+import { boardFile, memoryFolder } from "../shared/paths.js"
 
 export const MAX_MESSAGES = 400 // an agent's thread rows kept: the newest (live), the newest whole runs (restored)
 const LOG_KEEP = 300 // background log lines kept for a tab that connects later
@@ -118,6 +121,11 @@ export async function createKernelTeam({ desk, port, log: hostLog = () => {}, li
   // Saved on every change: state/artifacts/<id>.json (latest) and state/days/<ET day>/<id>.json
   // (the day's record, for navigation). Restored at start by the artifact's `keep`: "always", "day"
   // (only from the same ET day), "run" and "file" never (one run's, or a file's own).
+  // 2026-10-21 owner ("For a shared history board for agents, a memory/<desk>/<sub desk>"): a team's board is
+  // memory/<desk>/<team>/board.md instead (paths.js boardFile; the desk's memory is its lead's ctx.memory — a mounted
+  // desk's own), written on every change and restored at every start whatever its keep; a board.md not written yet is
+  // restored once from its state/artifacts/<id>.json (any day). A fixture run (live: false), or a desk without a memory
+  // folder, keeps the state/ files.
   const etDay = (d = new Date()) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(d)
   const artDir = join(storageDir, "artifacts")
   mkdirSync(artDir, { recursive: true })
@@ -126,8 +134,47 @@ export async function createKernelTeam({ desk, port, log: hostLog = () => {}, li
   // Each instance is read back from disk once, when it first appears (2026-10-17 critic: a live shared one re-held after
   // its last holder was dismissed was restored again by rescan, its in-memory state reset to the last save).
   const restored = new WeakSet()
+  const boardPaths = new WeakMap() // a board → its board.md (null: state/ files), fixed when it first appears
+  const boardPath = (x) => {
+    if (!boardPaths.has(x)) {
+      const mem = live === false ? null : (team.list.find((a) => a.board === x)?.context?.memory ?? memory)
+      boardPaths.set(x, mem ? boardFile(mem, x.team) : null)
+    }
+    return boardPaths.get(x)
+  }
+  // A board.md is the team's history: restored at start when it belongs to today (a keep "day" board — the default) or
+  // to any day (keep "always"); a day board from an earlier day is filed under <team>/boards/<day>.md and the board
+  // starts fresh (2026-10-21 review: days-old entries flowed into every prompt). A spawned team that is not kept never
+  // inherits a dismissed team's board of the same name: its old file is filed away too.
+  const fileAway = (file, day) => {
+    const to = join(dirname(file), "boards", `${day}.md`)
+    mkdirSync(dirname(to), { recursive: true })
+    renameSync(file, existsSync(to) ? to.replace(/\.md$/, `-${Date.now()}.md`) : to)
+    return to
+  }
+  const restoreBoard = (id, x) => {
+    const file = boardPath(x)
+    if (!file) return false
+    try {
+      const saved = existsSync(file) ? readBoardFile(file) : null
+      const owner = team.list.find((a) => a.board === x)
+      const transient = !!owner?.config?.spawned && owner.config.spawned.keep !== "desk"
+      if (saved) {
+        const day = saved.at ? etDay(new Date(saved.at)) : null
+        if (transient || (keepOf(x) === "day" && day !== etDay())) log(`desk: ${id} from ${day ?? "an unknown day"} filed to ${fileAway(file, day ?? "undated")}; the board starts fresh`)
+        else x.restore({ entries: saved.entries })
+      } else if (!transient && existsSync(join(artDir, fileOf(id)))) {
+        const old = JSON.parse(readFileSync(join(artDir, fileOf(id)), "utf8")) // before board.md: only today's
+        if (keepOf(x) !== "day" || old.day === etDay()) x.restore(old.state)
+      }
+    } catch (error) {
+      log(`desk: ${id} not restored (${error.message})`)
+    }
+    return true
+  }
   const restore = (id, x) => {
     restored.add(x)
+    if (x.kind === "board" && restoreBoard(id, x)) return
     const file = join(artDir, fileOf(id))
     if (!existsSync(file) || ["run", "file"].includes(keepOf(x))) return
     try {
@@ -140,6 +187,18 @@ export async function createKernelTeam({ desk, port, log: hostLog = () => {}, li
   }
   for (const [id, { artifact: x }] of artifacts) restore(id, x)
   const write = (id, x) => {
+    const board = x.kind === "board" ? boardPath(x) : null
+    if (board) {
+      try {
+        mkdirSync(dirname(board), { recursive: true })
+        const tmp = `${board}.${process.pid}.tmp`
+        writeFileSync(tmp, boardMarkdown(x))
+        renameSync(tmp, board)
+      } catch (error) {
+        log(`desk: ${id} not saved (${error.message})`)
+      }
+      return
+    }
     if (keepOf(x) === "file") return // a file's own
     const body = JSON.stringify({ id, kind: x.kind, day: etDay(), at: new Date().toISOString(), state: x.state }, null, 1)
     try {
@@ -286,7 +345,7 @@ export async function createKernelTeam({ desk, port, log: hostLog = () => {}, li
   // The run in progress per agent, beside the kernel's steps (its answer event carries them): what its thread showed
   // that the steps do not hold — each step's results in the order they arrived, its refused-answer row, the owner's
   // guidance and where it fell, each row's time (the Live feed merges agents by time). Recorded with the run
-  // (kernel-transcripts.js), so a restored thread reads as it streamed.
+  // (kernel-history.js), so a restored thread reads as it streamed.
   const trails = new Map() // agent name -> {times: [ms, request first], step, steps: [{arrived: [call index], gate}], guidance: [{pos, from, text}]}
   const trailStep = (id) => {
     const t = trails.get(id)
@@ -297,7 +356,7 @@ export async function createKernelTeam({ desk, port, log: hostLog = () => {}, li
     const s = (states[id] ??= freshState())
     const from = s.messages.length
     const trail = trails.get(id)
-    // The run's rows, in order (an owner chat beside the run is not one of them: its transcript never holds it).
+    // The run's rows, in order (an owner chat beside the run is not one of them: its history never holds it).
     if (trail) trail.times.push(...newMessages.filter((m) => m.kind !== "chat").map((m) => Date.parse(m.at)))
     let messages = s.messages
     if (newMessages.length) {
@@ -322,11 +381,11 @@ export async function createKernelTeam({ desk, port, log: hostLog = () => {}, li
 
   const msg = (row) => ({ id: `k${++seq}`, ...row })
 
-  // Transcripts beside each agent's agent.md: the newest runs come back as its EARLIER RUNS and as its thread's
+  // history.md beside each agent's .md: the newest runs come back as its EARLIER RUNS and as its thread's
   // first rows — every step as it streamed: its calls (tool, view, inputs, ok, the clipped output) in the order their
   // results arrived, refused answers, the owner's guidance where it fell. 2026-10-17: a restored run was only its
   // request and answer, so research-lead's thread and the Live feed lost every call when its desk reloaded.
-  const transcripts = createTranscripts({ enabled: live !== false })
+  const history = createHistory({ enabled: live !== false })
   const starts = new Map() // agent name -> the request of its run in progress
   // A step from before its refused-answer row was kept (no `gate`): that row from the kernel's note past the step's
   // calls (agent.js: tool gate, format or guide), as the live gate/format case drew it; another note draws nothing.
@@ -339,7 +398,7 @@ export async function createKernelTeam({ desk, port, log: hostLog = () => {}, li
     if (tool === "format" && out.startsWith("answer not taken:")) return { kind: "format", content: "Reply not taken: answer beside data or agent calls" }
     return null
   }
-  // A run from its transcript row as thread rows (no ids), each at its recorded time (else the run's). A row from
+  // A run from its history row as thread rows (no ids), each at its recorded time (else the run's). A row from
   // before steps were kept, or one that does not read, is its request and answer.
   const restoredRun = (a, r) => {
     const request = rows.request({ from: r.from, text: r.request }, r.at)
@@ -392,7 +451,7 @@ export async function createKernelTeam({ desk, port, log: hostLog = () => {}, li
     return [last[0], ...last.slice(last.length - MAX_MESSAGES + 1)]
   }
   for (const a of team.list) {
-    const runs = transcripts.restore(a)
+    const runs = history.restore(a)
     if (!runs.length) continue
     a.history = runs.map((r) => ({ from: r.from, request: r.request, answer: r.answer }))
     states[a.name].messages = keepRuns(runs.map((r) => withIds(restoredRun(a, r))))
@@ -494,13 +553,13 @@ export async function createKernelTeam({ desk, port, log: hostLog = () => {}, li
       case "answer":
         pendingCalls.delete(id)
         starts.delete(id)
-        transcripts.record(a, e, null, trails.get(id))
+        history.record(a, e, null, trails.get(id))
         trails.delete(id)
         update(id, { status: "idle", activity: IDLE, working: null }, [msg(rows.answer(e.answer, at(e.at)))])
         break
       case "error":
         pendingCalls.delete(id)
-        transcripts.record(a, e, starts.get(id))
+        history.record(a, e, starts.get(id))
         starts.delete(id)
         trails.delete(id)
         update(id, { status: "error", activity: IDLE, working: null, error: e.error }, [msg({ ...rows.answer(`Error: ${e.error}`, at(e.at)), error: e.error })])
@@ -510,16 +569,17 @@ export async function createKernelTeam({ desk, port, log: hostLog = () => {}, li
 
   // ---- agents that come and go -----------------------------------------------------------------
   // A spawned agent (kernel Desk.spawn, from agent.spawn): its folder is <desk state>/spawned/<name>/ with an agent.md
-  // record of what it was made for (the transcript beside it records its runs, as an agent.md folder's does); every
+  // record of what it was made for (the history.md beside it records its runs, as an agent's folder does); every
   // tab gets its definition and state, the caller's new definition, the artifacts' new holders and the new tree.
   // 2026-10-17: a spawned TEAM is one spawn event per agent (kernel Desk.spawn), its lead's first, every agent of it
   // already built then: the lead's event sets them all up — each its state and folder (agent.md with team:, the lead's
   // with its members) — in one registry event; a member's own event finds itself set up.
   const spawnedDir = join(storageDir, "spawned")
   // 2026-10-20 owner ("The agent might want to keep the sub-agents alive … written as .MD files in the same folder"): a
-  // helper spawned with keep: desk is written as agents/<its spawner's path>/<name>/agent.md (kept.js) — its transcript
+  // helper spawned with keep: desk is written as <its spawner's folder>/<name>/<name>.md (kept.js) — its history.md
   // beside it — spawned again at the next start (below), and archived to memory/<desk>/archive/agents/ when dismissed.
-  const agentsRoot = desk.folder ? join(desk.folder, "agents") : null
+  // The desk's agent tree (layout.js): its lead's folder (<desk>/<lead>/), or agents/ in the legacy layout.
+  const agentsRoot = desk.folder ? agentTreeRoot(desk.folder) : null
   const keptFolders = new Map() // name → its agent.md folder, for a kept helper here now
   const updating = new Map() // name → its kept folder, between agent.update's dismiss and its spawn
   const yamlList = (xs) => `[${xs.map((x) => JSON.stringify(x)).join(", ")}]`
@@ -545,7 +605,7 @@ export async function createKernelTeam({ desk, port, log: hostLog = () => {}, li
     }
     const s = a.config.spawned ?? e
     // Only a spawn name (kernel SPAWN_NAME, which Desk.spawn checks too) becomes a folder. 2026-10-17 (critic): the old
-    // sanitiser (/[^\w.-]/) let ".." through, and the helper's agent.md and transcript went into state/.
+    // sanitiser (/[^\w.-]/) let ".." through, and the helper's agent.md and history went into state/.
     const folder = SPAWN_NAME.test(a.name) ? join(spawnedDir, a.name) : null
     if (folder) a.config.folder = folder
     else log(`desk: ${JSON.stringify(a.name)} is not a spawn name: no folder, its runs are not recorded`)
@@ -569,9 +629,9 @@ export async function createKernelTeam({ desk, port, log: hostLog = () => {}, li
     for (const x of fresh) {
       recordSpawn(x, x === a ? e : { ...e, agent: x.name })
       states[x.name] = freshState()
-      // A kept helper back (a restart, an update): its runs from the transcript beside its agent.md, as a desk agent's.
+      // A kept helper back (a restart, an update): its runs from the history.md beside its .md, as a desk agent's.
       if (keptFolders.has(x.name)) {
-        const runs = transcripts.restore(x)
+        const runs = history.restore(x)
         if (runs.length) {
           x.history = runs.map((r) => ({ from: r.from, request: r.request, answer: r.answer }))
           states[x.name].messages = keepRuns(runs.map((r) => withIds(restoredRun(x, r))))
@@ -609,7 +669,7 @@ export async function createKernelTeam({ desk, port, log: hostLog = () => {}, li
     if (p) log(`desk: ${e.by ?? "?"} proposes ${p.update ? `an update of kept ${e.agent} (${Object.keys(p.update).join(", ")})` : `to keep ${e.agent}`} — not in force, waits for the owner (from a run that read the web: ${p.from})`)
     else if (e.dropped) log(`desk: ${e.by ?? "owner"} dropped the ${e.dropped === "update" ? "update" : "keep"} proposed for ${e.agent}${e.reason ? `: ${e.reason}` : ""}`)
   }
-  // A dismissed agent leaves the registry (its folder and transcript stay); the artifacts only it held leave too. A
+  // A dismissed agent leaves the registry (its folder and history.md stay); the artifacts only it held leave too. A
   // team leaves one agent per event, its members first (kernel Desk.dismiss), its board with the last of them.
   function dismissed(e) {
     const folder = keptFolders.get(e.agent)
@@ -917,7 +977,7 @@ export async function createKernelTeam({ desk, port, log: hostLog = () => {}, li
     return [...running, ...chats, ...waiting]
   }
 
-  // The kept helpers (agents/**/<name>/agent.md with keep: desk), spawned again by their spawners, parents first: each
+  // The kept helpers (<spawner folder>/<name>/<name>.md — or agent.md — with keep: desk), spawned again by their spawners, parents first: each
   // bounded by what its spawner holds now; one that cannot be is a log line and stays on disk.
   if (agentsRoot && live !== false) {
     try {

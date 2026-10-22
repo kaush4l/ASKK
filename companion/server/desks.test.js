@@ -2,10 +2,11 @@
 // kernel desk each, a stub model): no network, no real model, no server listening — requests go to handleApi.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { join, resolve } from "node:path"
+import { dirname, join, resolve } from "node:path"
 
+import { CORE_DESKS, hostedDeskFolders } from "../team/desk.js"
 import { hostDesks } from "./desks.js"
 
 const KERNEL = resolve(import.meta.dir, "../../backend/kernel/index.js")
@@ -257,7 +258,7 @@ describe("desks/create, desks/ask (waited, polled), desks/read", () => {
     const spec = { title: "Gamma", description: "a desk from a spec", lead: { name: "lead", description: "answers", role: "Answers.", tools: [], artifacts: ["practice"] } }
     const made = await call("desks/create", { method: "POST", body: { name: "gamma", spec } })
     expect(made.status).toBe(200)
-    expect(made.body).toMatchObject({ name: "gamma", hosted: false, written: expect.arrayContaining(["main.js", "agents/lead/agent.md", "README.md"]) })
+    expect(made.body).toMatchObject({ name: "gamma", hosted: false, written: expect.arrayContaining(["main.js", "lead/lead.md", "README.md"]) })
     expect(made.body.check.tree.name).toBe("lead")
     expect((await call("desks/create", { method: "POST", body: { name: "gamma", spec } })).status).toBe(409)
     expect((await load("gamma")).body).toMatchObject({ name: "gamma", reloaded: false })
@@ -320,7 +321,7 @@ describe("desks/create, desks/ask (waited, polled), desks/read", () => {
     const ok = await call("desks/accept", { method: "POST", body: { name: "held" } })
     expect(ok.status).toBe(200)
     expect(ok.body).toMatchObject({ name: "held", accepted: { by: "alpha", from: "web.read" }, loaded: { name: "held", reloaded: false } })
-    expect(existsSync(join(root, "held", "agents", "lead", "agent.md"))).toBe(true)
+    expect(existsSync(join(root, "held", "lead", "lead.md"))).toBe(true)
     expect((await listed()).map((d) => d.name)).toContain("held")
     expect(lines.some((l) => l.startsWith("alpha: desks: the owner accepted desk held (by alpha"))).toBe(true)
     expect((await call("desks/accept", { method: "POST", body: { name: "held" } })).status).toBe(404)
@@ -352,3 +353,41 @@ describe("desks/create, desks/ask (waited, polled), desks/read", () => {
   })
 })
 
+// 2026-10-21 owner ("The default framework will have the default single agent that will be shipped … We can have the
+// default mode where we read the default single agent folder"): no local desks folder (or an empty one) — the server
+// hosts the core desk desks/agent alone, as its default desk.
+describe("the default mode: the core desk alone", () => {
+  test("no custom/ (or an empty one): desks/agent is hosted alone, without errors, and is the default desk", async () => {
+    const missing = join(root, "no-custom-here")
+    expect(hostedDeskFolders({ desks: missing })).toEqual([join(CORE_DESKS, "agent")])
+    expect(hostedDeskFolders({ desks: join(root, "empty") })).toEqual([join(CORE_DESKS, "agent")])
+    // A copy of the core desk as shipped (its tracked files: main.js, agent/), hosted from a core folder of its own — the
+    // live server may be running desks/agent itself. Its memory in a temp folder.
+    const core = mkdtempSync(join(tmpdir(), "desks-core-"))
+    cpSync(join(CORE_DESKS, "agent", "main.js"), join(core, "agent", "main.js"))
+    for (const f of ["agent.md", "practice.md"]) cpSync(join(CORE_DESKS, "agent", "agent", f), join(core, "agent", "agent", f))
+    writeFileSync(join(core, "agent", "main.js"), readFileSync(join(core, "agent", "main.js"), "utf8").replace('"../../companion/team/compose.js"', JSON.stringify(COMPOSE)))
+    const memory = process.env.ASKK_MEMORY
+    process.env.ASKK_MEMORY = mkdtempSync(join(tmpdir(), "desks-memory-"))
+    const local = join(root, "fresh-clone", "custom") // not there yet
+    let alone
+    try {
+      const folders = hostedDeskFolders({ desks: local, core })
+      expect(folders).toEqual([join(core, "agent")])
+      alone = await hostDesks({ folders, port: 4997, core, log: () => {} })
+      const res = await alone.handleApi(new Request("http://localhost:4997/__askk/desks", { headers: { host: "localhost:4997" } }))
+      const body = await res.json()
+      expect(res.status).toBe(200)
+      expect(body).toMatchObject({ default: "agent", current: "agent", desks: [{ name: "agent", work: [] }] })
+      expect(alone.root).toBe(join(dirname(core), "custom")) // desk.create writes the local desks there
+      expect(readdirSync(join(core, "agent")).sort()).toEqual(["agent", "data", "main.js", "state"])
+    } finally {
+      for (const { team, api } of alone?.hosted.values() ?? []) team.terminate(), api.close?.()
+      if (memory === undefined) delete process.env.ASKK_MEMORY
+      else process.env.ASKK_MEMORY = memory
+      rmSync(core, { recursive: true, force: true })
+      const made = join(dirname(core), "custom") // hostDesks made the local desks folder: gone again when still empty
+      if (existsSync(made) && !readdirSync(made).length) rmSync(made, { recursive: true })
+    }
+  })
+})

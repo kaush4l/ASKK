@@ -30,8 +30,8 @@ switches a tab to the in-browser agent and back.
 
 - `bun run dev` (`scripts/dev.js`): the Next dev server (hot reload) as a custom server that also hosts the desks
   (`companion/server/desks.js`) and their host API same-origin under `/__askk/`. The core desks (`desks/`, tracked:
-  `desks/agent`) are hosted beside `--desks custom` (default; a local desk named like a core one wins) — every desk in
-  one process; `--desk <name>` the one a tab opens; `--only a,b`; `--agents custom/<desk>`
+  `desks/agent`) are hosted beside `--desks custom` (default; a local desk named like a core one wins; no or an empty
+  `custom/`: the default mode, `desks/agent` alone and the default desk, 2026-10-21) — every desk in one process; `--desk <name>` the one a tab opens; `--only a,b`; `--agents custom/<desk>`
   (or `ASKK_AGENTS`) hosts one desk alone on its own port and `.next-desks/<name>` build (Next allows one
   `next dev` per build folder); `--port`, `--hostname`, `--read-only`. A request reaches a desk by the
   `x-askk-desk` header (scripts: server.json names it) or the `askk_desk` cookie (the header's desk switcher,
@@ -252,7 +252,7 @@ what is saved where), the twin contract.
 - 2026-10-20 owner ("most workflow where special agents are created can actually be substituted by understanding the
   agent capability … the multi-agent setup now becomes a checklist"; "give the agent the capability to self-reflect"):
   `builtin/practice.js` `Practice` (type `practice`, one per agent `<agent>.practice`, view `practice`, keep `file`): the
-  agent's standing orders in `memory/<desk>/practice/<agent>.md` (seeded from `practice.md` beside its agent.md) —
+  agent's standing orders in `memory/<desk>/practice/<agent>.md` (seeded from `practice.md` beside its .md) —
   Checklist / Quality / Instructions / Lessons / Tools / Pending / Changelog; each run its Checklist items + `!reflect`
   (gate), `.tick`, `.skip`, `.edit {section, old?, new?, why}` (logged, from the next run), `.reflect {worked, missed,
   changes}` (retro → `memory/<desk>/retros/<agent>.md`; refused when it names a change none was made); store: compose.js
@@ -268,8 +268,9 @@ what is saved where), the twin contract.
   pending ones in their own dashed block, "proposed · not in force", with Accept / Drop (`practiceCall`,
   `backend/live/desk.js`), and a tagged line's tag in amber. `builtin/spawn.js` also `agent.catalog {find?}` (what a helper can be given, the helpers now),
   `agent.update {name, …, keep?}` (rebuild from `config.spawned.input`, the spawn record; dismiss `reason: "update"`),
-  `respawn(desk, records)`. Kept helpers (`keep: desk`, spawner in `agents/`): `companion/team/kept.js` writes
-  `agents/<spawner>/<name>/agent.md` (+ `keep: desk`, `by`, `at`; members as subfolders), kernel-team respawns them at
+  `respawn(desk, records)`. Kept helpers (`keep: desk`, spawner in the desk's agent tree: the lead's folder, legacy
+  `agents/`): `companion/team/kept.js` writes `<spawner folder>/<name>/<name>.md` (+ `keep: desk`, `by`, `at`; members as
+  subfolders; an old `agent.md` stays one; never named history/practice), kernel-team respawns them at
   start with their runs, dismissed → `memory/<desk>/archive/agents/<day>-<name>/`. Kept helpers and provenance
   (2026-10-20, the practice hold extended: a kept role is a lasting prompt too; spawn.js `outsideFrom(ctx)`): from a run
   that read outside, `agent.spawn keep: desk` builds the helper keep `run` — it works for this run and goes when the run
@@ -288,7 +289,8 @@ what is saved where), the twin contract.
   `spawnedLine` ends "keep desk / update waits for you") — under the helper's card and row on the home page and on its
   agent page. `builtin/desks.js` `deskTools()`:
   `desk.create {name, spec, update?}` → host `desks/create` (`companion/team/scaffold.js`: config only — main.js from one
-  template headed `// made by desk.create`, agents/ with practice.md, teams/, init folders — composed in a draft first;
+  template headed `// made by desk.create`, `<lead>/<lead>.md` (members nested) with practice.md, `teams/<team>/<team>.md`,
+  init folders — composed in a draft first; an update of a legacy desk keeps `agents/`;
   `update` only while the mark heads main.js, never through a link, never orphaning a folder of kept helpers; a spec's
   text never leaves main.js's one comment line), `desk.check`, `desk.load`, `desk.ask {name, text, wait?}` (host
   `desks/ask`: wait → an id, polled with GET `desks/ask?id=`; desk to desk: never asked back with a wait while it waits on
@@ -312,7 +314,8 @@ what is saved where), the twin contract.
   desks → `proposals`). `conventionDesk({init})`: `async ({dir, memory, log, host, port})` before the agents are built.
   The core desk `desks/agent/` (tracked, hosted beside the local `custom/` desks: `companion/team/desk.js`
   `hostedDeskFolders`, `CORE_DESKS`; a local desk named like a core one wins; desks/load finds either; desks/create writes
-  into the local folder): one agent with the kit — routes itself / helpers / a new desk — and its practice.md seed.
+  into the local folder): one agent with the kit — routes itself / helpers / a new desk — `desks/agent/agent/agent.md`
+  (the standard layout) and its practice.md seed; its history.md and kept helpers (`agent/<name>/`) are git-ignored.
 - `builtin/plan.js` `Plan` (extends `Checklist`): the desk's checklist written at run time (the planner's): id
   `plan`, view `checklist`, keep `always`, no reset on run start; `plan.write {goal, items}` ("id: text" lines, "!" =
   required; replaces the open items, keeps a ticked/skipped item still listed, bumps `revision`, records `by`),
@@ -378,10 +381,11 @@ title, description, port?, mcp?, integrations?, setup?, host?, start })`. `start
 `{desk, ready?, run?}` builds its agents on the kernel; `run({wake, busy, log})` → stop is its background work
 (watchers) on a continuous server. `host({call, env, state, dir, root, listen})` → `{wrap?, guard?, servers?}`
 shapes `mcp/call`: `wrap`s layer around every MCP / integration call, `guard` is the outermost (the desk's own
-checks, kept where agents cannot write), `servers` add tool servers. Folders: `agents/` (agents as folders,
-nested by team: `agent.md` with `description`, tools, model; the body is the role; a spec `folder` puts each
-agent's transcript beside its agent.md), `tools/`, `vendor/` (git-ignored), `data/` (the workspace), `state/`
-(host state). Memory and reports: `memory/<desk>/` at the repo root (2026-10-17 owner; git-ignored, never pushed;
+checks, kept where agents cannot write), `servers` add tool servers. Folders (2026-10-21 owner: "create agent will
+follow the standard of <desk>/<agent>/<agent>.md for configurations and tools.js"): `<lead>/` (agents as folders, nested
+by team: `<name>/<name>.md` with `description`, tools, model, the body the role; `tools.js` its own tools; a spec
+`folder` puts each agent's `history.md` beside its .md; legacy, read unchanged: `agents/<lead>/agent.md`;
+`companion/team/layout.js`), `tools/`, `vendor/` (git-ignored), `data/` (the workspace), `state/` (host state). Memory and reports: `memory/<desk>/` at the repo root (2026-10-17 owner; git-ignored, never pushed;
 `companion/shared/paths.js` `memoryFolder`, `ASKK_MEMORY` moves it; programs in the terminal never read it). Projects
 outside ASKK (2026-10-17 owner: "load a new project location and the agent can work on the project"): main.js
 `projects: true | {name: path}` (paths relative to the desk folder, loaded at start) lets the owner load folders on the
@@ -391,7 +395,9 @@ there. Desks are local workflows: each documents itself in its own
 README, and none is ever added or committed (owner 2026-10-17). Desk tests: `bun test ./tests` in the desk folder (plain `bun test` walks vendor/).
 Code more than one desk may use lives in `custom/shared/`. `custom/` is git-ignored (its own repo), never pushed.
 - The standard (`docs/standard.md`): a convention desk's main.js is `export default conventionDesk({title,
-  description})` (`companion/team/compose.js`): `agents/<lead>/agent.md` (members as subfolders; `desks: [name]`
+  description})` (`companion/team/compose.js`): `<lead>/<lead>.md` (members as subfolders `<m>/<m>.md`, each agent's
+  `tools.js` attached to it, tool names unique across the desk; the lead = the one non-reserved folder with its
+  `<name>.md`, `layout.js` `deskLead`; legacy `agents/<lead>/agent.md` while `agents/` holds an agent; `desks: [name]`
   mounts that desk's lead under the agent, composed with its own tools and main.js `compose` options; its ctx `desk`
   and `memory` are its own, `host` and `log` the parent's) + `tools/<name>.js` each `export default
   defineTool({...})`, tool names resolved at compose time (`composeDesk`: unknown keys, tools, models, artifacts or
@@ -399,16 +405,17 @@ Code more than one desk may use lives in `custom/shared/`. `custom/` is git-igno
   `memory/<desk>/reports/`); the kernel's kit attached by name under the desk's own (the desk wins a clash;
   `builtinKit` bound once per composed desk, mounted desks share it; handed to `buildDesk` as `env.tools` /
   `env.artifacts` so `agent.spawn` resolves names at run time): `tools: [web.search, agent.spawn]`, `artifacts:
-  [files, terminal, preview, {type: plan, gate: true}]` (entries `{type, id?, commands?, gate?}`), agent.md `writes:`
+  [files, terminal, preview, {type: plan, gate: true}]` (entries `{type, id?, commands?, gate?}`), `writes:`
   / `reads:` (globs) and `board: false`; tools reach the host only through `ctx.host` (`hostClient`). Team templates
-  (2026-10-17): `teams/<team>/agent.md` (members as subfolders, the same format) are checked like agents at compose
+  (2026-10-17): `teams/<team>/<team>.md` (or agent.md; members as subfolders, the same format, no tools.js) are checked like agents at compose
   time (an unknown key, tool, artifact or model fails naming the file; `desks`, `checklist`, `min_calls`, `after`,
   `team` refused; named after its folder), never built at start, and handed to `buildDesk` as `env.templates`
   (`{<team>: spawn input {name, role, goal, tools, artifacts, writes, reads, model, max_steps, board, members}}`, what
   `agent.spawn {template}` builds) with `env.models` (the model names). Also
   `readAgentFolder`, `loadTools`, `MODELS`, `llmInfer` (`custom/shared/kernel-desk.js` re-exports two).
-  `bun scripts/tool.js check|run <file>`, `bun scripts/desk.js check <desk folder>` (the tree, tools and `templates`);
-  fixtures and tests in `companion/team/fixtures/` (`kit-desk/`: the kit by name, `teams/probe` a template),
+  `bun scripts/tool.js check|run <file>`, `bun scripts/desk.js check <desk folder>` (`layout`, the tree, tools and
+  `templates`); fixtures and tests in `companion/team/fixtures/` (`kit-desk/`: the kit by name, `teams/probe` a template;
+  `mini-desk/`: the legacy layout),
   `compose.test.js`.
 
 ## The desk server (`companion/`)
@@ -447,14 +454,20 @@ Code more than one desk may use lives in `custom/shared/`. `custom/` is git-igno
   user, kind: chat, from, content}` + `{role: assistant, kind: chat, content, guided, proposed}`, its model call in
   the stats, never the `working` request), answers — working, stats). Every artifact by id
   (`{id, kind, view, owner, title, holders, brief, state, items?}`), saved to `state/artifacts/<id>.json` and
-  `state/days/<ET day>/<id>.json`, restored by `keep`. The desk's `log` (watchers, schedule, wakes, Telegram) is
-  a ring of 300 lines streamed to every tab. Events also go to `state/kernel-team.jsonl`; each agent's runs to
-  `<folder>/transcript.jsonl` (`kernel-transcripts.js`: restored at start, compacted past 512 KB). It runs the
+  `state/days/<ET day>/<id>.json`, restored by `keep` — a team's board (2026-10-21 owner: "a shared history board for
+  agents, a memory/<desk>/<sub desk>") instead to `memory/<desk>/<team>/board.md` (`paths.js` `boardFile`, its lead's
+  `ctx.memory`: a mounted desk's own; `board-file.js`: entries as markdown + the state in a json block), restored at every
+  start (once from its old state/ file). The desk's `log` (watchers, schedule, wakes, Telegram) is a ring of 300 lines
+  streamed to every tab. Events also go to `state/kernel-team.jsonl`; each agent's runs to `<folder>/history.md`
+  (`kernel-history.js`, 2026-10-21 owner: "the memory was to store in md file the history of that agent": a section per
+  run — `## <time ET> · <from> · answered|error`, request, answer, steps — + the run row in a json block that restore
+  parses; rotated past 512 KB into `history/history-<time>.md`, newest 6; a legacy `transcript.jsonl` read after it, never
+  written; `kernel-transcripts.js` re-exports it). It runs the
   desk's `Schedule` and its wake book (`shared/wakes.js` `startWakes`, every 30 s: a due wake → its agent, else
   the lead; an error books one retry) on the desk's `data/state/wakes.jsonl`. No agent set is fixed at start
   (2026-10-17): on a spawn (kernel `Desk.spawn`) the new agent gets a fresh state and `config.folder =
   <desk state>/spawned/<name>/` with an `agent.md` record (by, goal, keep, tools, artifacts; body = role) so its
-  transcript records; the registry is rebuilt and broadcast with its state, the artifacts scanned again (new ones
+  history.md records; the registry is rebuilt and broadcast with its state, the artifacts scanned again (new ones
   restored by keep and watched, ones whose holders changed re-sent), `kernel.tree` re-sent, and the log says `<by>
   spawned <name>: <goal>`; a dismiss drops its state and sends `removed` ids. A spawned team (one `spawn` per agent,
   its lead first) is set up whole at its lead's event — every member's state and folder (`agent.md` with `team:`, the

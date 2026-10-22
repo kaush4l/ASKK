@@ -69,7 +69,8 @@ export class SharedBoard extends Artifact {
 
   // Saved entries come back; the goal stays the one the desk was built with.
   restore(data) {
-    if (data?.entries && typeof data.entries === "object") this.state = { ...this.state, entries: data.entries }
+    // only entries a prompt can render (a board.md edited by hand may carry broken ones)
+    if (data?.entries && typeof data.entries === "object") this.state = { ...this.state, entries: Object.fromEntries(Object.entries(data.entries).filter(([, e]) => typeof e?.text === "string")) }
   }
 
   // The boards above carry only their goal (the direction); this board in full (the work).

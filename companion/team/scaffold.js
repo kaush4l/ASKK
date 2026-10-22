@@ -1,10 +1,12 @@
 // A desk written from a spec (2026-10-20 owner: "we want to give this desk create capable tool as a default agent. Now
 // for any kind of desk setup, it should be simple enough to request it and the agent figuring out the good ways of
 // creating the desk"). The kit's desk.create (backend/kernel/builtin/desks.js) posts a spec to the host's desks/create;
-// this writes the desk in the standard's shape (docs/standard.md) — main.js (a convention desk with its init), agents/
-// (the lead, its members as subfolders, each agent's practice.md: its first checklist, quality bar and instructions),
-// teams/ (templates its lead may staff), tools/ (empty: the desk starts on the kit), README.md — checks that it composes,
-// and only then puts it in place. Its memory (reports, practice, retros) goes to memory/<desk>/ when it runs.
+// this writes the desk in the standard's shape (docs/standard.md) — main.js (a convention desk with its init), <lead>/
+// (<lead>.md, its members as subfolders <member>/<member>.md, each agent's practice.md: its first checklist, quality bar
+// and instructions), teams/ (templates its lead may staff, teams/<team>/<team>.md), tools/ (empty: the desk starts on
+// the kit), README.md — checks that it composes, and only then puts it in place. An update of a desk in the legacy
+// layout (agents/<lead>/agent.md, before 2026-10-21) keeps that layout. Its memory (reports, practice, retros, boards)
+// goes to memory/<desk>/ when it runs.
 //
 // No code an agent wrote is ever written here: main.js comes from one template with the spec's values as JSON, and
 // tool code an agent wants goes to proposed/tools/ (proposeTool) — the owner moves a file into tools/ to accept it.
@@ -32,10 +34,11 @@
 //         practice?: {checklist?, quality?, instructions?}, members?: [AGENT]}
 
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs"
-import { dirname, join, relative } from "node:path"
+import { basename, dirname, join, relative } from "node:path"
 
 import { renderPractice } from "../../backend/kernel/index.js"
 import { composeDesk, DESK_NAME, forgetModules, MODELS, readDeskConfig } from "./compose.js"
+import { AGENT_FILE_NAMES, agentFile, deskLead, RESERVED } from "./layout.js"
 
 export const CREATE_MARK = "// made by desk.create"
 const AGENT_NAME = /^[a-z][a-z0-9-]{1,30}$/
@@ -71,15 +74,16 @@ const yaml = (v) => JSON.stringify(v)
 const lines = (v) => (v == null ? [] : Array.isArray(v) ? v : String(v).split("\n")).map((x) => String(x).replace(/^\s*[-*]\s+/, "").trim()).filter(Boolean)
 const names = (v) => (v == null ? [] : Array.isArray(v) ? v : String(v).split(",")).map((x) => (typeof x === "string" ? x.trim() : x)).filter((x) => x !== "")
 
-// One agent (and its members) checked: names, roles, the fields a desk's agent.md takes.
+// One agent (and its members) checked: names, roles, the fields a desk's agent .md takes.
 function checkAgent(a, where, seen) {
   if (!a || typeof a !== "object") throw fail(400, `${where}: an agent is {name, description, role, …}`)
   const name = String(a.name ?? "").trim()
   if (!AGENT_NAME.test(name)) throw fail(400, `${where}: name ${JSON.stringify(a.name ?? null)} — lowercase letters, digits and -, 2–31 chars, starting with a letter`)
   if (seen.has(name)) throw fail(400, `${where}: agent name ${name} twice (names are unique across a desk)`)
+  if (AGENT_FILE_NAMES.has(name)) throw fail(400, `${where}: name ${name} — its folder would hold ${name}.md twice (its own and its ${name}.md): pick another name`)
   seen.add(name)
   if (seen.size > MAX_AGENTS) throw fail(400, `at most ${MAX_AGENTS} agents in a desk: start small, the lead spawns helpers when it needs them`)
-  if (!String(a.role ?? "").trim()) throw fail(400, `${where} (${name}): role is required — what it is for and how it works (its agent.md body)`)
+  if (!String(a.role ?? "").trim()) throw fail(400, `${where} (${name}): role is required — what it is for and how it works (its .md body)`)
   if (!String(a.description ?? "").trim()) throw fail(400, `${where} (${name}): description is required — one line: what it is for (its card, its line in its lead's TOOLS)`)
   if (a.desks != null) throw fail(400, `${where} (${name}): desks: a created desk mounts no other desk`)
   if (a.model != null && !Object.hasOwn(MODELS, String(a.model).trim())) throw fail(400, `${where} (${name}): model ${JSON.stringify(a.model)} — one of ${Object.keys(MODELS).join(", ")}`)
@@ -107,25 +111,28 @@ function agentMd(a, { lead = false } = {}) {
 // compose: the import specifier of companion/team/compose.js from the desk folder ("../../companion/team/compose.js" for
 // custom/<name>/).
 // accepted: {by, at, from} of the proposal the owner accepted (README says where its words came from).
-export function deskFiles(name, spec, { by = null, at = new Date().toISOString(), compose = "../../companion/team/compose.js", accepted = null } = {}) {
+// layout: "standard" (<lead>/<lead>.md, teams/<team>/<team>.md) or "legacy" (agents/<lead>/agent.md, an update of a desk
+// made before 2026-10-21).
+export function deskFiles(name, spec, { by = null, at = new Date().toISOString(), compose = "../../companion/team/compose.js", accepted = null, layout = "standard" } = {}) {
   const files = {}
+  const legacy = layout === "legacy"
   const put = (base, a, opts) => {
-    files[`${base}/agent.md`] = agentMd(a, opts)
+    files[`${base}/${legacy ? "agent" : a.name}.md`] = agentMd(a, opts)
     const p = a.practice ?? {}
     const seed = { checklist: lines(p.checklist), quality: lines(p.quality), instructions: lines(p.instructions) }
     if (seed.checklist.length || seed.quality.length || seed.instructions.length) files[`${base}/practice.md`] = renderPractice(seed, a.name)
     for (const m of a.members ?? []) put(`${base}/${m.name}`, m)
   }
-  put(`agents/${spec.lead.name}`, spec.lead, { lead: true })
+  put(legacy ? `agents/${spec.lead.name}` : spec.lead.name, spec.lead, { lead: true })
   for (const t of spec.teams ?? []) put(`teams/${t.name}`, t)
   const folders = names(spec.folders)
   const request = String(spec.request ?? "").trim()
   files["main.js"] = [
     `${CREATE_MARK} (${oneLine(by ?? "an agent")}, ${oneLine(at.slice(0, 16))}): ${oneLine(spec.title ?? name)}`,
-    "// A convention desk (docs/standard.md): agents/ (its lead and members, each agent's practice.md), teams/ (templates its",
+    `// A convention desk (docs/standard.md): ${legacy ? "agents/" : `${spec.lead.name}/`} (its lead and members, each agent's practice.md), teams/ (templates its`,
     "// lead may staff), tools/ (its own: none yet — proposed/tools/ holds what an agent asked for; the owner moves one in),",
-    `// init (below). Its memory — reports, each agent's practice and retros — is memory/${name}/. desk.create {update} rewrites`,
-    "// this file and agents/ while this mark heads it; edit it by hand and remove the mark to keep it yours.",
+    `// init (below). Its memory — reports, each agent's practice and retros, its boards — is memory/${name}/. desk.create`,
+    `// {update} rewrites this file and the agents' .md files while this mark heads it; edit it by hand and remove the mark to keep it yours.`,
     "",
     'import { mkdirSync } from "node:fs"',
     'import { join } from "node:path"',
@@ -166,7 +173,7 @@ export function deskFiles(name, spec, { by = null, at = new Date().toISOString()
     "```",
     "",
     `Load into the running server: POST /__askk/desks/load {"name": "${name}"} (the kit's desk.load). Check: bun scripts/desk.js check custom/${name}.`,
-    `Memory: memory/${name}/ (reports/, practice/<agent>.md — the standing orders each agent improves —, retros/).`,
+    `Memory: memory/${name}/ (reports/, practice/<agent>.md — the standing orders each agent improves —, retros/, <team>/board.md). Each agent's runs: history.md beside its .md.`,
     "",
   ].join("\n")
   return files
@@ -194,6 +201,7 @@ async function scaffold({ root, name, spec, by, update, hold, clock, accepted = 
   if (!spec || typeof spec !== "object") throw fail(400, "spec: {title, description, lead: {name, description, role, …}, teams?, folders?}")
   if (!spec.lead) throw fail(400, "spec.lead is required: the desk's lead agent {name, description, role, goal, tools, artifacts, practice, members?}")
   checkAgent(spec.lead, "lead", new Set())
+  if (RESERVED.has(String(spec.lead.name).trim())) throw fail(400, `lead: name ${spec.lead.name} — a desk's ${spec.lead.name}/ folder is not an agent's (reserved: ${[...RESERVED].join(", ")}): pick another name`)
   const teamNames = new Set()
   for (const [k, t] of (spec.teams ?? []).entries()) {
     if (teamNames.has(t?.name)) throw fail(400, `teams[${k}]: team ${t.name} twice`)
@@ -226,7 +234,15 @@ async function writeDesk({ root, name, spec, by, update, clock, folder, hold, ac
   const at = clock().toISOString()
   // From the real folder (main.js is imported by its real path: a /var → /private/var link would break the specifier).
   const compose = relative(join(realpathSync(root), name), join(realpathSync(import.meta.dir), "compose.js")).split("\\").join("/")
-  const files = deskFiles(name, spec, { by, at, compose: compose.startsWith(".") ? compose : `./${compose}`, accepted })
+  // An update keeps the desk's layout (a legacy desk stays agents/<lead>/agent.md); a new desk is the standard.
+  let was = null
+  if (update) {
+    try {
+      was = deskLead(folder)
+    } catch {}
+  }
+  const layout = was?.layout === "legacy" ? "legacy" : "standard"
+  const files = deskFiles(name, spec, { by, at, compose: compose.startsWith(".") ? compose : `./${compose}`, accepted, layout })
   // The draft beside the desks (main.js imports ../../companion/…): composed before anything is put in place.
   const draftName = `.draft-${name}-${process.pid}-${Math.random().toString(36).slice(2, 8)}`
   const draft = join(root, draftName)
@@ -246,21 +262,25 @@ async function writeDesk({ root, name, spec, by, update, clock, folder, hold, ac
     } finally {
       forgetModules(draft)
     }
-    // In place: a new desk whole; an update rewrites main.js, README.md, agents/ and teams/ files (its state, data,
-    // transcripts and tools stay; a kept helper's agent.md — its spawner's — stays too).
+    // In place: a new desk whole; an update rewrites main.js, README.md and the agents' and teams' .md files (its state,
+    // data, history and tools stay; a kept helper's .md — its spawner's — stays too).
     let going = []
     if (update) {
-      const walk = (dir) => (existsSync(dir) ? readdirSync(dir, { withFileTypes: true }).flatMap((d) => (d.isDirectory() ? walk(join(dir, d.name)) : d.name === "agent.md" || d.name === "practice.md" ? [join(dir, d.name)] : [])) : [])
+      // An agent's own .md (<dir>/<dir>.md, or agent.md) and its practice.md, all the way down (history/ is never one).
+      const isDef = (dir, f) => f === "agent.md" || f === `${basename(dir)}.md`
+      const walk = (dir) => (existsSync(dir) ? readdirSync(dir, { withFileTypes: true }).flatMap((d) => (d.isDirectory() ? (d.name === "history" ? [] : walk(join(dir, d.name))) : isDef(dir, d.name) || d.name === "practice.md" ? [join(dir, d.name)] : [])) : [])
       const keptMd = (f) => {
-        const md = f.replace(/practice\.md$/, "agent.md")
-        return existsSync(md) && /^keep: desk$/m.test(readFileSync(md, "utf8").split("\n---")[0])
+        const md = agentFile(dirname(f))
+        return !!md && /^keep: desk$/m.test(readFileSync(md, "utf8").split("\n---")[0])
       }
-      going = [...walk(join(folder, "agents")), ...walk(join(folder, "teams"))].filter((f) => !keptMd(f))
+      const trees = layout === "legacy" ? [join(folder, "agents")] : [was?.folder, join(folder, spec.lead.name)].filter((d, i, all) => d && all.indexOf(d) === i)
+      going = [...trees.flatMap(walk), ...walk(join(folder, "teams"))].filter((f) => !keptMd(f))
       // An agent the new spec drops whose folder holds kept helpers: they would never be respawned (kernel-team reads
       // kept helpers under loaded agents only) — refused, nothing written.
-      const staying = new Set(Object.keys(files).filter((p) => p.endsWith("/agent.md")).map((p) => dirname(join(folder, p))))
-      for (const f of going.filter((g) => g.endsWith("agent.md") && !staying.has(dirname(g)))) {
-        const kept = walk(dirname(f)).filter((k) => k !== f && k.endsWith("agent.md") && keptMd(k))
+      const defOf = (p) => isDef(dirname(p), basename(p))
+      const staying = new Set(Object.keys(files).filter(defOf).map((p) => dirname(join(folder, p))))
+      for (const f of going.filter((g) => defOf(g) && !staying.has(dirname(g)))) {
+        const kept = walk(dirname(f)).filter((k) => k !== f && defOf(k) && keptMd(k))
         if (kept.length) throw fail(409, `${relative(folder, dirname(f))} holds kept helpers (${kept.map((k) => relative(dirname(f), dirname(k))).join(", ")}): keep that agent in the spec, or dismiss them first — nothing written`)
       }
     }

@@ -3,7 +3,7 @@ name: agent
 description: "The core desk's one agent: takes any request and does it itself, with helpers it makes and runs in parallel, or by designing, loading and checking a new desk when the work is a standing job; improves its own practice after every run."
 title: Agent
 goal: "Do what the owner asks — directly, with helpers, or by setting up a desk for it — to the quality bar; leave the practice better after each run."
-model: opus
+model: default
 max_steps: 120
 writes: ["work/**", "notes/**"]
 tools: [web.search, web.read, agent.spawn, agent.catalog, agent.update, agent.dismiss, desk.list, desk.create, desk.check, desk.load, desk.ask, desk.read, desk.propose]

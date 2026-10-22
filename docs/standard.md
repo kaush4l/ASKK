@@ -13,9 +13,9 @@ are the rows of the table in `backend/kernel/README.md` (b), named here, not rep
 
 | Element | File form | Built by | Lifecycle moments (README (b)) |
 | --- | --- | --- | --- |
-| Agent | `agents/<lead>/agent.md` (+ members as subfolders): YAML frontmatter + the role as body | `compose.js` `readAgentFolder` → `composeDesk` (a spec) → `backend/kernel/desk/desk.js` `buildAgent` → `Agent` | Agent init, History restore, Run start, Step, Call / result, Gate / format, Guidance, Owner chat, Answer, Error / stop, Agent memory; a team template (`teams/<team>/agent.md`, below): Kit bound, Spawn, Dismiss |
-| Tool | `tools/<name>.js`: `export default defineTool({...})` (or an array of them) | `compose.js` `loadTools` / `loadToolFile` (checked by `defineTool`, `backend/kernel/tool/tool.js`) → by name in `tools:` → kernel `makeTool` | Tool init, Call / result |
-| Artifact | a type in the catalogue: the kernel's kit by name (`artifacts: [files, terminal, preview, plan, dispatch]`, below), built-ins by agent.md key (`checklist:`, `artifacts: [report]`), the team board automatic, a desk's own class (extends `Artifact`, `backend/kernel/artifact/artifact.js`) via `conventionDesk({artifacts})` | kernel `resolveArtifact` → `Agent.addArtifact` (its `commands()` become the agent's tools, type `artifact`) | Agent init (`attach`), Run start (`onRunStart`), Artifact restore (`keep`), Artifact saved |
+| Agent | `<lead>/<lead>.md` (+ members as subfolders, `<lead>/<member>/<member>.md`): YAML frontmatter + the role as body; `history.md` beside it (its runs) | `compose.js` `readAgentFolder` → `composeDesk` (a spec) → `backend/kernel/desk/desk.js` `buildAgent` → `Agent` | Agent init, History restore, Run start, Step, Call / result, Gate / format, Guidance, Owner chat, Answer, Error / stop, Agent memory; a team template (`teams/<team>/<team>.md`, below): Kit bound, Spawn, Dismiss |
+| Tool | `tools/<name>.js` (the desk's) or `<agent>/tools.js` (one agent's): `export default defineTool({...})` (or an array of them) | `compose.js` `loadTools` / `loadToolFile` (checked by `defineTool`, `backend/kernel/tool/tool.js`) → by name in `tools:` (an agent's tools.js: attached to it) → kernel `makeTool` | Tool init, Call / result |
+| Artifact | a type in the catalogue: the kernel's kit by name (`artifacts: [files, terminal, preview, plan, dispatch]`, below), built-ins by .md key (`checklist:`, `artifacts: [report]`), the team board automatic, a desk's own class (extends `Artifact`, `backend/kernel/artifact/artifact.js`) via `conventionDesk({artifacts})` | kernel `resolveArtifact` → `Agent.addArtifact` (its `commands()` become the agent's tools, type `artifact`) | Agent init (`attach`), Run start (`onRunStart`), Artifact restore (`keep`), Artifact saved |
 | Desk | `custom/<desk>/` with `main.js` (below) | `companion/team/desk.js` `loadDesk` → main.js `start` → `composeDesk` → kernel `buildDesk` → `Desk` | Host start, Desk load, Desk setup, Desk build, Twins out, Desk terminate; `POST /__askk/desks/load` (below) |
 | Call | none: a `call:` block in a reply (`backend/kernel/agent/reply.js`); a call to an agent is a quest `{requirement, ask, outcome}` | `Agent.#call` → `Tool.run(input, ctx)` (`backend/kernel/agent/agent.js`) | Call / result, Gate / format |
 
@@ -32,14 +32,22 @@ are the rows of the table in `backend/kernel/README.md` (b), named here, not rep
 1. **One desk = one folder**: `custom/<desk>/` with a `main.js` (your desks, git-ignored), or `desks/<desk>/` (the core
    desks ASKK ships: `desks/agent`, hosted beside yours; a local desk of the same name wins); its name is the folder
    name (`^[a-z][a-z0-9-]*$`).
-2. **Agents nest by folder**: `custom/<desk>/agents/` holds exactly one lead folder; a member is a subfolder of its lead, named in
-   the lead's `agents:`, to any depth.
+2. **Agents nest by folder** (2026-10-21 owner: "create agent will follow the standard of `<desk>/<agent>/<agent>.md` for
+   configurations and tools.js"): the desk folder holds exactly one lead folder, `<lead>/<lead>.md`; a member is a
+   subfolder of its lead, `<lead>/<member>/<member>.md`, named in the lead's `agents:`, to any depth. An agent is named
+   after its folder (`name:` may be left out; another name is an Error), and never `history` or `practice` (those files
+   sit beside its .md). The lead is found as the one folder with its `<name>.md` (an `agent.md` there is read too, for
+   migration), the desk's own folders aside (`data`, `state`, `tools`, `teams`, `proposed`, `vendor`, `node_modules`,
+   `tests`, `lib`, `docs`, `memory`, `history`, `artifacts`, `agents` and dot folders); none or several is an Error that
+   lists them (`companion/team/layout.js` `deskLead`). **Legacy**: a desk whose `agents/` holds an agent folder
+   (`agents/<lead>/agent.md`, members' `agent.md`: every desk made before 2026-10-21) composes unchanged.
 3. **A tool is a file**: `tools/<name>.js` default-exports `defineTool(...)` (or an array); helpers live in a
    subfolder (`custom/<desk>/tools/<sub>/`); `*.test.js` is skipped. `tools/` and every `tools/*.js` are real paths
    inside the desk, never links (refused at compose time). An agent lists tools by name; a name resolves against the desk's
    own `custom/<desk>/tools/` first, then the host's catalogue (`composeDesk({tools})`), then the kernel's inbuilt kit
-   (Attach by name, below).
-4. **A desk mounts another with `desks:`**: `desks: [<other>]` in an agent.md puts `custom/<other>/`'s lead
+   (Attach by name, below). An agent's own `<agent>/tools.js` (the same format) is attached to that agent whatever its
+   `tools:` lists (a name listed there too is held once); other agents never get it by name.
+4. **A desk mounts another with `desks:`**: `desks: [<other>]` in an agent's .md puts `custom/<other>/`'s lead
    under that agent. Its tree node says `desk: "<other>"`. The mounted desk composes with its own `main.js` options
    (`conventionDesk`'s `compose`: models, fallbacks, step limit, artifact types, tool catalogue; without them, the
    kernel's step limit) and its own `custom/<other>/tools/`; its
@@ -48,11 +56,12 @@ are the rows of the table in `backend/kernel/README.md` (b), named here, not rep
    `custom/<desk>/data/`, the parent's desk log). A mounted desk is a real folder beside this one (never a link), no cycles, and it
    also composes alone.
 5. **Names are unique across a composed desk**, mounted desks included: agent names (the kernel refuses a second
-   one), tool names within a desk's `custom/<desk>/tools/`.
+   one), tool names within a desk's `tools/` and its agents' `tools.js` (a name defined twice is an Error naming both
+   files).
 6. **Tools reach the host only through `ctx.host`** (`hostClient`: the host API as this desk) — no hand-made fetch
    to `/__askk/`, no globals. The endpoints: `companion/server/host-api.js` (fs, web, mcp, apple, speech, team).
 7. **Artifacts come from a type catalogue.** The kernel's kit (`files`, `terminal`, `preview`, `plan`, `dispatch`: Attach by name,
-   below); built-ins: `checklist` (agent.md `checklist:` → `<agent>.checklist`, keep `run`, gates the answer), `report`
+   below); built-ins: `checklist` (`checklist:` → `<agent>.checklist`, keep `run`, gates the answer), `report`
    (`artifacts: [report]` → `<agent>.report`, keep `always`, `<agent>.report.write {title, text}` also saves
    `memory/reports/<YYYY-MM-DD>-<slug>.md`), and the team board (automatic: `<team>.board`; `board: false` keeps an
    agent off it). A desk's own: `conventionDesk({artifacts: {type: (agent, spec) => Artifact}})` — a type named like a
@@ -77,15 +86,25 @@ are the rows of the table in `backend/kernel/README.md` (b), named here, not rep
 ## Desk folder convention
 
 ```
-custom/<desk>/
+custom/<desk>/             (desks/<desk>/: the core desks ASKK ships)
   main.js                  export default conventionDesk({...})          (below)
-  agents/<lead>/agent.md   the lead; members as subfolders: agents/<lead>/<member>/agent.md
-  teams/<team>/agent.md    team templates (optional): never built at start; agent.spawn {template: "<team>"}
+  <lead>/<lead>.md         the lead; members as subfolders: <lead>/<member>/<member>.md
+  <lead>/tools.js          the lead's own tools (optional; each agent may have one)
+  <lead>/practice.md       its practice seed (optional; members' beside theirs)
+  <lead>/history.md        its runs (written by the host; local, git-ignored), rotated into <lead>/history/
+  <lead>/<helper>/         a kept helper (<helper>.md, keep: desk; written by the host)
+  teams/<team>/<team>.md   team templates (optional): never built at start; agent.spawn {template: "<team>"}
   tools/<name>.js          export default defineTool({...})
   data/                    the workspace: the host's fs/* root (made at load when missing)
-  state/                   host state: server.json, kernel-team.jsonl, artifacts/, days/
-memory/<desk>/             at the repo root: the desk's memory and reports (ctx.memory), its loaded projects (projects.json)
+  state/                   host state: server.json, kernel-team.jsonl, artifacts/, days/, spawned/<name>/
+memory/<desk>/             at the repo root (git-ignored, local): the desk's memory and reports (ctx.memory), practice/,
+                           retros/, <team>/board.md (each team's board), its loaded projects (projects.json)
 ```
+
+Legacy (2026-10-21: every desk made before; composed unchanged): `agents/<lead>/agent.md`, members
+`agents/<lead>/<member>/agent.md`, templates `teams/<team>/agent.md`, an agent's runs in `transcript.jsonl` (read back, never
+written again: its next run starts `history.md`). Move one to the standard with `git mv agents/<lead>/agent.md
+<lead>/<lead>.md` (each member likewise) and `mv` its `transcript.jsonl` along; `desks/agent/` was moved so.
 
 The complete `main.js`:
 
@@ -102,7 +121,7 @@ haiku through the Claude CLI, called through the host's local models), `defaultM
 composes it with them (`readDeskConfig`). A desk that needs more (watchers, `host()` hooks) writes its own `start`
 and calls `composeDesk` in it.
 
-### agent.md
+### <agent>.md
 
 ```
 ---
@@ -131,42 +150,64 @@ The role: what this agent is for and how it works (the prompt's # YOU ARE sectio
 | `reads` | when set, the only paths it may read, list or search through `files` (globs, as `writes`): the critic's "outputs only" lane — the rest of the tree never reaches its prompt |
 | `board` | `false`: kept off its team's board (it never sees the members' notes); a team lead keeps its own |
 | `tools` | tool names: the desk's `custom/<desk>/tools/`, then the host's catalogue |
-| `agents` | its members: subfolder names |
+| `agents` | its members: subfolder names (`<member>/<member>.md`) |
 | `desks` | desks mounted under it: desk folder names beside this desk |
 | `checklist` | what done means per run, `"id: text"` items (`"!id"` cannot be skipped) → `<name>.checklist` |
 | `artifacts` | artifact types it holds, each a name or `{type, id?, commands?, gate?}`: the kit's `files`, `terminal`, `preview`, `plan` (shared per desk; `id`: a separate one; `commands`: a subset, e.g. `[read, wait]`; `gate: true`: its answer waits on the plan), `report`, or the desk's own |
 | `after` | sibling agents whose reports it works from (they are called first) |
 
-The body is the role. `{{key}}` in the role, description, goal, title and artifacts takes `composeDesk({vars})`.
+The body is the role. `{{key}}` in the role, description, goal, title and artifacts takes `composeDesk({vars})`. `name`
+may be left out of a `<name>.md`: it is the folder's.
+
+### history.md and the boards: memory that survives restarts
+
+2026-10-21 owner ("In order to survive restarts, the memory was to store in md file the history of that agent … For a
+shared history board for agents, a memory/<desk>/<sub desk>. Even the memory will be local."):
+
+- **An agent's runs: `history.md` beside its .md** (`companion/team/kernel-history.js`). One section per finished run,
+  written by the host: `## <YYYY-MM-DD HH:MM ET> · <from> · answered | error`, the request and the answer (clipped, as
+  blockquotes), its steps (`- 1. <thought> → tool, tool`), then the run as recorded (every step's calls with their inputs,
+  results, arrival order, refused answers, guidance, times) in a fenced json block on one line — what the next start reads
+  back as the agent's EARLIER RUNS and its thread. Past 512 KB it moves to `history/history-<time>.md` (the newest 6
+  kept). A spawned helper's is `state/spawned/<name>/history.md`; a kept helper's beside its `<name>.md`. A legacy
+  `transcript.jsonl` (and `history/transcript-*.jsonl`) is read after the history files, never written.
+- **A team's board: `memory/<desk>/<team>/board.md`** (`companion/shared/paths.js` `boardFile`, `companion/team/board-file.js`;
+  the sub desk is the team). Written on every change — the goal and each entry (key, author, time, text) as markdown, the
+  board's state in a json block — and restored at every start, whatever the day (a board saved before it: once from its
+  `state/artifacts/<id>.json`). A mounted desk's teams under its own `memory/<mounted desk>/`. Boards are no longer
+  written to `state/artifacts/`.
+- Both are local: `history.md` and `history/` are git-ignored under `desks/` (and `custom/` is local whole), `memory/` is
+  git-ignored.
 
 ### teams/: team templates
 
 2026-10-17 owner ("let the lead, when required, be able to create a sub team to focus on special critical observation
-and in control on a layer"): a desk may keep teams it does not run at start. `teams/<team>/agent.md` is a team's lead,
-its members subfolders named in its `agents:` — the agent.md format and keys above, the folder's name as `name`. An
+and in control on a layer"): a desk may keep teams it does not run at start. `teams/<team>/<team>.md` (or `agent.md`) is a
+team's lead, its members subfolders named in its `agents:` — the format and keys above, the folder's name as `name`; no
+`tools.js` (a spawned team's tools come from the desk's catalogue by name). An
 agent holding `agent.spawn` staffs one at run time: `agent.spawn {template: "<team>", goal, keep: desk}` builds the
 lead and its members (named `<team>-<member>`, e.g. `probe-watcher`) on their own board `<team>.board` under the
 spawner's, and the spawner quests (or dispatches) the lead like its other agents; `agent.dismiss {name: "<team>"}`
 removes the team whole. The spawn input's own fields win over the template's. A template's `description` is each
 agent's card and its line in its lead's TOOLS, its `title` the board's (none: the role's first line that is not a
-section header such as SPEC); every agent holds only what its own agent.md (or the input) lists. A team name whose
+section header such as SPEC); every agent holds only what its own .md (or the input) lists. A team name whose
 `<team>.board` the desk already has (the desk's own team, a team spawned earlier) is refused: "<team>.board exists:
 pick another team name".
 
 ```
-custom/<desk>/teams/probe/agent.md           name: probe · writes: ["shared/*/probe/**"] · agents: [watcher, gauge]
-custom/<desk>/teams/probe/watcher/agent.md   writes: ["shared/*/probe/watch.md"]
-custom/<desk>/teams/probe/gauge/agent.md     reads: [...] · board: false
+custom/<desk>/teams/probe/probe.md                 name: probe · writes: ["shared/*/probe/**"] · agents: [watcher, gauge]
+custom/<desk>/teams/probe/watcher/watcher.md       writes: ["shared/*/probe/watch.md"]
+custom/<desk>/teams/probe/gauge/gauge.md           reads: [...] · board: false
 ```
 
 - **Checked at compose time like an agent** (`compose.js` `readTemplates` → `templateOf`): an unknown key, tool,
   artifact type or command, or model is an Error naming the template's file; `desks`, `checklist`, `min_calls`,
   `after` and `team` are refused (a spawned team mounts no desk, plans on the desk's `plan`, is named after its lead);
   a member's `goal` is refused (the goal is the team's); `max_steps` 1–300; every name (`<team>-<member>` too) passes
-  `SPAWN_NAME`. A folder in `teams/` without an agent.md is an Error.
+  `SPAWN_NAME`. A folder in `teams/` without its `<team>.md` (or `agent.md`), or with a `tools.js`, is an Error.
 - **Handed to the kernel, never built**: `composeDesk` passes `buildDesk` `env.templates` (`{<team>: {name, role, goal,
   tools, artifacts, writes, reads, model, max_steps, board, members: [same]}}`) and `env.models` (the model names a
-  spawn may ask for). The start-up tree is only `agents/`.
+  spawn may ask for). The start-up tree is only the lead's folder.
 - **Bounded by the spawner, at spawn time**: tools are the spawner's own or the desk's catalogue (never its agents or
   an artifact's commands), artifacts the ids it holds or catalogue types within its commands subset, and `writes:` /
   `reads:` must each be covered by one of the spawner's globs (`globCovers`: `projects/**` covers
@@ -180,7 +221,7 @@ custom/<desk>/teams/probe/gauge/agent.md     reads: [...] · board: false
 ### Attach by name: the inbuilt kit
 
 `backend/kernel/builtin/index.js` (`BUILTIN`, `builtinKit`) is a catalogue every composed desk gets under its own
-tools and artifact types (the desk wins a name clash): an agent.md lists them by name, nothing to write. They reach
+tools and artifact types (the desk wins a name clash): an agent's .md lists them by name, nothing to write. They reach
 the machine through `ctx.host` only (fs/*, term/*, browser/*, web/* in `companion/server/host-api.js`). The artifacts
 are shared per desk — every agent that lists `files` holds the same one (id `files`; commands `files.*`) — and
 `{type, id: notes}` makes another (commands `notes.*`). `composeDesk` binds the kit once for the whole composed desk
@@ -228,6 +269,9 @@ export default defineTool({
 })
 ```
 
+An agent's own tools: `<agent>/tools.js` in the same format (one `defineTool` or an array), beside its .md — attached to
+that agent at compose time, checked like `tools/*.js`, its names unique across the desk.
+
 `ctx` = `{agent, signal, host, desk, memory, log}`: the calling agent, its run's abort signal, the host API
 (`host.get(path)`, `host.post(path, body)`), the desk's name, its memory folder, its log (a line on the Live page's
 desk log). In a mounted desk, `desk` and `memory` are the mounted desk's; `host` and `log` the parent's (rule 4). From the command line (`scripts/tool.js`):
@@ -238,13 +282,14 @@ bun scripts/tool.js run custom/<desk>/tools/<name>.js <tool> '{"text":"hi"}' [--
 bun scripts/desk.js check custom/<desk>                         the tree (mounted desks too) and every agent's tools
 ```
 
-### Kept helpers: dynamic agents written as agent.md
+### Kept helpers: dynamic agents written as <name>.md
 
 2026-10-20 owner ("The agent might want to keep the sub-agents alive, and in which case, these configurations are written
 as .MD files in the same folder"): a desk can keep fixed members where its workflow is fixed and let its lead make the
 rest at run time. A helper spawned with `keep: desk` (or kept later: `agent.update {name, keep: desk}`) by an agent whose
-folder is in the desk's `agents/` is written beside it — `agents/<lead>/<helper>/agent.md` in this format plus `keep:
-desk`, `by` and `at` (a team's members as its subfolders, each `member_of: <team>`) — and its transcript records there.
+folder is in the desk's agent tree (the lead's folder; `agents/` in the legacy layout) is written beside it —
+`<spawner folder>/<helper>/<helper>.md` in this format plus `keep: desk`, `by` and `at` (a team's members as its
+subfolders, each `member_of: <team>`; one written before as `agent.md` stays so) — and its `history.md` records there.
 At the next start the host spawns every kept helper again through its spawner (`companion/team/kept.js` `readKept` →
 kernel `respawn`), bounded by what the spawner holds then, its runs restored; one that cannot be (its spawner gone, a
 tool removed) is a desk log line and stays on disk. `agent.update` rewrites the file; `agent.dismiss` moves the folder to
@@ -255,7 +300,7 @@ tool removed) is a desk log line and stays on disk. `agent.update` rewrites the 
 
 An agent that lists `practice` holds its standing orders as a file in the desk's memory —
 `memory/<desk>/practice/<agent>.md` with `## Checklist`, `## Quality`, `## Instructions`, `## Lessons`, `## Tools` and
-`## Changelog` — seeded from `practice.md` beside its agent.md (the owner's first version: config, in the desk folder)
+`## Changelog` — seeded from `practice.md` beside its .md (the owner's first version: config, in the desk folder)
 until its own exists. Every run starts with the Checklist's items open and `!reflect` last; after the work the agent
 edits the section that missed (`<agent>.practice.edit {section, old?, new?, why}`) and closes the run with
 `<agent>.practice.reflect {worked, missed, changes}` (appended to `memory/<desk>/retros/<agent>.md`). A multi-agent
@@ -274,11 +319,12 @@ AGENT: {name, description, role, goal?, title?, model?, max_steps?, writes?, rea
 ```
 
 It writes `main.js` (one template: `conventionDesk({title, description, defaultModel, maxSteps, init})`, its values as
-JSON, headed `// made by desk.create`), `agents/` (each agent's `agent.md` and `practice.md`), `teams/`, `tools/`
-(empty), `data/`, `README.md` — composed in a draft first: a spec that does not compose writes nothing (422 with the
-compose's reason). `update: true` rewrites only a desk that still carries the mark (its data, state, transcripts, tools
-and kept helpers stay). No code an agent wrote is ever placed: `desk.propose` keeps tool code under
-`custom/<desk>/proposed/tools/`, and the owner accepts a file by moving it into `tools/`. `desks/check {name}` composes
+JSON, headed `// made by desk.create`), `<lead>/` (each agent's `<name>.md` and `practice.md`, members nested),
+`teams/<team>/<team>.md`, `tools/` (empty), `data/`, `README.md` — composed in a draft first: a spec that does not compose
+writes nothing (422 with the compose's reason). `update: true` rewrites only a desk that still carries the mark (its
+data, state, history, tools and kept helpers stay; a legacy desk keeps its `agents/` layout). No code an agent wrote is
+ever placed: `desk.propose` keeps tool code under `custom/<desk>/proposed/tools/`, and the owner accepts a file by
+moving it into `tools/`. `desks/check {name}` composes
 a desk (`checkDesk`); `desks/ask {name, text, agent?, wait?}` gives a hosted desk work (from `desk:<asker>`; wait: an
 id at once, `GET desks/ask?id=` its status and answer; a desk waiting on another is never asked back with a wait, and
 one desk asks another at most 6 times in 10 minutes); `desks/read {name, path}` reads its workspace (its own fs/*; a
@@ -296,13 +342,13 @@ does the same at its top.
 
 | To | Do |
 | --- | --- |
-| Add a tool | Write `tools/<name>.js` (template above); `bun scripts/tool.js check` it; add its name to an agent's `tools:`; `bun scripts/desk.js check custom/<desk>`; load (last row). |
-| Add an agent | A folder under its lead (`agents/<lead>/<agent>/agent.md`); its folder name in the lead's `agents:`. The lead calls it with a quest. |
+| Add a tool | Write `tools/<name>.js` (template above); `bun scripts/tool.js check` it; add its name to an agent's `tools:`; `bun scripts/desk.js check custom/<desk>`; load (last row). A tool only one agent uses: `<agent>/tools.js` beside its .md (attached to it, no `tools:` entry needed). |
+| Add an agent | A folder under its lead (`<lead>/<agent>/<agent>.md`); its folder name in the lead's `agents:`. The lead calls it with a quest. |
 | Add a team | Give an agent members (`agents:`): it leads a team and gets `<team>.board`, shared with its members, under the board of the team above; `title` and `goal` head it. |
-| Let the lead staff itself | `tools: [agent.spawn, agent.catalog, agent.update, agent.dismiss]` and `artifacts: [practice, dispatch]` on the lead; its practice.md's checklist names the goals (each an item it closes itself or gives a helper); helpers that earn it are kept (`keep: desk`) as agent.md folders under it. Example: `desks/agent/` (the core desk: one agent, no fixed members). |
+| Let the lead staff itself | `tools: [agent.spawn, agent.catalog, agent.update, agent.dismiss]` and `artifacts: [practice, dispatch]` on the lead; its practice.md's checklist names the goals (each an item it closes itself or gives a helper); helpers that earn it are kept (`keep: desk`) as `<name>/<name>.md` folders under it. Example: `desks/agent/` (the core desk: one agent, no fixed members). |
 | Create a desk from a request | Ask the core desk's agent (`desks/agent/`): `bun run send -- --agents desks/agent --wait "Set up a desk that …"` — it designs the spec, `desk.create`, `desk.load`, `desk.ask` its first request, and fixes the spec until the answer meets its bar. |
-| Add a team the lead staffs when needed | A template folder `teams/<team>/agent.md` (+ members) (teams/, above); the lead holds `agent.spawn` (and `agent.dismiss`) and its role says when to staff it: `agent.spawn {template: "<team>", goal, keep: desk}`. `bun scripts/desk.js check custom/<desk>` lists it under `templates`. |
-| Mount a desk in a desk | `desks: [<other>]` in the agent.md it goes under; `custom/<other>/` sits beside this desk with its own main.js, agents and tools, and keeps its own options, `ctx.desk` and memory (rule 4; its host, log and workspace are the parent's). `bun scripts/desk.js check custom/<desk>` shows its lead with `desk: "<other>"`. Example: `companion/team/fixtures/sample-desk/agents/lead/beta/agent.md` mounts `companion/team/fixtures/mini-desk/` (its own artifact type in `companion/team/fixtures/mini-desk/artifacts/tally.js`). |
+| Add a team the lead staffs when needed | A template folder `teams/<team>/<team>.md` (+ members) (teams/, above); the lead holds `agent.spawn` (and `agent.dismiss`) and its role says when to staff it: `agent.spawn {template: "<team>", goal, keep: desk}`. `bun scripts/desk.js check custom/<desk>` lists it under `templates`. |
+| Mount a desk in a desk | `desks: [<other>]` in the .md of the agent it goes under; `custom/<other>/` sits beside this desk with its own main.js, agents and tools, and keeps its own options, `ctx.desk` and memory (rule 4; its host, log and workspace are the parent's). `bun scripts/desk.js check custom/<desk>` shows its lead with `desk: "<other>"`. Example: `companion/team/fixtures/sample-desk/lead/beta/beta.md` mounts `companion/team/fixtures/mini-desk/` (its own artifact type in `companion/team/fixtures/mini-desk/artifacts/tally.js`; a desk in the legacy layout). |
 | Add an artifact type and its view | A class extending `Artifact` (`backend/kernel/artifact/artifact.js`; examples: `backend/kernel/artifact/checklist.js`, `Report` in `companion/team/compose.js`): `name` `<agent>.<kind>`, `kind`, `view`, `keep`, `render()`, `brief()`, `commands()`, `live()`. Register it: `conventionDesk({artifacts: {ledger: (agent, spec) => new Ledger(...)}})`; agents hold it with `artifacts: [ledger]`. Its `view` is drawn by `components/views/artifact.jsx` (list, checklist, quality, board, schedule, text, memory, table, files, terminal, preview, dispatch; another view shows its state as JSON until a renderer is added there, in the same change). Before writing one, check the kit (Attach by name): `files`, `terminal`, `preview`, `plan` and `dispatch` may already be it. |
 | Load into the running server | `POST /__askk/desks/load {"name": "<desk>"}` (same-origin JSON: `Origin: http://localhost:1111`, `Content-Type: application/json`) → `{name, agents, reloaded}`. A new folder is hosted beside the others; a hosted desk is reloaded with fresh modules (main.js, agents, tools/) — refused (409) while its agents work or a run it accepted waits to start, and a reload that fails leaves the previous version running. Refused: a desk folder (or its main.js) that is a link (403), a read-only server (403). Open tabs reconnect on their own. From a tool: `ctx.host.post("desks/load", {name})`. |
 
@@ -310,8 +356,8 @@ does the same at its top.
 
 A new desk is done when each holds:
 
-- [ ] `bun scripts/desk.js check custom/<desk>` exits 0 and its tree shows every agent (and every mounted desk), its
-      `templates` every team in `teams/`.
+- [ ] `bun scripts/desk.js check custom/<desk>` exits 0 (`layout: standard`) and its tree shows every agent (and every
+      mounted desk), its `templates` every team in `teams/`.
 - [ ] Every `custom/<desk>/tools/*.js` passes `bun scripts/tool.js check <file>`; each touches the machine only through `ctx.host`.
 - [ ] `POST /__askk/desks/load {"name": "<desk>"}` answers 200 and `GET /__askk/desks` lists it.
 - [ ] Its lead answers a real question: `bun run send -- --agents custom/<desk> --wait "<question>"` prints a REPORT

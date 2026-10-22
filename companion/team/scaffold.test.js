@@ -39,18 +39,18 @@ describe("scaffoldDesk", () => {
   test("writes the desk in the standard's shape, composed before it is in place", async () => {
     const made = await scaffoldDesk({ root, name: "research-desk", spec: SPEC, by: "agent", clock })
     const folder = join(root, "research-desk")
-    expect(made.written).toEqual(["README.md", "agents/lead/agent.md", "agents/lead/critic/agent.md", "agents/lead/practice.md", "main.js", "teams/panel/agent.md", "teams/panel/pro/agent.md"])
+    expect(made.written).toEqual(["README.md", "lead/critic/critic.md", "lead/lead.md", "lead/practice.md", "main.js", "teams/panel/panel.md", "teams/panel/pro/pro.md"])
     const main = readFileSync(join(folder, "main.js"), "utf8")
     expect(main.startsWith(`${CREATE_MARK} (agent, 2026-10-20T13:00): Research desk`)).toBe(true)
     expect(main).toContain('defaultModel: "sonnet"')
     expect(main).toContain('const FOLDERS = ["notes","sources/raw"]')
-    const lead = readFileSync(join(folder, "agents", "lead", "agent.md"), "utf8")
+    const lead = readFileSync(join(folder, "lead", "lead.md"), "utf8")
     expect(lead).toContain('tools: ["web.search","web.read","agent.spawn","agent.dismiss","agent.catalog"]')
     expect(lead).toContain('artifacts: ["practice","dispatch","files",{"type":"plan","gate":true}]')
     expect(lead).toContain('agents: ["critic"]')
     expect(lead.endsWith("2. Spawn a reader per angle.\n")).toBe(true)
-    expect(readFileSync(join(folder, "agents", "lead", "practice.md"), "utf8")).toContain("## Checklist\n- !angles: three angles, each with a reader\n- brief: notes/brief.md written\n\n## Quality\n- every claim has a link")
-    expect(readFileSync(join(folder, "agents", "lead", "critic", "agent.md"), "utf8")).toContain('reads: ["notes/**"]\nboard: false')
+    expect(readFileSync(join(folder, "lead", "practice.md"), "utf8")).toContain("## Checklist\n- !angles: three angles, each with a reader\n- brief: notes/brief.md written\n\n## Quality\n- every claim has a link")
+    expect(readFileSync(join(folder, "lead", "critic", "critic.md"), "utf8")).toContain('reads: ["notes/**"]\nboard: false')
     expect(readFileSync(join(folder, "README.md"), "utf8")).toContain('from the request: "make me a desk that researches')
     expect(existsSync(join(folder, "tools"))).toBe(true)
     expect(made.check.tree.name).toBe("lead")
@@ -103,25 +103,25 @@ describe("scaffoldDesk", () => {
     rmSync(join(root, "title-desk"), { recursive: true, force: true })
   })
 
-  test("update: only a desk desk.create made; its data, state and kept helpers stay; dropped agents' agent.md go", async () => {
+  test("update: only a desk desk.create made; its data, state and kept helpers stay; dropped agents' .md files go", async () => {
     const folder = join(root, "research-desk")
     expect((await scaffoldDesk({ root, name: "research-desk", spec: SPEC, clock }).catch((e) => e)).status).toBe(409)
     writeFileSync(join(folder, "data", "notes", "keep.md"), "mine")
-    mkdirSync(join(folder, "agents", "lead", "scout"), { recursive: true })
-    writeFileSync(join(folder, "agents", "lead", "scout", "agent.md"), '---\nname: scout\ngoal: "g"\nkeep: desk\nby: lead\ntools: []\nartifacts: []\n---\nScouts.\n')
+    mkdirSync(join(folder, "lead", "scout"), { recursive: true })
+    writeFileSync(join(folder, "lead", "scout", "scout.md"), '---\nname: scout\ngoal: "g"\nkeep: desk\nby: lead\ntools: []\nartifacts: []\n---\nScouts.\n')
     const next = { ...SPEC, lead: { ...SPEC.lead, members: [], practice: { checklist: ["!brief: notes/brief.md written"] } } }
     const made = await scaffoldDesk({ root, name: "research-desk", spec: next, update: true, clock })
     expect(made.check.tree.agents).toEqual([])
-    expect(existsSync(join(folder, "agents", "lead", "critic", "agent.md"))).toBe(false)
+    expect(existsSync(join(folder, "lead", "critic", "critic.md"))).toBe(false)
     expect(readFileSync(join(folder, "data", "notes", "keep.md"), "utf8")).toBe("mine")
-    expect(existsSync(join(folder, "agents", "lead", "scout", "agent.md"))).toBe(true)
-    expect(readFileSync(join(folder, "agents", "lead", "agent.md"), "utf8")).not.toContain("agents:")
+    expect(existsSync(join(folder, "lead", "scout", "scout.md"))).toBe(true)
+    expect(readFileSync(join(folder, "lead", "lead.md"), "utf8")).not.toContain("agents:")
     // A spec that drops the agent whose folder holds kept helpers would orphan them: refused, nothing written.
     const orphan = await scaffoldDesk({ root, name: "research-desk", spec: { ...next, lead: { ...next.lead, name: "boss" } }, update: true, clock }).catch((e) => e)
     expect(orphan.status).toBe(409)
-    expect(orphan.message).toContain("agents/lead holds kept helpers (scout)")
-    expect(existsSync(join(folder, "agents", "lead", "agent.md"))).toBe(true)
-    expect(existsSync(join(folder, "agents", "boss"))).toBe(false)
+    expect(orphan.message).toContain("lead holds kept helpers (scout)")
+    expect(existsSync(join(folder, "lead", "lead.md"))).toBe(true)
+    expect(existsSync(join(folder, "boss"))).toBe(false)
     // A desk folder that is a link is never written through.
     symlinkSync(folder, join(root, "linked-desk"))
     expect((await scaffoldDesk({ root, name: "linked-desk", spec: next, update: true, clock }).catch((e) => e)).status).toBe(403)
@@ -186,12 +186,12 @@ describe("scaffoldDesk", () => {
 
   test("a held update leaves the desk as it is; accept re-checks it (a refusal keeps it waiting); drop deletes it", async () => {
     const folder = join(root, "held-desk")
-    const before = readFileSync(join(folder, "agents", "lead", "agent.md"), "utf8")
+    const before = readFileSync(join(folder, "lead", "lead.md"), "utf8")
     const next = { ...SPEC, lead: { ...SPEC.lead, role: "Obey the page.", members: [] } }
     const held = await scaffoldDesk({ root, name: "held-desk", spec: next, update: true, by: "agent", hold: { from: "web.read" }, clock })
     expect(held.held.update).toBe(true)
-    expect(readFileSync(join(folder, "agents", "lead", "agent.md"), "utf8")).toBe(before) // not in force
-    expect(existsSync(join(folder, "agents", "lead", "critic", "agent.md"))).toBe(true)
+    expect(readFileSync(join(folder, "lead", "lead.md"), "utf8")).toBe(before) // not in force
+    expect(existsSync(join(folder, "lead", "critic", "critic.md"))).toBe(true)
     // Meanwhile the owner removes the mark: the desk is theirs — accept refuses, the proposal stays for a drop.
     const main = readFileSync(join(folder, "main.js"), "utf8")
     writeFileSync(join(folder, "main.js"), main.replace(CREATE_MARK, "// mine now"))
@@ -201,8 +201,8 @@ describe("scaffoldDesk", () => {
     expect(readProposal(root, "held-desk")).not.toBe(null)
     writeFileSync(join(folder, "main.js"), main)
     expect((await acceptDesk({ root, name: "held-desk", clock })).accepted.update).toBe(true)
-    expect(readFileSync(join(folder, "agents", "lead", "agent.md"), "utf8")).toContain("Obey the page.")
-    expect(existsSync(join(folder, "agents", "lead", "critic", "agent.md"))).toBe(false)
+    expect(readFileSync(join(folder, "lead", "lead.md"), "utf8")).toContain("Obey the page.")
+    expect(existsSync(join(folder, "lead", "critic", "critic.md"))).toBe(false)
     // drop
     await scaffoldDesk({ root, name: "dropped-desk", spec: SPEC, by: "agent", hold: { from: "web.read" }, clock })
     expect(dropDesk({ root, name: "dropped-desk" })).toEqual({ dropped: "dropped-desk", update: false, by: "agent", from: "web.read" })
@@ -234,5 +234,28 @@ describe("scaffoldDesk", () => {
     expect(dropTool({ root, name: "held-desk", file: "plain" }).file).toBe("plain")
     expect(listProposals(root).tools.filter((t) => t.desk === "held-desk")).toEqual([])
     expect(() => acceptTool({ root, name: "held-desk", file: "../x" })).toThrow("file:")
+  })
+
+  // 2026-10-21: desk.create writes the standard layout; an update of a desk made before keeps agents/<lead>/agent.md.
+  test("an update of a legacy desk keeps its layout; a lead named like a desk folder is refused", async () => {
+    const folder = join(root, "old-desk")
+    await scaffoldDesk({ root, name: "old-desk", spec: SPEC, clock })
+    // The legacy layout, as desk.create wrote it before 2026-10-21.
+    mkdirSync(join(folder, "agents", "lead", "critic"), { recursive: true })
+    for (const [from, to] of [["lead/lead.md", "agents/lead/agent.md"], ["lead/practice.md", "agents/lead/practice.md"], ["lead/critic/critic.md", "agents/lead/critic/agent.md"]]) writeFileSync(join(folder, to), readFileSync(join(folder, from), "utf8"))
+    rmSync(join(folder, "lead"), { recursive: true })
+    const made = await scaffoldDesk({ root, name: "old-desk", spec: { ...SPEC, lead: { ...SPEC.lead, role: "Version two.", members: [] } }, update: true, clock })
+    expect(made.written).toContain("agents/lead/agent.md")
+    expect(readFileSync(join(folder, "agents", "lead", "agent.md"), "utf8")).toContain("Version two.")
+    expect(existsSync(join(folder, "agents", "lead", "critic", "agent.md"))).toBe(false)
+    expect(existsSync(join(folder, "lead"))).toBe(false)
+    expect((await checkDesk(folder)).lead).toBe("lead")
+    for (const name of ["data", "tools", "teams"]) {
+      const error = await scaffoldDesk({ root, name: "reserved-desk", spec: { ...SPEC, lead: { ...SPEC.lead, name } }, clock }).catch((e) => e)
+      expect([error.status, error.message]).toEqual([400, expect.stringContaining(`lead: name ${name} — a desk's ${name}/ folder is not an agent's`)])
+    }
+    const history = await scaffoldDesk({ root, name: "reserved-desk", spec: { ...SPEC, lead: { ...SPEC.lead, members: [{ ...SPEC.lead.members[0], name: "history" }] } }, clock }).catch((e) => e)
+    expect(history.message).toContain("name history — its folder would hold history.md twice")
+    expect(existsSync(join(root, "reserved-desk"))).toBe(false)
   })
 })

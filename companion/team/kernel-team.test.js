@@ -1,11 +1,12 @@
 import { expect, test } from "bun:test"
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Artifact, buildAgent, buildDesk, Checklist, dismissTool, Plan, Preview, Schedule, spawnTool, Tool, updateTool } from "../../backend/kernel/index.js"
 import { fakeHost } from "../../backend/kernel/test/fake-host.js"
 import { mirrorTeam } from "./kernel-live.js"
 import { createKernelTeam } from "./kernel-team.js"
+import { parseHistory } from "./kernel-history.js"
 
 // A small code desk (no model, no network) through the team surface the app mirrors.
 function fixtureDesk() {
@@ -238,8 +239,8 @@ test("stop aborts every run of the agent: the one in progress and the ones queue
 
 // 2026-10-17: agents made at run time (agent.spawn → kernel Desk.spawn). The team is not fixed at start: a spawn reaches
 // every tab as a registry event (with the new agent's state) and a kernel tree, its run streams state patches, its
-// transcript records under state/spawned/<name>/; a dismiss takes it out again, with the artifacts only it held.
-test("a spawned agent reaches every tab: registry with its state, the tree, its run, its transcript; dismissed, it leaves", async () => {
+// history.md records under state/spawned/<name>/; a dismiss takes it out again, with the artifacts only it held.
+test("a spawned agent reaches every tab: registry with its state, the tree, its run, its history.md; dismissed, it leaves", async () => {
   const root = mkdtempSync(join(tmpdir(), "kt-spawn-"))
   const state = join(root, "state")
   mkdirSync(state)
@@ -312,14 +313,14 @@ test("a spawned agent reaches every tab: registry with its state, the tree, its 
   const leadRows = events.filter((e) => e.id === "lead").flatMap((e) => e.patch.messages?.items ?? [])
   expect(leadRows.find((m) => m.role === "tool" && m.name === "agent.spawn")).toMatchObject({ view: "spawn", ok: true })
   expect(events.filter((e) => e.type === "log").map((e) => e.text)).toContain("desk: lead spawned counter: count the corpus")
-  // Its folder: an agent.md record of what it was made for, and its transcript beside it.
+  // Its folder: an agent.md record of what it was made for, and its history.md beside it.
   const folder = join(state, "spawned", "counter")
   const md = readFileSync(join(folder, "agent.md"), "utf8")
   expect(md).toContain("by: lead")
   expect(md).toContain('goal: "count the corpus"')
   expect(md).toContain('tools: ["corpus.count"]')
   expect(md.endsWith("---\nCounts tokens.\n")).toBe(true)
-  const runs = readFileSync(join(folder, "transcript.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l))
+  const runs = parseHistory(readFileSync(join(folder, "history.md"), "utf8"))
   expect(runs.map((r) => [r.from, r.answer])).toEqual([["lead", "1200"]])
   // A tab that connects now reads the helper in its snapshot; the server's own mirror (Telegram status) has it.
   const snap = JSON.parse(new TextDecoder().decode((await team.stream({ signal: new AbortController().signal }).body.getReader().read()).value).replace(/^data: /, ""))
@@ -344,7 +345,7 @@ test("a spawned agent reaches every tab: registry with its state, the tree, its 
   expect(after.filter((e) => e.type === "kernel" && e.artifact).map((e) => [e.artifact.id, e.artifact.holders])).toContainEqual(["lab.board", ["lead", "coder"]])
   expect(after.filter((e) => e.type === "log").map((e) => e.text)).toContain("desk: lead dismissed counter")
   expect(team.agents).toEqual(["lead", "coder"])
-  expect(existsSync(join(folder, "transcript.jsonl"))).toBe(true)
+  expect(existsSync(join(folder, "history.md"))).toBe(true)
   await Bun.sleep(20)
   expect(view.registry.agents.map((a) => a.name)).toEqual(["lead", "coder"])
   expect(view.states.counter).toBeUndefined()
@@ -356,8 +357,8 @@ test("a spawned agent reaches every tab: registry with its state, the tree, its 
 })
 
 // 2026-10-20 owner ("The agent might want to keep the sub-agents alive … written as .MD files in the same folder"): a
-// keep: desk helper of an agent in the desk's agents/ is written as agents/<lead>/<name>/agent.md (its team's members
-// as subfolders), its transcript beside it; a restart spawns it again with its runs; dismissed, the folder moves to
+// keep: desk helper of an agent in the desk's agents/ is written as agents/<lead>/<name>/<name>.md (2026-10-21; its team's members
+// as subfolders), its history.md beside it; a restart spawns it again with its runs; dismissed, the folder moves to
 // memory/<desk>/archive/agents/.
 test("a kept helper: its agent.md under its spawner's folder, back after a restart with its runs, archived when dismissed", async () => {
   const root = mkdtempSync(join(tmpdir(), "kt-kept-"))
@@ -380,22 +381,22 @@ test("a kept helper: its agent.md under its spawner's folder, back after a resta
   const team = await createKernelTeam({ desk: deskOf(), port: 0, live: true })
   expect((await team.call({ target: "lead", method: "ask", args: ["count the corpus"] })).value).toBe("1200 tokens")
   const folder = join(root, "agents", "lead", "counter")
-  const md = readFileSync(join(folder, "agent.md"), "utf8")
+  const md = readFileSync(join(folder, "counter.md"), "utf8")
   expect(md).toStartWith('---\nname: counter\ndescription: "counts the corpus"\ngoal: "count the corpus"\nkeep: desk\nby: lead\nat: "')
   expect(md).toContain('model: haiku\ntools: ["corpus.count"]\nartifacts: ["notes"]\nagents: ["checker"]\n---\nCounts tokens.\n')
-  expect(readFileSync(join(folder, "checker", "agent.md"), "utf8")).toBe('---\nname: checker\nmember_of: counter\ntools: ["corpus.count"]\nartifacts: []\n---\nChecks the sum.\n')
-  expect(readFileSync(join(folder, "transcript.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l).answer)).toEqual(["1200"])
+  expect(readFileSync(join(folder, "checker", "checker.md"), "utf8")).toBe('---\nname: checker\nmember_of: counter\ntools: ["corpus.count"]\nartifacts: []\n---\nChecks the sum.\n')
+  expect(parseHistory(readFileSync(join(folder, "history.md"), "utf8")).map((r) => r.answer)).toEqual(["1200"])
   expect(existsSync(join(state, "spawned", "counter"))).toBe(false)
   team.terminate()
 
-  // A restart: the kept team is spawned again by its spawner, its runs restored from the transcript beside it.
+  // A restart: the kept team is spawned again by its spawner, its runs restored from the history.md beside it.
   const again = await createKernelTeam({ desk: deskOf(), port: 0, live: true })
   expect(again.agents).toEqual(["lead", "counter", "checker"])
   const snap = JSON.parse(new TextDecoder().decode((await again.stream({ signal: new AbortController().signal }).body.getReader().read()).value).replace(/^data: /, ""))
   expect(snap.registry.engines.find((e) => e.id === "counter").agent).toMatchObject({ folder: join("agents", "lead", "counter"), model: "haiku", spawned: { by: "lead", keep: "desk", team: "counter" } })
   expect(snap.states.counter.messages.find((m) => m.action === "answer")?.content).toBe("1200")
   expect(snap.log.map((l) => l.text)).toContain("desk: kept helpers back: counter")
-  expect(readFileSync(join(folder, "agent.md"), "utf8")).toBe(md) // rewritten as it was (its first time kept)
+  expect(readFileSync(join(folder, "counter.md"), "utf8")).toBe(md) // rewritten as it was (its first time kept)
 
   // Dismissed for good: the folder (members inside) moves to memory/<desk>/archive/agents/.
   script.lead.push({ thought: "go", calls: [{ tool: "agent.dismiss", input: { name: "counter" } }] }, { thought: "done", calls: [], answer: "dismissed" })
@@ -403,8 +404,8 @@ test("a kept helper: its agent.md under its spawner's folder, back after a resta
   expect(existsSync(folder)).toBe(false)
   const day = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date())
   const archived = join(memory, "archive", "agents", `${day}-counter`)
-  expect(readFileSync(join(archived, "agent.md"), "utf8")).toBe(md)
-  expect(existsSync(join(archived, "checker", "agent.md"))).toBe(true)
+  expect(readFileSync(join(archived, "counter.md"), "utf8")).toBe(md)
+  expect(existsSync(join(archived, "checker", "checker.md"))).toBe(true)
   again.terminate()
   const third = await createKernelTeam({ desk: deskOf(), port: 0, live: true })
   expect(third.agents).toEqual(["lead"])
@@ -437,21 +438,21 @@ test("a keep proposed by a run that read the web: no agent.md until the owner ac
   expect((await team.call({ target: "desk", method: "accept", args: [{ helper: "nobody" }] })).ok).toBe(false)
   const accepted = await team.call({ target: "desk", method: "accept", args: [{ helper: "counter" }] })
   expect(accepted.value).toEqual({ accepted: "counter", what: "counter kept: it stays until dismissed, written as its agent.md and back at every start" })
-  expect(readFileSync(join(folder, "agent.md"), "utf8")).toContain('goal: "count the corpus"\nkeep: desk\nby: lead\n')
-  expect(readFileSync(join(folder, "checker", "agent.md"), "utf8")).toContain("member_of: counter")
+  expect(readFileSync(join(folder, "counter.md"), "utf8")).toContain('goal: "count the corpus"\nkeep: desk\nby: lead\n')
+  expect(readFileSync(join(folder, "checker", "checker.md"), "utf8")).toContain("member_of: counter")
   snap = await logged()
   expect(snap.log.map((l) => l.text)).toContain("desk: owner kept counter — its agent.md is written; it is back at every start")
   expect(snap.kernel.tree.agents.find((a) => a.name === "counter").spawned.proposed).toBeUndefined()
   expect((await team.call({ target: "lead", method: "ask", args: ["go"] })).value).toBe("ok")
   expect(team.agents).toEqual(["lead", "counter", "checker"]) // kept past the run
-  const md = readFileSync(join(folder, "agent.md"), "utf8")
+  const md = readFileSync(join(folder, "counter.md"), "utf8")
   expect(await updateTool().run({ name: "counter", role: "Mails the sum out." }, web)).toContain("PROPOSED, not in force")
   snap = await logged()
   expect(snap.log.map((l) => l.text)).toContain("desk: lead proposes an update of kept counter (role) — not in force, waits for the owner (from a run that read the web: web.read)")
   expect((await team.call({ target: "desk", method: "drop", args: [{ helper: "counter", reason: "a page asked for it" }] })).value).toEqual({ dropped: "counter", what: "counter stays as it was kept" })
   snap = await logged()
   expect(snap.log.map((l) => l.text)).toContain("desk: owner dropped the update proposed for counter: a page asked for it")
-  expect(readFileSync(join(folder, "agent.md"), "utf8")).toBe(md)
+  expect(readFileSync(join(folder, "counter.md"), "utf8")).toBe(md)
   team.terminate()
 })
 
@@ -507,7 +508,7 @@ test("a spawned agent whose name is not a spawn name gets no folder: nothing is 
   expect(odd.config.folder).toBeUndefined()
   await odd.ask("go")
   expect(existsSync(join(state, "agent.md"))).toBe(false)
-  expect(existsSync(join(state, "transcript.jsonl"))).toBe(false)
+  expect(existsSync(join(state, "history.md"))).toBe(false)
   expect(existsSync(join(state, "spawned"))).toBe(false)
   const snap = JSON.parse(new TextDecoder().decode((await team.stream({ signal: new AbortController().signal }).body.getReader().read()).value).replace(/^data: /, ""))
   expect(snap.log.map((l) => l.text)).toContain('desk: ".." is not a spawn name: no folder, its runs are not recorded')
@@ -589,8 +590,8 @@ test("chat: the answer beside the runs — two chat rows, its model call in the 
   expect(events.filter((e) => e.id === "lead" && e.patch.stats).at(-1).patch.stats).toMatchObject({ calls: 4, promptChars: expect.any(Number) })
   const logs = events.filter((e) => e.type === "log").map((e) => e.text)
   for (const line of ["desk: owner asks lead: what is built?", "desk: lead proposes to owner (not started): check the loss curve of run r3", "desk: owner → lead: check the loss curve of run r3", "desk: telegram asks lead: what are you doing?", "desk: lead did not answer owner's chat (model down)"]) expect(logs).toContain(line)
-  // The run's transcript holds its own rows only (request, step, guidance, result): a restored thread keeps its times.
-  const run = JSON.parse(readFileSync(join(folder, "transcript.jsonl"), "utf8").trim().split("\n").at(-1))
+  // The run's history row holds its own rows only (request, step, guidance, result): a restored thread keeps its times.
+  const run = parseHistory(readFileSync(join(folder, "history.md"), "utf8")).at(-1)
   expect(run).toMatchObject({ request: "check the loss curve of run r3", answer: "r3 beats r2", guidance: [{ pos: 1, from: "telegram", text: "compare r3 with r2" }] })
   expect(run.times.length).toBe(4)
   team.terminate()
@@ -819,7 +820,7 @@ test("a team spawn: one registry event with every member's state, a folder each 
   expect(md("probe-gauge").endsWith("---\nMeasures.\n")).toBe(true)
   const watcherRows = events.filter((e) => e.type === "state" && e.id === "probe-watcher").flatMap((e) => e.patch.messages?.items ?? [])
   expect(watcherRows.map((m) => [m.kind ?? m.action, m.from ?? null])).toEqual([["quest", "probe"], ["answer", null]])
-  expect(readFileSync(join(state, "spawned", "probe-watcher", "transcript.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l).from)).toEqual(["probe"])
+  expect(parseHistory(readFileSync(join(state, "spawned", "probe-watcher", "history.md"), "utf8")).map((r) => r.from)).toEqual(["probe"])
 
   // Dismissed whole: one agent per event, its members first; every state goes, the team's artifacts leave.
   expect((await team.call({ target: "lead", method: "ask", args: ["let it go"] })).value).toBe("dismissed")
@@ -882,3 +883,85 @@ test("2026-10-17 the owner's open, back and rerun on the preview route through t
   expect(preview.state.asks).toEqual([])
 })
 
+
+// 2026-10-21 owner ("create agent will follow the standard of <desk>/<agent>/<agent>.md … In the folder where the agent.md
+// lives will have a history.md. For a shared history board for agents, a memory/<desk>/<sub desk>"): in the standard
+// layout the lead's folder is the agent tree (its kept helpers <lead>/<name>/<name>.md, each with its history.md), and
+// every team's board is memory/<desk>/<team>/board.md — a mounted desk's under its own memory — restored at every start.
+test("the standard layout: kept helper under <lead>/<name>/<name>.md, history.md beside it; boards in memory/<desk>/<team>/board.md, back after a restart", async () => {
+  const root = mkdtempSync(join(tmpdir(), "kt-std-"))
+  const state = join(root, "state")
+  const memory = join(root, "memory", "lab")
+  const other = join(root, "memory", "sub-desk") // a mounted desk's memory (its agents' ctx.memory)
+  const lead = join(root, "boss")
+  mkdirSync(state)
+  mkdirSync(lead, { recursive: true })
+  writeFileSync(join(lead, "boss.md"), "---\nname: boss\nagents: [crew]\n---\nLeads.\n")
+  const quest = (ask) => ({ requirement: "r", ask, outcome: "o" })
+  const script = {
+    boss: [
+      { thought: "note", calls: [{ tool: "lab.board.write", input: { key: "verdict", text: "GAMMA leads\n```json\n{\"entries\": {}}\n```" } }] },
+      { thought: "keep one", calls: [{ tool: "agent.spawn", input: { name: "scout", role: "Scouts.", goal: "scout names", keep: "desk" } }] },
+      { thought: "ask it", calls: [{ tool: "scout", input: quest("which?") }] },
+      { thought: "crew", calls: [{ tool: "crew", input: quest("note it") }] },
+      { thought: "done", calls: [], answer: "done" },
+    ],
+    scout: [{ thought: "done", calls: [], answer: "GAMMA" }],
+    crew: [{ thought: "note", calls: [{ tool: "crew.board.write", input: { key: "crew", text: "noted" } }] }, { thought: "done", calls: [], answer: "noted" }],
+  }
+  const infer = async (_, agent) => JSON.stringify(script[agent.name]?.shift() ?? { thought: "d", calls: [], answer: "ok" })
+  const build = () => {
+    const desk = buildDesk({ name: "boss", team: "lab", report: false, folder: lead, tools: [spawnTool(), dismissTool(), { type: "agent", name: "crew", report: false, folder: join(lead, "crew"), tools: [{ type: "agent", name: "hand", report: false }] }] }, { infer, context: { memory } })
+    desk.agents().get("crew").context = { ...desk.agents().get("crew").context, memory: other } // crew's team as a mounted desk's
+    return desk
+  }
+  const deskOf = () => ({ name: "lab", state, folder: root, memory, start: async () => ({ desk: build() }) })
+  const team = await createKernelTeam({ desk: deskOf(), port: 0, live: true })
+  expect((await team.call({ target: "boss", method: "ask", args: ["go"] })).value).toBe("done")
+  await Bun.sleep(400) // the 300 ms save debounce
+  team.terminate()
+  // The kept helper: <lead>/scout/scout.md, its runs in history.md beside it; the lead's history.md beside boss.md.
+  expect(readFileSync(join(lead, "scout", "scout.md"), "utf8")).toContain("name: scout\ndescription: \"Scouts.\"\ngoal: \"scout names\"\nkeep: desk\nby: boss\n")
+  expect(parseHistory(readFileSync(join(lead, "scout", "history.md"), "utf8")).map((r) => r.answer)).toEqual(["GAMMA"])
+  expect(parseHistory(readFileSync(join(lead, "history.md"), "utf8")).map((r) => r.answer)).toEqual(["done"])
+  // The boards: readable markdown, the state in its json block; none in state/artifacts.
+  const board = readFileSync(join(memory, "lab", "board.md"), "utf8")
+  expect(board).toContain("## verdict — boss · ")
+  expect(board).toContain("> GAMMA leads\n> ```json\n")
+  expect(readFileSync(join(other, "crew", "board.md"), "utf8")).toContain("## crew — crew · ")
+  expect(existsSync(join(state, "artifacts", "lab.board.json"))).toBe(false)
+  expect(existsSync(join(state, "artifacts", "crew.board.json"))).toBe(false)
+  // A restart the same day: the boards and the kept helper come back.
+  const again = await createKernelTeam({ desk: deskOf(), port: 0, live: true })
+  const snap = JSON.parse(new TextDecoder().decode((await again.stream({ signal: new AbortController().signal }).body.getReader().read()).value).replace(/^data: /, ""))
+  again.terminate()
+  expect(again.agents).toEqual(["boss", "crew", "hand", "scout"])
+  expect(snap.kernel.artifacts["lab.board"].state.entries.verdict).toMatchObject({ author: "boss", text: "GAMMA leads\n```json\n{\"entries\": {}}\n```" })
+  expect(snap.kernel.artifacts["crew.board"].state.entries.crew).toMatchObject({ author: "crew", text: "noted" })
+  expect(snap.states.scout.messages.find((m) => m.action === "answer")?.content).toBe("GAMMA")
+  // A day board from an earlier day (2026-10-21 review: days-old entries flowed into every prompt): filed under
+  // <team>/boards/<day>.md as history, and the board starts fresh.
+  const md = readFileSync(join(memory, "lab", "board.md"), "utf8").replace(/"at":"[^"]+"/, '"at":"2026-10-01T15:00:00.000Z"')
+  writeFileSync(join(memory, "lab", "board.md"), md)
+  const third = await createKernelTeam({ desk: deskOf(), port: 0, live: true })
+  const snap3 = JSON.parse(new TextDecoder().decode((await third.stream({ signal: new AbortController().signal }).body.getReader().read()).value).replace(/^data: /, ""))
+  third.terminate()
+  expect(snap3.kernel.artifacts["lab.board"].state.entries).toEqual({})
+  expect(readFileSync(join(memory, "lab", "boards", "2026-10-01.md"), "utf8")).toContain("## verdict — boss · ")
+  // Migration: a board saved before board.md (state/artifacts/<id>.json) comes back once — only from today.
+  rmSync(join(memory, "lab", "board.md"), { force: true })
+  mkdirSync(join(state, "artifacts"), { recursive: true })
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date())
+  const old = (day, text) => JSON.stringify({ id: "lab.board", kind: "board", day, state: { goal: "", entries: { old: { author: "boss", text, at: "2026-10-01T14:00:00.000Z" } } } })
+  writeFileSync(join(state, "artifacts", "lab.board.json"), old("2026-10-01", "from before"))
+  const fourth = await createKernelTeam({ desk: deskOf(), port: 0, live: true })
+  const snap4 = JSON.parse(new TextDecoder().decode((await fourth.stream({ signal: new AbortController().signal }).body.getReader().read()).value).replace(/^data: /, ""))
+  fourth.terminate()
+  expect(snap4.kernel.artifacts["lab.board"].state.entries.old).toBeUndefined()
+  rmSync(join(memory, "lab", "board.md"), { force: true })
+  writeFileSync(join(state, "artifacts", "lab.board.json"), old(today, "from today"))
+  const fifth = await createKernelTeam({ desk: deskOf(), port: 0, live: true })
+  const snap5 = JSON.parse(new TextDecoder().decode((await fifth.stream({ signal: new AbortController().signal }).body.getReader().read()).value).replace(/^data: /, ""))
+  fifth.terminate()
+  expect(snap5.kernel.artifacts["lab.board"].state.entries.old.text).toBe("from today")
+})
