@@ -265,6 +265,11 @@ export async function createBrowserTeam({ desk: team, store, title = "This brows
         update(id, { activity: { phase: "llm", stage: "waiting" } }, [msg(rows.gate(e.event, content, at(e.at)))])
         break
       }
+      case "compact":
+        // 2026-10-22: the prompt reached 90% of its budget and the older work was folded (kernel #compact): a row in
+        // the thread and the Live feed; its summary's model call in the stats.
+        update(id, e.mode === "model" && e.ms != null ? { stats: nextStats(states[id]?.stats, a, e) } : {}, [msg(rows.compact(e, at(e.at)))])
+        break
       case "guide":
         update(id, {}, [msg(rows.guidance(e.from, e.text, at(e.at)))])
         break

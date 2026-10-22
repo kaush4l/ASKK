@@ -64,6 +64,7 @@ const LOOKS = {
   function: { tone: "amber", icon: "wrench" },
   gate: { tone: "red", icon: "octagon-alert" },
   guidance: { tone: "orange", icon: "compass" },
+  compact: { tone: "slate", icon: "shrink" }, // 2026-10-22: the prompt reached 90% of its budget and the older work was folded
   spawn: { tone: "pink", icon: "user-plus" }, // 2026-10-17: agent.spawn / agent.dismiss — a helper made or let go
   files: { tone: "teal", icon: "folder-tree" }, // 2026-10-17: the inbuilt files artifact's commands (read, write, edit …)
   preview: { tone: "indigo", icon: "app-window" }, // 2026-10-17: the inbuilt preview artifact's commands (open, click, shot; show, focus, answer: the one pane the owner watches)
@@ -79,6 +80,7 @@ const ARTIFACT_VIEWS = new Set(["board", "list", "checklist", "schedule"])
 function callKind({ kind, type, view, name = "" } = {}) {
   if (kind === "gate" || view === "gate") return "gate"
   if (kind === "guidance" || view === "guidance") return "guidance"
+  if (kind === "compact" || view === "compact") return "compact"
   if (kind === "agent" || type === "agent" || view === "quest") return "quest"
   if (view === "spawn" || type === "spawn") return "spawn"
   if (view === "desk" || type === "desk") return "desk"

@@ -17,6 +17,7 @@ import {
   MessagesSquareIcon,
   BlocksIcon,
   NotebookPenIcon,
+  ShrinkIcon,
 } from "lucide-react"
 
 import { callLook } from "@/backend/live/visual"
@@ -44,6 +45,7 @@ export const CALL_ICONS = {
   "messages-square": MessagesSquareIcon,
   blocks: BlocksIcon, // 2026-10-20: desk.* calls
   "notebook-pen": NotebookPenIcon, // 2026-10-20: practice commands
+  shrink: ShrinkIcon, // 2026-10-22: a prompt compaction
 }
 
 // Tone → classes. -500 borders read on white and on OLED black; text pairs a dark shade (light) with a light one (dark).
@@ -57,6 +59,7 @@ export const CALL_TONES = {
   red: { text: "text-red-700 dark:text-red-400", border: "border-red-500/70", dot: "bg-red-500" },
   orange: { text: "text-orange-700 dark:text-orange-300", border: "border-orange-500/70", dot: "bg-orange-500" },
   teal: { text: "text-teal-700 dark:text-teal-300", border: "border-teal-500/70", dot: "bg-teal-500" },
+  slate: { text: "text-slate-600 dark:text-slate-300", border: "border-slate-500/70", dot: "bg-slate-500" }, // 2026-10-22: a prompt compaction
   indigo: { text: "text-indigo-700 dark:text-indigo-300", border: "border-indigo-500/70", dot: "bg-indigo-500" },
   pink: { text: "text-pink-700 dark:text-pink-300", border: "border-pink-500/70", dot: "bg-pink-500" },
   rose: { text: "text-rose-700 dark:text-rose-300", border: "border-rose-500/70", dot: "bg-rose-500" },

@@ -42,6 +42,32 @@ const REPEAT_MS = 3 * 60_000 // the same data call within this answers from the 
 const REFRESH_MS = 15_000 // an artifact's refresh(agent) longer than this (config.refreshMs) is a failed refresh: the step goes on
 const IMAGES_MAX = 3 // images in one model call (2026-10-18: the preview's screenshots)
 const IMAGE_BYTES = 3_500_000 // one image's bytes at most (a provider's limit is 5 MB)
+// Prompt compaction (2026-10-22 owner: "check the size before sending and if it is 90%, we autocompress and send the
+// compressed + goal"): before each step's model call the prompt is measured against the agent's budget (config.contextChars,
+// else contextBudget(config.model)); at COMPACT_AT of it the run's older steps (all but the last COMPACT_KEEP) and its
+// EARLIER RUNS fold into one summary step — written by one model call, or clipped in code when that call fails. # REQUEST
+// and # OWNER GUIDANCE are never folded: the goal goes out verbatim.
+export const COMPACT_AT = 0.9
+const COMPACT_KEEP = 2 // the newest steps a compaction keeps whole
+const CLIP_COMPACT = 6000 // a summary's chars at most
+const CLIP_FOLD = 300 // each result in the code-side summary
+// The budget in prompt chars for a model name (~3.5 chars a token, room left for the reply): Apple's on-device model
+// reads ~4k tokens, a small local model ~32k, the rest (Claude, GPT, Gemini: 128k–1M tokens) 400k chars.
+export function contextBudget(model) {
+  const m = String(model ?? "").toLowerCase()
+  if (/apple|on-?device/.test(m)) return 12_000
+  if (/ollama|llama|qwen|mistral|phi|gemma|lmstudio|local/.test(m)) return 100_000
+  return 400_000
+}
+// The code-side summary: each folded step's thought and its results' heads (a compaction whose model call failed).
+const foldText = (steps, past) =>
+  [
+    ...past.map((h) => `earlier run (${h.from}): ${clip(h.request, 200)} → ${clip(h.answer, 300)}`),
+    ...steps.map((s, i) => `step ${i + 1}: ${clip(s.thought ?? "", 300)}\n${(s.results ?? []).map((r) => `  ${r.tool} → ${r.ok ? "" : "ERROR "}${clipOld(r.output, CLIP_FOLD)}`).join("\n")}`),
+  ].join("\n")
+const COMPACT_PROMPT =
+  "Compress the work below into a summary the agent can keep acting from: every finding with its numbers, paths, ids and names; what was tried and failed; what is left to do. No preamble, plain text, at most 1500 words."
+
 // Guidance that arrived while the model wrote its answer: the answer waits one step so the note is read.
 const HELD = "answer held: the owner's guidance arrived while you wrote it — read # OWNER GUIDANCE, then answer"
 const clip = (s, n) => (String(s).length > n ? `${String(s).slice(0, n)}…` : String(s))
@@ -52,6 +78,22 @@ const clipEnds = (s, n) => {
   if (t.length <= n) return t
   const head = Math.floor(n * 0.4)
   return `${t.slice(0, head)} … ${t.slice(t.length - (n - head))}`
+}
+// An old result that leads with its own summary — a JSON object whose `line` (text) or `lines` (texts) a tool put first —
+// keeps that summary whole (≤ CLIP_SUMMARY) above the clipped ends (2026-10-21: a 10-name market read's per-name lines
+// were cut to their head and tail, and the trading lead lost SPY's line in the middle).
+const CLIP_SUMMARY = 1600
+export const clipOld = (s, n) => {
+  const t = String(s)
+  if (t.length <= n) return t
+  let lead = null
+  if (t.startsWith("{")) {
+    try {
+      const o = JSON.parse(t)
+      lead = typeof o.line === "string" ? o.line : Array.isArray(o.lines) ? o.lines.map(String).join("\n") : null
+    } catch {}
+  }
+  return lead ? `${clip(lead, CLIP_SUMMARY)}\n${clipEnds(t, n)}` : clipEnds(t, n)
 }
 
 // The owner's chat (Agent.chat): how to answer, last in its prompt where # RESPONSE is in a step's.
@@ -324,11 +366,11 @@ export class Agent {
     parts.push(request ? `# REQUEST (from ${request.from})\n${request.text}` : "# REQUEST\n(idle: no run in progress)")
     if (this.guidance.length) parts.push(`# OWNER GUIDANCE\nArrived during this run. Act on it now; it shows once, so say in your thought what you change.\n${this.guidance.map((g) => `> ${g.from}: ${g.text}`).join("\n")}`)
     // 5 history: earlier runs, then this run's steps (newest last)
-    const past = this.history.slice(-this.config.historyKeep)
+    const past = this.current?.historyFolded && !chat ? [] : this.history.slice(-this.config.historyKeep) // folded into the run's summary step
     if (past.length) parts.push(`# EARLIER RUNS\nYour last answers: their numbers are from then — confirm them with this run's tools before you use them.\n${past.map((h) => `> ${h.from}: ${clip(h.request, CLIP_HISTORY)}\n< ${clip(h.answer, CLIP_HISTORY)}`).join("\n")}`)
     if (steps.length) {
       const last = steps.length - 2
-      const done = steps.map((s, i) => `step ${i + 1}: ${s.thought}\n${s.results.map((r) => `  ${r.tool} → ${r.ok ? "" : "ERROR "}${i < last && this.tools.get(r.tool)?.type !== "agent" ? clipEnds(r.output, CLIP_OLD_STEP) : r.output}`).join("\n")}`)
+      const done = steps.map((s, i) => `step ${i + 1}: ${s.thought}\n${s.results.map((r) => `  ${r.tool} → ${r.ok ? "" : "ERROR "}${i < last && this.tools.get(r.tool)?.type !== "agent" ? clipOld(r.output, CLIP_OLD_STEP) : r.output}`).join("\n")}`)
       parts.push(`# WORK DONE ON THIS REQUEST\nYour steps so far and their results (newest last): read them before you call again.\n${done.join("\n")}`)
     }
     // 6 tools
@@ -490,12 +532,15 @@ export class Agent {
   }
 
   // The model call of a step, raced with the run's signal: a stop does not wait for a reply that may take minutes
-  // (the reply, when it comes, is dropped).
+  // (the reply, when it comes, is dropped). The signal also rides the call's options (2026-10-21: a stopped trading run
+  // left its Claude CLI running up to 15 min): an infer that takes it (`infer(prompt, agent, {signal})`) ends the
+  // request itself; images ride beside it (`{images, signal}`).
   #infer(prompt, signal, images = []) {
     if (signal?.aborted) return Promise.reject(new Error("stopped"))
     let reply
     try {
-      reply = Promise.resolve(images.length ? this.infer(prompt, this, { images }) : this.infer(prompt, this))
+      const options = { ...(images.length ? { images } : {}), ...(signal ? { signal } : {}) }
+      reply = Promise.resolve(Object.keys(options).length ? this.infer(prompt, this, options) : this.infer(prompt, this))
     } catch (error) {
       reply = Promise.reject(error)
     }
@@ -506,6 +551,49 @@ export class Agent {
       if (signal.aborted) stopped() // stopped from inside the call itself
       reply.then(resolve, reject).finally(() => signal.removeEventListener("abort", stopped))
     })
+  }
+
+  // The prompt budget in chars: config.contextChars, else by the model's name (contextBudget).
+  get budget() {
+    return Number(this.config.contextChars) > 0 ? Number(this.config.contextChars) : contextBudget(this.config.model)
+  }
+
+  // The prompt reached COMPACT_AT of the budget: the run's steps but the newest COMPACT_KEEP, and its EARLIER RUNS, fold
+  // into one summary step (tool `compact`) — one model call writes it; one that fails (not a stop) gives the code-side
+  // fold. The request and the owner's guidance stay as they are. Nothing to fold (two steps, no history): the prompt
+  // goes as it is, without the event. → the prompt to send. Emits compact {n, before_chars, after_chars, budget,
+  // steps_folded, runs_folded, mode: model | clip, ms, prompt_chars, reply_chars, error?}.
+  async #compact(request, steps, prompt, signal, n) {
+    const folded = Math.max(0, steps.length - COMPACT_KEEP)
+    const past = this.current?.historyFolded ? [] : this.history.slice(-this.config.historyKeep)
+    if (!folded && !past.length) return prompt
+    const old = steps.slice(0, folded)
+    const t0 = Date.now()
+    let summary = null
+    let error = null
+    let ask = ""
+    let raw = ""
+    try {
+      // the summary call itself stays under the budget: the folded work clipped to 60% of it
+      const whole = old.map((s, i) => `step ${i + 1}: ${s.thought ?? ""}\n${(s.results ?? []).map((r) => `  ${r.tool} → ${r.ok ? "" : "ERROR "}${r.output}`).join("\n")}`).join("\n")
+      const work = clipEnds(whole.length < this.budget * 0.6 ? whole : foldText(old, []), Math.floor(this.budget * 0.6))
+      const runs = past.map((h) => `> ${h.from}: ${clip(h.request, CLIP_HISTORY)}\n< ${clip(h.answer, CLIP_HISTORY)}`).join("\n")
+      ask = `# COMPACT\n${COMPACT_PROMPT}\n\n# REQUEST (from ${request.from})\n${request.text}${runs ? `\n\n# EARLIER RUNS\n${runs}` : ""}\n\n# WORK TO COMPRESS\n${work}`
+      raw = String((await this.#infer(ask, signal)) ?? "")
+      summary = raw.trim() || null
+      if (!summary) error = "empty summary"
+    } catch (e) {
+      if (signal?.aborted || e.message === "stopped") throw e
+      error = e.message
+    }
+    const mode = summary ? "model" : "clip"
+    const text = clip(summary ?? foldText(old, past), CLIP_COMPACT)
+    const label = [folded ? `steps 1–${folded}` : "", past.length ? `${past.length} earlier run${past.length > 1 ? "s" : ""}` : ""].filter(Boolean).join(" and ")
+    steps.splice(0, folded, { thought: `(compacted: ${label} summarized to keep the prompt under its budget)`, results: [{ tool: "compact", ok: true, output: text }], compacted: { steps: folded, runs: past.length } })
+    if (this.current && past.length) this.current.historyFolded = true
+    const after = this.render(request, steps)
+    this.emit("compact", { n, before_chars: prompt.length, after_chars: after.length, budget: this.budget, steps_folded: folded, runs_folded: past.length, mode, ms: Date.now() - t0, ...(mode === "model" ? { prompt_chars: ask.length, reply_chars: raw.length } : {}), ...(error ? { error } : {}) })
+    return after
   }
 
   async #run(request, signal, caller = null) {
@@ -527,7 +615,8 @@ export class Agent {
         await this.refreshArtifacts() // host-backed artifacts read fresh state before the prompt renders
         if (signal?.aborted) throw new Error("stopped")
         const shown = this.guidance.length // the notes this prompt shows: read once the model replies
-        const prompt = this.render(request, steps)
+        let prompt = this.render(request, steps)
+        if (prompt.length >= this.budget * COMPACT_AT) prompt = await this.#compact(request, steps, prompt, signal, n)
         const images = await this.collectImages()
         if (signal?.aborted) throw new Error("stopped")
         this.emit("think", { n })

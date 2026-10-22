@@ -45,6 +45,11 @@ export function liveFeed(engines, states) {
         events.push({ ...base, id: message.id, name: message.kind === "format" ? "reply not taken" : "answer refused", kind: "gate", view: "gate", inputs: {}, state: "done", ok: false, output: message.content ?? "", at: message.at })
         continue
       }
+      // The prompt compacted (kernel event compact, 2026-10-22): the older work folded into one summary.
+      if (message.role === "assistant" && message.action === "compact") {
+        events.push({ ...base, id: message.id, name: "prompt compacted", kind: "compact", view: "compact", inputs: {}, state: "done", ok: true, output: message.content ?? "", at: message.at })
+        continue
+      }
       // Guidance for the run in progress (team call `guide`): the agent's next step reads it.
       if (message.role === "user" && message.kind === "guidance") {
         events.push({ ...base, id: message.id, name: "guidance", kind: "guidance", view: "guidance", inputs: {}, state: "done", ok: true, output: message.content ?? "", from: message.from ?? "owner", at: message.at })
@@ -128,10 +133,10 @@ export function questAsk(inputs) {
 
 export function eventTarget(event) {
   // Inputs that came as plain text or a number (an inline value the reply parser could not read as fields) are the target.
-  if (event.kind !== "gate" && event.kind !== "guidance" && filled(event.inputs) && typeof event.inputs !== "object") return short(event.inputs)
+  if (event.kind !== "gate" && event.kind !== "guidance" && event.kind !== "compact" && filled(event.inputs) && typeof event.inputs !== "object") return short(event.inputs)
   const inputs = event.inputs && typeof event.inputs === "object" ? event.inputs : {}
   // Clipped like every other target (2026-10-17: a refused answer's 5000-char reason came back whole).
-  if (event.kind === "gate" || event.kind === "guidance") return short(event.output ?? "")
+  if (event.kind === "gate" || event.kind === "guidance" || event.kind === "compact") return short(event.output ?? "")
   if (event.kind === "agent") {
     const ask = questAsk(inputs)
     if (ask != null) return short(ask)
@@ -158,6 +163,7 @@ export function runSteps(state, { limit = 6 } = {}) {
     if (m.role === "tool" && m.name) steps.push({ ...base, step: "tool", name: m.name, kind: m.kind ?? "tool", view: m.view ?? null, inputs: m.inputs ?? {}, ok: m.ok !== false, text: String(m.output ?? m.content ?? "") })
     else if (m.role === "user" && m.kind === "guidance") steps.push({ ...base, step: "guidance", kind: "guidance", text: String(m.content ?? ""), from: m.from ?? "owner" })
     else if (m.role === "assistant" && m.action === "gate") steps.push({ ...base, step: "gate", kind: "gate", ok: false, text: String(m.content ?? "") })
+    else if (m.role === "assistant" && m.action === "compact") steps.push({ ...base, step: "compact", kind: "compact", ok: true, text: String(m.content ?? "") })
     else if (m.role === "assistant" && m.action === "answer") steps.push({ ...base, step: "answer", ok: !m.error, text: String(m.content ?? "") })
     else if (m.role === "assistant" && m.action === "tool") {
       // A step's content is its thought, then one line per call (`name({...})`): only the thought is new here.

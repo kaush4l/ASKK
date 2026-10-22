@@ -76,6 +76,17 @@ function GateEvent({ message }) {
   )
 }
 
+// The prompt reached 90% of its budget and the run's older work was folded into one summary (kernel event compact).
+const COMPACT = callLook({ kind: "compact" })
+function CompactEvent({ message }) {
+  return (
+    <div data-call-kind={COMPACT.kind} className={cn("flex items-start gap-1.5 pl-11 text-xs", toneOf(COMPACT).text)}>
+      <CallIcon look={COMPACT} className="mt-0.5 size-3.5" />
+      <span className="min-w-0 break-words">{message.content}</span>
+    </div>
+  )
+}
+
 // Guidance for the run in progress (team call `guide`): no new run — the agent's next step reads it once.
 const GUIDANCE = callLook({ kind: "guidance" })
 function GuidanceEvent({ message }) {
@@ -183,6 +194,7 @@ function Message({ engine, message }) {
   if (message.role === "tool") return <ToolEvent engine={engine} message={message} />
   if (message.kind === "guidance") return <GuidanceEvent message={message} />
   if (message.action === "gate") return <GateEvent message={message} />
+  if (message.action === "compact") return <CompactEvent message={message} />
   const isUser = message.role === "user"
   const step = message.action === "tool"
   return (

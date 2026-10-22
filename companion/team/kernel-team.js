@@ -537,6 +537,11 @@ export async function createKernelTeam({ desk, port, log: hostLog = () => {}, li
         update(id, { activity: { phase: "llm", stage: "waiting" } }, [msg(rows.gate(e.event, content, at(e.at)))])
         break
       }
+      case "compact":
+        // 2026-10-22: the prompt reached 90% of its budget and the older work was folded (kernel #compact): a row in
+        // the thread and the Live feed; its summary's model call in the stats.
+        update(id, e.mode === "model" && e.ms != null ? { stats: counted(id, a, e) } : {}, [msg(rows.compact(e, at(e.at)))])
+        break
       case "guide": {
         // Owner guidance for the run in progress (call `guide`): a row in the thread and the Live feed; the
         // agent's next step reads it.

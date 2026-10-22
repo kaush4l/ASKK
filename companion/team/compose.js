@@ -400,7 +400,7 @@ export function workflowSource(root, memoryOf, plugins = () => ({})) {
 // The agent.md keys composeDesk reads (readAgentFolder adds role and folder); any other key is a typo. writes / reads:
 // the agent's files lanes (globs; reads: set = it reads only there — the critic's "outputs only"); board: false keeps
 // it off its team's board (2026-10-17).
-const KEYS = new Set(["name", "description", "title", "goal", "team", "model", "max_steps", "min_calls", "writes", "reads", "board", "tools", "agents", "desks", "checklist", "artifacts", "after", "role", "folder"])
+const KEYS = new Set(["name", "description", "title", "goal", "team", "model", "max_steps", "context_chars", "min_calls", "writes", "reads", "board", "tools", "agents", "desks", "checklist", "artifacts", "after", "role", "folder"])
 // The keys an agent.md artifacts: entry for a kit type takes (a desk's own type may take more: its spec is handed over).
 const KIT_KEYS = new Set(["type", "id", "commands", "gate", "reflect"]) // reflect: false — a practice without the run's retro item
 
@@ -524,6 +524,7 @@ async function specOf(def, o, lead = false) {
     models: o.mounted ? o.models : undefined, // llmInfer reads a mounted desk's catalogue here
     fallbacks: o.mounted ? o.fallbacks : undefined, // and the conventionDesk infer its fallbacks
     maxSteps: def.max_steps ?? o.maxSteps,
+    contextChars: def.context_chars, // 2026-10-22: the prompt budget in chars (compaction at 90%), else by the model
     minCalls: def.min_calls,
     writes: def.writes == null ? undefined : names(def.writes),
     reads: def.reads == null ? undefined : names(def.reads),

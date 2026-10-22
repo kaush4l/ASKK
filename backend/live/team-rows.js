@@ -54,6 +54,11 @@ export const activityOf = (agent, { stage, since, row, calls }) => {
 
 // One builder per thread row, for the live events (team.on below) and the restored runs alike, so a run reads the
 // same in the thread and the Live feed after a restart or a desk reload as it did when it streamed.
+// A compaction's one line: "Prompt compacted: 372k → 41k chars (budget 400k) · 9 steps, 1 earlier run folded · model summary".
+const kChars = (n) => (n >= 10_000 ? `${Math.round(n / 1000)}k` : String(n ?? 0))
+export const compactLine = (e) =>
+  `Prompt compacted: ${kChars(e.before_chars)} → ${kChars(e.after_chars)} chars (budget ${kChars(e.budget)}) · ${[e.steps_folded ? `${e.steps_folded} step${e.steps_folded > 1 ? "s" : ""}` : "", e.runs_folded ? `${e.runs_folded} earlier run${e.runs_folded > 1 ? "s" : ""}` : ""].filter(Boolean).join(", ")} folded · ${e.mode === "model" ? "model summary" : `clipped in code${e.error ? ` (summary failed: ${e.error})` : ""}`}`
+
 export const rows = {
   request: (request, when) => ({ role: "user", content: request.text, from: request.from === "owner" ? null : request.from, kind: request.from === "owner" ? "request" : "quest", at: when }),
   // A step with calls: its thought, then one line per call (`name({...})`).
@@ -72,6 +77,9 @@ export const rows = {
     return { role: "tool", name, kind: isAgentTool(agent, name) ? "agent" : "tool", view: viewOf(agent, name), index, row, inputs: input ?? {}, ok: result.ok, content: output, output, at: when }
   },
   gate: (kind, content, when) => ({ role: "assistant", action: "gate", kind, content, at: when }),
+  // 2026-10-22 prompt compaction (kernel event compact): the prompt reached 90% of its budget and the run's older steps
+  // (and earlier runs) were folded into one summary — the numbers on the row, the line its text.
+  compact: (e, when) => ({ role: "assistant", action: "compact", content: compactLine(e), compact: { before_chars: e.before_chars, after_chars: e.after_chars, budget: e.budget, steps_folded: e.steps_folded, runs_folded: e.runs_folded, mode: e.mode, error: e.error ?? null }, at: when }),
   guidance: (from, text, when) => ({ role: "user", kind: "guidance", from, content: text, at: when }),
   answer: (answer, when) => ({ role: "assistant", action: "answer", content: answer, at: when }),
   // The owner's chat (kernel Agent.chat): the question and the answer, kind "chat" — beside the runs, never one.

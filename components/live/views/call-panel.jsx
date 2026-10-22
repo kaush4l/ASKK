@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils"
 const asText = (v) => (typeof v === "string" ? v : v == null ? "" : JSON.stringify(v, null, 2))
 
 export function CallPanel({ event }) {
-  if (event.kind === "gate") return <GatePanel event={event} />
+  if (event.kind === "gate" || event.kind === "compact") return <GatePanel event={event} />
   if (event.kind === "guidance") return <GuidancePanel event={event} />
   const quest = event.view === "quest" ? questBrief(event.inputs) : null
   // A link only for a text url (2026-10-17: an object-valued url was rendered as a React child and blanked /live).
@@ -55,12 +55,12 @@ function GatePanel({ event }) {
   return (
     <section aria-label="Refused answer" className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto">
       <header className="flex flex-wrap items-center gap-2 text-sm">
-        <span className={toneOf(callLook({ kind: "gate" })).text}>{asText(event.name)}</span>
+        <span className={toneOf(callLook({ kind: event.kind === "compact" ? "compact" : "gate" })).text}>{asText(event.name)}</span>
         <span className="text-xs text-muted-foreground">
           {asText(event.agent)} · {time(event.at)}
         </span>
       </header>
-      <p className="text-xs text-muted-foreground">The kernel did not take this answer; the agent went on working.</p>
+      <p className="text-xs text-muted-foreground">{event.kind === "compact" ? "The prompt reached 90% of its budget: the run's older steps were folded into one summary; the request went on verbatim." : "The kernel did not take this answer; the agent went on working."}</p>
       <pre className={block}>{asText(event.output)}</pre>
     </section>
   )

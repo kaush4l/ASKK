@@ -188,3 +188,14 @@ test("runSteps: an owner chat neither starts the run nor shows as one of its ste
   // the Live feed has no row for a chat either
   expect(liveFeed([engine], [{ messages }]).map((e) => e.kind)).toEqual(["tool", "guidance"])
 })
+
+// 2026-10-22: a prompt compaction (kernel event compact) is a row in the thread and the Live feed.
+test("a compaction row: its line, a feed event of kind compact, its own look", async () => {
+  const { rows } = await import("./team-rows.js")
+  const row = { id: "k1", ...rows.compact({ before_chars: 372_000, after_chars: 41_000, budget: 400_000, steps_folded: 9, runs_folded: 1, mode: "model" }, 5) }
+  expect(row.content).toBe("Prompt compacted: 372k → 41k chars (budget 400k) · 9 steps, 1 earlier run folded · model summary")
+  const [event] = liveFeed([{ id: "a", name: "a" }], [{ messages: [row] }])
+  expect(event).toMatchObject({ kind: "compact", name: "prompt compacted", ok: true, output: row.content })
+  expect(eventTarget(event)).toContain("Prompt compacted")
+  expect(callLook({ kind: "compact" })).toMatchObject({ kind: "compact", icon: "shrink" })
+})

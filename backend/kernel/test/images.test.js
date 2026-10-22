@@ -27,11 +27,23 @@ describe("Agent.collectImages", () => {
     expect((await agent.collectImages()).map((i) => i.ref.n)).toEqual([1, 4, 5])
   })
 
-  test("no artifact with images: infer is called with two arguments, as before", async () => {
+  test("no artifact with images: infer gets no images, only the run's signal", async () => {
     const args = []
-    const agent = new Agent({ name: "a", report: false }, { infer: async (...a) => (args.push(a.length), '{"answer":"x"}') })
+    const agent = new Agent({ name: "a", report: false }, { infer: async (...a) => (args.push(a), '{"answer":"x"}') })
     await agent.ask("hi")
-    expect(args).toEqual([2])
+    expect(args).toHaveLength(1)
+    expect(Object.keys(args[0][2])).toEqual(["signal"])
+    expect(args[0][2].signal).toBeInstanceOf(AbortSignal)
+  })
+
+  test("a stop aborts the signal the model call holds", async () => {
+    let held = null
+    const agent = new Agent({ name: "a", report: false }, { infer: (_p, _a, { signal }) => ((held = signal), new Promise(() => {})) })
+    const run = agent.ask("hi").catch((e) => e.message)
+    while (!held) await Bun.sleep(1)
+    agent.stop("owner")
+    expect(await run).toBe("stopped")
+    expect(held.aborted).toBe(true)
   })
 })
 
