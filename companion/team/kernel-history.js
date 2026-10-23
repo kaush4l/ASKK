@@ -89,6 +89,8 @@ const oneLine = (v, n) => clip(String(v ?? "").replace(/\s+/g, " ").trim(), n)
 
 // One run as a section of history.md.
 function section(row) {
+  // a row outside any run (2026-10-23: a helper kept or dropped by the owner, a refresh that failed while idle)
+  if (row.note) return [`## ${etTime(row.at)} · desk · note`, "", ...quote((row.notes ?? []).map((x) => x.row?.content).join("\n"), 600), "", FENCE, JSON.stringify(row), "```", "", ""].join("\n")
   const answered = row.answer != null && !row.error
   const head = `## ${etTime(row.at)} · ${oneLine(row.from ?? "?", 80)} · ${answered ? "answered" : "error"}`
   const steps = (Array.isArray(row.steps) ? row.steps : []).map((s, i) => {
@@ -107,7 +109,7 @@ function section(row) {
 const headOf = (name) => `# ${name} — history\n\nEach run: who asked, the request, the answer, its steps; the json block is the run as recorded (read back at every start).\n\n`
 export const historyMarkdown = (rows, name = "agent") => headOf(name) + rows.map(section).join("")
 
-export function createHistory({ enabled = true, maxBytes = 512 * 1024, keep = 6, outputChars = 1500, textChars = 6000 } = {}) {
+export function createHistory({ enabled = true, maxBytes = 512 * 1024, keep = 6, outputChars = 1500, textChars = 6000, log = null } = {}) {
   // A fixture run (tests, dry runs) reads no history and writes none.
   const fileOf = (agent) => (enabled && agent.config.folder ? join(agent.config.folder, HISTORY_FILE) : null)
   const dirOf = (agent) => join(agent.config.folder, "history")
@@ -168,17 +170,33 @@ export function createHistory({ enabled = true, maxBytes = 512 * 1024, keep = 6,
     // steps were kept has steps: []). Read newest row first until n answered runs are found, however many failed runs
     // follow them (2026-10-17: a streak of failed runs restored none); history.md first, then on into its archives and
     // the transcripts written before it while runs are missing. Bounded: the files filesOf names, each about maxBytes.
-    restore(agent, n = agent.config.historyKeep ?? 3) {
+    // all: also the failed or stopped runs and the notes between them (the thread's restore, kernel-team.js)
+    restore(agent, n = agent.config.historyKeep ?? 3, { all = false } = {}) {
       const runs = []
+      let answered = 0
+      let extra = 0
       for (const f of filesOf(agent)) {
-        if (runs.length >= n) break
+        if (answered >= n) break
         let rows
         try {
-          rows = f.rows(readFileSync(f.path, "utf8"))
-        } catch {
+          const text = readFileSync(f.path, "utf8")
+          rows = f.rows(text)
+          // a run block that does not parse drops out of the thread: said, not silent (2026-10-23 audit)
+          const blocks = f.path.endsWith(".md") ? text.split("\n").filter((l) => l.trimEnd() === FENCE).length : text.split("\n").filter((l) => l.trim()).length
+          if (blocks > rows.length) log?.(`desk: ${agent.name}: ${blocks - rows.length} run${blocks - rows.length === 1 ? "" : "s"} in ${f.path} did not read — left out of its thread`)
+        } catch (error) {
+          log?.(`desk: ${agent.name}: ${f.path} did not read (${error.message}) — its runs are left out`)
           continue
         }
-        for (let i = rows.length - 1; i >= 0 && runs.length < n; i--) if (rows[i] && rows[i].answer != null) runs.unshift(rows[i])
+        // the failed or stopped runs and the notes between them come back too (2026-10-23 audit: a failed run was in the
+        // live thread, gone after a restart); only answered runs count toward n (EARLIER RUNS reads those alone)
+        // at most n * 2 of them, the newest — past that the scan goes on for answered runs alone
+        for (let i = rows.length - 1; i >= 0 && answered < n; i--) {
+          const r = rows[i]
+          if (!r) continue
+          if (r.answer != null && !r.error) (runs.unshift(r), answered++)
+          else if (all && (r.error || r.note) && extra < n * 2) (runs.unshift(r), extra++)
+        }
       }
       return runs.map((r) => ({
         ...r,
@@ -187,6 +205,20 @@ export function createHistory({ enabled = true, maxBytes = 512 * 1024, keep = 6,
           results: (Array.isArray(s?.results) ? s.results : []).map((x) => ({ ...x, output: clip(x?.output ?? "", outputChars) })),
         })),
       }))
+    },
+
+    // A row outside any run (kernel-team.js note while the agent is idle): a note section, restored where it fell.
+    recordNote(agent, row) {
+      const file = fileOf(agent)
+      if (!file) return
+      try {
+        mkdirSync(agent.config.folder, { recursive: true })
+        if (!existsSync(file)) appendFileSync(file, headOf(agent.name))
+        appendFileSync(file, section({ at: row.at ?? new Date().toISOString(), note: true, from: null, request: null, steps: [], answer: null, notes: [{ pos: 0, row: { ...row, content: clip(row.content, textChars) } }] }))
+        rotate(agent)
+      } catch (error) {
+        log?.(`desk: ${agent.name}'s history.md not written (${error.message}) — this run will not come back after a restart`)
+      }
     },
 
     // One finished run (the kernel's answer event) or a failed one (its error event); trail: what the live thread
@@ -202,12 +234,19 @@ export function createHistory({ enabled = true, maxBytes = 512 * 1024, keep = 6,
         return {
           thought: s.thought,
           calls,
-          results: results.map((r) => ({ tool: r.tool, ok: r.ok, output: clip(r.output, outputChars) })),
+          // ms (2026-10-23): the step's model call and each call's own time, so a restored thread shows them as live
+          results: results.map((r, k) => ({ tool: r.tool, ok: r.ok, output: clip(r.output, outputChars), ...(r.ms != null ? { ms: r.ms } : {}), ...(r.cut ? { cut: true } : {}), ...(live?.looks?.[k] ?? {}) })),
+          ...(s.ms != null ? { ms: s.ms } : {}),
+          ...(live?.images?.length ? { images: live.images } : {}), // the screenshot refs the step's model call saw
+          ...(s.n != null ? { n: s.n } : {}),
+          ...(s.answer != null ? { answer: clip(s.answer, textChars) } : {}),
           ...(order ? { order } : {}),
           ...(live?.gate ? { gate: { kind: live.gate.kind, content: clip(live.gate.content, textChars) } } : {}),
         }
       })
       const guidance = (trail?.guidance ?? []).map((g) => ({ pos: g.pos, from: g.from, text: clip(g.text, textChars) }))
+      // rows the run's steps do not hold, where they fell (kernel-team.js note: compactions, desk events, refreshes)
+      const notes = (trail?.notes ?? []).map((n) => ({ pos: n.pos, row: { ...n.row, content: clip(n.row.content, textChars) } }))
       const req = e.request ?? request
       const row = {
         at: new Date(e.at ?? Date.now()).toISOString(),
@@ -217,6 +256,7 @@ export function createHistory({ enabled = true, maxBytes = 512 * 1024, keep = 6,
         answer: e.answer ?? null,
         flags: e.flags ?? [],
         ...(guidance.length ? { guidance } : {}),
+        ...(notes.length ? { notes } : {}),
         ...(Array.isArray(trail?.times) ? { times: trail.times } : {}),
         ...(e.error ? { error: e.error } : {}),
       }
@@ -225,7 +265,9 @@ export function createHistory({ enabled = true, maxBytes = 512 * 1024, keep = 6,
         if (!existsSync(file)) appendFileSync(file, headOf(agent.name))
         appendFileSync(file, section(row))
         rotate(agent)
-      } catch {}
+      } catch (error) {
+        log?.(`desk: ${agent.name}'s history.md not written (${error.message}) — this run will not come back after a restart`)
+      }
     },
   }
 }

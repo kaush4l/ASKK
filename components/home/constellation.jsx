@@ -3,6 +3,7 @@
 import * as React from "react"
 import { ChevronRightIcon } from "lucide-react"
 
+import { questsOut } from "@/backend/live/follow-target"
 import { agentStatus, subtreeTones, teamTree, treeNames } from "@/backend/live/team-tree"
 import { VISUAL_STATES } from "@/backend/live/visual"
 import { QUEST_LINK, TONE } from "@/components/views/agent-tone"
@@ -53,11 +54,6 @@ function Avatar({ name, status, large = false }) {
       >
         {initials(name)}
       </span>
-      {status.approvals > 0 && (
-        <span className="absolute -top-1 -right-1 grid size-4 place-items-center rounded-full bg-orange-500 text-[9px] text-black">
-          {status.approvals}
-        </span>
-      )}
     </span>
   )
 }
@@ -122,7 +118,7 @@ function Branch({ node, ctx, questIn = false, last = true }) {
   const item = ctx.byName.get(node.name)
   const kids = node.children
   const open = kids.length > 0 && ctx.isOpen(node)
-  const questsOut = new Set((item?.state?.quests ?? []).map((q) => q.to))
+  const out = questsOut(item?.state)
   const nested = node.depth > ctx.top
   return (
     <li className={cn("relative", nested && "pl-4")}>
@@ -152,7 +148,7 @@ function Branch({ node, ctx, questIn = false, last = true }) {
         (open ? (
           <ul className="ml-5 pt-1" aria-label={`${node.name}'s team`}>
             {kids.map((child, i) => (
-              <Branch key={child.name} node={child} ctx={ctx} questIn={questsOut.has(child.name)} last={i === kids.length - 1} />
+              <Branch key={child.name} node={child} ctx={ctx} questIn={out.has(child.name)} last={i === kids.length - 1} />
             ))}
           </ul>
         ) : (
@@ -198,20 +194,20 @@ function Chips({ node, ctx }) {
 function TopDown({ tree, ctx }) {
   const n = tree.children.length
   const item = ctx.byName.get(tree.name)
-  const questsOut = new Set((item?.state?.quests ?? []).map((q) => q.to))
+  const out = questsOut(item?.state)
   const column = { ...ctx, top: 1 }
   return (
     <div className="flex flex-col">
       <div className="flex justify-center">
         <AgentNode node={tree} item={item} status={ctx.statusOf(tree.name)} ctx={ctx} center />
       </div>
-      <span aria-hidden className={cn("mx-auto h-5 w-px", questsOut.size ? QUEST_LINK : "bg-border")} />
+      <span aria-hidden className={cn("mx-auto h-5 w-px", out.size ? QUEST_LINK : "bg-border")} />
       <ul className="relative flex" aria-label={`${tree.name}'s teams`}>
         {/* the bar, from the first column's rail to the last's (to the trunk with one column) */}
         <span aria-hidden className="absolute top-0 left-5 h-px bg-border" style={{ width: n > 1 ? `${((n - 1) / n) * 100}%` : "calc(50% - 1.25rem)" }} />
         {tree.children.map((child) => (
           <li key={child.name} className="relative min-w-0 flex-1 basis-0 pt-5 pr-2">
-            <span aria-hidden className={cn("absolute top-0 left-5 h-5 w-px", questsOut.has(child.name) ? QUEST_LINK : "bg-border")} />
+            <span aria-hidden className={cn("absolute top-0 left-5 h-5 w-px", out.has(child.name) ? QUEST_LINK : "bg-border")} />
             <ul>
               <Branch node={child} ctx={column} />
             </ul>

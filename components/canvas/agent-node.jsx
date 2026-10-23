@@ -52,11 +52,6 @@ function Face({ name, status, size }) {
       >
         {initials(name)}
       </span>
-      {status.approvals > 0 && (
-        <span className={cn("absolute -top-1 -right-1 grid place-items-center rounded-full bg-orange-500 text-black", far ? "size-8 text-lg" : "size-4 text-[9px]")}>
-          {status.approvals}
-        </span>
-      )}
     </span>
   )
 }

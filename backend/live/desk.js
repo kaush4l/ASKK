@@ -8,7 +8,7 @@
 import { isRunRequest } from "@/backend/live/agent"
 import { teamCall } from "@/backend/live/stream"
 
-let state = null // { title, tree, boards, artifacts }
+let state = null // { title, tree, artifacts } — a team's board is one of its artifacts (2026-10-23: the boards tree beside them was never read)
 const listeners = new Set()
 
 function set(next) {
@@ -32,7 +32,6 @@ export const kernelDesk = {
       set({
         ...state,
         ...(e.tree ? { tree: e.tree } : {}),
-        ...(e.boards ? { boards: e.boards } : {}),
         artifacts,
       })
     }
@@ -55,17 +54,6 @@ export function heldTiles(artifacts, agentName, { everyone = 0, skip = [] } = {}
   return artifactsHeldBy(artifacts, agentName).filter((a) => !shown.has(a.id) && !(everyone > 1 && (a.holders?.length ?? 0) >= everyone))
 }
 
-// The board of a team path ("desk/world") in the boards tree.
-export function boardAt(boards, path) {
-  const parts = path.split("/")
-  let b = boards
-  if (!b || b.name !== parts[0]) return null
-  for (const name of parts.slice(1)) {
-    b = b.children?.find((c) => c.name === name)
-    if (!b) return null
-  }
-  return b
-}
 
 // A team's live status from its agents' engine states: working | reported | error | idle.
 export function teamStatus(agentStates) {
@@ -155,6 +143,8 @@ export function dispatchRows(state, { now = Date.now() } = {}) {
         id: String(j.id),
         to: j.to ?? "",
         by: j.by ?? "",
+        began: j.began ?? true, // an older twin without it: as it was
+        delivered: !!j.delivered,
         ask: String(j.ask ?? "").replace(/\s+/g, " ").trim(),
         status: j.status ?? "running",
         running,

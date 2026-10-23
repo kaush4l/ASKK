@@ -562,7 +562,33 @@ describe("close", () => {
     for (const s of [a, b]) expect(() => process.kill(s.pid, 0)).not.toThrow()
     await t.close()
     for (const s of [a, b]) expect(() => process.kill(s.pid, 0)).toThrow()
-    expect(t.list().sessions.map((s) => [s.status, s.reason])).toEqual([["stopped", "the desk stopped"], ["stopped", "the desk stopped"]])
+    // this term's own sessions (the earlier:… ones are what the folder's terminal.jsonl kept from other tests)
+    expect(t.list().sessions.filter((s) => !s.id.startsWith("earlier:")).map((s) => [s.status, s.reason])).toEqual([["stopped", "the desk stopped"], ["stopped", "the desk stopped"]])
     await expect(t.start({ command: "sleep 1" })).rejects.toMatchObject({ status: 410 })
   })
+})
+
+// 2026-10-23 audit: the sessions that finished before a restart (terminal.jsonl) are listed again, read-only, with
+// their last lines — under earlier:<id>, never a slot's id.
+test("finished sessions from before a restart come back read-only", () => {
+  const root = mkdtempSync(join(realpathSync(require("node:os").tmpdir()), "term-earlier-"))
+  const state = join(root, "state")
+  mkdirSync(state)
+  writeFileSync(join(state, "terminal.jsonl"), `${JSON.stringify({ at: "2026-10-23T14:00:05.000Z", id: "coder:main", agent: "coder", cwd: ".", command: "bun test", status: "exited", exit: 0, ms: 5000, tail: "12 pass\n0 fail" })}\n`)
+  const term = createTerm({ root, state })
+  const s = term.list({ tail: 2 }).sessions.find((x) => x.id === "earlier:coder:main")
+  expect(s).toMatchObject({ command: "bun test", status: "exited", exit: 0, agent: "coder", endedAt: "2026-10-23T14:00:05.000Z", tail: ["12 pass", "0 fail"] })
+  term.close?.()
+})
+
+test("a session running at a hard kill (its entry left in terminal-running.json) comes back as killed, with why", () => {
+  const root = mkdtempSync(join(realpathSync(require("node:os").tmpdir()), "term-killed-"))
+  const state = join(root, "state")
+  mkdirSync(state)
+  writeFileSync(join(state, "terminal-running.json"), JSON.stringify([{ at: "2026-10-23T14:00:00.000Z", id: "coder:long", agent: "coder", cwd: ".", command: "bun run dev", ms: 0, tail: "listening" }]))
+  const term = createTerm({ root, state })
+  const s = term.list({ tail: 1 }).sessions.find((x) => x.id === "earlier:coder:long")
+  expect(s).toMatchObject({ status: "killed", reason: "the server was killed while it ran", command: "bun run dev", tail: ["listening"] })
+  expect(existsSync(join(state, "terminal-running.json"))).toBe(false)
+  term.close?.()
 })

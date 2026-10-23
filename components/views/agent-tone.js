@@ -6,7 +6,6 @@ export const TONE = {
   tool: { line: "border-amber-500", dot: "bg-amber-500", text: "text-amber-700 dark:text-amber-300", stroke: "stroke-amber-500", live: true },
   quest: { line: "border-blue-500", dot: "bg-blue-500", text: "text-blue-700 dark:text-blue-300", stroke: "stroke-blue-500", live: true },
   waiting: { line: "border-sky-500", dot: "bg-sky-500", text: "text-sky-700 dark:text-sky-300", stroke: "stroke-sky-500", dashed: true },
-  paused: { line: "border-orange-500", dot: "bg-orange-500", text: "text-orange-700 dark:text-orange-300", stroke: "stroke-orange-500" },
   error: { line: "border-red-500", dot: "bg-red-500", text: "text-red-700 dark:text-red-400", stroke: "stroke-red-500" },
   done: { line: "border-emerald-500", dot: "bg-emerald-500", text: "text-emerald-700 dark:text-emerald-300", stroke: "stroke-emerald-500" },
   idle: { line: "border-border", dot: "bg-muted-foreground/50", text: "text-muted-foreground", stroke: "stroke-border" },

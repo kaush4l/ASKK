@@ -18,6 +18,11 @@ import {
   BlocksIcon,
   NotebookPenIcon,
   ShrinkIcon,
+  SplitIcon,
+  TimerIcon,
+  WorkflowIcon,
+  FileTextIcon,
+  ImageIcon,
 } from "lucide-react"
 
 import { callLook } from "@/backend/live/visual"
@@ -43,9 +48,14 @@ export const CALL_ICONS = {
   "app-window": AppWindowIcon,
   "user-plus": UserPlusIcon,
   "messages-square": MessagesSquareIcon,
+  image: ImageIcon,
   blocks: BlocksIcon, // 2026-10-20: desk.* calls
   "notebook-pen": NotebookPenIcon, // 2026-10-20: practice commands
   shrink: ShrinkIcon, // 2026-10-22: a prompt compaction
+  split: SplitIcon, // 2026-10-23: dispatch, runners and workflow calls drew the wrench
+  timer: TimerIcon,
+  workflow: WorkflowIcon,
+  "file-text": FileTextIcon,
 }
 
 // Tone → classes. -500 borders read on white and on OLED black; text pairs a dark shade (light) with a light one (dark).
@@ -64,6 +74,7 @@ export const CALL_TONES = {
   pink: { text: "text-pink-700 dark:text-pink-300", border: "border-pink-500/70", dot: "bg-pink-500" },
   rose: { text: "text-rose-700 dark:text-rose-300", border: "border-rose-500/70", dot: "bg-rose-500" },
   lime: { text: "text-lime-700 dark:text-lime-300", border: "border-lime-500/70", dot: "bg-lime-500" },
+  fuchsia: { text: "text-fuchsia-700 dark:text-fuchsia-300", border: "border-fuchsia-500/70", dot: "bg-fuchsia-500" }, // 2026-10-23: the studio
 }
 
 export const toneOf = (look) => CALL_TONES[look?.tone] ?? CALL_TONES.amber

@@ -105,6 +105,20 @@ export function checklistItem(line) {
   return { id: slug(s), text: s, required: false }
 }
 
+// The retros a store kept (the sections reflectOn writes: "## <at> <by>" then "- worked:", "- missed:", "- changes:") as
+// entries {at, by, worked, missed, changes}, oldest first.
+export function parseRetros(text) {
+  const out = []
+  for (const block of String(text ?? "").split(/^## /m).slice(1)) {
+    const [head, ...lines] = block.split("\n")
+    const [at, ...by] = head.trim().split(/\s+/)
+    const field = (k) => lines.find((l) => l.startsWith(`- ${k}: `))?.slice(k.length + 4).trim() ?? ""
+    // written as UTC minutes without a zone ("2026-10-23T14:02"): read back as UTC (2026-10-23 audit)
+    out.push({ at: /^\d{4}-\d\d-\d\dT\d\d:\d\d$/.test(at) ? `${at}:00Z` : at, by: by.join(" ") || null, worked: field("worked"), missed: field("missed"), changes: field("changes") })
+  }
+  return out
+}
+
 export class Practice extends Artifact {
   // seed: {checklist?, quality?, instructions?} lines when the store has no file yet (and no seed of its own).
   constructor({ id, owner = null, store = null, seed = null, reflect = true, requiredWhen = null, clock = () => new Date() } = {}) {
@@ -124,6 +138,12 @@ export class Practice extends Artifact {
     this.state = { file: store?.where ?? null, revision: 0, at: null, run: [], sections: {}, pending: [], changelog: [], retros: [], edits: 0 }
     this.load()
     this.reset()
+    // the newest retros back from the store (2026-10-23 audit: they were drawn only until a restart)
+    try {
+      this.state.retros = parseRetros(this.store?.retros?.() ?? "").slice(-5)
+    } catch (error) {
+      this.state.retrosError = `its retros did not read (${error?.message ?? error})` // apart from readError, which each load sets
+    }
   }
 
   // The file (or the seed) read again: the owner may edit it by hand between runs.
@@ -131,34 +151,48 @@ export class Practice extends Artifact {
     let text = null
     try {
       text = this.store?.read?.() ?? null
-    } catch {}
+      this.readError = null
+    } catch (error) {
+      // the file is there but unreadable: kept as it is (never the seed written over it) and said (2026-10-23 audit)
+      this.readError = `its file could not be read (${error?.message ?? error}): the practice in force is the last one read, and nothing is written until it reads again`
+      this.state = { ...this.state, readError: this.readError }
+      return
+    }
     let fresh = false
     if (text == null) {
       try {
         text = this.store?.seed?.() ?? null
-      } catch {}
+      } catch (error) {
+        this.state = { ...this.state, readError: `its seed (practice.md) did not read (${error?.message ?? error}): it starts empty` }
+      }
       fresh = true
     }
     const parsed = text != null ? parsePractice(text) : emptySections()
     if (text == null && this.seedLines) for (const k of PRACTICE_SECTIONS) parsed[k] = [].concat(this.seedLines[k] ?? []).map(clean).filter(Boolean)
     this.pending = parsed.pending.map(pendingOf).filter(Boolean)
+    // a pending line that does not parse (edited by hand) is kept as written and said — never dropped at the next save
+    this.badPending = parsed.pending.filter((l) => !pendingOf(l))
     parsed.pending = []
     this.sections = parsed
     this.unsaved = fresh
     this.#publish()
+    const seedError = fresh && this.state.readError?.startsWith("its seed") ? this.state.readError : null // kept: set just above
+    this.state = { ...this.state, readError: this.badPending.length ? `${this.badPending.length} pending line${this.badPending.length === 1 ? "" : "s"} in its file do not parse — kept as written, not offered until fixed` : seedError }
   }
 
   // true when written (or nowhere to write); false keeps `unsaved` and the reason in `saveError` (an edit says so).
   save() {
     if (!this.store?.write) return true
     try {
-      this.store.write(renderPractice({ ...this.sections, pending: this.pending.map((e) => JSON.stringify(e)) }, this.owner ?? this.name))
+      this.store.write(renderPractice({ ...this.sections, pending: [...this.pending.map((e) => JSON.stringify(e)), ...(this.badPending ?? [])] }, this.owner ?? this.name))
       this.unsaved = false
       this.saveError = null
+      if (this.state.saveError) this.state = { ...this.state, saveError: null }
       return true
     } catch (error) {
       this.unsaved = true
       this.saveError = error?.message ?? String(error)
+      this.state = { ...this.state, saveError: `not written (${this.saveError}): edits hold in this process only` } // drawn (2026-10-23 audit)
       return false
     }
   }
@@ -182,7 +216,7 @@ export class Practice extends Artifact {
 
   onRunStart() {
     this.load()
-    if (this.unsaved) this.save() // a seeded practice gets its file at the first run, so the owner can read it
+    if (this.unsaved && !this.readError) this.save() // a seeded practice gets its file at the first run, so the owner can read it
     this.reset()
   }
 
@@ -392,10 +426,13 @@ export class Practice extends Artifact {
     const at = this.clock().toISOString()
     const n = `${this.edits} edit${this.edits === 1 ? "" : "s"}`
     const entry = { at, by: by ?? this.owner, worked: w.slice(0, 600), missed: m.slice(0, 600), changes: c.slice(0, 600) }
+    let retroError = null
     try {
       this.store?.retro?.(`## ${at.slice(0, 16)} ${entry.by}\n- worked: ${entry.worked}\n- missed: ${entry.missed}\n- changes: ${entry.changes} (${n})\n`)
-    } catch {}
-    this.state = { ...this.state, run: this.state.run.map((i) => (i.id === REFLECT.id && this.reflect ? { ...i, status: "ticked", note: `${n}; missed: ${m.slice(0, 160)}` } : i)), retros: [...this.state.retros, entry].slice(-5) }
+    } catch (error) {
+      retroError = `the retro was not written (${error.message}): it shows here until a restart` // drawn (2026-10-23 audit)
+    }
+    this.state = { ...this.state, run: this.state.run.map((i) => (i.id === REFLECT.id && this.reflect ? { ...i, status: "ticked", note: `${n}; missed: ${m.slice(0, 160)}` } : i)), retros: [...this.state.retros, entry].slice(-5), retroError }
     this.changed()
     const left = this.open()
     return `reflected (${n} this run); ${left.length ? `${left.length} open: ${left.map((i) => i.id).join(", ")}` : "all done"}`

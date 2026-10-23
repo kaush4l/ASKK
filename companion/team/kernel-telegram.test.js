@@ -324,6 +324,24 @@ test("not started without a telegram listener", async () => {
   await expect(startKernelTelegram({ team: fakeTeam(), integrations, stateDir: tmp() })).rejects.toThrow("does not run here")
 })
 
+test("a desk that does not listen still posts its live status in its own topic and reads no messages (every desk, 2026-10-23)", async () => {
+  const integrations = { ...fakeIntegrations({ topics: true, live: true }), listening: [] }
+  const team = fakeTeam()
+  const bridge = await startKernelTelegram({ team, integrations, stateDir: tmp(), desk: "studio", inbound: false, via: "trade-card", live: { throttleMs: 0, graceMs: 0 } })
+  try {
+    expect(integrations.created).toEqual(["studio"])
+    expect(integrations.sent.map((x) => x.args.text)).toEqual(["studio: the live status of its runs shows here (messages to the bot go to trade-card)."])
+    integrations.push({ id: 1, text: "hello" })
+    await Bun.sleep(40)
+    expect(team.sends ?? []).toEqual([]) // the message is the listening desk's, never this one's
+    expect(typeof bridge.live?.stop).toBe("function")
+  } finally {
+    bridge.stop()
+  }
+  const none = { ...fakeIntegrations(), listening: [], get: () => null }
+  await expect(startKernelTelegram({ team: fakeTeam(), integrations: none, stateDir: tmp(), inbound: false })).rejects.toThrow("not here")
+})
+
 // The real kernel team (companion/team/kernel-team.js) on a two-agent fixture desk with a scripted model:
 // a lead "head" holding one helper, free-form answers (report: false).
 const fixtureDesk = (dir, infer) => ({

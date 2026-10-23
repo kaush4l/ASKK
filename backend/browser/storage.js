@@ -6,7 +6,7 @@
 //   memoryStore()          → the same over a Map (tests, a tab without storage)
 //
 // Keys the browser desk uses (backend/browser/team.js, host.js): model, fs:<path>, practice:<agent>, retros:<agent>,
-// runs:<agent>, thread:<agent>, artifact:<id>, kept.
+// runs:<agent>, thread:<agent>, stats:<agent>, log (the desk log), artifact:<id>, kept.
 
 const ls = () => {
   try {
@@ -19,13 +19,16 @@ const ls = () => {
 export function browserStore(prefix = "askk.browser.") {
   const store = ls()
   if (!store) return memoryStore()
+  const unreadable = new Set() // keys whose saved value did not parse: the team says them (2026-10-23 audit)
   return {
     where: "this browser (localStorage)",
+    unreadable: () => [...unreadable],
     get(key, fallback = null) {
       try {
         const v = store.getItem(prefix + key)
         return v == null ? fallback : JSON.parse(v)
       } catch {
+        unreadable.add(key)
         return fallback
       }
     },

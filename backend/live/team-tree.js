@@ -93,8 +93,8 @@ export function teamTree(agents, { root = agents[0]?.name, kernel = null } = {})
 export const treeNames = (node) => [node.name, ...node.children.flatMap(treeNames)]
 
 // One agent's status for its speech bubble: the visual state (its colour), the bubble's text, a
-// second line (the last tool while the model runs), when it last reported, and pending approvals.
-//   tone: llm · tool · quest · waiting · paused · error · done · idle (VISUAL_STATES)
+// second line (the last tool while the model runs) and when it last reported.
+//   tone: llm · tool · quest · waiting · error · done · idle (VISUAL_STATES)
 function lastTool(messages) {
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i]
@@ -107,10 +107,8 @@ function lastTool(messages) {
 export function agentStatus(state, agent) {
   const v = agentVisual(state, (agent?.agents ?? []).map(nameOf))
   const messages = state?.messages ?? []
-  const approvals = state?.approvals?.length ?? 0
-  const base = { tone: v.state, message: v.message, active: v.active, approvals, detail: null, at: null }
+  const base = { tone: v.state, message: v.message, active: v.active, detail: null, at: null }
   if (!state) return { ...base, message: "starting" }
-  if (approvals && v.state !== "paused" && v.state !== "error") return { ...base, tone: "paused", message: `Needs your approval (${approvals})` }
   if (v.state === "llm") {
     const tool = lastTool(messages)
     return tool ? { ...base, detail: `last: ${tool.kind === "agent" ? "quest to " : ""}${tool.name}${tool.ok === false ? " (failed)" : ""}` } : base
@@ -120,7 +118,7 @@ export function agentStatus(state, agent) {
 }
 
 // A collapsed subtree at a glance: every agent under the node with its tone, busiest first.
-const RANK = ["error", "paused", "tool", "quest", "llm", "waiting", "done", "idle"]
+const RANK = ["error", "tool", "quest", "llm", "waiting", "done", "idle"]
 export function subtreeTones(node, statusOf) {
   return treeNames(node)
     .slice(1)

@@ -19,7 +19,7 @@ test("wave 1: who works on what, reported teams in one line, the rest collapsed"
   expect(text).toContain("⏳ <b>News</b> · 1/3 in\n├ 🔧 wire — market.news\n├ ✅ calendar — CPI 08:30 ET printed hot, +0.4% m/m vs +0.3%\n└ 💭 macro — thinking")
   expect(text).toContain("✅ <b>Trend</b> — RANGE / CALM, side NONE until the opening range breaks · conf 0.30")
   expect(text).not.toContain("daily") // a reported team hides its members
-  expect(text).toContain("💭 <b>Search</b> · lead writing · 1/2 in\n├ ✅ movers — THETA +1.2 ATR, DELTA -0.9 ATR, EPSI +0.7 ATR\n└ 1 waiting to start")
+  expect(text).toContain("💭 <b>Search</b> · lead thinking · 1/2 in\n├ ✅ movers — THETA +1.2 ATR, DELTA -0.9 ATR, EPSI +0.7 ATR\n└ 1 waiting to start")
   // Not started this run: an old report (price-lead) and an old error (grader) do not count.
   expect(text).toContain("▫️ Not started: Price, Case, Review")
   expect(text).not.toContain("old price verdict")
@@ -180,15 +180,11 @@ test("the server and the web UI read one agentVisual (desk.js re-exports visual.
   expect(uiVisual).toBe(agentVisual)
   const states = [
     null,
-    { status: "running", activity: { phase: "llm", stage: "thinking" }, messages: [] },
-    { status: "running", activity: { phase: "llm", stage: "responding" }, messages: [] },
     { status: "running", activity: { phase: "llm", stage: "waiting" }, messages: [] },
     { status: "running", activity: { phase: "tool", name: "market.quote" }, messages: [] },
     { status: "running", activity: { phase: "tools", names: ["a", "b"] }, messages: [] },
     { status: "running", activity: { phase: "tools", names: ["news", "trend"] }, messages: [] },
     { status: "running", activity: { phase: "waiting", names: ["news"] }, messages: [] },
-    { status: "running", activity: { phase: "agent", name: "news" }, messages: [] },
-    { status: "running", activity: { phase: "approval", name: "x" }, messages: [] },
     { status: "running", activity: { phase: "idle" }, messages: [] },
     { status: "error", error: "boom", activity: {} },
     { status: "idle", activity: { phase: "idle" }, messages: [{ action: "answer", content: "NO TRADE ".repeat(30) }] },
@@ -202,4 +198,25 @@ test("the first minute's '<1m' is escaped (Telegram refused it as a tag, 10-15)"
   const text = renderStatus({ desk: "demo-desk", ...f, now: T0 + 20_000, run: { phase: "live" } })
   expect(text.split("\n")[0]).toBe("<b>demo-desk</b> · LIVE &lt;1m")
   expect(text).not.toMatch(/<(?!\/?(b|i)>)/)
+})
+
+test("a workflow running in the run: a line per stage, its time and calls; folded past 8 stages; not again in the footer", () => {
+  const f = wave1()
+  const at = (min) => new Date(T0 + min * 60000).toISOString()
+  const stages = [
+    { id: "expand", n: 1, title: "Expand the request", status: "done", ms: 12000 },
+    { id: "choose", n: 2, title: "Settle the preset", status: "running", started: at(3), tools: 4 },
+    { id: "generate", n: 3, title: "Draw it", status: null },
+    { id: "critique", n: 4, title: "Judge it", status: null },
+  ]
+  const make = { id: "make", kind: "workflow", view: "pipeline", owner: f.kernel.tree.team, title: "make", brief: "running 1/4", state: { status: "running", run: { started: at(0) }, stages } }
+  const kernel = { ...f.kernel, artifacts: { ...f.kernel.artifacts, make } }
+  const text = renderStatus({ desk: "studio", ...f, kernel, run: { phase: "live" }, now: T0 + 4 * 60000 })
+  expect(text).toContain("⚙️ <b>make</b> · 1/4 · 4m\n✅ 1 Expand the request 12s\n⏳ 2 Settle the preset · 4 calls · 1m 00s\n▫️ next: Draw it, Judge it")
+  expect(text).not.toContain("make: running 1/4")
+  const many = Array.from({ length: 12 }, (_, i) => ({ id: `s${i + 1}`, n: i + 1, title: `Stage ${i + 1}`, status: i < 5 ? "done" : i === 5 ? "running" : null, ms: 3000, tools: 2, started: at(3) }))
+  const big = renderStatus({ desk: "trade-card", ...f, kernel: { ...kernel, artifacts: { make: { ...make, state: { ...make.state, stages: many } } } }, run: { phase: "live" }, now: T0 + 4 * 60000 })
+  expect(big).toContain("⚙️ <b>make</b> · 5/12")
+  expect(big).toContain("✅ 5 done (s1, s2, s3, s4, s5)\n⏳ 6 Stage 6 · 2 calls")
+  expect(big).toContain("▫️ 6 to go: s7, s8, s9, s10, s11, s12")
 })

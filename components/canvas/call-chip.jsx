@@ -62,14 +62,14 @@ export function StepRow({ engine, step }) {
     )
   const look = lookOf(engine, step)
   const label =
-    step.step === "gate" ? step.text
+    step.step === "gate" || step.step === "compact" || step.step === "lifecycle" || step.step === "refresh" ? step.text
     : step.step === "guidance" ? `${step.from && step.from !== "owner" ? `${step.from}: ` : "you: "}${step.text}`
     : `${step.kind === "agent" ? `report from ${step.name}` : step.name}${eventTarget(step) ? ` · ${eventTarget(step)}` : ""}`
   return (
     <li data-step={step.step} data-call-kind={look.kind} className="flex min-w-0 items-center gap-1.5">
       <CallIcon look={look} className="size-3" />
       <span className={cn("min-w-0 flex-1 truncate", step.step === "gate" && toneOf(look).text)}>{label}</span>
-      {step.step === "tool" &&
+      {(step.step === "tool" || step.step === "refresh") &&
         (step.ok ? (
           <CheckIcon aria-label="answered" className="size-3 shrink-0 text-emerald-600 dark:text-emerald-400" />
         ) : (

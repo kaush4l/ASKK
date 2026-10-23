@@ -245,11 +245,15 @@ export class Desk {
             if (!busy.length) {
               try {
                 this.dismiss(sub.name)
-              } catch {}
+              } catch (error) {
+                // it stays on the desk: said in the desk log, so the tree's helper is explained (2026-10-23 audit)
+                sub.context?.log?.(`desk: ${sub.name} (keep run) was not dismissed at its run's end: ${error.message}`)
+              }
               return
             }
             await Promise.allSettled(busy.map((a) => a.queue ?? Promise.resolve()))
           }
+          if (this.list.includes(sub) && sub.config.spawned?.keep !== "desk") sub.context?.log?.(`desk: ${sub.name} (keep run) is still working after its caller's run ended — it stays until dismissed`)
         }
         go()
       }

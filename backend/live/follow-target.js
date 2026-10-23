@@ -7,7 +7,7 @@
 //
 //   tree: {name, children | agents} at any depth; states: Map or object name → agent state (agent.js).
 
-const AT_WORK = new Set(["llm", "tool", "tools", "agent", "waiting"])
+const AT_WORK = new Set(["llm", "tool", "tools", "waiting"])
 
 const kidsOf = (node) => node.children ?? node.agents ?? []
 const stateOf = (states, name) => (states instanceof Map ? states.get(name) : states?.[name]) ?? null
@@ -38,9 +38,8 @@ export function followTarget(tree, states) {
 
 export function questsOut(state) {
   const a = state?.activity
-  const out = new Set((state?.quests ?? []).map((q) => q?.to).filter(Boolean))
+  const out = new Set()
   for (const c of a?.calls ?? []) if (c.kind === "agent") out.add(c.name)
   if (a?.phase === "waiting") for (const n of a.names ?? []) out.add(n)
-  if (a?.phase === "agent" && a.name) out.add(a.name)
   return out
 }

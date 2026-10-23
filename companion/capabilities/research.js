@@ -2,7 +2,7 @@
 // that reads the web and writes one document in one call (2026-10-21: the kernel's text-only completions made every
 // fetch a whole ReAct step).
 //
-//   POST /__askk/llm/research {prompt, model?, max_turns?, seconds?, system?, tools?: ["market"]}   → NDJSON:
+//   POST /__askk/llm/research {prompt, model?, max_turns?, seconds?, system?, tools?: ["market" | "orders" | "data"]}   → NDJSON:
 //     {type: "start", model, max_turns, seconds}
 //     {type: "tool", name: "WebSearch" | "WebFetch", query?, url?}      each search or page it reads, as it happens
 //     {type: "note", text}                                               its words between tools (clipped)
@@ -11,7 +11,9 @@
 //
 // Never Bash, files or a permission bypass: `--tools` lists only the two web tools, `--allowedTools` approves only them
 // (and, with `tools: ["market"]`, the read-only market bridge's six tools — market-bridge.js over stdio, which calls back
-// into this host's mcp/call as the desk, so the broker token stays here and the desk's guard applies; 2026-10-22),
+// into this host's mcp/call as the desk, so the broker token stays here and the desk's guard applies; 2026-10-22; with
+// `tools: ["data"]` the desk's own data servers that declare research: true, the bridge's --data server, approved as
+// mcp__data; 2026-10-23),
 // `--permission-mode dontAsk` refuses anything else, `--strict-mcp-config` with no other MCP server, no settings or
 // project instructions, an empty temporary folder, a scrubbed environment (no desk secrets). Bounded by turns and
 // seconds; the request's signal (the caller stopped) kills it. What it reads is outside text: a desk tool built on
@@ -20,7 +22,7 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
-import { BRIDGE_NAMES, ORDER_NAMES } from "./market-bridge.js"
+import { BRIDGE_NAMES, DATA_SEP, ORDER_NAMES } from "./market-bridge.js"
 import { HOST_LIMITS } from "../shared/config.js"
 import { httpError, json } from "../shared/http.js"
 
@@ -33,12 +35,23 @@ const MARKET_NOTE =
   "You also have read-only market-data tools (mcp__market__quotes, bars, option_chain, option_instruments, option_quotes, " +
   "index_quote): live broker data. Use them for prices, bars, option contracts and the VIX instead of the web, and cite " +
   "them as robinhood (tool) with the time in the answer."
+const DATA_NOTE =
+  "You also have the desk's data tools (mcp__data__<server>__<tool>, e.g. macro series, calendars, fundamentals, " +
+  "sector rotation, collected news): real published data. Use them where they hold what the stage asks for, before the " +
+  "web, and cite them as <server> (tool) with the date of the value."
+export const DATA_TOOLS = "mcp__data"
 
 // The MCP config for the market bridge: one stdio server, this Bun running market-bridge.js against this host as the desk.
 // orders: the order account (the host's ASKK_ORDER_ACCOUNT) when the call asked for orders, else false
-export const marketConfig = ({ port, desk, orders = false, bun = process.execPath }) => ({ mcpServers: { market: { type: "stdio", command: bun, args: [BRIDGE, "--port", String(port), "--desk", String(desk), ...(orders ? ["--orders", String(orders)] : [])] } } })
+// data: the bridge's --data server too (the desk's data servers); bridge: false leaves the broker's tools out
+export const marketConfig = ({ port, desk, orders = false, data = false, bridge = true, bun = process.execPath }) => ({
+  mcpServers: {
+    ...(bridge ? { market: { type: "stdio", command: bun, args: [BRIDGE, "--port", String(port), "--desk", String(desk), ...(orders ? ["--orders", String(orders)] : [])] } } : {}),
+    ...(data ? { data: { type: "stdio", command: bun, args: [BRIDGE, "--data", "--port", String(port), "--desk", String(desk)] } } : {}),
+  },
+})
 const SYSTEM =
-  "You are one stage of a sequential pipeline run by an external engine. Your only tools are WebSearch and WebFetch. " +
+  "You are one stage of a sequential pipeline run by an external engine. Your tools are WebSearch and WebFetch (and the ones named below, if any). " +
   "Do the research the stage asks for, then reply with the stage's document only — no questions back, no offers, no " +
   "permission requests. If a value cannot be verified, say so in the document and go on."
 
@@ -50,9 +63,10 @@ const clip = (s, n) => {
 
 // The command line: only the web tools (plus the market bridge's when `mcpConfig` names its file), bounded turns, no
 // other MCP, no settings.
-export function researchArgv(bin, { model = "default", maxTurns = L.defaultTurns, system = "", mcpConfig = null, orders = false } = {}) {
-  const allowed = mcpConfig ? [...RESEARCH_TOOLS, ...MARKET_TOOLS, ...(orders ? ORDER_TOOLS : [])] : RESEARCH_TOOLS
-  const base = mcpConfig ? `${SYSTEM}\n\n${MARKET_NOTE}` : SYSTEM
+export function researchArgv(bin, { model = "default", maxTurns = L.defaultTurns, system = "", mcpConfig = null, orders = false, data = false, bridge = true } = {}) {
+  const market = mcpConfig && bridge
+  const allowed = [...RESEARCH_TOOLS, ...(market ? MARKET_TOOLS : []), ...(market && orders ? ORDER_TOOLS : []), ...(mcpConfig && data ? [DATA_TOOLS] : [])]
+  const base = [SYSTEM, ...(market ? [MARKET_NOTE] : []), ...(mcpConfig && data ? [DATA_NOTE] : [])].join("\n\n")
   return [
     bin, "-p", "--output-format", "stream-json", "--verbose",
     "--tools", RESEARCH_TOOLS.join(","), "--allowedTools", allowed.join(","),
@@ -90,6 +104,11 @@ export function researchEvents(line, { maxTurns } = {}) {
         // a market-bridge call: its symbol(s), or an order's quantity and limit, as the chip's words
         const what = [c.input?.symbol, ...(Array.isArray(c.input?.symbols) ? c.input.symbols : []), c.input?.expiry, c.input?.type, c.input?.interval, c.input?.order_id, c.input?.quantity != null ? `x${c.input.quantity}` : null, c.input?.price != null ? `@${c.input.price}` : null].filter(Boolean).join(" ")
         out.push({ type: "tool", name: c.name, query: clip(`${c.name.replace("mcp__market__", "robinhood ")}${what ? ` ${what}` : ""}`, L.inputChars) })
+      } else if (c?.type === "tool_use" && String(c.name).startsWith(`${DATA_TOOLS}__`)) {
+        // a desk data server's call: "<server> <tool>" and its first plain arguments
+        const [server, ...tool] = c.name.slice(DATA_TOOLS.length + 2).split(DATA_SEP)
+        const what = Object.values(c.input ?? {}).filter((v) => typeof v === "string" || typeof v === "number").slice(0, 3).join(" ")
+        out.push({ type: "tool", name: c.name, query: clip(`${server} ${tool.join(DATA_SEP)}${what ? ` ${what}` : ""}`, L.inputChars) })
       } else if (c?.type === "text" && c.text?.trim()) out.push({ type: "note", text: clip(c.text, L.noteChars) })
     }
     return out
@@ -107,7 +126,8 @@ export function researchEvents(line, { maxTurns } = {}) {
 export function createResearch({ bin, spawn = Bun.spawn, env = process.env } = {}) {
   if (!bin) return null
   return {
-    // market: {port, desk} — set by the route (never from the request body) when the stage asked for tools: ["market"]
+    // market: {port, desk, orders, data, bridge} — set by the route (never from the request body) when the stage asked for
+    // tools: ["market" | "orders" | "data"]
     async *run({ prompt, model = "default", max_turns, seconds, system = "", signal, market = null } = {}) {
       if (typeof prompt !== "string" || !prompt.trim()) throw httpError(400, "No prompt.")
       if (prompt.length > L.promptChars) throw httpError(413, `Prompt too long (${L.promptChars} characters max).`)
@@ -126,7 +146,7 @@ export function createResearch({ bin, spawn = Bun.spawn, env = process.env } = {
       let last = null
       let proc = null
       try {
-        proc = spawn(researchArgv(bin, { model, maxTurns, system, mcpConfig, orders: !!market?.orders }), { cwd, env: researchEnv(env, bin), stdin: "pipe", stdout: "pipe", stderr: "pipe", signal, timeout: ms, killSignal: "SIGKILL" })
+        proc = spawn(researchArgv(bin, { model, maxTurns, system, mcpConfig, orders: !!market?.orders, data: !!market?.data, bridge: market?.bridge !== false }), { cwd, env: researchEnv(env, bin), stdin: "pipe", stdout: "pipe", stderr: "pipe", signal, timeout: ms, killSignal: "SIGKILL" })
         proc.stdin.write(prompt)
         proc.stdin.end()
         const stderr = new Response(proc.stderr).text()
@@ -172,13 +192,14 @@ export function researchRoute(research, { market = null } = {}) {
     const body = await request.json().catch(() => null)
     if (!body) return json(400, { error: "Invalid JSON body." })
     const tools = body.tools == null ? [] : body.tools
-    if (!Array.isArray(tools) || tools.some((t) => t !== "market" && t !== "orders")) return json(400, { error: 'tools: a list of "market" (the read-only market bridge) and "orders" (its order tools, through the desk\'s order guard)' })
+    if (!Array.isArray(tools) || tools.some((t) => !["market", "orders", "data"].includes(t))) return json(400, { error: 'tools: a list of "market" (the read-only market bridge), "orders" (its order tools, through the desk\'s order guard) and "data" (the desk\'s own data servers)' })
     const wants = tools.length > 0
     const orderAccount = process.env.ASKK_ORDER_ACCOUNT?.trim() || null
     if (tools.includes("orders") && !orderAccount) return json(403, { error: "No order account on this server (ASKK_ORDER_ACCOUNT in .env)." })
     if (wants && !market) return json(403, { error: "The market bridge is not available on this server (read-only or no desk)." })
     const { tools: _t, market: _m, ...rest } = body // a caller never names the port or desk itself
-    const events = research.run({ ...rest, market: wants ? { ...market, orders: tools.includes("orders") ? orderAccount : false } : null, signal: request.signal })
+    const bridge = tools.includes("market") || tools.includes("orders")
+    const events = research.run({ ...rest, market: wants ? { ...market, orders: tools.includes("orders") ? orderAccount : false, data: tools.includes("data"), bridge } : null, signal: request.signal })
     const first = await events.next() // a bad request fails here, as a plain HTTP error
     const encoder = new TextEncoder()
     const stream = new ReadableStream({

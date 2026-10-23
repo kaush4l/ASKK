@@ -151,14 +151,15 @@ export class Runners extends Artifact {
       for (const r of due) this.#failed(r, `prepare: ${e.message}`, now)
       return events
     }
-    for (const r of due) {
-      let res
-      try {
-        res = await this.check(r, shared, now)
-      } catch (e) {
-        this.#failed(r, e.message, now)
+    // every due runner checked at once over the shared data (2026-10-23 architecture map: one slow check held the rest);
+    // the results applied, and the fires acted on, one at a time in order — onFire wakes agents and books runs
+    const settled = await Promise.allSettled(due.map((r) => this.check(r, shared, now)))
+    for (const [i, r] of due.entries()) {
+      if (settled[i].status === "rejected") {
+        this.#failed(r, settled[i].reason?.message ?? String(settled[i].reason), now)
         continue
       }
+      const res = settled[i].value
       r.next_at = new Date(now.getTime() + Math.max(1, Number(r.every) || this.every) * 60000).toISOString()
       if (!res) continue
       const prev = r.last

@@ -7,7 +7,7 @@
 //                      expired), error, last: {at, price, cond (the when), effective (cond and the gate together), gate:
 //                      {cond, value} | null, held (the cond holds, the gate does not: why), sleeping (what it sleeps
 //                      until: before its day or from), observed, values, prox: {gap, pace, eta}, warming},
-//                      fires: [{at, kind}], chart: {t: [label], c: [close], plots: {name: [value]}, marks: [index], source,
+//                      fires: [{at, kind, price?, value?}], ends_at? (ISO: a kernel runner's end), chart: {t: [label], c: [close], plots: {name: [value]}, marks: [index], source,
 //                      interval} }   (on, from, gate and last.effective/held/sleeping optional: older twins lack them)
 
 import { teamCall } from "@/backend/live/stream"
@@ -130,7 +130,11 @@ export function runnerStatus(r, now = new Date()) {
   const p = l.prox
   if (p && p.gap > 0) {
     const near = p.eta != null && p.eta <= Math.max(2, r.warn ?? 0)
-    const eta = p.eta != null ? ` · ≈${p.eta} bar${p.eta === 1 ? "" : "s"}` : p.pace > 0 ? " · moving away" : ""
+    // a kernel runner (it counts checks) gives pace as gap closed per check (negative: moving away); a desk's own runner
+    // as the gap's growth per bar (positive: moving away) — each read in its own sign and unit (2026-10-23 audit)
+    const kernel = r.checks != null
+    const away = kernel ? p.pace < 0 : p.pace > 0
+    const eta = p.eta != null ? ` · ≈${p.eta} ${kernel ? "check" : "bar"}${p.eta === 1 ? "" : "s"}` : away ? " · moving away" : ""
     return { word: near ? "near" : "watching", tone: near ? "near" : "running", detail: `${p.gap} to go${eta}` }
   }
   return { word: "watching", tone: "running", detail: l.cond == null ? "no reading yet" : "" }
@@ -144,8 +148,37 @@ export function checkLine(r) {
   return [`check #${r.checks}`, r.checked_at ? `${clockOf(r.checked_at)} ET` : "not read yet", r.status === "running" && r.next_at ? `next ${clockOf(r.next_at)}` : null, l?.value != null ? `now ${l.value}${l.against != null ? ` vs ${l.against}` : ""}` : null, r.errors ? `${r.errors} errors in a row` : null].filter(Boolean).join(" · ")
 }
 
+// A fire in a line: "fired 10:41 @771.4 · value 772.5" — the kernel's fires carry the reading that fired (`value`,
+// 2026-10-23: never drawn before); a desk's own fires only a price. Absent parts are left out.
+export function fireLine(f) {
+  const n = (v) => (typeof v === "number" && Number.isFinite(v) ? (Math.abs(v) >= 1000 ? v.toFixed(0) : Math.abs(v) >= 10 ? v.toFixed(2) : v.toFixed(3)) : String(v))
+  return [`${f?.kind === "warn" ? "heads-up" : "fired"} ${clockOf(f?.at)}`.trim(), f?.price != null ? `@${n(f.price)}` : null, f?.value != null ? `· value ${n(f.value)}` : null].filter(Boolean).join(" ")
+}
+
+// When a kernel runner ends (its `ends_at`, ISO; 2026-10-23: never drawn) → "until 15:55 ET" (+ " on 10-24" when that is
+// not today's ET day), else "". Left out when the window line already says the same until (a desk that sends both).
+export function endsText(r, now = new Date()) {
+  if (!r?.ends_at || Number.isNaN(Date.parse(r.ends_at))) return ""
+  const hm = etHM(r.ends_at)
+  const day = etDay(r.ends_at)
+  if (r.until === hm && (!r.on || r.on === day) && day === etDay(now)) return ""
+  return `until ${hm} ET${day !== etDay(now) ? ` on ${day.slice(5)}` : ""}`
+}
+
 export const intervalLabel = (min) => (!finite(min) ? String(min ?? "") : min % 10080 === 0 ? `${min / 10080}w` : min % 1440 === 0 ? `${min / 1440}d` : min % 60 === 0 ? `${min / 60}h` : `${min}m`)
 export const everyLabel = (e) => (e === "bar" ? "each bar" : e === "tick" ? "each tick" : `every ${intervalLabel(e)}`)
+
+// "SPY · 5m · robinhood · each bar" from the parts a runner has (2026-10-23: a kernel runner has no symbol, interval or
+// source — the card drew empty slots between the dots).
+export const specLine = (r) => [r?.symbol, r?.interval != null ? intervalLabel(r.interval) : null, r?.source, r?.every != null ? everyLabel(r.every) : null].filter(Boolean).join(" · ")
+
+// Whether the owner's start/test form is drawn: only when the artifact's state says it takes them (`can: {start, test}`)
+// → {start, test} | null. 2026-10-23: the kernel's Runners take pause, resume, now, stop and remove only (its ownerCall
+// throws on start and test) and say nothing, so no form — before, a state without `can` showed one that was always refused.
+export function runnerForm(state) {
+  const can = state?.can
+  return can?.start || can?.test ? { start: !!can.start, test: !!can.test } : null
+}
 
 // Holding and near first, then the running ones, the stopped ones last.
 export function runnerRows(state, now = new Date()) {

@@ -2,7 +2,6 @@
 
 import { AlertTriangleIcon, CpuIcon, Settings2Icon, UndoIcon, Volume2Icon, VolumeXIcon } from "lucide-react"
 
-import { ApprovalCard } from "@/components/sts/stage/approval-card"
 import { Caption } from "@/components/sts/stage/caption"
 import { MicButton } from "@/components/sts/stage/mic-button"
 import { TypeBox } from "@/components/sts/stage/type-box"
@@ -35,8 +34,9 @@ const PHASE_TEXT = {
 // The stage: orb, live caption, controls.
 export function Stage({ state, model, offered, onSettings }) {
   const { phase, settings, lead, latency, error, speaking } = state
-  const asrLabel = settings.asr === "mac" ? "This Mac · on-device" : settings.asr === "safari" ? "Safari dictation" : "no recognizer"
-  const voiceLabel = settings.voice ? (settings.voiceName ?? (settings.voice === "mac" ? "Mac voice" : "Browser voice")) : "no voice"
+  const mac = state.support?.mac ?? {}
+  const asrLabel = settings.asr === "mac" ? `This Mac · ${mac.stt?.title ?? "on-device"}` : settings.asr === "safari" ? "Safari dictation" : "no recognizer"
+  const voiceLabel = settings.voice ? (settings.voice === "mac" ? (mac.tts?.title ?? "Mac voice") : (settings.voiceName ?? "Browser voice")) : "no voice"
   return (
     <section className="relative flex flex-col items-center gap-4 border-b px-4 pt-3 pb-6 lg:min-h-0 lg:flex-[1.15] lg:overflow-y-auto lg:border-r lg:border-b-0">
       <header className="flex w-full items-start justify-between gap-3">
@@ -55,9 +55,12 @@ export function Stage({ state, model, offered, onSettings }) {
         <Badge variant="outline" className="gap-1">
           <CpuIcon className="size-3" /> {asrLabel}
         </Badge>
-        <Badge variant="outline" className="gap-1">
-          <Volume2Icon className="size-3" /> {voiceLabel}
-        </Badge>
+        {/* speaking is its own switch, apart from the mic (2026-10-23 owner) */}
+        <button type="button" onClick={() => model.setSettings({ speak: !settings.speak })} disabled={!settings.voice} aria-pressed={!!settings.speak} className="rounded-md pointer-coarse:min-h-10" title={settings.speak ? "Answers are spoken: click for on screen only" : "Answers on screen only: click to speak them"}>
+          <Badge variant="outline" className={cn("gap-1", !settings.speak && "text-muted-foreground")}>
+            {settings.speak ? <Volume2Icon className="size-3" /> : <VolumeXIcon className="size-3" />} {settings.speak ? voiceLabel : "voice off"}
+          </Badge>
+        </button>
         {latency ? (
           <Badge variant="outline" className="tabular-nums">
             {latency.utterance?.toFixed(1)} s heard in {latency.asr} ms
@@ -88,8 +91,6 @@ export function Stage({ state, model, offered, onSettings }) {
           ))}
         </div>
       ) : null}
-
-      <ApprovalCard state={state} model={model} />
 
       {error ? (
         <p className="flex max-w-md items-start gap-2 text-sm text-destructive">

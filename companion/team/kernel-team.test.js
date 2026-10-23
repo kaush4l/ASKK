@@ -312,6 +312,9 @@ test("a spawned agent reaches every tab: registry with its state, the tree, its 
   // The spawn call itself draws with view "spawn" in the lead's thread.
   const leadRows = events.filter((e) => e.id === "lead").flatMap((e) => e.patch.messages?.items ?? [])
   expect(leadRows.find((m) => m.role === "tool" && m.name === "agent.spawn")).toMatchObject({ view: "spawn", ok: true })
+  // 2026-10-23: the spawn itself is a row in the spawner's thread (not only the tree and the log)
+  expect(leadRows.find((m) => m.action === "lifecycle")).toMatchObject({ kind: "spawn", agent: "counter", content: "Spawned counter: count the corpus" })
+  expect(leadRows.find((m) => m.role === "tool" && m.name === "agent.spawn").ms).toBeGreaterThanOrEqual(0)
   expect(events.filter((e) => e.type === "log").map((e) => e.text)).toContain("desk: lead spawned counter: count the corpus")
   // Its folder: an agent.md record of what it was made for, and its history.md beside it.
   const folder = join(state, "spawned", "counter")
@@ -344,8 +347,14 @@ test("a spawned agent reaches every tab: registry with its state, the tree, its 
   expect(pruned.removed).toEqual(["counter.notes"])
   expect(after.filter((e) => e.type === "kernel" && e.artifact).map((e) => [e.artifact.id, e.artifact.holders])).toContainEqual(["lab.board", ["lead", "coder"]])
   expect(after.filter((e) => e.type === "log").map((e) => e.text)).toContain("desk: lead dismissed counter")
+  expect(after.filter((e) => e.id === "lead").flatMap((e) => e.patch.messages?.items ?? []).find((m) => m.action === "lifecycle")).toMatchObject({ kind: "dismiss", agent: "counter" })
   expect(team.agents).toEqual(["lead", "coder"])
   expect(existsSync(join(folder, "history.md"))).toBe(true)
+  // 2026-10-23: the lead's runs keep their desk-event rows where they fell (history.md notes), each call's time too
+  const leadRuns = parseHistory(readFileSync(join(root, "lead", "history.md"), "utf8"))
+  expect(leadRuns[0].notes.map((n) => [n.row.action, n.row.kind, n.row.agent])).toEqual([["lifecycle", "spawn", "counter"]])
+  expect(leadRuns[1].notes.map((n) => n.row.kind)).toEqual(["dismiss"])
+  expect(leadRuns[0].steps[0].results[0].ms).toBeGreaterThanOrEqual(0)
   await Bun.sleep(20)
   expect(view.registry.agents.map((a) => a.name)).toEqual(["lead", "coder"])
   expect(view.states.counter).toBeUndefined()

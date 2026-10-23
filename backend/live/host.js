@@ -76,5 +76,7 @@ export const HOST_CAPABILITIES = [
   { id: "models.local", short: "Local models", label: "Models this Mac runs: the claude, codex and gemini CLIs, Apple on-device" },
   { id: "wakes", short: "Wake book", label: "The wake book (state/wakes.jsonl): runs booked for later" },
   { id: "apple", short: "Mac actions", label: "Your Mac: Shortcuts, Reminders, Spotlight, speech, clipboard", localOff: "macOS only." },
+  // 2026-10-23: open image models on this Mac (mflux), the studio artifact's generator (companion/capabilities/imagegen.js).
+  { id: "images", short: "Image models", label: "Generate images on this Mac with open models (mflux: Qwen Image 2.1)", localOff: "No image model installed (uv tool install mflux), or --read-only." },
   { id: "speech", short: "Speech", label: "Speech on this Mac: on-device recognition (any browser) and Mac voices", localOff: "macOS 26+ only (ASKK_SPEECH=off turns it off)." },
 ]

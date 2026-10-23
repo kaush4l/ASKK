@@ -98,8 +98,8 @@ function readMd(folder) {
   if (!m) return null
   try {
     return { meta: Bun.YAML.parse(m[1]) ?? {}, role: text.slice(m[0].length).trim() }
-  } catch {
-    return null
+  } catch (error) {
+    return { invalid: `${file}: ${error.message}` } // readKept says it (2026-10-23 audit: the helper vanished silently)
   }
 }
 
@@ -132,7 +132,8 @@ function inputOf(folder, md, seen = new Set(), depth = 0) {
 // The kept helpers under these agent folders ([{name, folder}]: the desk's agents at start), and under theirs, parents
 // first: a subfolder whose .md (<name>.md or agent.md) says keep: desk, is named after its folder, and is not one of the
 // folder's own members (its agents:).
-export function readKept(folders = []) {
+// log: a kept helper whose .md does not parse is a line, not a silent skip.
+export function readKept(folders = [], log = () => {}) {
   const out = []
   const queue = folders.map((f) => ({ folder: f.folder, by: f.name }))
   const seen = new Set()
@@ -144,10 +145,16 @@ export function readKept(folders = []) {
     let subs = []
     try {
       subs = readdirSync(folder, { withFileTypes: true }).filter((d) => d.isDirectory() && !members.has(d.name))
-    } catch {}
+    } catch (error) {
+      log(`desk: ${folder} did not list (${error.message}) — kept helpers under it are not respawned`)
+    }
     for (const d of subs.sort((a, b) => a.name.localeCompare(b.name))) {
       const sub = join(folder, d.name)
       const md = readMd(sub)
+      if (md?.invalid) {
+        log(`desk: kept helper ${d.name} not respawned — its .md does not parse (${md.invalid})`)
+        continue
+      }
       if (!md || md.meta?.keep !== "desk" || String(md.meta.name ?? "") !== d.name || !keptName(d.name)) continue
       out.push({ by: String(md.meta.by ?? by), at: md.meta.at ? String(md.meta.at) : null, input: inputOf(sub, md), folder: sub })
       queue.push({ folder: sub, by: d.name })

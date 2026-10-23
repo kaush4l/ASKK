@@ -21,6 +21,7 @@
 //       port: 1112,                        // its own port when it runs alone (and its .next-desks/<name> build)
 //       mcp: "./mcp.json",                 // its tool servers (mcpServers format), beside .mcp.json
 //       integrations: ["telegram"],        // integrations/ it runs (one Telegram listener per bot)
+//       telegram: false,                   // no live status of its runs on Telegram (default: every desk posts it)
 //       terminal: { toolchains: ["python"], programs: ["make"], timeoutSeconds, backgroundMinutes },
 //                                          // its terminal sessions (host term/*: companion/capabilities/terminal.js)
 //       mounts: { desks: { root, allow: (name) => bool } },   // desks/<name>/… in its workspace = <root>/<name>/…
@@ -107,10 +108,11 @@ const cache = new Map()
 const setups = new Set()
 
 // The desk's startup script (`setup`), once per process, in the background.
-export function runDeskSetup(desk, env = process.env) {
+// log: the desk log (host-api.js), else the console.
+export function runDeskSetup(desk, env = process.env, deskLog = null) {
   if (!desk?.setup || setups.has(desk.folder)) return
   setups.add(desk.folder)
-  const log = (line) => console.error(`${desk.name} setup: ${line}`)
+  const log = deskLog ?? ((line) => console.error(`${desk.name} setup: ${line}`))
   Promise.resolve()
     .then(() => desk.setup({ dir: desk.folder, env, log }))
     .catch((error) => log(`failed: ${error?.message ?? error}`))
@@ -140,6 +142,8 @@ export async function loadDesk(dir, env = process.env) {
           description: config.description ?? "",
           port: Number(config.port) || null,
           integrations: Array.isArray(config.integrations) ? config.integrations : null,
+          // 2026-10-23: false keeps its runs' live status off Telegram (every desk posts it, in its own topic)
+          telegram: config.telegram !== false,
           // 2026-10-17: what its host API's terminal runs and which outside folders its workspace mounts.
           terminal: config.terminal && typeof config.terminal === "object" ? config.terminal : null,
           mounts: config.mounts?.desks?.root ? { desks: { root: resolve(folder, config.mounts.desks.root), allow: config.mounts.desks.allow } } : null,

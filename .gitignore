@@ -79,3 +79,6 @@ next-env.d.ts
 # a core desk's kept helpers (<lead>/<helper>/<helper>.md: keep: desk, written at run time) are local too
 /desks/agent/agent/*/
 /desks/agent/agents/
+
+# local models (models/<kind>/<name>/model.md + their state): companion/models, never committed
+/models/

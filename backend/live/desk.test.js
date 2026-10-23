@@ -8,7 +8,6 @@ test("engine state → visual state and bubble message", () => {
   expect(run({ phase: "tool", name: "market.quote" })).toMatchObject({ state: "tool", message: "Calling market.quote", active: ["market.quote"] })
   expect(run({ phase: "waiting", names: ["world", "hunt"] })).toMatchObject({ state: "waiting", message: "Waiting for world, hunt" })
   expect(run({ phase: "tools", names: ["world", "hunt"] }).state).toBe("quest")
-  expect(run({ phase: "approval", name: "x" }).state).toBe("paused")
   expect(agentVisual({ status: "error", error: "boom", activity: {} }).state).toBe("error")
   expect(agentVisual({ status: "idle", activity: { phase: "idle" }, messages: [{ action: "answer", content: "NO TRADE" }] })).toMatchObject({ state: "done", message: "NO TRADE" })
   expect(agentVisual(null).state).toBe("idle")

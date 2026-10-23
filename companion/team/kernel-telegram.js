@@ -74,11 +74,20 @@ const oneLine = (text, n) => {
 // Telegram's errors may quote a chat id; the log never shows one.
 const redact = (text) => String(text).replace(/-?\d{6,}/g, "<id>")
 
-function stateFile(file) {
+function stateFile(file, log = () => {}) {
   const state = { seen: {}, pending: [], thread: null, announced: [] }
   try {
     Object.assign(state, JSON.parse(readFileSync(file, "utf8")))
-  } catch {}
+  } catch (error) {
+    // a file there that does not read: set aside and said, never silently reset (2026-10-23 audit)
+    if (error.code !== "ENOENT") {
+      const to = `${file}.unreadable-${Date.now()}`
+      try {
+        renameSync(file, to)
+      } catch {}
+      log(`telegram: its state did not read (${error.message}) — kept as ${to}; answers owed before the restart are not re-sent`)
+    }
+  }
   return {
     state,
     save() {
@@ -92,14 +101,15 @@ function stateFile(file) {
 // ends with an answer (or an error) before the next one starts, so the answer after our request's
 // start is ours. wait(from, text) → { answer: Promise<{answer, error}>, cancel }. 2026-10-17 critic: an owner chat's
 // question (kind "chat") or guidance is no run's start — a web Ask during a Telegram-started run lost that run's reply.
-function followLead(team, signal) {
+function followLead(team, signal, log = () => {}) {
+  let eventWarned = false
   const waiting = [] // in hand-off order
   let lead = null
   let current = null
-  let last = 0 // kernel message ids are k<n>, increasing: a trimmed or reset list repeats old ones
+  let last = 0 // kernel message ids are k<boot>-<n> (n increasing in this process): a trimmed or reset list repeats old ones
   let found
   const snapshot = new Promise((resolve) => (found = resolve))
-  const seq = (id) => Number(String(id ?? "").replace(/^\D+/, "")) || 0
+  const seq = (id) => Number(String(id ?? "").match(/(\d+)$/)?.[1]) || 0
 
   function take(m) {
     if (isRunRequest(m)) {
@@ -141,12 +151,21 @@ function followLead(team, signal) {
           if (!line.startsWith("data: ")) continue
           try {
             onEvent(JSON.parse(line.slice(6)))
-          } catch {}
+          } catch (error) {
+            if (!eventWarned) log(`telegram: an event from the desk could not be followed (${error.message})`)
+            eventWarned = true
+          }
         }
       }
     }
   })()
-    .catch(() => {})
+    .catch((error) => {
+      // the desk's stream ended under it: what waits on an answer hears so now, not at its timeout (2026-10-23 audit)
+      if (!signal.aborted) log(`telegram: the desk's stream ended (${error?.message ?? error}) — the owner's waiting messages get no answer`)
+      for (const w of [...waiting, ...(current ? [current] : [])]) w.resolve({ answer: null, error: "the desk's stream ended" })
+      waiting.length = 0
+      current = null
+    })
     .finally(() => found(null))
 
   return {
@@ -177,13 +196,18 @@ export async function startKernelTelegram({
   hello = undefined, // the first message in a new place (chat or topic); default "<desk> connected: …"; null: none
   answerTimeoutMs = ANSWER_TIMEOUT_MS,
   pollWaitMs = POLL_WAIT_MS,
+  // 2026-10-23 owner ("I want to make that live preview for every desk"): inbound false = this desk does not take the
+  // bot's messages (one desk listens per bot) but still posts its runs' live status and reports in its own topic
+  inbound = true,
+  via = null, // inbound false: the desk that takes the bot's messages (said in the greeting)
 }) {
   const telegram = integrations?.get?.(INTEGRATION)
-  if (!telegram || !integrations.listening?.includes(INTEGRATION)) throw new Error("the telegram listener does not run here")
+  if (!telegram || telegram.error) throw new Error(`the telegram integration is not here${telegram?.error ? ` (${telegram.error})` : ""}`)
+  if (inbound && !integrations.listening?.includes(INTEGRATION)) throw new Error("the telegram listener does not run here")
   mkdirSync(stateDir, { recursive: true })
-  const { state, save } = stateFile(join(stateDir, "telegram.json"))
+  const { state, save } = stateFile(join(stateDir, "telegram.json"), log)
   const controller = new AbortController()
-  const follow = followLead(team, controller.signal)
+  const follow = followLead(team, controller.signal, log)
   const lead = await follow.lead()
   if (!lead) throw new Error("the team has no lead")
 
@@ -252,7 +276,7 @@ export async function startKernelTelegram({
 
   // Once per place (marked before sending: never twice, even if the send fails).
   const place = thread ? `topic:${thread}` : "chat"
-  const greeting = hello === undefined ? `${desk} connected: message me here and the ${lead} answers.` : hello
+  const greeting = hello === undefined ? (inbound ? `${desk} connected: message me here and the ${lead} answers.` : `${desk}: the live status of its runs shows here${via ? ` (messages to the bot go to ${via})` : ""}.`) : hello
   if (greeting && !state.announced.includes(place)) {
     state.announced.push(place)
     save()
@@ -383,8 +407,10 @@ export async function startKernelTelegram({
     return false
   }
 
-  // The listener's queue (companion/capabilities/integrations.js), read in-process: no HTTP, no tab.
+  // The listener's queue (companion/capabilities/integrations.js), read in-process: no HTTP, no tab. A desk that only
+  // posts (inbound false) reads none.
   ;(async () => {
+    if (!inbound) return
     let cursor = { after: 0, from: null }
     let failures = 0
     while (!controller.signal.aborted) {
@@ -405,7 +431,7 @@ export async function startKernelTelegram({
     }
   })()
 
-  log(`telegram: bridge on, owner messages → ${lead}, ${thread ? `topic "${desk}"` : "plain chat"}`)
+  log(inbound ? `telegram: bridge on, owner messages → ${lead}, ${thread ? `topic "${desk}"` : "plain chat"}` : `telegram: live status on (${thread ? `topic "${desk}"` : "plain chat"}); messages go to ${via ?? "the desk that listens"}`)
   const bridge = {
     lead,
     get thread() {

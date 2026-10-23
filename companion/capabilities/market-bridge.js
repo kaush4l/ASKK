@@ -138,6 +138,47 @@ export const hostCaller =
     return String(v?.text ?? JSON.stringify(v))
   }
 
+// Desk data servers (2026-10-23 owner: "if niche data sources are required, then we can use openalice tools as well"):
+// with `--data` the bridge serves, instead of the broker's tools, every tool of the desk's own tool servers that declare
+// `research: true` (main.js host() `servers`, e.g. trade-card's read-only OpenAlice data), named `<server>__<tool>`, each
+// answered by the host's mcp/call as the desk. The desk's declaration decides what is listed; nothing else is.
+export const DATA_SEP = "__"
+const SERVER_NAME = /^[a-z][a-z0-9-]{0,30}$/
+const DATA_TOOL = /^[A-Za-z][A-Za-z0-9_-]{0,40}$/
+
+// The host's mcp/tools, as the desk → its servers.
+export const hostTools =
+  ({ port, desk, fetch: f = fetch }) =>
+  async () => {
+    const r = await f(`http://localhost:${port}/__askk/mcp/tools`, { headers: { "x-askk-desk": desk } })
+    const body = await r.json().catch(() => null)
+    if (!r.ok) throw new Error(body?.error ?? `host ${r.status}`)
+    return body?.servers ?? []
+  }
+
+// The data tools of a server listing: only servers that declare research: true.
+export function dataTools(servers) {
+  const out = []
+  for (const s of servers ?? []) {
+    if (s?.research !== true || s.ok === false || !SERVER_NAME.test(String(s.name))) continue
+    for (const t of s.tools ?? []) if (DATA_TOOL.test(String(t?.name))) out.push({ name: `${s.name}${DATA_SEP}${t.name}`, description: `${s.title ?? s.name}: ${String(t.description ?? "").slice(0, 900)}`, inputSchema: t.inputSchema ?? { type: "object", properties: {} } })
+  }
+  return out
+}
+
+// One data tools/call → MCP content; a name not in the listing is refused.
+export async function dataCall(name, args, { list, call }) {
+  try {
+    const known = (await list()).map((t) => t.name)
+    if (!known.includes(name)) bad(`unknown tool ${name} (tools: ${known.join(", ") || "none"})`)
+    const at = name.indexOf(DATA_SEP)
+    const text = await call({ server: name.slice(0, at), tool: name.slice(at + DATA_SEP.length), arguments: args && typeof args === "object" ? args : {} })
+    return { content: [{ type: "text", text: text.length > CLIP ? `${text.slice(0, CLIP)}\n… (clipped at ${CLIP} characters)` : text }] }
+  } catch (error) {
+    return { content: [{ type: "text", text: `${name}: ${error.message}` }], isError: true }
+  }
+}
+
 // One tools/call → MCP content.
 export async function bridgeCall(name, args, { call, now = new Date(), account = null }) {
   try {
@@ -151,13 +192,14 @@ export async function bridgeCall(name, args, { call, now = new Date(), account =
 }
 
 // JSON-RPC over stdio, one message per line (the MCP stdio transport).
-export async function serve({ call, account = null, input = Bun.stdin.stream(), write = (s) => process.stdout.write(s) }) {
+// data: {list, call} — the desk data servers' tools instead of the broker's (--data)
+export async function serve({ call, account = null, data = null, input = Bun.stdin.stream(), write = (s) => process.stdout.write(s) }) {
   const send = (msg) => write(`${JSON.stringify({ jsonrpc: "2.0", ...msg })}\n`)
   const handle = async (m) => {
     if (m.id == null) return // a notification (initialized, cancelled)
-    if (m.method === "initialize") return send({ id: m.id, result: { protocolVersion: m.params?.protocolVersion ?? "2025-06-18", capabilities: { tools: {} }, serverInfo: { name: "askk-market", version: "1.0.0" } } })
-    if (m.method === "tools/list") return send({ id: m.id, result: { tools: account ? [...BRIDGE_TOOLS, ...ORDER_TOOLS] : BRIDGE_TOOLS } })
-    if (m.method === "tools/call") return send({ id: m.id, result: await bridgeCall(m.params?.name, m.params?.arguments, { call, account }) })
+    if (m.method === "initialize") return send({ id: m.id, result: { protocolVersion: m.params?.protocolVersion ?? "2025-06-18", capabilities: { tools: {} }, serverInfo: { name: data ? "askk-data" : "askk-market", version: "1.0.0" } } })
+    if (m.method === "tools/list") return send({ id: m.id, result: { tools: data ? await data.list().catch(() => []) : account ? [...BRIDGE_TOOLS, ...ORDER_TOOLS] : BRIDGE_TOOLS } })
+    if (m.method === "tools/call") return send({ id: m.id, result: data ? await dataCall(m.params?.name, m.params?.arguments, data) : await bridgeCall(m.params?.name, m.params?.arguments, { call, account }) })
     if (m.method === "ping") return send({ id: m.id, result: {} })
     send({ id: m.id, error: { code: -32601, message: `no method ${m.method}` } })
   }
@@ -191,7 +233,14 @@ if (import.meta.main) {
     console.error("market-bridge: --port <host port> --desk <desk> required")
     process.exit(2)
   }
-  // --orders: the order tools on the account the owner's .env names (the desk's guard checks it again)
-  const account = arg("--orders")
-  await serve({ call: hostCaller({ port, desk, server: arg("--server") ?? "robinhood" }), account })
+  if (process.argv.includes("--data")) {
+    // the desk's data servers' tools, listed once per call of the CLI (a listing that fails is retried next time)
+    let listed = null
+    const list = async () => (listed ??= hostTools({ port, desk })().then(dataTools).catch((error) => ((listed = null), Promise.reject(error))))
+    await serve({ data: { list, call: ({ server, ...rest }) => hostCaller({ port, desk, server })(rest) } })
+  } else {
+    // --orders: the order tools on the account the owner's .env names (the desk's guard checks it again)
+    const account = arg("--orders")
+    await serve({ call: hostCaller({ port, desk, server: arg("--server") ?? "robinhood" }), account })
+  }
 }

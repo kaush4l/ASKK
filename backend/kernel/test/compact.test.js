@@ -82,3 +82,34 @@ describe("prompt compaction", () => {
     expect(events).toEqual([])
   })
 })
+
+// 2026-10-23 audit: a compaction folds steps out of the prompt, never out of the run's record — the answer (and an
+// error) carries every step, step n at record[n - 1], so history.md and a restored thread match what streamed.
+test("a compacted run's record keeps every step in order, without the summary step", async () => {
+  let n = 0
+  const infer = async (prompt) => (prompt.startsWith("# COMPACT") ? "SUMMARY" : ++n < 6 ? call(n) : done)
+  const agent = new Agent({ name: "a", report: false, contextChars: 8000 }, { infer, tools: [big] })
+  const stepEvents = []
+  let record = null
+  agent.on("step", (e) => e.calls.length && stepEvents.push(e.thought))
+  agent.on("compact", () => {})
+  agent.on("answer", (e) => (record = e.steps))
+  await agent.ask("go")
+  expect(record.map((s) => s.thought)).toEqual(stepEvents)
+  expect(record.some((s) => s.compacted)).toBe(false)
+  expect(record.map((s) => s.n)).toEqual(stepEvents.map((_, i) => i + 1))
+})
+
+test("a failed run's error event carries its request and steps", async () => {
+  let n = 0
+  const infer = async () => {
+    if (++n > 2) throw new Error("model down")
+    return call(n)
+  }
+  const agent = new Agent({ name: "a", report: false }, { infer, tools: [big] })
+  let failed = null
+  agent.on("error", (e) => (failed = e))
+  await agent.ask("go").catch(() => {})
+  expect(failed).toMatchObject({ error: "model down", request: { text: "go" } })
+  expect(failed.steps.map((s) => s.thought)).toEqual(["step 1", "step 2"])
+})

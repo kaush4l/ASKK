@@ -1,6 +1,6 @@
 // Speech to speech (STS): talk to the lead, hear it work.
 //
-//   mic ─▶ voice detector ─▶ recognizer (ASR) ─▶ lead's inbox
+//   mic ─▶ voice detector ─▶ recognizer (ASR) ─▶ the lead
 //   lead's state ─▶ narrator ─▶ speech queue ─▶ voice (TTS) ─▶ speaker
 //
 // One object per page, a live model the UI subscribes to (subscribe /
@@ -16,8 +16,17 @@
 //   direct  every utterance is a command: hands-free (it ends after
 //           endSilenceMs of silence) or push to talk; louder speech
 //           interrupts the voice (barge-in).
+//   once    (2026-10-23 owner: "a continuous transcription versus a singular
+//           transcription") one command, no wake word: it ends at the same
+//           long pause as a wake command (commandPauseMs), is sent, and the
+//           mic closes.
 // What was heard is dropped when it is only the voice's own echo. "Stop"
-// silences it; "yes" / "no" answer a pending approval.
+// silences it.
+//
+// Listening and speaking are separate (2026-10-23 owner: "The pipeline is also not a default on for both. I might want
+// to speak but watch the output. The user speaking is not an automatic on for talking"): `speak` (off by default) is
+// whether the lead's work is read aloud; the mic is the listen switch. Either runs without the other. The models behind
+// both are the host's (models/stt, models/tts: the voice settings' model panel).
 
 import { detectHost } from "@/backend/live/host"
 import { Microphone } from "@/backend/hardware/speech/microphone"
@@ -36,13 +45,11 @@ const VOICE_NOTE =
   "\n\n(Said by voice on the speech-to-speech page; your answer is read aloud: a few plain spoken sentences, no tables or code unless asked.)"
 
 const STOP = /^(stop|quiet|be quiet|silence|stop talking|shut up|enough)[.!]*$/i
-const YES = /^(yes|yeah|yep|approve|approved|go ahead|do it|ok|okay|sure|confirm)\b/i
-const NO = /^(no|nope|decline|don't|do not|deny|cancel)\b/i
 
 export const NARRATION = [
-  { value: 1, label: "Answers", hint: "the answer, approvals, errors" },
-  { value: 2, label: "Milestones", hint: "+ quests, reports, failed steps" },
-  { value: 3, label: "Every step", hint: "+ each tool and thought (newest only)" },
+  { value: 1, label: "Answers", hint: "the answer, errors" },
+  { value: 2, label: "Milestones", hint: "+ reports, failed steps, waiting" },
+  { value: 3, label: "Every step", hint: "+ each tool call (newest only)" },
 ]
 
 // Where the wake word is in `text`: { before, wake, command } (command null
@@ -66,13 +73,14 @@ const DEFAULTS = {
   voiceName: null,
   rate: 1.05,
   narration: 3,
-  listen: "wake", // "wake" (only what follows the wake word) | "direct"
+  listen: "wake", // "wake" (continuous: only what follows the wake word) | "direct" | "once" (one command, then the mic closes)
   wakeWord: "computer",
   commandPauseMs: LIMITS.speech.commandPauseMs, // wake: the pause that ends a command
   mode: "auto", // direct: "auto" (hands-free) | "push"
   endSilenceMs: LIMITS.speech.endSilenceMs, // direct: the pause that ends an utterance
   bargeIn: true,
-  short: true, // ask the lead for spoken-length answers
+  short: true, // ask the lead for spoken-length answers (only while speak is on)
+  speak: false, // read the lead's work aloud — its own switch, never turned on by listening
   locale: null,
 }
 
@@ -105,7 +113,7 @@ function clipAnswer(text) {
 let turnSeq = 0
 
 // The pause that ends what is being said: a command (wake) or an utterance.
-const pauseOf = (settings) => (settings.listen === "wake" ? settings.commandPauseMs : settings.endSilenceMs)
+const pauseOf = (settings) => (settings.listen === "direct" ? settings.endSilenceMs : settings.commandPauseMs)
 
 // A short rising two-note chime: the wake word was heard.
 let chimeContext = null
@@ -144,7 +152,6 @@ export class SpeechToSpeech {
     transcript: [], // wake mode: the last lines heard [{ id, text, command, at }]
     speaking: null, // { text, sentence, kind, word }
     turns: [],
-    approvals: [],
     lead: null, // { name, status, activity }
     latency: null, // { asr (ms), utterance (s) }
     error: null,
@@ -207,7 +214,7 @@ export class SpeechToSpeech {
     if (host.capabilities?.includes("speech")) {
       try {
         const status = await hostGet("speech/status") // also warms the recognizer
-        mac = { recognize: status.recognize && status.ready, voice: status.voice, error: status.error }
+        mac = { recognize: status.recognize && status.ready, voice: status.voice, error: status.error, stt: status.stt ?? null, tts: status.tts ?? null }
       } catch (error) {
         mac.error = error.message
       }
@@ -228,34 +235,52 @@ export class SpeechToSpeech {
 
   setSettings(patch) {
     const settings = { ...this.#state.settings, ...patch }
+    let saveError = null
     try {
       localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings))
-    } catch {}
-    this.#set({ settings })
+    } catch (error) {
+      saveError = `not saved in this browser (${error?.message ?? error}): back to before after a reload` // 2026-10-23 audit
+    }
+    this.#set({ settings, settingsError: saveError })
     if (this.#mic && settings.asr === "mac") {
-      this.#mic.mode = settings.listen === "wake" ? "auto" : settings.mode
+      this.#mic.mode = settings.listen === "direct" ? settings.mode : "auto"
       this.#mic.endSilenceMs = pauseOf(settings)
     }
     if (this.#recognizer?.pauseMs) this.#recognizer.pauseMs = pauseOf(settings)
     if ("listen" in patch || "wakeWord" in patch) this.#disarmNow()
-    if ("voice" in patch || "voiceName" in patch || "rate" in patch) {
-      this.#voice?.cancel()
-      this.#voice = null
-    }
+    if ("voice" in patch || "voiceName" in patch || "rate" in patch) this.resetVoice()
+    if (patch.speak === false) this.interrupt("muted")
     if (("asr" in patch || "locale" in patch) && this.#state.listening) {
       this.stop()
       this.start()
     }
   }
 
-  // The lead (the desk's default agent) whose inbox gets what is said.
+  // The host's voice model changed (the model panel): the next sentence uses it.
+  resetVoice() {
+    this.#voice?.cancel()
+    this.#voice = null
+  }
+
+  // The host's models changed (the model panel): read what this Mac offers again.
+  async refreshSupport() {
+    if (!this.#state.support?.host) return
+    try {
+      const status = await hostGet("speech/status")
+      this.#set({ support: { ...this.#state.support, mac: { recognize: status.recognize && status.ready, voice: status.voice, error: status.error, stt: status.stt ?? null, tts: status.tts ?? null } } })
+    } catch (error) {
+      this.#set({ support: { ...this.#state.support, mac: { ...this.#state.support.mac, error: error.message } } })
+    }
+  }
+
+  // The lead (the desk's default agent) that gets what is said.
   attach(engine) {
     if (engine === this.#engine) return
     this.#unsubscribe?.()
     this.#engine = engine ?? null
     this.#engineState = engine?.getSnapshot() ?? null
     this.#unsubscribe = engine?.subscribe(() => this.#leadChanged()) ?? null
-    this.#set({ lead: this.#leadSummary(), approvals: this.#engineState?.approvals ?? [] })
+    this.#set({ lead: this.#leadSummary() })
   }
 
   #leadSummary() {
@@ -279,7 +304,7 @@ export class SpeechToSpeech {
         onPartial: (pcm) => mac && this.#partial(pcm),
         onUtterance: (pcm, info) => mac && this.#utterance(pcm, info),
       })
-      this.#mic.mode = mac && settings.listen !== "wake" ? settings.mode : "auto"
+      this.#mic.mode = mac && settings.listen === "direct" ? settings.mode : "auto"
       this.#mic.endSilenceMs = pauseOf(settings)
       try {
         await this.#mic.start()
@@ -287,7 +312,7 @@ export class SpeechToSpeech {
         if (mac) throw error
         this.#mic = null // Safari listens itself; the meter is optional
       }
-      if (mac) this.#recognizer = new MacRecognizer({ locale: settings.locale })
+      if (mac) this.#recognizer = new MacRecognizer() // the host's stt model and its language
       else {
         this.#recognizer = new SafariRecognizer({
           locale: settings.locale,
@@ -304,7 +329,9 @@ export class SpeechToSpeech {
         "system",
         settings.listen === "wake"
           ? `Listening. Say “${settings.wakeWord}”, then your command; a ${(settings.commandPauseMs / 1000).toFixed(1)} s pause sends it.`
-          : mac && settings.mode === "push"
+          : settings.listen === "once"
+            ? `Listening for one command; a ${(settings.commandPauseMs / 1000).toFixed(1)} s pause sends it.`
+            : mac && settings.mode === "push"
             ? "Listening: hold the button (or Space) to talk."
             : "Listening."
       )
@@ -359,7 +386,11 @@ export class SpeechToSpeech {
     try {
       const result = await this.#recognizer?.partial?.(pcm)
       if (result?.text && this.#state.hearing) this.#partialText(result.text)
-    } catch {}
+    } catch (error) {
+      // the live words fail, the final transcript still comes: on the tab's console, once per message
+      if (this.partialWarned !== error?.message) console.warn(`speech: the live transcript failed (${error?.message ?? error})`)
+      this.partialWarned = error?.message
+    }
   }
 
   // Live text of what is being said. Wake mode: find the wake word; once it
@@ -426,15 +457,8 @@ export class SpeechToSpeech {
     }
     if (!this.#wake) return this.#command(text, meta)
 
-    const approval = this.#engineState?.approvals?.[0]
     const continued = this.#carry != null
     const { command } = continued ? { command: text } : splitWake(text, this.#state.settings.wakeWord)
-    // An approval waiting: a bare "yes" / "no" answers it, no wake word needed.
-    if (command == null && approval && (YES.test(text) || NO.test(text)) && words(text).length <= LIMITS.speech.approvalMaxWords) {
-      this.#line(text, true)
-      this.#turn("you", text, meta)
-      return this.approve(approval.id, YES.test(text))
-    }
     this.#line(text, command != null)
     if (command == null) return this.#set({ armed: false, command: "" }) // just talk: shown, never sent
     const full = this.#joinCarry(command)
@@ -459,28 +483,20 @@ export class SpeechToSpeech {
     if (STOP.test(text)) {
       this.#turn("you", text, meta)
       this.interrupt("asked")
-      return
-    }
-    const approval = this.#engineState?.approvals?.[0]
-    if (approval && (YES.test(text) || NO.test(text))) {
-      this.#turn("you", text, meta)
-      this.approve(approval.id, YES.test(text))
+      if (this.#state.settings.listen === "once") this.stop() // one command, even "stop" (audit 19)
       return
     }
     this.send(text, meta)
+    if (this.#state.settings.listen === "once") this.stop() // one command: the mic closes
   }
 
   // Send to the lead (spoken or typed).
   send(text, meta = {}) {
     if (!this.#engine) return this.#fail("No lead to talk to yet.")
     this.#turn("you", text, meta)
-    this.#engine.send(this.#state.settings.short ? `${text}${VOICE_NOTE}` : text)
-  }
-
-  approve(id, ok) {
-    this.#engine?.resolveApproval(id, ok)
-    this.#set({ turns: this.#state.turns.map((t) => (t.approval?.id === id ? { ...t, resolved: ok } : t)) })
-    this.#say(ok ? "Approved." : "Declined.", "system")
+    // a refusal is said (audit 19: it was swallowed and the turn read as sent)
+    const { short, speak } = this.#state.settings
+    this.#engine.send(short && speak ? `${text}${VOICE_NOTE}` : text)?.catch?.((error) => this.#fail(`Not sent to ${this.#engine?.name ?? "the lead"}: ${error.message}`))
   }
 
   // Stop speaking now and forget what was queued.
@@ -504,7 +520,7 @@ export class SpeechToSpeech {
   // Speak a test line (the voice settings).
   preview(text) {
     this.interrupt("preview")
-    this.#say(text, "system")
+    this.#say(text, "system", null, true)
   }
 
   // ── the lead's progress, spoken ──────────────────────────────────────
@@ -515,14 +531,11 @@ export class SpeechToSpeech {
     if (after === before) return
     this.#engineState = after
     const lines = narrate(before, after)
-    this.#set({ lead: this.#leadSummary(), approvals: after?.approvals ?? [] })
+    this.#set({ lead: this.#leadSummary() })
     for (const line of lines) {
       if (line.kind === "answer") {
         this.#turn("answer", line.text)
         this.#say(clipAnswer(line.text), "answer")
-      } else if (line.kind === "approval") {
-        this.#turn("approval", line.text, { approval: line.approval, resolved: null })
-        this.#say(line.text, "approval")
       } else {
         const turn = this.#turn("status", line.text, { level: line.level, status: line.kind, spoken: false })
         if (line.level <= this.#state.settings.narration) this.#say(line.text, line.kind === "error" ? "error" : "status", turn.id)
@@ -532,8 +545,8 @@ export class SpeechToSpeech {
 
   // Queue speech. A status line replaces any status still waiting (only the
   // newest is worth hearing) and is dropped while an answer waits.
-  #say(text, kind, turnId = null) {
-    if (!this.#state.settings.voice || !text) return
+  #say(text, kind, turnId = null, always = false) {
+    if (!this.#state.settings.voice || !text || (!always && !this.#state.settings.speak)) return
     if (kind === "status") {
       if (this.#queue.some((q) => q.kind === "answer")) return
       this.#queue = this.#queue.filter((q) => q.kind !== "status")
@@ -547,7 +560,8 @@ export class SpeechToSpeech {
     const item = this.#queue.shift()
     if (!item) return
     const { settings } = this.#state
-    this.#voice ??= createVoice(settings.voice, { name: settings.voiceName, rate: settings.rate })
+    // the Mac's voice: the host's tts model with its own values (the model panel); the browser's: these settings
+    this.#voice ??= createVoice(settings.voice, settings.voice === "mac" ? {} : { name: settings.voiceName, rate: settings.rate })
     this.#speakingNow = item
     if (this.#mic) this.#mic.guard = true
     this.#recognizer?.pause?.(true)

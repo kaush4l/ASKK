@@ -3,7 +3,7 @@
 // changes an agent.
 //
 //   liveFeed(engines, states) -> events, oldest first:
-//     { id, engineId, agent, name, kind: tool | agent | gate | guidance, type, view, inputs, state: "running" | "done", ok?, output?, from?, at }
+//     { id, engineId, agent, name, kind: tool | agent | gate | guidance | compact | spawn, type, view, inputs, state: "running" | "done", ok?, output?, from?, ms?, at }
 //     a call's id is the same while it runs and once it is done (callId: agent, step row, index in the step)
 //   eventTarget(event) -> what the call touched, in a few words (the feed's rows, the canvas, the thread's rows)
 //   runSteps(state, {limit}) -> one agent's current (else last) run: its newest steps
@@ -50,6 +50,17 @@ export function liveFeed(engines, states) {
         events.push({ ...base, id: message.id, name: "prompt compacted", kind: "compact", view: "compact", inputs: {}, state: "done", ok: true, output: message.content ?? "", at: message.at })
         continue
       }
+      // The desk's own events (2026-10-23: a helper spawned, dismissed, kept or proposed) where the agent that caused it
+      // works: the feed follows the team changing shape, not only its calls.
+      if (message.role === "assistant" && message.action === "lifecycle") {
+        events.push({ ...base, id: message.id, name: message.kind, kind: "spawn", view: "spawn", inputs: message.agent ? { agent: message.agent } : {}, state: "done", ok: true, output: message.content ?? "", at: message.at })
+        continue
+      }
+      // An artifact's refresh before a step failed (the step used its last state) or came back (2026-10-23).
+      if (message.role === "assistant" && message.action === "refresh") {
+        events.push({ ...base, id: message.id, name: `${message.artifact} refresh`, kind: "tool", type: "artifact", view: "artifact", inputs: {}, state: "done", ok: !!message.ok, output: message.content ?? "", at: message.at })
+        continue
+      }
       // Guidance for the run in progress (team call `guide`): the agent's next step reads it.
       if (message.role === "user" && message.kind === "guidance") {
         events.push({ ...base, id: message.id, name: "guidance", kind: "guidance", view: "guidance", inputs: {}, state: "done", ok: true, output: message.content ?? "", from: message.from ?? "owner", at: message.at })
@@ -69,6 +80,7 @@ export function liveFeed(engines, states) {
         ok: message.ok,
         output: message.output ?? message.content ?? "",
         at: message.at,
+        ...(message.ms != null ? { ms: message.ms } : {}), // 2026-10-23: the call's own time (kernel result event)
       })
     }
     // The calls of the step running now, each by its own index in the step (kernel-team.js), never its position
@@ -150,7 +162,7 @@ export function eventTarget(event) {
 
 // One agent's current run (else its last) as steps, oldest first, the newest `limit` of them: each call's result
 // (tool), the step's thought when it had one (think), a refused answer (gate), the owner's guidance, the answer.
-//   → { steps: [{ id, step: tool | think | gate | guidance | answer, name?, kind?, view?, inputs?, ok?, text, from?, at }], hidden }
+//   → { steps: [{ id, step: tool | think | gate | guidance | compact | lifecycle | refresh | answer, name?, kind?, view?, inputs?, ok?, text, from?, at }], hidden }
 export function runSteps(state, { limit = 6 } = {}) {
   const messages = state?.messages ?? []
   const byId = state?.working?.request ? messages.findIndex((m) => m.id === state.working.request) : -1
@@ -164,6 +176,9 @@ export function runSteps(state, { limit = 6 } = {}) {
     else if (m.role === "user" && m.kind === "guidance") steps.push({ ...base, step: "guidance", kind: "guidance", text: String(m.content ?? ""), from: m.from ?? "owner" })
     else if (m.role === "assistant" && m.action === "gate") steps.push({ ...base, step: "gate", kind: "gate", ok: false, text: String(m.content ?? "") })
     else if (m.role === "assistant" && m.action === "compact") steps.push({ ...base, step: "compact", kind: "compact", ok: true, text: String(m.content ?? "") })
+    // 2026-10-23: a helper spawned or let go, an artifact that did not refresh — the run's loop shows them where they fell
+    else if (m.role === "assistant" && m.action === "lifecycle") steps.push({ ...base, step: "lifecycle", kind: "spawn", view: "spawn", ok: true, text: String(m.content ?? "") })
+    else if (m.role === "assistant" && m.action === "refresh") steps.push({ ...base, step: "refresh", kind: "tool", type: "artifact", view: "artifact", ok: !!m.ok, text: String(m.content ?? "") })
     else if (m.role === "assistant" && m.action === "answer") steps.push({ ...base, step: "answer", ok: !m.error, text: String(m.content ?? "") })
     else if (m.role === "assistant" && m.action === "tool") {
       // A step's content is its thought, then one line per call (`name({...})`): only the thought is new here.
@@ -172,4 +187,39 @@ export function runSteps(state, { limit = 6 } = {}) {
     }
   }
   return { steps: steps.slice(-limit), hidden: Math.max(0, steps.length - limit) }
+}
+
+// The artifact a call acted on (2026-10-23 owner: "the live follow showing the state after the tool call"): the
+// artifact whose id heads the call's name (`plan.tick` → plan, `lead.practice.edit` → lead.practice; the longest id
+// wins), else null — a function, an MCP tool, a quest change no artifact.
+export function callArtifactId(event, artifacts) {
+  const name = typeof event?.name === "string" ? event.name : ""
+  if (!name || event.kind === "gate" || event.kind === "guidance" || event.kind === "compact") return null
+  let best = null
+  for (const id of Object.keys(artifacts ?? {})) if ((name === id || name.startsWith(`${id}.`)) && (!best || id.length > best.length)) best = id
+  return best
+}
+
+// The calls on that artifact after this one (oldest first feed): 0 = the artifact's state now is the state this call
+// left; more = later calls changed it since (the view says so, never passes now off as then).
+export function laterCallsOn(events, event, artifacts) {
+  const id = callArtifactId(event, artifacts)
+  if (!id) return 0
+  const at = events.findIndex((e) => e.id === event.id)
+  // a refresh row ("<id> refresh", 2026-10-23 audit 19) changed it too
+  return at < 0 ? 0 : events.slice(at + 1).filter((e) => callArtifactId(e, artifacts) === id || e.name === `${id} refresh`).length
+}
+
+// The call panel's line over the artifact's view: "after this call" only when nothing changed it since — no later call
+// or refresh, and no change this tab saw after the call ended (`changedAt`, ms: the owner's artifact calls, a poll, a
+// restart's reset never make a feed row; audit 19). A change within 3 s of the call's end is the call's own.
+export function afterCallLabel(event, events, artifacts, changedAt = null) {
+  const id = callArtifactId(event, artifacts)
+  if (!id) return null
+  if (event.state !== "done") return `${id} now (the call is running)`
+  const later = laterCallsOn(events, event, artifacts)
+  if (later) return `${id} now — ${later} later call${later === 1 ? "" : "s"} changed it since`
+  const ended = Date.parse(event.at) + (event.ms ?? 0)
+  if (changedAt != null && Number.isFinite(ended) && changedAt > ended + 3000) return `${id} now — changed since, not by a call (the owner, a refresh or a restart)`
+  return `${id} after this call`
 }

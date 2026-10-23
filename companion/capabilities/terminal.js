@@ -66,7 +66,7 @@
 //     desk: the desk's name (default: its folder, <desk>/state); caches: where desks' caches live (~/.askk/caches)
 //   await term.close()   every session stopped, its temp folder removed; later starts refused
 
-import { closeSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs"
+import { closeSync, existsSync, mkdirSync, renameSync, openSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs"
 import { homedir } from "node:os"
 import { basename, dirname, isAbsolute, join, posix, relative, resolve, sep } from "node:path"
 import { HOST_LIMITS, SSE_PING_MS } from "../shared/config.js"
@@ -235,7 +235,7 @@ export function createTerm({ root, state, policy = null, mounts = null, hostPort
   const cache = join(caches, deskName)
 
   // 2026-10-17: what a crashed server left running (a training run on the GPU, a dev server on its port) goes first.
-  const book = groupBook(join(state, "terminal.running.json"))
+  const book = groupBook(join(state, "terminal.running.json"), log)
   const reaped = book.reap()
   if (reaped.length) log(`term: stopped ${reaped.length} program${reaped.length === 1 ? "" : "s"} an earlier server left running: ${reaped.map((r) => `${r.command ?? r.pid} (pid ${r.pid}${r.session ? `, ${r.session}` : ""})`).join(", ")}`)
 
@@ -253,7 +253,65 @@ export function createTerm({ root, state, policy = null, mounts = null, hostPort
   const tmpDir = () => (tmp ??= privateTmp()) // TMPDIR unset: a private folder under /tmp, never /tmp itself
 
   const sessions = new Map() // id -> session
+  // The sessions running now, on disk (terminal-running.json): a hard kill writes no row, so one left at the next start
+  // is recorded as killed (2026-10-23 audit).
+  const runningPath = join(state, "terminal-running.json")
+  try {
+    if (existsSync(runningPath)) {
+      for (const r of JSON.parse(readFileSync(runningPath, "utf8"))) record({ ...r, at: r.at ?? new Date().toISOString(), status: "killed", exit: null, reason: "the server was killed while it ran" })
+      rmSync(runningPath, { force: true })
+    }
+  } catch (error) {
+    const to = `${runningPath}.unreadable-${Date.now()}`
+    try {
+      renameSync(runningPath, to)
+    } catch {}
+    log(`term: the sessions running at the last stop did not read (${error.message}) — kept as ${to}`)
+  }
+  let runningSaveWarned = false
+  const saveRunning = () => {
+    try {
+      const now = [...sessions.values()].filter((s) => s.status === "running" && !s.earlier).map((s) => ({ at: s.startedAt, id: s.id, agent: s.agent, cwd: s.cwd, command: s.command, ms: 0, tail: runTail(s, T.tailLines).join("\n").slice(-T.rowTailChars) }))
+      if (now.length) writeFileSync(runningPath, JSON.stringify(now))
+      else rmSync(runningPath, { force: true })
+    } catch (error) {
+      if (!runningSaveWarned) log(`term: the running sessions were not saved (${error.message}) — a kill would leave no record of them`)
+      runningSaveWarned = true
+    }
+  }
+  // The sessions that finished before this start (2026-10-23 audit: terminal.jsonl kept them, the pane showed none),
+  // read-only under earlier:<id> — never a slot's id, so a new command never lands in one — with their last lines.
+  try {
+    const rows = existsSync(rowsPath) ? readFileSync(rowsPath, "utf8").split("\n").filter(Boolean).slice(-T.keepFinished) : []
+    for (const line of rows) {
+      let r
+      try {
+        r = JSON.parse(line)
+      } catch {
+        log(`term: a line of terminal.jsonl did not read — one earlier session left out`) // the rest still come back
+        continue
+      }
+      const view = new LineView()
+      if (r.tail) view.write(`${r.tail}\n`)
+      const id = `earlier:${r.id}`
+      sessions.set(id, { id, name: `${r.id} (before the restart)`, ...(r.reason ? { reason: r.reason } : {}), agent: r.agent ?? null, slot: null, lease: r.lease ?? null, runs: r.run ?? 1, command: r.command, cwd: r.cwd, status: r.status, exit: r.exit ?? null, startedAt: new Date(Date.parse(r.at) - (r.ms || 0)).toISOString(), endedAt: r.at, urls: new Set(), raw: r.tail ?? "", view, waiters: new Set(), earlier: true })
+    }
+  } catch (error) {
+    log(`term: terminal.jsonl did not read (${error.message}) — the earlier sessions are not listed`)
+  }
   const viewers = new Set() // term/stream: { id | null, send, close }
+  // a session still running when the process ends gets its row too (2026-10-23 audit: it was not back after a restart)
+  const atExit = () => {
+    for (const s of sessions.values()) {
+      if (s.status !== "running" || s.earlier) continue
+      try {
+        record({ at: new Date().toISOString(), id: s.id, agent: s.agent, ...(s.slot ? { slot: s.slot, run: s.runs } : {}), ...(s.lease ? { lease: s.lease } : {}), cwd: s.cwd, command: s.command, status: "stopped", exit: null, reason: "the server stopped", ms: Date.now() - Date.parse(s.startedAt), tail: runTail(s, T.tailLines).join("\n").slice(-T.rowTailChars) })
+      } catch (error) {
+        log(`term: ${s.id}'s row at the stop was not written (${error.message}) — it will not be listed after the restart`)
+      }
+    }
+  }
+  process.on("exit", atExit)
   let count = 0
   let closed = false
   const refuseClosed = () => {
@@ -383,7 +441,9 @@ export function createTerm({ root, state, policy = null, mounts = null, hostPort
     let fd = null
     try {
       fd = openSync(path, prev ? "a" : "w")
-    } catch {}
+    } catch (error) {
+      log(`term: ${id}'s log file did not open (${error.message}) — its output is not kept on disk`)
+    }
     return { path, fd, bytes: prev?.bytes ?? 0, cut: prev?.cut ?? false }
   }
   function writeLog(s, text) {
@@ -395,7 +455,10 @@ export function createTerm({ root, state, policy = null, mounts = null, hostPort
         writeSync(l.fd, `\n[log cut at ${Math.round(T.logBytes / 1048576)} MB; term/read has the latest lines]\n`)
       } else writeSync(l.fd, text)
       l.bytes += text.length
-    } catch {}
+    } catch (error) {
+      l.cut = true // stop trying; said once (2026-10-23 audit: the saved log just ended)
+      log(`term: ${s.id}'s log file stopped taking output (${error.message}) — term/read still has the latest lines`)
+    }
   }
   function closeLog(s) {
     if (s.log?.fd == null) return
@@ -448,7 +511,7 @@ export function createTerm({ root, state, policy = null, mounts = null, hostPort
     pid: s.group?.pid ?? null,
     ...(s.signal ? { signal: s.signal } : {}),
     ...(s.error ? { error: s.error } : {}),
-    ...(s.reason && s.status === "stopped" ? { reason: s.reason } : {}),
+    ...(s.reason && (s.status === "stopped" || s.status === "killed") ? { reason: s.reason } : {}),
     startedAt: s.startedAt,
     endedAt: s.endedAt,
     urls: [...s.urls],
@@ -517,6 +580,7 @@ export function createTerm({ root, state, policy = null, mounts = null, hostPort
     clearTimeout(s.limit)
     s.endedAt = new Date().toISOString()
     closeLog(s)
+    queueMicrotask(saveRunning)
     record({ at: s.endedAt, id: s.id, agent: s.agent, ...(s.slot ? { slot: s.slot, run: s.runs } : {}), ...(s.lease ? { lease: s.lease } : {}), cwd: s.cwd, command: s.command, status: s.status, exit: s.exit, ms: Date.parse(s.endedAt) - Date.parse(s.startedAt), tail: runTail(s, T.tailLines).join("\n").slice(-T.rowTailChars) })
     for (const w of [...s.waiters]) w.check()
     broadcast({ type: "exit", id: s.id, exit: s.exit, status: s.status, ...(s.signal ? { signal: s.signal } : {}) }, s.id)
@@ -625,10 +689,12 @@ export function createTerm({ root, state, policy = null, mounts = null, hostPort
       Object.assign(s, run, { runs: (s.runs ?? 1) + 1, log: openLog(s.id, s.log) })
       sessions.delete(s.id)
       sessions.set(s.id, s)
+      queueMicrotask(saveRunning)
     } else {
       const id = `term-${Date.now().toString(36)}-${++count}`
       s = { id, agent: who, slot: key, runs: 1, ...run, raw: "", view: new LineView(), tty: null, group: null, waiters: new Set(), log: openLog(id) }
       sessions.set(id, s)
+      queueMicrotask(saveRunning) // on disk while it runs (a hard kill leaves it there)
       forget()
     }
     if (prev) broadcast({ type: "run", session: summary(s, 0) }, s.id)
@@ -770,6 +836,7 @@ export function createTerm({ root, state, policy = null, mounts = null, hostPort
 
   // The desk stops (a reload, the server exits): streams end, every session is stopped, the temp folder goes.
   async function close() {
+    process.off("exit", atExit)
     if (closed) return
     closed = true
     for (const v of [...viewers]) v.close()

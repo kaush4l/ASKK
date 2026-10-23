@@ -664,6 +664,31 @@ describe("preview: drill-down (P3) and bound scripts (P4), 2026-10-17", () => {
     expect(preview.state.visuals[0].bind).toMatchObject({ ran: `${filled} --vs`, exit: 0 })
   })
 
+  test("bind: a session status that cannot be read, or a stop that fails, shows on the bind — never ended, never stopped (audit 18)", async () => {
+    const host = fakeHost({ files: { "projects/x/out/v.json": JSON.stringify({ kind: "flow", nodes: ["a"] }), "projects/x/src/m.py": "#" }, onStart: () => ({ status: "running" }) })
+    let now = Date.parse("2026-10-17T14:00:00Z")
+    const preview = new Preview({ clock: () => new Date(now) })
+    const lead = holder("lead", preview, host, {}, { writes: ["projects/x/out/**"], reads: ["projects/x/**"] })
+    const bind = { command: "python -B m.py", cwd: "projects/x", watch: ["projects/x/src/**"], timeout: 10 }
+    await lead.run("show", { id: "v", title: "V", visual: { file: "projects/x/out/v.json" }, bind })
+    const pass = async () => ((preview.filesPulled = 0), await preview.refresh(lead.agent))
+    host.touch("projects/x/src/m.py", 1_700_000_100_000)
+    await pass()
+    expect(preview.state.visuals[0].bind).toMatchObject({ running: true, error: null })
+    const { get, post } = host
+    host.get = async (path, o) => (String(path).startsWith("term/list") ? Promise.reject(new Error("host down")) : get.call(host, path, o))
+    await pass()
+    expect(preview.state.visuals[0].bind).toMatchObject({ running: true, error: "its session's status could not be read: host down" })
+    host.get = get
+    host.post = async (path, body, o) => (path === "term/stop" ? Promise.reject(new Error("no such session")) : post.call(host, path, body, o))
+    now += 11_000
+    await pass()
+    expect(preview.state.visuals[0].bind).toMatchObject({ running: true, error: "timed out after 10 s — the stop failed (no such session); it may still run" })
+    host.post = post
+    await pass()
+    expect(preview.state.visuals[0].bind).toMatchObject({ running: false, error: "timed out after 10 s — stopped" })
+  })
+
   test("bind with params: a file missing for params never run runs its script once; a held lease waits", async () => {
     let host
     host = fakeHost({
@@ -786,7 +811,7 @@ describe("preview: the screenshot goes with the next model call", () => {
     expect((await preview.images(coder.agent)).map((i) => i.ref.n)).toEqual([3]) // the page it acted on has a newer shot
   })
 
-  test("a host that cannot give the image: no images, the step goes on", async () => {
+  test("a host that cannot give the image: images() says why (the agent's step goes on with a refresh row)", async () => {
     const host = fakeHost()
     const preview = new Preview({ clock })
     const coder = holder("coder", preview, host)
@@ -794,7 +819,13 @@ describe("preview: the screenshot goes with the next model call", () => {
     const get = host.get
     host.get = (path, o) => (path.startsWith("browser/image") ? Promise.reject(new Error("HTTP 404")) : get(path, o))
     coder.agent.context.host = host
-    expect(await preview.images(coder.agent)).toEqual([])
+    // 2026-10-23 audit: thrown, not an empty list — Agent.collectImages catches it, the step goes on without the image,
+    // and its refresh row says why
+    await expect(preview.images(coder.agent)).rejects.toThrow("did not load: HTTP 404")
+    const seen = []
+    coder.agent.on("refresh", (e) => seen.push(e))
+    expect(await coder.agent.collectImages()).toEqual([])
+    expect(seen[0]).toMatchObject({ artifact: "preview screenshots", ok: false, error: expect.stringContaining("HTTP 404") })
   })
 
   test("the agent's step: the image goes to infer and its ref to the step event; the next step sends none", async () => {

@@ -2,39 +2,82 @@
 //
 //   narrate(before, after) → [{ kind, level, text, … }]
 //
-// level: 1 = always spoken (the answer, an approval, an error), 2 =
-// milestones (quests out, reports back, a failed step, waiting), 3 =
-// every step (each tool, thinking). The pipeline speaks what its
+// level: 1 = always spoken (the answer, an error), 2 = milestones
+// (reports back, a failed step, waiting), 3 = every step (each tool). The pipeline speaks what its
 // narration setting allows and shows every line.
 
+// 2026-10-23: keyed to the kernel's own tool names (backend/kernel/builtin/*.js); the old fs.* / term.* / quest.* keys
+// named tools no desk has any more. null = a bookkeeping call not worth saying.
 const PHRASES = {
-  "fs.open": "Opening a file",
-  "fs.close": null,
-  "fs.read": "Reading a file",
-  "fs.list": "Looking at a folder",
-  "fs.write": "Writing a file",
-  "fs.edit": "Editing a file",
-  "fs.append": "Adding a note",
-  "fs.delete": "Deleting a file",
-  "term.run": "Running a command",
-  "term.start": "Starting a program",
-  "term.stop": "Stopping a program",
-  "term.ps": null,
-  "term.logs": "Reading a program's output",
+  "files.list": "Looking at a folder",
+  "files.read": "Reading a file",
+  "files.write": "Writing a file",
+  "files.edit": "Editing a file",
+  "files.append": "Adding to a file",
+  "files.search": "Searching the files",
+  "files.focus": null,
+  "terminal.run": "Running a command",
+  "terminal.start": "Starting a program",
+  "terminal.wait": "Waiting on a program",
+  "terminal.read": "Reading a program's output",
+  "terminal.send": "Typing into a program",
+  "terminal.stop": "Stopping a program",
+  "terminal.list": null,
   "web.search": "Searching the web",
   "web.read": "Reading a web page",
-  "schedule.wake": "Booking the next run",
-  "skills.load": "Loading a skill",
-  "skills.unload": null,
-  "checklist.tick": null,
-  "checklist.skip": null,
+  "browse.open": "Opening a web page",
+  "browse.search": "Searching the web",
+  "browse.click": "Following a link",
+  "browse.back": "Going back a page",
+  "browse.more": "Reading further down the page",
+  "browse.find": "Looking for something on the page",
+  "browse.links": "Looking at the page's links",
+  "browse.submit": "Sending a search form",
+  "preview.open": "Opening a page in the preview",
+  "preview.goto": "Going to another page",
+  "preview.click": "Clicking on the page",
+  "preview.type": "Typing on the page",
+  "preview.press": "Pressing a key on the page",
+  "preview.scroll": "Scrolling the page",
+  "preview.text": "Reading the page",
+  "preview.eval": "Checking the page",
+  "preview.console": "Reading the page's console",
+  "preview.shot": "Taking a screenshot",
+  "preview.close": null,
+  "preview.show": "Drawing a picture of it",
+  "preview.focus": null,
+  "preview.drop": null,
+  "preview.answer": "Answering your question on the preview",
+  "dispatch.start": "Handing work to a teammate",
+  "dispatch.wait": "Waiting for the team",
+  "dispatch.read": "Reading a teammate's report",
+  "dispatch.stop": "Stopping a teammate's job",
+  "dispatch.list": null,
+  "plan.write": "Writing the plan",
+  "plan.tick": null,
+  "plan.skip": null,
+  "talk.say": "Telling you something",
+  "talk.ask": "Asking you a question",
+  "talk.drop": null,
   "agent.spawn": "Creating a helper agent",
-  "agent.task": "Giving a helper more work",
-  "agent.keep": "Keeping a helper on the team",
-  "agent.kill": "Ending a helper",
-  "quest.steer": "Steering a teammate",
-  "quest.recall": "Calling a quest back",
-  "telegram.send_message": "Sending you a Telegram message",
+  "agent.dismiss": "Ending a helper",
+  "agent.catalog": "Looking at what helpers can do",
+  "agent.update": "Changing a helper",
+  "desk.list": "Looking at the desks",
+  "desk.create": "Setting up a desk",
+  "desk.check": "Checking a desk",
+  "desk.load": "Loading a desk",
+  "desk.ask": "Asking another desk",
+  "desk.read": "Reading another desk's files",
+  "desk.propose": "Proposing a new tool",
+}
+
+// Tools named after the agent that holds them (`<agent>.practice.tick`): matched by what follows the agent's name.
+const SUFFIXES = {
+  "practice.tick": null,
+  "practice.skip": null,
+  "practice.edit": "Updating its standing orders",
+  "practice.reflect": "Looking back on the run",
 }
 
 const words = (name) => name.replace(/^get_?/, "").replace(/([a-z])([A-Z])/g, "$1 $2").replace(/[_.]+/g, " ").toLowerCase().trim()
@@ -43,6 +86,8 @@ const words = (name) => name.replace(/^get_?/, "").replace(/([a-z])([A-Z])/g, "$
 function toolPhrase(name) {
   if (!name) return "Working"
   if (name in PHRASES) return PHRASES[name]
+  const suffix = Object.keys(SUFFIXES).find((k) => name.endsWith(`.${k}`))
+  if (suffix) return SUFFIXES[suffix]
   const [server, ...rest] = name.split(".")
   if (!rest.length) return `Asking ${name}`
   const tool = rest.join(".")
@@ -53,8 +98,6 @@ const list = (names) => (names.length <= 1 ? (names[0] ?? "") : `${names.slice(0
 
 function activityLine(activity) {
   switch (activity?.phase) {
-    case "llm":
-      return activity.stage === "thinking" ? { text: "Thinking" } : null
     case "tool": {
       const text = toolPhrase(activity.name)
       return text ? { text, tool: activity.name } : null
@@ -64,53 +107,41 @@ function activityLine(activity) {
       if (!shown.length) return null
       return { text: shown.length === 1 ? shown[0] : `${shown.length} things at once: ${list(shown.map((s) => s.toLowerCase()))}` }
     }
-    case "agent":
-      return { text: `Asking ${activity.name}` }
-    case "summarizing":
-      return { text: "Tidying up my memory" }
-    case "compacting":
-      return { text: "Compacting a file" }
     default:
       return null
   }
 }
 
-function describeApproval(approval) {
-  const tool = approval.tool ?? approval.name ?? "a tool"
-  const path = approval.inputs?.path
-  const phrase = toolPhrase(tool) ?? tool
-  return `${phrase.charAt(0).toLowerCase()}${phrase.slice(1)}${path ? `: ${path}` : ""}`
-}
-
 export function narrate(before, after) {
   if (!after) return []
+  // 2026-10-23: the tab's empty state (backend/live/agent.js EMPTY_STATE, status "created": nothing from the server yet)
+  // is no baseline — the first snapshot carries the whole restored history, and every old answer would be spoken
+  // again. That snapshot becomes what was there; only what changes after it is said.
+  if (!before || before.status === "created") return []
   const out = []
-  const was = before ?? {}
+  const was = before
 
   // Messages that became an answer, a failed step or a report since. A
   // streamed reply exists before it is final, so compare each message with
   // its own earlier version, not only new ids.
   const earlier = new Map((was.messages ?? []).map((m) => [m.id, m]))
+  const spokenErrors = new Set()
   for (const m of after.messages ?? []) {
     const old = earlier.get(m.id)
-    if (old === m || m.restored) continue
+    if (old === m) continue
     if (m.role === "assistant" && m.action === "answer" && m.content && old?.action !== "answer") {
-      out.push({ kind: "answer", level: 1, text: m.content, id: m.id })
-    } else if (m.role === "tool" && m.ok === false && !m.skipped && old?.ok !== false) {
+      // 2026-10-23: a failed run's answer row ("Error: …", with `error`) comes in the same patch as the state's `error`
+      // (companion/team/kernel-team.js) — said once, as the error.
+      if (m.error) {
+        spokenErrors.add(m.error)
+        out.push({ kind: "error", level: 1, text: `Something went wrong: ${m.error}`, id: m.id })
+      } else out.push({ kind: "answer", level: 1, text: m.content, id: m.id })
+    } else if (m.role === "tool" && m.kind === "agent") {
+      // A quest's result is its member's report (backend/live/team-rows.js rows.result: kind "agent", name = the member).
+      if (m.ok === false && old?.ok !== false) out.push({ kind: "failed", level: 2, text: `${m.name} could not finish`, from: m.name })
+      else if (m.ok !== false && !old) out.push({ kind: "report", level: 2, text: `${m.name} reported back`, from: m.name })
+    } else if (m.role === "tool" && m.ok === false && old?.ok !== false) {
       out.push({ kind: "failed", level: 2, text: `That step failed: ${toolPhrase(m.name) ?? m.name}`, tool: m.name })
-    } else if (m.role === "user" && m.reports?.length && !old) out.push({ kind: "report", level: 2, text: `${m.from} reported back`, from: m.from })
-  }
-
-  // Quests handed out.
-  const open = new Set((was.quests ?? []).map((q) => q.id))
-  const sent = (after.quests ?? []).filter((q) => !open.has(q.id))
-  if (sent.length) out.push({ kind: "quest", level: 2, text: `Asked ${list([...new Set(sent.map((q) => q.to))])}` })
-
-  // Approvals waiting.
-  const asked = new Set((was.approvals ?? []).map((a) => a.id))
-  for (const approval of after.approvals ?? []) {
-    if (!asked.has(approval.id)) {
-      out.push({ kind: "approval", level: 1, text: `I need your approval for ${describeApproval(approval)}. Say yes or no.`, approval })
     }
   }
 
@@ -126,6 +157,6 @@ export function narrate(before, after) {
 
   // Started; failed.
   if (after.status === "running" && was.status && was.status !== "running") out.unshift({ kind: "start", level: 3, text: "On it" })
-  if (after.error && after.error !== was.error) out.push({ kind: "error", level: 1, text: `Something went wrong: ${after.error}` })
+  if (after.error && after.error !== was.error && !spokenErrors.has(after.error)) out.push({ kind: "error", level: 1, text: `Something went wrong: ${after.error}` })
   return out
 }

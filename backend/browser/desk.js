@@ -59,8 +59,9 @@ export function storePractice(store, agent) {
     seed: () => null,
     retro: (entry) => {
       const all = `${store.get(`retros:${agent.name}`, "")}${entry}\n`
-      store.set(`retros:${agent.name}`, all.slice(-RETRO_CHARS))
+      if (!store.set(`retros:${agent.name}`, all.slice(-RETRO_CHARS))) throw new Error("this browser's storage refused it (full, or site data blocked)") // Practice says it
     },
+    retros: () => store.get(`retros:${agent.name}`, null),
   }
 }
 

@@ -179,7 +179,7 @@ describe("close()", () => {
     await other.close()
     for (const s of [a, b]) expect(() => process.kill(s.pid, 0)).toThrow()
     const listed = await other.handle(request("term/list")).then((r) => r.json())
-    expect(listed.sessions.map((s) => s.status)).toEqual(["stopped", "stopped"])
+    expect(listed.sessions.filter((s) => !s.id.startsWith("earlier:")).map((s) => s.status)).toEqual(["stopped", "stopped"]) // earlier: what the folder kept from before
     const pages = await other.handle(request("browser/list")).then((r) => r.json())
     expect(pages.pages.find((p) => p.id === page.id)).toMatchObject({ status: "closed", reason: "the desk stopped" })
   })

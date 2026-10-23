@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { BRIDGE_NAMES, bridgeCall, hostCaller, plan, serve } from "./market-bridge.js"
+import { BRIDGE_NAMES, bridgeCall, dataCall, dataTools, hostCaller, hostTools, plan, serve } from "./market-bridge.js"
 
 const now = new Date("2026-10-22T14:00:00Z")
 
@@ -77,4 +77,29 @@ describe("order tools (--orders <account>)", () => {
     expect(plan("portfolio", {}, new Date(), { account: "9" })[0]).toEqual({ tool: "get_portfolio", arguments: { account_number: "9" } })
     expect(plan("cancel_option_order", { order_id: "ord-12345678" }, new Date(), { account: "9" })[0].tool).toBe("cancel_option_order")
   })
+})
+
+test("data: only servers that declare research: true are listed, as <server>__<tool>; calls go to mcp/call as that server", async () => {
+  const servers = [
+    { name: "robinhood", ok: true, tools: [{ name: "place_option_order" }] },
+    { name: "openalice", ok: true, research: true, title: "OpenAlice", tools: [{ name: "economyFredSeries", description: "FRED", inputSchema: { type: "object", properties: { symbol: { type: "string" } } } }, { name: "bad name!" }] },
+    { name: "down", ok: false, research: true, tools: [{ name: "x" }] },
+  ]
+  const tools = dataTools(servers)
+  expect(tools.map((t) => t.name)).toEqual(["openalice__economyFredSeries"])
+  const calls = []
+  const data = { list: async () => tools, call: async (c) => (calls.push(c), "[{\"DGS10\":5.13}]") }
+  expect((await dataCall("openalice__economyFredSeries", { symbol: "DGS10" }, data)).content[0].text).toContain("5.13")
+  expect(calls).toEqual([{ server: "openalice", tool: "economyFredSeries", arguments: { symbol: "DGS10" } }])
+  const refused = await dataCall("robinhood__place_option_order", {}, data)
+  expect(refused.isError).toBe(true)
+  expect(calls.length).toBe(1)
+})
+
+test("data: the host listing is read as the desk", async () => {
+  let seen = null
+  const list = hostTools({ port: 1111, desk: "trade-card", fetch: async (url, init) => ((seen = { url, init }), new Response(JSON.stringify({ servers: [{ name: "openalice" }] }))) })
+  expect(await list()).toEqual([{ name: "openalice" }])
+  expect(seen.url).toBe("http://localhost:1111/__askk/mcp/tools")
+  expect(seen.init.headers["x-askk-desk"]).toBe("trade-card")
 })

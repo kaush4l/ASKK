@@ -21,13 +21,18 @@ export function startBrowserDesk({ store = browserStore() } = {}) {
   running = (async () => {
     const connection = readConnection(store)
     if (!connection) return null
-    const { desk } = buildBrowserDesk({ store, connection })
+    // the kernel's lines (context.log) reach this tab's desk log once the team is up (2026-10-23 audit: they vanished)
+    let teamLog = null
+    const { desk } = buildBrowserDesk({ store, connection, log: (line) => (teamLog ? teamLog(line) : console.warn(line)) })
     const team = await createBrowserTeam({ desk, store, title: `This browser · ${connection.model}` })
+    teamLog = team.log
     if (mine !== generation) {
       team.terminate()
       return null
     }
     setLocalTeam(team)
+    // a tab hidden or closed writes what waits on a debounce (2026-10-23 audit)
+    globalThis.addEventListener?.("pagehide", () => team.flush?.())
     return team
   })().catch((error) => {
     if (mine === generation) running = null

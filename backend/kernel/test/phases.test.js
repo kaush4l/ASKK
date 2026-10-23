@@ -42,7 +42,7 @@ describe("phases file", () => {
   })
 
   test("refuses a bad id, a missing agent, an unknown key and no phases", () => {
-    expect(() => parsePhasesFile("## Bad\nagent: a\nx")).toThrow("id must match")
+    expect(() => parsePhasesFile("## Bad\nagent: a\nx")).toThrow("a phase heading is")
     expect(() => parsePhasesFile("## a\nreport: x\n\ngo")).toThrow("needs agent")
     expect(() => parsePhasesFile("## a\nagent: a\ncolour: red\n\ngo")).toThrow("unknown keys colour")
     expect(() => parsePhasesFile("no phases")).toThrow("no phases")
@@ -93,6 +93,12 @@ describe("phase runs", () => {
     expect(seen.scout[0].prompt).toContain("Find what is known about tides")
     expect(scout.tools.has("probe")).toBe(false)
     expect(seen.writer[0].prompt).toContain("findings: high tide 6am")
+    // the viewer: a phase's agent, turns and reads live on its row; its variables recorded, {{request}} once
+    expect(wf.state.stages[0]).toMatchObject({ agent: "scout", tools: 1 })
+    expect(wf.state.stages[0].turns).toBeGreaterThanOrEqual(3)
+    const vars = wf.ownerCall("stage", [{ stage: "plan" }]).vars
+    expect(vars.filter((v) => /request/.test(v.name))).toHaveLength(1)
+    expect(vars.map((v) => v.kind)).toContain("document")
   })
 
   test("a phase whose agent runs the flow is refused, not deadlocked", async () => {

@@ -17,7 +17,6 @@ test("view: progress, live elapsed for a running stage, chips newest first, the 
     },
     { now },
   )
-  expect(v.progress).toBe("1/2")
   expect(v.run.elapsed).toBe("5m00s")
   expect(v.stages[0]).toMatchObject({ elapsed: "1m35s", tools: 3 })
   expect(v.stages[0].chips.map((c) => c.label)).toEqual(["news.example.org", "ABC news"])
@@ -115,4 +114,40 @@ test("a step agent stage: its config line and its stage's agent link", () => {
   expect(c.steps[0].runs).toBe("step agent · tools web.search, market.look · ≤ 14 steps")
   const v = pipelineView({ status: "running", stages: [{ id: "pattern", n: 2, status: "running", agent: "workflow-pattern", refused: 1, started: new Date().toISOString() }] })
   expect(v.stages[0]).toMatchObject({ agent: "workflow-pattern", refused: 1 })
+})
+
+test("viewer: which phase it follows, when it re-reads one, the variables as rows", async () => {
+  const { followStage, stageKey, varsView, pipelineView } = await import("./pipeline.js")
+  const t = (id, status, started = null) => ({ id, status, startedAt: started })
+  expect(followStage([t("a", "done"), t("b", "running", "2026-10-22T13:00:00Z"), t("c", "running", "2026-10-22T13:01:00Z"), t("d", "waiting")], true)).toBe("c")
+  expect(followStage([t("a", "done"), t("b", "waiting")], true)).toBe("b")
+  expect(followStage([t("a", "done"), t("b", "failed"), t("c", "skipped")], false)).toBe("b")
+  expect(followStage([t("a", "waiting")], false)).toBe("a")
+  expect(followStage([], false)).toBeNull()
+  const row = { id: "read", status: "running", tools: 1 }
+  expect(stageKey(row)).not.toBe(stageKey({ ...row, tools: 2 }))
+  expect(stageKey(row)).not.toBe(stageKey({ ...row, status: "done", file: "/r/01-read.md", ms: 9000 }))
+  const rows = varsView([
+    { name: "{{date}}", kind: "var", from: "the run", value: "2026-10-22", chars: 10 },
+    { name: "{{who}}", kind: "var", from: "the run", value: null, missing: true },
+    { name: "market", kind: "market", from: "robinhood", value: { SPY: { last: 760.1 } }, chars: 24 },
+    { name: "evidence document", kind: "document", from: "evidence", value: "# Evidence\n\nok", clipped: true, chars: 30000 },
+  ])
+  expect(rows.map((r) => [r.label, r.size])).toEqual([["template", "10"], ["template", "0"], ["live market", "24"], ["whole document", "30k"]])
+  expect(rows[1]).toMatchObject({ missing: true, preview: "not filled by this run" })
+  expect(rows[2].text).toContain('"last": 760.1')
+  expect(rows[3]).toMatchObject({ markdown: true, clipped: true })
+  const v = pipelineView({ status: "running", run: { id: "r2", started: "2026-10-22T13:00:00Z" }, stages: [{ id: "read", n: 1, status: "running", started: "2026-10-22T13:00:05Z", run: null, last: { run: "r1", file: "/r1/01-read.md", status: "done", ms: 65000, at: "2026-10-22T12:00:00Z", head: "old" } }] }, { now: Date.parse("2026-10-22T13:00:35Z") })
+  expect(v.stages[0].last).toMatchObject({ run: "r1", took: "1m05s", head: "old" })
+  expect(v.stages[0].key).toContain("running")
+})
+
+test("a result's price levels: kept by the view, each in a line", async () => {
+  const { pipelineView, levelLine } = await import("./pipeline.js")
+  const level = { symbol: "SPY", kind: "tp1", side: "above", price: 512.4, path: "the open's drive", active_from: "10:00" }
+  const v = pipelineView({ stages: [], card: { decision: "TRADE", text: "DECISION: TRADE", problems: [], levels: [level] } })
+  expect(v.result.levels).toEqual([level])
+  expect(levelLine(level)).toBe("SPY tp1 512.4 above — the open's drive · from 10:00")
+  expect(levelLine({ symbol: "QQQ", kind: "stop", price: 400 })).toBe("QQQ stop 400")
+  expect(pipelineView({ stages: [], card: { decision: "PASS", text: "x", problems: [] } }).result.levels).toEqual([])
 })

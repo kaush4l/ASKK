@@ -1,7 +1,7 @@
 // Speech recognizers (ASR): speech → text.
 //
-//   mac     — the host's on-device recognizer (Apple SpeechAnalyzer, host
-//             capability `speech`): the page's own mic (microphone.js) cuts
+//   mac     — the host's recognizer (the stt model chosen in the models folder: Apple SpeechAnalyzer by default,
+//             Parakeet, Whisper, Qwen3-ASR … — host capability `speech`): the page's own mic (microphone.js) cuts
 //             utterances, each goes to POST speech/transcribe as PCM. Any
 //             browser; live text by re-reading the audio so far.
 //   safari  — WebKit's SpeechRecognition (Apple dictation, lib/speech.js),
@@ -46,19 +46,24 @@ export class MacRecognizer {
   id = "mac"
   #partial = null
 
-  constructor({ locale = "en-US" } = {}) {
+  // locale: null = the host's stt model decides (its language option in models/stt/<name>/model.md)
+  constructor({ locale = null } = {}) {
     this.locale = locale
   }
 
-  // Full text of one utterance: { text, seconds, ms }.
+  #body(pcm) {
+    return { audio: pcmToBase64(pcm), ...(this.locale ? { locale: this.locale } : {}) }
+  }
+
+  // Full text of one utterance: { text, seconds, ms, model }.
   final(pcm) {
-    return hostPost("speech/transcribe", { audio: pcmToBase64(pcm), locale: this.locale })
+    return hostPost("speech/transcribe", this.#body(pcm))
   }
 
   // Text of the audio so far, or null when one is still running.
   async partial(pcm) {
     if (this.#partial) return null
-    this.#partial = hostPost("speech/transcribe", { audio: pcmToBase64(pcm), locale: this.locale })
+    this.#partial = hostPost("speech/transcribe", this.#body(pcm))
     try {
       return await this.#partial
     } finally {

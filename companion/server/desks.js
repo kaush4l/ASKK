@@ -44,6 +44,8 @@ export async function hostDesks({ folders, port, defaultDesk = null, readOnly = 
     const deskLog = (line) => log(`${desk.name}: ${line}`)
     if (desk.integrations?.length && !listen) deskLog(`integrations ${desk.integrations.join(", ")}: not listened here, another desk names them too`)
     const team = await createKernelTeam({ desk, port, log: deskLog })
+    // said in the desk's own log too, not the server's alone (2026-10-23 audit)
+    if (desk.integrations?.length && !listen) team.log(`desk: integrations ${desk.integrations.join(", ")}: not listened here, another desk names them too`)
     try {
       mkdirSync(desk.workspace, { recursive: true }) // a desk an agent just wrote may have no data/ yet
       // hostPorts: every hosted desk's own port too (it runs alone there), never reached by a desk's terminal programs
@@ -169,7 +171,7 @@ export async function hostDesks({ folders, port, defaultDesk = null, readOnly = 
     reloading.add(old)
     previous.telegram?.stop()
     previous.team.terminate()
-    Promise.resolve(previous.api.close?.()).catch((error) => log(`${old}: desk: closing the previous version: ${error.message}`)) // its sessions end in the background
+    Promise.resolve(previous.api.close?.()).catch((error) => (log(`${old}: desk: closing the previous version: ${error.message}`), hosted.get(old)?.team?.log?.(`desk: closing the previous version: ${error.message}`))) // its sessions end in the background
     forgetModules(folder) // main.js, its agents' and tools' modules (under the real folder only): imported fresh
     forgetDesk(folder)
     forgetDesk(previous.desk.folder) // hosted at start by the path it was given
@@ -269,7 +271,7 @@ export async function hostDesks({ folders, port, defaultDesk = null, readOnly = 
         const update = body?.update === true
         const made = await scaffoldDesk({ root: deskRoot, name: body?.name, spec: body?.spec, update, by, hold: outside ? { from: outside } : null })
         if (made.held) tell(`desks: ${by} proposed ${update ? "an update of " : ""}desk ${body.name} from a run that read outside (${made.held.from}) — held for the owner's accept on the home page, nothing written`)
-        else log(`desks: ${by} ${update ? "updated" : "created"} desk ${body.name} (${made.written.length} files)`)
+        else tell(`desks: ${by} ${update ? "updated" : "created"} desk ${body.name} (${made.written.length} files)`)
         return { name: body.name, folder: `custom/${body.name}`, written: made.written, check: made.check, hosted: hosted.has(body.name), ...(made.held ? { held: made.held } : {}) }
       })
     }
@@ -379,11 +381,18 @@ export async function hostDesks({ folders, port, defaultDesk = null, readOnly = 
   // A desk's Telegram (companion/team/kernel-telegram.js): the owner's own messages → its lead, answers back, with
   // no tab open; every run gets a live status message, edited in place. Its lines go to the desk's log, so the
   // Live page's desk log shows them. Runs not started from Telegram report there when the lead answers.
+  // 2026-10-23 owner ("I liked the live preview of the run in telegram … I want to make that live preview for every
+  // desk"): every hosted desk with the bot configured posts its runs' live status and reports in its own topic; only the
+  // desk that listens takes the owner's messages. A desk's main.js `telegram: false` keeps it quiet.
   let telegramOn = false
+  const listener = () => [...hosted].find(([, e]) => e.api.integrations?.listening.includes("telegram"))?.[0] ?? null
   function bridge(name, entry) {
-    if (!entry.api.integrations?.listening.includes("telegram")) return
+    const integrations = entry.api.integrations
+    const bot = integrations?.get?.("telegram")
+    if (!bot || bot.error || entry.desk.telegram === false || entry.telegram) return
+    const inbound = !!integrations.listening?.includes("telegram")
     const deskLog = (line) => entry.team.log(String(line).startsWith("telegram:") ? line : `telegram: ${line}`)
-    startKernelTelegram({ team: entry.team, integrations: entry.api.integrations, stateDir: entry.desk.state, desk: name, owner: ownerIdFrom(process.env), log: deskLog })
+    startKernelTelegram({ team: entry.team, integrations, stateDir: entry.desk.state, desk: name, owner: ownerIdFrom(process.env), log: deskLog, inbound, via: inbound ? null : listener() })
       .then((telegram) => {
         entry.telegram = telegram
         entry.team.onLeadAnswer((run) => {

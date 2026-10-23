@@ -1,6 +1,6 @@
 "use client"
 
-import { HandIcon, Volume2Icon } from "lucide-react"
+import { Volume2Icon } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
@@ -33,15 +33,6 @@ export function Turn({ turn }) {
       </div>
     )
   }
-  if (turn.kind === "approval") {
-    return (
-      <div className="flex items-start gap-2 rounded-lg border border-amber-500/50 px-3 py-2 text-sm">
-        <HandIcon className="mt-0.5 size-4 shrink-0 text-amber-500" />
-        <span className="min-w-0 flex-1 break-words">{turn.text}</span>
-        <span className="text-xs text-muted-foreground">{turn.resolved == null ? "waiting" : turn.resolved ? "approved" : "declined"}</span>
-      </div>
-    )
-  }
   const quiet = turn.kind === "system" || turn.level === 3
   return (
     <div
@@ -55,7 +46,7 @@ export function Turn({ turn }) {
           "size-1.5 shrink-0 rounded-full",
           turn.kind === "error"
             ? "bg-destructive"
-            : turn.status === "quest" || turn.status === "report"
+            : turn.status === "report"
               ? "bg-amber-500"
               : "bg-muted-foreground/60",
         )}

@@ -51,7 +51,7 @@ function slim(m) {
 const slimState = (s = {}) => ({ status: s.status, activity: s.activity, error: s.error ?? null, working: s.working ?? null, messages: (s.messages ?? []).map(slim) })
 
 // The team's stream as one view { lead, registry, states, kernel }, updated in place; onEvent(e) after each.
-export function mirrorTeam(team, signal, onEvent) {
+export function mirrorTeam(team, signal, onEvent, log = () => {}) {
   const view = { lead: null, registry: null, states: {}, kernel: { tree: null, artifacts: {} } }
   const kept = (a) => a?.id && !HIDDEN.has(a.kind)
   const keep = (artifacts = {}) => Object.fromEntries(Object.entries(artifacts).filter(([, a]) => kept(a)))
@@ -104,7 +104,10 @@ export function mirrorTeam(team, signal, onEvent) {
         }
       }
     }
-  })().catch(() => {})
+  })().catch((error) => {
+    // the live status message stops following: said, not silent (2026-10-23 audit)
+    if (!signal.aborted) log(`telegram: the live status stopped following the desk (${error?.message ?? error})`)
+  })
   return { view, done }
 }
 
@@ -132,7 +135,7 @@ export function startLiveStatus({
   const logged = new Set()
   const logOnce = (key, line) => logged.has(key) || (logged.add(key), log(line))
 
-  const { view, done } = mirrorTeam(team, controller.signal, onEvent)
+  const { view, done } = mirrorTeam(team, controller.signal, onEvent, log)
   let seen
   const ready = new Promise((resolve) => (seen = resolve))
   done.finally(() => seen())

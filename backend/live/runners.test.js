@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { parsePlot, runnerCall, runnerCharts, runnerGate, runnerRows, runnerStatus, startRunner, windowText } from "./runners.js"
+import { parsePlot, runnerCall, runnerCharts, runnerForm, runnerGate, runnerRows, runnerStatus, specLine, startRunner, windowText } from "./runners.js"
 
 test("the chart: price-scale plots over the price, the others in the lower panel, fire marks placed", () => {
   const chart = { t: ["10:30", "10:35", "10:40", "10:45"], c: [100, 101, 102, 101.5], plots: { ema: [null, 100.5, 101.2, 101.4], rsi: [50, 60, 72, 65] }, marks: [2] }
@@ -98,4 +98,37 @@ test("a kernel runner: the check line, error, paused and waiting words", () => {
   expect(runnerStatus({ ...base, status: "paused", paused_why: "CPI" })).toMatchObject({ word: "paused", detail: "CPI" })
   expect(runnerStatus({ ...base, last: { ...base.last, waiting: "after qqq-bounce fires" } })).toMatchObject({ word: "waiting", detail: "after qqq-bounce fires" })
   expect(runnerStatus({ ...base, last: { value: null, cond: null, note: "outside 10:00–14:30 ET" } })).toMatchObject({ word: "resting", detail: "outside 10:00–14:30 ET" })
+})
+
+test("the card's spec line has only the parts a runner has; the form only where the artifact takes start or test", () => {
+  expect(specLine({ symbol: "SPY", interval: 5, source: "robinhood", every: "bar" })).toBe("SPY · 5m · robinhood · each bar")
+  expect(specLine({ every: 1 })).toBe("every 1m") // a kernel runner: no symbol, interval or source
+  expect(specLine({})).toBe("")
+  expect(runnerForm({ runners: [] })).toBeNull() // the kernel's Runners say nothing: pause … remove only
+  expect(runnerForm({ can: { start: true } })).toEqual({ start: true, test: false })
+  expect(runnerForm({ can: { start: false, test: false } })).toBeNull()
+})
+
+test("a kernel runner (it counts checks) moving away: negative pace; its eta in checks (2026-10-23)", () => {
+  const k = { id: "k", status: "running", checks: 4 }
+  expect(runnerStatus({ ...k, last: { cond: false, prox: { gap: 3, pace: -0.5, eta: null } } }).detail).toBe("3 to go · moving away")
+  expect(runnerStatus({ ...k, last: { cond: false, prox: { gap: 3, pace: 1, eta: 3 } } }).detail).toBe("3 to go · ≈3 checks")
+})
+
+import { endsText, fireLine } from "./runners.js"
+
+test("a kernel runner's end and its fires' values; absent parts say nothing (2026-10-23)", () => {
+  const now = new Date("2026-10-23T14:00:00Z") // 10:00 ET
+  expect(endsText({ ends_at: "2026-10-23T19:55:00Z" }, now)).toBe("until 15:55 ET")
+  expect(endsText({ ends_at: "2026-10-24T19:55:00Z" }, now)).toBe("until 15:55 ET on 10-24")
+  expect(endsText({ ends_at: "2026-10-23T19:55:00Z", until: "15:55" }, now)).toBe("") // the window line says it
+  expect(endsText({}, now)).toBe("")
+  expect(fireLine({ at: "2026-10-23T14:41:00Z", kind: "fire", price: 771.4, value: 772.5 })).toBe("fired 10:41 @771.40 · value 772.50")
+  expect(fireLine({ at: "2026-10-23T14:41:00Z", kind: "fire", price: null, value: 3 })).toBe("fired 10:41 · value 3.000")
+  expect(fireLine({ at: "2026-10-23T14:41:00Z", kind: "warn", price: 12.5 })).toBe("heads-up 10:41 @12.50")
+  // a kernel runner has none of a desk's fields: the spec line and the window line are empty
+  const k = { id: "k", when: "x > 1", checks: 2, status: "running", last: null, fires: [] }
+  expect(specLine(k)).toBe("")
+  expect(windowText(k)).toBe("")
+  expect(runnerGate(k)).toBeNull()
 })

@@ -32,7 +32,9 @@ export function spawnedLine(agent, { now = Date.now() } = {}) {
   const name = agent?.name ?? agent?.agent?.name
   const what = !s.team ? "helper" : s.team === name ? "team" : `member of ${s.team}`
   const waits = s.proposed ? (s.proposed.update ? "update waits for you" : "keep desk waits for you") : null
-  return [what, `spawned by ${s.by}`, goal, `keep ${s.keep === "desk" ? "desk" : "run"}`, when(s.at, now), waits].filter(Boolean).join(" · ")
+  // managed: a workflow's step agent — it outlives its caller's run, dismissed when the workflow runs next (2026-10-23)
+  const keep = s.managed ? "workflow step · until the next run" : `keep ${s.keep === "desk" ? "desk" : "run"}`
+  return [what, `spawned by ${s.by}`, goal, keep, when(s.at, now), waits].filter(Boolean).join(" · ")
 }
 
 // What waits on a helper for the owner's accept, as its view draws it, or null:

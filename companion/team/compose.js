@@ -30,7 +30,7 @@
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from "node:fs"
 import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path"
 
-import { Artifact, buildDesk, builtinKit, Checklist, complete, defineTool, parsePhasesFile, parseWorkflowFiles, SPAWN_NAME, Tool } from "../../backend/kernel/index.js"
+import { Artifact, buildDesk, builtinKit, Checklist, complete, defineTool, parseWorkflowFiles, parseWorkflowMarkdown, SPAWN_NAME, Tool } from "../../backend/kernel/index.js"
 import { API_PREFIX, DESK_HEADER } from "../shared/config.js"
 import { AGENT_FILE_NAMES, agentFile, deskLead } from "./layout.js"
 
@@ -214,7 +214,7 @@ const LOCAL = new Set(["claude-cli", "codex-cli", "gemini-cli", "apple"])
 
 // infer(prompt, agent): the agent's model from its own catalogue (a mounted desk's agents carry theirs as
 // config.models), else `models`, else `fallback`. Local providers go through the host (hostClient: the one path).
-export function llmInfer({ models, fallback, port, desk, onUsage }) {
+export function llmInfer({ models, fallback, port, desk, onUsage, log = null }) {
   const host = hostClient({ port, desk })
   // options.images (2026-10-18: the preview's screenshots, Agent.collectImages): on the local wire as OpenAI image_url
   // parts (data: URLs only), else to the kernel's complete.
@@ -231,7 +231,12 @@ export function llmInfer({ models, fallback, port, desk, onUsage }) {
         throw new Error(`${model.id}: ${error.message}`)
       })
       raw = out?.choices?.[0]?.message?.content ?? ""
-    } else raw = (await complete({ model, prompt, images })).raw
+    } else {
+      const out = await complete({ model, prompt, images })
+      raw = out.raw
+      // its own backup model answered (llm.js): a desk log line, not only the console (2026-10-23 audit)
+      if (out.fellBack) log?.(`model: ${agent.name}: ${model.key ?? model.id} failed (${String(out.fellBack).slice(0, 120)}) — ${out.model} answered`)
+    }
     onUsage?.({ agent: agent.name, model: model.id, ms: Date.now() - t0, prompt_chars: prompt.length, reply_chars: raw.length, ...(images.length ? { images: images.length } : {}) })
     return raw
   }
@@ -344,6 +349,11 @@ export function practiceStore(agent, memoryOf) {
       mkdirSync(dir, { recursive: true })
       appendFileSync(join(dir, `${agent.name}.md`), `${entry}\n`)
     },
+    // the retros written so far (Practice reads its newest back at start — 2026-10-23 audit)
+    retros: () => {
+      const file = memory() ? join(memory(), "retros", `${agent.name}.md`) : null
+      return file && existsSync(file) ? readFileSync(file, "utf8") : null
+    },
   }
 }
 
@@ -366,11 +376,13 @@ export function workflowSource(root, memoryOf, plugins = () => ({})) {
       return { code: p.code ?? {}, schemas: p.schemas ?? {}, derive: p.derive ?? {}, checks: p.checks ?? {} }
     }
     const phases = join(root, "phases", `${id}.md`)
-    const load = () => {
-      // a phases file (2026-10-22): phases/<id>.md, one file, ## per phase (parsePhasesFile)
-      if (existsSync(phases)) return parsePhasesFile(readFileSync(phases, "utf8"), { file: `phases/${id}.md`, known: known() })
+    // drafts: {name: text} read in place of those files (the owner's draft checked from the viewer, never written)
+    const load = (drafts = {}) => {
+      // one workflow file (2026-10-22): phases/<id>.md, ## per phase (parseWorkflowMarkdown)
+      const own = `phases/${id}.md`
+      if (existsSync(phases) || Object.hasOwn(drafts, own)) return parseWorkflowMarkdown(Object.hasOwn(drafts, own) ? drafts[own] : readFileSync(phases, "utf8"), { file: own, known: known() })
       if (!existsSync(dir)) throw new Error(`${id}/: no workflow folder in the desk (NN-<step>.md files)`)
-      const files = readdirSync(dir).filter((f) => f.endsWith(".md")).map((name) => ({ name, text: readFileSync(join(dir, name), "utf8") }))
+      const files = readdirSync(dir).filter((f) => f.endsWith(".md")).map((name) => ({ name, text: Object.hasOwn(drafts, name) ? drafts[name] : readFileSync(join(dir, name), "utf8") }))
       return parseWorkflowFiles(files, { known: known() })
     }
     const base = () => (memoryOf() ? join(memoryOf(), id) : null)
@@ -393,7 +405,30 @@ export function workflowSource(root, memoryOf, plugins = () => ({})) {
         }
       },
     }
-    return { load, store, folder: existsSync(phases) ? `phases/${id}.md` : `${id}/` }
+    // the owner's edits from the viewer (Workflow.editStep): only this flow's own files — its phases file, or an
+    // NN-<step>.md in its folder; never another path
+    const fileOf = (name) => (name === `phases/${id}.md` ? phases : /^\d{2}-[a-z][a-z0-9-]*\.md$/.test(name) ? join(dir, name) : null)
+    const files = {
+      list: () => (existsSync(phases) ? [`phases/${id}.md`] : existsSync(dir) ? readdirSync(dir).filter((f) => /^\d{2}-[a-z][a-z0-9-]*\.md$/.test(f)).sort() : []),
+      draft(name, text) {
+        if (!fileOf(name)) throw new Error(`${name}: not a file of the ${id} workflow`)
+        return load({ [name]: text })
+      },
+      read(name) {
+        const f = fileOf(name)
+        try {
+          return f ? readFileSync(f, "utf8") : null
+        } catch {
+          return null
+        }
+      },
+      write(name, text) {
+        const f = fileOf(name)
+        if (!f || !existsSync(f)) throw new Error(`${name}: not a file of the ${id} workflow`)
+        writeFileSync(f, text)
+      },
+    }
+    return { load: () => load(), store, files, folder: existsSync(phases) ? `phases/${id}.md` : `${id}/` }
   }
 }
 
@@ -482,10 +517,13 @@ async function specOf(def, o, lead = false) {
     if (o.mounts.includes(name)) throw new Error(`${def.name}: desks: ${[...o.mounts, name].join(" → ")} is a cycle`)
     const folder = join(o.deskRoot, name)
     let hasLead = false
+    let leadError = null
     try {
       hasLead = !!deskLead(folder)
-    } catch {}
-    if (!existsSync(join(folder, "main.js")) || !hasLead) throw new Error(`${def.name}: desks: no desk ${name} (${folder} needs main.js and its lead: <lead>/<lead>.md)`)
+    } catch (error) {
+      leadError = error.message // the specific reason (two leads, …) in the refusal (2026-10-23 audit)
+    }
+    if (!existsSync(join(folder, "main.js")) || !hasLead) throw new Error(`${def.name}: desks: no desk ${name} (${folder} needs main.js and its lead: <lead>/<lead>.md${leadError ? `; ${leadError}` : ""})`)
     if (realOf(folder) !== join(realOf(o.deskRoot), name)) throw new Error(`${def.name}: desks: ${name} is a link (${folder} → ${realOf(folder)}); a mounted desk is a real folder beside this one`)
     // The mounted desk composes with its own main.js options (models, artifact types, tool catalogue) and memory.
     // maxSteps: its own, else the kernel's; fallbacks: its own (a desk without compose options keeps the parent's).
@@ -682,7 +720,7 @@ export async function composeDesk({ folder, deskRoot, name, port, infer, context
 // help us initialize any of the dependencies or write in a script and then return a desk object which will be run by
 // the framework"): async ({dir, memory, log, host, port}) → awaited at every start before the agents are built — make
 // folders, write a script into data/, check a dependency; a throw fails the start (desks/load keeps the old version).
-export function conventionDesk({ name, title, description = "", port, models = MODELS, defaultModel = "opus", fallbacks = ["sonnet"], maxSteps, artifacts = {}, tools = {}, builtin, init } = {}) {
+export function conventionDesk({ name, title, description = "", port, models = MODELS, defaultModel = "opus", fallbacks = ["sonnet"], maxSteps, artifacts = {}, tools = {}, builtin, init, telegram } = {}) {
   return ({ dir }) => {
     const deskName = name ?? basename(dir)
     return defined({
@@ -690,11 +728,12 @@ export function conventionDesk({ name, title, description = "", port, models = M
       title: title ?? deskName,
       description,
       port,
+      telegram, // false: no live status of its runs on Telegram
       // Its compose options: a desk that mounts this one composes its subtree with them (and scripts/desk.js check).
       compose: defined({ models, defaultModel, fallbacks, maxSteps, artifacts, tools, builtin }),
       start: async ({ port: at = port, log = () => {}, memory = null, infer } = {}) => {
         if (typeof init === "function") await init({ dir, memory, log, host: at ? hostClient({ port: at, desk: deskName }) : null, port: at })
-        infer ??= withFallbacks(llmInfer({ models, fallback: defaultModel, port: at, desk: deskName }), { defaultModel, fallbacks, log })
+        infer ??= withFallbacks(llmInfer({ models, fallback: defaultModel, port: at, desk: deskName, log }), { defaultModel, fallbacks, log })
         const desk = await composeDesk({ folder: dir, name: deskName, port: at, infer, models, defaultModel, maxSteps, artifacts, tools, builtin, context: { host: hostClient({ port: at, desk: deskName }), memory, log } })
         return { desk }
       },

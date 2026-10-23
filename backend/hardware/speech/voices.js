@@ -3,7 +3,7 @@
 //
 //   browser — speechSynthesis with the system's voices (on a Mac: the same
 //             on-device voices); word boundaries drive the caption.
-//   mac     — the host's `say` (POST speech/say → WAV), played through an
+//   mac     — the host's tts model (POST speech/say → WAV: `say` by default, Kokoro, Qwen3-TTS … from the models folder), played through an
 //             analyser, so the visual moves with the real voice. The next
 //             sentence renders while this one plays.
 //
@@ -101,7 +101,7 @@ class MacVoice {
   #source = null
   #bins = null
 
-  constructor({ name = null, rate = 1 } = {}) {
+  constructor({ name = null, rate = null } = {}) {
     this.name = name
     this.rate = rate
   }
@@ -126,7 +126,8 @@ class MacVoice {
   }
 
   async #render(sentence) {
-    const { audio } = await hostPost("speech/say", { text: sentence, voice: this.name || undefined, rate: Math.round(LIMITS.voices.sayWordsPerMinute * this.rate) })
+    // no name or rate: the host's tts model speaks with its own values (models/tts/<name>/model.md)
+    const { audio } = await hostPost("speech/say", { text: sentence, ...(this.name ? { voice: this.name } : {}), ...(this.rate ? { rate: Math.round(LIMITS.voices.sayWordsPerMinute * this.rate) } : {}) })
     const bytes = Uint8Array.from(atob(audio), (c) => c.charCodeAt(0))
     return this.#audio().decodeAudioData(bytes.buffer)
   }

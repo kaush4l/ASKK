@@ -4,13 +4,13 @@ import * as React from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { CopyIcon, SquareIcon, Trash2Icon } from "lucide-react"
 
-import { askChat, chatAnswer, chatShown } from "@/backend/live/agent"
 import { artifactsHeldBy } from "@/backend/live/desk"
 import { registry } from "@/backend/live/registry"
 import { spawnedLine, treeNode } from "@/backend/live/spawned"
 import { callLook } from "@/backend/live/visual"
-import { ActivityLine, ChatPair, Thread } from "@/components/agents/thread"
-import { Composer } from "@/components/chat/composer"
+import Link from "next/link"
+
+import { ActivityLine, Thread } from "@/components/agents/thread"
 import { ProposedHelper } from "@/components/kernel/proposed-helper"
 import { ArtifactsView } from "@/components/live/artifacts-view"
 import { Button } from "@/components/ui/button"
@@ -20,12 +20,15 @@ import { engineTone } from "@/lib/engine-tone"
 import { agentHref } from "@/lib/nav"
 import { cn } from "@/lib/utils"
 
-// One agent's page — the agent's twin on the UI: what it is (its agent.md: description, role, model, folder,
-// team), what it can call (every tool by type and view, its sub-agents), what it keeps (the artifacts it holds),
-// what it did (its runs as a thread) and what its model calls cost. Talk to it from here. `?name=<agent>`.
+// One agent's debug page — the agent's twin on the UI, turn by turn: what it did (each run's steps — the model call, the
+// calls it made and their results, refused answers, guidance, compactions), what it is (its agent.md: description, role,
+// model, folder, team), what it can call, what it keeps, the prompt its next step would see and what its model calls
+// cost. `?name=<agent>`. 2026-10-23 owner ("the single agent's page … is now more of a debug to view what exactly is
+// going within an agent turn by turn"): no message box here — the owner talks to the desk from the dashboard; Stop and
+// Clear memory stay (the owner can stop anything).
 
 const TABS = [
-  { id: "runs", label: "Runs" },
+  { id: "runs", label: "Turns" },
   { id: "role", label: "Role" },
   { id: "tools", label: "Tools" },
   { id: "artifacts", label: "Artifacts" },
@@ -118,10 +121,6 @@ function AgentDetail({ engine }) {
   const state = useEngineState(engine)
   const desk = useDesk()
   const [tab, setTab] = React.useState("runs")
-  const [input, setInput] = React.useState("")
-  const [sent, setSent] = React.useState(null) // what became of the last message: queued, or guidance not delivered
-  // the last question asked here, until the thread shows its answer as a chat row (the host appends the pair)
-  const [chat, setChat] = React.useState(null)
   const tone = engineTone(state)
   const running = state?.status === "running"
   const stats = state?.stats
@@ -153,7 +152,9 @@ function AgentDetail({ engine }) {
           {engine.team && <Field label="team">{engine.team}</Field>}
           <Field label="model">{engine.model ?? "desk default"}</Field>
           {engine.folder && <Field label="folder"><code className="font-mono">{engine.folder}</code></Field>}
-          <Field label="model calls">{stats ? `${stats.calls} · last ${seconds(stats.lastMs)} · avg ${seconds(stats.avgMs)} · prompt ${stats.promptChars?.toLocaleString()} chars` : "none since the desk started"}</Field>
+          <Field label="model calls">{stats ? `${stats.calls} · last ${seconds(stats.lastMs)} · avg ${seconds(stats.avgMs)} · total ${seconds(stats.totalMs)} · prompt ${stats.promptChars?.toLocaleString()} → reply ${stats.replyChars?.toLocaleString() ?? "?"} chars` : "none since the desk started"}</Field>
+          {/* 2026-10-23: when the last call came back (a fallback to another model is a desk log line: model: …) */}
+          {stats?.at && <Field label="last call">{new Date(stats.at).toLocaleTimeString()}</Field>}
         </dl>
         <div role="tablist" aria-label={`${engine.name} views`} className="flex flex-wrap gap-1">
           {TABS.map((t) => (
@@ -175,61 +176,22 @@ function AgentDetail({ engine }) {
 
       {tab === "runs" && (
         <>
+          <div className="mx-auto flex w-full max-w-3xl flex-wrap items-center justify-between gap-x-4 gap-y-1 px-4 pt-3">
+            <ActivityLine engine={engine} activity={state?.activity} />
+            {!running && <ClearMemory engine={engine} />}
+          </div>
           <div className="min-h-0 flex-1 overflow-auto">
             <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 p-4">
-              <Thread engine={engine} messages={state?.messages ?? []} empty={`No runs yet. Message ${engine.name} below, or it runs when another agent hands it a quest.`} />
+              <Thread engine={engine} messages={state?.messages ?? []} empty={`No turns yet. ${engine.name} runs when you send work from the dashboard or another agent hands it a quest.`} />
             </div>
           </div>
-          <Composer
-            className="mx-auto w-full max-w-3xl p-4 pt-0"
-            value={input}
-            onChange={setInput}
-            onSend={(text) => (engine.send(text), setSent(running ? `Queued: ${engine.name} runs it after the current run.` : null))}
-            onGuide={async (text) => {
-              // Read at its next step (the thread shows it); a run that ended first gives the text back.
-              setSent(null)
-              const back = (why) => (setInput((now) => now || text), setSent(why))
-              try {
-                const { delivered } = (await engine.guide(text)) ?? {}
-                if (!delivered) back(`${engine.name} finished before your note arrived: it is back in the box, send it as new work.`)
-              } catch (error) {
-                back(`Guidance not sent: ${error.message}`)
-              }
-            }}
-            onAsk={async (question) => {
-              // A question answered beside the run: the thread shows the pair (kind chat rows); a failure gives the text back.
-              setSent(null)
-              setChat({ question, pending: true })
-              const outcome = await askChat(engine, question)
-              if (outcome.error) setInput((now) => now || question)
-              setChat(outcome)
-            }}
-            onStop={() => engine.stop()}
-            running={running}
-            placeholder={`Message ${engine.name}…`}
-            above={
-              <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-1 pb-2">
-                <ActivityLine engine={engine} activity={state?.activity} />
-                <ClearMemory engine={engine} />
-                {sent && (
-                  <p className="w-full text-xs text-muted-foreground" aria-live="polite">
-                    {sent}
-                  </p>
-                )}
-                {chat && !chatShown(state?.messages, chat.answer) && (
-                  <ChatPair
-                    engine={engine}
-                    question={chat.question}
-                    answer={chatAnswer(chat)}
-                    pending={!!chat.pending}
-                    error={chat.error}
-                    onDismiss={() => setChat(null)}
-                    className="w-full text-xs"
-                  />
-                )}
-              </div>
-            }
-          />
+          <p className="mx-auto w-full max-w-3xl px-4 pb-3 text-xs text-muted-foreground">
+            Debug view: talk to the desk from the{" "}
+            <Link href="/" className="underline underline-offset-2 pointer-coarse:inline-block pointer-coarse:min-h-10">
+              dashboard
+            </Link>
+            .
+          </p>
         </>
       )}
       {tab === "role" && (
@@ -344,6 +306,13 @@ function NextPrompt({ engine, messages }) {
 // Forget the agent's earlier runs (its EARLIER RUNS in the prompt); the transcript beside its agent.md stays.
 function ClearMemory({ engine }) {
   const [asking, setAsking] = React.useState(false)
+  const [refused, setRefused] = React.useState(null) // the desk's refusal (a run started meanwhile, the desk down)
+  const clear = () => {
+    setAsking(false)
+    setRefused(null)
+    engine.clearMemory().catch((error) => setRefused(error.message))
+  }
+  if (refused) return <span className="text-xs text-destructive">Not cleared: {refused}</span>
   if (!asking)
     return (
       <Button variant="ghost" size="sm" className="h-8 text-xs pointer-coarse:h-10" onClick={() => setAsking(true)}>
@@ -353,7 +322,7 @@ function ClearMemory({ engine }) {
   return (
     <span className="flex items-center gap-1 text-xs">
       Forget {engine.name}'s earlier runs?
-      <Button variant="destructive" size="sm" className="h-8 pointer-coarse:h-10" onClick={() => (engine.clearMemory(), setAsking(false))}>
+      <Button variant="destructive" size="sm" className="h-8 pointer-coarse:h-10" onClick={clear}>
         Clear
       </Button>
       <Button variant="ghost" size="sm" className="h-8 pointer-coarse:h-10" onClick={() => setAsking(false)}>

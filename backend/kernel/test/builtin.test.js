@@ -15,7 +15,7 @@ const quest = (ask) => ({ requirement: "a kit test", ask, outcome: "one line" })
 describe("BUILTIN", () => {
   test("the catalogue: tools and artifact types by name, each a factory of desk options", () => {
     expect(Object.keys(BUILTIN.tools)).toEqual(["web.search", "web.read", "agent.spawn", "agent.dismiss", "agent.catalog", "agent.update", "desk.list", "desk.create", "desk.check", "desk.load", "desk.ask", "desk.read", "desk.propose"]) // 2026-10-20: catalog, update and the desk tools
-    expect(Object.keys(BUILTIN.artifacts)).toEqual(["files", "terminal", "preview", "plan", "dispatch", "browse", "talk", "workflow", "practice"]) // 2026-10-22: workflow; 2026-10-20: practice; 2026-10-17: no stage — the preview is the one pane; 2026-10-18: no charts (a dashboard is a page in it), browse and talk added
+    expect(Object.keys(BUILTIN.artifacts)).toEqual(["files", "terminal", "preview", "plan", "dispatch", "browse", "talk", "studio", "workflow", "practice"]) // 2026-10-22: workflow; 2026-10-20: practice; 2026-10-17: no stage — the preview is the one pane; 2026-10-18: no charts (a dashboard is a page in it), browse and talk added
     const kit = builtinKit({ clock })
     for (const t of Object.values(kit.tools)) expect(t).toBeInstanceOf(Tool)
     expect(kit.tools["web.search"]).toMatchObject({ name: "web.search", type: "function", view: "web" })
@@ -78,7 +78,7 @@ describe("BUILTIN", () => {
     const keys = (o) => Object.keys(o)
     const files = twin.files
     expect(files).toMatchObject({ kind: "files", view: "files", keep: "always", holders: ["coder"] })
-    expect(keys(files.state)).toEqual(["root", "tree", "truncated", "open", "modified", "focus"])
+    expect(keys(files.state)).toEqual(["root", "tree", "truncated", "open", "modified", "focus", "unreadable"])
     expect(keys(files.state.tree[0])).toEqual(["path", "size", "mtime", "dir"])
     expect(keys(files.state.open[0])).toEqual(["path", "by", "at"])
     expect(keys(files.state.modified[0])).toEqual(["path", "by", "at", "op", "added", "removed", "diff"])
@@ -129,7 +129,7 @@ describe("BUILTIN", () => {
     const keys = (o) => Object.keys(o)
     expect(twin.dispatch).toMatchObject({ kind: "dispatch", view: "dispatch", keep: "file", brief: "1 running · 0 done", holders: ["lead", "data"] })
     expect(keys(twin.dispatch.state)).toEqual(["jobs"])
-    expect(keys(twin.dispatch.state.jobs[0])).toEqual(["id", "to", "by", "ask", "status", "startedAt", "endedAt", "report", "error"])
+    expect(keys(twin.dispatch.state.jobs[0])).toEqual(["id", "to", "by", "ask", "status", "startedAt", "endedAt", "report", "error", "began", "delivered"])
     expect(twin.dispatch.state.jobs[0]).toMatchObject({ id: "j1", to: "data", by: "lead", ask: "which shard?", status: "running", startedAt: "2026-10-17T14:00:00.000Z" })
     for (const [name, view] of [["dispatch.start", "dispatch"], ["dispatch.wait", "dispatch"]]) expect(lead.tools.get(name)).toMatchObject({ type: "dev", view })
     expect(lead.gates("x").join()).toContain("1 job still running: j1 → data")

@@ -37,7 +37,7 @@ export function StsPage() {
     const down = (e) => {
       if (e.key === "Escape") model.interrupt()
       const { listen, mode } = model.getSnapshot().settings
-      if (e.code === "Space" && !typing(e) && !e.repeat && listen !== "wake" && mode === "push") {
+      if (e.code === "Space" && !typing(e) && !e.repeat && listen === "direct" && mode === "push") {
         e.preventDefault()
         model.hold(true)
       }

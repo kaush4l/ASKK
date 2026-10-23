@@ -1,11 +1,12 @@
 import { ExternalLinkIcon } from "lucide-react"
 
-import { questBrief } from "@/backend/live/follow"
+import { afterCallLabel, callArtifactId, questBrief } from "@/backend/live/follow"
 import { callLook } from "@/backend/live/visual"
 import { toneOf } from "@/components/views/call-look"
 import { block, time } from "@/components/live/format"
 import { StateMark } from "@/components/live/state-mark"
 import { Badge } from "@/components/ui/badge"
+import { ArtifactBlock } from "@/components/views/artifact"
 import { cn } from "@/lib/utils"
 
 // One call of the feed: who made it, its inputs (a quest's brief as requirement / ask / outcome), its result. A
@@ -16,7 +17,7 @@ import { cn } from "@/lib/utils"
 // React child that blanks the page (2026-10-17: an object-valued url did).
 const asText = (v) => (typeof v === "string" ? v : v == null ? "" : JSON.stringify(v, null, 2))
 
-export function CallPanel({ event }) {
+export function CallPanel({ event, events = [], artifacts = {}, changes = null }) {
   if (event.kind === "gate" || event.kind === "compact") return <GatePanel event={event} />
   if (event.kind === "guidance") return <GuidancePanel event={event} />
   const quest = event.view === "quest" ? questBrief(event.inputs) : null
@@ -47,7 +48,22 @@ export function CallPanel({ event }) {
       ) : (
         <p className="text-xs text-muted-foreground">Running…</p>
       )}
+      <AfterCall event={event} events={events} artifacts={artifacts} changes={changes} />
     </section>
+  )
+}
+
+// 2026-10-23 owner ("the live follow showing the state after the tool call"): the artifact the call acted on, drawn by
+// its view — the state this call left when no later call touched it, else the state now, saying how many came since.
+function AfterCall({ event, events, artifacts, changes }) {
+  const id = callArtifactId(event, artifacts)
+  if (!id) return null
+  const label = afterCallLabel(event, events, artifacts, changes?.get(id) ?? null)
+  return (
+    <div data-after-call={id} className="flex flex-col gap-1.5">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <ArtifactBlock artifact={artifacts[id]} expanded />
+    </div>
   )
 }
 

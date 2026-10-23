@@ -297,12 +297,21 @@ const self = () => (me ??= { pid: process.pid, started: processInfo([process.pid
 // SIGKILLed. Groups of a server still running (this one, or another hosting the same desk) stay booked.
 //   const book = groupBook(path)   book.add({ pid, …note }) → the entry | null (already gone)   book.remove(pid)
 //   book.reap() → [entries SIGKILLed]
-export function groupBook(path) {
+// log: a book that does not read (set aside, its groups named) or a write that fails — said, never silent (2026-10-23)
+export function groupBook(path, log = () => {}) {
+  let writeWarned = false
   const read = () => {
     try {
       const rows = JSON.parse(readFileSync(path, "utf8"))
       return Array.isArray(rows) ? rows.filter((r) => r && Number.isInteger(r.pid) && r.pid > 0) : []
-    } catch {
+    } catch (error) {
+      if (error.code !== "ENOENT") {
+        const to = `${path}.unreadable-${Date.now()}`
+        try {
+          renameSync(path, to)
+        } catch {}
+        log(`term: the book of running process groups did not read (${error.message}) — kept as ${to}; groups booked before a crash are not reaped, look there`)
+      }
       return []
     }
   }
@@ -313,7 +322,11 @@ export function groupBook(path) {
       const temp = `${path}.${process.pid}.tmp`
       writeFileSync(temp, `${JSON.stringify(rows, null, 1)}\n`)
       renameSync(temp, path)
-    } catch {}
+      writeWarned = false
+    } catch (error) {
+      if (!writeWarned) log(`term: the book of running process groups was not written (${error.message}) — after a crash these groups would not be reaped`)
+      writeWarned = true
+    }
   }
   return {
     add({ pid, ...note }) {

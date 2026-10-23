@@ -222,6 +222,7 @@ const byName = (a, b) => (b.type === "dir") - (a.type === "dir") || String(a.nam
 // at most `max`, `depth` levels; heavy folders (SKIP) listed, not walked. truncated: entries were left out.
 export async function walkTree(adapter, root, ctx, { max = TREE_MAX, depth = TREE_DEPTH } = {}) {
   const tree = []
+  const unreadable = [] // folders below the top that did not list (2026-10-23 audit: they looked empty)
   let truncated = false
   let level = [root]
   for (let d = 0; d < depth && level.length && !truncated; d++) {
@@ -229,7 +230,7 @@ export async function walkTree(adapter, root, ctx, { max = TREE_MAX, depth = TRE
     // A level's folders PARALLEL at a time, in order, until the tree is full (no folder listed for nothing).
     for (let i = 0; i < level.length && !truncated; i += PARALLEL) {
       const batch = level.slice(i, i + PARALLEL)
-      const lists = await mapLimit(batch, PARALLEL, async (dir) => [dir, d === 0 ? await adapter.list(dir, ctx) : await adapter.list(dir, ctx).catch(() => [])])
+      const lists = await mapLimit(batch, PARALLEL, async (dir) => [dir, d === 0 ? await adapter.list(dir, ctx) : await adapter.list(dir, ctx).catch(() => (unreadable.push(dir), []))])
       for (const [dir, entries] of lists) {
         for (const e of [...(entries ?? [])].sort(byName)) {
           if (!e?.name) continue
@@ -248,7 +249,7 @@ export async function walkTree(adapter, root, ctx, { max = TREE_MAX, depth = TRE
     level = next
   }
   if (level.length && !truncated) truncated = true // folders deeper than `depth`
-  return { tree, truncated }
+  return { tree, truncated, unreadable }
 }
 
 const GLOB_PART = /[*?]/
@@ -271,10 +272,12 @@ export async function expandGlob(adapter, pattern, ctx) {
       throw e
     }
     const re = globRegex(pattern)
-    return walked.tree.filter((e) => !e.dir && re.test(e.path)).map((e) => ({ path: e.path, mtime: e.mtime }))
+    // folders that did not list ride on the result (`unreadable`), so a watch can say it went blind (2026-10-23 audit)
+    return Object.assign(walked.tree.filter((e) => !e.dir && re.test(e.path)).map((e) => ({ path: e.path, mtime: e.mtime })), { unreadable: walked.unreadable ?? [] })
   }
   let level = [base]
   const found = []
+  const unreadable = []
   for (let i = first; i < parts.length && level.length; i++) {
     const last = i === parts.length - 1
     if (!GLOB_PART.test(parts[i]) && !last) {
@@ -287,6 +290,7 @@ export async function expandGlob(adapter, pattern, ctx) {
         return [dir, await adapter.list(dir, ctx)]
       } catch (e) {
         if (i === first && e?.status !== 404 && e?.status !== 400) throw e // the host itself failed
+        if (e?.status !== 404 && e?.status !== 400) unreadable.push(dir) // there, but would not list
         return [dir, []]
       }
     })
@@ -299,7 +303,7 @@ export async function expandGlob(adapter, pattern, ctx) {
       }
     level = next
   }
-  return found
+  return Object.assign(found, { unreadable })
 }
 
 // ---- diffs ---------------------------------------------------------------------------------------
@@ -377,7 +381,7 @@ export class Files extends Artifact {
     this.keep = "always" // open and modified tabs survive a restart; the tree is pulled again
     this.adapter = adapter
     this.clock = clock
-    this.state = { root: cleanPath(root), tree: [], truncated: false, open: [], modified: [], focus: null }
+    this.state = { root: cleanPath(root), tree: [], truncated: false, open: [], modified: [], focus: null, unreadable: [] }
     this.pulled = 0 // when the tree was last pulled (ms)
     this.pulling = null // the pull in flight, shared by every holder that refreshes meanwhile
     this.stale = true // a write or a focus since the last pull
@@ -403,6 +407,7 @@ export class Files extends Artifact {
       open: arr(data.open).slice(-OPEN_MAX),
       modified: arr(data.modified).slice(-MODIFIED_MAX),
       focus: data.focus && typeof data.focus.path === "string" ? data.focus : null,
+      unreadable: Array.isArray(data.unreadable) ? data.unreadable.slice(0, 20) : [],
     }
     this.stale = true
   }
@@ -425,7 +430,7 @@ export class Files extends Artifact {
     this.pulled = Date.now()
     this.stale = false
     if (root !== this.state.root) return // focused elsewhere meanwhile: the next pull reads it
-    this.#set({ tree: (got?.tree ?? []).slice(0, TREE_MAX), truncated: !!got?.truncated || (got?.tree?.length ?? 0) > TREE_MAX })
+    this.#set({ tree: (got?.tree ?? []).slice(0, TREE_MAX), truncated: !!got?.truncated || (got?.tree?.length ?? 0) > TREE_MAX, unreadable: (got?.unreadable ?? []).slice(0, 20) })
   }
 
   #opened(path, by) {
@@ -591,7 +596,8 @@ export class Files extends Artifact {
     }
     const files = found.tree.filter((e) => !e.dir && e.size <= SEARCH_BYTES && !secret(e.path) && this.#sees(ctx.agent, e.path, false)).slice(0, SEARCH_FILES)
     const needle = q.toLowerCase()
-    const read = await mapLimit(files, PARALLEL, (f) => this.adapter.read(f.path, ctx).catch(() => null))
+    let unread = 0 // files that would not read: counted in the answer, never a silent "no hit"
+    const read = await mapLimit(files, PARALLEL, (f) => this.adapter.read(f.path, ctx).catch(() => (unread++, null)))
     const hits = []
     for (const [i, file] of read.entries()) {
       if (!file || file.binary || hits.length >= SEARCH_HITS) continue
@@ -602,7 +608,8 @@ export class Files extends Artifact {
         })
     }
     const scope = found.file ? base : `${files.length} file${files.length === 1 ? "" : "s"} under ${base || "."}/${found.truncated ? " (the folder is larger: narrow path)" : ""}`
-    return hits.length ? `${hits.length}${hits.length >= SEARCH_HITS ? "+" : ""} lines hold "${q}" (${scope})\n${hits.join("\n")}` : `no line holds "${q}" (${scope})`
+    const missed = unread ? ` — ${unread} file${unread === 1 ? "" : "s"} could not be read` : ""
+    return hits.length ? `${hits.length}${hits.length >= SEARCH_HITS ? "+" : ""} lines hold "${q}" (${scope}${missed})\n${hits.join("\n")}` : `no line holds "${q}" (${scope}${missed})`
   }
 
   async #focus({ path } = {}, ctx = {}) {

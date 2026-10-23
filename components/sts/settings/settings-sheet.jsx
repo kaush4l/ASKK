@@ -3,6 +3,7 @@
 import { Volume2Icon } from "lucide-react"
 
 import { NARRATION } from "@/backend/hardware/speech/pipeline"
+import { ModelPanel } from "@/components/models/model-panel"
 import { Choice, Field, Toggle } from "@/components/sts/settings/controls"
 import { useVoiceNames } from "@/components/sts/settings/use-voice-names"
 import { Button } from "@/components/ui/button"
@@ -21,6 +22,7 @@ export function SettingsSheet({ open, onOpenChange, state, model }) {
         <SheetHeader>
           <SheetTitle className="text-xl">Speech settings</SheetTitle>
           <SheetDescription>Saved in this browser.</SheetDescription>
+          {state?.settingsError && <p className="text-xs text-amber-700 dark:text-amber-300">{state.settingsError}</p>}
         </SheetHeader>
         <div className="flex flex-col gap-5 px-4 pb-6">
           <h3 className="text-lg">Listening</h3>
@@ -28,15 +30,15 @@ export function SettingsSheet({ open, onOpenChange, state, model }) {
             label="Recognizer"
             hint={
               mac.recognize
-                ? "This Mac: Apple's on-device model; the audio never leaves the Mac."
-                : (mac.error ?? "On-device recognition needs the ASKK server on a Mac with macOS 26.")
+                ? `This Mac: ${mac.stt?.title ?? "its speech model"} — the model chosen below, from the models folder; the audio never leaves the Mac.`
+                : (mac.error ?? "On-device recognition needs the ASKK server on this Mac.")
             }
           >
             <Choice
               value={settings.asr}
               onChange={(asr) => set({ asr })}
               options={[
-                { value: "mac", label: "This Mac", disabled: !mac.recognize },
+                { value: "mac", label: "This Mac (models)", disabled: !mac.recognize },
                 {
                   value: "safari",
                   label: "Safari",
@@ -45,34 +47,38 @@ export function SettingsSheet({ open, onOpenChange, state, model }) {
               ]}
             />
           </Field>
+          {settings.asr === "mac" && <ModelPanel kind="stt" onChange={() => model.refreshSupport?.()} />}
           <Field
             label="Listen mode"
             hint={
               settings.listen === "wake"
-                ? "Everything is transcribed live; only what follows the wake word is sent, after the pause below."
-                : "Every utterance is sent as a command."
+                ? "Continuous: everything is transcribed live; only what follows the wake word is sent, after the pause below."
+                : settings.listen === "once"
+                  ? "Single: one command, sent after the pause below; then the mic closes."
+                  : "Every utterance is sent as a command."
             }
           >
             <Choice
               value={settings.listen}
               onChange={(listen) => set({ listen })}
               options={[
-                { value: "wake", label: "Wake word" },
+                { value: "wake", label: "Continuous" },
+                { value: "once", label: "Single" },
                 { value: "direct", label: "Direct" },
               ]}
             />
           </Field>
-          {settings.listen === "wake" ? (
+          {settings.listen !== "direct" ? (
             <>
-              <Field label="Wake word" hint="One word or a short phrase the recognizer spells reliably (e.g. computer, hey desk).">
+              {settings.listen === "wake" && <Field label="Wake word" hint="One word or a short phrase the recognizer spells reliably (e.g. computer, hey desk).">
                 <Input
                   value={settings.wakeWord}
                   onChange={(e) => set({ wakeWord: e.target.value })}
                   className="text-base md:text-sm"
                   aria-label="Wake word"
                 />
-              </Field>
-              <Field label={`Send the command after ${(settings.commandPauseMs / 1000).toFixed(1)} s of silence`}>
+              </Field>}
+              <Field label={`Send the command after ${(settings.commandPauseMs / 1000).toFixed(1)} s of silence (a shorter pause: still speaking)`}>
                 <input
                   type="range"
                   min={LIMITS.ui.sts.commandPauseMinMs}
@@ -122,22 +128,31 @@ export function SettingsSheet({ open, onOpenChange, state, model }) {
               />
             </>
           ) : null}
-          <Field label="Language">
-            <Input
-              value={settings.locale ?? ""}
-              onChange={(e) => set({ locale: e.target.value })}
-              className="text-base md:text-sm"
-              aria-label="Language"
-            />
-          </Field>
+          {settings.asr !== "mac" && (
+            <Field label="Language">
+              <Input
+                value={settings.locale ?? ""}
+                onChange={(e) => set({ locale: e.target.value })}
+                className="text-base md:text-sm"
+                aria-label="Language"
+              />
+            </Field>
+          )}
 
           <h3 className="pt-2 text-lg">Speaking</h3>
+          {/* 2026-10-23 owner: "The user speaking is not an automatic on for talking. By delinking them, we give user the choice" */}
+          <Toggle
+            label="Speak the lead's work aloud"
+            hint="Separate from listening: talk and read the answers, or listen to the work without the mic. Off by default."
+            checked={!!settings.speak}
+            onChange={(speak) => set({ speak })}
+          />
           <Field label="Voice engine">
             <Choice
               value={settings.voice}
               onChange={(voice) => set({ voice, voiceName: null })}
               options={[
-                { value: "mac", label: "Mac voices", disabled: !mac.voice },
+                { value: "mac", label: "This Mac (models)", disabled: !mac.voice },
                 {
                   value: "browser",
                   label: "Browser",
@@ -146,6 +161,9 @@ export function SettingsSheet({ open, onOpenChange, state, model }) {
               ]}
             />
           </Field>
+          {settings.voice === "mac" && <ModelPanel kind="tts" onChange={() => model.resetVoice?.()} />}
+          {settings.voice !== "mac" && (
+          <>
           <Field label="Voice" hint="Premium and Enhanced voices sound best (System Settings → Accessibility → Spoken Content).">
             <select
               value={settings.voiceName ?? ""}
@@ -173,6 +191,8 @@ export function SettingsSheet({ open, onOpenChange, state, model }) {
               aria-label="Speed"
             />
           </Field>
+          </>
+          )}
           <Button
             variant="outline"
             className="pointer-coarse:h-10"

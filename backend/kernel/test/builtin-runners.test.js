@@ -82,3 +82,38 @@ test("the owner's calls and the agent's commands; restore keeps the run state", 
   expect(r.ownerCall("remove", [{ runner: "b" }])).toEqual({ said: "removed b" })
   expect(r.live().view).toBe("runners")
 })
+
+// 2026-10-23 architecture map: due runners are checked together; their fires act one at a time, in order.
+test("due runners are checked at once; one failing check fails only its runner; fires act in order", async () => {
+  let now = at("2026-10-22T14:00:00Z")
+  let open = 0, most = 0
+  const acted = []
+  const r = new Runners({
+    id: "watchers",
+    clock: () => now,
+    prepare: async () => ({}),
+    check: async (w) => {
+      open++
+      most = Math.max(most, open)
+      await Bun.sleep(20)
+      open--
+      if (w.id === "bad") throw new Error("quote failed")
+      return { value: 1, against: 0, holds: true, fire: true }
+    },
+    onFire: async (w) => {
+      acted.push(`start ${w.id}`)
+      await Bun.sleep(5)
+      acted.push(`end ${w.id}`)
+      return `${w.id} fired`
+    },
+  })
+  for (const id of ["a", "bad", "c"]) r.add({ id, ends_at: "2026-10-22T20:00:00Z" }, "local")
+  const t0 = Date.now()
+  await r.tick()
+  expect(most).toBe(3)
+  expect(Date.now() - t0).toBeLessThan(55)
+  // one fire at a time, in the runners' order (newest added first), never interleaved
+  const order = r.state.runners.map((x) => x.id).filter((id) => id !== "bad")
+  expect(acted).toEqual(order.flatMap((id) => [`start ${id}`, `end ${id}`]))
+  expect(r.state.runners.find((x) => x.id === "bad")).toMatchObject({ errors: 1, error: "quote failed" })
+})

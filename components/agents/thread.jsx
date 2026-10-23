@@ -8,6 +8,7 @@ import { chatNote, queueProposal, threadItems } from "@/backend/live/agent"
 import { eventTarget, questAsk, toolCall } from "@/backend/live/follow"
 import { callLook } from "@/backend/live/visual"
 import { shotSrc } from "@/backend/live/workbench"
+import { duration } from "@/components/live/format"
 import { TalkVisual } from "@/components/talk/talk-visual"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
@@ -53,6 +54,7 @@ function ToolEvent({ engine, message }) {
           {view && view !== "data" ? <span className="ml-1 rounded border px-1 text-[10px]">{view}</span> : null}
         </span>
         {ok ? <CheckIcon aria-label="answered" className="size-3 shrink-0" /> : <XIcon aria-label="failed" className="size-3 shrink-0" />}
+        {message.ms != null && <span data-call-ms className="shrink-0 tabular-nums">{duration(message.ms)}</span>}
       </div>
       {target && (
         <p data-call-target title={target} className="min-w-0 truncate pl-5 font-mono text-[11px] text-muted-foreground">
@@ -78,10 +80,60 @@ function GateEvent({ message }) {
 
 // The prompt reached 90% of its budget and the run's older work was folded into one summary (kernel event compact).
 const COMPACT = callLook({ kind: "compact" })
+// 2026-10-23: the numbers themselves (row `compact`), not only the line — how full the prompt was, what it came to, what
+// folded, and how (a model summary, else clipped in code).
+const kChars = (n) => (n >= 10_000 ? `${Math.round(n / 1000)}k` : String(n ?? 0))
 function CompactEvent({ message }) {
+  const c = message.compact
+  const pct = c?.budget ? Math.round((c.before_chars / c.budget) * 100) : null
   return (
-    <div data-call-kind={COMPACT.kind} className={cn("flex items-start gap-1.5 pl-11 text-xs", toneOf(COMPACT).text)}>
-      <CallIcon look={COMPACT} className="mt-0.5 size-3.5" />
+    <div data-call-kind={COMPACT.kind} className={cn("flex min-w-0 flex-col gap-1 pl-11 text-xs", toneOf(COMPACT).text)}>
+      <div className="flex items-start gap-1.5">
+        <CallIcon look={COMPACT} className="mt-0.5 size-3.5" />
+        <span className="min-w-0 break-words">{c ? "Prompt compacted" : message.content}</span>
+      </div>
+      {c && (
+        <div data-compact className="flex min-w-0 flex-wrap gap-1.5 pl-5 font-mono text-[11px] text-muted-foreground">
+          <span className="rounded border px-1.5 tabular-nums">
+            {kChars(c.before_chars)} → {kChars(c.after_chars)} chars
+          </span>
+          {pct != null && <span className="rounded border px-1.5 tabular-nums">{pct}% of {kChars(c.budget)}</span>}
+          {c.steps_folded > 0 && <span className="rounded border px-1.5 tabular-nums">{c.steps_folded} steps folded</span>}
+          {c.runs_folded > 0 && <span className="rounded border px-1.5 tabular-nums">{c.runs_folded} earlier runs folded</span>}
+          <span className="rounded border px-1.5">
+            {c.mode === "model" ? "model summary" : "clipped in code"}
+            {c.ms != null ? ` · ${duration(c.ms)}` : ""}
+          </span>
+          {c.n != null && <span className="rounded border px-1.5 tabular-nums">before step {c.n}</span>}
+          {c.error && <span className="text-destructive">summary failed: {c.error}</span>}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// The desk's own events (2026-10-23: kernel Desk spawn | dismiss | keep | proposal) in the thread of the agent that
+// caused them: a helper made or let go, kept, or proposed — the tree changes, and the thread says when.
+const LIFECYCLE = callLook({ kind: "spawn" })
+function LifecycleEvent({ message }) {
+  return (
+    <div data-call-kind={LIFECYCLE.kind} data-lifecycle={message.kind} className={cn("flex flex-wrap items-start gap-1.5 pl-11 text-xs", toneOf(LIFECYCLE).text)}>
+      <CallIcon look={LIFECYCLE} className="mt-0.5 size-3.5" />
+      <span className="min-w-0 break-words">{message.content}</span>
+      {message.keep && <span className="rounded border px-1 text-[10px]">keep {message.keep}</span>}
+      {message.team && message.team !== message.agent && <span className="rounded border px-1 text-[10px]">team {message.team}</span>}
+      {message.goal && !String(message.content ?? "").includes(message.goal) && <span className="w-full pl-5 break-words text-muted-foreground">goal: {message.goal}</span>}
+    </div>
+  )
+}
+
+// An artifact's refresh before a step failed — the step used its last state — or came back (2026-10-23, kernel event
+// refresh; before, only the prompt said so).
+const REFRESH = callLook({ type: "artifact" })
+function RefreshEvent({ message }) {
+  return (
+    <div data-call-kind={REFRESH.kind} data-refresh={message.ok ? "ok" : "failed"} className={cn("flex items-start gap-1.5 pl-11 text-xs", message.ok ? "text-muted-foreground" : "text-amber-700 dark:text-amber-300")}>
+      <CallIcon look={REFRESH} className="mt-0.5 size-3.5" />
       <span className="min-w-0 break-words">{message.content}</span>
     </div>
   )
@@ -99,7 +151,7 @@ function GuidanceEvent({ message }) {
       </Avatar>
       <div className="flex max-w-[85%] min-w-0 flex-col gap-1 rounded-2xl border border-primary/60 px-4 py-2 text-sm">
         <span className="text-xs text-muted-foreground">Guidance{message.from && message.from !== "owner" ? ` from ${message.from}` : ""} · read at the next step</span>
-        <p className="whitespace-pre-wrap break-words">{message.content}</p>
+        <p className="max-h-[50svh] overflow-y-auto overscroll-contain whitespace-pre-wrap break-words">{message.content}</p>
         {message.at && <span className="text-[10px] text-muted-foreground tabular-nums">{new Date(message.at).toLocaleString()}</span>}
       </div>
     </div>
@@ -190,11 +242,18 @@ export function ChatPair({ engine, question, answer, pending = false, error = nu
   )
 }
 
+// A message's text never grows past half the viewport (2026-10-22 owner, a workflow step agent's thread: "Limit the size
+// to a view point and make the internal content scroll area"): a step's 70k-char request or its long answer scrolls inside
+// its bubble, so the thread stays a list of turns.
+const CAPPED = "max-h-[50svh] overflow-y-auto overscroll-contain"
+
 function Message({ engine, message }) {
   if (message.role === "tool") return <ToolEvent engine={engine} message={message} />
   if (message.kind === "guidance") return <GuidanceEvent message={message} />
   if (message.action === "gate") return <GateEvent message={message} />
   if (message.action === "compact") return <CompactEvent message={message} />
+  if (message.action === "lifecycle") return <LifecycleEvent message={message} />
+  if (message.action === "refresh") return <RefreshEvent message={message} />
   const isUser = message.role === "user"
   const step = message.action === "tool"
   return (
@@ -205,13 +264,25 @@ function Message({ engine, message }) {
       <div className={cn("flex max-w-[85%] min-w-0 flex-col gap-1.5 rounded-2xl px-4 py-2 text-sm", isUser ? "bg-primary text-primary-foreground" : "bg-muted", step && "bg-transparent border")}>
         {isUser && message.from && <span className="text-xs opacity-70">from {message.from}</span>}
         {step ? (
-          <p className="font-mono text-xs break-all whitespace-pre-wrap">{message.content}</p>
+          <p className={cn("font-mono text-xs break-all whitespace-pre-wrap", CAPPED)}>{message.content}</p>
         ) : (
-          <p className="whitespace-pre-wrap break-words">{message.content}</p>
+          <p className={cn("whitespace-pre-wrap break-words", CAPPED)}>{message.content}</p>
         )}
+        {step && message.answer != null && <p data-step-answer className={cn("border-l-2 border-amber-500/60 pl-2 text-xs break-words whitespace-pre-wrap", CAPPED)}>answer written beside its calls: {message.answer}</p>}
         {message.images?.length > 0 && <SeenShots images={message.images} />}
+        {message.flags?.length > 0 && (
+          <span data-answer-flags className="text-xs text-amber-700 dark:text-amber-300">
+            Went through with open gates (after the retries): {message.flags.join("; ")}
+          </span>
+        )}
         {message.error && <span className="text-xs text-destructive">{message.error}</span>}
-        {message.at && <span className={cn("text-[10px] tabular-nums", isUser ? "opacity-60" : "text-muted-foreground")}>{new Date(message.at).toLocaleString()}</span>}
+        {message.at && (
+          <span className={cn("text-[10px] tabular-nums", isUser ? "opacity-60" : "text-muted-foreground")}>
+            {new Date(message.at).toLocaleString()}
+            {step && message.n != null ? <span data-step-n> · step {message.n}</span> : null}
+            {step && message.ms != null ? <span data-step-ms> · model {duration(message.ms)}</span> : null}
+          </span>
+        )}
       </div>
     </div>
   )

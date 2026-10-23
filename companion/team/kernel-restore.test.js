@@ -528,7 +528,13 @@ test("C3 a streak of failed runs cannot hide answered runs: the newest n answere
     const rows = parseHistory(readFileSync(join(folder, "history.md"), "utf8"))
     const { snap, lead } = await restoreFrom(folder, rows)
     expect(lead.history).toEqual(answers(kinds).map((x) => ({ from: "owner", request: x.replace("answer", "run"), answer: x })))
-    expect(snap.states.lead.messages.map((m) => m.content)).toEqual(answers(kinds).flatMap((x) => [x.replace("answer", "run"), x]))
+    // 2026-10-23: the thread also shows the newest failed runs (≤ 2 × historyKeep), each ending on its error row; the
+    // answered ones in order between them
+    const contents = snap.states.lead.messages.map((m) => m.content)
+    expect(contents.filter((c) => !c.startsWith("failed") && c !== "Error: stopped")).toEqual(answers(kinds).flatMap((x) => [x.replace("answer", "run"), x]))
+    const failed = contents.filter((c) => c === "Error: stopped").length
+    expect(failed).toBe(contents.filter((c) => c.startsWith("failed")).length)
+    expect(failed).toBeLessThanOrEqual(6)
   }
 })
 
@@ -614,7 +620,10 @@ test("D1 restore reads on into history/: an answered run that a compaction moved
   const snap = await snapshot(team)
   team.terminate()
   expect(built.lead.history).toEqual([{ from: "owner", request: "run 0", answer: "answer 0" }])
-  expect(snap.states.lead.messages.map((m) => m.content)).toEqual(["run 0", "answer 0"])
+  // the thread: the answered run, then the newest failed runs (≤ 2 × historyKeep, 2026-10-23), each on its error row
+  const contents = snap.states.lead.messages.map((m) => m.content)
+  expect(contents.slice(0, 2)).toEqual(["run 0", "answer 0"])
+  expect(contents.slice(2).filter((c) => c === "Error: stopped").length).toBe(6)
 })
 
 test("D1 answered runs spread across two archives and the current file come back oldest first; reading stops at the archives compaction keeps", () => {
@@ -806,8 +815,89 @@ test("F1 history.md: readable sections, the row restored as recorded; migration 
   const served = await snapshot(team)
   team.terminate()
   expect(built.lead.history.map((h) => h.answer)).toEqual(["answer archived", "answer legacy", "GAMMA first"])
-  expect(served.states.lead.messages.filter((m) => m.role === "user").map((m) => m.content)).toEqual(["run archived", "run legacy", expect.stringContaining("which name leads?")])
+  // the stopped run "again" comes back in the thread too, ending on its error (2026-10-23), never in EARLIER RUNS
+  expect(served.states.lead.messages.filter((m) => m.role === "user").map((m) => m.content)).toEqual(["run archived", "run legacy", expect.stringContaining("which name leads?"), "again"])
+  expect(served.states.lead.messages.at(-1)).toMatchObject({ content: "Error: stopped", error: "stopped" })
   // A legacy file alone (a desk not run since) restores as it did.
   const legacy = await restoreFrom(mkdtempSync(join(tmpdir(), "restore-legacy-")), [old("only", 2)], {}, { legacy: true })
   expect(legacy.lead.history).toEqual([{ from: "owner", request: "run only", answer: "answer only" }])
+})
+
+// 2026-10-23 audit: what a hard kill must not lose — the run in progress (its marker left in state/running/) comes back
+// as interrupted, the model-call stats as they were, and an agent whose last run failed shows so.
+test("G1 a run cut off by a kill restores as interrupted; stats and the error status survive a restart", async () => {
+  const folder = mkdtempSync(join(tmpdir(), "restore-killed-"))
+  const state = mkdtempSync(join(tmpdir(), "restore-state-"))
+  writeFileSync(join(folder, "history.md"), historyMarkdown([{ at: "2026-10-23T13:00:00.000Z", from: "owner", request: "run 0", steps: [], answer: "answer 0", flags: [] }], "lead"))
+  mkdirSync(join(state, "running"), { recursive: true })
+  // the marker as the server rewrites it at each step boundary: the steps it had taken, and its trail
+  const stepsSoFar = [{ thought: "look it up", calls: [{ tool: "quote", input: { symbol: "SPY" } }], results: [{ tool: "quote", ok: true, output: "SPY 1", ms: 12 }], n: 1, ms: 900 }]
+  writeFileSync(join(state, "running", "lead.json"), JSON.stringify({ at: Date.parse("2026-10-23T13:05:00Z"), request: { from: "telegram", text: "cut off" }, steps: stepsSoFar }))
+  const stats = { calls: 4, totalMs: 8000, avgMs: 2000, lastMs: 1500, promptChars: 900, replyChars: 80, model: "default", at: "2026-10-23T13:05:01.000Z" }
+  writeFileSync(join(state, "agent-stats.json"), JSON.stringify({ lead: stats }))
+  const desk = { name: "d", state, start: async () => ({ desk: buildDesk({ name: "lead", report: false, folder }, { infer: async () => "" }) }) }
+  const team = await createKernelTeam({ desk, port: 0, live: true })
+  const snap = await snapshot(team)
+  team.terminate()
+  const lead = snap.states.lead
+  expect(lead.messages.map((m) => m.content)).toEqual(["run 0", "answer 0", "cut off", 'look it up\nquote({"symbol":"SPY"})', "SPY 1", expect.stringContaining("Error: interrupted")])
+  expect(lead.messages[4]).toMatchObject({ role: "tool", name: "quote", ms: 12 })
+  expect(lead).toMatchObject({ status: "error", stats })
+  expect(existsSync(join(state, "running", "lead.json"))).toBe(false)
+})
+
+test("G2 a run marker of a helper that is not back is recorded in its own history.md and removed", async () => {
+  const folder = mkdtempSync(join(tmpdir(), "restore-ghost-"))
+  const state = mkdtempSync(join(tmpdir(), "restore-state-"))
+  mkdirSync(join(state, "running"), { recursive: true })
+  writeFileSync(join(state, "running", "ghost.json"), JSON.stringify({ at: Date.parse("2026-10-23T13:05:00Z"), request: { from: "lead", text: "count it" }, steps: [] }))
+  const desk = { name: "d", state, start: async () => ({ desk: buildDesk({ name: "lead", report: false, folder }, { infer: async () => "" }) }) }
+  const team = await createKernelTeam({ desk, port: 0, live: true })
+  await snapshot(team)
+  team.terminate()
+  expect(existsSync(join(state, "running", "ghost.json"))).toBe(false)
+  const runs = parseHistory(readFileSync(join(state, "spawned", "ghost", "history.md"), "utf8"))
+  expect(runs[0]).toMatchObject({ request: "count it", error: expect.stringContaining("interrupted") })
+})
+
+test("G3 a step still out at a kill restores with the results that had arrived, never the calls that had not", async () => {
+  const folder = mkdtempSync(join(tmpdir(), "restore-inflight-"))
+  const state = mkdtempSync(join(tmpdir(), "restore-state-"))
+  mkdirSync(join(state, "running"), { recursive: true })
+  const steps = [{ thought: "two quotes", calls: [{ tool: "quote", input: { symbol: "A" } }, { tool: "quote", input: { symbol: "B" } }], n: 1, results: [{ tool: "quote", ok: true, output: "A 1" }, { tool: "quote", ok: false, output: "(cut off: the server stopped before it answered)", cut: true }] }]
+  writeFileSync(join(state, "running", "lead.json"), JSON.stringify({ at: Date.parse("2026-10-23T13:05:00Z"), request: { from: "owner", text: "quote both" }, steps }))
+  const desk = { name: "d", state, start: async () => ({ desk: buildDesk({ name: "lead", report: false, folder }, { infer: async () => "" }) }) }
+  const team = await createKernelTeam({ desk, port: 0, live: true })
+  const snap = await snapshot(team)
+  team.terminate()
+  expect(snap.states.lead.messages.map((m) => m.content)).toEqual(["quote both", expect.stringContaining("two quotes"), "A 1", expect.stringContaining("Error: interrupted")])
+})
+
+test("G4 runs accepted and never started before a kill are said at the next start, in the thread and the log", async () => {
+  const folder = mkdtempSync(join(tmpdir(), "restore-queued-"))
+  const state = mkdtempSync(join(tmpdir(), "restore-state-"))
+  writeFileSync(join(state, "accepted.json"), JSON.stringify([{ agent: "lead", text: "the second job", from: "schedule (booked by lead)", at: "2026-10-23T13:05:00.000Z" }]))
+  const desk = { name: "d", state, start: async () => ({ desk: buildDesk({ name: "lead", report: false, folder }, { infer: async () => "" }) }) }
+  const team = await createKernelTeam({ desk, port: 0, live: true })
+  const snap = await snapshot(team)
+  team.terminate()
+  expect(snap.states.lead.messages.at(-1)).toMatchObject({ action: "lifecycle", kind: "queued", content: expect.stringContaining("the second job") })
+  expect(snap.log.map((l) => l.text)).toContainEqual(expect.stringContaining("never started"))
+})
+
+test("G5 a state file that does not read is set aside and said, never dropped or reset silently", async () => {
+  const folder = mkdtempSync(join(tmpdir(), "restore-bad-"))
+  const state = mkdtempSync(join(tmpdir(), "restore-state-"))
+  writeFileSync(join(state, "accepted.json"), "{ not json")
+  writeFileSync(join(state, "agent-stats.json"), "{ nor this")
+  const desk = { name: "d", state, start: async () => ({ desk: buildDesk({ name: "lead", report: false, folder }, { infer: async () => "" }) }) }
+  const team = await createKernelTeam({ desk, port: 0, live: true })
+  const snap = await snapshot(team)
+  team.terminate()
+  const lines = snap.log.map((l) => l.text)
+  expect(lines).toContainEqual(expect.stringContaining("the runs queued before the stop did not read"))
+  expect(lines).toContainEqual(expect.stringContaining("the model-call stats did not read"))
+  const aside = readdirSync(state).filter((f) => f.includes(".unreadable-"))
+  expect(aside.some((f) => f.startsWith("accepted.json"))).toBe(true)
+  expect(aside.some((f) => f.startsWith("agent-stats.json"))).toBe(true)
 })

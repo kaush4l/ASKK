@@ -8,14 +8,15 @@ import { fullPath, sessionLabel } from "@/backend/live/workbench"
 import { PreviewCard } from "@/components/preview/card"
 import { DeskTalk } from "@/components/talk/desk-talk"
 import { RunnersView } from "@/components/views/runners"
-import { PipelineView } from "@/components/views/pipeline"
+import { StudioView } from "@/components/views/studio"
+import { WorkflowArtifact } from "@/components/workflow/card"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
 // One renderer per artifact view — the artifact's twin on the UI. Used by the desk's team cards
 // (components/kernel/desk-levels.jsx), the Live page's artifact tabs and the agent page. Every view the kernel or a
 // desk publishes gets a body here; an unknown view falls back to its state, so nothing an agent keeps is hidden.
-//   artifact: { id, kind, view, owner, title, holders, brief, state, items?, rows? }  (companion/team/kernel-team.js)
+//   artifact: { id, kind, view, owner, title, holders, brief, state, items? }  (companion/team/kernel-team.js)
 
 const VIEWS = {
   list: ListView,
@@ -35,7 +36,8 @@ const VIEWS = {
   talk: TalkView,
   runners: RunnersView, // a desk's live formulas: each runner's chart, where it stands, the owner's controls (components/views/runners.jsx)
   practice: PracticeView, // 2026-10-20: an agent's standing orders it improves itself — this run's checklist, its bar, what it learned
-  pipeline: PipelineView, // 2026-10-21: a desk's staged workflow — each stage a research call, its web reads live, the result, the owner's Stop (components/views/pipeline.jsx)
+  studio: StudioView, // 2026-10-23: images on this Mac made, critiqued and refined — the owner's goal, feedback, refine (components/views/studio.jsx)
+  pipeline: WorkflowArtifact, // a workflow (2026-10-22): its live status on a tile, the whole viewer opened big (components/workflow/card.jsx)
 }
 
 // One artifact under its id, its brief (one line, from code) heading it; compact in a closed card, whole open.
@@ -45,6 +47,8 @@ export function ArtifactBlock({ artifact: a, expanded }) {
       <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
         <span className="shrink-0 font-mono text-foreground/80">{a.id}</span>
         <span className="truncate">{a.title}</span>
+        {/* 2026-10-23: whether it survives a restart (kept a day, always, for the run, or in its own file) */}
+        {expanded && a.keep && <span className="shrink-0 rounded border px-1 text-[10px]" title="what a restart keeps">keeps {a.keep}</span>}
         {a.view !== "list" && a.brief && <span className="ml-auto min-w-0 truncate">{a.brief}</span>}
       </div>
       {a.view === "list" && a.brief && <p className="mt-1 break-words text-sm">{a.brief}</p>}
@@ -58,7 +62,7 @@ export function ArtifactBlock({ artifact: a, expanded }) {
 // retired into the preview, kept by a desk server not restarted yet) falls back to its state.
 export function ArtifactBody({ artifact: a, expanded, fill = false }) {
   const Body = VIEWS[a.view] ?? GenericView
-  return <Body id={a.id} artifact={a} state={a.state} items={a.items} rows={a.rows} expanded={expanded} fill={fill} />
+  return <Body id={a.id} artifact={a} state={a.state} items={a.items} expanded={expanded} fill={fill} />
 }
 
 // Rows an artifact publishes ({name, detail}): the desk's picks, book, track record, health.
@@ -94,7 +98,15 @@ function ChecklistView({ state, expanded }) {
             <span className={i.status === "done" ? "text-emerald-400" : i.status === "skipped" ? "text-muted-foreground" : "text-amber-400"}>
               {i.status === "done" ? "✓" : i.status === "skipped" ? "–" : "○"}
             </span>{" "}
-            {i.id}: <span className="text-muted-foreground">{expanded && i.note ? i.note : i.text}</span>
+            {i.id}
+            {/* 2026-10-23 audit 18: a required item ("!" in its list) and, open, who ticked or skipped it and when */}
+            {i.required && <span className="text-amber-500" title="required">!</span>}: <span className="text-muted-foreground">{expanded && i.note ? i.note : i.text}</span>
+            {expanded && i.by && i.status !== "open" && (
+              <span className="text-[10px] text-muted-foreground">
+                {" "}· {i.by}
+                {i.at ? ` ${new Date(i.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : ""}
+              </span>
+            )}
           </li>
         ))}
         {!expanded && done === items.length && <li className="text-xs text-emerald-400">all done</li>}
@@ -216,6 +228,8 @@ function PracticeView({ id, state, expanded }) {
     <div className="mt-1">
       <ChecklistView state={run} expanded={expanded} />
       <PendingEdits id={id} pending={state?.pending} expanded={expanded} />
+      {/* 2026-10-23 audit: the standing checklist (an accepted edit shows before the next run takes it) */}
+      {expanded && section("checklist (standing, each run's items)", s.checklist, 99)}
       {section("quality bar", s.quality, 2)}
       {expanded && section("instructions (learned)", s.instructions, 99)}
       {section("lessons", s.lessons, expanded ? 99 : 1)}
@@ -232,9 +246,14 @@ function PracticeView({ id, state, expanded }) {
         ))}
       <p className="mt-1 text-[11px] text-muted-foreground">
         rev {state?.revision ?? 0}
+        {state?.at ? ` · edited ${clock(state.at)}` : ""}
         {state?.file ? ` · ${state.file}` : ""}
         {state?.edits ? ` · ${state.edits} edit${state.edits === 1 ? "" : "s"} this run` : ""}
       </p>
+      {state?.retroError && <p className="text-[11px] text-amber-700 dark:text-amber-300">{state.retroError}</p>}
+      {state?.readError && <p className="text-[11px] text-red-700 dark:text-red-400">{state.readError}</p>}
+      {state?.retrosError && <p className="text-[11px] text-amber-700 dark:text-amber-300">{state.retrosError}</p>}
+      {state?.saveError && <p className="text-[11px] text-amber-700 dark:text-amber-300">{state.saveError}</p>}
     </div>
   )
 }
@@ -265,6 +284,11 @@ function QualityView({ state }) {
           className={cn("rounded border px-1.5 text-xs leading-6", r.score >= 4 ? "border-emerald-500/60" : r.score >= 3 ? "border-amber-400/60" : "border-red-500/60")}
         >
           {m} {r.score}/5
+          {/* 2026-10-23 audit: the rest of the row, not only the score */}
+          {r.verdict ? <span className="text-muted-foreground"> · {r.verdict}</span> : null}
+          {r.confidence != null ? <span className="text-muted-foreground"> · conf {r.confidence}</span> : null}
+          {r.ok === false ? <span className="text-red-700 dark:text-red-400"> · not ok</span> : null}
+          {r.at ? <span className="text-muted-foreground"> · {clock(r.at)}</span> : null}
         </li>
       ))}
     </ul>
@@ -274,12 +298,18 @@ function QualityView({ state }) {
 function BoardView({ state, expanded }) {
   const entries = Object.entries(state?.entries ?? {}).reverse()
   const shown = expanded ? entries : entries.slice(0, 2)
-  if (!shown.length) return <p className="text-xs text-muted-foreground">empty</p>
+  // the board's goal and each entry's time (2026-10-23 audit: sent, never drawn)
+  const goal = expanded && state?.goal ? <p className="mt-1 text-[11px] break-words text-muted-foreground">goal: {state.goal}</p> : null
+  if (!shown.length) return goal ?? <p className="text-xs text-muted-foreground">empty</p>
   return (
     <ul className="mt-1 flex flex-col gap-1">
+      {goal}
       {shown.map(([key, e]) => (
         <li key={key} className="text-xs">
-          <span className="text-muted-foreground">{e.author} · {key}:</span>{" "}
+          <span className="text-muted-foreground">
+            {e.author} · {key}
+            {e.at ? ` · ${clock(e.at)}` : ""}:
+          </span>{" "}
           <span className={cn("whitespace-pre-line break-words", !expanded && "line-clamp-2")}>{e.text}</span>
         </li>
       ))}
@@ -292,9 +322,10 @@ function TextView({ state, expanded }) {
   return <pre className="mt-1 whitespace-pre-wrap break-words font-sans text-xs text-muted-foreground">{state?.text || "(empty)"}</pre>
 }
 
-// Rows of objects (`rows`, else `items`, else the state's first array): one column per key.
-function TableView({ state, items, rows, expanded }) {
-  const data = rows ?? items ?? Object.values(state ?? {}).find(Array.isArray) ?? []
+// Rows of objects (`items`, else the state's first array): one column per key. (2026-10-23: no twin sends a top-level
+// `rows`, so it is not read.)
+function TableView({ state, items, expanded }) {
+  const data = items ?? Object.values(state ?? {}).find(Array.isArray) ?? []
   if (!expanded || !data.length) return null
   const columns = [...new Set(data.flatMap((r) => Object.keys(r ?? {})))].slice(0, 8)
   return (
@@ -446,6 +477,9 @@ function FilesView({ state, expanded }) {
           {state?.truncated ? "+" : ""} files · {open.length} open · {modified.length} modified
         </span>
       </p>
+      {state?.unreadable?.length > 0 && (
+        <p className="break-all text-[11px] text-amber-700 dark:text-amber-300">could not list: {state.unreadable.join(", ")}</p>
+      )}
       {expanded && open.length > 0 && (
         <p className="break-all font-mono text-[11px] text-sky-700 dark:text-sky-300">{open.map((o) => o.path).join("  ")}</p>
       )}
@@ -659,14 +693,15 @@ function DispatchView({ id, state, expanded }) {
         <li key={r.id} className="min-w-0 text-xs">
           <p className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 @md:flex-nowrap">
             <span aria-hidden className={cn("size-2 shrink-0 translate-y-[-1px] self-center rounded-full", JOB_TONE[r.status] ?? "bg-muted-foreground/50")} />
-            <span className="min-w-0 flex-1 truncate font-mono text-foreground/90 @md:max-w-[45%] @md:flex-initial" title={`${r.id} → ${r.to}`}>
+            <span className="min-w-0 flex-1 truncate font-mono text-foreground/90 @md:max-w-[45%] @md:flex-initial" title={`${r.by ? `${r.by}: ` : ""}${r.id} → ${r.to}`}>
+              {r.by ? <span className="text-muted-foreground">{r.by}: </span> : null}
               {r.id} → {r.to}
             </span>
             <span className="order-last min-w-0 basis-full truncate pl-3.5 text-muted-foreground @md:order-none @md:flex-1 @md:pl-0" title={r.ask}>
               {r.ask}
             </span>
             <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums" title={r.endedAt ? `ended ${clock(r.endedAt)}` : undefined}>
-              {r.running ? r.elapsed : `${r.status}${r.elapsed ? ` · ${r.elapsed}` : ""}`}
+              {r.running ? `${r.began ? "" : `queued behind ${r.to}'s run · `}${r.elapsed}` : `${r.status}${r.elapsed ? ` · ${r.elapsed}` : ""}${r.status === "done" && !r.delivered ? " · not read yet" : ""}`}
               {!r.running && r.endedAt ? <span className="hidden @md:inline"> · {clock(r.endedAt)}</span> : null}
             </span>
             {r.running && (
@@ -706,8 +741,9 @@ function DispatchView({ id, state, expanded }) {
 }
 
 // The next run: when, and the goal it starts with. The lead books it too (its schedule tool).
-function ScheduleView({ state }) {
+function ScheduleView({ state, expanded }) {
   const next = state?.next ?? null
+  const history = [...(state?.history ?? [])].reverse() // runs taken (kernel Schedule.takeDue, ≤ 20), newest first
   const [at, setAt] = React.useState("")
   const [goal, setGoal] = React.useState("")
   const [error, setError] = React.useState(null)
@@ -737,6 +773,8 @@ function ScheduleView({ state }) {
           <span className="text-muted-foreground">no run booked</span>
         )}
       </p>
+      {next?.why && <p className="break-words text-xs text-muted-foreground">because {next.why}</p>}
+      {history.length > 0 && <ScheduleHistory history={history} expanded={expanded} />}
       <form
         className="flex flex-col gap-2"
         onSubmit={(e) => {
@@ -757,6 +795,37 @@ function ScheduleView({ state }) {
         </div>
         {error && <p className="text-xs text-destructive">{error}</p>}
       </form>
+    </div>
+  )
+}
+
+// The runs the schedule took (2026-10-23: the kernel kept them, no view drew them): newest first, three lines, the rest
+// behind a toggle (the whole list on an open card).
+const etTime = (iso) => (iso ? new Date(iso).toLocaleString("en-US", { timeZone: "America/New_York", weekday: "short", hour: "2-digit", minute: "2-digit" }) : "")
+function ScheduleHistory({ history, expanded }) {
+  const [all, setAll] = React.useState(false)
+  const shown = expanded || all ? history : history.slice(0, 3)
+  return (
+    <div className="flex flex-col gap-0.5">
+      <p className="text-[11px] text-muted-foreground">Runs taken · {history.length}</p>
+      <ul className="flex flex-col gap-0.5">
+        {shown.map((h, n) => (
+          <li key={`${h.ran ?? h.at}-${n}`} className="break-words text-xs">
+            <span className="text-muted-foreground">{etTime(h.ran ?? h.at)} ET · by {h.by} —</span> {String(h.goal ?? "").split("\n")[0]}
+            {h.why && <span className="text-muted-foreground"> (because {h.why})</span>}
+          </li>
+        ))}
+      </ul>
+      {!expanded && history.length > shown.length && (
+        <button type="button" onClick={() => setAll(true)} className="self-start text-[11px] text-muted-foreground underline pointer-coarse:min-h-10">
+          +{history.length - shown.length} more
+        </button>
+      )}
+      {!expanded && all && history.length > 3 && (
+        <button type="button" onClick={() => setAll(false)} className="self-start text-[11px] text-muted-foreground underline pointer-coarse:min-h-10">
+          show fewer
+        </button>
+      )}
     </div>
   )
 }

@@ -47,12 +47,11 @@ test("cycles and unknown names never break the tree", () => {
   expect(teamTree(agents, { root: "nobody" })).toBeNull()
 })
 
-test("status: tone, bubble text, last tool while thinking, approvals", () => {
-  const running = { status: "running", activity: { phase: "llm", stage: "thinking" }, messages: [{ role: "user", content: "go" }, { role: "tool", name: "market.quote", ok: true }] }
-  expect(agentStatus(running, {})).toMatchObject({ tone: "llm", message: "Thinking…", detail: "last: market.quote" })
+test("status: tone, bubble text, last tool while the model runs", () => {
+  const running = { status: "running", activity: { phase: "llm", stage: "waiting" }, messages: [{ role: "user", content: "go" }, { role: "tool", name: "market.quote", ok: true }] }
+  expect(agentStatus(running, {})).toMatchObject({ tone: "llm", message: "Calling the model…", detail: "last: market.quote" })
   expect(agentStatus({ status: "running", activity: { phase: "tools", names: ["tape"] }, messages: [] }, { agents: ["tape"] }).tone).toBe("quest")
   expect(agentStatus({ status: "idle", activity: { phase: "waiting", names: ["tape"] }, messages: [] }, {}).tone).toBe("waiting")
-  expect(agentStatus({ status: "idle", activity: {}, approvals: [{}], messages: [] }, {})).toMatchObject({ tone: "paused", approvals: 1 })
   expect(agentStatus({ status: "idle", activity: {}, messages: [{ action: "answer", content: "NO TRADE", at: "2026-10-15T14:00:00Z" }] }, {})).toMatchObject({ tone: "done", message: "NO TRADE", at: "2026-10-15T14:00:00Z" })
   expect(agentStatus(null, {})).toMatchObject({ tone: "idle", message: "starting" })
 })

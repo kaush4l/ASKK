@@ -2,7 +2,7 @@
 // folder, team, tool specs, artifacts held) and its live state, one immutable snapshot replaced by the stream's
 // patches (companion/team/kernel-team.js). Actions are calls to the desk server; nothing runs in the tab.
 //
-//   state: { status, activity, messages, error, revision, live, working, stats }
+//   state: { status, activity, messages, error, revision, working, stats }
 //   messages: { role: user | assistant | tool, action?: tool | answer | gate, kind?: guidance | chat, … } — the run's trail
 //   2026-10-17: kind chat — the owner's question and the agent's answer (team call `chat`), a pair beside the runs:
 //   { role: user, kind: chat, from, content } then { role: assistant, kind: chat, content, guided, proposed }. Neither
@@ -19,7 +19,6 @@ export const EMPTY_STATE = Object.freeze({
   messages: [],
   error: null,
   revision: 0,
-  live: {},
   working: null,
   stats: null,
 })

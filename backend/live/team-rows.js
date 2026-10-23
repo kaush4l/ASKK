@@ -15,14 +15,14 @@ export const cut = (v) => {
   return s && s.length > MAX_TEXT ? `${s.slice(0, MAX_TEXT)}…` : (s ?? "")
 }
 
-export const freshState = () => ({ status: "idle", activity: IDLE, messages: [], error: null, revision: 0, approvals: [], inbox: [], quests: [], working: null, stats: null, contextWindow: null })
+export const freshState = () => ({ status: "idle", activity: IDLE, messages: [], error: null, revision: 0, working: null, stats: null })
 
-// {calls, totalMs, avgMs, lastMs, promptChars, replyChars, model, at} after one more model call (kernel step / chat event).
+// {calls, totalMs, avgMs, lastMs, promptChars, replyChars, at} after one more model call (kernel step / chat event).
 export function nextStats(prev, agent, e) {
   const s = prev ?? { calls: 0, totalMs: 0 }
   const calls = s.calls + 1
   const totalMs = s.totalMs + e.ms
-  return { calls, totalMs, avgMs: Math.round(totalMs / calls), lastMs: e.ms, promptChars: e.prompt_chars, replyChars: e.reply_chars, model: agent?.config.model ?? null, at: new Date(e.at ?? Date.now()).toISOString() }
+  return { calls, totalMs, avgMs: Math.round(totalMs / calls), lastMs: e.ms, promptChars: e.prompt_chars, replyChars: e.reply_chars, at: new Date(e.at ?? Date.now()).toISOString() } // the model is the agent's own (its page), not repeated here
 }
 
 export const isAgentTool = (agent, name) => agent.tools.get(name)?.type === "agent"
@@ -63,7 +63,10 @@ export const rows = {
   request: (request, when) => ({ role: "user", content: request.text, from: request.from === "owner" ? null : request.from, kind: request.from === "owner" ? "request" : "quest", at: when }),
   // A step with calls: its thought, then one line per call (`name({...})`).
   // images (2026-10-18): the screenshots the step's model call saw (kernel step event refs: page, n, url, caption).
-  step: (thought, calls, when, images = null) => ({ role: "assistant", action: "tool", content: [thought, ...calls.map((c) => `${c.tool}(${JSON.stringify(c.input ?? {})})`)].filter(Boolean).join("\n"), at: when, ...(images?.length ? { images } : {}) }),
+  // ms (2026-10-23): the step's model call, on its own row.
+  // n: the step's number in its run; answer: an answer the model wrote beside its calls (taken only beside artifact
+  // commands — else the next row says why not), so the thread shows what it said (2026-10-23)
+  step: (thought, calls, when, images = null, ms = null, { n = null, answer = null } = {}) => ({ role: "assistant", action: "tool", content: [thought, ...calls.map((c) => `${c.tool}(${JSON.stringify(c.input ?? {})})`)].filter(Boolean).join("\n"), at: when, ...(images?.length ? { images } : {}), ...(ms != null ? { ms } : {}), ...(n != null ? { n } : {}), ...(answer != null ? { answer: cut(String(answer)) } : {}) }),
   saw: (images, when) => ({ role: "assistant", action: "tool", content: "(looked at its screenshots, then answered)", at: when, images }),
   // A call's result with its own call's input (paired by index, live and restored); index: the call's place in its
   // step and row: its step's thread row (message id), so the Live feed keeps the identity the call had while it ran
@@ -74,14 +77,23 @@ export const rows = {
   result: (agent, result, input, index, row, when) => {
     const name = agent.resolveTool(result.tool)
     const output = cut(result.output)
-    return { role: "tool", name, kind: isAgentTool(agent, name) ? "agent" : "tool", view: viewOf(agent, name), index, row, inputs: input ?? {}, ok: result.ok, content: output, output, at: when }
+    // ms (2026-10-23, kernel result event): how long this one call ran; kind and view as recorded when it ran (a restored
+    // call to a helper gone since, or to a tool lent for one phase, draws as it did), else from the agent now
+    return { role: "tool", name, kind: result.kind ?? (isAgentTool(agent, name) ? "agent" : "tool"), view: result.view ?? viewOf(agent, name), index, row, inputs: input ?? {}, ok: result.ok, content: output, output, at: when, ...(result.ms != null ? { ms: result.ms } : {}) }
   },
   gate: (kind, content, when) => ({ role: "assistant", action: "gate", kind, content, at: when }),
   // 2026-10-22 prompt compaction (kernel event compact): the prompt reached 90% of its budget and the run's older steps
   // (and earlier runs) were folded into one summary — the numbers on the row, the line its text.
-  compact: (e, when) => ({ role: "assistant", action: "compact", content: compactLine(e), compact: { before_chars: e.before_chars, after_chars: e.after_chars, budget: e.budget, steps_folded: e.steps_folded, runs_folded: e.runs_folded, mode: e.mode, error: e.error ?? null }, at: when }),
+  compact: (e, when) => ({ role: "assistant", action: "compact", content: compactLine(e), compact: { before_chars: e.before_chars, after_chars: e.after_chars, budget: e.budget, steps_folded: e.steps_folded, runs_folded: e.runs_folded, mode: e.mode, error: e.error ?? null, ms: e.ms ?? null, n: e.n ?? null }, at: when }),
   guidance: (from, text, when) => ({ role: "user", kind: "guidance", from, content: text, at: when }),
-  answer: (answer, when) => ({ role: "assistant", action: "answer", content: answer, at: when }),
+  // flags (2026-10-23, kernel answer event): the gates still open when the answer went through after gateRetries
+  answer: (answer, when, flags = null) => ({ role: "assistant", action: "answer", content: answer, at: when, ...(flags?.length ? { flags } : {}) }),
+  // 2026-10-23: the desk's own events (kernel Desk spawn | dismiss | keep | proposal) as a row in the thread of the agent
+  // that caused them — the tree changes, and the thread says when and why.
+  // 2026-10-23 (kernel event refresh): an artifact's refresh before a step failed — the step went on with its last state
+  // — or came back
+  refresh: (e, when) => ({ role: "assistant", action: "refresh", artifact: e.artifact, ok: !!e.ok, content: e.ok ? `${e.artifact} refreshes again` : `${e.artifact} did not refresh (${e.error}): the step used its last state`, at: when }),
+  lifecycle: (kind, content, when, detail = {}) => ({ role: "assistant", action: "lifecycle", kind, content, at: when, ...detail }),
   // The owner's chat (kernel Agent.chat): the question and the answer, kind "chat" — beside the runs, never one.
   // guided: its GUIDE: line reached the run in progress; proposed: the request its QUEUE: line (or a GUIDE: line with
   // no run left) proposes — never started here: the owner starts it (else null).

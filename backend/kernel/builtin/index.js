@@ -1,5 +1,6 @@
 import { Browse } from "./browse.js"
 import { Talk } from "./talk.js"
+import { Studio } from "./studio.js"
 import { Dispatch } from "./dispatch.js"
 import { deskTools } from "./desks.js"
 import { Files } from "./files.js"
@@ -22,7 +23,7 @@ import { Workflow } from "./workflow.js"
 //
 // deskOptions: {clock?, adapter? (files and the preview's visual files: the workspace adapter, files.js — default
 // the host), root? (files: the tree's first root)}. Artifacts are shared per desk: every agent that lists `files`,
-// `terminal`, `preview`, `plan`, `dispatch`, `browse` or `talk` holds the same instance, id = the type; a spec {type, id} makes a
+// `terminal`, `preview`, `plan`, `dispatch`, `browse`, `talk` or `studio` holds the same instance, id = the type; a spec {type, id} makes a
 // separate one (the same id → the same one again); {type, commands: [...]} holds a subset of its commands; {type: plan,
 // gate: true} gates that holder's answer. 2026-10-17: the stage is gone — the preview is the one pane (pages and visuals).
 // 2026-10-18 owner: no charts — a live training dashboard is a page in the preview, which the UI enlarges to the page.
@@ -76,6 +77,10 @@ export const BUILTIN = {
     // talk (view talk; 2026-10-18 owner: "The desk should be able to talk with me too. The work and build can run in the
     // background."): the desk tells the owner results and asks what only the owner decides; never waits for a reply
     talk: perDesk("talk", (o) => new Talk({ id: o.id, clock: o.clock })),
+    // studio (view studio; 2026-10-23 owner: "a live artifact where the input will be taken and the model will be used to
+    // generate the image … critiqued and improved"): images on this Mac's open model (host image/*), the prompt's versions,
+    // critiques, the pick and the owner's feedback; a holder sees its new images on its next step
+    studio: perDesk("studio", (o) => new Studio({ id: o.id, clock: o.clock })),
     // practice (view practice; 2026-10-20 owner: "self-reflect like the retro or the critic … update instructions or the
     // tools or any kind of quality guidelines it may have missed"): one per agent (id <agent>.practice) — its run
     // checklist, quality bar, learned instructions, lessons and the tools it lacks, kept in a file it edits itself

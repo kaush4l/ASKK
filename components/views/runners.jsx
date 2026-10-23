@@ -2,7 +2,7 @@
 
 import * as React from "react"
 
-import { checkLine, clockOf, everyLabel, intervalLabel, parsePlot, runnerCall, runnerCharts, runnerGate, runnerRows, startRunner, testRunner, windowText } from "@/backend/live/runners"
+import { checkLine, clockOf, endsText, fireLine, intervalLabel, parsePlot, runnerCall, runnerCharts, runnerForm, runnerGate, runnerRows, specLine, startRunner, testRunner, windowText } from "@/backend/live/runners"
 import { PALETTE } from "@/backend/live/visual-layout"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -12,7 +12,10 @@ import { cn } from "@/lib/utils"
 // holds — backend/live/runners.js has the shape). Closed on a card: one line per runner with its price sparkline; open:
 // each runner's live chart (the price, its plotted values, the bars its condition turned true), where it stands, its
 // window (on / from / until) and its gate (a second name's formula, its last value), and the owner's controls — pause,
-// resume, compute now, stop, remove — and a form to start or test one (with a window and a gate).
+// resume, compute now, stop, remove — and, where the artifact takes them, a form to start or test one (with a window and a
+// gate). 2026-10-23: the form shows only when the state says so (`can: {start, test}`): the kernel's Runners
+// (backend/kernel/builtin/runners.js) take pause, resume, now, stop and remove only, so a form drawn for it was always
+// refused. Its runners carry no symbol, interval or source: the card draws the parts a runner has.
 
 const TONE = {
   holds: "bg-emerald-500",
@@ -37,7 +40,7 @@ export function RunnersView({ id, state, expanded }) {
           <li key={r.id} className="flex min-w-0 items-center gap-1.5 text-xs">
             <span aria-hidden className={cn("size-2 shrink-0 rounded-full", TONE[s.tone])} />
             <span className="min-w-0 truncate font-mono text-foreground/90">{r.id}</span>
-            <span className="shrink-0 text-[11px] text-muted-foreground">{intervalLabel(r.interval)}</span>
+            {r.interval != null && <span className="shrink-0 text-[11px] text-muted-foreground">{intervalLabel(r.interval)}</span>}
             <span className="ml-auto min-w-0 truncate text-[11px] text-muted-foreground">
               {s.word}
               {s.detail ? ` · ${s.detail}` : ""}
@@ -56,7 +59,7 @@ export function RunnersView({ id, state, expanded }) {
         {state?.poll?.error ? <span className="text-red-700 dark:text-red-400"> · {state.poll.error}</span> : null}
         {` · ${state?.fired ? state.fired.filter((f) => f.kind === "fire").length : rows.reduce((n, { r }) => n + (r.fires ?? []).filter((f) => f.kind === "fire").length, 0)} fired`}
       </p>
-      {state?.can?.start !== false && !rows.some(({ r }) => r.checks != null) && <NewRunner id={id} />}
+      {runnerForm(state) && <NewRunner id={id} can={runnerForm(state)} />}
       {!rows.length && <p className="text-xs text-muted-foreground">no runners — an agent sets them</p>}
       <ul className="grid min-w-0 grid-cols-1 gap-2 @3xl:grid-cols-2">
         {rows.map(({ r, s }) => (
@@ -74,21 +77,20 @@ function RunnerCard({ r, s, busy, onCall }) {
   const fires = (r.fires ?? []).slice(-4)
   const gate = runnerGate(r)
   const hours = windowText(r)
+  const ends = endsText(r)
   return (
     <li className="min-w-0 rounded-md border px-2 py-1.5">
       <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
         <span aria-hidden className={cn("size-2 shrink-0 rounded-full", TONE[s.tone])} />
         <span className="min-w-0 truncate font-mono text-sm text-foreground">{r.id}</span>
-        <span className="shrink-0 text-xs text-muted-foreground">
-          {r.symbol} · {intervalLabel(r.interval)} · {r.source} · {everyLabel(r.every)}
-        </span>
+        {specLine(r) && <span className="shrink-0 text-xs text-muted-foreground">{specLine(r)}</span>}
         <span className={cn("shrink-0 rounded-sm border px-1 text-[11px]", s.tone === "holds" && "border-emerald-500/60 text-emerald-600 dark:text-emerald-400", s.tone === "near" && "border-amber-400/60 text-amber-600 dark:text-amber-300", s.tone === "error" && "border-red-500/60 text-red-700 dark:text-red-400")}>{s.word}</span>
         {s.detail && <span className="min-w-0 truncate text-[11px] text-muted-foreground">{s.detail}</span>}
       </div>
       <p className="mt-1 font-mono text-[11px] break-words text-foreground/80">
         when {r.when}{" "}
         <span className="text-muted-foreground">
-          → {r.then}
+          {r.then ? `→ ${r.then}` : "→"}
           {r.repeat === "edge" || r.repeat === true ? " each time" : " once"}
           {r.warn ? ` · heads-up ${r.warn} bars ahead` : ""}
         </span>
@@ -104,20 +106,26 @@ function RunnerCard({ r, s, busy, onCall }) {
         </p>
       )}
       {hours && <p className="text-[11px] break-words text-muted-foreground">window {hours} ET</p>}
+      {ends && <p className="text-[11px] break-words text-muted-foreground">{ends}</p>}
+      {r.last?.note && r.last.note !== s.detail && <p className="text-[11px] break-words text-muted-foreground">{r.last.note}</p>}
       {r.why && <p className="text-[11px] break-words text-muted-foreground">{r.why}</p>}
       {checkLine(r) && <p className="text-[11px] break-words text-muted-foreground tabular-nums">{checkLine(r)}</p>}
       <div className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-[11px] tabular-nums">
-        <span className="text-foreground">{fmt(r.last?.price)}</span>
+        {r.last?.price != null && <span className="text-foreground">{fmt(r.last.price)}</span>}
         {names.map((n) => (
           <span key={n} style={{ color: color(n) }}>
             {n} {fmt(r.last?.values?.[n])}
           </span>
         ))}
         {r.last?.at && <span className="text-muted-foreground">computed {clockOf(r.last.at)} ET</span>}
-        <span className="text-muted-foreground">[{r.set_by}]</span>
+        {(r.set_by || r.at) && (
+          <span className="text-muted-foreground">
+            [{[r.set_by, r.at ? `set ${clockOf(r.at)} ET` : null].filter(Boolean).join(" · ")}]
+          </span>
+        )}
       </div>
       {(r.chart || r.checks == null) && <Chart chart={r.chart} color={color} />}
-      {fires.length > 0 && <p className="text-[11px] break-words text-muted-foreground">{fires.map((f) => `${f.kind === "warn" ? "heads-up" : "fired"} ${clockOf(f.at)} @${fmt(f.price)}`).join(" · ")}</p>}
+      {fires.length > 0 && <p className="text-[11px] break-words text-muted-foreground">{fires.map(fireLine).join("; ")}</p>}
       {r.error && <p className="text-[11px] break-words text-red-700 dark:text-red-400">{r.error}</p>}
       <div className="mt-1 flex flex-wrap gap-1">
         {running ? <Control label="Pause" busy={busy} onClick={() => onCall("pause")} /> : r.status !== "expired" && !(r.ends_at && Date.parse(r.ends_at) <= Date.now()) && <Control label="Resume" busy={busy} onClick={() => onCall("resume")} />}
@@ -228,7 +236,7 @@ const FIELDS = [
 
 // The owner starts or tests a runner: the same spec the agents give <id>.start (a window and a gate are fields, never
 // prose in why: an empty one is left out).
-function NewRunner({ id }) {
+function NewRunner({ id, can }) {
   const [form, setForm] = React.useState({ id: "", symbol: "", interval: "5m", every: "bar", source: "", warn: "", on: "", from: "", until: "", gateSymbol: "", gateWhen: "", when: "", plot: "", then: "wake", repeat: "once" })
   const [out, setOut] = React.useState(null)
   const [busy, setBusy] = React.useState(false)
@@ -295,10 +303,10 @@ function NewRunner({ id }) {
             <option value="once">once</option>
             <option value="edge">each time</option>
           </select>
-          <Button type="submit" size="xs" className="h-8 px-3 text-xs pointer-coarse:h-10" disabled={busy || !form.id || !form.when}>
+          <Button type="submit" size="xs" className="h-8 px-3 text-xs pointer-coarse:h-10" disabled={busy || !can.start || !form.id || !form.when}>
             Start
           </Button>
-          <Button type="button" size="xs" variant="outline" className="h-8 px-3 text-xs pointer-coarse:h-10" disabled={busy || !form.when} onClick={() => run("test")}>
+          <Button type="button" size="xs" variant="outline" className="h-8 px-3 text-xs pointer-coarse:h-10" disabled={busy || !can.test || !form.when} onClick={() => run("test")}>
             Test
           </Button>
         </div>

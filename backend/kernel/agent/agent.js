@@ -268,9 +268,12 @@ export class Agent {
         try {
           const ms = this.config.refreshMs ?? REFRESH_MS
           await Promise.race([a.refresh(this), new Promise((_, no) => (timer = setTimeout(() => no(new Error(`no answer in ${ms / 1000} s`)), ms)))])
-          this.refreshFailed.delete(a.id)
+          // back after failing: said once (2026-10-23 architecture map: a failed refresh was only in the prompt)
+          if (this.refreshFailed.delete(a.id)) this.emit("refresh", { artifact: a.id, ok: true })
         } catch (error) {
-          this.refreshFailed.set(a.id, String(error?.message ?? error).split("\n")[0].slice(0, 200))
+          const why = String(error?.message ?? error).split("\n")[0].slice(0, 200)
+          if (this.refreshFailed.get(a.id) !== why) this.emit("refresh", { artifact: a.id, ok: false, error: why })
+          this.refreshFailed.set(a.id, why)
         } finally {
           clearTimeout(timer)
         }
@@ -291,8 +294,14 @@ export class Agent {
         try {
           const ms = this.config.refreshMs ?? REFRESH_MS
           const got = await Promise.race([a.images(this), new Promise((_, no) => (timer = setTimeout(() => no(new Error("timeout")), ms)))])
+          if (this.refreshFailed.delete(`${a.id} screenshots`)) this.emit("refresh", { artifact: `${a.id} screenshots`, ok: true })
           return Array.isArray(got) ? got : []
-        } catch {
+        } catch (error) {
+          // the step goes without them, and says so once (a refresh row — 2026-10-23 audit: it went silently)
+          const key = `${a.id} screenshots`
+          const why = String(error?.message ?? error).split("\n")[0].slice(0, 200)
+          if (this.refreshFailed.get(key) !== why) this.emit("refresh", { artifact: key, ok: false, error: why })
+          this.refreshFailed.set(key, why)
           return []
         } finally {
           clearTimeout(timer)
@@ -341,8 +350,19 @@ export class Agent {
 
   emit(event, data) {
     const payload = { agent: this.name, event, at: Date.now(), ...data }
-    for (const fn of this.listeners.get(event) ?? []) fn(payload)
-    for (const fn of this.listeners.get("*") ?? []) fn(payload)
+    // a listener is a watcher (the host's rows, a workflow's row, a test): one that throws is its own fault and never
+    // the run's (2026-10-23 architecture map: a throwing tap ended the run) — counted, the first one logged
+    for (const fn of [...(this.listeners.get(event) ?? []), ...(this.listeners.get("*") ?? [])]) {
+      try {
+        fn(payload)
+      } catch (error) {
+        this.listenerErrors = (this.listenerErrors ?? 0) + 1
+        // the first one reaches the desk's log (its twin: the Live desk log), else the console
+        // the 1st, 10th, 100th … reach the desk log (its twin: the Live desk log), else the console — counted, never silent
+        const n = this.listenerErrors
+        if (Number.isInteger(Math.log10(n))) (this.context?.log ?? console.error)(`${this.name}: a ${event} listener threw (${n} so far; the run goes on): ${error?.message ?? error}`)
+      }
+    }
   }
 
   // ---- prompt ---------------------------------------------------------------------------------
@@ -589,6 +609,8 @@ export class Agent {
     const mode = summary ? "model" : "clip"
     const text = clip(summary ?? foldText(old, past), CLIP_COMPACT)
     const label = [folded ? `steps 1–${folded}` : "", past.length ? `${past.length} earlier run${past.length > 1 ? "s" : ""}` : ""].filter(Boolean).join(" and ")
+    // the folded steps leave the prompt, never the run's record (2026-10-23 audit: a compacted run restored without them)
+    if (this.current) this.current.folded = [...(this.current.folded ?? []), ...old.filter((x) => !x.compacted)]
     steps.splice(0, folded, { thought: `(compacted: ${label} summarized to keep the prompt under its budget)`, results: [{ tool: "compact", ok: true, output: text }], compacted: { steps: folded, runs: past.length } })
     if (this.current && past.length) this.current.historyFolded = true
     const after = this.render(request, steps)
@@ -627,7 +649,8 @@ export class Agent {
         // ms, prompt_chars, reply_chars: the model call behind this step (the UI's stats per agent); images: what the
         // model saw with it (refs only — the UI shows each screenshot; never the data).
         const looked = images.length ? { images: images.map((i) => ({ caption: i.caption ?? "", ...(i.ref ?? {}) })) } : {}
-        this.emit("step", { n, thought: reply.thought, calls: reply.calls, answer: reply.answer, ms: Date.now() - t0, prompt_chars: prompt.length, reply_chars: String(raw ?? "").length, ...looked })
+        const ms = Date.now() - t0
+        this.emit("step", { n, thought: reply.thought, calls: reply.calls, answer: reply.answer, ms, prompt_chars: prompt.length, reply_chars: String(raw ?? "").length, ...looked })
         if (reply.answer != null && !reply.calls.length) {
           const answer = String(reply.answer)
           if (this.#guided(n)) {
@@ -639,7 +662,7 @@ export class Agent {
           if (!reasons.length) return this.#finish(request, answer, [], steps)
           // A hard reason refuses without spending a retry (the run still ends at maxSteps); the rest count.
           if (hard || refused++ < this.config.gateRetries) {
-            this.emit("gate", { reasons })
+            this.emit("gate", { reasons, ...(hard ? { hard: true } : {}) })
             steps.push({ thought: reply.thought || "answer", results: [{ tool: "gate", ok: false, output: `answer refused: ${reasons.join("; ")}` }] })
             continue
           }
@@ -651,7 +674,7 @@ export class Agent {
           continue
         }
         const results = await Promise.all(reply.calls.map((c, index) => this.#call(c, signal, seen, n, index, outside)))
-        steps.push({ thought: reply.thought, calls: reply.calls, results })
+        steps.push({ thought: reply.thought, calls: reply.calls, results, ms, n, ...(reply.answer != null ? { answer: String(reply.answer) } : {}) })
         // An answer beside calls (2026-10-15 market and focus sims: board write + answer in one reply, the
         // answer dropped). Beside artifact commands only, all ok, it is final once the gates pass; beside a
         // data or agent call it was written before their results, so it is not taken and the model is told why.
@@ -668,10 +691,12 @@ export class Agent {
       }
       return this.#finish(request, `(stopped after ${this.config.maxSteps} steps without an answer)`, [], steps)
     } catch (error) {
+      const record = this.#record(steps)
       this.status = "error"
       this.current = null
       this.guidance = [] // a note for a run that failed or was stopped goes with it
-      this.emit("error", { error: error.message })
+      // the request and the steps it took, as an answer carries them: a failed or stopped run is kept and restored too
+      this.emit("error", { error: error.message, request, steps: record })
       throw error
     } finally {
       // the reads this run made itself go back to the caller (its report, or what it wrote, may carry them)
@@ -688,6 +713,7 @@ export class Agent {
     tool = this.resolveTool(tool)
     const t = this.tools.get(tool)
     this.emit("call", { tool, input, index })
+    const t0 = Date.now()
     let result
     // The same data call twice in one run answers nothing new (2026-10-15: tape and breadth re-sent one
     // batch 3–6 times); its result is in WORK DONE. Agents, artifact commands and gates are not data calls.
@@ -712,6 +738,9 @@ export class Agent {
     // marked once its result is in: a call beside it in the same step was written before that text was seen
     if (t && outside && readsOutside(tool, t)) outside.add(tool)
     if (t?.type === "agent" && result.ok) this.reported?.add(tool)
+    // ms: how long this one call took (a step's calls run together; the step's ms is the model call alone) — on the
+    // result, so the run's record (and a restored thread) keeps it too
+    result.ms = Date.now() - t0
     this.emit("result", { ...result, input: input ?? {}, index })
     return result
   }
@@ -738,11 +767,23 @@ export class Agent {
   // flags: gate reasons still open when the answer went through anyway; steps: the run's work, for
   // transcripts (each {thought, calls, results}).
   #finish(request, answer, flags = [], steps = []) {
+    const record = this.#record(steps)
     this.history.push({ from: request.from, request: request.text, answer })
     this.status = "idle"
     this.current = null
     this.guidance = [] // left only when the run ran out of steps
-    this.emit("answer", { request, answer, flags, steps })
+    this.emit("answer", { request, answer, flags, steps: record })
     return answer
+  }
+
+  // The run in progress as its record would read now (the host keeps it on disk while it runs: a kill loses nothing).
+  get runRecord() {
+    return this.current ? this.#record(this.current.steps) : []
+  }
+
+  // The run as it went, for its record (answer / error events → history.md): every step in order, the ones a compaction
+  // folded out of the prompt included, without the summary steps that stood in for them — step n is record[n - 1].
+  #record(steps) {
+    return [...(this.current?.folded ?? []), ...steps.filter((x) => !x.compacted)]
   }
 }

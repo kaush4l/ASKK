@@ -22,6 +22,11 @@
 //   ✅ Trend — RANGE / CALM, side NONE · conf 0.30
 //   ▫️ Not started: Price, Case, Review
 //
+//   ⚙️ <workflow> · 2/5 · 3m            a workflow running in this run (view pipeline, 2026-10-23 owner: "the live
+//   ✅ 1 expand 12s                     preview of the run … for every desk"): a line per stage — done with its time,
+//   ⏳ 2 choose · 4 calls               running with its calls so far, failed with why, the rest to come; past 8
+//   ▫️ next: generate, critique, refine  stages the finished ones fold into one line
+//
 //   <title>: <brief> (earlier)        one line per desk-level artifact (deskBriefs), by id; "(earlier)":
 //   <title>: <brief>                  live, and not changed during this run
 // Over the limit it collapses step by step (reported members into counts, shorter clips, member lines
@@ -30,7 +35,7 @@
 import { agentVisual } from "../../backend/live/visual.js"
 
 export const STATUS_LIMIT = 1500
-export const ICONS = { llm: "💭", tool: "🔧", quest: "📨", waiting: "⏳", paused: "✋", error: "❌", done: "✅", idle: "▫️" }
+export const ICONS = { llm: "💭", tool: "🔧", quest: "📨", waiting: "⏳", error: "❌", done: "✅", idle: "▫️" }
 
 export const escapeHtml = (text) => String(text ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
 const flat = (text) => String(text ?? "").replace(/\s+/g, " ").trim()
@@ -153,11 +158,10 @@ function agentNow(name, { states, registry, since }) {
     const v = agentVisual(s, sub)
     const names = v.active
     const doing =
-      v.state === "llm" ? (s.activity?.stage === "responding" ? "writing" : "thinking")
+      v.state === "llm" ? "thinking"
       : v.state === "tool" ? calls(names)
       : v.state === "quest" ? `quest → ${names.join(", ")}`
       : v.state === "waiting" ? `waiting for ${names.join(", ")}`
-      : v.state === "paused" ? `needs your approval: ${names[0] ?? ""}`
       : v.state === "error" ? `error: ${s.error ?? ""}`
       : v.message
     return { state: v.state, doing, running, started, report: null }
@@ -168,6 +172,41 @@ function agentNow(name, { states, registry, since }) {
     return { state: "done", doing: report.verdict, running, started, report }
   }
   return { state: "idle", doing: started ? "stopped, no report" : "not started", running, started, report: null }
+}
+
+// The workflows of this run (view pipeline, running now or started since the run began): a header and a line per stage.
+const STAGE_ICON = { done: ICONS.done, running: ICONS.waiting, failed: ICONS.error, skipped: "⏭", stopped: "⏹", reused: "♻️" }
+function workflowLines(artifacts, { since, now, level }) {
+  const list = Object.values(artifacts ?? {}).filter((a) => a?.view === "pipeline" && a.state?.run && (a.state.status === "running" || ms(a.state.run.started) >= since - 1000))
+  const out = []
+  for (const a of list) {
+    const stages = a.state.stages ?? []
+    if (!stages.length) continue
+    const settled = stages.filter((x) => ["done", "failed", "skipped", "stopped", "reused"].includes(x.status)).length
+    const running = a.state.status === "running"
+    const t = elapsed(ms(a.state.run.started), running ? now : (ms(a.state.run.ended) || now), { seconds: !running })
+    out.push(`⚙️ <b>${escapeHtml(clip(a.title || a.id, 30))}</b> · ${settled}/${stages.length} · ${escapeHtml(t)}${running ? "" : ` · ${escapeHtml(a.state.status)}`}`)
+    const line = (x) => {
+      const icon = STAGE_ICON[x.status] ?? ICONS.idle
+      const time = x.status !== "running" && x.ms ? ` ${Math.round(x.ms / 1000)}s` : ""
+      const live = x.status === "running" ? `${x.tools ? ` · ${x.tools} call${x.tools === 1 ? "" : "s"}` : ""}${x.started ? ` · ${elapsed(ms(x.started), now, { seconds: true })}` : ""}` : ""
+      const why = x.error && x.status !== "done" ? ` — ${clip(x.error, level.doing)}` : ""
+      return `${icon} ${x.n ?? ""} ${escapeHtml(clip(x.title || x.id, 28))}${escapeHtml(time + live + why)}`
+    }
+    const rows = level.members ? stages : stages.filter((x) => x.status === "running" || x.status === "failed")
+    if (rows.length <= 8) {
+      const todo = rows.filter((x) => !x.status || x.status === "waiting" || x.status === "queued" || x.status === "pending")
+      for (const x of rows.filter((x) => !todo.includes(x))) out.push(line(x))
+      if (todo.length) out.push(`${ICONS.idle} next: ${escapeHtml(todo.map((x) => clip(x.title || x.id, 18)).join(", "))}`)
+    } else {
+      const done = rows.filter((x) => x.status === "done" || x.status === "reused")
+      if (done.length) out.push(`${ICONS.done} ${done.length} done (${escapeHtml(done.map((x) => x.id).join(", ").slice(0, 80))})`)
+      for (const x of rows.filter((x) => ["running", "failed", "stopped", "skipped"].includes(x.status))) out.push(line(x))
+      const todo = rows.filter((x) => !STAGE_ICON[x.status])
+      if (todo.length) out.push(`${ICONS.idle} ${todo.length} to go: ${escapeHtml(todo.map((x) => x.id).join(", ").slice(0, 80))}`)
+    }
+  }
+  return { lines: out, ids: new Set(list.map((a) => a.id)) }
 }
 
 const conf = (report) => (report?.confidence != null ? ` · conf ${report.confidence.toFixed(2)}` : "")
@@ -257,8 +296,12 @@ function render(input, level) {
   if (notStarted.length) teamLines.push(`${ICONS.idle} ${phase === "live" ? "Not started" : "Not run"}: ${notStarted.join(", ")}`)
   if (teamLines.length) lines.push("", ...teamLines)
 
+  // The run's workflows, stage by stage.
+  const flows = workflowLines(kernel?.artifacts, { since, now, level })
+  if (flows.lines.length) lines.push("", ...flows.lines)
+
   // Footer: the desk-level artifacts, one line each; one not changed in a live run is "earlier".
-  const footer = deskBriefs(kernel?.artifacts, kernel?.tree?.team ?? null).map(
+  const footer = deskBriefs(kernel?.artifacts, kernel?.tree?.team ?? null).filter((a) => !flows.ids.has(a.id)).map(
     (a) => `${escapeHtml(clip(a.title, 24))}: ${escapeHtml(clip(a.brief, level.brief))}${phase === "live" && !touched.has(a.id) ? " (earlier)" : ""}`,
   )
   if (footer.length) lines.push("", ...footer)

@@ -68,12 +68,23 @@
 //        { id }   { lines }   POST browser/close { id }   { page }
 //   GET browser/list           { pages }
 //   GET browser/shot?id=&n=    the screenshot (image/png; state/browser/<id>/<n>.png, by id and number only)
+//   (image/* below: companion/capabilities/imagegen.js — open image models on this Mac through mflux, one job at a
+//   time; capability images when a generator is installed)
+//   POST image/generate { prompt, negative?, width?, height?, steps?, seed?, model?, from?, strength?, by? }   { job }
+//   POST image/stop { id }   { job }   GET image/jobs   { jobs, running, queued, models }   GET image/job?id=   { job }
+//   GET image/file?id=   the PNG   GET image/model?id=&max=   { media_type, width, height, data } (a JPEG, base64)
 //   GET browser/image?id=&n=&max=   the same shot for a model: JPEG ≤ max px wide (1280), base64 JSON (an agent's next step)
 //   GET apple/actions          { actions: [{ id, available }] } — macOS only
 //   POST apple/run { action, inputs }   { text } — run one Apple action
 //        (companion/hardware/apple/index.js: Shortcuts, speech, notifications, clipboard,
 //        Spotlight, Reminders, open a link)
-//   GET speech/status          { recognize, ready, error, voice, sampleRate } — hardware/speech
+//   (models/* below: companion/models — the local models, one folder per model with its model.md: models/<kind>/<name>/,
+//   kind stt | tts | image; the panel chooses one per kind and sets its options, written into its model.md)
+//   GET models                 { root, kinds: {stt | tts | image: {selected, models, catalog}}, presets }
+//   POST models/select {kind, name}   POST models/set {kind, name, values}   POST models/add {kind, name}
+//   POST models/install {kind, name}   POST models/start {kind, name}   — the owner's (a desk's own request: 403)
+//   POST image/upload {data, kind: mask | reference | marked, from?, note?}   { job } — an image the owner made
+//   GET speech/status          { recognize, ready, error, voice, sampleRate, stt, tts } — hardware/speech (the models' stt / tts)
 //   GET speech/voices          { voices: [{ name, lang }] } — the Mac's `say` voices
 //   POST speech/transcribe { audio, locale }   { text, seconds, ms } — base64 16 kHz
 //        mono 16-bit PCM, recognized on-device (Apple SpeechAnalyzer)
@@ -128,6 +139,8 @@ import { createWeb, webRoutes } from "../capabilities/web.js"
 import { loadIntegrations } from "../capabilities/integrations.js"
 import { createLocalModels, findBinary, localModelRoute } from "../capabilities/local-models.js"
 import { createResearch, researchRoute } from "../capabilities/research.js"
+import { createImagegen, imageRoutes } from "../capabilities/imagegen.js"
+import { modelRoutes, sharedModels } from "../models/index.js"
 import { createMcp } from "../capabilities/mcp.js"
 import { runDeskSetup } from "../team/desk.js"
 import { wakesRoutes } from "../shared/wakes.js"
@@ -154,14 +167,17 @@ export async function createHostApi({
 }) {
   const root = await realpath(resolve(rootArg))
   const apple = await createApple()
-  const { speech } = await loadHardware({ log: (line) => console.log(line) }) // hardware/: optional, per machine
+  // its lines (a recognizer compiling, a voice missing) to the desk log too (2026-10-23 audit), once per process
+  const { speech } = await loadHardware({ log: (line) => (team?.log ? team.log(`hardware: ${line}`) : console.log(line)) }) // hardware/: optional, per machine
   const web = createWeb()
   const local = await createLocalModels() // claude/codex/gemini CLIs, Apple on-device
   const research = createResearch({ bin: await findBinary("claude") }) // the Claude CLI with web tools only
   const mcpServers = await createMcp({ files: [mcpFile, ...(desk?.mcp ? [desk.mcp] : [])] })
   // A desk may limit the integrations it runs (desk `integrations: [...]`): one Telegram bot can have only one
   // listener, so a second desk declares none.
-  const integrations = await loadIntegrations({ dir: integrationsDir, listen, only: Array.isArray(desk?.integrations) ? desk.integrations : null })
+  // their lines (listening, a poll that failed, a listener stopped) go to the desk log, not the console alone (2026-10-23)
+  const deskLog = typeof team?.log === "function" ? (...args) => team.log(args.map(String).join(" ")) : undefined
+  const integrations = await loadIntegrations({ dir: integrationsDir, listen, only: Array.isArray(desk?.integrations) ? desk.integrations : null, ...(deskLog ? { log: deskLog } : {}) })
   for (const n of integrations?.names ?? []) {
     if (mcpServers?.names.includes(n)) throw new Error(`"${n}" is both an MCP server and an integration.`)
   }
@@ -177,7 +193,7 @@ export async function createHostApi({
   const deskServers = []
   const guards = []
   if (desk) {
-    if (listen) runDeskSetup(desk)
+    if (listen) runDeskSetup(desk, process.env, deskLog ? (line) => deskLog(`setup: ${line}`) : undefined)
     if (desk.host) {
       // `call` for the desk's tools is the final one (after every wrap), bound late.
       // root: the workspace; listen: a continuous server (one per desk), where watchers may run.
@@ -218,6 +234,12 @@ export async function createHostApi({
       })
     : null
   const mounts = projects ? { ...(desk?.mounts ?? {}), projects } : (desk?.mounts ?? null)
+  // images (2026-10-23): open image models on this Mac through mflux, one job at a time (capabilities/imagegen.js)
+  // always made (audit 20: a model installed from the panel after the start had no routes until a restart); generate
+  // says when no image model is installed
+  const images = readOnly ? null : await createImagegen({ state: runtime, log: hostLog, always: true })
+  // local models (2026-10-23): models/<kind>/<name>/model.md, one folder for the process (companion/models)
+  const models = modelRoutes(sharedModels({ log: hostLog }), { log: hostLog, readOnly })
   const capabilities = [
     ...(readOnly ? ["fs.read"] : ["fs.read", "fs.write"]),
     ...(projects ? ["projects"] : []),
@@ -230,6 +252,8 @@ export async function createHostApi({
     ...(team ? ["team"] : []),
     "wakes",
     ...(readOnly ? [] : ["term", "browser"]),
+    ...(images?.usable ? ["images"] : []), // its routes answer either way (a model installed later works without a restart)
+    "models",
   ]
   const files = createFiles({ root, readOnly, mounts })
   const deskPorts = () =>
@@ -251,6 +275,8 @@ export async function createHostApi({
     ...wakesRoutes(root).GET,
     ...(term ? termRoutes(term).GET : {}),
     ...(browser ? browserRoutes(browser).GET : {}),
+    ...(images ? imageRoutes(images).GET : {}),
+    ...models.GET,
     ...(projects ? { projects: () => ({ projects: projects.list().map((p) => ({ ...p, workspace: `projects/${p.name}` })), file: desk.memory ? join(desk.memory, "projects.json") : null }) } : {}),
   }
   // A project just loaded: the lead's first-setup run, from the owner (skill project-setup in the desk that has it).
@@ -275,6 +301,8 @@ export async function createHostApi({
     ...files.POST,
     ...(term ? termRoutes(term).POST : {}),
     ...(browser ? browserRoutes(browser).POST : {}),
+    ...(images ? imageRoutes(images).POST : {}),
+    ...models.POST,
     ...(apple ? { "apple/run": ({ action, inputs }) => apple.run(action, inputs) } : {}),
     ...(speech ? { "speech/transcribe": (body) => speech.transcribe(body), "speech/say": (body) => speech.speak(body) } : {}),
     ...(mcp ? { "mcp/call": ({ server, tool, arguments: args }) => mcp.call(server, tool, args) } : {}),
@@ -322,6 +350,10 @@ export async function createHostApi({
         const handler = POST[endpoint]
         if (!handler) return json(404, { error: GET[endpoint] ? "Method not allowed." : "Unknown or disabled endpoint." })
         if (!sameOrigin) return json(403, { error: "Writes need a same-origin request." })
+        // the local models are the owner's choice: a desk's own request (its tools, its scripts) never changes them
+        // (a convention, not a boundary: the desk's own tools and scripts send x-askk-desk — hostClient always does)
+        if (endpoint.startsWith("models/") && request.headers.get("x-askk-desk")) return json(403, { error: "Models are chosen by the owner, from the page." })
+        if (endpoint === "image/upload" && request.headers.get("x-askk-desk")) return json(403, { error: "Uploads are the owner's, from the page." })
         if (!request.headers.get("content-type")?.startsWith("application/json")) return json(415, { error: "Send JSON." })
         if (Number(request.headers.get("content-length") ?? 0) > MAX_WRITE * 2) return json(413, { error: "Too large." })
         const body = await request.json().catch(() => null)
@@ -345,6 +377,7 @@ export async function createHostApi({
     integrations?.close()
     files.close()
     browser?.closeAll()
+    images?.close()
     return term?.close() ?? Promise.resolve()
   }
   // routes: what this API answers (the header above documents each; host-api.test.js checks it does).

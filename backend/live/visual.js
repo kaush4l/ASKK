@@ -2,14 +2,13 @@
 // companion/team/kernel-status.js) and the browser (desk.js re-exports it) read it the same way.
 //
 //   idle · llm (calling the model) · tool · quest (handing work to a sub-agent) · waiting (for
-//   sub-agents' reports) · paused (waiting for the owner's approval) · error · done (reported)
+//   sub-agents' reports) · error · done (reported)
 
 export const VISUAL_STATES = [
   { id: "llm", label: "LLM call" },
   { id: "tool", label: "Tool call" },
   { id: "quest", label: "Quest to team" },
   { id: "waiting", label: "Waiting for reports" },
-  { id: "paused", label: "Paused (approval)" },
   { id: "error", label: "Error" },
   { id: "done", label: "Reported" },
   { id: "idle", label: "Idle" },
@@ -29,13 +28,9 @@ export function agentVisual(state, subAgents = []) {
   if (state.status === "error") return { state: "error", message: clip(state.error ?? "error", 160), active: [] }
   switch (a.phase) {
     case "llm":
-      return { state: "llm", message: a.stage === "thinking" ? "Thinking…" : a.stage === "responding" ? "Writing…" : "Calling the model…", active: [] }
-    case "approval":
-      return { state: "paused", message: `Paused: waiting for your approval of ${a.name}`, active: names }
+      return { state: "llm", message: "Calling the model…", active: [] }
     case "waiting":
       return { state: "waiting", message: `Waiting for ${names.join(", ")}`, active: names }
-    case "agent":
-      return { state: "quest", message: `Handing a quest to ${a.name}`, active: names }
     case "tool":
     case "tools": {
       const quest = names.length && names.every((n) => subAgents.includes(n))
@@ -71,6 +66,11 @@ const LOOKS = {
   talk: { tone: "rose", icon: "messages-square" }, // 2026-10-18: talk.say / talk.ask — the desk tells or asks the owner
   desk: { tone: "lime", icon: "blocks" }, // 2026-10-20: desk.create / check / load / ask / propose — a desk made, hosted or given work
   practice: { tone: "violet", icon: "notebook-pen" }, // 2026-10-20: <agent>.practice tick / edit / reflect — an agent's standing orders, improved by it
+  dispatch: { tone: "blue", icon: "split" }, // 2026-10-23: dispatch.start / wait / read / stop — briefs handed to agents that run in parallel
+  runners: { tone: "emerald", icon: "timer" }, // 2026-10-23: a runner's pause / resume / check — periodic checks with their own run state
+  pipeline: { tone: "indigo", icon: "workflow" },
+  studio: { tone: "fuchsia", icon: "image" }, // 2026-10-23: studio.prompt / generate / critique / pick — images made, judged and refined
+  text: { tone: "slate", icon: "file-text" }, // 2026-10-23: a tool whose result is text to read (a report, a note) // 2026-10-23: a workflow's run / stop — phases in sequence or side by side
 }
 export const CALL_KINDS = Object.keys(LOOKS)
 
@@ -89,6 +89,7 @@ function callKind({ kind, type, view, name = "" } = {}) {
   if (view === "web" || view === "browse" || type === "web" || String(name).startsWith("web.")) return "web"
   if (view === "terminal" || type === "terminal") return "terminal"
   if (view === "files" || view === "preview" || view === "talk") return view
+  if (view === "dispatch" || view === "runners" || view === "pipeline" || view === "text" || view === "studio") return view
   if (ARTIFACT_VIEWS.has(view)) return view
   if (type === "artifact") return "artifact"
   if (view === "data") return "data"

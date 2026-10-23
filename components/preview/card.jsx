@@ -24,7 +24,13 @@ export function PreviewCard({ artifact, state, expanded, fill = false }) {
       </div>
     )
   }
-  return <PreviewThumb artifact={artifact} state={state} />
+  return (
+    <>
+      <PreviewThumb artifact={artifact} state={state} />
+      {/* 2026-10-23 audit: saved visuals that no longer check were dropped at the restart — named, not silent */}
+      {state?.dropped?.length > 0 && <p className="mt-1 text-[11px] break-words text-amber-700 dark:text-amber-300">not restored (no longer a valid visual): {state.dropped.join(", ")}</p>}
+    </>
+  )
 }
 
 function PreviewThumb({ artifact, state }) {

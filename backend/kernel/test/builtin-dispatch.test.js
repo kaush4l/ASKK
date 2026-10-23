@@ -272,7 +272,7 @@ describe("dispatch", () => {
     expect(await run("list")).toEqual(expect.stringContaining("j2 → eval done in 3m04s · bpb? (delivered)"))
   })
 
-  test("the twin: {jobs} ≤ 40 newest first with the spec's fields; brief; changed() only when a job starts or ends", async () => {
+  test("the twin: {jobs} ≤ 40 newest first with the spec's fields; brief; changed() when a job starts, is taken, ends or is read", async () => {
     const quick = new Agent({ name: "data", report: false }, { infer: async () => answer("ok") })
     const dispatch = new Dispatch()
     const { run } = team([{ agent: quick }], { dispatch })
@@ -284,12 +284,16 @@ describe("dispatch", () => {
     expect(dispatch.brief()).toBe("1 running · 0 done")
     await run("list")
     await run("wait", {})
-    expect(changes).toBe(2)
+    await Bun.sleep(0)
+    // taken by data (began), ended, and its report read by the wait (delivered) — 2026-10-23: each a twin change
+    expect(changes).toBe(4)
+    expect(dispatch.twin().state.jobs[0]).toMatchObject({ began: true, delivered: true })
     await run("read", { id: "j1" })
-    expect(changes).toBe(2)
+    await Bun.sleep(0)
+    expect(changes).toBe(4)
     const job = dispatch.twin().state.jobs[0]
     expect(Object.keys(dispatch.twin().state)).toEqual(["jobs"])
-    expect(Object.keys(job)).toEqual(["id", "to", "by", "ask", "status", "startedAt", "endedAt", "report", "error"])
+    expect(Object.keys(job)).toEqual(["id", "to", "by", "ask", "status", "startedAt", "endedAt", "report", "error", "began", "delivered"])
     expect(job).toMatchObject({ id: "j1", to: "data", by: "lead", ask: "one?", status: "done", report: "ok", error: null })
     expect(dispatch.twin()).toMatchObject({ kind: "dispatch", view: "dispatch", keep: "file", brief: "0 running · 1 done" })
     for (let i = 2; i <= 41; i++) {
@@ -301,7 +305,8 @@ describe("dispatch", () => {
     expect(jobs[0].id).toBe("j41")
     expect(jobs.at(-1).id).toBe("j2")
     expect(jobs[0].ask).toHaveLength(301) // 300 and the …
-    expect(changes).toBe(2 + 40 * 2)
+    await Bun.sleep(0)
+    expect(changes).toBe(4 + 40 * 4) // each job: started, taken, ended, read
     const big = "r".repeat(5000)
     quick.infer = async () => answer(big)
     await run("start", { to: "data", ...quest("big?") })

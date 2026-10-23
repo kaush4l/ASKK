@@ -232,3 +232,54 @@ describe("the browser desk", () => {
     team.terminate()
   })
 })
+
+// 2026-10-23 audit: a tab closed on runs handed over and not started says so at the next start, as the desk server does.
+test("runs handed over and never started before the tab closed are a row in their agent's thread", async () => {
+  const store = memoryStore()
+  store.set("queued", [{ agent: "agent", text: "the second job", from: "owner", at: "2026-10-23T13:05:00.000Z" }])
+  const infer = async () => JSON.stringify({ thought: "t", calls: [], answer: "ok" })
+  const team = await createBrowserTeam({ desk: buildBrowserDesk({ store, infer }).desk, store })
+  const seen = []
+  team.subscribe((e) => seen.push(e))
+  expect(seen[0].states.agent.messages.at(-1)).toMatchObject({ action: "lifecycle", kind: "queued", content: expect.stringContaining("the second job") })
+  expect(store.get("queued")).toEqual([])
+  team.terminate()
+})
+
+test("at start the tab says what its storage could not keep, and clears a run helper that did not come back", async () => {
+  const store = memoryStore()
+  store.set("thread:ghost", [{ id: "x", role: "user", content: "old" }])
+  store.set("runs:ghost", [{ request: "old" }])
+  const infer = async () => JSON.stringify({ thought: "t", calls: [], answer: "ok" })
+  const team = await createBrowserTeam({ desk: buildBrowserDesk({ store, infer }).desk, store })
+  const seen = []
+  team.subscribe((e) => seen.push(e))
+  const lines = seen[0].log.map((l) => l.text)
+  expect(lines).toContainEqual(expect.stringContaining("this browser keeps nothing"))
+  expect(lines).toContainEqual(expect.stringContaining("ghost (a helper of a run) did not come back"))
+  expect(store.get("thread:ghost")).toBeNull()
+  expect(store.get("runs:ghost")).toBeNull()
+  team.terminate()
+})
+
+test("an artifact this browser refuses to save is said once, not on every change (audit 18)", async () => {
+  const store = memoryStore()
+  const set = store.set.bind(store)
+  store.set = (key, value) => (String(key).startsWith("artifact:") ? false : set(key, value))
+  const replies = [
+    reply("plan", [{ tool: "plan.write", input: { goal: "g", items: "a: one" } }]),
+    reply("again", [{ tool: "plan.write", input: { goal: "g", items: "a: one\nb: two" } }]),
+    reply("done", [], "ok"),
+  ]
+  const infer = async () => replies.shift() ?? reply("done", [], "ok")
+  const team = await createBrowserTeam({ desk: buildBrowserDesk({ store, infer }).desk, store })
+  const seen = []
+  team.subscribe((e) => seen.push(e))
+  await team.call({ method: "ask", args: ["plan it"] })
+  await new Promise((r) => setTimeout(r, 400))
+  await team.call({ method: "ask", args: ["again"] })
+  await new Promise((r) => setTimeout(r, 400))
+  const lines = seen.filter((e) => e.type === "log").map((e) => e.text).filter((t) => t.includes("artifact:plan not saved"))
+  expect(lines).toHaveLength(1)
+  team.terminate()
+})

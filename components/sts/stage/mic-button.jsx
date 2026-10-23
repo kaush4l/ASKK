@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils"
 
 export function MicButton({ state, model }) {
   const { listening, settings, phase } = state
-  const push = listening && settings.listen !== "wake" && settings.mode === "push" && settings.asr === "mac"
+  const push = listening && settings.listen === "direct" && settings.mode === "push" && settings.asr === "mac"
   const holding = React.useRef(false)
   const down = (e) => {
     if (!push) return

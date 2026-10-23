@@ -151,3 +151,27 @@ test("an order-tool call is a tool event too", () => {
   const line = JSON.stringify({ type: "assistant", message: { content: [{ type: "tool_use", name: "mcp__market__place_option_order", input: { quantity: 1, price: 1.2 } }] } })
   expect(researchEvents(line)).toEqual([{ type: "tool", name: "mcp__market__place_option_order", query: "robinhood place_option_order x1 @1.2" }])
 })
+
+test("data: the desk's data servers as one more stdio server, approved as mcp__data; alone, no broker tools", () => {
+  const a = researchArgv("claude", { mcpConfig: "/tmp/x/.market-mcp.json", data: true, bridge: false })
+  expect(a[a.indexOf("--allowedTools") + 1].split(",")).toEqual(["WebSearch", "WebFetch", "mcp__data"])
+  expect(a[a.indexOf("--append-system-prompt") + 1]).toContain("desk's data tools")
+  expect(a[a.indexOf("--append-system-prompt") + 1]).not.toContain("read-only market-data tools")
+  const both = researchArgv("claude", { mcpConfig: "/tmp/x/.market-mcp.json", data: true })
+  expect(both[both.indexOf("--allowedTools") + 1].split(",")).toEqual(["WebSearch", "WebFetch", ...MARKET_TOOLS, "mcp__data"])
+  const cfg = marketConfig({ port: 1111, desk: "trade-card", data: true, bridge: false, bun: "/bin/bun" }).mcpServers
+  expect(Object.keys(cfg)).toEqual(["data"])
+  expect(cfg.data.args.slice(1)).toEqual(["--data", "--port", "1111", "--desk", "trade-card"])
+  expect(Object.keys(marketConfig({ port: 1, desk: "d", data: true }).mcpServers)).toEqual(["market", "data"])
+})
+
+test("data: a data-server call is a tool event; the route accepts data and refuses it where unavailable", async () => {
+  const ev = researchEvents(JSON.stringify(assistant({ type: "tool_use", name: "mcp__data__openalice__economyFredSeries", input: { symbol: "DGS10", limit: 3 } })))
+  expect(ev).toEqual([{ type: "tool", name: "mcp__data__openalice__economyFredSeries", query: "openalice economyFredSeries DGS10 3" }])
+  const seen = {}
+  const research = createResearch({ bin: "b", spawn: fakeSpawn(lines(RESULT), { seen }) })
+  const post = (body) => new Request("http://localhost:1/__askk/llm/research", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })
+  expect((await researchRoute(research)(post({ prompt: "p", tools: ["data"] }), true)).status).toBe(403)
+  await (await researchRoute(research, { market: { port: 1111, desk: "trade-card" } })(post({ prompt: "p", tools: ["data"] }), true)).text()
+  expect(seen.argv[seen.argv.indexOf("--allowedTools") + 1]).toBe("WebSearch,WebFetch,mcp__data")
+})

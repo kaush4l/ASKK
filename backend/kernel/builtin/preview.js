@@ -398,8 +398,9 @@ export class Preview extends Artifact {
     let img
     try {
       img = await host.get(`browser/image?id=${encodeURIComponent(id)}&n=${n}`)
-    } catch {
-      return []
+    } catch (error) {
+      // thrown on: the agent says the step went without its screenshot (a refresh row — 2026-10-23 audit)
+      throw new Error(`screenshot ${n} of ${id} did not load: ${hostError(error)}`)
     }
     if (!img?.data) return []
     seen.set(id, n)
@@ -542,7 +543,7 @@ export class Preview extends Artifact {
 
   async #readFiles(ctx) {
     // The bound scripts first: one that just ended well is read below, in this same pass.
-    const binds = await this.#pullBinds(ctx).catch(() => new Map())
+    const binds = await this.#pullBinds(ctx).catch((e) => ((ctx?.agent?.context?.log ?? ctx?.log)?.(`preview: bound scripts not checked: ${e.message}`), new Map()))
     const files = [...new Set(this.state.visuals.filter((v) => v.visual?.file).map((v) => v.visual.file))]
     for (const f of [...this.fileTexts.keys()]) if (!files.includes(f)) this.fileTexts.delete(f)
     const read = new Map()
@@ -573,7 +574,14 @@ export class Preview extends Artifact {
   // The newest mtime (ms) of the files a watch glob matches (filled from params) within the binder's reads: lane (its
   // "!" exclusions too), 0 when none.
   async #newest(glob, ctx, reads = null) {
-    if (GLOB.test(glob)) return (await expandGlob(this.adapter, glob, ctx)).filter((f) => !secret(f.path) && (reads == null || inLane(reads, f.path))).reduce((m, f) => Math.max(m, Number(f.mtime) || 0), 0)
+    if (GLOB.test(glob)) {
+      const files = await expandGlob(this.adapter, glob, ctx)
+      // a watched folder that would not list: said once per glob, else the script just stops running (2026-10-23 audit)
+      const blind = (files.unreadable ?? []).join(", ")
+      if (blind && this.blindWatch?.get(glob) !== blind) (ctx?.agent?.context?.log ?? ctx?.log)?.(`preview: the watch ${glob} cannot see ${blind} — changes there do not re-run its script`)
+      ;(this.blindWatch ??= new Map()).set(glob, blind)
+      return files.filter((f) => !secret(f.path) && (reads == null || inLane(reads, f.path))).reduce((m, f) => Math.max(m, Number(f.mtime) || 0), 0)
+    }
     if (reads != null && !inLane(reads, glob)) return 0
     return (await this.#mtime(glob, ctx)) ?? 0
   }
@@ -640,14 +648,23 @@ export class Preview extends Artifact {
     const host = hostOf(ctx)
     const running = bound.filter((v) => v.bind.running)
     if (running.length) {
-      const sessions = (await host.get("term/list?tail=5", { signal: ctx.signal }))?.sessions ?? []
+      // 2026-10-23 audit 18: a status read that fails says so on each running bind (it stays running: unknown, not ended)
+      let sessions
+      try {
+        sessions = (await host.get("term/list?tail=5", { signal: ctx.signal }))?.sessions ?? []
+      } catch (e) {
+        for (const v of running) out.set(v.id, { ...v.bind, error: `its session's status could not be read: ${e.message}` })
+        return out
+      }
       for (const v of running) {
         const s = sessions.find((x) => x.id === v.bind.session)
         if (s?.status === "running") {
           const age = this.clock().getTime() - Date.parse(v.bind.ran_at ?? "")
           if (!(age > v.bind.timeout * 1000)) continue
-          await host.post("term/stop", { id: s.id }, { signal: ctx.signal }).catch(() => {})
-          out.set(v.id, { ...(await this.#ended(v, { ...s, status: "stopped" }, ctx)), error: `timed out after ${v.bind.timeout} s — stopped` })
+          // a stop that fails leaves it running with the reason (never "stopped" while it may still hold its lease)
+          const failed = await host.post("term/stop", { id: s.id }, { signal: ctx.signal }).then(() => null, (e) => e.message)
+          if (failed) out.set(v.id, { ...v.bind, error: `timed out after ${v.bind.timeout} s — the stop failed (${failed}); it may still run` })
+          else out.set(v.id, { ...(await this.#ended(v, { ...s, status: "stopped" }, ctx)), error: `timed out after ${v.bind.timeout} s — stopped` })
           continue
         }
         out.set(v.id, await this.#ended(v, s, ctx))
@@ -1262,16 +1279,22 @@ export class Preview extends Artifact {
   restore(data) {
     if (!data || typeof data !== "object" || Array.isArray(data) || (!Array.isArray(data.visuals) && !Array.isArray(data.asks))) return
     const seen = new Set()
+    const dropped = []
     const visuals = (Array.isArray(data.visuals) ? data.visuals : [])
       .filter((v) => v && VISUAL_ID.test(String(v.id ?? "")) && !seen.has(v.id) && seen.add(v.id))
       .map((v) => {
         const visual = restoredVisual(v.visual)
-        if (!visual) return null
+        if (!visual) {
+          dropped.push(String(v.id)) // a saved visual that no longer checks: named on the state (2026-10-23 audit)
+          return null
+        }
         const params = savedParams(v.params)
         let template = null
         try {
           template = visual.file && typeof v.template === "string" && placeholders(v.template).length && visualFile(v.template, params) ? cleanPath(v.template) : null
-        } catch {}
+        } catch {
+          dropped.push(`${v.id} (its template ${v.template})`) // the visual stays, its drill-down template does not: named
+        }
         const reads = Array.isArray(v.reads) ? list(v.reads) : null
         const b = v.bind
         const bind = visual.file && b && typeof b.command === "string" && Array.isArray(b.watch) ? { command: b.command, watch: list(b.watch).slice(0, WATCH_MAX), cwd: b.cwd ?? null, lease: b.lease ?? null, timeout: Number(b.timeout) || BIND_TIMEOUT, by: b.by ?? null, writes: list(b.writes), running: false, session: null, ran_at: b.ran_at ?? null, ran: b.ran ?? null, inputs_at: Number(b.inputs_at) || null, exit: b.exit ?? null, ms: b.ms ?? null, error: b.error ?? null, waiting: null, reads: Array.isArray(b.reads) ? list(b.reads) : null } : null
@@ -1293,7 +1316,7 @@ export class Preview extends Artifact {
     this.fileTexts.clear()
     this.filesPulled = 0
     this.forced.clear()
-    this.state = { pages: this.state.pages, visuals, current, trail, asks, revision: Number.isFinite(data.revision) ? data.revision : 0 }
+    this.state = { pages: this.state.pages, visuals, current, trail, asks, revision: Number.isFinite(data.revision) ? data.revision : 0, ...(dropped.length ? { dropped } : {}) }
   }
 
   commands() {

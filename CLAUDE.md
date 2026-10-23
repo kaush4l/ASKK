@@ -79,13 +79,17 @@ Bun + Next.js (App Router), plain JavaScript (`.js`/`.jsx`, no TypeScript), Tail
 ## The core (`backend/kernel/`)
 
 Plain JS, no host or worker dependency (runs in the server, a tab, a test). `index.js` exports it all and is the only
-import from outside the kernel. `README.md` is the map: every file, the lifecycle (host start → desk build → run →
+import from outside the kernel. The whole system's map — boot, config surface, objects, one run, twin pairing, serial vs
+parallel — is `docs/architecture.md` (2026-10-23). `README.md` is the kernel's map: every file, the lifecycle (host start → desk build → run →
 what is saved where), the twin contract.
 
 - `agent/agent.js` `Agent`: one ReAct loop (render → infer → parse → answer or run the step's calls together),
   callbacks `on(start | think | step | call | result | gate | format | guide | answer | error | chat)`. `step` carries the
   model call (`ms`, `prompt_chars`, `reply_chars`). `call {tool, input, index}`, `result {tool, ok, output, input,
-  index}`: `index` = the call's place in its step, `tool` = what ran (a prefixed member resolved); the host pairs a
+  index, ms}` (2026-10-23: `ms` the call's own time, kept on the run's results and in history.md; a step's `ms` is its model
+  call, kept on its run step too; a listener that throws never ends the run: `emit` counts it in `listenerErrors`, the first to `context.log`; event
+  `refresh {artifact, ok, error?}` when an artifact's pre-step refresh fails, and once more when it is back; `gate` carries
+  `hard`): `index` = the call's place in its step, `tool` = what ran (a prefixed member resolved); the host pairs a
   result with its call by `index`, never by tool name. `gate` = an answer refused (open checklist, report missing
   fields, `minCalls` not met; `held`: guidance arrived while it answered), `format` = a reply with neither calls nor
   an answer; the agent goes on. An artifact's `gate()` returns a reason (text) or `{reason, hard: true}` (2026-10-17
@@ -155,7 +159,7 @@ what is saved where), the twin contract.
 - `builtin/index.js` the inbuilt kit, attached by name (2026-10-17): `BUILTIN = {tools: {name: (deskOptions) =>
   Tool}, artifacts: {type: (deskOptions) => (agent, spec) => Artifact}}` — tools `web.search`, `web.read`,
   `agent.spawn`, `agent.dismiss`, `agent.catalog`, `agent.update`, `desk.list|create|check|load|ask|read|propose` (2026-10-20);
-  artifacts `files`, `terminal`, `preview`, `plan`, `dispatch`, `browse`, `talk`, `practice` (2026-10-20) (2026-10-17:
+  artifacts `files`, `terminal`, `preview`, `plan`, `dispatch`, `browse`, `talk`, `practice` (2026-10-20), `studio` (2026-10-23) (2026-10-17:
   no `stage` — folded into the preview; 2026-10-18 owner: no `charts` — a live dashboard is a page in the preview) — and `builtinKit(deskOptions)` (the catalogue bound to one desk: one
   instance per desk and id, id = the type; `{type, id}` another, `{type, commands}` a subset, `{type: plan, gate:
   true}` gated). Plain JS over `ctx.host` (refresh: `agent.context.host`); commands of
@@ -327,7 +331,28 @@ what is saved where), the twin contract.
   for the phase, report fields, max_steps), held as `{type: workflow, id: <flow>}`; workflow.js `parsePhasesFile`, step
   kind `phase` = that agent's whole run (`callPhase`) on `renderPhase` (`# PHASE`, `# BOARD` of earlier reports,
   `# PHASE REPORT`), `missingReport` re-asks; owner `run [{id, request}]` (the pipeline view's Run box); `Agent.removeArtifact`.
-  Demo `desks/agent/phases/brief.md`; tests `phases.test.js`.
+  Demo `desks/agent/phases/brief.md`; tests `phases.test.js`. Parallel (2026-10-23, `docs/phases.md` "Serial and parallel"):
+  a step waits on `waitsOf` (its `after`, the `inputs` it names, every code step above it) and reads only
+  `settledBefore` (its board, `{{phase}}` vars, `inputs: all`) — never a sibling that finished first; two phases on one
+  `agent:` that may run side by side do not load; the scheduler waits on the whole `settledBefore`; a code step blocks
+  only its readers unless `barrier: true`; `concurrency: N` caps steps at once. Runners check due runners together
+  (`Promise.allSettled`), fire one at a time. 2026-10-22 owner ("make the workflow configuration driven …
+  a utility which read an md file and creates the workflow object … editable can help me experiment different workflows
+  and wording"): the file is the workflow — `parseWorkflowMarkdown` (frontmatter settings + `vars:` run variables with
+  defaults, `# Title` + description, `## <id> — <title>`, `### Output` the report's format/fields, `board: false`) →
+  `{title, description, settings, vars, steps}`, every `{{var}}` checked at load: a run variable, or `{{phase.field}}` /
+  `{{phase}}` of an UPSTREAM phase's report (filled from `reportFields` of its answer); `workflowFromMarkdown(text |
+  {read, write?}, options)` → a Workflow; `bun scripts/workflow.js <file.md> [--json]` prints the object. Owner calls
+  `source` (the file, even broken), `check` (a draft parsed by the desk's `files.draft`, never written), `edit {name}`
+  (written only when it loads; the old text kept, `state.versions`), `version`, `run {vars}`; twin rows carry `rev`
+  (`stepRevision`: an edit marks the outputs made before), `report`; `stage` returns `report` fields. The viewer is the workflow
+  artifact's own view (owner: "I want the workflow UI in the dashboard page itself. There on expanding the workflow card,
+  show this view"; no nav item): `components/views/artifact.jsx` view `pipeline` → `components/workflow/card.jsx` — the
+  tile its live status (state, a segment per phase, each running phase's time/turns/calls and its agent's activity, the
+  request, decision, what waits), opened big `viewer.jsx` (run panel, `flow.jsx` phase cards in → out, `phase.jsx` Input
+  → Work → Output + Compare, `editor.jsx` live-checked editor with versions, the desk's Outcome from
+  `components/views/pipeline.jsx`); `/?open=<artifact>` opens it on the dashboard (`DeskLevels`), `/workflow?id=`
+  redirects there; pure `backend/live/workflow-view.js`.
 - 2026-10-22 owner ("make each step in the workflow like an agent … the agent loop within the phase loop"): step agents —
   a step file (`NN-<id>.md` or a phases file's `## <id>`) with `kind: agent` and no `agent:` is spawned by the workflow
   for the run as `<flow>-<id>` (`callStepAgent`: `Desk.spawn` under the holder, `managed: true` = no quest tool on the
@@ -345,6 +370,27 @@ what is saved where), the twin contract.
   prox {gap, pace, eta}}`, `fires`; commands `<id>.pause {id, reason}`, `.resume`, `.check`; owner pause | resume | now |
   stop | remove `[{id, runner}]`; the prompt one line per runner. UI: the runners view (`checkLine`, Check now). Tests
   `builtin-runners.test.js`.
+- 2026-10-23 owner ("build something like the comfy UI … generate image … critiqued and improved based on either users'
+  requirement, feedback, or even another LLM"): `builtin/studio.js` `Studio` (id `studio`, view and kind `studio`, keep
+  `always`, poll 2 s): images on this Mac's open model through the host (`image/*`, below) — `studio.goal {goal,
+  criteria}`, `.prompt {text, negative?, why}` (versions v1…: the prompt optimised step by step, each with why),
+  `.generate {v | prompt, seeds 1–4, seed?, width?, height?, steps?, from?, strength?}` (from: refine an image),
+  `.wait`, `.critique {image, scores 0–10 per criterion, notes, verdict done | revise | discard, next}`, `.pick`, `.look`;
+  `images(agent)` hands a holder its new finished images (≤ 3, JPEG ≤ 1024) on its next model call; `gate` (soft) while
+  its images run; owner calls `goal` (→ the keeper, the first holder: a run), `generate` (no agent), `feedback {image?,
+  text}` (→ the image's maker, else the keeper), `pick`, `stop`. UI `components/views/studio.jsx` `StudioView` (pure
+  `backend/live/studio.js`): goal form, prompt versions, the image live (progress), thumbnails with scores, critiques
+  with score bars and lineage, feedback / refine (strength) / pick / stop, generate now. Later the same day (owner: "some
+  models take in references, some accept live edits, markers … presets … behind a workflow"): state `model` (the chosen
+  image model's modes and accepts, read from `image/jobs`), `presets`, `preset` in use; commands `studio.presets`,
+  `studio.preset {name, why}`, generate `{preset, references, mask, auto_mask}` (refused when the model does not take
+  it); the view zooms and marks (drag boxes, a note each); Request change sends `feedback {image, text, marks, marked,
+  mask}` — the marked image and the mask uploaded first, the maker sees the marked image on its next step; Edit marked
+  areas = generate under the mask, no agent; the goal form's preset (auto / none / one); the owner's goal runs the
+  keeper's workflow whose `vars:` name `preset` (`custom/studio/phases/make.md`: expand → choose → generate → critique →
+  refine), else goes to the keeper. Desk `custom/studio` (local):
+  lead `artist` (optimise → generate seeds → critic → refine one change a round → pick, talk.say v1→vN) + member
+  `critic` (model sonnet: a different model judging, `studio.look` + `critique` only). Tests `builtin-studio.test.js`.
 - `builtin/plan.js` `Plan` (extends `Checklist`): the desk's checklist written at run time (the planner's): id
   `plan`, view `checklist`, keep `always`, no reset on run start; `plan.write {goal, items}` ("id: text" lines, "!" =
   required; replaces the open items, keeps a ticked/skipped item still listed, bumps `revision`, records `by`),
@@ -505,7 +551,10 @@ Code more than one desk may use lives in `custom/shared/`. `custom/` is git-igno
   desks/load counts) read the live list. One `kernel {artifact}` per artifact change (the lead's `state.live` copy
   is gone).
 - `team/kernel-telegram.js` (owner only, `shared/telegram-owner.js`; `TELEGRAM_OWNER_ID`, else
-  `TELEGRAM_CHAT_ID`): messages → the lead (idle: a new run, answered as a reply; while it runs: guidance for that
+  `TELEGRAM_CHAT_ID`; 2026-10-23 owner: "I want to make that live preview for every desk": every hosted desk with the bot
+  posts its runs' live status and reports in its own topic — `inbound: false` for all but the desk that listens, which
+  alone takes messages; main.js `telegram: false` opts a desk out; the status shows a running workflow stage by stage,
+  `kernel-status.js` `workflowLines`): messages → the lead (idle: a new run, answered as a reply; while it runs: guidance for that
   run, team call `guide`, read at its next step), `/queue <text>` (new work after the run), `/status`, `/stop`, one
   live status message per run edited in place (`kernel-live.js`, text from `kernel-status.js`, agent look from
   `backend/live/visual.js`). A chat row is a run nowhere on the server (2026-10-17 critic: a web Ask during a
@@ -577,10 +626,37 @@ Code more than one desk may use lives in `custom/shared/`. `custom/` is git-igno
 data and also place the orders"): body `tools: ["orders"]` also gives the bridge `--orders <ASKK_ORDER_ACCOUNT>` and five
 order tools (`portfolio`, `option_positions`, `option_orders`, `place_option_order` — limit only, legs checked —
 `cancel_option_order`), each still the desk's `mcp/call`, so the desk's guard decides (trade-card: trading-team's order
-guard, .env caps, one shared `state/orders.jsonl`); 403 with no order account), `apple`
+guard, .env caps, one shared `state/orders.jsonl`); 403 with no order account; 2026-10-23 owner ("niche data sources … openalice
+tools … real and live data only"): body `tools: ["data"]` adds the bridge's `--data` stdio server — the desk's own tool
+servers (main.js host() `servers`) that declare `research: true`, each tool `mcp__data__<server>__<tool>` answered by this
+host's mcp/call as the desk (`dataTools`, `dataCall`), approved as `mcp__data`; trade-card's is a read-only OpenAlice allowlist), `apple`
   (macOS: fixed programs with argument lists, never a shell, `hardware/apple/`; 2026-10-21 `notes.latest {folder}` (the
   newest note's title and text, ≤ 120K) and `notes.add {folder, title, markdown}` (Bun.markdown → the note's HTML body)
   — Automation asks once), `speech` (`hardware/speech/`),
+  `images` (2026-10-23, `capabilities/imagegen.js`, when an image model in `models/image/` is installed — mflux: `uv tool
+  install --python 3.13 mflux==0.23.0 --with pillow==12.3.0`, Pillow 13 breaks it): `POST image/generate {prompt,
+  negative?, width?, height?, steps?, seed?, guidance?, model?, preset?, from?, strength?, references?: [id], mask?: id,
+  auto_mask?, by?}` → a job queued, run one at a time as the model's fixed argv (never a shell); the mode follows the call
+  (references / mask / auto_mask → its `edit` mode; `from` → `init` in generate, else edit with it first); an input its
+  modes do not take is refused naming what they take; a preset (`models/image/presets/<name>.md`) fills size/steps and
+  wraps the prompt in its style; a value starting with "-" goes as one `--flag=value` argument; one GPU for the whole
+  process (audit 20: a desk's next job waits while another desk's runs; a reloaded desk starts nothing more); the routes
+  answer even when no model was installed at start (capability `images` only when one was); `POST image/upload {data,
+  kind: mask | reference | marked, from?}` (the owner's, from the page: `x-askk-desk` gets 403; ≤ 12 MB, ≤ 4096² px);
+  an image that falls out of the 200-job index is deleted with it; `image/stop`, GET `image/jobs` (+ `model`: the chosen one's accepts/modes, `presets`), `image/job`,
+  `image/file`, `image/model` (a JPEG for a model's eyes); files and `index.json` in `<desk state>/images/`; not when
+  read-only), `models` (2026-10-23 owner: "We will have directory for the image, speech or other models … A helper will
+  read and initialize as required … parameters can be written in the md file … the state survives a restart";
+  `companion/models/`: `registry.js` `loadModels` — `models/` at the repo root (git-ignored, `ASKK_MODELS` moves it),
+  `models/<kind>/<name>/model.md` per model (kind stt | tts | image; engine apple | say | command | openai; `bin`+`args`
+  (+`inputs` flags) or `modes`; `url`/`model`/`serve` for an OpenAI-compatible server the helper starts and keeps up —
+  mlx-audio's `mlx_audio.server` on :8321 for Parakeet, Whisper, Qwen3-ASR, Granite, Kokoro, Qwen3-TTS, Chatterbox;
+  `options` with defaults, the owner's `values:` written back into the file), `models/models.md` the one chosen per kind;
+  a new folder seeded from `companion/models/catalog/` (apple, say, qwen-image-2.1, the presets); `index.js`
+  `sharedModels` (once per process), `ensureServer` (ours and running: used, never killed for a slow probe; exited: started
+  again; killed with the desk server, SIGKILL), routes GET `models`, POST `models/select|set|add|install|start` (the
+  owner's: a request with `x-askk-desk` gets 403; install runs `uv tool install` / `brew install` lines only; `key_env`
+  names an `…_API_KEY`, sent only over https or to this machine); tests `registry.test.js`),
   `team`. A GET handler may answer with its own `Response` (a stream, an image); `close()` (a desk reload) stops its
   tool servers, listeners, watches, pages and terminal sessions. Security: Host header must be localhost:port (DNS
   rebinding), cross-origin refused, POST needs same-origin Origin + JSON, realpath containment (no symlink escapes,
@@ -600,7 +676,14 @@ guard, .env caps, one shared `state/orders.jsonl`); 403 with no order account), 
   public page that allows browser reads (never this computer or the local network, `privateHost`), a Wikipedia article
   through its API; anything else 501 "not in the browser"); `team.js` `createBrowserTeam` —
   the desk server's team protocol (snapshot, state, kernel, registry, log; calls send/ask/stop/chat/guide/preview/
-  clearMemory, target artifact) from the same row builders (`backend/live/team-rows.js`, shared with kernel-team.js),
+  clearMemory, target artifact) from the same row builders (`backend/live/team-rows.js`, shared with kernel-team.js; 2026-10-23: `rows.lifecycle` — a spawn / dismiss / keep /
+  proposal as a row in the causing agent's thread and the Live feed; step and tool rows carry `ms`, an answer its `flags`; `rows.refresh`; compact / lifecycle / refresh rows ride the run's
+  trail as `notes` [{pos, row}] into history.md and back where they fell on restore (idle: `history.recordNote`, a note
+  section); a failed run's `error` event carries `request` + `steps` and restores (`restore(agent, n, {all: true})`, ≤ 2n
+  failed runs and notes; EARLIER RUNS answered only); a compaction's folded steps stay in the run's record (`#record`);
+  a call row's kind/view are recorded with the run; `state/running/<agent>.json` marks a run in progress (left at start:
+  restored as interrupted); `state/agent-stats.json` keeps model-call stats across restarts; agent state has no approvals, inbox,
+  quests or contextWindow and activity only idle | llm waiting | tool | tools | waiting — 2026-10-23 audit),
   kept in the store (runs ≤ 20, thread ≤ 200, artifacts by keep, kept helpers respawned; a run the tab closed on is
   marked interrupted); `storage.js` (`browserStore`: localStorage `askk.browser.*`, guarded; `memoryStore` for tests);
   `settings.js` (`PRESETS` Ollama / LM Studio / llama.cpp / OpenAI / OpenRouter / custom, `readConnection`,
@@ -641,9 +724,16 @@ guard, .env caps, one shared `state/orders.jsonl`); 403 with no order account), 
   desk frames, edges), `camera.js` (`{x, y, z}`, `zoomLevel` far | mid | near, `fit`, `focus`, `glide`),
   `follow-target.js` (`followTarget`: the deepest agent at work, for follow; `questsOut`).
   `hooks/use-engines.js`: `useEngines`, `useEngineState(s)`, `useDesk`, `useDeskLog`.
-- Pages: `/` home (`components/home/`: constellation, ask the lead, `components/kernel/desk-levels.jsx` team
-  cards, activity, workspace), `/agents?name=` the agent page (`components/agents/agent-page.jsx`: role, tools by
-  type and view, artifacts held, runs thread, next prompt, model calls; `/chat` redirects here), `/canvas`
+- Pages: `/` home — the place to interact (2026-10-23 owner: "make the landing dashboard page the way to interact"):
+  `components/home/talk-panel.jsx` `TalkPanel` — Goal and phase (pure `backend/live/focus.js`: `deskGoal`, `deskPhase` — a
+  workflow's stages, else the plan), a rolling window of what the owner and the lead said (`conversation`: requests and
+  answers, asks and replies; never quests, tools or guidance), the message box, the voice bar (the speech pipeline:
+  Continuous = wake word, Single = listen `once`, the pause that sends 1.5 / 2 s, the settings sheet; the lead is
+  narrated only after the mic was used here); then At work now, the desk's talk, proposals, constellation,
+  `components/kernel/desk-levels.jsx` team cards, activity, workspace; `/agents?name=` the agent's debug page (2026-10-23 owner: "it can become a debug page"; nav
+  "Debug", `components/agents/agent-page.jsx`: Turns — each run step by step — role, tools by type and view, artifacts
+  held, next prompt, model calls; Stop and Clear memory, no message box: the owner talks from the dashboard; `/chat`
+  redirects here), `/canvas`
   (`components/canvas/`: the free-form canvas of the desk — agents, their calls and artifacts, nested desk frames,
   follow), `/live` (`components/live/`: feed by tool view, Artifacts, Desk log, Schedule; `?tab=`), `/files` (`?path=`
   opens a folder), `/projects` (`components/projects/`, `backend/live/projects.js`: load a folder outside ASKK, the
@@ -678,8 +768,7 @@ guard, .env caps, one shared `state/orders.jsonl`); 403 with no order account), 
   `testRunner`), all team calls target `artifact`); unknown
   views show their state) used by the cards, Live and the agent page; a leased terminal session shows `LeaseBadge`
   (`gpu`) on the card and on the Live workbench's terminal tabs (`components/live/workbench/terminal-pane.jsx`).
-  Ask (2026-10-17 owner: talk with the lead, idle or running): the composer (`components/chat/composer.jsx` `onAsk`),
-  the home QuickAsk (`components/home/dashboard.jsx`) and the Live GuideBox (`components/live/guide-box.jsx`) call
+  Ask (2026-10-17 owner: talk with the lead, idle or running): the home QuickAsk (`components/home/dashboard.jsx`) and the Live GuideBox (`components/live/guide-box.jsx`) call
   `chat` and show the answer (`ChatPair`, `components/agents/thread.jsx`; the thread draws chat rows as a compact
   Q/A pair, never a run; work an answer proposes shows "Proposed work: …" with a "Queue it" button — nothing starts
   until the owner clicks). Running (2026-10-18 owner: "I want to be able talk with the lead to understand the goal and direction" — a question
@@ -709,14 +798,19 @@ Features that depend on the machine, not on an agent: each detects itself and is
 OS is missing. Browser side `backend/hardware/` (catalogue `index.js`), host side `companion/hardware/`
 (`loadHardware()`, once per process, used by `host-api.js`).
 
-- `speech/` — capability `speech` (macOS 26+; off with `ASKK_SPEECH=off`): on-device recognition with Apple's
-  SpeechAnalyzer through the `askk-speech` helper (`companion/hardware/speech/asr.swift`, compiled with swiftc on
+- `speech/` — capability `speech` (macOS; off with `ASKK_SPEECH=off`; 2026-10-23: the stt and tts models chosen in
+  `models/` — engine apple (the default), openai (mlx-audio's server: Parakeet, Whisper, Qwen3-ASR, Granite; Kokoro,
+  Qwen3-TTS, Chatterbox) or command, each model's options in its model.md; `speech/status` says which): on-device
+  recognition with Apple's SpeechAnalyzer through the `askk-speech` helper (`companion/hardware/speech/asr.swift`, compiled with swiftc on
   first use into `~/.askk/bin/`, kept running, JSON lines), so any browser gets local ASR
   (`POST speech/transcribe {audio: base64 16 kHz mono PCM, locale}`); voices with `say` (`GET speech/voices`,
   `POST speech/say` → WAV). Browser: `microphone.js`, `recognizers.js`, `voices.js`, `narrator.js` (the lead's
   state diff → spoken lines), `pipeline.js` (`SpeechToSpeech`: mic → ASR → the lead; the lead's state → narrator
-  → voice; "stop"; settings in localStorage `askk.sts`). Listen modes: `wake` (default: what follows the wake
-  word "computer", after a 2 s pause) and `direct`. Page `/sts` (`components/sts/`).
+  → voice; "stop"; settings in localStorage `askk.sts`). Listen modes: `wake` (default, continuous: what
+  follows the wake word "computer", after `commandPauseMs`, 2 s), `once` (2026-10-23: one command at the same pause, then
+  the mic closes) and `direct`. Speaking is its own switch (2026-10-23 owner: "The user speaking is not an automatic on
+  for talking"): settings `speak`, off by default — the mic never turns it on; the voice settings sheet shows the model
+  panel (`components/models/model-panel.jsx`, pure `backend/live/models.js`) for the host's stt and tts. On the dashboard's voice bar; page `/sts` (`components/sts/`, out of the nav) still loads.
 - `apple` — host only (`companion/hardware/apple/`, `GET apple/actions`, `POST apple/run {action, inputs}`):
   Shortcuts, say, notify, clipboard, Spotlight, Reminders, open a link, for a desk's own tools. `docs/apple.md`.
 

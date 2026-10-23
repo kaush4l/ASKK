@@ -33,7 +33,6 @@ const TONE = {
   tool: { ring: "border-amber-400", dot: "bg-amber-400 motion-safe:animate-pulse", soft: "border-amber-400/70 bg-amber-400/10", text: "text-amber-400" },
   quest: { ring: "border-blue-500", dot: "bg-blue-500 motion-safe:animate-pulse", soft: "border-blue-500/70 bg-blue-500/10", text: "text-blue-400" },
   waiting: { ring: "border-sky-400 border-dashed", dot: "bg-sky-400", soft: "border-sky-400/70 bg-sky-400/10", text: "text-sky-400" },
-  paused: { ring: "border-orange-500", dot: "bg-orange-500", soft: "border-orange-500/70 bg-orange-500/10", text: "text-orange-400" },
   error: { ring: "border-red-500", dot: "bg-red-500", soft: "border-red-500/70 bg-red-500/10", text: "text-red-400" },
   done: { ring: "border-emerald-500/60", dot: "bg-emerald-500", soft: "border-emerald-500/50 bg-emerald-500/5", text: "text-emerald-400" },
   idle: { ring: "border-border", dot: "bg-muted-foreground/40", soft: "border-border", text: "text-muted-foreground" },
@@ -58,6 +57,11 @@ export function DeskLevels({ onOpen, compact = false }) {
     setBig({ id, from })
     setBigOpen(true)
   }, [])
+  // `/?open=<artifact>` (lib/nav.js workflowHref; an old /workflow link) opens that artifact big once it is on the desk
+  React.useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("open")
+    if (id) expand(id, null)
+  }, [expand])
   if (!desk?.tree) return null
   const { tree } = desk
   const teams = new Set(teamsOf(tree))
@@ -341,7 +345,7 @@ export function ArtifactBig({ artifact: a, from, open, onOpenChange }) {
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         <Title phone={phone} className="flex min-w-0 items-baseline gap-2 text-base">
           <span className="shrink-0 font-mono">{a.id}</span>
-          <span className="min-w-0 truncate text-sm text-muted-foreground">{a.title}</span>
+          <span className="min-w-0 truncate text-sm text-muted-foreground">{a.state?.config?.title ?? a.title}</span>
         </Title>
         <Description phone={phone} className="truncate text-xs">
           {a.brief || `held by ${(a.holders ?? []).join(", ") || "no one"}`}

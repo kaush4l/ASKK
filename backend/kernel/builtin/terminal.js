@@ -79,6 +79,10 @@ const twinOf = (s, tail) => ({
   startedAt: s.startedAt ?? null,
   endedAt: s.endedAt ?? null,
   urls: [...(s.urls ?? [])],
+  // why it ended (stopped by whom, the server killed, replaced by …): the prompt said it, the twin now too (2026-10-23)
+  ...(s.reason ? { reason: clip(s.reason, 200) } : {}),
+  ...(s.error ? { error: clip(s.error, 200) } : {}),
+  ...(s.signal ? { signal: s.signal } : {}),
   tail: [...(tail ?? s.tail ?? [])].slice(-TAIL).map((l) => clip(l, TWIN_LINE)),
 })
 

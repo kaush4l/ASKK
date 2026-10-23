@@ -87,10 +87,10 @@ export function wave1() {
   s["news-lead"] = running({ phase: "waiting", names: ["wire", "macro"] }, [quest(6, "Why today is different")], 6)
   s.wire = running({ phase: "tool", name: "market.news" }, [quest(8, "overnight headlines")], 8)
   s.calendar = idle([quest(8, "today's events"), report(70, "CPI 08:30 ET printed hot, +0.4% m/m vs +0.3%", 0.8)])
-  s.macro = running({ phase: "llm", stage: "thinking" }, [quest(8, "cross-asset read")], 8)
+  s.macro = running({ phase: "llm", stage: "waiting" }, [quest(8, "cross-asset read")], 8)
   s["trend-lead"] = idle([quest(6, "Which side pays today"), report(200, "RANGE / CALM, side NONE until the opening range breaks", 0.3)])
   for (const m of ["daily", "intraday", "breadth"]) s[m] = idle([quest(9, "read"), report(120, `${m} read`, 0.5)])
-  s["search-lead"] = running({ phase: "llm", stage: "responding" }, [quest(6, "The 3 fastest names")], 6)
+  s["search-lead"] = running({ phase: "llm", stage: "waiting" }, [quest(6, "The 3 fastest names")], 6)
   s.movers = idle([quest(9, "rank movers"), report(150, "THETA +1.2 ATR, DELTA -0.9 ATR, EPSI +0.7 ATR", 0.6)])
   return { lead: "head", states: s, registry, kernel: { tree, artifacts: artifacts(1, earlier) }, now: T0 + 250_000 }
 }

@@ -93,7 +93,9 @@ export class Dispatch extends Artifact {
 
   // The twin's jobs, newest first; changed() when they differ (a job started or ended).
   #publish() {
-    const twin = (j) => ({ id: j.id, to: j.to, by: j.by, ask: clip(j.ask, ASK_TWIN), status: j.status, startedAt: j.startedAt, endedAt: j.endedAt, report: j.report == null ? null : clip(j.report, REPORT_TWIN), error: j.error })
+    // began: the target took it (else it waits behind the target's current run); delivered: its report was read by its
+    // starter (2026-10-23 audit: the prompt knew both, the twin did not)
+    const twin = (j) => ({ id: j.id, to: j.to, by: j.by, ask: clip(j.ask, ASK_TWIN), status: j.status, startedAt: j.startedAt, endedAt: j.endedAt, report: j.report == null ? null : clip(j.report, REPORT_TWIN), error: j.error, began: !!j.began, delivered: !!j.delivered })
     const next = { jobs: [...this.jobs.values()].reverse().slice(0, JOBS_MAX).map(twin) }
     if (JSON.stringify(next) === JSON.stringify(this.state)) return
     this.state = next
@@ -187,6 +189,7 @@ export class Dispatch extends Artifact {
   // A finished job as a wait (or read) result shows it, delivered from then on: the report clipped to `max`, then how
   // to read all of it (a read's own cut says only how much was left out).
   #delivered(j, max = REPORT_WAIT) {
+    if (!j.delivered) queueMicrotask(() => this.#publish())
     j.delivered = true
     if (j.status === "done") j.holder.reported?.add(j.to) // a sibling that works from its report may be called now
     if (j.status !== "done") return `${this.#line(j, { ask: false })}: ${j.error ?? "(no reason given)"}`
@@ -237,7 +240,7 @@ export class Dispatch extends Artifact {
     // Where its run is (the prompt's line): its start event, then its steps.
     job.offs.push(
       target.on("start", (e) => {
-        if (!job.began && e.request?.text === text && e.request?.from === holder.name) job.began = true
+        if (!job.began && e.request?.text === text && e.request?.from === holder.name) (job.began = true), this.#publish()
       }),
       target.on("step", (e) => {
         if (job.began) job.step = e.n

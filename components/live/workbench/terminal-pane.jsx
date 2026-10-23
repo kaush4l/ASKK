@@ -52,6 +52,7 @@ export function TerminalPane({ terminal, sessions, session, onPick }) {
               <span className="truncate font-mono">{sessionLabel(s)}</span>
               <LeaseBadge lease={s.lease} />
               {s.status !== "running" && s.exit != null && <span className={cn("shrink-0 tabular-nums", s.exit === 0 ? "" : "text-red-700 dark:text-red-400")}>{s.exit}</span>}
+              {s.status !== "running" && (s.reason || s.error || s.signal) && <span className="min-w-0 truncate text-muted-foreground" title={[s.reason, s.error, s.signal].filter(Boolean).join(" · ")}>{[s.reason, s.error, s.signal].filter(Boolean).join(" · ")}</span>}
             </button>
           ))}
         </div>

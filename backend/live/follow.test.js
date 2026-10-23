@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { eventTarget, liveFeed, questAsk, toolCall } from "./follow.js"
+import { afterCallLabel, callArtifactId, eventTarget, laterCallsOn, liveFeed, questAsk, toolCall } from "./follow.js"
 import { callLook } from "./visual.js"
 
 const engine = {
@@ -27,7 +27,8 @@ test("toolCall: a tool message as the call callLook draws", () => {
   expect(kind({ name: "github.search", view: "data" })).toBe("mcp")
   expect(kind({ name: "web.search", view: "web" })).toBe("web")
   expect(kind({ name: "lead.checklist.check", view: "checklist" })).toBe("checklist")
-  expect(kind({ name: "notes.read", view: "text" })).toBe("function")
+  expect(kind({ name: "notes.read", view: "text" })).toBe("text") // 2026-10-23: its own look, no longer the wrench
+  expect(kind({ name: "x.y", view: "gallery" })).toBe("function") // a view with no look: the wrench, the feed names it
   expect(kind({ name: "gone" })).toBe("data")
 })
 
@@ -198,4 +199,48 @@ test("a compaction row: its line, a feed event of kind compact, its own look", a
   expect(event).toMatchObject({ kind: "compact", name: "prompt compacted", ok: true, output: row.content })
   expect(eventTarget(event)).toContain("Prompt compacted")
   expect(callLook({ kind: "compact" })).toMatchObject({ kind: "compact", icon: "shrink" })
+})
+
+// 2026-10-23 architecture map: a call's own time, and the desk's own events, reach the feed.
+test("the feed carries each call's ms and the desk's spawn/dismiss rows; dispatch, runners and pipeline calls have their own look", () => {
+  const rows = [
+    { id: "m1", role: "tool", name: "web.search", kind: "tool", view: "web", row: "m0", index: 0, inputs: { q: "x" }, ok: true, output: "r", ms: 1234, at: "2026-10-23T14:00:01.000Z" },
+    { id: "m2", role: "assistant", action: "lifecycle", kind: "spawn", agent: "helper", content: "Spawned helper: read the docs", at: "2026-10-23T14:00:02.000Z" },
+  ]
+  const feed = liveFeed([engine], [{ messages: rows, activity: null }])
+  expect(feed.map((e) => [e.kind, e.name, e.ms ?? null])).toEqual([["tool", "web.search", 1234], ["spawn", "spawn", null]])
+  expect(feed[1]).toMatchObject({ view: "spawn", ok: true, inputs: { agent: "helper" }, output: "Spawned helper: read the docs" })
+  expect(callLook(feed[1]).kind).toBe("spawn")
+  for (const view of ["dispatch", "runners", "pipeline"]) expect(callLook({ view }).kind).toBe(view)
+})
+
+test("row builders keep what the kernel measured and flagged: a step's ms, an answer's open gates", async () => {
+  const { rows } = await import("./team-rows.js")
+  expect(rows.step("t", [], "x", null, 812).ms).toBe(812)
+  expect(rows.step("t", [], "x").ms).toBeUndefined()
+  expect(rows.answer("done", "x", ["report missing: price"]).flags).toEqual(["report missing: price"])
+  expect(rows.answer("done", "x", []).flags).toBeUndefined()
+})
+
+test("callArtifactId / laterCallsOn: the artifact a call acted on, and whether its state now is the one it left", () => {
+  const artifacts = { plan: {}, "lead.practice": {}, lead: {} }
+  expect(callArtifactId({ name: "plan.tick" }, artifacts)).toBe("plan")
+  expect(callArtifactId({ name: "lead.practice.edit" }, artifacts)).toBe("lead.practice") // the longest id wins
+  expect(callArtifactId({ name: "web.search" }, artifacts)).toBeNull()
+  expect(callArtifactId({ name: "plan", kind: "gate" }, artifacts)).toBeNull()
+  const events = [{ id: "1", name: "plan.write" }, { id: "2", name: "web.search" }, { id: "3", name: "plan.tick" }]
+  expect(laterCallsOn(events, events[0], artifacts)).toBe(1)
+  expect(laterCallsOn(events, events[2], artifacts)).toBe(0)
+  expect(laterCallsOn(events, events[1], artifacts)).toBe(0)
+})
+
+test("afterCallLabel: 'after this call' only when no call, refresh or seen change came since (audit 19)", () => {
+  const artifacts = { plan: {} }
+  const done = { id: "1", name: "plan.write", state: "done", at: "2026-10-23T13:00:00.000Z", ms: 500 }
+  const t = Date.parse(done.at)
+  expect(afterCallLabel(done, [done], artifacts)).toBe("plan after this call")
+  expect(afterCallLabel(done, [done], artifacts, t + 1500)).toBe("plan after this call") // the call's own change
+  expect(afterCallLabel(done, [done], artifacts, t + 60_000)).toContain("changed since, not by a call")
+  expect(afterCallLabel(done, [done, { id: "2", name: "plan refresh" }], artifacts)).toContain("1 later call changed it since")
+  expect(afterCallLabel({ ...done, state: "running" }, [done], artifacts)).toBe("plan now (the call is running)")
 })

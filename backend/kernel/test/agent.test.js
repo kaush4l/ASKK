@@ -95,7 +95,7 @@ describe("stop and current", () => {
     const list = Object.assign(new Artifact({ name: "a.list" }), { onRunStart: (_, request) => resets.push(request.text) })
     const agent = new Agent({ name: "a", report: false }, { infer: async () => (calls++, entered(), never()), artifacts: [list] })
     const events = []
-    agent.on("*", (e) => ["start", "error"].includes(e.event) && events.push(`${e.event} ${e.request?.text ?? e.error}`))
+    agent.on("*", (e) => ["start", "error"].includes(e.event) && events.push(`${e.event} ${e.event === "error" ? e.error : e.request?.text}`))
     const runs = ["one", "two", "three"].map((t) => agent.ask(t).catch((e) => e.message))
     await inOne
     expect(agent.stop()).toBe(3)
@@ -148,5 +148,42 @@ describe("stop and current", () => {
     expect(await leadRun).toBe("stopped")
     expect(scout.status).toBe("error")
     expect(scout.busy).toBe(false)
+  })
+})
+
+// 2026-10-23 architecture map: a listener is a watcher, never the run's fault; every result carries its own ms.
+describe("watchers and timings", () => {
+  test("a throwing listener never ends the run; it is counted", async () => {
+    const slow = new Tool({ name: "slow", input: {}, run: async () => { await Bun.sleep(20); return "ok" } })
+    const infer = scripted({ a: [{ thought: "t", calls: [{ tool: "slow", input: {} }] }, { thought: "done", calls: [], answer: "fine" }] })
+    const a = new Agent({ name: "a", report: false }, { infer, tools: [slow] })
+    a.on("step", () => { throw new Error("tap broke") })
+    const results = []
+    a.on("result", (e) => results.push(e))
+    const quiet = console.error
+    console.error = () => {}
+    try {
+      expect(await a.ask("go")).toBe("fine")
+    } finally {
+      console.error = quiet
+    }
+    expect(a.listenerErrors).toBe(2)
+    expect(a.status).toBe("idle")
+    expect(results[0].ms).toBeGreaterThanOrEqual(15)
+  })
+
+  test("an artifact that cannot refresh is said once, and once more when it is back", async () => {
+    let fail = true
+    const a = new Artifact({ name: "tape" })
+    a.refresh = async () => {
+      if (fail) throw new Error("host down")
+    }
+    const infer = scripted({ r: [{ thought: "1", calls: [{ tool: "noop", input: {} }] }, { thought: "2", calls: [{ tool: "noop", input: {} }] }, { thought: "done", calls: [], answer: "ok" }] })
+    const noop = new Tool({ name: "noop", input: {}, run: () => ((fail = false), "ok") })
+    const agent = new Agent({ name: "r", report: false }, { infer, tools: [noop], artifacts: [a] })
+    const seen = []
+    agent.on("refresh", (e) => seen.push([e.artifact, e.ok, e.error ?? null]))
+    await agent.ask("go")
+    expect(seen).toEqual([["tape", false, "host down"], ["tape", true, null]])
   })
 })

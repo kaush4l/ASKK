@@ -35,6 +35,23 @@ export function useLiveFollow() {
   const [chosen, setChosen] = React.useState(null)
   const [tab, setTab] = React.useState("call")
   const wakes = useWakes()
+  // when this tab saw each artifact's state change (ms): the call panel tells a change no call made (audit 19)
+  const seen = React.useRef(new Map()) // id -> { ref, sig, at }
+  const changes = React.useMemo(() => {
+    const out = new Map()
+    for (const [id, a] of Object.entries(desk?.artifacts ?? {})) {
+      const was = seen.current.get(id)
+      if (was?.ref === a) {
+        out.set(id, was.at)
+        continue
+      }
+      const sig = JSON.stringify(a?.state ?? null)
+      const at = was ? (was.sig === sig ? was.at : Date.now()) : null // first sight: no change seen yet
+      seen.current.set(id, { ref: a, sig, at })
+      out.set(id, at)
+    }
+    return out
+  }, [desk?.artifacts])
 
   React.useEffect(() => {
     const asked = new URLSearchParams(window.location.search).get("tab")
@@ -57,7 +74,7 @@ export function useLiveFollow() {
   const guideEngine = engines[guideIndex] ?? engines.find((e, i) => states[i]?.status === "running") ?? engines[0]
   const guideState = states[engines.indexOf(guideEngine)]
 
-  return { engines, states, desk, log, events, newestFirst, running, following, setFollowing, selected, select, tab, setTab, wakes, guideEngine, guideState }
+  return { engines, states, desk, log, events, newestFirst, running, following, setFollowing, selected, select, tab, setTab, wakes, guideEngine, guideState, changes }
 }
 
 // Title, call counts, the Following toggle (it drives the feed and, on the workbench, the panes); `children` sit
@@ -110,7 +127,7 @@ export function FeedList({ live, className }) {
 
 // The tab row and the open tab: the followed call, artifacts (by view), the desk log, the wake book.
 export function LiveTabs({ live, artifacts }) {
-  const { tab, setTab, selected, log, wakes } = live
+  const { tab, setTab, selected, log, wakes, events, changes } = live
   const artifactCount = Object.keys(artifacts ?? {}).length
   return (
     <>
@@ -135,7 +152,7 @@ export function LiveTabs({ live, artifacts }) {
         ))}
       </div>
       <div className="flex min-h-0 flex-1 flex-col">
-        {tab === "call" && (selected ? <CallPanel event={selected} /> : <p className="text-sm text-muted-foreground">Nothing selected.</p>)}
+        {tab === "call" && (selected ? <CallPanel event={selected} events={events} artifacts={live.desk?.artifacts ?? artifacts} changes={changes} /> : <p className="text-sm text-muted-foreground">Nothing selected.</p>)}
         {tab === "artifacts" && <ArtifactsView artifacts={artifacts ?? {}} />}
         {tab === "desk" && <DeskLogView lines={log} />}
         {tab === "schedule" && <WakesView book={wakes} />}
