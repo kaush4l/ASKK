@@ -35,6 +35,10 @@ const TIMEOUT = HOST_LIMITS.speech.timeoutMs
 
 const SpeechError = HttpError
 
+// engine openai: the options that name a request `field`, with their values now (registry.js)
+const fieldsOf = (m, opts) =>
+  Object.fromEntries(Object.entries(m.options ?? {}).flatMap(([k, o]) => (o.field && opts[k] != null && opts[k] !== "" ? [[o.field, opts[k]]] : [])))
+
 const macMajor = () => {
   try {
     return Number(Bun.spawnSync(["sw_vers", "-productVersion"]).stdout.toString().trim().split(".")[0]) || 0
@@ -177,6 +181,7 @@ export async function createSpeech({ env = process.env, log = () => {}, models =
         if (m.meta.model) form.append("model", m.meta.model)
         const language = opts.language ?? locale.split(/[-_]/)[0]
         if (language) form.append("language", language)
+        for (const [k, v] of Object.entries(fieldsOf(m, opts))) form.set(k, String(v))
         const r = await fetch(`${url.replace(/\/$/, "")}/audio/transcriptions`, { method: "POST", body: form, headers: keyHeader(m), signal: AbortSignal.timeout(callMs(m)) })
         const body = await r.text()
         if (!r.ok) throw new SpeechError(502, `${m.title}: ${r.status} ${body.slice(0, 200)}`)
@@ -268,7 +273,7 @@ export async function createSpeech({ env = process.env, log = () => {}, models =
         const r = await fetch(`${url.replace(/\/$/, "")}/audio/speech`, {
           method: "POST",
           headers: { "content-type": "application/json", ...keyHeader(m) },
-          body: JSON.stringify({ model: m.meta.model, input: text, ...(name ? { voice: name } : {}), ...(speed ? { speed } : {}), response_format: "wav" }),
+          body: JSON.stringify({ model: m.meta.model, input: text, ...(name ? { voice: name } : {}), ...(speed ? { speed } : {}), response_format: "wav", ...fieldsOf(m, opts) }),
           signal: AbortSignal.timeout(callMs(m)),
         })
         if (!r.ok) throw new SpeechError(502, `${m.title}: ${r.status} ${(await r.text()).slice(0, 200)}`)

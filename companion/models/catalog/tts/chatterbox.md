@@ -11,7 +11,7 @@ serve:
   bin: mlx_audio.server
   args: [--host, 127.0.0.1, --port, "8321"]
 options:
-  voice: {type: choice, choices: [default], default: default, about: "the speaker"}
+  language: {type: choice, choices: [en, es, fr, de, it, pt, nl, pl, ru, tr, ar, hi, ja, ko, zh, sv, da, no, fi, el, he, ms, sw], default: en, field: lang_code, about: "the language it speaks (sent as lang_code; mlx-audio's default 'a' is Kokoro's and Chatterbox refuses it)"}
   speed: {type: number, default: 1, min: 0.5, max: 2, step: 0.1, about: "how fast it speaks"}
 values: {}
 ---
@@ -20,4 +20,4 @@ values: {}
 Served by mlx-audio's OpenAI-compatible server (port 8321, started by the helper and kept running). Try it from a
 terminal:
 
-    mlx_audio.tts.generate --model mlx-community/chatterbox-fp16 --text "Hello there" --voice default --output_path out --audio_format wav --join_audio
+    mlx_audio.tts.generate --model mlx-community/chatterbox-fp16 --text "Hello there" --lang_code en --output_path out --audio_format wav --join_audio

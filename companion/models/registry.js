@@ -20,6 +20,7 @@
 //   progress (image): a regex whose (\d+)/(\d+) is the step bar
 //   options: {name: {type: number | bool | choice | text, default, min?, max?, step?, choices?, flag?, about}}
 //     an option with `flag` goes on every call (bool: the flag alone when true; choice "none": left out)
+//     engine openai: an option with `field` goes in every request under that name (Chatterbox's language as lang_code)
 //   values: {name: value}  what the owner set in the panel — written back into this block, the rest of the file as it was
 //
 //   const models = loadModels({root})     → list(kind), get(kind, name), selected(kind), select, set, catalog(kind),

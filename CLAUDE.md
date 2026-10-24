@@ -651,7 +651,8 @@ host's mcp/call as the desk (`dataTools`, `dataCall`), approved as `mcp__data`; 
   `models/<kind>/<name>/model.md` per model (kind stt | tts | image; engine apple | say | command | openai; `bin`+`args`
   (+`inputs` flags) or `modes`; `url`/`model`/`serve` for an OpenAI-compatible server the helper starts and keeps up —
   mlx-audio's `mlx_audio.server` on :8321 for Parakeet, Whisper, Qwen3-ASR, Granite, Kokoro, Qwen3-TTS, Chatterbox;
-  `options` with defaults, the owner's `values:` written back into the file), `models/models.md` the one chosen per kind;
+  `options` with defaults (`flag`: a command's argument; `field`: an openai request's, e.g. Chatterbox's `lang_code`), the
+  owner's `values:` written back into the file; every catalogue speech model tested live 2026-10-23), `models/models.md` the one chosen per kind;
   a new folder seeded from `companion/models/catalog/` (apple, say, qwen-image-2.1, the presets); `index.js`
   `sharedModels` (once per process), `ensureServer` (ours and running: used, never killed for a slow probe; exited: started
   again; killed with the desk server, SIGKILL), routes GET `models`, POST `models/select|set|add|install|start` (the
