@@ -73,6 +73,13 @@
 //   POST image/generate { prompt, negative?, width?, height?, steps?, seed?, model?, from?, strength?, by? }   { job }
 //   POST image/stop { id }   { job }   POST image/delete { id }   { deleted }   GET image/jobs   { jobs, running, queued, models }   GET image/job?id=   { job }
 //   GET image/file?id=   the PNG   GET image/model?id=&max=   { media_type, width, height, data } (a JPEG, base64)
+//   (audio/* below: companion/capabilities/audiogen.js — scripts to audio files on the models' text-to-speech, audio
+//   files to text, a file to the owner's Telegram chat; capability audio with speech, not when read-only)
+//   POST audio/make { text, title?, model?, voice?, speed?, options? }   { job }   POST audio/transcribe { id | path }   { text }
+//   POST audio/send { id, caption? }   { sent }   POST audio/prepare { kind, name }   { model, ready, installing }
+//   POST audio/stop { id }   POST audio/delete { id }   GET audio/jobs   GET audio/job?id=   GET audio/script?id=
+//   GET audio/file?id=&format=&chapter=   the audio (m4a, or wav; one chapter)   GET audio/styles   { styles }
+//   POST audio/style { name, model?, voice?, speed?, options?, writing?, why }   { style } — a voice style from feedback
 //   GET browser/image?id=&n=&max=   the same shot for a model: JPEG ≤ max px wide (1280), base64 JSON (an agent's next step)
 //   GET apple/actions          { actions: [{ id, available }] } — macOS only
 //   POST apple/run { action, inputs }   { text } — run one Apple action
@@ -84,6 +91,7 @@
 //   POST models/select {kind, name}   POST models/set {kind, name, values}   POST models/add {kind, name}
 //   POST models/install {kind, name}   POST models/start {kind, name}   — the owner's (a desk's own request: 403)
 //   POST image/upload {data, kind: mask | reference | marked, from?, note?}   { job } — an image the owner made
+//   POST image/send {id, caption?}   { sent } — a finished image to the owner's Telegram chat (the bot's photo.send)
 //   GET speech/status          { recognize, ready, error, voice, sampleRate, stt, tts } — hardware/speech (the models' stt / tts)
 //   GET speech/voices          { voices: [{ name, lang }] } — the Mac's `say` voices
 //   POST speech/transcribe { audio, locale }   { text, seconds, ms } — base64 16 kHz
@@ -140,7 +148,9 @@ import { loadIntegrations } from "../capabilities/integrations.js"
 import { createLocalModels, findBinary, localModelRoute } from "../capabilities/local-models.js"
 import { createResearch, researchRoute } from "../capabilities/research.js"
 import { createImagegen, imageRoutes } from "../capabilities/imagegen.js"
-import { modelRoutes, sharedModels } from "../models/index.js"
+import { recordSent } from "../team/kernel-telegram.js"
+import { audioRoutes, createAudiogen } from "../capabilities/audiogen.js"
+import { install as installModel, modelRoutes, sharedModels } from "../models/index.js"
 import { createMcp } from "../capabilities/mcp.js"
 import { runDeskSetup } from "../team/desk.js"
 import { wakesRoutes } from "../shared/wakes.js"
@@ -237,9 +247,15 @@ export async function createHostApi({
   // images (2026-10-23): open image models on this Mac through mflux, one job at a time (capabilities/imagegen.js)
   // always made (audit 20: a model installed from the panel after the start had no routes until a restart); generate
   // says when no image model is installed
-  const images = readOnly ? null : await createImagegen({ state: runtime, log: hostLog, always: true })
+  // a message sent to Telegram outside the bridge (an image, an audio file): kept by id, so a reply to it comes back here
+  const onSent = (sent) => desk?.name && recordSent(desk.name, sent)
+  const images = readOnly ? null : await createImagegen({ state: runtime, log: hostLog, always: true, integrations, onSent })
   // local models (2026-10-23): models/<kind>/<name>/model.md, one folder for the process (companion/models)
   const models = modelRoutes(sharedModels({ log: hostLog }), { log: hostLog, readOnly, choices: async () => (speech ? speech.optionChoices() : {}) })
+  const files = createFiles({ root, readOnly, mounts })
+  // audio files (2026-10-24 owner: "even the lead is able to use TTS model to create audio files … the telegram personal
+  // chat will be the default channel"): scripts → audio on the models' tts, audio → text, a file to Telegram
+  const audio = readOnly || !speech ? null : await createAudiogen({ state: runtime, speech, files, integrations, onSent, models: sharedModels({ log: hostLog }), install: (m) => installModel(m, hostLog), log: hostLog })
   const capabilities = [
     ...(readOnly ? ["fs.read"] : ["fs.read", "fs.write"]),
     ...(projects ? ["projects"] : []),
@@ -252,10 +268,10 @@ export async function createHostApi({
     ...(team ? ["team"] : []),
     "wakes",
     ...(readOnly ? [] : ["term", "browser"]),
-    ...(images?.usable ? ["images"] : []), // its routes answer either way (a model installed later works without a restart)
+    ...(images?.usable ? ["images"] : []),
+    ...(audio ? ["audio"] : []), // its routes answer either way (a model installed later works without a restart)
     "models",
   ]
-  const files = createFiles({ root, readOnly, mounts })
   const deskPorts = () =>
     [...new Set([port, DESKS_PORT, desk?.port, ...((typeof hostPorts === "function" ? hostPorts() : hostPorts) ?? [])].map(Number))].filter((n) => Number.isInteger(n) && n > 0)
   const term = readOnly ? null : createTerm({ root, state: runtime, policy: desk?.terminal ?? null, mounts, hostPorts: deskPorts, log: hostLog })
@@ -276,6 +292,7 @@ export async function createHostApi({
     ...(term ? termRoutes(term).GET : {}),
     ...(browser ? browserRoutes(browser).GET : {}),
     ...(images ? imageRoutes(images).GET : {}),
+    ...(audio ? audioRoutes(audio).GET : {}),
     ...models.GET,
     ...(projects ? { projects: () => ({ projects: projects.list().map((p) => ({ ...p, workspace: `projects/${p.name}` })), file: desk.memory ? join(desk.memory, "projects.json") : null }) } : {}),
   }
@@ -302,6 +319,7 @@ export async function createHostApi({
     ...(term ? termRoutes(term).POST : {}),
     ...(browser ? browserRoutes(browser).POST : {}),
     ...(images ? imageRoutes(images).POST : {}),
+    ...(audio ? audioRoutes(audio).POST : {}),
     ...models.POST,
     ...(apple ? { "apple/run": ({ action, inputs }) => apple.run(action, inputs) } : {}),
     ...(speech ? { "speech/transcribe": (body) => speech.transcribe(body), "speech/say": (body) => speech.speak(body) } : {}),
@@ -378,9 +396,10 @@ export async function createHostApi({
     files.close()
     browser?.closeAll()
     images?.close()
+    audio?.close()
     return term?.close() ?? Promise.resolve()
   }
   // routes: what this API answers (the header above documents each; host-api.test.js checks it does).
   const routes = { GET: [...Object.keys(GET), ...(team ? ["team/stream"] : []), ...(term ? ["term/stream"] : []), "fs/watch"], POST: Object.keys(POST) }
-  return { root, capabilities, handle, integrations, close, routes }
+  return { root, capabilities, handle, integrations, images, close, routes }
 }

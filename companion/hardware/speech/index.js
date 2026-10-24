@@ -20,20 +20,76 @@
 
 import { mkdir, mkdtemp, rm } from "node:fs/promises"
 import { homedir, tmpdir } from "node:os"
-import { join } from "node:path"
+import { basename, dirname, join } from "node:path"
 import { HttpError } from "../../shared/http.js"
 import { HOST_LIMITS } from "../../shared/config.js"
 import { ensureServer, sharedModels } from "../../models/index.js"
-import { buildArgv, effective } from "../../models/registry.js"
+import { buildArgv, checkValue, effective } from "../../models/registry.js"
 
 const SOURCE = join(import.meta.dir, "asr.swift")
 const BIN_DIR = join(homedir(), ".askk", "bin")
 const SAMPLE_RATE = 16000
 const MAX_SECONDS = HOST_LIMITS.speech.maxUtteranceSeconds // per utterance
 const MAX_SAY_CHARS = HOST_LIMITS.speech.sayChars
+const RENDER_CHARS = 60_000 // one audio file's script (a 40-minute talk)
 const TIMEOUT = HOST_LIMITS.speech.timeoutMs
 
 const SpeechError = HttpError
+
+// A script cut for a model that loses its way on long input (model.md `split: paragraphs`; 2026-10-24 live run: Chatterbox
+// given a whole story skipped a sentence, repeated one, invented a line and dropped the ending — the transcript check
+// caught it): its paragraphs, each longer than `max` cut at sentence ends.
+export function splitScript(text, max = 300) {
+  const parts = []
+  for (const para of String(text).split(/\n\s*\n/).map((p) => p.replace(/\s+/g, " ").trim()).filter(Boolean)) {
+    if (para.length <= max) {
+      parts.push(para)
+      continue
+    }
+    let cur = ""
+    for (const sentence of para.match(/[^.!?…]+[.!?…]+["'”’)]*\s*|[^.!?…]+$/g) ?? [para]) {
+      if (cur && (cur + sentence).length > max) {
+        parts.push(cur.trim())
+        cur = ""
+      }
+      cur += sentence
+    }
+    if (cur.trim()) parts.push(cur.trim())
+  }
+  return parts
+}
+
+// WAVs of one format → one WAV, `gap` seconds of silence between them (the pause of a paragraph break).
+export function joinWavs(buffers, gap = 0.35) {
+  const chunks = (b) => {
+    const out = {}
+    for (let at = 12; at + 8 <= b.length; ) {
+      const id = b.toString("ascii", at, at + 4)
+      const size = b.readUInt32LE(at + 4)
+      out[id] = b.subarray(at + 8, Math.min(b.length, at + 8 + size))
+      at += 8 + size + (size % 2)
+    }
+    return out
+  }
+  const parts = buffers.map((x) => chunks(Buffer.from(x)))
+  const fmt = parts[0]?.["fmt "]
+  if (!fmt) throw new SpeechError(500, "joining audio: no fmt chunk")
+  const rate = fmt.readUInt32LE(4)
+  const block = fmt.readUInt16LE(12)
+  const silence = Buffer.alloc(Math.round(rate * gap) * block)
+  const data = Buffer.concat(parts.flatMap((p, i) => (i ? [silence, p.data ?? Buffer.alloc(0)] : [p.data ?? Buffer.alloc(0)])))
+  const head = Buffer.alloc(12)
+  head.write("RIFF", 0)
+  head.writeUInt32LE(4 + 8 + fmt.length + 8 + data.length, 4)
+  head.write("WAVE", 8)
+  const fmtHead = Buffer.alloc(8)
+  fmtHead.write("fmt ", 0)
+  fmtHead.writeUInt32LE(fmt.length, 4)
+  const dataHead = Buffer.alloc(8)
+  dataHead.write("data", 0)
+  dataHead.writeUInt32LE(data.length, 4)
+  return Buffer.concat([head, fmtHead, fmt, dataHead, data])
+}
 
 // engine openai: `lang_from_voice: true` sends the voice's first letter as lang_code (Kokoro: af_heart → a, bf_emma → b,
 // ef_dora → e — its pronunciation follows it); the options that name a request `field`, with their values now (registry.js)
@@ -168,9 +224,19 @@ export async function createSpeech({ env = process.env, log = () => {}, models =
     if (pcm.length < SAMPLE_RATE * 2 * HOST_LIMITS.speech.minUtteranceSeconds) return { text: "", seconds: 0, ms: 0, model: m.name }
     const stem = `u${++seq}`
     const file = await tempFile(`${stem}.wav`)
-    const started = performance.now()
     await Bun.write(file, wav(pcm))
     try {
+      return { ...(await recognize(file, m, locale, stem)), seconds: pcm.length / (SAMPLE_RATE * 2) }
+    } finally {
+      Bun.file(file).delete().catch(() => {})
+    }
+  }
+
+  // A 16 kHz mono WAV → its text, on the model given (the voice bar's utterance, or an audio file: transcribeFile).
+  async function recognize(file, m, locale, stem) {
+    const opts = effective(m)
+    const started = performance.now()
+    {
       let text
       if (m.engine === "apple") {
         if (!recognizes) throw new SpeechError(501, "On-device recognition needs macOS 26 and the Xcode command line tools (swiftc).")
@@ -205,7 +271,24 @@ export async function createSpeech({ env = process.env, log = () => {}, models =
           Bun.file(path).delete().catch(() => {})
         } else text = out
       }
-      return { text: String(text ?? "").trim(), seconds: pcm.length / (SAMPLE_RATE * 2), ms: Math.round(performance.now() - started), model: m.name }
+      return { text: String(text ?? "").trim(), ms: Math.round(performance.now() - started), model: m.name }
+    }
+  }
+
+  // An audio file of any format macOS reads (wav, m4a, mp3, aiff, caf …) → its text (2026-10-24 owner: "the audio
+  // transcription can be a tool as well"): converted to 16 kHz mono with afconvert, then the stt model.
+  async function transcribeFile({ path, model, locale }) {
+    if (typeof path !== "string" || !path) throw new SpeechError(400, "Expected {path: an audio file}.")
+    if (!(await Bun.file(path).exists())) throw new SpeechError(404, `No audio file at ${path}.`)
+    const m = modelFor("stt", model)
+    locale ??= effective(m).locale ?? "en-US"
+    const stem = `f${++seq}`
+    const file = await tempFile(`${stem}.wav`)
+    try {
+      const conv = Bun.spawn(["/usr/bin/afconvert", "-f", "WAVE", "-d", "LEI16@16000", "-c", "1", path, file], { stdout: "ignore", stderr: "pipe", timeout: 120_000 })
+      if ((await conv.exited) !== 0) throw await fail(conv, "afconvert (reading the audio)")
+      const seconds = Math.max(0, (Bun.file(file).size - 44) / (SAMPLE_RATE * 2))
+      return { ...(await recognize(file, m, locale, stem)), seconds }
     } finally {
       Bun.file(file).delete().catch(() => {})
     }
@@ -247,11 +330,50 @@ export async function createSpeech({ env = process.env, log = () => {}, models =
   // per minute for say, else speed = rate / 190).
   async function speak({ text, voice, rate, model }) {
     if (typeof text !== "string" || !text.trim()) throw new SpeechError(400, "Expected {text}.")
-    const m = modelFor("tts", model)
-    const opts = effective(m)
-    text = text.slice(0, MAX_SAY_CHARS)
     const out = await tempFile(`s${++seq}.wav`)
     try {
+      const r = await render({ text: text.slice(0, MAX_SAY_CHARS), voice, rate, model, out })
+      return { audio: (await Bun.file(out).bytes()).toBase64(), type: "audio/wav", model: r.model }
+    } finally {
+      Bun.file(out).delete().catch(() => {})
+    }
+  }
+
+  // Text → a WAV written at `out` (2026-10-24 owner: "even the lead is able to use TTS model to create audio files"):
+  // the voice bar's line, or a whole script (≤ RENDER_CHARS) for an audio file. options: the model's option values for
+  // this call only (Chatterbox's exaggeration …), checked as the panel's are.
+  async function render({ text, voice, rate, model, options = {}, out, signal, whole = false }) {
+    if (typeof text !== "string" || !text.trim()) throw new SpeechError(400, "Expected {text}.")
+    if (text.length > RENDER_CHARS) throw new SpeechError(413, `At most ${RENDER_CHARS} chars per audio (split it).`)
+    let m = modelFor("tts", model)
+    const extra = {}
+    for (const [k, v] of Object.entries(options ?? {})) {
+      if (!m.options[k]) throw new SpeechError(400, `${m.name} has no option ${k} (it has ${Object.keys(m.options).join(", ") || "none"})`)
+      if (v != null && v !== "") extra[k] = checkValue(m.options[k], v, k)
+    }
+    m = { ...m, values: { ...m.values, ...extra } }
+    // a model that loses its way on long input: each paragraph its own call, joined with a pause
+    if (m.meta.split === "paragraphs" && !whole) {
+      const parts = splitScript(text, Number(m.meta.split_chars) || 300)
+      if (parts.length > 1) {
+        const files = []
+        try {
+          let made
+          for (const [i, part] of parts.entries()) {
+            if (signal?.aborted) throw new SpeechError(499, "stopped")
+            const piece = out.replace(/\.wav$/, `-p${i + 1}.wav`)
+            files.push(piece)
+            made = await render({ text: part, voice, rate, model: m.name, options, out: piece, signal, whole: true })
+          }
+          await Bun.write(out, joinWavs(await Promise.all(files.map((f) => Bun.file(f).arrayBuffer()))))
+          return { ...made, parts: parts.length }
+        } finally {
+          for (const f of files) Bun.file(f).delete().catch(() => {})
+        }
+      }
+    }
+    const opts = effective(m)
+    {
       if (m.engine === "say") {
         if (!say) throw new SpeechError(501, "say is not available.")
         const args = [say, "--data-format=LEI16@22050"]
@@ -263,9 +385,9 @@ export async function createSpeech({ env = process.env, log = () => {}, models =
         const words = Number(rate) || Number(opts.rate)
         if (words) args.push("-r", String(Math.min(HOST_LIMITS.speech.sayRateMaxWpm, Math.max(HOST_LIMITS.speech.sayRateMinWpm, Math.round(words)))))
         args.push("-o", out)
-        const proc = Bun.spawn(args, { stdin: new Blob([text]), stdout: "ignore", stderr: "pipe", timeout: TIMEOUT })
+        const proc = Bun.spawn(args, { stdin: new Blob([text]), stdout: "ignore", stderr: "pipe", timeout: callMs(m) * Math.max(1, Math.ceil(text.length / 2000)), signal })
         if ((await proc.exited) !== 0) throw await fail(proc, "say")
-        return { audio: (await Bun.file(out).bytes()).toBase64(), type: "audio/wav", model: m.name }
+        return { model: m.name, voice: name || null }
       }
       const speed = rate ? Math.round((Number(rate) / 190) * 100) / 100 : opts.speed
       const name = voice && (m.options.voice?.choices ?? []).map(String).includes(voice) ? voice : opts.voice
@@ -278,13 +400,21 @@ export async function createSpeech({ env = process.env, log = () => {}, models =
           signal: AbortSignal.timeout(callMs(m)),
         })
         if (!r.ok) throw new SpeechError(502, `${m.title}: ${r.status} ${(await r.text()).slice(0, 200)}`)
-        return { audio: new Uint8Array(await r.arrayBuffer()).toBase64(), type: r.headers.get("content-type")?.split(";")[0] || "audio/wav", model: m.name }
+        await Bun.write(out, new Uint8Array(await r.arrayBuffer()))
+        return { model: m.name, voice: name ?? null }
       }
-      const proc = Bun.spawn(buildArgv(m, Object.keys(m.modes)[0], { text, out, voice: name, speed }), { stdout: "ignore", stderr: "pipe", timeout: callMs(m), env: { ...process.env, PYTHONWARNINGS: "ignore" } })
+      // a command per call (2026-10-24 owner: "Do not need to start audio as a separate live server"): the text on stdin
+      // when the model.md says `stdin: text` (any length, never an argument), {dir}/{stem} for a program that names its
+      // own output (mlx-audio: --output_path {dir} --file_prefix {stem} → {dir}/{stem}.wav), {lang} the voice's language
+      const dir = dirname(out)
+      const stem = basename(out).replace(/\.wav$/, "")
+      const viaStdin = m.meta.stdin === "text"
+      const lang = m.meta.lang_from_voice && name ? String(name)[0] : null
+      const argv = buildArgv(m, Object.keys(m.modes)[0], { ...(viaStdin ? {} : { text }), out, dir, stem, voice: name, speed, lang })
+      const proc = Bun.spawn(argv, { ...(viaStdin ? { stdin: new Blob([text]) } : {}), stdout: "ignore", stderr: "pipe", timeout: callMs(m) * Math.max(1, Math.ceil(text.length / 4000)), signal, env: { ...process.env, PYTHONWARNINGS: "ignore" } })
       if ((await proc.exited) !== 0) throw await fail(proc, m.title)
-      return { audio: (await Bun.file(out).bytes()).toBase64(), type: "audio/wav", model: m.name }
-    } finally {
-      Bun.file(out).delete().catch(() => {})
+      if (!(await Bun.file(out).exists())) throw new SpeechError(500, `${m.title} wrote no audio at ${out}`)
+      return { model: m.name, voice: name ?? null }
     }
   }
 
@@ -329,5 +459,5 @@ export async function createSpeech({ env = process.env, log = () => {}, models =
     return { "apple-locales": locales ?? [], "say-voices": say ? sayVoices().map((v) => v.name) : [] }
   }
 
-  return { recognizes, voices, status, transcribe, speak, optionChoices, dispose }
+  return { recognizes, voices, status, transcribe, transcribeFile, speak, render, optionChoices, dispose }
 }

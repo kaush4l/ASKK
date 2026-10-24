@@ -9,6 +9,7 @@ import { PreviewCard } from "@/components/preview/card"
 import { DeskTalk } from "@/components/talk/desk-talk"
 import { RunnersView } from "@/components/views/runners"
 import { StudioView } from "@/components/views/studio"
+import { AudioView } from "@/components/views/audio"
 import { WorkflowArtifact } from "@/components/workflow/card"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -37,6 +38,7 @@ const VIEWS = {
   runners: RunnersView, // a desk's live formulas: each runner's chart, where it stands, the owner's controls (components/views/runners.jsx)
   practice: PracticeView, // 2026-10-20: an agent's standing orders it improves itself — this run's checklist, its bar, what it learned
   studio: StudioView, // 2026-10-23: images on this Mac made, critiqued and refined — the owner's goal, feedback, refine (components/views/studio.jsx)
+  audio: AudioView, // 2026-10-24: scripts made into audio files, files transcribed, sent to Telegram (components/views/audio.jsx)
   pipeline: WorkflowArtifact, // a workflow (2026-10-22): its live status on a tile, the whole viewer opened big (components/workflow/card.jsx)
 }
 

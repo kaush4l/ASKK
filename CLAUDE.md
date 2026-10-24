@@ -375,7 +375,8 @@ what is saved where), the twin contract.
   `always`, poll 2 s): images on this Mac's open model through the host (`image/*`, below) — `studio.goal {goal,
   criteria}`, `.prompt {text, negative?, why}` (versions v1…: the prompt optimised step by step, each with why),
   `.generate {v | prompt, seeds 1–4, seed?, width?, height?, steps?, from?, strength?}` (from: refine an image),
-  `.wait`, `.critique {image, scores 0–10 per criterion, notes, verdict done | revise | discard, next}`, `.pick`, `.look`;
+  `.wait`, `.critique {image, scores 0–10 per criterion, notes, verdict done | revise | discard, next}`, `.pick`, `.look`, `.send {image, caption?}` (2026-10-24: to the owner's
+  Telegram chat; owner call `send`, the view's Send to Telegram);
   `images(agent)` hands a holder its new finished images (≤ 3, JPEG ≤ 1024) on its next model call; `gate` (soft) while
   its images run; owner calls `goal` (→ the keeper, the first holder: a run), `generate` (no agent), `feedback {image?,
   text}` (→ the image's maker, else the keeper), `pick`, `stop`. UI `components/views/studio.jsx` `StudioView` (pure
@@ -393,6 +394,31 @@ what is saved where), the twin contract.
   shown and Select on the thumbnails, each confirmed once. Desk `custom/studio` (local):
   lead `artist` (optimise → generate seeds → critic → refine one change a round → pick, talk.say v1→vN) + member
   `critic` (model sonnet: a different model judging, `studio.look` + `critique` only). Tests `builtin-studio.test.js`.
+- 2026-10-24 owner ("an audio generation pipeline such that, even the lead is able to use TTS model to create audio
+  files. So the audio transcription can be a tool as well … the model input format should be hinted … the desk should be
+  capable of downloading the model … The telegram personal chat will be the default channel"): `builtin/audio.js` `Audio`
+  (id `audio`, view and kind `audio`, keep `always`, poll 3 s) over host `audio/*` — `audio.models` (each tts model's
+  voices, options and SCRIPT FORMAT: its model.md `script:` hint), `.prepare {model, kind?}` (a catalogue model added
+  and installed), `.make {text | file, title, model?, voice?, speed?, options?}`, `.wait`, `.transcribe {id | path}`
+  (for a file made here, `heardShare`: the share of its script's words heard in order), `.send {id, caption?}` (the
+  owner's Telegram chat); the prompt carries the in-use model's SCRIPT FORMAT; `gate` soft while its files are made;
+  owner calls make, send, transcribe, stop, delete. UI `components/views/audio.jsx` `AudioView` (pure
+  `backend/live/audio.js`): players, heard-back %, Send to Telegram, Transcribe, Stop, Delete, Make now; call look
+  `audio` (yellow, audio-lines). The core lead holds `audio` and the workflow `desks/agent/phases/narrate.md` (draft →
+  factcheck → correct → voice → produce, each a step agent; vars form, minutes, audience): `narrate.run {request}` for
+  "a story, talk, class, explanation or narrative" — fact-checked, shaped to the model's format, transcribed back, sent.
+  Long pieces (owner, same day: "something that can be long as well … a story of Vikram vetal … the background story,
+  the prelude story and the narrative story. With expressiveness … generate sample for the different styles, I will
+  provide feedback based on which the presets can be set"): a script's `[chapter: title]` and `[style: name]` lines (alone
+  on a line, never spoken) — each chapter its own file, made playable and (`send: true`) sent to Telegram as soon as it is
+  ready, so the piece streams out; each part voiced by a VOICE STYLE, `models/tts/styles/<name>.md` (seeded from
+  `companion/models/catalog/tts/styles/`: documentary, prelude, storyteller, spirit, regal, reflective — frontmatter the
+  voice: model, voice, speed, options; body the WRITING guide; `## Changes` the feedback log); commands `audio.styles`,
+  `audio.style {name, …, why}` (the owner's feedback carried out), `audio.samples {text, styles?}` (one chapter per style,
+  sent to compare); make `{style?, send?}`, transcribe and send `{chapter?}`. Workflow `desks/agent/phases/saga.md`:
+  origins, tales and readings researched side by side (`after: []`) into `work/saga/<date>/*.md` → outline in styles →
+  write the marked script into a file → factcheck → correct → produce (streamed, each chapter checked). `heardShare` counts
+  a number however written ("eighteen fifty-seven" = "1857") as one token. Tests `builtin-audio.test.js`.
 - `builtin/plan.js` `Plan` (extends `Checklist`): the desk's checklist written at run time (the planner's): id
   `plan`, view `checklist`, keep `always`, no reset on run start; `plan.write {goal, items}` ("id: text" lines, "!" =
   required; replaces the open items, keeps a ticked/skipped item still listed, bumps `revision`, records `by`),
@@ -556,7 +582,17 @@ Code more than one desk may use lives in `custom/shared/`. `custom/` is git-igno
   `TELEGRAM_CHAT_ID`; 2026-10-23 owner: "I want to make that live preview for every desk": every hosted desk with the bot
   posts its runs' live status and reports in its own topic — `inbound: false` for all but the desk that listens, which
   alone takes messages; main.js `telegram: false` opts a desk out; the status shows a running workflow stage by stage,
-  `kernel-status.js` `workflowLines`): messages → the lead (idle: a new run, answered as a reply; while it runs: guidance for that
+  `kernel-status.js` `workflowLines`; 2026-10-24 owner: "When I reply in telegram, both the desk seems to listening for
+  the same input … when giving multiple options, when the user responds, we send in the context. This can be the last 5
+  conversations": every message a desk sends — answers, reports, audio, images (`recordSent(desk, {message, kind, text})`
+  from audiogen/imagegen through host-api's `onSent`), questions — is kept by id (`state.sent` ≤ 300), so a reply to it
+  goes to the desk that sent it (the listening desk hands it over, `bridge.take`); each talk artifact's open ask is sent
+  with a button per option (`messages.post` with `buttons`; a tap is a `choice` event) — a tap or a reply in the owner's
+  words answers it (team call target `artifact` `reply` with `via`, `conversation`: talk.js adds the conversation to the
+  asker's text) and the message is closed with what was chosen (also when answered on the dashboard); new work carries
+  `[Telegram — the conversation before this message …]` (the last 5 owner turns with the desk's lines around them,
+  `trimTalk`, older dropped) and `[The owner replies to …]`, guidance only the latter; a photo the owner sends is kept in
+  the receiving desk's images as a reference (`saveImage` → imagegen `upload`) and named in the message): messages → the lead (idle: a new run, answered as a reply; while it runs: guidance for that
   run, team call `guide`, read at its next step), `/queue <text>` (new work after the run), `/status`, `/stop`, one
   live status message per run edited in place (`kernel-live.js`, text from `kernel-status.js`, agent look from
   `backend/live/visual.js`). A chat row is a run nowhere on the server (2026-10-17 critic: a web Ask during a
@@ -635,6 +671,20 @@ host's mcp/call as the desk (`dataTools`, `dataCall`), approved as `mcp__data`; 
   (macOS: fixed programs with argument lists, never a shell, `hardware/apple/`; 2026-10-21 `notes.latest {folder}` (the
   newest note's title and text, ≤ 120K) and `notes.add {folder, title, markdown}` (Bun.markdown → the note's HTML body)
   — Automation asks once), `speech` (`hardware/speech/`),
+  `audio` (2026-10-24, `capabilities/audiogen.js`, with speech, not when read-only): `POST audio/make {text, title?,
+  model?, voice?, speed?, options?}` → a job (one at a time per desk; the script kept as `<id>.txt`; speech `render` writes
+  the WAV, afconvert an AAC `.m4a` at VBR -s 3 -q 127), `audio/transcribe {id | path}` (a workspace file through
+  `files.realPath`, contained; speech `transcribeFile`: afconvert to 16 kHz mono, then the stt model), `audio/send {id,
+  caption?}` (the Telegram integration's host-only `audio.send` — sendAudio to the owner's chat; never a tool an agent
+  names a path to), `audio/prepare {kind, name}` (desk-allowed: catalogue entries only, added, install line run),
+  `audio/style {name, …, why}` (a voice style set; registry `setStyle` checks it against its model and logs why),
+  `audio/stop`, `audio/delete`, GET `audio/jobs` (+ tts, stt, each model's script hint, voices, options, the catalogue,
+  the styles), `audio/job`, `audio/file?id&chapter&format`, `audio/script?id&chapter` (the spoken words), `audio/styles`;
+  `parseScript` → chapters of styled segments, each segment rendered on its style's model (a model with `split:
+  paragraphs` — Chatterbox — one paragraph per call: given a whole story it skipped, repeated and invented lines),
+  resampled to 24 kHz mono when needed, joined (`joinWavs`, 0.6 s between parts, 1.4 s between chapters); a job's
+  `parts {done, total}` and `chapters [{n, title, status, seconds, url, heard, sent}]`; files in `<desk state>/audio/`
+  (`<id>-c<n>.m4a` per chapter); tests `audiogen.test.js`),
   `images` (2026-10-23, `capabilities/imagegen.js`, when an image model in `models/image/` is installed — mflux: `uv tool
   install --python 3.13 mflux==0.23.0 --with pillow==12.3.0`, Pillow 13 breaks it): `POST image/generate {prompt,
   negative?, width?, height?, steps?, seed?, guidance?, model?, preset?, from?, strength?, references?: [id], mask?: id,
@@ -645,15 +695,20 @@ host's mcp/call as the desk (`dataTools`, `dataCall`), approved as `mcp__data`; 
   process (audit 20: a desk's next job waits while another desk's runs; a reloaded desk starts nothing more); the routes
   answer even when no model was installed at start (capability `images` only when one was); `POST image/upload {data,
   kind: mask | reference | marked, from?}` (the owner's, from the page: `x-askk-desk` gets 403; ≤ 12 MB, ≤ 4096² px);
-  an image that falls out of the 200-job index is deleted with it; `image/stop`, `image/delete {id}` (2026-10-24: stopped first when it runs, its PNG and entry gone with the masks and marked
+  an image that falls out of the 200-job index is deleted with it; `image/send {id, caption?}` (2026-10-24 owner: "We should able to send images": the bot's
+  host-only `photo.send` to the owner's chat, its message id recorded so a reply comes back to this desk), `image/stop`,
+  `image/delete {id}` (2026-10-24: stopped first when it runs, its PNG and entry gone with the masks and marked
   copies drawn over it; 409 while a live job starts from it), GET `image/jobs` (+ `model`: the chosen one's accepts/modes, `presets`), `image/job`,
   `image/file`, `image/model` (a JPEG for a model's eyes); files and `index.json` in `<desk state>/images/`; not when
   read-only), `models` (2026-10-23 owner: "We will have directory for the image, speech or other models … A helper will
   read and initialize as required … parameters can be written in the md file … the state survives a restart";
   `companion/models/`: `registry.js` `loadModels` — `models/` at the repo root (git-ignored, `ASKK_MODELS` moves it),
   `models/<kind>/<name>/model.md` per model (kind stt | tts | image; engine apple | say | command | openai; `bin`+`args`
-  (+`inputs` flags) or `modes`; `url`/`model`/`serve` for an OpenAI-compatible server the helper starts and keeps up —
-  mlx-audio's `mlx_audio.server` on :8321 for Parakeet, Whisper, Qwen3-ASR, Granite, Kokoro, Qwen3-TTS, Chatterbox;
+  (+`inputs` flags) or `modes`; `url`/`model`/`serve` for an OpenAI-compatible server the helper starts and keeps up;
+  2026-10-24 owner ("Do not need to start audio as a separate live server"): Parakeet, Whisper, Qwen3-ASR, Granite,
+  Kokoro, Qwen3-TTS and Chatterbox run per call with mlx-audio's command lines (`mlx_audio.stt.generate` → `output:
+  file:{dir}/{stem}.txt`; `mlx_audio.tts.generate` with `stdin: text`, `{dir}`/`{stem}` for its output, `{lang}` from
+  `lang_from_voice`), Kokoro ~1.5 s, Parakeet ~1 s with the load; a tts model's `script:` says how to write for it;
   `options` with defaults (`flag`: a command's argument; `field`: an openai request's, e.g. Chatterbox's `lang_code`), the
   owner's `values:` written back into the file; every catalogue speech model tested live 2026-10-23; 2026-10-24 owner
   ("the agent is able to download the file and wire it up … if any wiring is required, we can write the wrapper"): a

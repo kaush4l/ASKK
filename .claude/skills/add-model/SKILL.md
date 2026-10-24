@@ -28,10 +28,13 @@ folder, prove it works through the live server, report.
 
 Read the model's page (Hugging Face card, GitHub README) and choose the first that fits:
 
-1. **`openai`, served by mlx-audio** (`mlx_audio.server`, port 8321): any STT/TTS model mlx-audio supports
-   (Whisper, Parakeet, Qwen3-ASR, Granite, Voxtral; Kokoro, Qwen3-TTS, Chatterbox, CSM, Dia, Spark, Orpheus …). One
-   server holds them all and keeps them loaded. Copy an existing entry (`companion/models/catalog/stt/whisper-turbo.md`,
-   `tts/kokoro.md`) and change `title`, `about`, `weights`, `model` (the Hugging Face repo id).
+1. **`command`, mlx-audio's command lines** (no server — the owner's choice, 2026-10-24): any STT/TTS model mlx-audio
+   supports (Whisper, Parakeet, Qwen3-ASR, Granite, Voxtral; Kokoro, Qwen3-TTS, Chatterbox, CSM, Dia, Spark, Orpheus …).
+   Copy `companion/models/catalog/stt/parakeet.md` (`mlx_audio.stt.generate … --output-path "{dir}/{stem}"`, `output:
+   file:{dir}/{stem}.txt`) or `tts/kokoro.md` (`mlx_audio.tts.generate`, `stdin: text`, `--output_path "{dir}"
+   --file_prefix "{stem}"`, `--join_audio`) and change `title`, `about`, `weights` and the `--model` repo id. A model
+   with a language code per voice takes `lang_from_voice: true` and `--lang_code "{lang}"`; its own controls (an
+   expressiveness, a style line) become options with a `flag:`.
 2. **`openai`, another OpenAI-compatible server** (whisper.cpp server, a vLLM/LM Studio speech endpoint, a cloud API):
    `url` (ending in `/v1`), `model`, `serve: {bin, args}` if the helper should start it, `key_env: SOME_API_KEY` for a
    key (the value stays in `.env`, never in model.md; sent only over https or to this machine).
@@ -122,7 +125,11 @@ values: {}
 How it runs here, how to try it from a terminal, its quirks.
 ```
 
-Quote every `about:` (commas and colons break YAML flow maps). Options: `flag:` puts the option on a command line
+Quote every `about:` (commas and colons break YAML flow maps). A text-to-speech model also takes `script:` — how to write a script for it (plain prose or tags, what punctuation does,
+how emotion is carried, which option steers the style, how numbers should be written). The audio artifact shows it to
+the agent that writes a script for that model, so write it from what you tested, not from the model card alone.
+
+Options: `flag:` puts the option on a command line
 (`--quantize 8`; a bool the flag alone), `field:` sends it under that name in an openai request (Chatterbox's
 `language` as `lang_code`). The owner's changes land in `values:`.
 
@@ -146,10 +153,9 @@ run the test again.
 
 When it fails, find the real error before changing anything:
 - a command engine: run the argv `check` prints, by hand.
-- an mlx-audio model: the helper's server keeps no log. Start one on a spare port
-  (`mlx_audio.server --host 127.0.0.1 --port 8322 > /tmp/srv.log 2>&1 &`), send the same request with curl, read the
-  traceback, then kill it. (2026-10-23: Chatterbox failed silently; the traceback said mlx-audio defaults `lang_code`
-  to Kokoro's "a" → the `field: lang_code` option.)
+- an mlx-audio model: run the argv `check` prints (text on stdin for tts) and read its traceback. (2026-10-23:
+  Chatterbox failed silently; the traceback said mlx-audio defaults `lang_code` to Kokoro's "a" → a language option
+  with `flag: --lang_code`.)
 - a 200 with an empty body from a streaming server: the model raised mid-stream.
 
 Report to the owner: the folder added, the install line, the weights' size and where they live, first and warm times,
@@ -167,5 +173,5 @@ model". That file is core: commit it only when the owner asks for a commit.
 - Code under `companion/` takes effect only after a restart of `askk.desks`, and only when `GET /__askk/desks` shows
   `"work": []` for every desk. A model.md, a wrapper or weights need no restart.
 - Never commit `models/`, weights, wrappers or `custom/`; never put a key or token in a file.
-- Speech models share port 8321 (mlx-audio); give any other server its own port.
+- A model that must stay loaded (an engine `openai` server you add) gets its own port; mlx-audio models need none.
 - One GPU: an image test waits behind the studio's running job; never stop the owner's jobs to test.

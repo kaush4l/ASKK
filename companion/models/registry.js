@@ -7,6 +7,11 @@
 //     models.md                     the model chosen per kind (frontmatter `stt: apple`, `tts: say`, `image: …`)
 //     <kind>/<name>/model.md        kind stt | tts | image: engine, how to run it, its options with defaults, `values:`
 //     image/presets/<name>.md       image presets (size, steps, style …), applied by the studio's workflow
+//     tts/styles/<name>.md          voice styles (2026-10-24 owner: "a change in narrative style where the background story,
+//                                   the prelude story and the narrative story. With expressiveness … I will provide feedback
+//                                   based on which the presets can be set"): frontmatter {title, about, use, model, voice?,
+//                                   speed?, options?} — how a part of a script is voiced; the body — how to WRITE that part
+//                                   (the writing guide the script writer follows); a [style: name] line in a script picks it
 //
 // A model.md's frontmatter:
 //   kind, title, about, engine (apple | say | command | openai), install (a command line the owner runs), weights
@@ -16,7 +21,13 @@
 //   bin + args (+ inputs) or modes: {<mode>: {bin, args, inputs}} — engine command: a fixed program and argument list,
 //     never a shell; `{name}` in an arg is filled from the call (audio, out, dir, text, prompt …) or an option's value;
 //     `inputs: {name: flag}` adds `flag value` only when the call has that input (a list → flag v1 v2 …; "" = positional)
-//   lang_from_voice (engine openai, tts): the voice's first letter goes as lang_code (Kokoro's voices: a, b, e, f …)
+//   script (tts): how to write a script for it — plain prose or tags, what punctuation does, how emotion is carried, which
+//     option steers the style (2026-10-24 owner: "Based on the TTS models capabilities, the model input format should be
+//     hinted"); the audio artifact shows it to the agent that writes the script
+//   stdin: text (engine command, tts): the text goes on stdin, never as an argument (a whole script)
+//   split: paragraphs (tts): each paragraph its own call (a long one cut at sentence ends, ≤ split_chars, 300), joined
+//     with a pause — for a model that loses its way on long input (Chatterbox skipped, repeated and invented lines)
+//   lang_from_voice (engine command or openai, tts): the voice's first letter goes as lang_code (Kokoro's voices: a, b, e, f …)
 //   url, model, key_env, serve: {bin, args} — engine openai: an OpenAI-compatible server (/v1/audio/transcriptions,
 //     /v1/audio/speech), started by the helper when it does not answer and `serve` says how
 //   output (stt command): stdout | json:<field> | file:<template>
@@ -29,7 +40,8 @@
 //   values: {name: value}  what the owner set in the panel — written back into this block, the rest of the file as it was
 //
 //   const models = loadModels({root})     → list(kind), get(kind, name), selected(kind), select, set, catalog(kind),
-//                                            add(kind, name), presets(), ready(model)
+//                                            add(kind, name), presets(), ready(model), styles(), style(name),
+//                                            setStyle(name, patch, why)
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from "node:fs"
 import { dirname, join, resolve } from "node:path"
@@ -191,6 +203,14 @@ export function loadModels({ root = modelsRoot(), catalog = CATALOG, log = () =>
     for (const f of listMd(join(catalog, "image", "presets"))) writeFileSync(join(presetDir, f), readFileSync(join(catalog, "image", "presets", f)))
     seeded.push("image/presets")
   }
+  // voice styles: the catalogue's, each one not here yet (an owner's edited file is never replaced)
+  const styleDir = join(root, "tts", "styles")
+  mkdirSync(styleDir, { recursive: true })
+  for (const f of listMd(join(catalog, "tts", "styles")))
+    if (!existsSync(join(styleDir, f))) {
+      writeFileSync(join(styleDir, f), readFileSync(join(catalog, "tts", "styles", f)))
+      seeded.push(`tts/styles/${f.replace(/\.md$/, "")}`)
+    }
   if (seeded.length) log(`models: seeded ${seeded.join(", ")} into ${root}`)
 
   const selectionFile = join(root, "models.md")
@@ -209,7 +229,7 @@ export function loadModels({ root = modelsRoot(), catalog = CATALOG, log = () =>
   const list = (kind) => {
     const dir = join(root, kindOf(kind))
     return readdirSync(dir, { withFileTypes: true })
-      .filter((d) => d.isDirectory() && NAME.test(d.name) && d.name !== "presets" && existsSync(join(dir, d.name, "model.md")))
+      .filter((d) => d.isDirectory() && NAME.test(d.name) && d.name !== "presets" && d.name !== "styles" && existsSync(join(dir, d.name, "model.md")))
       .map((d) => readModel(kind, d.name, join(dir, d.name)))
       .sort((a, b) => a.name.localeCompare(b.name))
   }
@@ -279,6 +299,37 @@ export function loadModels({ root = modelsRoot(), catalog = CATALOG, log = () =>
       return get(kind, name)
     },
     presets: () => listMd(presetDir).map((f) => readPreset(join(presetDir, f))),
+    styles() {
+      return listMd(styleDir).map((f) => readStyle(join(styleDir, f), (m) => this.get("tts", m)))
+    },
+    style(name) {
+      const st = this.styles().find((x) => x.name === name)
+      if (!st) throw httpError(400, `style: none named ${name} (${this.styles().map((x) => x.name).join(", ")})`)
+      if (!st.ok) throw httpError(400, `style ${name}: ${st.problem}`)
+      return st
+    },
+    // A style changed (the owner's feedback, given to the lead or in the panel): model, voice, speed, options, about, use,
+    // writing — checked against the model; the file rewritten, its body's "## Changes" logging why.
+    setStyle(name, patch = {}, why = "") {
+      if (!NAME.test(String(name))) throw httpError(400, "name: lower-case letters, digits, - or _")
+      const file = join(styleDir, `${name}.md`)
+      const had = existsSync(file) ? splitMd(readFileSync(file, "utf8")) : { meta: {}, body: "" }
+      const meta = { ...had.meta }
+      for (const k of ["title", "about", "use", "model", "voice", "speed"]) if (patch[k] !== undefined) meta[k] = patch[k] === null || patch[k] === "" ? undefined : patch[k]
+      if (patch.options !== undefined) meta.options = { ...(meta.options ?? {}), ...patch.options }
+      if (meta.options) for (const [k, v] of Object.entries(meta.options)) if (v === null || v === "") delete meta.options[k]
+      const model = this.get("tts", String(meta.model ?? ""))
+      if (!model.ok) throw httpError(400, `model: ${model.problem}`)
+      checkStyle(meta, model)
+      let body = patch.writing != null ? String(patch.writing).trim() : (had.body.split(/\n## Changes\n/)[0] ?? "").trim()
+      if (!body) throw httpError(400, "writing: how to write for this style (its guide)")
+      const log = (had.body.split(/\n## Changes\n/)[1] ?? "").trim()
+      const line = `- ${new Date().toISOString().slice(0, 10)}: ${Object.keys(patch).join(", ")}${why ? ` — ${String(why).replace(/\s+/g, " ").slice(0, 300)}` : ""}`
+      body = `${body}\n\n## Changes\n${[log, line].filter(Boolean).join("\n")}\n`
+      const keys = ["title", "about", "use", "model", "voice", "speed", "options"].filter((k) => meta[k] !== undefined)
+      writeFileSync(file, `---\n${keys.map((k) => `${k}: ${JSON.stringify(meta[k])}`).join("\n")}\n---\n${body}`)
+      return this.style(name)
+    },
     preset(name) {
       const p = name ? this.presets().find((x) => x.name === name) : null
       if (name && !p?.ok) throw httpError(400, `preset: ${p?.problem ?? `none named ${name} (${this.presets().map((x) => x.name).join(", ")})`}`)
@@ -300,6 +351,8 @@ export const twinOf = (m, ready = {}) => ({
   problem: m.problem,
   install: m.install ?? null,
   weights: m.weights ?? null,
+  // tts: how to write for it (its `script:` hint — the agents shape a script to it, the panel shows it)
+  script: m.meta?.script ? String(m.meta.script).trim() : null,
   accepts: m.accepts,
   modes: Object.keys(m.modes),
   options: m.options,
@@ -309,6 +362,33 @@ export const twinOf = (m, ready = {}) => ({
 })
 
 // --- presets -------------------------------------------------------------------------------------------------------------
+
+// A voice style's voice checked against its model: the voice one of its choices, each option one it has (checkValue).
+function checkStyle(meta, model) {
+  const voices = model.options?.voice?.choices
+  if (meta.voice != null && voices && !voices.map(String).includes(String(meta.voice))) throw httpError(400, `voice: ${model.name} has ${voices.join(", ")}`)
+  if (meta.voice != null && !voices && model.engine !== "say") throw httpError(400, `voice: ${model.name} has no voices to choose`)
+  if (meta.speed != null && !(Number(meta.speed) >= 0.5 && Number(meta.speed) <= 2)) throw httpError(400, "speed: 0.5 to 2")
+  for (const [k, v] of Object.entries(meta.options ?? {})) {
+    if (!model.options[k]) throw httpError(400, `options.${k}: ${model.name} has ${Object.keys(model.options).join(", ") || "none"}`)
+    checkValue(model.options[k], v, `options.${k}`)
+  }
+}
+
+function readStyle(file, modelOf) {
+  const name = file.split("/").at(-1).replace(/\.md$/, "")
+  try {
+    const { meta, body } = splitMd(readFileSync(file, "utf8"))
+    const [writing, changes = ""] = body.split(/\n## Changes\n/)
+    const st = { name, title: meta.title ?? name, about: meta.about ?? "", use: meta.use ?? "", model: meta.model ?? null, voice: meta.voice ?? null, speed: meta.speed ?? null, options: meta.options ?? {}, writing: writing.trim(), changes: changes.trim().split("\n").filter(Boolean).slice(-8), file, ok: true }
+    const model = st.model ? modelOf(String(st.model)) : null
+    if (!model?.ok) return { ...st, ok: false, problem: `model: ${model?.problem ?? "none named"}` }
+    checkStyle(meta, model)
+    return st
+  } catch (error) {
+    return { name, title: name, file, ok: false, problem: error.message }
+  }
+}
 
 function readPreset(file) {
   const name = file.split("/").at(-1).replace(/\.md$/, "")

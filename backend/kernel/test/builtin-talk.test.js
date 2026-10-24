@@ -68,6 +68,10 @@ describe("talk: the desk's side of the conversation", () => {
     expect(talk.ownerCall("seen", [{ upto: "r2" }])).toEqual({ seen: "r2" })
     expect(talk.state.seen).toBe("r2")
     expect(talk.render({ name: "planner", tools: new Set() })).toContain("owner → planner (re q1): yes, FLORES first")
+    // a reply from Telegram brings the conversation before it there (2026-10-24)
+    await run(talk, "ask", { question: "Which voice?", options: "storyteller | regal" }, "lead")
+    const t = talk.ownerCall("reply", [{ id: "talk", ask: "q3", text: "regal", via: "Telegram", conversation: "lead: [audio sent: regal sample]\nowner: I liked this one" }])
+    expect(t.deliver).toStartWith('The owner replies on Telegram to your question q3 ("Which voice?"): "regal"\n(On Telegram, the conversation before the reply, oldest first:\nlead: [audio sent: regal sample]\nowner: I liked this one)')
   })
 
   test("snapshot / restore keep the conversation and go on numbering", async () => {

@@ -720,7 +720,7 @@ export async function composeDesk({ folder, deskRoot, name, port, infer, context
 // help us initialize any of the dependencies or write in a script and then return a desk object which will be run by
 // the framework"): async ({dir, memory, log, host, port}) → awaited at every start before the agents are built — make
 // folders, write a script into data/, check a dependency; a throw fails the start (desks/load keeps the old version).
-export function conventionDesk({ name, title, description = "", port, models = MODELS, defaultModel = "opus", fallbacks = ["sonnet"], maxSteps, artifacts = {}, tools = {}, builtin, init, telegram } = {}) {
+export function conventionDesk({ name, title, description = "", port, models = MODELS, defaultModel = "opus", fallbacks = ["sonnet"], maxSteps, artifacts = {}, tools = {}, builtin, init, telegram, integrations } = {}) {
   return ({ dir }) => {
     const deskName = name ?? basename(dir)
     return defined({
@@ -729,6 +729,7 @@ export function conventionDesk({ name, title, description = "", port, models = M
       description,
       port,
       telegram, // false: no live status of its runs on Telegram
+      integrations, // ["telegram"]: this desk takes the bot's messages (one desk per bot; companion/team/desk.js)
       // Its compose options: a desk that mounts this one composes its subtree with them (and scripts/desk.js check).
       compose: defined({ models, defaultModel, fallbacks, maxSteps, artifacts, tools, builtin }),
       start: async ({ port: at = port, log = () => {}, memory = null, infer } = {}) => {

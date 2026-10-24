@@ -213,7 +213,7 @@ describe("composeDesk: what it refuses", () => {
     tempDesk(root, "k2", { agents: { l: md("name: l\nmodel: gpt") } })
     await expect(composeDesk({ folder: join(root, "k2"), infer: scripted({}), models: MODELS })).rejects.toThrow("l: unknown model gpt; models: opus, sonnet, haiku")
     tempDesk(root, "k3", { agents: { l: md("name: l\nartifacts: [ledger]") } })
-    await expect(composeDesk({ folder: join(root, "k3"), infer: scripted({}) })).rejects.toThrow("l: unknown artifact ledger; types: browse, checklist, dispatch, files, plan, practice, preview, report, studio, talk, terminal")
+    await expect(composeDesk({ folder: join(root, "k3"), infer: scripted({}) })).rejects.toThrow("l: unknown artifact ledger; types: audio, browse, checklist, dispatch, files, plan, practice, preview, report, studio, talk, terminal")
     tempDesk(root, "k4", { agents: { a: md("name: a"), b: md("name: b") } })
     await expect(composeDesk({ folder: join(root, "k4"), infer: scripted({}) })).rejects.toThrow("a desk has one lead folder with an agent.md (found a, b)")
   })
@@ -370,7 +370,7 @@ describe("the inbuilt kit, attached by name (kit-desk)", () => {
   test("unknown names list the known ones; a kit entry's keys and the lanes are checked at compose time", async () => {
     const root = join(tmp, "kit")
     tempDesk(root, "a1", { agents: { l: md("name: l\nartifacts: [filez]") } })
-    await expect(composeDesk({ folder: join(root, "a1"), infer: scripted({}) })).rejects.toThrow("l: unknown artifact filez; types: browse, checklist, dispatch, files, plan, practice, preview, report, studio, talk, terminal")
+    await expect(composeDesk({ folder: join(root, "a1"), infer: scripted({}) })).rejects.toThrow("l: unknown artifact filez; types: audio, browse, checklist, dispatch, files, plan, practice, preview, report, studio, talk, terminal")
     tempDesk(root, "a2", { agents: { l: md("name: l\ntools: [web.serch]") } })
     await expect(composeDesk({ folder: join(root, "a2"), infer: scripted({}) })).rejects.toThrow(`l: unknown tool web.serch; available: ${KIT_TOOLS}`)
     tempDesk(root, "a3", { agents: { l: md("name: l\nartifacts: [{type: plan, gat: true}]") } })
@@ -485,7 +485,7 @@ describe("the inbuilt kit, attached by name (kit-desk)", () => {
     }
     const lead = md("name: tm\nagents: [m]", "Leads tm.")
     expect(await refused("t1", { tm: md("name: tm\ntools: [nope]") }, `unknown tool nope; available: ${KIT_TOOLS}`)).toContain(join(root, "t1", "teams", "tm", "agent.md"))
-    expect(await refused("t2", { tm: lead, "tm/m": md("name: m\nartifacts: [ledger]") }, "unknown artifact ledger; types: browse, checklist, dispatch, files, plan, practice, preview, report, studio, talk, terminal")).toContain(join(root, "t2", "teams", "tm", "m", "agent.md"))
+    expect(await refused("t2", { tm: lead, "tm/m": md("name: m\nartifacts: [ledger]") }, "unknown artifact ledger; types: audio, browse, checklist, dispatch, files, plan, practice, preview, report, studio, talk, terminal")).toContain(join(root, "t2", "teams", "tm", "m", "agent.md"))
     await refused("t3", { tm: md("name: tm\nmodel: gpt") }, "t3/teams/tm/agent.md: unknown model gpt; models: opus, sonnet, haiku")
     await refused("t4", { tm: md("name: tm\nmax_step: 3") }, "t4/teams/tm/agent.md: unknown key max_step")
     await refused("t5", { tm: md("name: tm\nartifacts: [{type: terminal, commands: [read, rm]}]") }, "t5/teams/tm/agent.md: terminal has no command rm (has run, start, wait, read, send, stop, list)")

@@ -14,6 +14,8 @@
 //   POST image/upload {data (base64 PNG or JPEG), kind: mask | reference | marked, from?, note?, by?}
 //        → { job } an image the owner made (a mask drawn over `from`, a reference, the image with marks drawn on it),
 //        kept like a done job so a later call names it
+//   POST image/send {id, caption?}            a finished image to the owner's Telegram chat (2026-10-24 owner: "We should
+//                                              able to send images"): the bot's host-only photo.send, never a path → {sent}
 //   POST image/stop {id}                       a queued job dropped, a running one killed → { job }
 //   POST image/delete {id}                     the image gone (2026-10-24 owner: "the ability to delete images"): stopped
 //        first when it runs, its PNG and index entry removed, with the masks and marked copies the owner drew over it;
@@ -63,7 +65,9 @@ const side = (n) => {
 }
 
 // models: the registry (tests: their own); which: how programs are found (tests); spawn: Bun.spawn's shape (tests)
-export async function createImagegen({ state, log = () => {}, models = sharedModels({ log }), which = Bun.which, spawn = Bun.spawn, always = false } = {}) {
+// integrations: the desk's (telegram, for image/send); onSent({message, kind, text}): a sent image's message id (the
+// owner's reply to it comes back to this desk: kernel-telegram.js recordSent)
+export async function createImagegen({ state, log = () => {}, models = sharedModels({ log }), which = Bun.which, spawn = Bun.spawn, always = false, integrations = null, onSent = () => {} } = {}) {
   const usable = () => models.list("image").filter((m) => m.ok && Object.values(m.modes).some((s) => findProgram(s.bin, which, dirOf(m))))
   if (!usable().length && !always) return null
   const dir = join(state, "images")
@@ -320,6 +324,28 @@ export async function createImagegen({ state, log = () => {}, models = sharedMod
     return { deleted: ids }
   }
 
+  // To the owner's Telegram chat: a finished image, with its prompt as the caption unless one is given.
+  async function send({ id, caption, by = "owner" } = {}) {
+    const j = find(String(id ?? ""))
+    if (j.status !== "done") throw httpError(400, `${j.id} is ${j.status}, not an image yet`)
+    const bot = integrations?.get?.("telegram")?.photo
+    if (!bot?.send) throw httpError(501, "no Telegram bot that sends images here (integrations/telegram, TELEGRAM_BOT_TOKEN)")
+    const text = String(caption ?? "").trim().slice(0, 1000) || `${j.id} · ${String(j.prompt ?? "").slice(0, 300)}`
+    let result
+    try {
+      result = await bot.send({ path: pathOf(j.id), title: j.id, caption: text })
+    } catch (error) {
+      throw httpError(502, error.message)
+    }
+    const sent = { to: "owner", at: new Date().toISOString(), by: String(by).slice(0, 60) }
+    patch(j.id, { sent: [...(j.sent ?? []), sent] })
+    try {
+      onSent({ message: result?.message, kind: "image", text: `${j.id}: ${text}`, ref: { image: j.id } })
+    } catch {}
+    log(`images: ${j.id} sent to Telegram by ${sent.by}`)
+    return { sent }
+  }
+
   const pathOf = (id) => {
     if (!ID.test(String(id ?? ""))) throw httpError(400, "id: an image job id")
     const path = join(dir, `${id}.png`)
@@ -352,6 +378,7 @@ export async function createImagegen({ state, log = () => {}, models = sharedMod
     presets: () => models.presets().filter((p) => p.ok),
     generate,
     upload,
+    send,
     stop,
     remove,
     file: (id) => new Response(Bun.file(pathOf(id)), { headers: { "content-type": "image/png", "cache-control": "max-age=31536000, immutable" } }),
@@ -378,6 +405,7 @@ export const imageRoutes = (images) => ({
   POST: {
     "image/generate": (body) => images.generate(body),
     "image/upload": (body) => images.upload(body),
+    "image/send": (body) => images.send(body),
     "image/stop": (body) => images.stop(body),
     "image/delete": (body) => images.remove(body),
   },

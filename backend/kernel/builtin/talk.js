@@ -25,7 +25,8 @@ import { readVisual, visualBrief } from "./visual.js"
 // asked (guidance while it runs, else a run); ownerCall("seen", [{id, upto}]) marks the conversation read up to a
 // message. Prompt: the last LINES messages and the holder's open questions. State {messages: [{id, kind: say | ask |
 // reply, from, text, options, visual, re, status: open | answered | dropped (asks), reason, at}] ≤ MESSAGES, seen,
-// revision}. A reply may carry `context` (what the owner pointed at in the drawing).
+// revision}. A reply may carry `context` (what the owner pointed at in the drawing), and from another channel `via`
+// ("Telegram") with `conversation` (what was said there before it, ≤ 2000 chars) for the asker's text.
 
 const MESSAGES = 80 // in the twin and kept
 const LINES = 8 // in the prompt
@@ -174,7 +175,10 @@ export class Talk extends Artifact {
     this.#update(q.id, { status: "answered" })
     const reply = this.#post({ kind: "reply", from, text, re: q.id, ...(context ? { context } : {}) })
     const pointed = context ? ` — pointing at ${Object.entries(context).map(([k, v]) => `${k} ${typeof v === "object" ? JSON.stringify(v) : v}`).join(" · ")} in your drawing` : ""
-    const deliver = `The owner replies to your question ${q.id} ("${clip(oneLine(q.text), 300)}")${pointed}: "${text}"\nAct on it — a decision goes where decisions go (line.md DECISIONS, the plan) — and tell the owner what you will do with ${this.name}.say.`
+    // a reply from another channel (Telegram) brings the conversation before it there (≤ 2000 chars)
+    const via = a.via ? ` on ${clip(oneLine(a.via), 40)}` : ""
+    const before = a.conversation ? `\n(${via ? `On ${clip(oneLine(a.via), 40)}` : "Before this"}, the conversation before the reply, oldest first:\n${clip(String(a.conversation), 2000)})` : ""
+    const deliver = `The owner replies${via} to your question ${q.id} ("${clip(oneLine(q.text), 300)}")${pointed}: "${text}"${before}\nAct on it — a decision goes where decisions go (line.md DECISIONS, the plan) — and tell the owner what you will do with ${this.name}.say.`
     return { reply, deliver, keeper: q.from }
   }
 

@@ -43,3 +43,32 @@ test("engine openai: an option with a field is sent under that name (Chatterbox'
     server.stop(true)
   }
 })
+
+test("splitScript: paragraphs, a long one cut at sentence ends; joinWavs: one WAV with a pause between", async () => {
+  const { splitScript, joinWavs } = await import("./index.js")
+  expect(splitScript("One. Two.\n\nThree!")).toEqual(["One. Two.", "Three!"])
+  const long = "A sentence that runs on for a while. ".repeat(12).trim()
+  const parts = splitScript(long, 120)
+  expect(parts.length).toBeGreaterThan(3)
+  expect(parts.every((p) => p.length <= 120 && /\.$/.test(p))).toBe(true)
+  expect(parts.join(" ")).toBe(long)
+  const wav = (samples) => {
+    const b = Buffer.alloc(44 + samples * 2)
+    b.write("RIFF", 0)
+    b.writeUInt32LE(36 + samples * 2, 4)
+    b.write("WAVEfmt ", 8)
+    b.writeUInt32LE(16, 16)
+    b.writeUInt16LE(1, 20)
+    b.writeUInt16LE(1, 22)
+    b.writeUInt32LE(1000, 24)
+    b.writeUInt32LE(2000, 28)
+    b.writeUInt16LE(2, 32)
+    b.writeUInt16LE(16, 34)
+    b.write("data", 36)
+    b.writeUInt32LE(samples * 2, 40)
+    return b
+  }
+  const joined = joinWavs([wav(100), wav(50)], 0.5)
+  expect(joined.readUInt32LE(40)).toBe((100 + 500 + 50) * 2)
+  expect(joined.length).toBe(44 + (100 + 500 + 50) * 2)
+})

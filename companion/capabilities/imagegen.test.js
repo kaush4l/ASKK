@@ -177,3 +177,21 @@ test("delete: the PNG and its entry gone, with the owner's mask over it; refused
   expect(() => images.remove({ id: first.id })).toThrow("no image job")
   expect(lines.some((l) => l.includes(`${first.id}, ${mask.id} deleted`))).toBe(true)
 })
+
+test("send: a finished image to the owner's Telegram chat, its message id recorded; no bot or not done → refused", async () => {
+  const { spawn } = fakeSpawn()
+  const photos = []
+  const recorded = []
+  const integrations = { get: (n) => (n === "telegram" ? { photo: { send: async (a) => (photos.push(a), { chat: "1", message: 77 }) } } : null) }
+  const images = await createImagegen({ state, models, which, spawn, integrations, onSent: (r) => recorded.push(r) })
+  const { job } = images.generate({ prompt: "a fox in snow", steps: 2 })
+  await expect(images.send({ id: job.id })).rejects.toThrow("not an image yet")
+  await until(() => images.job(job.id).job.status === "done")
+  const { sent } = await images.send({ id: job.id, by: "artist" })
+  expect(sent).toMatchObject({ to: "owner", by: "artist" })
+  expect(photos[0]).toMatchObject({ title: job.id, caption: `${job.id} · a fox in snow` })
+  expect(recorded).toEqual([{ message: 77, kind: "image", text: `${job.id}: ${job.id} · a fox in snow`, ref: { image: job.id } }])
+  expect(images.job(job.id).job.sent).toHaveLength(1)
+  const none = await createImagegen({ state, models, which, spawn })
+  await expect(none.send({ id: job.id })).rejects.toThrow("no Telegram bot")
+})

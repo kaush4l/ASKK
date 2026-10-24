@@ -21,6 +21,8 @@ import { Tool } from "../tool/tool.js"
 //                   per criterion; verdict done | revise | discard; next: what to change
 //   studio.pick     {image, why}           the best so far
 //   studio.look     {image}                see that image again on your next step (to compare)
+//   studio.send     {image, caption?}      the image to the owner's Telegram chat (2026-10-24 owner: "We should able to
+//                                          send images"; a reply to it there comes back to this desk)
 //   studio.presets  {}                     the presets (models/image/presets/*.md) and what the image model accepts
 //   studio.preset   {name, why}            the preset every generate uses from now on (none: no preset)
 //
@@ -329,6 +331,15 @@ export class Studio extends Artifact {
     return `you see ${img.id} on your next step`
   }
 
+  async send(input = {}, ctx = {}) {
+    const img = this.#image(input.image ?? input.id)
+    if (img.status !== "done") throw new Error(`${img.id} is ${img.status}, not an image yet`)
+    const caption = clip(String(input.caption ?? "").trim(), 1000) || undefined
+    const { sent } = await this.#hostOf(ctx).post("image/send", { id: img.id, caption, by: ctx.agent?.name ?? "owner" })
+    this.#patchImage(img.id, { sent: sent?.at ?? this.clock().toISOString() })
+    return `sent ${img.id} to the owner's Telegram chat — a reply there comes back to you`
+  }
+
   presets() {
     const m = this.state.model
     const lines = [m ? `model: ${m.title} — modes ${m.modes.join(", ")}; accepts ${m.accepts.join(", ")}` : "model: (not read yet — the image host answers on the next step)"]
@@ -379,6 +390,7 @@ export class Studio extends Artifact {
     if (method === "generate") return { result: await this.generate(a, { by: from }) }
     if (method === "preset") return { result: this.preset({ name: a.name, why: a.why || "the owner chose it" }, {}) }
     if (method === "pick") return { result: this.pick(a, {}) }
+    if (method === "send") return { result: await this.send(a, {}) }
     if (method === "stop") {
       const img = this.#image(a.image)
       const { job } = await this.#hostOf({}).post("image/stop", { id: img.id })
@@ -436,7 +448,7 @@ export class Studio extends Artifact {
       const deliver = [`The owner's feedback${on}: "${text}"`, ...(marks.length ? [`Marked on the image (you see it with the boxes numbered on your next step${marked ? `, ${marked}` : ""}):`, ...markLines] : []), `Act on it: ${how}, or a new prompt version (${this.name}.prompt, why: this feedback); generate, look, critique, and tell the owner what you changed.`].join("\n")
       return { feedback: f, deliver, keeper }
     }
-    throw new Error(`${this.name}: the owner can set the goal, generate, choose a preset, give feedback, pick, stop or delete (not ${method})`)
+    throw new Error(`${this.name}: the owner can set the goal, generate, choose a preset, give feedback, pick, send, stop or delete (not ${method})`)
   }
 
   // ---- the kernel ----
@@ -451,6 +463,7 @@ export class Studio extends Artifact {
       tool("critique", "judge an image against the goal and criteria", { image: "its id", scores: "0–10 per criterion, e.g. {goal: 7, composition: 6, light: 8}", notes: "what you see: what works, what misses", verdict: "done | revise | discard", next: "for revise: what to change" }, (i, c) => this.critique(i, c)),
       tool("pick", "mark the best image so far", { image: "its id", why: "why it is the best" }, (i, c) => this.pick(i, c)),
       tool("look", "see an image again on your next step (to compare)", { image: "its id" }, (i, c) => this.look(i, c)),
+      tool("send", "send an image to the owner's Telegram chat (a result, or a choice to ask about)", { image: "its id", caption: "what it is, what you want to know (optional)" }, (i, c) => this.send(i, c)),
       tool("presets", "the presets and what the image model accepts", {}, () => this.presets()),
       tool("preset", "choose the preset every generate uses (or none)", { name: "a preset name, or none", why: "the owner asked, or what made it look better" }, (i, c) => this.preset(i, c)),
     ]

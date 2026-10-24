@@ -1,4 +1,5 @@
 import {
+  AudioLinesIcon,
   BotIcon,
   CalendarClockIcon,
   ClipboardListIcon,
@@ -49,6 +50,7 @@ export const CALL_ICONS = {
   "user-plus": UserPlusIcon,
   "messages-square": MessagesSquareIcon,
   image: ImageIcon,
+  "audio-lines": AudioLinesIcon, // 2026-10-24: audio commands
   blocks: BlocksIcon, // 2026-10-20: desk.* calls
   "notebook-pen": NotebookPenIcon, // 2026-10-20: practice commands
   shrink: ShrinkIcon, // 2026-10-22: a prompt compaction
@@ -75,6 +77,7 @@ export const CALL_TONES = {
   rose: { text: "text-rose-700 dark:text-rose-300", border: "border-rose-500/70", dot: "bg-rose-500" },
   lime: { text: "text-lime-700 dark:text-lime-300", border: "border-lime-500/70", dot: "bg-lime-500" },
   fuchsia: { text: "text-fuchsia-700 dark:text-fuchsia-300", border: "border-fuchsia-500/70", dot: "bg-fuchsia-500" }, // 2026-10-23: the studio
+  yellow: { text: "text-yellow-700 dark:text-yellow-300", border: "border-yellow-500/70", dot: "bg-yellow-500" }, // 2026-10-24: audio
 }
 
 export const toneOf = (look) => CALL_TONES[look?.tone] ?? CALL_TONES.amber

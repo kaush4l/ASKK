@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { BrushIcon, CheckIcon, ExternalLinkIcon, ImageIcon, MaximizeIcon, SquareIcon, StarIcon, Trash2Icon, WandSparklesIcon, ZoomInIcon, ZoomOutIcon } from "lucide-react"
+import { BrushIcon, CheckIcon, ExternalLinkIcon, ImageIcon, MaximizeIcon, SendIcon, SquareIcon, StarIcon, Trash2Icon, WandSparklesIcon, ZoomInIcon, ZoomOutIcon } from "lucide-react"
 
 import { uploadImage } from "@/backend/live/models"
 import { bestImage, bigEnough, boxFrom, canEdit, imageUrl, lastCritique, lineage, marksText, nextZoom, placeOf, presetOptions, progress, studioCall } from "@/backend/live/studio"
@@ -23,6 +23,8 @@ import { cn } from "@/lib/utils"
 // model panel's (models/image/<name>/model.md).
 // 2026-10-24 owner ("for the studio, we want ability to delete images"): Delete on the image shown, and Select on the
 // thumbnails to delete several — each asks once more; the host removes the PNG with the masks and marks drawn over it.
+// 2026-10-24 owner ("We should able to send images"): Send to Telegram on the image shown — the owner's chat; a reply to
+// it there comes back to this desk.
 
 const VERDICT = { done: "text-emerald-600 dark:text-emerald-400", revise: "text-amber-600 dark:text-amber-400", discard: "text-destructive" }
 const field = "w-full rounded-md border bg-background px-2 py-1.5 text-base md:text-sm"
@@ -351,6 +353,9 @@ function Detail({ id, state, image }) {
           </label>
           <Button size="sm" variant="ghost" className="pointer-coarse:h-10" disabled={busy || image.status !== "done"} onClick={() => call("pick", { image: image.id })}>
             <StarIcon /> Pick
+          </Button>
+          <Button size="sm" variant="ghost" className="pointer-coarse:h-10" disabled={busy || image.status !== "done"} onClick={() => call("send", { image: image.id })} title="Send it to your Telegram chat; a reply there comes back to the desk">
+            <SendIcon /> {image.sent ? "Send again" : "Send to Telegram"}
           </Button>
           {live && (
             <Button size="sm" variant="ghost" className="text-destructive pointer-coarse:h-10" disabled={busy} onClick={() => call("stop", { image: image.id })}>

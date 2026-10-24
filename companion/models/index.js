@@ -97,7 +97,8 @@ export function installArgv(line) {
 }
 
 const installing = new Map()
-async function install(model, log) {
+// its install line run in the background (uv or brew only) → {started} | {running}; exported for audio/prepare
+export async function install(model, log = () => {}) {
   if (!model.install) throw httpError(400, `${model.kind}/${model.name} has no install line`)
   const argv = installArgv(model.install)
   const bin = findProgram(argv[0])

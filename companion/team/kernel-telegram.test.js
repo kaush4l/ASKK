@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { buildDesk } from "../../backend/kernel/index.js"
-import { notify, runReport, startKernelTelegram } from "./kernel-telegram.js"
+import { notify, recordSent, runReport, startKernelTelegram, talkText, trimTalk } from "./kernel-telegram.js"
 import { createKernelTeam } from "./kernel-team.js"
 import { artifact } from "./kernel-status.fixtures.js"
 import { ownerIdFrom, whyNotOwner, whyNotOwnerEvent } from "../shared/telegram-owner.js"
@@ -126,6 +126,8 @@ function fakeTeam({ auto = true, guides = true } = {}) {
       return { ok: true, value: { agent, queued: true } }
     },
     work: () => (running ? [{ agent: "head", lead: true, run: running.text }] : []),
+    // an artifact's twin as the kernel team streams it
+    kernel: (artifact) => clients.forEach((c) => c({ type: "kernel", artifact })),
   }
 }
 
@@ -145,6 +147,8 @@ const saved = (stateDir) => {
   }
 }
 const replies = (integrations) => integrations.sent.filter((s) => s.args.reply_to).map((s) => s.args)
+// The owner's own words of a message to the lead (new work carries the conversation before it first).
+const words = (text) => text.replace(/^\[Telegram — [\s\S]*?\]\n/, "")
 
 test("an owner message goes to the lead and the answer comes back as a reply", async () => {
   const stateDir = tmp()
@@ -179,7 +183,7 @@ test("a restart never answers a message twice", async () => {
   second.push({ id: 6, text: "two" })
   await until(() => replies(second).length === 1)
   await Bun.sleep(50)
-  expect(team.sends.map((s) => s.text)).toEqual(["two"])
+  expect(team.sends.map((s) => words(s.text))).toEqual(["two"])
   expect(replies(second).map((r) => r.reply_to)).toEqual([6])
 })
 
@@ -193,7 +197,7 @@ test("/queue while the lead works: queued at once, answered in order", async () 
   await until(() => replies(integrations).length === 1)
   expect(replies(integrations)[0]).toMatchObject({ reply_to: 2, text: expect.stringContaining('Queued: the head is working on "first"') })
   expect(team.calls).toEqual([]) // not guidance
-  expect(team.sends.map((s) => s.text)).toEqual(["first", "second\nwith detail"])
+  expect(team.sends.map((s) => words(s.text))).toEqual(["first", "second\nwith detail"])
   team.finish("answer one")
   await until(() => team.work().length === 1 && replies(integrations).length === 2)
   team.finish("answer two")
@@ -237,7 +241,7 @@ test("a run that ends before the note lands: the message becomes new work", asyn
   integrations.push({ id: 2, text: "then this" })
   await until(() => team.sends.length === 2)
   expect(team.calls.map((c) => c.method)).toEqual(["guide"])
-  expect(team.sends.map((s) => s.text)).toEqual(["first", "then this"])
+  expect(team.sends.map((s) => words(s.text))).toEqual(["first", "then this"])
   team.finish("one")
   await until(() => replies(integrations).some((r) => r.reply_to === 1) && team.work().length === 1)
   team.finish("two")
@@ -558,4 +562,104 @@ test("runReport: the lead's report, one line per desk-level artifact, open gates
   expect(runReport({ desk: "d", request, answer: "ok", flags: null, artifacts: Object.values(artifacts), deskTeam: "desk" })).toEndWith("Book: equity $10,000 · flat\nTop 5: DELTA ↑ 0.92 · AMD ↑ 0.81")
   expect(runReport({ desk: "d", request, answer: "ok", artifacts })).toContain("News notes: a team's own")
   expect(runReport({ desk: "d", request: { text: "go" }, answer: "ok" })).toBe("d · run: go\n\nok")
+})
+
+// 2026-10-24 owner: "When I reply in telegram, both the desk seems to listening for the same input … when giving multiple
+// options, when the user responds, we send in the context. This can be the last 5 conversations."
+// The bot's host-only messages (post → ids, close) and files, beside the fake listener queue.
+function botIntegrations(opts) {
+  const integrations = fakeIntegrations(opts)
+  const posts = []
+  const closed = []
+  let id = 900
+  const base = integrations.get
+  integrations.posts = posts
+  integrations.closed = closed
+  integrations.get = (name) =>
+    name === "telegram"
+      ? {
+          ...base(name),
+          messages: {
+            post: async (args) => (posts.push(args), { ids: [++id] }),
+            close: async (message, text) => void closed.push({ message, text }),
+          },
+          files: { get: async (file) => new TextEncoder().encode(`bytes of ${file}`) },
+        }
+      : null
+  return integrations
+}
+
+test("trimTalk keeps the last five owner turns with what the desk said around them", () => {
+  const talk = []
+  for (let i = 1; i <= 7; i++) talk.push({ who: "desk", text: `d${i}` }, { who: "owner", text: `o${i}` })
+  const kept = trimTalk(talk)
+  expect(kept.filter((t) => t.who === "owner").map((t) => t.text)).toEqual(["o3", "o4", "o5", "o6", "o7"])
+  expect(kept[0]).toEqual({ who: "desk", text: "d3" }) // what the desk said before the oldest turn kept
+  expect(talkText(kept.slice(-2), "studio")).toBe("studio: d7\nowner: o7")
+})
+
+test("new work carries the conversation before it, oldest first", async () => {
+  const team = fakeTeam()
+  const integrations = botIntegrations()
+  await start({ team, integrations, stateDir: tmp() })
+  integrations.push({ id: 1, text: "make a fox" })
+  await until(() => integrations.posts.length === 1)
+  integrations.push({ id: 2, text: "now in snow" })
+  await until(() => team.sends.length === 2)
+  expect(team.sends[1].text).toBe("[Telegram — the conversation before this message, oldest first (the last 5 exchanges):\nowner: make a fox\ndesk-x: head heard: make a fox]\nnow in snow")
+})
+
+test("a reply to another desk's message goes to that desk, with what it replies to", async () => {
+  const integrations = botIntegrations()
+  const listener = fakeTeam()
+  const other = fakeTeam()
+  await start({ team: listener, integrations, stateDir: tmp(), desk: "studio" })
+  await start({ team: other, integrations, stateDir: tmp(), desk: "agent", inbound: false })
+  recordSent("agent", { message: 4242, kind: "audio", text: "Vikram · 4. regal · 18 s" })
+  integrations.push({ id: 7, text: "I liked this one", reply_to: 4242 })
+  await until(() => other.sends.length === 1)
+  expect(listener.sends).toEqual([])
+  expect(other.sends[0].text).toBe('[Telegram — the conversation before this message, oldest first (the last 5 exchanges):\nagent: [audio sent: Vikram · 4. regal · 18 s]]\n[The owner replies to the audio "Vikram · 4. regal · 18 s"]\nI liked this one')
+  await until(() => integrations.posts.length === 1)
+  expect(integrations.posts[0]).toMatchObject({ reply_to: 7, text: expect.stringContaining("head heard:") })
+})
+
+test("a desk's question comes with a button per option; a tap answers it and closes the buttons", async () => {
+  const team = fakeTeam()
+  const integrations = botIntegrations()
+  await start({ team, integrations, stateDir: tmp() })
+  const ask = { id: "q1", kind: "ask", from: "head", text: "Which voice for the tales?", options: ["storyteller", "regal"], status: "open", at: "2026-10-24T22:00:00Z" } // the talk artifact keeps a list
+  team.kernel({ id: "talk", view: "talk", state: { messages: [ask] } })
+  await until(() => integrations.posts.length === 1)
+  expect(integrations.posts[0].buttons).toEqual([[{ text: "storyteller", data: "t:0" }], [{ text: "regal", data: "t:1" }]])
+  team.kernel({ id: "talk", view: "talk", state: { messages: [ask] } }) // the same question again: not sent twice
+  integrations.push({ kind: "choice", data: "t:1", message: 901 })
+  await until(() => team.calls.some((c) => c.method === "reply"))
+  expect(team.calls.find((c) => c.method === "reply")).toMatchObject({ target: "artifact", args: [{ id: "talk", ask: "q1", text: "regal", via: "Telegram" }] })
+  await until(() => integrations.closed.length === 1)
+  expect(integrations.closed[0]).toMatchObject({ message: 901, text: expect.stringContaining("✓ regal") })
+  expect(integrations.posts.length).toBe(1)
+})
+
+test("a question answered on the dashboard has its buttons closed", async () => {
+  const team = fakeTeam()
+  const integrations = botIntegrations()
+  await start({ team, integrations, stateDir: tmp() })
+  const ask = { id: "q2", kind: "ask", from: "head", text: "Go on?", options: "yes | no", status: "open", at: "2026-10-24T22:01:00Z" }
+  team.kernel({ id: "talk", view: "talk", state: { messages: [ask] } })
+  await until(() => integrations.posts.length === 1)
+  team.kernel({ id: "talk", view: "talk", state: { messages: [{ ...ask, status: "answered" }, { id: "r3", kind: "reply", re: "q2", text: "yes, go" }] } })
+  await until(() => integrations.closed.length === 1)
+  expect(integrations.closed[0].text).toContain("✓ answered: yes, go")
+})
+
+test("a photo the owner sends is kept in the desk's images and named in the message", async () => {
+  const team = fakeTeam()
+  const integrations = botIntegrations()
+  const kept = []
+  await start({ team, integrations, stateDir: tmp(), saveImage: async (bytes, note) => (kept.push({ bytes: new TextDecoder().decode(bytes), note }), "img-7") })
+  integrations.push({ id: 3, text: "like this", image: "file-1" })
+  await until(() => team.sends.length === 1)
+  expect(kept).toEqual([{ bytes: "bytes of file-1", note: "like this" }])
+  expect(team.sends[0].text).toContain("kept as image img-7")
 })

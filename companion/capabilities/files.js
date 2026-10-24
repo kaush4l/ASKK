@@ -513,6 +513,8 @@ export function createFiles({ root, readOnly = false, mounts = null }) {
     },
     POST: readOnly ? {} : { "fs/write": write, "fs/delete": remove },
     watch: (params, request) => watch(params.get("path") ?? "", request),
+    // an existing workspace file's real path, contained (audio/transcribe reads a recording the desk has)
+    realPath: existing,
     close,
   }
 }

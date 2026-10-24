@@ -1,6 +1,7 @@
 import { Browse } from "./browse.js"
 import { Talk } from "./talk.js"
 import { Studio } from "./studio.js"
+import { Audio } from "./audio.js"
 import { Dispatch } from "./dispatch.js"
 import { deskTools } from "./desks.js"
 import { Files } from "./files.js"
@@ -81,6 +82,10 @@ export const BUILTIN = {
     // generate the image … critiqued and improved"): images on this Mac's open model (host image/*), the prompt's versions,
     // critiques, the pick and the owner's feedback; a holder sees its new images on its next step
     studio: perDesk("studio", (o) => new Studio({ id: o.id, clock: o.clock })),
+    // audio (view audio; 2026-10-24 owner: "even the lead is able to use TTS model to create audio files … the audio
+    // transcription can be a tool as well"): scripts → audio files on this Mac's speech models, files → text, a file to
+    // the owner's Telegram chat (host audio/*)
+    audio: perDesk("audio", (o) => new Audio({ id: o.id, clock: o.clock })),
     // practice (view practice; 2026-10-20 owner: "self-reflect like the retro or the critic … update instructions or the
     // tools or any kind of quality guidelines it may have missed"): one per agent (id <agent>.practice) — its run
     // checklist, quality bar, learned instructions, lessons and the tools it lacks, kept in a file it edits itself

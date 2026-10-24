@@ -16,7 +16,7 @@ describe("models registry", () => {
     expect(m.list("image").map((x) => x.name)).toEqual(["qwen-image-2.1"])
     expect(m.selected("image").name).toBe("qwen-image-2.1")
     expect(m.presets().map((p) => p.name)).toContain("cinematic")
-    expect(m.catalog("stt").find((c) => c.name === "whisper-turbo")).toMatchObject({ added: false, engine: "openai" })
+    expect(m.catalog("stt").find((c) => c.name === "whisper-turbo")).toMatchObject({ added: false, engine: "command" })
   })
 
   test("the image model says what it accepts, from its modes", () => {

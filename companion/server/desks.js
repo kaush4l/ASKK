@@ -392,7 +392,10 @@ export async function hostDesks({ folders, port, defaultDesk = null, readOnly = 
     if (!bot || bot.error || entry.desk.telegram === false || entry.telegram) return
     const inbound = !!integrations.listening?.includes("telegram")
     const deskLog = (line) => entry.team.log(String(line).startsWith("telegram:") ? line : `telegram: ${line}`)
-    startKernelTelegram({ team: entry.team, integrations, stateDir: entry.desk.state, desk: name, owner: ownerIdFrom(process.env), log: deskLog, inbound, via: inbound ? null : listener() })
+    // a photo the owner sends is kept in this desk's images, as a reference (imagegen upload)
+    const images = entry.api.images
+    const saveImage = images ? async (bytes, note) => (await images.upload({ data: Buffer.from(bytes).toString("base64"), kind: "reference", by: "owner (Telegram)", note })).job.id : null
+    startKernelTelegram({ team: entry.team, integrations, stateDir: entry.desk.state, desk: name, owner: ownerIdFrom(process.env), log: deskLog, inbound, via: inbound ? null : listener(), saveImage })
       .then((telegram) => {
         entry.telegram = telegram
         entry.team.onLeadAnswer((run) => {
