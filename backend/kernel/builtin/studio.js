@@ -37,7 +37,10 @@ import { Tool } from "../tool/tool.js"
 // The owner (team/call {target: "artifact", method, args: [{id, …}]}): goal [{id, goal, criteria?}] (the goal set, and
 // a run for the keeper), generate [{id, prompt, …}] (an image now, no agent), feedback [{id, image?, text}] (to the
 // agent that made the image, else the keeper: guidance while it runs, else a run), pick [{id, image}], stop [{id,
-// image}]. The keeper: the first agent the studio is attached to.
+// image}], delete [{id, image | images}] (2026-10-24 owner: "the ability to delete images" — the owner's only: the host
+// removes each PNG, stopped first when it runs, with the masks and marked copies drawn over it; gone from the state, the
+// pick cleared when it was one; an image another still-running one starts from is refused by the host). The keeper: the
+// first agent the studio is attached to.
 // State {goal: {text, by, at} | null, criteria, prompts: [{v, text, negative, why, by, at}] ≤ 30, images: [{id, v,
 // prompt, negative, seed, width, height, steps, model, from, strength, by, status: queued | running | done | failed |
 // stopped | interrupted, step, ms, error, url, at, critiques: [{by, scores, score, notes, verdict, next, at}]}] ≤ 60,
@@ -112,6 +115,12 @@ export class Studio extends Artifact {
   }
   #patchImage(id, patch) {
     this.#set({ images: this.state.images.map((i) => (i.id === id ? { ...i, ...patch } : i)) })
+  }
+  // images gone: off the state, the pick cleared when it was one, never shown to an agent again
+  #drop(ids) {
+    const gone = new Set(ids)
+    for (const list of this.again.values()) list.splice(0, list.length, ...list.filter((x) => !gone.has(x)))
+    this.#set({ images: this.state.images.filter((i) => !gone.has(i.id)), picked: this.state.picked && gone.has(this.state.picked.image) ? null : this.state.picked })
   }
   #hostOf(ctx) {
     const host = ctx?.host ?? ctx?.agent?.context?.host ?? this.host
@@ -376,6 +385,27 @@ export class Studio extends Artifact {
       this.#patchImage(img.id, { status: job.status, error: job.error ?? null })
       return { image: img.id, status: job.status }
     }
+    if (method === "delete") {
+      const ids = [...new Set((Array.isArray(a.images) ? a.images : [a.image]).map((x) => oneLine(x)).filter(Boolean))].slice(0, IMAGES)
+      if (!ids.length) throw new Error("image: the id to delete (or images: a list)")
+      ids.forEach((x) => this.#image(x))
+      const host = this.#hostOf({})
+      const deleted = []
+      for (const x of ids) {
+        try {
+          deleted.push(...(await host.post("image/delete", { id: x })).deleted)
+        } catch (error) {
+          // the host forgot it already (its index keeps 200): only the studio's row is left to drop
+          if (error.status !== 404 && !/no image job/.test(error.message)) {
+            if (deleted.length) this.#drop(deleted)
+            throw error
+          }
+          deleted.push(x)
+        }
+      }
+      this.#drop(deleted)
+      return { deleted }
+    }
     if (method === "feedback") {
       const text = clip(oneLine(a.text), 1500)
       if (!text) throw new Error("text: your feedback")
@@ -406,7 +436,7 @@ export class Studio extends Artifact {
       const deliver = [`The owner's feedback${on}: "${text}"`, ...(marks.length ? [`Marked on the image (you see it with the boxes numbered on your next step${marked ? `, ${marked}` : ""}):`, ...markLines] : []), `Act on it: ${how}, or a new prompt version (${this.name}.prompt, why: this feedback); generate, look, critique, and tell the owner what you changed.`].join("\n")
       return { feedback: f, deliver, keeper }
     }
-    throw new Error(`${this.name}: the owner can set the goal, generate, choose a preset, give feedback, pick or stop (not ${method})`)
+    throw new Error(`${this.name}: the owner can set the goal, generate, choose a preset, give feedback, pick, stop or delete (not ${method})`)
   }
 
   // ---- the kernel ----

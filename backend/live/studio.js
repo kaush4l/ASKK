@@ -2,7 +2,8 @@
 // studio.js: images on this Mac's open model, the prompt's versions, critiques, the pick, the owner's feedback) → what
 // the view draws, and the owner's calls on it (team call target artifact).
 //   studioCall(id, method, extra)  goal {goal, criteria} | generate {prompt, seed?, width?, height?, steps?, from?,
-//                                  strength?} | feedback {image?, text} | pick {image} | stop {image}
+//                                  strength?} | feedback {image?, text} | pick {image} | stop {image} |
+//                                  delete {image | images}
 //   lastCritique(image)            its newest critique, or null
 //   bestImage(state)               the pick, else the best-scored finished image, else the newest finished one
 //   lineage(state, id)             the image and the ones it was refined from, oldest first

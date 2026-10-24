@@ -9,7 +9,7 @@
 //   POST models/start {kind, name}              starts its server now (engine openai with `serve`), else answers ready
 // The POSTs are the owner's: a desk's own request (x-askk-desk: its tools, its scripts) is refused by host-api.
 
-import { loadModels, twinOf, findProgram } from "./registry.js"
+import { loadModels, twinOf, findProgram, dirOf } from "./registry.js"
 import { httpError } from "../shared/http.js"
 
 let shared = null
@@ -58,7 +58,7 @@ export async function ensureServer(model, { log = () => {}, waitMs = 120_000 } =
   const alive = (p) => p.exitCode === null && !p.signalCode
   if (s && alive(s.proc)) return s.answered ? url : s.ready
   if (s?.answered) log(`models: ${key} exited (${s.proc.exitCode ?? s.proc.signalCode}) — starting it again`)
-  const bin = findProgram(serve.bin)
+  const bin = findProgram(serve.bin, Bun.which, dirOf(model))
   if (!bin) throw httpError(501, `${serve.bin} is not installed — ${model.install ?? "see its model.md"}`)
   const proc = Bun.spawn([bin, ...(serve.args ?? []).map(String)], { stdout: "ignore", stderr: "pipe", env: { ...process.env, PYTHONWARNINGS: "ignore" } })
   let tail = ""

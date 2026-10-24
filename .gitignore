@@ -82,3 +82,6 @@ next-env.d.ts
 
 # local models (models/<kind>/<name>/model.md + their state): companion/models, never committed
 /models/
+
+# scripts/model.js test output
+/.model-test/

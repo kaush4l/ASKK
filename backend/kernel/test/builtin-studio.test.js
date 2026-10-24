@@ -15,6 +15,14 @@ function imageHost() {
         jobs.push(job)
         return { job }
       }
+      if (path === "image/delete") {
+        const i = jobs.findIndex((j) => j.id === body.id)
+        if (i < 0) throw new Error(`no image job ${body.id}`)
+        if (body.id === "img-t-busy") throw new Error("img-t-9 (queued) starts from img-t-busy: stop it first")
+        const gone = [body.id, ...jobs.filter((j) => j.kind === "mask" && j.from === body.id).map((j) => j.id)]
+        jobs.splice(0, jobs.length, ...jobs.filter((j) => !gone.includes(j.id)))
+        return { deleted: gone }
+      }
       if (path === "image/stop") return { job: { ...jobs.find((j) => j.id === body.id), status: "stopped", error: "stopped" } }
       throw new Error(`unexpected ${path}`)
     },
@@ -173,4 +181,31 @@ test("scores in any list form a model writes: one-key maps, {name, score}, lines
   expect(studio.critique({ image: id, scores: [{ light: 9 }, { cat_asleep: 8 }], notes: "warm", verdict: "done" }, { agent: critic })).toContain("8.5/10")
   expect(studio.critique({ image: id, scores: [{ name: "light", score: 6 }, "detail: 8"], notes: "ok", verdict: "revise", next: "x" }, { agent: critic })).toContain("7/10")
   expect(() => studio.critique({ image: id, scores: [], notes: "x", verdict: "done" }, { agent: critic })).toThrow("one per criterion")
+})
+
+test("the owner deletes images: gone from the host and the state, the pick cleared; one the host forgot still drops", async () => {
+  const host = imageHost()
+  const studio = new Studio({ waitMs: 1 })
+  const artist = agentOf("artist", host)
+  studio.attach(artist)
+  await studio.generate({ prompt: "a fox", seeds: 3 }, { agent: artist })
+  host.finish()
+  await studio.refresh(artist)
+  studio.pick({ image: "img-t-2", why: "best" }, {})
+  studio.look({ image: "img-t-2" }, { agent: artist })
+  host.jobs.push({ id: "img-t-m", kind: "mask", from: "img-t-2", status: "done" })
+  expect(await studio.ownerCall("delete", [{ id: "studio", image: "img-t-2" }])).toEqual({ deleted: ["img-t-2", "img-t-m"] })
+  expect(studio.state.images.map((i) => i.id)).toEqual(["img-t-3", "img-t-1"])
+  expect(studio.state.picked).toBeNull()
+  expect(host.jobs.map((j) => j.id)).toEqual(["img-t-1", "img-t-3"])
+  expect((await studio.images(artist)).map((s) => s.ref.image)).toEqual(["img-t-3", "img-t-1"]) // never img-t-2 again
+  host.jobs.splice(host.jobs.findIndex((j) => j.id === "img-t-1"), 1) // the host's index let it go
+  expect(await studio.ownerCall("delete", [{ id: "studio", images: ["img-t-1", "img-t-3"] }])).toEqual({ deleted: ["img-t-1", "img-t-3"] })
+  expect(studio.state.images).toEqual([])
+  await expect(studio.ownerCall("delete", [{ id: "studio", image: "img-t-1" }])).rejects.toThrow("no image img-t-1")
+  await expect(studio.ownerCall("delete", [{ id: "studio" }])).rejects.toThrow("image: the id")
+  studio.state.images = [{ id: "img-t-busy", status: "done", critiques: [] }]
+  host.jobs.push({ id: "img-t-busy", status: "done" })
+  await expect(studio.ownerCall("delete", [{ id: "studio", image: "img-t-busy" }])).rejects.toThrow("stop it first")
+  expect(studio.state.images.length).toBe(1)
 })

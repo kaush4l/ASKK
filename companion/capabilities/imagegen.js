@@ -15,6 +15,9 @@
 //        → { job } an image the owner made (a mask drawn over `from`, a reference, the image with marks drawn on it),
 //        kept like a done job so a later call names it
 //   POST image/stop {id}                       a queued job dropped, a running one killed → { job }
+//   POST image/delete {id}                     the image gone (2026-10-24 owner: "the ability to delete images"): stopped
+//        first when it runs, its PNG and index entry removed, with the masks and marked copies the owner drew over it;
+//        refused while a queued or running job starts from it → { deleted: [ids] }
 //   GET  image/jobs                            { jobs } newest first, { running, queued, models, model, presets }
 //   GET  image/job?id=                         { job }
 //   GET  image/file?id=                        the PNG
@@ -34,7 +37,7 @@ import { join } from "node:path"
 import { API_PREFIX } from "../shared/config.js"
 import { httpError } from "../shared/http.js"
 import { sharedModels } from "../models/index.js"
-import { applyPreset, buildArgv, effective, findProgram } from "../models/registry.js"
+import { applyPreset, buildArgv, dirOf, effective, findProgram } from "../models/registry.js"
 
 const KEEP = 200
 const ID = /^img-[a-z0-9]+-\d+$/
@@ -61,7 +64,7 @@ const side = (n) => {
 
 // models: the registry (tests: their own); which: how programs are found (tests); spawn: Bun.spawn's shape (tests)
 export async function createImagegen({ state, log = () => {}, models = sharedModels({ log }), which = Bun.which, spawn = Bun.spawn, always = false } = {}) {
-  const usable = () => models.list("image").filter((m) => m.ok && Object.values(m.modes).some((s) => findProgram(s.bin, which)))
+  const usable = () => models.list("image").filter((m) => m.ok && Object.values(m.modes).some((s) => findProgram(s.bin, which, dirOf(m))))
   if (!usable().length && !always) return null
   const dir = join(state, "images")
   mkdirSync(dir, { recursive: true })
@@ -159,7 +162,8 @@ export async function createImagegen({ state, log = () => {}, models = sharedMod
         }
       }
       await Promise.all([read(proc.stdout), read(proc.stderr), proc.exited])
-      if (find(next.id).status === "stopped") return
+      // stopped, or deleted while it ran
+      if (jobs.find((j) => j.id === next.id)?.status !== "running") return
       const code = await proc.exited
       if (code === 0 && existsSync(file)) {
         patch(next.id, { status: "done", step: next.steps, ended_at: new Date().toISOString(), ms: Date.now() - started })
@@ -301,6 +305,21 @@ export async function createImagegen({ state, log = () => {}, models = sharedMod
     return { job: view(find(j.id)) }
   }
 
+  function remove({ id } = {}) {
+    const j = find(String(id ?? ""))
+    // the owner's drawings over it (a mask, the marked copy) go with it
+    const ids = [j.id, ...jobs.filter((x) => ["mask", "marked"].includes(x.kind) && x.from === j.id).map((x) => x.id)]
+    const uses = (x, i) => x.from === i || x.init === i || x.mask === i || x.references?.includes(i)
+    const user = jobs.find((x) => !ids.includes(x.id) && ["queued", "running"].includes(x.status) && ids.some((i) => uses(x, i)))
+    if (user) throw httpError(409, `${user.id} (${user.status}) starts from ${j.id}: stop it first`)
+    if (["queued", "running"].includes(j.status)) stop({ id: j.id })
+    jobs = jobs.filter((x) => !ids.includes(x.id))
+    save()
+    for (const i of ids) Bun.file(join(dir, `${i}.png`)).delete().catch(() => {})
+    log(`images: ${ids.join(", ")} deleted`)
+    return { deleted: ids }
+  }
+
   const pathOf = (id) => {
     if (!ID.test(String(id ?? ""))) throw httpError(400, "id: an image job id")
     const path = join(dir, `${id}.png`)
@@ -334,6 +353,7 @@ export async function createImagegen({ state, log = () => {}, models = sharedMod
     generate,
     upload,
     stop,
+    remove,
     file: (id) => new Response(Bun.file(pathOf(id)), { headers: { "content-type": "image/png", "cache-control": "max-age=31536000, immutable" } }),
     modelImage,
     jobs: () => ({ jobs: jobs.map(view), running: current, queued: jobs.filter((j) => j.status === "queued").length, models: usable().map((m) => m.name), model: modelTwin(), presets: models.presets().filter((p) => p.ok) }),
@@ -359,5 +379,6 @@ export const imageRoutes = (images) => ({
     "image/generate": (body) => images.generate(body),
     "image/upload": (body) => images.upload(body),
     "image/stop": (body) => images.stop(body),
+    "image/delete": (body) => images.remove(body),
   },
 })

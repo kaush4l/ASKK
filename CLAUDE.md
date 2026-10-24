@@ -388,7 +388,9 @@ what is saved where), the twin contract.
   mask}` — the marked image and the mask uploaded first, the maker sees the marked image on its next step; Edit marked
   areas = generate under the mask, no agent; the goal form's preset (auto / none / one); the owner's goal runs the
   keeper's workflow whose `vars:` name `preset` (`custom/studio/phases/make.md`: expand → choose → generate → critique →
-  refine), else goes to the keeper. Desk `custom/studio` (local):
+  refine), else goes to the keeper. 2026-10-24 owner ("the ability to delete images"): owner call `delete {image | images}`
+  (no agent command) → host `image/delete`, the image off the state and the pick cleared; the view's Delete on the image
+  shown and Select on the thumbnails, each confirmed once. Desk `custom/studio` (local):
   lead `artist` (optimise → generate seeds → critic → refine one change a round → pick, talk.say v1→vN) + member
   `critic` (model sonnet: a different model judging, `studio.look` + `critique` only). Tests `builtin-studio.test.js`.
 - `builtin/plan.js` `Plan` (extends `Checklist`): the desk's checklist written at run time (the planner's): id
@@ -643,7 +645,8 @@ host's mcp/call as the desk (`dataTools`, `dataCall`), approved as `mcp__data`; 
   process (audit 20: a desk's next job waits while another desk's runs; a reloaded desk starts nothing more); the routes
   answer even when no model was installed at start (capability `images` only when one was); `POST image/upload {data,
   kind: mask | reference | marked, from?}` (the owner's, from the page: `x-askk-desk` gets 403; ≤ 12 MB, ≤ 4096² px);
-  an image that falls out of the 200-job index is deleted with it; `image/stop`, GET `image/jobs` (+ `model`: the chosen one's accepts/modes, `presets`), `image/job`,
+  an image that falls out of the 200-job index is deleted with it; `image/stop`, `image/delete {id}` (2026-10-24: stopped first when it runs, its PNG and entry gone with the masks and marked
+  copies drawn over it; 409 while a live job starts from it), GET `image/jobs` (+ `model`: the chosen one's accepts/modes, `presets`), `image/job`,
   `image/file`, `image/model` (a JPEG for a model's eyes); files and `index.json` in `<desk state>/images/`; not when
   read-only), `models` (2026-10-23 owner: "We will have directory for the image, speech or other models … A helper will
   read and initialize as required … parameters can be written in the md file … the state survives a restart";
@@ -652,7 +655,12 @@ host's mcp/call as the desk (`dataTools`, `dataCall`), approved as `mcp__data`; 
   (+`inputs` flags) or `modes`; `url`/`model`/`serve` for an OpenAI-compatible server the helper starts and keeps up —
   mlx-audio's `mlx_audio.server` on :8321 for Parakeet, Whisper, Qwen3-ASR, Granite, Kokoro, Qwen3-TTS, Chatterbox;
   `options` with defaults (`flag`: a command's argument; `field`: an openai request's, e.g. Chatterbox's `lang_code`), the
-  owner's `values:` written back into the file; every catalogue speech model tested live 2026-10-23), `models/models.md` the one chosen per kind;
+  owner's `values:` written back into the file; every catalogue speech model tested live 2026-10-23; 2026-10-24 owner
+  ("the agent is able to download the file and wire it up … if any wiring is required, we can write the wrapper"): a
+  `bin: ./run.py` is a wrapper in the model's own folder (executable, never `..`), hand-downloaded weights go in
+  `models/<kind>/<name>/weights/`; `bun scripts/model.js list | check <kind>/<name> | test <kind>/<name>` (test: twice
+  through the live server, output in `.model-test/`, the selection put back); the steps are the Claude Code skill
+  `.claude/skills/add-model/SKILL.md`), `models/models.md` the one chosen per kind;
   a new folder seeded from `companion/models/catalog/` (apple, say, qwen-image-2.1, the presets); `index.js`
   `sharedModels` (once per process), `ensureServer` (ours and running: used, never killed for a slow probe; exited: started
   again; killed with the desk server, SIGKILL), routes GET `models`, POST `models/select|set|add|install|start` (the

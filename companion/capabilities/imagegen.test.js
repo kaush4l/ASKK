@@ -143,3 +143,37 @@ test("a prompt that starts with - is one --flag=value argument, never a flag of 
   expect(calls[0]).toContain("--prompt=--output=/etc/x a fox")
   expect(calls[0].filter((x) => x === "--output")).toHaveLength(1)
 })
+
+test("delete: the PNG and its entry gone, with the owner's mask over it; refused while a queued job starts from it", async () => {
+  // a spawn that holds each job until released
+  const held = []
+  const spawn = (argv) => {
+    const out = argv[argv.indexOf("--output") + 1]
+    let open
+    const exited = new Promise((r) => (open = r)).then(() => (writeFileSync(out, "png"), 0))
+    held.push(open)
+    const empty = () => new ReadableStream({ start: (c) => c.close() })
+    return { stdout: empty(), stderr: empty(), exited, kill: () => open() }
+  }
+  const lines = []
+  const images = await createImagegen({ state, models, which, spawn, log: (l) => lines.push(l) })
+  const first = images.generate({ prompt: "a lighthouse", steps: 2 }).job
+  await until(() => held.length === 1)
+  held[0]()
+  await until(() => images.job(first.id).job.status === "done")
+  const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+  const { job: mask } = await images.upload({ kind: "mask", data: png, from: first.id })
+  const edit = images.generate({ prompt: "Add a storm", from: first.id, mask: mask.id, steps: 2 }).job
+  expect(() => images.remove({ id: first.id })).toThrow("stop it first")
+  expect(() => images.remove({ id: mask.id })).toThrow("stop it first")
+  // a running one is stopped, then deleted
+  await until(() => images.job(edit.id).job.status === "running")
+  expect(images.remove({ id: edit.id })).toEqual({ deleted: [edit.id] })
+  expect(images.remove({ id: first.id })).toEqual({ deleted: [first.id, mask.id] })
+  expect(images.jobs().jobs).toEqual([])
+  await until(() => !existsSync(join(state, "images", `${first.id}.png`)))
+  expect(existsSync(join(state, "images", `${first.id}.png`))).toBe(false)
+  expect(existsSync(join(state, "images", `${mask.id}.png`))).toBe(false)
+  expect(() => images.remove({ id: first.id })).toThrow("no image job")
+  expect(lines.some((l) => l.includes(`${first.id}, ${mask.id} deleted`))).toBe(true)
+})

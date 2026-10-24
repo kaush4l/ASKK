@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { BrushIcon, ExternalLinkIcon, ImageIcon, MaximizeIcon, SquareIcon, StarIcon, Trash2Icon, WandSparklesIcon, ZoomInIcon, ZoomOutIcon } from "lucide-react"
+import { BrushIcon, CheckIcon, ExternalLinkIcon, ImageIcon, MaximizeIcon, SquareIcon, StarIcon, Trash2Icon, WandSparklesIcon, ZoomInIcon, ZoomOutIcon } from "lucide-react"
 
 import { uploadImage } from "@/backend/live/models"
 import { bestImage, bigEnough, boxFrom, canEdit, imageUrl, lastCritique, lineage, marksText, nextZoom, placeOf, presetOptions, progress, studioCall } from "@/backend/live/studio"
@@ -21,6 +21,8 @@ import { cn } from "@/lib/utils"
 // (white = repaint) — Edit marked areas runs the model's edit mode on just those areas when it takes a mask. The goal
 // carries a preset (or "let the agent choose": the workflow compares and picks); the model and its options are the
 // model panel's (models/image/<name>/model.md).
+// 2026-10-24 owner ("for the studio, we want ability to delete images"): Delete on the image shown, and Select on the
+// thumbnails to delete several — each asks once more; the host removes the PNG with the masks and marks drawn over it.
 
 const VERDICT = { done: "text-emerald-600 dark:text-emerald-400", revise: "text-amber-600 dark:text-amber-400", discard: "text-destructive" }
 const field = "w-full rounded-md border bg-background px-2 py-1.5 text-base md:text-sm"
@@ -33,7 +35,7 @@ function useCall(id) {
     setNote(null)
     try {
       const r = await studioCall(id, method, extra)
-      setNote({ ok: true, text: r?.delivered ? `sent to ${r.keeper} (${r.delivered === "guided" ? "added to its run" : "a new run"})` : r?.workflow ? `the ${r.workflow} workflow started: expand → preset → generate → critique → refine` : (r?.result ?? "done") })
+      setNote({ ok: true, text: r?.deleted ? `deleted ${r.deleted.join(", ")}` : r?.delivered ? `sent to ${r.keeper} (${r.delivered === "guided" ? "added to its run" : "a new run"})` : r?.workflow ? `the ${r.workflow} workflow started: expand → preset → generate → critique → refine` : (r?.result ?? "done") })
       done?.()
       return true
     } catch (error) {
@@ -46,15 +48,37 @@ function useCall(id) {
   return { busy, note, call }
 }
 
-function Thumb({ image, selected, onSelect, best }) {
+// A delete that asks once more: Delete → "Delete for good?" / Cancel.
+function DeleteButton({ label = "Delete", confirm = "Delete for good?", busy, onConfirm, className }) {
+  const [asking, setAsking] = React.useState(false)
+  if (!asking)
+    return (
+      <Button size="sm" variant="ghost" className={cn("text-destructive pointer-coarse:h-10", className)} disabled={busy} onClick={() => setAsking(true)}>
+        <Trash2Icon /> {label}
+      </Button>
+    )
+  return (
+    <span className={cn("flex items-center gap-1", className)}>
+      <Button size="sm" variant="destructive" className="pointer-coarse:h-10" disabled={busy} onClick={async () => (await onConfirm()) !== false && setAsking(false)}>
+        <Trash2Icon /> {confirm}
+      </Button>
+      <Button size="sm" variant="ghost" className="pointer-coarse:h-10" disabled={busy} onClick={() => setAsking(false)}>
+        Cancel
+      </Button>
+    </span>
+  )
+}
+
+function Thumb({ image, selected, onSelect, best, picking, picked }) {
   const url = imageUrl(image)
   const c = lastCritique(image)
   return (
     <button
       type="button"
       onClick={() => onSelect(image.id)}
-      aria-pressed={selected}
-      className={cn("relative flex aspect-square min-w-0 flex-col overflow-hidden rounded-md border text-left", selected && "ring-2 ring-primary")}
+      aria-pressed={picking ? picked : selected}
+      aria-label={picking ? `${picked ? "Unselect" : "Select"} ${image.id}` : undefined}
+      className={cn("relative flex aspect-square min-w-0 flex-col overflow-hidden rounded-md border text-left", !picking && selected && "ring-2 ring-primary", picking && picked && "ring-2 ring-destructive")}
       title={`${image.id} · ${image.status}${image.preset ? ` · ${image.preset}` : ""}`}
     >
       {url ? (
@@ -69,6 +93,11 @@ function Thumb({ image, selected, onSelect, best }) {
         {best && <StarIcon className="size-3.5 fill-amber-400 text-amber-400" aria-label="the pick" />}
       </span>
       {["failed", "interrupted", "stopped"].includes(image.status) && <span className="absolute inset-x-0 bottom-0 bg-destructive/80 px-1 text-[10px] text-white">{image.status}</span>}
+      {picking && (
+        <span className={cn("absolute right-1 top-1 grid size-5 place-items-center rounded border bg-background/80", picked && "border-destructive bg-destructive text-white")}>
+          {picked && <CheckIcon className="size-3.5" />}
+        </span>
+      )}
     </button>
   )
 }
@@ -328,6 +357,7 @@ function Detail({ id, state, image }) {
               <SquareIcon /> Stop
             </Button>
           )}
+          <DeleteButton busy={busy} confirm={live ? "Stop and delete?" : "Delete for good?"} onConfirm={() => call("delete", { image: image.id })} />
         </div>
         {sending && <p className={cn("text-xs", sending.startsWith("marks not") ? "text-destructive" : "text-muted-foreground")}>{sending}</p>}
         {note && <p className={cn("text-xs", note.ok ? "text-muted-foreground" : "text-destructive")}>{note.text}</p>}
@@ -429,6 +459,11 @@ export function StudioView({ id, state, expanded }) {
   const images = state?.images ?? []
   const best = bestImage(state)
   const [selected, setSelected] = React.useState(null)
+  const [picking, setPicking] = React.useState(false) // choosing images to delete
+  const [chosen, setChosen] = React.useState([])
+  const bulk = useCall(id)
+  const toggle = (iid) => setChosen((c) => (c.includes(iid) ? c.filter((x) => x !== iid) : [...c, iid]))
+  const endPicking = () => (setPicking(false), setChosen([]))
   const shown = images.find((i) => i.id === selected) ?? images.find((i) => ["running", "queued"].includes(i.status)) ?? best
   if (!expanded) {
     const url = imageUrl(best)
@@ -495,10 +530,31 @@ export function StudioView({ id, state, expanded }) {
       <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,16rem)]">
         {shown ? <Detail key={shown.id} id={id} state={state} image={shown} /> : <p className="text-sm text-muted-foreground">No images yet.</p>}
         {images.length > 0 && (
-          <div className="grid grid-cols-3 content-start gap-1.5 sm:grid-cols-4 lg:grid-cols-3">
-            {images.map((i) => (
-              <Thumb key={i.id} image={i} selected={i.id === shown?.id} onSelect={setSelected} best={state?.picked?.image === i.id} />
-            ))}
+          <div className="flex min-w-0 flex-col gap-1.5">
+            <div className="flex flex-wrap items-center gap-1 text-xs">
+              {picking ? (
+                <>
+                  <span className="text-muted-foreground">{chosen.length} selected</span>
+                  <Button size="sm" variant="ghost" className="pointer-coarse:h-10" onClick={() => setChosen(chosen.length === images.length ? [] : images.map((i) => i.id))}>
+                    {chosen.length === images.length ? "None" : "All"}
+                  </Button>
+                  {chosen.length > 0 && <DeleteButton busy={bulk.busy} label={`Delete ${chosen.length}`} confirm={`Delete ${chosen.length} for good?`} onConfirm={() => bulk.call("delete", { images: chosen }, endPicking)} />}
+                  <Button size="sm" variant="ghost" className="pointer-coarse:h-10" onClick={endPicking}>
+                    Done
+                  </Button>
+                </>
+              ) : (
+                <Button size="sm" variant="ghost" className="pointer-coarse:h-10" onClick={() => setPicking(true)}>
+                  <CheckIcon /> Select
+                </Button>
+              )}
+            </div>
+            <div className="grid grid-cols-3 content-start gap-1.5 sm:grid-cols-4 lg:grid-cols-3">
+              {images.map((i) => (
+                <Thumb key={i.id} image={i} selected={i.id === shown?.id} onSelect={picking ? toggle : setSelected} best={state?.picked?.image === i.id} picking={picking} picked={chosen.includes(i.id)} />
+              ))}
+            </div>
+            {bulk.note && <p className={cn("text-xs", bulk.note.ok ? "text-muted-foreground" : "text-destructive")}>{bulk.note.text}</p>}
           </div>
         )}
       </div>

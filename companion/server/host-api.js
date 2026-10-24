@@ -71,7 +71,7 @@
 //   (image/* below: companion/capabilities/imagegen.js — open image models on this Mac through mflux, one job at a
 //   time; capability images when a generator is installed)
 //   POST image/generate { prompt, negative?, width?, height?, steps?, seed?, model?, from?, strength?, by? }   { job }
-//   POST image/stop { id }   { job }   GET image/jobs   { jobs, running, queued, models }   GET image/job?id=   { job }
+//   POST image/stop { id }   { job }   POST image/delete { id }   { deleted }   GET image/jobs   { jobs, running, queued, models }   GET image/job?id=   { job }
 //   GET image/file?id=   the PNG   GET image/model?id=&max=   { media_type, width, height, data } (a JPEG, base64)
 //   GET browser/image?id=&n=&max=   the same shot for a model: JPEG ≤ max px wide (1280), base64 JSON (an agent's next step)
 //   GET apple/actions          { actions: [{ id, available }] } — macOS only

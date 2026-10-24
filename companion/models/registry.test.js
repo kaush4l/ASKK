@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test"
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs"
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { applyPreset, buildArgv, effective, loadModels, splitMd, writeValues } from "./registry.js"
+import { applyPreset, buildArgv, effective, findProgram, loadModels, splitMd, writeValues } from "./registry.js"
 
 const fresh = () => loadModels({ root: mkdtempSync(join(tmpdir(), "askk-models-")), which: (b) => (b.startsWith("mflux") ? `/bin/${b}` : null) })
 
@@ -76,6 +76,22 @@ describe("models registry", () => {
     writeFileSync(m.get("tts", "say").file, "---\nengine: banana\n---\n")
     expect(m.list("tts")[0]).toMatchObject({ ok: false, problem: expect.stringContaining("engine") })
     expect(m.selected("tts")).toBe(null)
+  })
+
+  test("a wrapper in the model's folder: bin ./run found there, executable only, never ../ out of it", () => {
+    const m = loadModels({ root: mkdtempSync(join(tmpdir(), "askk-models-")) })
+    const dir = join(m.root, "tts", "wrapped")
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, "model.md"), "---\nkind: tts\ntitle: Wrapped\nengine: command\nbin: ./run.py\nargs: [--text, \"{text}\", --out, \"{out}\"]\n---\n")
+    expect(m.ready(m.get("tts", "wrapped"))).toEqual({ ready: false, missing: ["./run.py"] })
+    writeFileSync(join(dir, "run.py"), "#!/usr/bin/env python3\n")
+    expect(m.ready(m.get("tts", "wrapped")).ready).toBe(false) // not executable yet
+    chmodSync(join(dir, "run.py"), 0o755)
+    const w = m.get("tts", "wrapped")
+    expect(m.ready(w).ready).toBe(true)
+    expect(buildArgv(w, Object.keys(w.modes)[0], { text: "hi", out: "/o.wav" })).toEqual([join(dir, "run.py"), "--text", "hi", "--out", "/o.wav"])
+    expect(findProgram("./../models.md", Bun.which, dir)).toBeNull()
+    expect(findProgram("./run.py", Bun.which, null)).toBeNull()
   })
 
   test("writeValues adds the block when there is none and replaces it when there is", () => {

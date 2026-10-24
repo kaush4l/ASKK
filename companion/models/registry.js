@@ -26,8 +26,8 @@
 //   const models = loadModels({root})     → list(kind), get(kind, name), selected(kind), select, set, catalog(kind),
 //                                            add(kind, name), presets(), ready(model)
 
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs"
-import { join, resolve } from "node:path"
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from "node:fs"
+import { dirname, join, resolve } from "node:path"
 import { APP_ROOT } from "../shared/paths.js"
 import { httpError } from "../shared/http.js"
 
@@ -220,7 +220,7 @@ export function loadModels({ root = modelsRoot(), catalog = CATALOG, log = () =>
   const ready = (m) => {
     if (!m.ok) return { ready: false, missing: [] }
     const bins = [...Object.values(m.modes).map((s) => s.bin), ...(m.meta.serve?.bin ? [m.meta.serve.bin] : [])]
-    const missing = [...new Set(bins)].filter((b) => !findProgram(b, which))
+    const missing = [...new Set(bins)].filter((b) => !findProgram(b, which, dirOf(m)))
     return { ready: !missing.length, missing }
   }
 
@@ -327,13 +327,16 @@ export function applyPreset(preset, input) {
   return out
 }
 
+// the model's own folder (a wrapper's `./name` is found there)
+export const dirOf = (m) => (m?.file ? dirname(m.file) : null)
+
 // --- argv ----------------------------------------------------------------------------------------------------------------
 
 // A command line from a mode: its args with `{name}` filled, its inputs present as `flag value…`, the options with a flag.
 export function buildArgv(model, mode, call, { which = Bun.which } = {}) {
   const spec = model.modes[mode]
   if (!spec) throw httpError(400, `${model.kind}/${model.name} has no ${mode} mode (${Object.keys(model.modes).join(", ")})`)
-  const bin = findProgram(spec.bin, which)
+  const bin = findProgram(spec.bin, which, dirOf(model))
   if (!bin) throw httpError(501, `${spec.bin} is not installed — ${model.install ?? "see its model.md"}`)
   const opts = effective(model)
   // a value is never read as a flag of its own (audit 20: a prompt or a spoken line starting with "-"): a filled argument
@@ -392,7 +395,16 @@ function atomic(file, text) {
 }
 // a program by name: on PATH, else uv's ~/.local/bin or Homebrew's (launchd's PATH may have neither); a test's own
 // `which` alone
-export function findProgram(name, which = Bun.which) {
+// A program by name (PATH, ~/.local/bin, Homebrew), an absolute path, or — `./run.py` — a wrapper in the model's own folder
+// (`dir`: models/<kind>/<name>/; 2026-10-24 owner: "if any wiring is required, we can write the wrapper"), which must be
+// executable (chmod +x, with its #! line).
+export function findProgram(name, which = Bun.which, dir = null) {
+  if (name.startsWith("./")) {
+    if (!dir) return null
+    const path = join(dir, name.slice(2))
+    // inside its folder only: never ../ out of it
+    return !name.includes("..") && existsSync(path) && (statSync(path).mode & 0o111) !== 0 ? path : null
+  }
   if (name.includes("/")) return existsSync(name) ? name : null
   if (which !== Bun.which) return which(name)
   const home = process.env.HOME ?? ""
