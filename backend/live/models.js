@@ -5,6 +5,10 @@
 //   modelCall(action, body)          POST models/<select | set | add | install | start>
 //   optionRows(model)                [{name, type, value, def, changed, about, min, max, step, choices}]
 //   statusOf(model)                  "ready" | "not installed: …" | its problem
+//   speechLines(data)                the desk's speech capability (2026-10-24 owner: "should not be placeholders"): per
+//                                    kind stt, tts {kind, label, inUse: {name, title, status}, others: [same]} — the
+//                                    models really in models/, the one in use first
+//   choiceLabel(value)               how a choice reads ("" = the default, e.g. the system voice)
 
 import { withBase } from "@/backend/live/base-path"
 
@@ -36,3 +40,15 @@ export function statusOf(model) {
   if (model.missing?.length) return `not installed: ${model.missing.join(", ")}`
   return "ready"
 }
+
+export function speechLines(data) {
+  return ["stt", "tts"].map((kind) => {
+    const k = data?.kinds?.[kind]
+    const row = (m) => ({ name: m.name, title: m.title, status: statusOf(m) })
+    const models = k?.models ?? []
+    const inUse = models.find((m) => m.name === k?.selected)
+    return { kind, label: KIND_LABEL[kind], inUse: inUse ? row(inUse) : null, others: models.filter((m) => m !== inUse).map(row) }
+  })
+}
+
+export const choiceLabel = (value) => (value === "" || value == null ? "default (the system's)" : String(value))

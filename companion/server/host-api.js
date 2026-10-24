@@ -239,7 +239,7 @@ export async function createHostApi({
   // says when no image model is installed
   const images = readOnly ? null : await createImagegen({ state: runtime, log: hostLog, always: true })
   // local models (2026-10-23): models/<kind>/<name>/model.md, one folder for the process (companion/models)
-  const models = modelRoutes(sharedModels({ log: hostLog }), { log: hostLog, readOnly })
+  const models = modelRoutes(sharedModels({ log: hostLog }), { log: hostLog, readOnly, choices: async () => (speech ? speech.optionChoices() : {}) })
   const capabilities = [
     ...(readOnly ? ["fs.read"] : ["fs.read", "fs.write"]),
     ...(projects ? ["projects"] : []),

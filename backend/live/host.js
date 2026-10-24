@@ -78,5 +78,7 @@ export const HOST_CAPABILITIES = [
   { id: "apple", short: "Mac actions", label: "Your Mac: Shortcuts, Reminders, Spotlight, speech, clipboard", localOff: "macOS only." },
   // 2026-10-23: open image models on this Mac (mflux), the studio artifact's generator (companion/capabilities/imagegen.js).
   { id: "images", short: "Image models", label: "Generate images on this Mac with open models (mflux: Qwen Image 2.1)", localOff: "No image model installed (uv tool install mflux), or --read-only." },
-  { id: "speech", short: "Speech", label: "Speech on this Mac: on-device recognition (any browser) and Mac voices", localOff: "macOS 26+ only (ASKK_SPEECH=off turns it off)." },
+  // 2026-10-24 owner ("should not be placeholders"): the models really in use and on offer are drawn under the list
+  // (components/models/speech-capability.jsx), on-device by default.
+  { id: "speech", short: "Speech", label: "Speech to text and text to speech on this Mac — on-device by default; the models in use below", localOff: "macOS 26+ only (ASKK_SPEECH=off turns it off)." },
 ]

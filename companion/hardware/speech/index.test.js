@@ -32,6 +32,13 @@ test("engine openai: an option with a field is sent under that name (Chatterbox'
     expect(seen.map((b) => b.lang_code)).toEqual(["en", "fr"])
     expect(seen[0]).toMatchObject({ model: "fake-model", input: "bonjour", response_format: "wav" })
     expect(seen[0]).not.toHaveProperty("language")
+    // Kokoro: the voice's first letter is its language
+    mkdirSync(join(root, "tts", "kok"), { recursive: true })
+    writeFileSync(join(root, "tts", "kok", "model.md"), `---\nkind: tts\ntitle: Kok\nengine: openai\nurl: http://127.0.0.1:${server.port}/v1\nmodel: kok\nlang_from_voice: true\noptions:\n  voice: {type: choice, choices: [af_heart, bf_emma], default: af_heart, about: "x"}\nvalues: {}\n---\n`)
+    models.select("tts", "kok")
+    await speech.speak({ text: "hi" })
+    await speech.speak({ text: "hi", voice: "bf_emma" })
+    expect(seen.slice(-2).map((b) => [b.voice, b.lang_code])).toEqual([["af_heart", "a"], ["bf_emma", "b"]])
   } finally {
     server.stop(true)
   }

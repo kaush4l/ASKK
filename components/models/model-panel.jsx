@@ -3,7 +3,7 @@
 import * as React from "react"
 import { DownloadIcon, PlayIcon, PlusIcon, RotateCcwIcon } from "lucide-react"
 
-import { KIND_LABEL, loadModels, modelCall, optionRows, statusOf } from "@/backend/live/models"
+import { KIND_LABEL, choiceLabel, loadModels, modelCall, optionRows, statusOf } from "@/backend/live/models"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
@@ -34,7 +34,7 @@ function Option({ row, onSet, busy }) {
         <select id={id} value={String(row.value ?? "")} disabled={busy} onChange={(e) => set(e.target.value)} className={input}>
           {row.choices.map((c) => (
             <option key={String(c)} value={String(c)}>
-              {String(c)}
+              {choiceLabel(c)}
             </option>
           ))}
         </select>

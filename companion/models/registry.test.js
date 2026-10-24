@@ -7,14 +7,16 @@ import { applyPreset, buildArgv, effective, findProgram, loadModels, splitMd, wr
 const fresh = () => loadModels({ root: mkdtempSync(join(tmpdir(), "askk-models-")), which: (b) => (b.startsWith("mflux") ? `/bin/${b}` : null) })
 
 describe("models registry", () => {
-  test("a new folder is seeded with the defaults and the presets", () => {
+  test("a new folder is seeded with the defaults, Parakeet, Kokoro and Chatterbox, and the presets; the on-device ones in use", () => {
     const m = fresh()
-    expect(m.list("stt").map((x) => x.name)).toEqual(["apple"])
-    expect(m.list("tts").map((x) => x.name)).toEqual(["say"])
+    expect(m.list("stt").map((x) => x.name)).toEqual(["apple", "parakeet"])
+    expect(m.list("tts").map((x) => x.name)).toEqual(["chatterbox", "kokoro", "say"])
+    expect(m.selected("stt").name).toBe("apple")
+    expect(m.selected("tts").name).toBe("say")
     expect(m.list("image").map((x) => x.name)).toEqual(["qwen-image-2.1"])
     expect(m.selected("image").name).toBe("qwen-image-2.1")
     expect(m.presets().map((p) => p.name)).toContain("cinematic")
-    expect(m.catalog("stt").find((c) => c.name === "parakeet")).toMatchObject({ added: false, engine: "openai" })
+    expect(m.catalog("stt").find((c) => c.name === "whisper-turbo")).toMatchObject({ added: false, engine: "openai" })
   })
 
   test("the image model says what it accepts, from its modes", () => {
@@ -41,10 +43,10 @@ describe("models registry", () => {
 
   test("the selection is kept in models.md; add from the catalogue", () => {
     const m = fresh()
-    m.add("stt", "parakeet")
+    m.add("stt", "whisper-turbo")
     m.select("stt", "parakeet")
     expect(loadModels({ root: m.root }).selected("stt").name).toBe("parakeet")
-    expect(() => m.add("stt", "parakeet")).toThrow("already")
+    expect(() => m.add("stt", "whisper-turbo")).toThrow("already")
     expect(splitMd(readFileSync(join(m.root, "models.md"), "utf8")).meta.stt).toBe("parakeet")
   })
 
@@ -74,8 +76,8 @@ describe("models registry", () => {
   test("a broken model.md is listed with its problem, never thrown", () => {
     const m = fresh()
     writeFileSync(m.get("tts", "say").file, "---\nengine: banana\n---\n")
-    expect(m.list("tts")[0]).toMatchObject({ ok: false, problem: expect.stringContaining("engine") })
-    expect(m.selected("tts")).toBe(null)
+    expect(m.get("tts", "say")).toMatchObject({ ok: false, problem: expect.stringContaining("engine") })
+    expect(m.selected("tts").name).not.toBe("say") // the next working one
   })
 
   test("a wrapper in the model's folder: bin ./run found there, executable only, never ../ out of it", () => {
@@ -98,6 +100,22 @@ describe("models registry", () => {
     const once = writeValues("---\nkind: tts\nvalues:\n  rate: 100\n---\n# body\n", { rate: 200, voice: "Ava" })
     expect(once).toBe('---\nkind: tts\nvalues:\n  rate: 200\n  voice: "Ava"\n---\n# body\n')
     expect(writeValues(once, {})).toBe("---\nkind: tts\nvalues: {}\n---\n# body\n")
+  })
+})
+
+describe("real choices", () => {
+  test("an option's choices_from is filled from this Mac when the panel reads the models; the default stays one of them", async () => {
+    const { modelRoutes } = await import("./index.js")
+    const m = fresh()
+    const routes = modelRoutes(m, { choices: async () => ({ "apple-locales": ["en-GB", "en-US", "hi-IN"], "say-voices": ["Samantha", "Daniel"] }) })
+    const view = await routes.GET.models()
+    expect(view.kinds.stt.models.find((x) => x.name === "apple").options.locale).toMatchObject({ type: "choice", choices: ["en-US", "en-GB", "hi-IN"] })
+    expect(view.kinds.tts.models.find((x) => x.name === "say").options.voice).toMatchObject({ type: "choice", choices: ["", "Samantha", "Daniel"] })
+    expect(view.kinds.tts.models.find((x) => x.name === "kokoro").options.voice.choices).toContain("bf_emma")
+    expect(view.kinds.stt.models.find((x) => x.name === "parakeet").options.language.choices).toHaveLength(25)
+    // nothing read (another OS): the option stays text
+    const bare = await modelRoutes(m, { choices: async () => ({}) }).GET.models()
+    expect(bare.kinds.stt.models.find((x) => x.name === "apple").options.locale.type).toBe("text")
   })
 })
 

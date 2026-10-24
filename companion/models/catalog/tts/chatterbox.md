@@ -2,6 +2,7 @@
 kind: tts
 title: Chatterbox multilingual
 engine: openai
+seed: true
 about: Resemble's Chatterbox on MLX — expressive, emotion control.
 weights: mlx-community/chatterbox-fp16 (~1.5 GB, downloaded by mlx-audio on first use)
 install: uv tool install --force --python 3.13 "mlx-audio[stt,tts,server]" --with misaki --with "spacy>=3.8,<4" --with num2words --with phonemizer-fork --with espeakng-loader --with "en_core_web_sm@https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl" --prerelease=allow

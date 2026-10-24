@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { CheckIcon, MinusIcon } from "lucide-react"
 
 import { HOST_CAPABILITIES, detectHost, hasCapability } from "@/backend/live/host"
+import { SpeechCapability } from "@/components/models/speech-capability"
 import { readConnection, setBrowserAgent } from "@/backend/browser/settings"
 import { registry } from "@/backend/live/registry"
 import { BrowserAgentSetup } from "@/components/browser/browser-agent"
@@ -170,6 +171,7 @@ export function HostStatus() {
               )
             })}
           </ul>
+          {local && hasCapability(host, "speech") && <SpeechCapability className="border-t px-2 py-2" />}
           {/* 2026-10-20: the agent in this browser (backend/browser/) — over the desk server too, so its mode is tried on the
               live server, never on another one. */}
           {(local || (browser && host.server)) && (

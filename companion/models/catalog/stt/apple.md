@@ -6,7 +6,7 @@ default: true
 about: Apple's SpeechAnalyzer on this Mac (macOS 26+) — built in, private, nothing to download.
 install: xcode-select --install
 options:
-  locale: {type: text, default: en-US, about: "the language spoken (en-US, en-GB, hi-IN …)"}
+  locale: {type: text, default: en-US, choices_from: apple-locales, about: "the language spoken — the locales Apple's recognizer supports on this Mac"}
 values: {}
 ---
 # Apple on-device speech

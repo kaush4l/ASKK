@@ -35,7 +35,8 @@ const TIMEOUT = HOST_LIMITS.speech.timeoutMs
 
 const SpeechError = HttpError
 
-// engine openai: the options that name a request `field`, with their values now (registry.js)
+// engine openai: `lang_from_voice: true` sends the voice's first letter as lang_code (Kokoro: af_heart → a, bf_emma → b,
+// ef_dora → e — its pronunciation follows it); the options that name a request `field`, with their values now (registry.js)
 const fieldsOf = (m, opts) =>
   Object.fromEntries(Object.entries(m.options ?? {}).flatMap(([k, o]) => (o.field && opts[k] != null && opts[k] !== "" ? [[o.field, opts[k]]] : [])))
 
@@ -273,7 +274,7 @@ export async function createSpeech({ env = process.env, log = () => {}, models =
         const r = await fetch(`${url.replace(/\/$/, "")}/audio/speech`, {
           method: "POST",
           headers: { "content-type": "application/json", ...keyHeader(m) },
-          body: JSON.stringify({ model: m.meta.model, input: text, ...(name ? { voice: name } : {}), ...(speed ? { speed } : {}), response_format: "wav", ...fieldsOf(m, opts) }),
+          body: JSON.stringify({ model: m.meta.model, input: text, ...(name ? { voice: name } : {}), ...(speed ? { speed } : {}), response_format: "wav", ...(m.meta.lang_from_voice && name ? { lang_code: String(name)[0] } : {}), ...fieldsOf(m, opts) }),
           signal: AbortSignal.timeout(callMs(m)),
         })
         if (!r.ok) throw new SpeechError(502, `${m.title}: ${r.status} ${(await r.text()).slice(0, 200)}`)
@@ -315,5 +316,18 @@ export async function createSpeech({ env = process.env, log = () => {}, models =
     if (temp) rm(temp, { recursive: true, force: true }).catch(() => {})
   }
 
-  return { recognizes, voices, status, transcribe, speak, dispose }
+  // What this Mac offers for a model option's `choices_from` (models/registry.js): the locales Apple's recognizer
+  // supports (its probe, read once) and the installed `say` voices — the panel's lists are these, never typed by hand.
+  let locales = null
+  async function optionChoices() {
+    if (recognizes && !locales?.length)
+      try {
+        locales = ((await ask({ probe: true })).locales ?? []).filter((l) => typeof l === "string").sort()
+      } catch (error) {
+        log(`speech: locales not read: ${error.message}`)
+      }
+    return { "apple-locales": locales ?? [], "say-voices": say ? sayVoices().map((v) => v.name) : [] }
+  }
+
+  return { recognizes, voices, status, transcribe, speak, optionChoices, dispose }
 }

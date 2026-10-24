@@ -10,15 +10,20 @@
 //
 // A model.md's frontmatter:
 //   kind, title, about, engine (apple | say | command | openai), install (a command line the owner runs), weights
-//   (where they come from), default (seeded into a new models/ folder)
+//   (where they come from), default (seeded into a new models/ folder and used until the owner picks another), seed
+//   (seeded beside the defaults, not chosen: 2026-10-24 owner — "For STT add parakeet and for TTS we should have the
+//   kokoro, chatterbox and the defaults")
 //   bin + args (+ inputs) or modes: {<mode>: {bin, args, inputs}} — engine command: a fixed program and argument list,
 //     never a shell; `{name}` in an arg is filled from the call (audio, out, dir, text, prompt …) or an option's value;
 //     `inputs: {name: flag}` adds `flag value` only when the call has that input (a list → flag v1 v2 …; "" = positional)
+//   lang_from_voice (engine openai, tts): the voice's first letter goes as lang_code (Kokoro's voices: a, b, e, f …)
 //   url, model, key_env, serve: {bin, args} — engine openai: an OpenAI-compatible server (/v1/audio/transcriptions,
 //     /v1/audio/speech), started by the helper when it does not answer and `serve` says how
 //   output (stt command): stdout | json:<field> | file:<template>
 //   progress (image): a regex whose (\d+)/(\d+) is the step bar
 //   options: {name: {type: number | bool | choice | text, default, min?, max?, step?, choices?, flag?, about}}
+//     `choices_from: apple-locales | say-voices` — the choices read from this Mac when the panel asks (the locales
+//     Apple's recognizer supports, the installed `say` voices), never a list typed by hand
 //     an option with `flag` goes on every call (bool: the flag alone when true; choice "none": left out)
 //     engine openai: an option with `field` goes in every request under that name (Chatterbox's language as lang_code)
 //   values: {name: value}  what the owner set in the panel — written back into this block, the rest of the file as it was
@@ -73,12 +78,14 @@ export function writeValues(text, values) {
 // --- options -----------------------------------------------------------------------------------------------------------
 
 const TYPES = new Set(["number", "bool", "choice", "text"])
+export const CHOICE_SOURCES = new Set(["apple-locales", "say-voices"])
 
 function checkOptions(options = {}) {
   if (typeof options !== "object" || Array.isArray(options)) throw new Error("options: a map of name → {type, default}")
   for (const [name, o] of Object.entries(options)) {
     if (!/^[a-z][a-z0-9_]{0,31}$/.test(name)) throw new Error(`options.${name}: a lower-case name`)
     if (!o || !TYPES.has(o.type)) throw new Error(`options.${name}.type: one of ${[...TYPES].join(", ")}`)
+    if (o.choices_from != null && !CHOICE_SOURCES.has(o.choices_from)) throw new Error(`options.${name}.choices_from: one of ${[...CHOICE_SOURCES].join(", ")}`)
     if (o.type === "choice" && !(Array.isArray(o.choices) && o.choices.length)) throw new Error(`options.${name}.choices: the list`)
     if (o.default != null) checkValue(o, o.default, name)
   }
@@ -173,7 +180,7 @@ export function loadModels({ root = modelsRoot(), catalog = CATALOG, log = () =>
   for (const kind of KINDS) {
     mkdirSync(join(root, kind), { recursive: true })
     if (readdirSync(join(root, kind)).some((n) => existsSync(join(root, kind, n, "model.md")))) continue
-    for (const entry of catalogList(catalog, kind).filter((c) => c.meta.default)) {
+    for (const entry of catalogList(catalog, kind).filter((c) => c.meta.default || c.meta.seed)) {
       copyIn(catalog, root, kind, entry.name)
       seeded.push(`${kind}/${entry.name}`)
     }

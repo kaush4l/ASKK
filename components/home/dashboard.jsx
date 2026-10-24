@@ -9,6 +9,7 @@ import { describeActivity } from "@/backend/live/activity"
 import { isRunRequest } from "@/backend/live/agent"
 import { talkOf } from "@/backend/live/talk"
 import { HOST_CAPABILITIES, detectHost, hasCapability } from "@/backend/live/host"
+import { SpeechCapability } from "@/components/models/speech-capability"
 import { DeskTalk } from "@/components/talk/desk-talk"
 import { BrowserAgentBar, BrowserAgentSetup } from "@/components/browser/browser-agent"
 import { Constellation } from "@/components/home/constellation"
@@ -294,6 +295,7 @@ function WorkspaceCard() {
           </span>
         )}
       </Link>
+      {local && hasCapability(host, "speech") && <SpeechCapability className="px-1" />}
     </section>
   )
 }

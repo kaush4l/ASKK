@@ -118,8 +118,23 @@ async function install(model, log) {
 
 // --- routes -------------------------------------------------------------------------------------------------------------------
 
-export function modelRoutes(models, { log = () => {}, readOnly = false } = {}) {
-  const twin = (m) => twinOf(m, { ...models.ready(m), installing: !!(m.install && installing.has(m.install)) })
+// choices: async () => ({"apple-locales": [...], "say-voices": [...]}) — what this Mac offers for an option's
+// `choices_from` (hardware/speech); an option whose source answers is drawn as a choice of those, else stays text.
+export function modelRoutes(models, { log = () => {}, readOnly = false, choices = async () => ({}) } = {}) {
+  let sources = {}
+  const fill = (options) =>
+    Object.fromEntries(
+      Object.entries(options ?? {}).map(([k, o]) => {
+        const list = o.choices_from ? sources[o.choices_from] : null
+        if (!list?.length) return [k, o]
+        // the default (e.g. "" = the system voice) stays one of them
+        return [k, { ...o, type: "choice", choices: [...new Set([...(o.default != null ? [o.default] : []), ...list])] }]
+      }),
+    )
+  const twin = (m) => {
+    const t = twinOf(m, { ...models.ready(m), installing: !!(m.install && installing.has(m.install)) })
+    return { ...t, options: fill(t.options) }
+  }
   const view = () => ({
     root: models.root,
     kinds: Object.fromEntries(
@@ -129,7 +144,16 @@ export function modelRoutes(models, { log = () => {}, readOnly = false } = {}) {
   })
   const name = (b) => [String(b?.kind ?? ""), String(b?.name ?? "")]
   return {
-    GET: { models: view },
+    GET: {
+      models: async () => {
+        try {
+          sources = (await choices()) ?? {}
+        } catch (error) {
+          log(`models: this Mac's choices not read: ${error.message}`)
+        }
+        return view()
+      },
+    },
     POST: readOnly
       ? {}
       : {

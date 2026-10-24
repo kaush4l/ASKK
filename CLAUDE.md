@@ -661,7 +661,13 @@ host's mcp/call as the desk (`dataTools`, `dataCall`), approved as `mcp__data`; 
   `models/<kind>/<name>/weights/`; `bun scripts/model.js list | check <kind>/<name> | test <kind>/<name>` (test: twice
   through the live server, output in `.model-test/`, the selection put back); the steps are the Claude Code skill
   `.claude/skills/add-model/SKILL.md`), `models/models.md` the one chosen per kind;
-  a new folder seeded from `companion/models/catalog/` (apple, say, qwen-image-2.1, the presets); `index.js`
+  a new folder seeded from `companion/models/catalog/` (`default:` apple, say, qwen-image-2.1 — in use; 2026-10-24 owner
+  "for STT add parakeet and for TTS … kokoro, chatterbox and the defaults": `seed:` parakeet, kokoro, chatterbox beside
+  them, not chosen; the presets); options are real (owner: "should not be placeholders"): `choices_from: apple-locales |
+  say-voices` filled from this Mac at GET models (`speech.optionChoices()`: the recognizer's supported locales, the `say`
+  voices), Kokoro's 41 voices that run (Japanese and Chinese need extras) with `lang_from_voice` (the voice's first letter
+  as lang_code), Parakeet's 25 languages; the host menu and the home workspace card show both kinds with the model in use
+  and the others (`components/models/speech-capability.jsx`, `backend/live/models.js` `speechLines`); `index.js`
   `sharedModels` (once per process), `ensureServer` (ours and running: used, never killed for a slow probe; exited: started
   again; killed with the desk server, SIGKILL), routes GET `models`, POST `models/select|set|add|install|start` (the
   owner's: a request with `x-askk-desk` gets 403; install runs `uv tool install` / `brew install` lines only; `key_env`
