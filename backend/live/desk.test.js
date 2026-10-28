@@ -182,3 +182,39 @@ test("holdings: an agent's own tools, its artifacts and its agents — artifact 
   expect(holdings(null)).toEqual({ tools: 0, artifacts: 0, agents: 0 })
   expect(holdings({ artifacts: [{ id: "talk" }], tools: [] })).toEqual({ tools: 0, artifacts: 1, agents: 0 })
 })
+
+test("DESK_MODELS, setDeskModel and setAgentModel: desk default model and per-agent override calls", async () => {
+  const { DESK_MODELS, kernelDesk, setAgentModel, setDeskModel } = await import("./desk.js")
+  expect(DESK_MODELS.map((m) => m.key)).toEqual(["default", "omlx", "argon"])
+  kernelDesk.apply({ type: "snapshot", kernel: { title: "Agent", defaultModel: "default", models: DESK_MODELS, tree: { name: "agent" }, artifacts: {} } })
+  expect(kernelDesk.getSnapshot().defaultModel).toBe("default")
+  kernelDesk.apply({ type: "kernel", defaultModel: "argon" })
+  expect(kernelDesk.getSnapshot().defaultModel).toBe("argon")
+  const realFetch = globalThis.fetch
+  const calls = []
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url, body: JSON.parse(init.body) })
+    return new Response(JSON.stringify({ ok: true, value: {} }), { headers: { "content-type": "application/json" } })
+  }
+  try {
+    await setDeskModel("omlx")
+    await setAgentModel("agent", "argon")
+    await setAgentModel("agent", null)
+    expect(calls.map((c) => c.body)).toEqual([
+      { target: "desk", method: "model", args: [{ model: "omlx" }] },
+      { target: "desk", method: "agentModel", args: [{ agent: "agent", model: "argon" }] },
+      { target: "desk", method: "agentModel", args: [{ agent: "agent", model: null }] },
+    ])
+  } finally {
+    globalThis.fetch = realFetch
+  }
+})
+test("deskFromQuery: ?desk picks a known desk not shown yet, else null (no reload loop)", async () => {
+  const { deskFromQuery } = await import("./desk.js")
+  const desks = [{ name: "agent" }, { name: "dev" }]
+  expect(deskFromQuery("?desk=dev", desks, "agent")).toBe("dev")
+  expect(deskFromQuery("?desk=dev", desks, "dev")).toBeNull() // already shown: no second reload
+  expect(deskFromQuery("?desk=nope", desks, "agent")).toBeNull()
+  expect(deskFromQuery("", desks, "agent")).toBeNull()
+  expect(deskFromQuery("?desk=dev", null, "agent")).toBeNull()
+})

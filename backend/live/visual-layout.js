@@ -24,10 +24,13 @@ export function extent(values) {
 }
 
 // A matrix visual's colour range: its own range, else every frame's extent (diverging: symmetric around 0).
+// 2026-10-27 (/?open=surgeon threw "reading 'map'"): a range is used only when it is two finite numbers; no frames or a
+// null frame gives the empty extent [0, 1] ([-1, 1] diverging).
 export function matrixRange(v) {
-  if (v.range) return v.range
-  const [lo, hi] = extent(v.frames.map((f) => f.values))
-  if (!v.diverging) return [lo, hi]
+  const r = v?.range
+  if (Array.isArray(r) && r.length === 2 && r.every((x) => Number.isFinite(x))) return r
+  const [lo, hi] = extent((v?.frames ?? []).filter(Boolean).map((f) => f.values ?? []))
+  if (!v?.diverging) return [lo, hi]
   const m = Math.max(Math.abs(lo), Math.abs(hi)) || 1
   return [-m, m]
 }

@@ -1,0 +1,2 @@
+{ "name": "askk-wasm-spike", "private": true, "type": "module",
+  "devDependencies": { "@bytecodealliance/componentize-js": "0.23.0", "@bytecodealliance/jco": "1.39.0", "@bytecodealliance/preview2-shim": "0.30.0" } }

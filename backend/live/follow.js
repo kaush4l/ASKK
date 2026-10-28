@@ -32,6 +32,21 @@ export function toolCall(engine, call) {
 // when an earlier one finished; a finished call's row took a new id, so the Live page lost the selection).
 const callId = (engineId, stepRow, index) => `${engineId}-call-${stepRow}-${index}`
 
+// The rows that are not calls, by what the message is. Gate: an answer the kernel refused (open checklist, report
+// missing fields, no tool called) or a reply it could not take — the agent goes on, the trail shows why. Compact (kernel
+// event compact, 2026-10-22): the older work folded into one summary. Lifecycle (2026-10-23): a helper spawned,
+// dismissed, kept or proposed, where the agent that caused it works — the feed follows the team changing shape, not
+// only its calls. Refresh (2026-10-23): an artifact's refresh before a step failed (the step used its last state) or
+// came back. Guidance (team call `guide`): the agent's next step reads it.
+const NOTES = {
+  gate: (m) => ({ name: m.kind === "format" ? "reply not taken" : "answer refused", kind: "gate", view: "gate", ok: false }),
+  compact: () => ({ name: "prompt compacted", kind: "compact", view: "compact", ok: true }),
+  lifecycle: (m) => ({ name: m.kind, kind: "spawn", view: "spawn", inputs: m.agent ? { agent: m.agent } : {}, ok: true }),
+  refresh: (m) => ({ name: `${m.artifact} refresh`, kind: "tool", type: "artifact", view: "artifact", ok: !!m.ok }),
+  guidance: (m) => ({ name: "guidance", kind: "guidance", view: "guidance", ok: true, from: m.from ?? "owner" }),
+}
+const noteOf = (m) => (m.role === "assistant" ? NOTES[m.action] : m.role === "user" && m.kind === "guidance" ? NOTES.guidance : null)
+
 export function liveFeed(engines, states) {
   const events = []
   engines.forEach((engine, index) => {
@@ -39,31 +54,9 @@ export function liveFeed(engines, states) {
     if (!state) return
     const base = { engineId: engine.id, agent: engine.name ?? engine.id }
     for (const message of state.messages ?? []) {
-      // An answer the kernel refused (open checklist, report missing fields, no tool called) or a reply it could
-      // not take: the agent goes on, the trail shows why.
-      if (message.role === "assistant" && message.action === "gate") {
-        events.push({ ...base, id: message.id, name: message.kind === "format" ? "reply not taken" : "answer refused", kind: "gate", view: "gate", inputs: {}, state: "done", ok: false, output: message.content ?? "", at: message.at })
-        continue
-      }
-      // The prompt compacted (kernel event compact, 2026-10-22): the older work folded into one summary.
-      if (message.role === "assistant" && message.action === "compact") {
-        events.push({ ...base, id: message.id, name: "prompt compacted", kind: "compact", view: "compact", inputs: {}, state: "done", ok: true, output: message.content ?? "", at: message.at })
-        continue
-      }
-      // The desk's own events (2026-10-23: a helper spawned, dismissed, kept or proposed) where the agent that caused it
-      // works: the feed follows the team changing shape, not only its calls.
-      if (message.role === "assistant" && message.action === "lifecycle") {
-        events.push({ ...base, id: message.id, name: message.kind, kind: "spawn", view: "spawn", inputs: message.agent ? { agent: message.agent } : {}, state: "done", ok: true, output: message.content ?? "", at: message.at })
-        continue
-      }
-      // An artifact's refresh before a step failed (the step used its last state) or came back (2026-10-23).
-      if (message.role === "assistant" && message.action === "refresh") {
-        events.push({ ...base, id: message.id, name: `${message.artifact} refresh`, kind: "tool", type: "artifact", view: "artifact", inputs: {}, state: "done", ok: !!message.ok, output: message.content ?? "", at: message.at })
-        continue
-      }
-      // Guidance for the run in progress (team call `guide`): the agent's next step reads it.
-      if (message.role === "user" && message.kind === "guidance") {
-        events.push({ ...base, id: message.id, name: "guidance", kind: "guidance", view: "guidance", inputs: {}, state: "done", ok: true, output: message.content ?? "", from: message.from ?? "owner", at: message.at })
+      const note = noteOf(message)
+      if (note) {
+        events.push({ ...base, id: message.id, inputs: {}, state: "done", output: message.content ?? "", at: message.at, ...note(message) })
         continue
       }
       if (message.role !== "tool" || !message.name) continue
@@ -163,6 +156,7 @@ export function eventTarget(event) {
 // One agent's current run (else its last) as steps, oldest first, the newest `limit` of them: each call's result
 // (tool), the step's thought when it had one (think), a refused answer (gate), the owner's guidance, the answer.
 //   → { steps: [{ id, step: tool | think | gate | guidance | compact | lifecycle | refresh | answer, name?, kind?, view?, inputs?, ok?, text, from?, at }], hidden }
+const STEP_NOTES = { gate: { kind: "gate", ok: false }, compact: { kind: "compact", ok: true }, lifecycle: { kind: "spawn", view: "spawn", ok: true } }
 export function runSteps(state, { limit = 6 } = {}) {
   const messages = state?.messages ?? []
   const byId = state?.working?.request ? messages.findIndex((m) => m.id === state.working.request) : -1
@@ -174,10 +168,8 @@ export function runSteps(state, { limit = 6 } = {}) {
     const base = { id: m.id, at: m.at ?? null }
     if (m.role === "tool" && m.name) steps.push({ ...base, step: "tool", name: m.name, kind: m.kind ?? "tool", view: m.view ?? null, inputs: m.inputs ?? {}, ok: m.ok !== false, text: String(m.output ?? m.content ?? "") })
     else if (m.role === "user" && m.kind === "guidance") steps.push({ ...base, step: "guidance", kind: "guidance", text: String(m.content ?? ""), from: m.from ?? "owner" })
-    else if (m.role === "assistant" && m.action === "gate") steps.push({ ...base, step: "gate", kind: "gate", ok: false, text: String(m.content ?? "") })
-    else if (m.role === "assistant" && m.action === "compact") steps.push({ ...base, step: "compact", kind: "compact", ok: true, text: String(m.content ?? "") })
     // 2026-10-23: a helper spawned or let go, an artifact that did not refresh — the run's loop shows them where they fell
-    else if (m.role === "assistant" && m.action === "lifecycle") steps.push({ ...base, step: "lifecycle", kind: "spawn", view: "spawn", ok: true, text: String(m.content ?? "") })
+    else if (m.role === "assistant" && STEP_NOTES[m.action]) steps.push({ ...base, step: m.action, ...STEP_NOTES[m.action], text: String(m.content ?? "") })
     else if (m.role === "assistant" && m.action === "refresh") steps.push({ ...base, step: "refresh", kind: "tool", type: "artifact", view: "artifact", ok: !!m.ok, text: String(m.content ?? "") })
     else if (m.role === "assistant" && m.action === "answer") steps.push({ ...base, step: "answer", ok: !m.error, text: String(m.content ?? "") })
     else if (m.role === "assistant" && m.action === "tool") {

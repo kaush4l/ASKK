@@ -2,14 +2,8 @@
 
 import { Volume2Icon } from "lucide-react"
 
+import { time } from "@/components/live/format"
 import { cn } from "@/lib/utils"
-
-const time = (at) =>
-  new Date(at).toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  })
 
 export function Turn({ turn }) {
   if (turn.kind === "you") {

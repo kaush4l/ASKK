@@ -33,3 +33,8 @@ export function narrowText(text, { find, max } = {}) {
   const cut = out.length > cap
   return { text: `${note}${cut ? out.slice(0, cap) : out}`, truncated: cut }
 }
+
+// One line, ≤ n chars with the ellipsis (null → ""); clipAfter keeps n chars and adds the ellipsis after them.
+export const clip = (s, n) => (String(s ?? "").length > n ? `${String(s).slice(0, n - 1)}…` : String(s ?? ""))
+export const clipAfter = (s, n) => (String(s).length > n ? `${String(s).slice(0, n)}…` : String(s))
+export const oneLine = (s) => String(s ?? "").replace(/\s+/g, " ").trim()

@@ -6,15 +6,19 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 
-import { globCovers, Tool } from "../../backend/kernel/index.js"
+import { BUILTIN, globCovers, Tool } from "../../backend/kernel/index.js"
 import { fakeHost } from "../../backend/kernel/test/fake-host.js"
-import { composeDesk, hostClient, loadToolFile, loadTools, MODELS, readAgentFolder, readDeskConfig } from "./compose.js"
+import { composeDesk, hostClient, loadToolFile, loadTools, MODELS, readAgentFolder, readDeskConfig, SELECTOR_MODELS, setAgentModel } from "./compose.js"
+
+// The kit as compose lists it in a refusal (read from BUILTIN, so a new kit type never breaks these assertions).
+const KIT_TYPES = [...new Set([...Object.keys(BUILTIN.artifacts), "checklist", "report"])].sort().join(", ")
+const kitTools = (...own) => [...Object.keys(BUILTIN.tools), ...own].sort().join(", ")
 
 const FIX = join(import.meta.dir, "fixtures")
 const SAMPLE = join(FIX, "sample-desk")
 const MINI = join(FIX, "mini-desk")
 const KIT = join(FIX, "kit-desk")
-const KIT_TOOLS = "agent.catalog, agent.dismiss, agent.spawn, agent.update, desk.ask, desk.check, desk.create, desk.list, desk.load, desk.propose, desk.read, web.read, web.search" // the kernel's inbuilt kit, under every desk's own
+const KIT_TOOLS = kitTools() // the kernel's inbuilt kit, under every desk's own
 const KERNEL = resolve(import.meta.dir, "../../backend/kernel/index.js")
 const tmp = mkdtempSync(join(tmpdir(), "compose-"))
 afterAll(() => rmSync(tmp, { recursive: true, force: true }))
@@ -78,8 +82,9 @@ describe("composeDesk: sample-desk", () => {
     expect(lead.config).toMatchObject({ maxSteps: 8, folder: join(SAMPLE, "lead") })
     expect(alpha.config).toMatchObject({ model: "haiku", minCalls: 1, maxSteps: 30 })
     expect(beta.config.maxSteps).toBe(30)
-    expect(lead.artifacts.map((a) => a.id)).toEqual(["lead.checklist", "lead.report", "sample-desk.board"])
+    expect(lead.artifacts.map((a) => a.id)).toEqual(["lead.checklist", "lead.report", "ask", "sample-desk.board"]) // ask: every desk's lead holds the kit's (2026-10-27)
     expect(lead.artifacts[0]).toMatchObject({ kind: "checklist", keep: "run", owner: "sample-desk" })
+    expect(lead.artifacts.find((a) => a.id === "ask").root).toBe("projects/powerhouse") // ask reads the ASKK repo, so its cites carry lines
   })
 })
 
@@ -103,7 +108,7 @@ describe("composeDesk: mounted desks", () => {
     const { compose } = await readDeskConfig(MINI) // its main.js options: its own artifact type
     const desk = await composeDesk({ folder: MINI, ...compose, infer: scripted({ mini: [{ thought: "shout", calls: [{ tool: "shout", input: { text: "solo" } }] }] }) })
     expect(desk.twin().tree).toMatchObject({ name: "mini", desk: null, tools: [{ name: "shout", type: "function" }, { name: "where", type: "function" }], agents: [] })
-    expect(desk.lead.artifacts.map((a) => a.id)).toEqual(["mini.tally"]) // its own type, from its main.js (mini-desk/artifacts/tally.js)
+    expect(desk.lead.artifacts.map((a) => a.id)).toEqual(["mini.tally", "ask"]) // its own type, from its main.js (mini-desk/artifacts/tally.js); ask: the kit's, on every desk's lead (2026-10-27)
     const events = recorder(desk)
     await desk.ask("shout solo")
     expect(events.find((e) => e.tool === "shout" && e.event === "result").output).toBe("SOLO")
@@ -197,12 +202,12 @@ describe("composeDesk: what it refuses", () => {
   test("an unknown tool name lists the available ones", async () => {
     const root = join(tmp, "unknown")
     tempDesk(root, "u", { agents: { l: md("name: l\ntools: [nope]") }, tools: { "a.js": toolSrc("alpha.read"), "b.js": toolSrc("beta.write") } })
-    await expect(composeDesk({ folder: join(root, "u"), infer: scripted({}) })).rejects.toThrow("l: unknown tool nope; available: agent.catalog, agent.dismiss, agent.spawn, agent.update, alpha.read, beta.write, desk.ask, desk.check, desk.create, desk.list, desk.load, desk.propose, desk.read, web.read, web.search")
+    await expect(composeDesk({ folder: join(root, "u"), infer: scripted({}) })).rejects.toThrow(`l: unknown tool nope; available: ${kitTools("alpha.read", "beta.write")}`)
     const web = new Tool({ name: "web.read", description: "a page", run: () => "" })
-    await expect(composeDesk({ folder: join(root, "u"), infer: scripted({}), tools: { "web.read": web } })).rejects.toThrow("available: agent.catalog, agent.dismiss, agent.spawn, agent.update, alpha.read, beta.write, desk.ask, desk.check, desk.create, desk.list, desk.load, desk.propose, desk.read, web.read, web.search")
+    await expect(composeDesk({ folder: join(root, "u"), infer: scripted({}), tools: { "web.read": web } })).rejects.toThrow(`available: ${kitTools("alpha.read", "beta.write")}`)
     tempDesk(root, "v", { agents: { l: md("name: l\ntools: [web.read, alpha.read]") }, tools: { "a.js": toolSrc("alpha.read") } })
     const desk = await composeDesk({ folder: join(root, "v"), infer: scripted({}), tools: { "web.read": web } })
-    expect([...desk.lead.tools.keys()]).toEqual(["web.read", "alpha.read"]) // the host's catalogue after the desk's own
+    expect([...desk.lead.tools.keys()]).toEqual(["web.read", "alpha.read", "ask.what"]) // the host's catalogue after the desk's own; ask.what: the lead's kit ask (2026-10-27)
     expect(desk.lead.tools.get("web.read")).toBe(web) // and before the kernel's kit
   })
 
@@ -211,9 +216,9 @@ describe("composeDesk: what it refuses", () => {
     tempDesk(root, "k1", { agents: { l: md("name: l\nmax_step: 3") } })
     await expect(composeDesk({ folder: join(root, "k1"), infer: scripted({}) })).rejects.toThrow("unknown key max_step")
     tempDesk(root, "k2", { agents: { l: md("name: l\nmodel: gpt") } })
-    await expect(composeDesk({ folder: join(root, "k2"), infer: scripted({}), models: MODELS })).rejects.toThrow("l: unknown model gpt; models: opus, sonnet, haiku")
+    await expect(composeDesk({ folder: join(root, "k2"), infer: scripted({}), models: MODELS })).rejects.toThrow("l: unknown model gpt; models: default, omlx, argon, opus, sonnet, haiku")
     tempDesk(root, "k3", { agents: { l: md("name: l\nartifacts: [ledger]") } })
-    await expect(composeDesk({ folder: join(root, "k3"), infer: scripted({}) })).rejects.toThrow("l: unknown artifact ledger; types: audio, browse, checklist, dispatch, files, plan, practice, preview, report, studio, talk, terminal")
+    await expect(composeDesk({ folder: join(root, "k3"), infer: scripted({}) })).rejects.toThrow(`l: unknown artifact ledger; types: ${KIT_TYPES}`)
     tempDesk(root, "k4", { agents: { a: md("name: a"), b: md("name: b") } })
     await expect(composeDesk({ folder: join(root, "k4"), infer: scripted({}) })).rejects.toThrow("a desk has one lead folder with an agent.md (found a, b)")
   })
@@ -253,7 +258,7 @@ describe("the standard layout: <desk>/<lead>/<lead>.md, tools.js per agent", () 
     const infer = scripted({ scout: [{ thought: "find", calls: [{ tool: "scout.find", input: {} }] }] })
     const desk = await composeDesk({ folder, infer })
     const [boss, scout] = ["boss", "scout"].map((n) => desk.agents().get(n))
-    expect([...boss.tools.keys()]).toEqual(["boss.plan", "boss.sum", "desk.echo", "scout", "s1.board.write"]) // its own first, listed once
+    expect([...boss.tools.keys()]).toEqual(["boss.plan", "boss.sum", "desk.echo", "scout", "ask.what", "s1.board.write"]) // its own first, listed once; ask.what: the lead's kit ask (2026-10-27)
     expect([...scout.tools.keys()]).toEqual(["scout.find", "desk.echo", "s1.board.write"]) // named after its folder (no name: key)
     expect(scout.config).toMatchObject({ folder: join(folder, "boss", "scout"), description: "finds things" })
     expect(boss.config.folder).toBe(join(folder, "boss"))
@@ -322,9 +327,9 @@ describe("the inbuilt kit, attached by name (kit-desk)", () => {
     const lead = agent("lead")
     expect([...lead.tools.keys()].slice(0, 4)).toEqual(["web.search", "agent.spawn", "coder", "critic"])
     for (const t of ["files.read", "terminal.run", "preview.open", "plan.write", "kit-desk.board.write"]) expect(lead.tools.has(t)).toBe(true)
-    expect(lead.artifacts.map((a) => a.id)).toEqual(["files", "terminal", "preview", "plan", "kit-desk.board"])
+    expect(lead.artifacts.map((a) => a.id)).toEqual(["files", "terminal", "preview", "plan", "ask", "kit-desk.board"]) // ask: every desk's lead holds the kit's (2026-10-27)
     const held = Object.fromEntries([...desk.artifacts()].map(([id, { holders }]) => [id, holders]))
-    expect(held).toEqual({ files: ["lead", "coder", "critic"], terminal: ["lead", "coder", "critic"], preview: ["lead", "coder", "critic"], plan: ["lead", "coder"], "kit-desk.board": ["lead", "coder"] })
+    expect(held).toEqual({ files: ["lead", "coder", "critic"], terminal: ["lead", "coder", "critic"], preview: ["lead", "coder", "critic"], plan: ["lead", "coder"], ask: ["lead"], "kit-desk.board": ["lead", "coder"] })
     expect(agent("coder").artifacts[0]).toBe(lead.artifacts[0]) // the same files instance
     expect(agent("coder").tools.get("web.read")).toMatchObject({ type: "function", view: "web" })
     expect(desk.twin().artifacts.files).toMatchObject({ kind: "files", view: "files", holders: ["lead", "coder", "critic"] })
@@ -370,7 +375,7 @@ describe("the inbuilt kit, attached by name (kit-desk)", () => {
   test("unknown names list the known ones; a kit entry's keys and the lanes are checked at compose time", async () => {
     const root = join(tmp, "kit")
     tempDesk(root, "a1", { agents: { l: md("name: l\nartifacts: [filez]") } })
-    await expect(composeDesk({ folder: join(root, "a1"), infer: scripted({}) })).rejects.toThrow("l: unknown artifact filez; types: audio, browse, checklist, dispatch, files, plan, practice, preview, report, studio, talk, terminal")
+    await expect(composeDesk({ folder: join(root, "a1"), infer: scripted({}) })).rejects.toThrow(`l: unknown artifact filez; types: ${KIT_TYPES}`)
     tempDesk(root, "a2", { agents: { l: md("name: l\ntools: [web.serch]") } })
     await expect(composeDesk({ folder: join(root, "a2"), infer: scripted({}) })).rejects.toThrow(`l: unknown tool web.serch; available: ${KIT_TOOLS}`)
     tempDesk(root, "a3", { agents: { l: md("name: l\nartifacts: [{type: plan, gat: true}]") } })
@@ -384,7 +389,7 @@ describe("the inbuilt kit, attached by name (kit-desk)", () => {
     tempDesk(root, "a7", { agents: { l: md('name: l\nwrites: "projects/**, shared/**"\nartifacts: [{type: files, id: notes}]') } })
     const desk = await composeDesk({ folder: join(root, "a7"), infer: scripted({}) })
     expect(desk.lead.config.writes).toEqual(["projects/**", "shared/**"])
-    expect(desk.lead.artifacts.map((a) => a.id)).toEqual(["notes"])
+    expect(desk.lead.artifacts.map((a) => a.id)).toEqual(["notes", "ask"]) // ask: every desk's lead holds the kit's (2026-10-27)
   })
 
   // 2026-10-17 owner ("let the lead, when required, create a sub team"): teams/<team>/agent.md are templates the lead
@@ -408,7 +413,7 @@ describe("the inbuilt kit, attached by name (kit-desk)", () => {
       { name: "watcher", description: "Watches the layer's numbers and writes what moved.", role: expect.stringContaining("watch.md"), tools: [], artifacts: [{ type: "files", commands: ["read", "write"] }], writes: ["shared/*/probe/watch.md"], max_steps: 20, members: [] },
       { name: "gauge", description: expect.any(String), role: expect.stringContaining("gauge-<n>.md"), tools: [], artifacts: ["files", { type: "terminal", commands: ["read"] }], writes: ["shared/*/probe/gauge-*.md"], reads: ["shared/*/probe/**", "projects/*/out/**"], board: false, members: [] },
     ])
-    expect(models).toEqual(["opus", "sonnet", "haiku"]) // the names agent.spawn checks a model against
+    expect(models).toEqual(["default", "omlx", "argon", "opus", "sonnet", "haiku"]) // the names agent.spawn checks a model against
     expect([...desk.agents().keys()]).toEqual(["lead", "coder", "critic"]) // a template is never built at start
     const plain = await composeDesk({ folder: SAMPLE, infer: scripted({}) })
     expect(plain.ctx.env.templates).toEqual({}) // no teams/
@@ -455,7 +460,7 @@ describe("the inbuilt kit, attached by name (kit-desk)", () => {
     // The input's own fields win, and are bounded by the caller: a lane outside the lead's, or a model the desk lacks,
     // builds nothing.
     await expect(call(lead, "agent.spawn", { template: "probe", name: "wide", writes: ["projects/**"] })).rejects.toThrow("writes: projects/** is outside your lane (yours: shared/**)")
-    await expect(call(lead, "agent.spawn", { template: "probe", name: "odd", model: "gpt" })).rejects.toThrow("unknown model gpt; models: opus, sonnet, haiku")
+    await expect(call(lead, "agent.spawn", { template: "probe", name: "odd", model: "gpt" })).rejects.toThrow("unknown model gpt; models: default, omlx, argon, opus, sonnet, haiku")
     await expect(call(lead, "agent.spawn", { template: "nope" })).rejects.toThrow("unknown template nope; templates: probe")
     expect([...desk.agents().keys()].filter((n) => /^(wide|odd)/.test(n))).toEqual([])
     // A second team from the same template: its own names.
@@ -485,8 +490,8 @@ describe("the inbuilt kit, attached by name (kit-desk)", () => {
     }
     const lead = md("name: tm\nagents: [m]", "Leads tm.")
     expect(await refused("t1", { tm: md("name: tm\ntools: [nope]") }, `unknown tool nope; available: ${KIT_TOOLS}`)).toContain(join(root, "t1", "teams", "tm", "agent.md"))
-    expect(await refused("t2", { tm: lead, "tm/m": md("name: m\nartifacts: [ledger]") }, "unknown artifact ledger; types: audio, browse, checklist, dispatch, files, plan, practice, preview, report, studio, talk, terminal")).toContain(join(root, "t2", "teams", "tm", "m", "agent.md"))
-    await refused("t3", { tm: md("name: tm\nmodel: gpt") }, "t3/teams/tm/agent.md: unknown model gpt; models: opus, sonnet, haiku")
+    expect(await refused("t2", { tm: lead, "tm/m": md("name: m\nartifacts: [ledger]") }, `unknown artifact ledger; types: ${KIT_TYPES}`)).toContain(join(root, "t2", "teams", "tm", "m", "agent.md"))
+    await refused("t3", { tm: md("name: tm\nmodel: gpt") }, "t3/teams/tm/agent.md: unknown model gpt; models: default, omlx, argon, opus, sonnet, haiku")
     await refused("t4", { tm: md("name: tm\nmax_step: 3") }, "t4/teams/tm/agent.md: unknown key max_step")
     await refused("t5", { tm: md("name: tm\nartifacts: [{type: terminal, commands: [read, rm]}]") }, "t5/teams/tm/agent.md: terminal has no command rm (has run, start, wait, read, send, stop, list)")
     await refused("t6", { tm: md("name: tm\nartifacts: [{type: plan, gat: true}]") }, "t6/teams/tm/agent.md: artifacts: plan takes type, id, commands, gate, reflect (not gat)")
@@ -702,7 +707,7 @@ describe("scripts/tool.js and scripts/desk.js", () => {
     expect(run("scripts/desk.js", "check", "companion/team/fixtures/bad-tool")).toMatchObject({ code: 1, err: expect.stringContaining("no main.js") })
     const kit = run("scripts/desk.js", "check", "companion/team/fixtures/kit-desk") // the kit by name, no tools/ of its own
     expect(kit.code).toBe(0)
-    expect(JSON.parse(kit.out).tools.critic).toEqual(["files.list", "files.read", "files.write", "files.edit", "files.append", "files.search", "files.focus", "terminal.wait", "terminal.read", "terminal.list", "preview.open", "preview.text", "preview.shot"])
+    expect(JSON.parse(kit.out).tools.critic).toEqual(["files.list", "files.open", "files.close", "files.read", "files.write", "files.edit", "files.append", "files.search", "files.focus", "terminal.wait", "terminal.read", "terminal.list", "preview.open", "preview.text", "preview.shot"])
   })
 
   test("desk.js check lists the teams/ templates as they spawn (members <team>-<member>); a bad template fails it", () => {
@@ -736,5 +741,24 @@ describe("loadTools", () => {
     writeFileSync(join(dir, "lib", "word.js"), 'export const word = "two"\n')
     expect((await loadTools(dir)).count.description).toBe("v2 two")
     expect(await loadTools(join(tmp, "no-such-dir"))).toEqual({})
+  })
+})
+
+describe("model selector catalogue and agent.md model metadata override", () => {
+  test("SELECTOR_MODELS exposes default Claude, omlx and argon; setAgentModel writes and clears model: in <agent>.md", async () => {
+    expect(SELECTOR_MODELS.map((m) => m.key)).toEqual(["default", "omlx", "argon"])
+    const folder = standardDesk(join(tmp, "models"), "m1", {
+      agents: { boss: md("name: boss\ndescription: leads\ntools: []") },
+    })
+    const bossDir = join(folder, "boss")
+    const desk1 = await composeDesk({ folder, infer: scripted({}), models: MODELS, defaultModel: "default" })
+    expect(desk1.defaultModel).toBe("default")
+    expect(desk1.lead.config.model).toBeUndefined() // inherits the desk's default model
+    expect(setAgentModel(bossDir, "argon")).toBe("argon")
+    expect(readAgentFolder(bossDir).model).toBe("argon")
+    const desk2 = await composeDesk({ folder, infer: scripted({}), models: MODELS, defaultModel: "default" })
+    expect(desk2.lead.config.model).toBe("argon")
+    expect(setAgentModel(bossDir, null)).toBeNull()
+    expect(readAgentFolder(bossDir).model).toBeUndefined()
   })
 })

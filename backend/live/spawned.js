@@ -9,7 +9,7 @@
 //   member "member of <team> · spawned by <its lead> · …".
 //   2026-10-20: a proposal that waits for the owner (`spawned.proposed`, kernel builtin/spawn.js: a keep: desk or a
 //   kept helper's update from a run that read the web) ends the line with "keep desk waits for you" / "update waits for
-//   you"; proposedOf(node) is its view's data, heldHelpers(tree) every one in a desk tree.
+//   you"; proposedOf(node) is its view's data.
 
 const GOAL_CHARS = 120
 
@@ -70,17 +70,4 @@ export function treeNode(tree, name) {
     if (hit) return hit
   }
   return null
-}
-
-// Every helper in a desk tree with a proposal waiting, top-down.
-export function heldHelpers(tree) {
-  const out = []
-  const walk = (n) => {
-    if (!n) return
-    const p = proposedOf(n)
-    if (p) out.push(p)
-    for (const c of n.agents ?? []) walk(c)
-  }
-  walk(tree)
-  return out
 }

@@ -31,8 +31,8 @@ describe("agent loop", () => {
     const events = []
     agent.on("*", (e) => events.push(e.event))
     expect(await agent.ask("add")).toBe("3 and 7")
-    expect(prompts.a[1]).toContain("add → 3")
-    expect(prompts.a[1]).toContain("add → 7")
+    expect(prompts.a[1]).toContain("add {x: 1, y: 2} → 3")
+    expect(prompts.a[1]).toContain("add {x: 3, y: 4} → 7")
     expect(events).toEqual(["start", "think", "step", "call", "call", "result", "result", "think", "step", "answer"])
   })
 
@@ -141,7 +141,7 @@ describe("desks: every tool typed, agents are tools", () => {
     const seen = []
     desk.on((e) => e.event === "answer" && seen.push(`${e.team}:${e.agent}`))
     expect(await desk.ask("today")).toBe("plan ready")
-    expect(prompts.boss[1]).toContain("world → risk-on")
+    expect(prompts.boss[1]).toMatch(/world \{requirement: [^\n]*\} → risk-on/)
     expect(prompts.world[1]).toContain("[acme] news: ACME 500")
     expect(prompts.news[0]).toContain("desk GOAL: find the day's trade")
     expect(prompts.boss[1]).not.toContain("[acme]")
@@ -402,7 +402,7 @@ test("call and result carry the call's index in its step and its input: results 
     { event: "result", tool: "quote", input: { symbol: "ACME" }, index: 0, output: "ACME 500" },
   ])
   // The step keeps its results in call order: the prompt reads ACME's first.
-  expect(prompts.a[1]).toContain("quote → ACME 500\n  quote → GAMMA 217")
+  expect(prompts.a[1]).toContain("quote {symbol: ACME} → ACME 500\n  quote {symbol: GAMMA} → GAMMA 217")
 })
 
 test("a brief field read as a list or object reaches the sub-agent as lines, not JSON", async () => {

@@ -236,6 +236,11 @@ export function fakeHost({ files = {}, binary = [], onStart = null, search = nul
         p.status = "closed"
         return { page: pageSummary(p) }
       }
+      case "browser/record": {
+        const p = pageOf(path, body.id)
+        p.recording = body.on === true
+        return { page: pageSummary(p) }
+      }
       default:
         throw fail("POST", path, 404, `No route ${path}`)
     }

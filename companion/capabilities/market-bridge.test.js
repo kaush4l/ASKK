@@ -3,8 +3,16 @@ import { BRIDGE_NAMES, bridgeCall, dataCall, dataTools, hostCaller, hostTools, p
 
 const now = new Date("2026-10-22T14:00:00Z")
 
-test("a fixed allowlist of six read tools; anything else refused", async () => {
-  expect(BRIDGE_NAMES).toEqual(["quotes", "bars", "option_chain", "option_instruments", "option_quotes", "index_quote"])
+test("a fixed allowlist of read tools; anything else refused", async () => {
+  expect(BRIDGE_NAMES).toEqual(["quotes", "bars", "option_chain", "option_instruments", "option_quotes", "index_quote", "indicators", "fundamentals", "analyst", "scan"])
+  const at = new Date("2026-10-25T14:00:00Z")
+  expect(plan("indicators", { symbols: ["spy", "QQQ"], type: "macd", interval: "day", fast_period: 8 }, at)).toEqual([{ tool: "get_equity_technical_indicators", arguments: { symbols: ["SPY", "QQQ"], type: "macd", interval: "day", bounds: "regular", start_time: "2026-06-27T14:00:00.000Z", end_time: "2026-10-25T14:00:00.000Z", output: "latest", fast_period: 8 } }])
+  expect(plan("indicators", { symbols: ["SPY"], type: "pivot_points", interval: "day" }, at)[0].arguments.method).toBe("classic")
+  expect(() => plan("indicators", { symbols: ["SPY"], type: "rsi", interval: "2minute" })).toThrow("interval: minute")
+  expect(() => plan("indicators", { symbols: ["SPY"], type: "rsi", interval: "day", output: "all" })).toThrow("output: latest")
+  expect(plan("scan", { filters: [{ filter_type: "FILTER_TYPE_RSI", predicate: "PREDICATE_LESS_THAN", values: ["30"] }] })[0]).toEqual({ tool: "preview_scan", arguments: { filters: [{ filter_type: "FILTER_TYPE_RSI", predicate: "PREDICATE_LESS_THAN", values: ["30"] }] } })
+  expect(() => plan("scan", { filters: [] })).toThrow("filters: 1–12")
+  expect(plan("analyst", { symbols: ["nvda"] })[0]).toEqual({ tool: "get_equity_analyst_ratings", arguments: { symbols: ["NVDA"] } })
   const r = await bridgeCall("place_equity_order", {}, { call: async () => "x" })
   expect(r).toMatchObject({ isError: true, content: [{ text: expect.stringContaining("unknown tool place_equity_order") }] })
 })
@@ -53,7 +61,7 @@ test("stdio JSON-RPC: initialize, tools/list, tools/call, unknown method", async
   await serve({ call: async () => '{"SPY":773.1}', input, write: (s) => out.push(JSON.parse(s)) })
   const by = Object.fromEntries(out.map((m) => [m.id, m]))
   expect(by[1].result.serverInfo.name).toBe("askk-market")
-  expect(by[2].result.tools).toHaveLength(6)
+  expect(by[2].result.tools).toHaveLength(10)
   expect(by[3].result.content[0].text).toBe('{"SPY":773.1}')
   expect(by[4].error.code).toBe(-32601)
   expect(out).toHaveLength(4) // the notification has no answer

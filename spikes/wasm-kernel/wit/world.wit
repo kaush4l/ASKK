@@ -1,0 +1,26 @@
+package askk:spike@0.1.0;
+
+/// What the kernel may ask of the machine: the only doors out of the sandbox (ctx.host, as WIT).
+interface host {
+  /// Read a text file the desk was granted.
+  fs-read: func(path: string) -> result<string, string>;
+  /// Write a text file the desk was granted.
+  fs-write: func(path: string, text: string) -> result<_, string>;
+  /// One model call: the rendered prompt in, the reply out.
+  complete: func(prompt: string) -> result<string, string>;
+  log: func(line: string);
+}
+
+/// What the kernel offers: a run of its lead agent.
+interface team {
+  ask: func(request: string) -> result<string, string>;
+}
+
+world kernel {
+  import host;
+  export team;
+}
+
+world host-impl {
+  export host;
+}

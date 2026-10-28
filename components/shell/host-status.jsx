@@ -8,6 +8,7 @@ import { HOST_CAPABILITIES, detectHost, hasCapability } from "@/backend/live/hos
 import { SpeechCapability } from "@/components/models/speech-capability"
 import { readConnection, setBrowserAgent } from "@/backend/browser/settings"
 import { registry } from "@/backend/live/registry"
+import { deskFromQuery } from "@/backend/live/desk"
 import { BrowserAgentSetup } from "@/components/browser/browser-agent"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
 import { browserStore } from "@/backend/browser/storage"
@@ -27,6 +28,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { API_PREFIX, LIMITS, ROUTES } from "@/lib/config"
 import { cn } from "@/lib/utils"
+import { hm } from "@/backend/live/time"
 
 // The desks one server hosts (scripts/dev.js --desks): GET desks, or null
 // when this server runs a single team.
@@ -50,8 +52,6 @@ async function switchDesk(name) {
   if (response.ok) window.location.reload()
 }
 
-const clock = (iso) => (iso ? new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : null)
-
 // The workflow a desk is running now (GET desks → work): the lead's run first, then the others.
 function DeskWork({ work = [] }) {
   if (!work.length) return <span className="text-xs text-muted-foreground">Idle</span>
@@ -62,7 +62,7 @@ function DeskWork({ work = [] }) {
         Running{first.lead ? "" : ` (${first.agent})`}: {first.run ?? "a run"}
       </span>
       <span className="text-muted-foreground">
-        {[first.step, first.since && `since ${clock(first.since)}`, rest.length && `+${rest.length} agent${rest.length > 1 ? "s" : ""} (${rest.map((w) => w.agent).join(", ")})`]
+        {[first.step, first.since && `since ${hm(first.since)}`, rest.length && `+${rest.length} agent${rest.length > 1 ? "s" : ""} (${rest.map((w) => w.agent).join(", ")})`]
           .filter(Boolean)
           .join(" · ")}
       </span>
@@ -86,7 +86,13 @@ export function HostStatus() {
   React.useEffect(() => {
     detectHost().then((found) => {
       setHost(found)
-      if (found.mode === "local") loadDesks().then(setDesks)
+      if (found.mode === "local")
+        loadDesks().then((d) => {
+          // 2026-10-26 (desk-param): a /live?desk=dev link shows that desk whatever the askk_desk cookie holds.
+          const pick = d?.desks?.length ? deskFromQuery(window.location.search, d.desks, found.desk?.name ?? d.current) : null
+          if (pick) switchDesk(pick)
+          else setDesks(d)
+        })
     })
   }, [status])
   // Each desk's running workflow: refreshed while the page is visible and whenever the menu opens.
@@ -157,13 +163,10 @@ export function HostStatus() {
           <ul className="grid grid-cols-2 gap-x-3 gap-y-1.5 p-2 text-sm">
             {HOST_CAPABILITIES.map((cap) => {
               const on = hasCapability(host, cap.id)
+              const Mark = on ? CheckIcon : MinusIcon
               return (
                 <li key={cap.id} className="flex gap-2">
-                  {on ? (
-                    <CheckIcon className="mt-0.5 size-4 shrink-0 text-emerald-500" aria-label="Available" />
-                  ) : (
-                    <MinusIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-label="Not available" />
-                  )}
+                  <Mark className={cn("mt-0.5 size-4 shrink-0", on ? "text-emerald-500" : "text-muted-foreground")} aria-label={on ? "Available" : "Not available"} />
                   <span className={cn(!on && "text-muted-foreground")} title={on ? cap.label : `${cap.label} — ${local ? (cap.localOff ?? "Not on this server.") : "Needs the desk server."}`}>
                     {browser && cap.id === "team" ? "Agent in this tab" : (cap.short ?? cap.label)}
                   </span>

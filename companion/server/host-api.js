@@ -15,6 +15,12 @@
 //        .agents/ is made, ignoring itself; setup (default: when it has no .agents/project.md yet) gives the lead its
 //        first-setup run (from the owner) → "sent" | "skipped" | the reason it was not sent
 //   POST projects/unload { name }   { name } — the desk forgets a project the owner loaded (its folder is untouched)
+//   GET projects/checkpoints?name=   GET projects/restarts   POST projects/checkpoint { name, why, kind? }
+//   POST projects/rollback { name, id, why }   POST projects/health { name }   POST projects/restart { name, why, good? }
+//        (2026-10-25: capabilities/checkpoints.js and restart.js — the tree kept, rolled back, the server restarted
+//        and rolled back when it does not come up healthy)
+//   POST projects/init { name }   { name, path, branch, created, setup } — a main.js worktree project made (git worktree
+//        add on its branch, then its setup argv once)
 //   (fs/* below: companion/capabilities/files.js; with the desk's `mounts`, desks/<name>/… is a mounted desk's folder)
 //   GET fs/list?path=<rel>     { path, entries: [{ name, type, size, mtime }] }
 //   GET fs/read?path=<rel>     { path, size, binary, truncated, text, revision }
@@ -33,7 +39,7 @@
 //        revision (files): 409 if the file changed since it was read.
 //   GET fs/watch?path=<rel>    Server-Sent Events: ready { path }, then change { paths: [workspace paths], more? } —
 //        recursive, gathered 300 ms; .git, node_modules, .venv, __pycache__, .cache left out
-//   (term/* below: companion/capabilities/terminal.js — sessions in a PTY under sandbox-exec, kept running; the
+//   (term/* below: companion/capabilities/terminal.js — sessions in a PTY under sandbox-exec (or a container: sandbox.js sandboxRunner; none: no `term`, term/* 501), kept running; the
 //   desk's main.js `terminal: { toolchains, programs, timeoutSeconds, backgroundMinutes }` sets what runs)
 //   POST term/start { command, cwd?, name?, agent?, writes?, wait?, slot?, replace?, lease? }   { session } — one
 //        program or an `&&` chain (no shell), cwd in the workspace; writes: the caller's lane (globs); wait: seconds
@@ -66,6 +72,9 @@
 //   POST browser/eval { id, expression }   { value, truncated? } (capped)   POST browser/text { id }   { url,
 //        title, text } — the visible text outline   POST browser/shot { id }   { shot }   POST browser/console
 //        { id }   { lines }   POST browser/close { id }   { page }
+//   POST browser/record { id, on }   { page } — on: its screenshots kept for a recording (the preview's preview.record)
+//   (2026-10-25: a desk's main.js browser: {app: true} lets its pages show this app itself, as an agent's view — marked
+//   by GET view/enter, every write from it refused: companion/server/desks.js)
 //   GET browser/list           { pages }
 //   GET browser/shot?id=&n=    the screenshot (image/png; state/browser/<id>/<n>.png, by id and number only)
 //   (image/* below: companion/capabilities/imagegen.js — open image models on this Mac through mflux, one job at a
@@ -110,12 +119,16 @@
 //   GET llm/<provider>/v1/models, POST llm/<provider>/v1/chat/completions
 //        OpenAI-compatible: the claude/codex/gemini CLIs and Apple's on-device
 //        model (companion/capabilities/local-models.js); capability models.local
+//   POST input/sanitize { text, via?: typed | voice | telegram | guidance }   { text, original, changed, via, model?, ms?,
+//        skipped? } — the owner's words rewritten as a clear request by Apple's on-device model (2026-10-24 owner: "a
+//        sanitize method for the input"; companion/capabilities/sanitize.js); the team's sends do it themselves (the
+//        team gets the sanitizer); capability sanitize while the model is here; main.js sanitize: false turns it off
 //   POST llm/research { prompt, model?, max_turns?, seconds?, system?, tools?: ["market"] }   NDJSON events (start, tool, note, ping,
 //        result | error): the Claude CLI with WebSearch/WebFetch only, bounded turns and seconds, killed when the
 //        caller stops (companion/capabilities/research.js); capability models.research
 //   GET team/stream            Server-Sent Events: the desk's team (companion/team/kernel-team.js): snapshot, then
 //                              state / kernel / log events — capability team
-//   POST team/send { text, agent?, from? }   { ok, value: { engine, agent, queued } } — work for an agent without
+//   POST team/send { text, agent?, from?, via? }   { ok, value: { engine, agent, queued } } — work for an agent without
 //        waiting (cron, scripts, any source); default agent: the lead
 //   POST team/call { target, method, args }   { ok, value | error } — an action on an agent or the desk
 //
@@ -141,12 +154,14 @@ import { createApple } from "../hardware/apple/index.js"
 import { loadHardware } from "../hardware/index.js"
 import { createFiles } from "../capabilities/files.js"
 import { createTerm, termRoutes } from "../capabilities/terminal.js"
+import { sandboxRunner } from "../capabilities/sandbox.js"
 import { projectRegistry } from "../capabilities/projects.js"
 import { browserRoutes, createBrowser } from "../capabilities/browser.js"
 import { createWeb, webRoutes } from "../capabilities/web.js"
 import { loadIntegrations } from "../capabilities/integrations.js"
 import { createLocalModels, findBinary, localModelRoute } from "../capabilities/local-models.js"
 import { createResearch, researchRoute } from "../capabilities/research.js"
+import { createSanitizer } from "../capabilities/sanitize.js"
 import { createImagegen, imageRoutes } from "../capabilities/imagegen.js"
 import { recordSent } from "../team/kernel-telegram.js"
 import { audioRoutes, createAudiogen } from "../capabilities/audiogen.js"
@@ -156,6 +171,8 @@ import { runDeskSetup } from "../team/desk.js"
 import { wakesRoutes } from "../shared/wakes.js"
 import { httpError, json } from "../shared/http.js"
 import { APP_ROOT } from "../shared/paths.js"
+import { createCheckpoints } from "../capabilities/checkpoints.js"
+import { projectSafetyRoutes } from "../capabilities/restart.js"
 
 export const VERSION = "0.2.0"
 import { API_PREFIX, DESKS_PORT, HOST_LIMITS } from "../shared/config.js"
@@ -174,14 +191,19 @@ export async function createHostApi({
   listen = false, // run integration listeners (a continuous server)
   hostPorts = [], // more ports of desk servers (desks.js: every hosted desk's), or a function returning them
   projectRules = {}, // { home, system }: what a loaded project may not be (capabilities/projects.js; a test's own)
+  serverWork = () => [], // every hosted desk's work now [{desk, work}] (desks.js): a restart waits for the others
 }) {
   const root = await realpath(resolve(rootArg))
+  const hostLog = (line) => (team?.log ? team.log(line) : console.error(line))
   const apple = await createApple()
   // its lines (a recognizer compiling, a voice missing) to the desk log too (2026-10-23 audit), once per process
   const { speech } = await loadHardware({ log: (line) => (team?.log ? team.log(`hardware: ${line}`) : console.log(line)) }) // hardware/: optional, per machine
   const web = createWeb()
   const local = await createLocalModels() // claude/codex/gemini CLIs, Apple on-device
   const research = createResearch({ bin: await findBinary("claude") }) // the Claude CLI with web tools only
+  // the owner's words → a clear request, on-device (sanitize.js): the team rewrites the owner's new work with it
+  const sanitizer = desk?.sanitize === false ? null : createSanitizer({ local, log: hostLog })
+  team?.useSanitizer?.(sanitizer?.available ? sanitizer : null)
   const mcpServers = await createMcp({ files: [mcpFile, ...(desk?.mcp ? [desk.mcp] : [])] })
   // A desk may limit the integrations it runs (desk `integrations: [...]`): one Telegram bot can have only one
   // listener, so a second desk declares none.
@@ -229,7 +251,6 @@ export async function createHostApi({
       : null
   // 2026-10-17: terminal sessions and preview pages live here, per desk, so they outlast agent steps and runs and
   // end with the desk (close()). The desk server's ports: no program connects to them, no page shows them.
-  const hostLog = (line) => (team?.log ? team.log(line) : console.error(line))
   // 2026-10-17 owner ("the project can be outside of our project"): projects outside ASKK, each projects/<name>/ in the
   // desk's workspace (fs/*, term/*) — main.js `projects` at start, the owner's loads in memory/<desk>/projects.json.
   const projects = desk?.projects
@@ -243,6 +264,8 @@ export async function createHostApi({
         log: hostLog,
       })
     : null
+  // 2026-10-25: checkpoints, rollback, health and restart for a desk's projects (capabilities/restart.js)
+  const safety = projects && desk?.memory && !readOnly ? projectSafetyRoutes({ snapshotSize: team?.snapshotSize ?? null, projects, desk, port, serverWork, log: hostLog, appRoot: APP_ROOT, createCheckpoints }) : null
   const mounts = projects ? { ...(desk?.mounts ?? {}), projects } : (desk?.mounts ?? null)
   // images (2026-10-23): open image models on this Mac through mflux, one job at a time (capabilities/imagegen.js)
   // always made (audit 20: a model installed from the panel after the start had no routes until a restart); generate
@@ -256,6 +279,7 @@ export async function createHostApi({
   // audio files (2026-10-24 owner: "even the lead is able to use TTS model to create audio files … the telegram personal
   // chat will be the default channel"): scripts → audio on the models' tts, audio → text, a file to Telegram
   const audio = readOnly || !speech ? null : await createAudiogen({ state: runtime, speech, files, integrations, onSent, models: sharedModels({ log: hostLog }), install: (m) => installModel(m, hostLog), log: hostLog })
+  const sandbox = sandboxRunner() // what terminal programs run under; none: no `term` (docs/portability.md)
   const capabilities = [
     ...(readOnly ? ["fs.read"] : ["fs.read", "fs.write"]),
     ...(projects ? ["projects"] : []),
@@ -267,33 +291,41 @@ export async function createHostApi({
     ...(mcp ? ["mcp"] : []),
     ...(team ? ["team"] : []),
     "wakes",
-    ...(readOnly ? [] : ["term", "browser"]),
+    ...(readOnly ? [] : sandbox.kind ? ["term", "browser"] : ["browser"]),
     ...(images?.usable ? ["images"] : []),
+    ...(sanitizer?.available ? ["sanitize"] : []),
     ...(audio ? ["audio"] : []), // its routes answer either way (a model installed later works without a restart)
     "models",
   ]
   const deskPorts = () =>
     [...new Set([port, DESKS_PORT, desk?.port, ...((typeof hostPorts === "function" ? hostPorts() : hostPorts) ?? [])].map(Number))].filter((n) => Number.isInteger(n) && n > 0)
-  const term = readOnly ? null : createTerm({ root, state: runtime, policy: desk?.terminal ?? null, mounts, hostPorts: deskPorts, log: hostLog })
-  const browser = readOnly ? null : createBrowser({ state: runtime, blockedPorts: deskPorts, log: hostLog })
+  const term = readOnly || !sandbox.kind ? null : createTerm({ root, state: runtime, policy: desk?.terminal ?? null, mounts, hostPorts: deskPorts, log: hostLog, runner: sandbox })
+  if (!readOnly && !sandbox.kind) hostLog(`term: off — ${sandbox.reason}`)
+  // no sandbox: term/* say why instead of an unknown route (the kit's terminal artifact shows the reason)
+  const termOff = (_body) => {
+    throw httpError(501, `The terminal is not available: ${sandbox.reason}`)
+  }
+  const termRoutesOff = !readOnly && !sandbox.kind ? { GET: { "term/list": termOff, "term/read": termOff }, POST: { "term/start": termOff, "term/write": termOff, "term/wait": termOff, "term/stop": termOff } } : null
+  const browser = readOnly ? null : createBrowser({ state: runtime, blockedPorts: deskPorts, appPorts: () => (desk?.browser?.app ? [port] : []), log: hostLog })
   const localModel = local ? localModelRoute(local) : null
   // the market bridge (tools: ["market"]) calls back into this host as this desk; never on a read-only server
   const researchCall = research ? researchRoute(research, { market: !readOnly && desk?.name && mcp ? { port, desk: desk.name } : null }) : null
   const allowedHosts = new Set([`127.0.0.1:${port}`, `localhost:${port}`, `[::1]:${port}`])
 
   const GET = {
-    whoami: () => ({ name, version: VERSION, desk: desk ? { name: desk.name, description: desk.description } : null, root, runtime, capabilities, platform: process.platform, localModels: local?.providers ?? [] }),
+    whoami: () => ({ name, version: VERSION, desk: desk ? { name: desk.name, description: desk.description } : null, root, runtime, capabilities, platform: process.platform, sandbox: sandbox.kind, localModels: local?.providers ?? [] }),
     ...files.GET,
     ...(apple ? { "apple/actions": () => ({ actions: apple.actions }) } : {}),
     ...(speech ? { "speech/status": () => speech.status(), "speech/voices": () => speech.voices() } : {}),
     ...webRoutes(web).GET,
     ...(mcp ? { "mcp/tools": async () => ({ servers: await mcp.tools() }) } : {}),
     ...wakesRoutes(root).GET,
-    ...(term ? termRoutes(term).GET : {}),
+    ...(term ? termRoutes(term).GET : (termRoutesOff?.GET ?? {})),
     ...(browser ? browserRoutes(browser).GET : {}),
     ...(images ? imageRoutes(images).GET : {}),
     ...(audio ? audioRoutes(audio).GET : {}),
     ...models.GET,
+    ...(projects && !readOnly ? (safety?.GET ?? {}) : {}),
     ...(projects ? { projects: () => ({ projects: projects.list().map((p) => ({ ...p, workspace: `projects/${p.name}` })), file: desk.memory ? join(desk.memory, "projects.json") : null }) } : {}),
   }
   // A project just loaded: the lead's first-setup run, from the owner (skill project-setup in the desk that has it).
@@ -315,8 +347,9 @@ export async function createHostApi({
     return { project: { ...entry, workspace: `projects/${entry.name}` }, created, setup: sent }
   }
   const POST = {
+    ...(sanitizer ? { "input/sanitize": (body) => sanitizer.sanitize(String(body.text ?? ""), { via: ["typed", "voice", "telegram", "guidance"].includes(body.via) ? body.via : "typed" }) } : {}),
     ...files.POST,
-    ...(term ? termRoutes(term).POST : {}),
+    ...(term ? termRoutes(term).POST : (termRoutesOff?.POST ?? {})),
     ...(browser ? browserRoutes(browser).POST : {}),
     ...(images ? imageRoutes(images).POST : {}),
     ...(audio ? audioRoutes(audio).POST : {}),
@@ -328,11 +361,14 @@ export async function createHostApi({
     ...(projects && !readOnly
       ? {
           "projects/load": loadProject,
+          // a configured worktree made ready (capabilities/projects.js init): the dev artifact's dev.init
+          "projects/init": ({ name }) => projects.init(String(name ?? "")),
           "projects/unload": ({ name }) => {
             projects.unload(String(name ?? ""))
             hostLog(`projects: owner unloaded ${name}`)
             return { name }
           },
+          ...(safety?.POST ?? {}),
         }
       : {}),
   }

@@ -1,4 +1,3 @@
-import { Tool } from "../tool/tool.js"
 import { Artifact } from "./artifact.js"
 
 // A board entry as text: a list one item per line, an object as key: value lines (2026-10-15: the grader's
@@ -12,6 +11,29 @@ const asText = (v) =>
 const ENTRY_MAX = 1200 // a board entry's text in a prompt (2026-10-15 prompt-size run: a scorecard ran 3.7K)
 
 export class SharedBoard extends Artifact {
+  static about = "a team's shared board: what each member posted toward the team's goal, saved in memory/<desk>/<team>/board.md"
+  static commandType = "artifact"
+  static commands = {
+    // <team>.board.write
+    write: {
+      description() {
+        return `write an entry on the ${this.title} board (same key replaces)`
+      },
+      input: { key: "short id", text: "the finding, with numbers" },
+      run({ key, text, ...rest }, { agent }) {
+        const k = key || agent.name
+        // Report lines written outside <<< >>> arrive as their own fields (EVIDENCE: …, GAPS: …; 2026-10-15
+        // lead sim): they belong to the text, in order, not dropped.
+        const more = Object.entries(rest).map(([f, v]) => `${f}: ${typeof v === "string" ? v : JSON.stringify(v)}`)
+        if (more.length) text = [text == null ? "" : typeof text === "string" ? text : asText(text), ...more].filter(Boolean).join("\n")
+        // The team's verdict is its lead's to write (2026-10-15: a member overwrote it).
+        if (k === "verdict" && agent.board !== this) throw new Error(`"verdict" is the ${this.team} lead's; write yours under key "${agent.name}"`)
+        this.write(k, text, agent.name)
+        return `written ${this.path().join("/")}/${k}`
+      },
+    },
+  }
+
   constructor({ name, title, parent = null, goal = "", maxEntries = 40, clock = () => new Date() } = {}) {
     super({ name: `${name}.board`, title })
     this.team = name
@@ -21,8 +43,7 @@ export class SharedBoard extends Artifact {
     this.parent = parent
     this.children = []
     if (parent) parent.children.push(this)
-    this.clock = clock
-    this.maxEntries = maxEntries
+    Object.assign(this, { clock, maxEntries })
     this.state = { goal, entries: {} }
   }
 
@@ -31,11 +52,6 @@ export class SharedBoard extends Artifact {
     this.state.entries[key] = { author, text: asText(text), at: this.clock().toISOString() }
     const keys = Object.keys(this.state.entries)
     if (keys.length > this.maxEntries) delete this.state.entries[keys[0]]
-    this.changed()
-  }
-
-  setGoal(goal) {
-    this.state.goal = String(goal)
     this.changed()
   }
 
@@ -91,26 +107,5 @@ export class SharedBoard extends Artifact {
 
   twinState() {
     return { goal: this.state.goal, entries: this.state.entries }
-  }
-
-  commands() {
-    return [
-      new Tool({
-        name: `${this.name}.write`, // <team>.board.write
-        description: `write an entry on the ${this.title} board (same key replaces)`,
-        input: { key: "short id", text: "the finding, with numbers" },
-        run: ({ key, text, ...rest }, { agent }) => {
-          const k = key || agent.name
-          // Report lines written outside <<< >>> arrive as their own fields (EVIDENCE: …, GAPS: …; 2026-10-15
-          // lead sim): they belong to the text, in order, not dropped.
-          const more = Object.entries(rest).map(([f, v]) => `${f}: ${typeof v === "string" ? v : JSON.stringify(v)}`)
-          if (more.length) text = [text == null ? "" : typeof text === "string" ? text : asText(text), ...more].filter(Boolean).join("\n")
-          // The team's verdict is its lead's to write (2026-10-15: a member overwrote it).
-          if (k === "verdict" && agent.board !== this) throw new Error(`"verdict" is the ${this.team} lead's; write yours under key "${agent.name}"`)
-          this.write(k, text, agent.name)
-          return `written ${this.path().join("/")}/${k}`
-        },
-      }),
-    ]
   }
 }

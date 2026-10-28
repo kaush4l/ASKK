@@ -68,7 +68,7 @@ describe("terminal", () => {
     const train = terminal.twin().state.sessions.find((s) => s.name === "train")
     expect(train.tail).toHaveLength(50)
     expect(train.tail.at(-1)).toBe("epoch 120")
-    const block = coder.agent.render({ text: "x", from: "owner" }, []).split("# terminal — terminal — the desk's sessions\n")[1].split("\n\n# REQUEST")[0].split("\n")
+    const block = coder.agent.render({ text: "x", from: "owner" }, []).split("# terminal — the desk's sessions\n")[1].split("\n\n# REQUEST")[0].split("\n")
     expect(block[0]).toBe("the desk's terminal: sessions keep running between your steps (a server, a training run): terminal.run, terminal.start, terminal.wait, terminal.read, terminal.send, terminal.stop, terminal.list")
     expect(block[1]).toBe('your two sessions: main — terminal.run runs your commands there, one at a time; long — terminal.start runs the one that keeps going there (a server, a training run, a watcher; the next start replaces it) — terminal.read {id: "main" | "long"} reads one')
     expect(block[2]).toBe("your commands write only: projects/** (and a private temp folder)")

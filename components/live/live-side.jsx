@@ -1,7 +1,6 @@
 "use client"
 
 import * as React from "react"
-import { PauseIcon, RadioIcon } from "lucide-react"
 
 import { liveFeed } from "@/backend/live/follow"
 import { ArtifactsView } from "@/components/live/artifacts-view"
@@ -9,19 +8,15 @@ import { DeskLogView } from "@/components/live/desk-log"
 import { FeedRow } from "@/components/live/feed/feed-row"
 import { useWakes, WakesView } from "@/components/live/panels/wakes-panel"
 import { CallPanel } from "@/components/live/views/call-panel"
-import { Button } from "@/components/ui/button"
+import { FollowToggle } from "@/components/live/workbench/pane"
+import { TabRow } from "@/components/shell/tab-row"
 import { useDesk, useDeskLog, useEngineStates, useEngines } from "@/hooks/use-engines"
 import { cn } from "@/lib/utils"
 
 // The Live page's follow state and the parts both of its layouts draw (2026-10-17: split out of live-page.jsx so the
 // workbench's side slot shows the same feed, call panel, tabs and guide box as the page without artifacts panes).
 
-export const LIVE_TABS = [
-  { id: "call", label: "Call" },
-  { id: "artifacts", label: "Artifacts" },
-  { id: "desk", label: "Desk log" },
-  { id: "schedule", label: "Schedule" },
-]
+const LIVE_TABS = [["call", "Call"], ["artifacts", "Artifacts"], ["desk", "Desk log"], ["schedule", "Schedule"]].map(([id, label]) => ({ id, label }))
 
 // One follow state for the page: the feed's followed call, and (workbench) the file, session and page it shows.
 // `?tab=desk` opens a tab.
@@ -90,19 +85,14 @@ export function LiveHeader({ live, children, className }) {
       </span>
       <div className="ml-auto flex items-center gap-2">
         {children}
-        <Button
-          variant={following ? "secondary" : "outline"}
-          size="sm"
+        <FollowToggle
+          following={following}
           className="pointer-coarse:h-10"
           onClick={() => {
             setFollowing((f) => !f)
             setTab("call")
           }}
-          aria-pressed={following}
-        >
-          {following ? <RadioIcon className="text-emerald-500" /> : <PauseIcon />}
-          {following ? "Following" : "Follow"}
-        </Button>
+        />
       </div>
     </div>
   )
@@ -128,29 +118,10 @@ export function FeedList({ live, className }) {
 // The tab row and the open tab: the followed call, artifacts (by view), the desk log, the wake book.
 export function LiveTabs({ live, artifacts }) {
   const { tab, setTab, selected, log, wakes, events, changes } = live
-  const artifactCount = Object.keys(artifacts ?? {}).length
+  const counts = { artifacts: Object.keys(artifacts ?? {}).length, desk: log.length, schedule: wakes.open.length }
   return (
     <>
-      <div role="tablist" aria-label="Live views" className="flex flex-wrap gap-1">
-        {LIVE_TABS.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            role="tab"
-            aria-selected={tab === t.id}
-            onClick={() => setTab(t.id)}
-            className={cn(
-              "rounded-md border px-2.5 py-1 text-xs pointer-coarse:min-h-10 pointer-coarse:py-2.5",
-              tab === t.id ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
-            )}
-          >
-            {t.label}
-            {t.id === "artifacts" && artifactCount > 0 && <span className="ml-1 text-muted-foreground">{artifactCount}</span>}
-            {t.id === "desk" && log.length > 0 && <span className="ml-1 text-muted-foreground">{log.length}</span>}
-            {t.id === "schedule" && wakes.open.length > 0 && <span className="ml-1 text-muted-foreground">{wakes.open.length}</span>}
-          </button>
-        ))}
-      </div>
+      <TabRow label="Live views" tabs={LIVE_TABS.map((t) => ({ ...t, count: counts[t.id] || null }))} value={tab} onPick={setTab} />
       <div className="flex min-h-0 flex-1 flex-col">
         {tab === "call" && (selected ? <CallPanel event={selected} events={events} artifacts={live.desk?.artifacts ?? artifacts} changes={changes} /> : <p className="text-sm text-muted-foreground">Nothing selected.</p>)}
         {tab === "artifacts" && <ArtifactsView artifacts={artifacts ?? {}} />}

@@ -18,7 +18,7 @@ const REPORT = "VERDICT: GAMMA leads\nEVIDENCE: GAMMA +1.2% (look, 09:50); ACME 
 
 // The owner's reading order (2026-10-17): soul, agent instructions, context, quest, history, tools, response format.
 describe("prompt order", () => {
-  test("all present: soul → YOU ARE → artifacts → REQUEST → OWNER GUIDANCE → EARLIER RUNS → WORK DONE → TOOLS → RESPONSE", async () => {
+  test("all present: soul → YOU ARE → TOOLS → artifacts → REQUEST → OWNER GUIDANCE → EARLIER RUNS → WORK DONE → RESPONSE", async () => {
     const prompts = []
     let agent
     const replies = [
@@ -35,7 +35,7 @@ describe("prompt order", () => {
     await agent.ask("first")
     await agent.ask("second")
     const p = prompts[2]
-    const order = ["# YOU ARE a", "# a.notes — notes", "# a.checklist — a.checklist", "# REQUEST (from owner)", "# OWNER GUIDANCE", "# EARLIER RUNS", "# WORK DONE ON THIS REQUEST", "# TOOLS", "# RESPONSE"]
+    const order = ["# YOU ARE a", "# TOOLS", "# a.notes — notes", "# a.checklist", "# REQUEST (from owner)", "# OWNER GUIDANCE", "# EARLIER RUNS", "# WORK DONE ON THIS REQUEST", "# RESPONSE"]
     expect(p.startsWith(`${SOUL}\n\n# YOU ARE a\n${ROLE}`)).toBe(true)
     expect(headers(p)).toEqual(order)
     ascending(p, [SOUL, ...order])
@@ -45,12 +45,12 @@ describe("prompt order", () => {
     expect(p.endsWith(`# RESPONSE\n${RESPONSE_FORMAT}\n${REPORT_FORMAT}`)).toBe(true)
   })
 
-  test("optional parts absent (no soul, artifacts, history, steps, guidance): YOU ARE → REQUEST → TOOLS → RESPONSE", () => {
+  test("optional parts absent (no soul, artifacts, history, steps, guidance): YOU ARE → TOOLS → REQUEST → RESPONSE", () => {
     const agent = new Agent({ name: "a", role: ROLE }, { infer: async () => "", tools: [new Tool({ name: "look", run: () => "x" })] })
     const p = agent.render({ text: "go", from: "owner" }, [])
-    expect(p.startsWith(`# YOU ARE a\n${ROLE}\n\n# REQUEST (from owner)\ngo`)).toBe(true)
-    expect(headers(p)).toEqual(["# YOU ARE a", "# REQUEST (from owner)", "# TOOLS", "# RESPONSE"])
-    ascending(p, ["# YOU ARE a", "# REQUEST (from owner)", "# TOOLS", "# RESPONSE"])
+    expect(p.startsWith(`# YOU ARE a\n${ROLE}\n\n# TOOLS\n- look {} — \n\n# REQUEST (from owner)\ngo`)).toBe(true)
+    expect(headers(p)).toEqual(["# YOU ARE a", "# TOOLS", "# REQUEST (from owner)", "# RESPONSE"])
+    ascending(p, ["# YOU ARE a", "# TOOLS", "# REQUEST (from owner)", "# RESPONSE"])
     expect(p.endsWith(`# RESPONSE\n${RESPONSE_FORMAT}\n${REPORT_FORMAT}`)).toBe(true)
     // no tools and no report: the request, then the response format alone
     const bare = new Agent({ name: "b", report: false }, { infer: async () => "" }).render({ text: "go", from: "lead" }, [])
@@ -65,7 +65,7 @@ describe("prompt order", () => {
     agent.history.push({ from: "owner", request: "first", answer: "GAMMA" })
     agent.guidance.push({ from: "owner", text: "focus GAMMA", at: 0 })
     const p = agent.render({ text: "second", from: "owner" }, [{ thought: "look", results: [{ tool: "look", ok: true, output: "x" }] }])
-    const order = ["# YOU ARE a", "# a.notes — notes", "# REQUEST (from owner)", "# OWNER GUIDANCE", "# EARLIER RUNS", "# WORK DONE ON THIS REQUEST", "# TOOLS", "# SYSTEM"]
+    const order = ["# YOU ARE a", "# TOOLS", "# a.notes — notes", "# REQUEST (from owner)", "# OWNER GUIDANCE", "# EARLIER RUNS", "# WORK DONE ON THIS REQUEST", "# SYSTEM"]
     expect(headers(p)).toEqual(order)
     ascending(p, [SOUL, ...order])
     expect(p).not.toContain("# RESPONSE")
@@ -136,5 +136,38 @@ describe("prompt references hold under the order", () => {
     await new Agent({ name: "a", report: false }, { infer: scripted([{ thought: "read", calls: [{ tool: "a.notes", input: {} }] }], prompts), artifacts: [notes] }).ask("go")
     expect(prompts[1]).toContain("the same view is in your prompt")
     expect(headers(prompts[1])).toContain("# a.notes — notes")
+  })
+})
+
+// The response contract, lean (2026-10-25 owner: "what can be optimized further such that no meaning is lost"): every
+// call's result says which input made it, an optional field is "?", tools that describe alike share one line, an
+// artifact whose title is its id says it once.
+describe("prompt economy", () => {
+  const scripted = (replies, prompts) => async (prompt) => (prompts.push(prompt), JSON.stringify(replies.shift() ?? { thought: "done", calls: [], answer: "ok" }))
+
+  test("a result shows its call's input, each field on one line and clipped", async () => {
+    const prompts = []
+    const quote = new Tool({ name: "quote", input: { symbol: "s" }, run: ({ symbol }) => `${symbol} 1` })
+    const long = "x".repeat(400)
+    const calls = [{ tool: "quote", input: { symbol: "ACME" } }, { tool: "quote", input: { symbol: `${long}\nmore` } }]
+    await new Agent({ name: "a", report: false }, { infer: scripted([{ thought: "both", calls }], prompts), tools: [quote] }).ask("go")
+    expect(prompts[1]).toContain("  quote {symbol: ACME} → ACME 1\n")
+    const line = prompts[1].split("\n").find((l) => l.startsWith("  quote {symbol: xxx"))
+    expect(line.length).toBeLessThan(150 + 400 + 20) // the input clipped to 120, the output (its own text) as it was
+    expect(line).toContain("…} → ")
+  })
+
+  test("optional fields are marked ?, the word dropped whichever way the tool wrote it", () => {
+    const t = new Tool({ name: "t", input: { a: "optional", b: "a filter (optional)", c: "true to wait; optional", d: "the request (phases: {{request}}; optional)", e: "a drawing (optional, and the fastest way)", f: "required" } })
+    expect(t.describe()).toBe("- t {a?, b?: a filter, c?: true to wait, d?: the request (phases: {{request}}), e?: a drawing (the fastest way), f: required} — ")
+  })
+
+  test("tools that describe alike share one line; an artifact titled by its id says it once", () => {
+    const run = (n) => new Tool({ name: `${n}.run`, input: { from: "a step" }, description: "run the workflow" })
+    const other = new Tool({ name: "x.read", input: { stage: "a step" }, description: "read" })
+    const notes = new Artifact({ name: "notes" })
+    const p = new Agent({ name: "a", report: false }, { infer: async () => "", tools: [run("brief"), other, run("saga")], artifacts: [notes] }).render({ text: "go", from: "owner" }, [])
+    expect(p).toContain("# TOOLS\n- brief.run | saga.run {from: a step} — run the workflow\n- x.read {stage: a step} — read\n")
+    expect(headers(p)).toContain("# notes")
   })
 })

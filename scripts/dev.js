@@ -21,6 +21,8 @@ import { hostDesks } from "../companion/server/desks.js"
 import { DESK_OPTIONS, deskDirFrom } from "../companion/shared/args.js"
 import { hostedDeskFolders, loadDesk } from "../companion/team/desk.js"
 import { DEFAULT_PORT } from "../companion/shared/config.js"
+import { rankImports, walkImports, writeImports } from "./home-imports.js"
+import { warmPages, writeWarm } from "./warm-pages.js"
 
 const { values: args } = parseArgs({
   args: process.argv.slice(2),
@@ -158,3 +160,19 @@ desks.announce()
 console.log(`ASKK dev · ${[...desks.hosted.keys()].join(", ")} (default ${desks.fallback}) · http://localhost:${port}/`)
 for (const [name, { api }] of desks.hosted) console.log(`  ${name.padEnd(14)} ${api.root} (${api.capabilities.includes("fs.write") ? "read + write" : "read-only"})`)
 desks.startTelegram()
+
+// The first load after a restart is warm: each page is compiled now, on Next's private origin, not when the owner opens it.
+// logs/warm.json keeps the results for dev.health; a failed write never stops the server.
+warmPages(nextOrigin, ["/", "/live", "/compose", "/agents", "/canvas"]).then((pages) => {
+  try {
+    writeWarm(`${import.meta.dir}/../logs/warm.json`, pages)
+  } catch (error) {
+    console.error(`warm.json not written: ${error.message}`)
+  }
+  try {
+    writeImports(`${import.meta.dir}/../logs/home-imports.json`, rankImports(walkImports(`${import.meta.dir}/..`)))
+  } catch (error) {
+    console.error(`home-imports.json not written: ${error.message}`)
+  }
+  console.log(`warmed ${pages.map(({ path, status, ms }) => `${path} ${status} ${(ms / 1000).toFixed(1)} s`).join(" · ")}`)
+})

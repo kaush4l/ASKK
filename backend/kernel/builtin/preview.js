@@ -1,8 +1,8 @@
 import { Artifact } from "../artifact/artifact.js"
 import { parseYamlish } from "../util/yamlish.js"
-import { Tool } from "../tool/tool.js"
 import { cleanPath, expandGlob, globCovers, globRegex, hostError, hostFiles, inLane } from "./files.js"
 import { checkParams, checkVisual, folded, metaLine, VISUAL_ID, visualBrief, VISUAL_KINDS } from "./visual.js"
+import { clipAfter as clip } from "../util/text.js"
 
 // Preview: the one pane the owner and the agents both watch (2026-10-17 owner: "There will be need for only one
 // preview pane because the goal is for the user and agent to communicate the idea more freely … the agent can draw
@@ -38,6 +38,10 @@ import { checkParams, checkVisual, folded, metaLine, VISUAL_ID, visualBrief, VIS
 //   preview.answer {ask, text, show?}           answer an owner question; show: the page or visual that answers (it goes
 //                                               in the pane)
 //   preview.drop   {id}                         drop a visual
+//   preview.record {title, id?}                 record a page (2026-10-25 owner: "open the webpage, record, navigate and
+//                                               perform actions"): from now each action on it is a frame — its screenshot
+//                                               (the host keeps them while recording), the action, the URL — until
+//   preview.cut    {note?}                      ends the holder's recording; the owner plays it back in the pane
 //
 // visual: a spec {kind, …} (checked by visual.js; a bad one is refused with that kind's shape), {file: "<workspace>.json"}
 // (a spec in a file: read now, again at most every VISUAL_MS while it is held — coalesced; a file that is gone or wrong
@@ -110,6 +114,8 @@ const FILE_MAX = 300000 // chars of a visual file
 const FILES_MAX = 1200000 // chars of every visual file together (each change streams the preview to every tab)
 const VISUAL_MS = 3000
 const TRAIL_MAX = 8
+const RECORDINGS_MAX = 8
+const FRAMES_MAX = 200
 const WATCH_MAX = 8
 const BIND_TIMEOUT = 120 // s: a bound script's default
 const BIND_TIMEOUT_MAX = 600
@@ -123,10 +129,9 @@ const PLACEHOLDER = /\{([A-Za-z_][A-Za-z0-9_]{0,23})\}/g
 const VIEW = /^[^\s#]{1,120}$/ // a page's #hash
 const TERMINAL_REF = /^[^\r\n\t]{1,120}$/
 const SLOT_REF = /^(?:(.+):)?(main|long)$/ // terminal.js: "main", "long", "<agent>:main"
-const COMMANDS = ["open", "goto", "click", "type", "press", "scroll", "text", "eval", "console", "shot", "close", "show", "focus", "answer", "drop"]
-const OWNER_CALLS = ["ask", "open", "back", "rerun"]
 
 // Each kind's shape, for an error that says what to write (builtin/visual.js checks it). Every kind: title?, caption?.
+const PAGE = "the page (default: the newest open one)"
 const SHAPES = {
   flow: "{kind: flow, nodes: [{id, label?, group?, note?, value?}] ≤ 120, edges: [{from, to, label?, weight?}] ≤ 300, direction?: right | down, order?: [node ids]}",
   steps: "{kind: steps, steps: [{title, detail?, value?}] ≤ 40}",
@@ -139,7 +144,6 @@ const SHAPES = {
 }
 const VISUAL_HELP = `a spec {kind: ${VISUAL_KINDS.join(" | ")}, title?, caption?, meta?, …}, {file: "<workspace>.json", params?} holding one or {terminal: "<session id or name>"}`
 
-const clip = (s, n) => (String(s).length > n ? `${String(s).slice(0, n)}…` : String(s))
 // One line: what an agent, a page or the owner wrote may hold line breaks; the prompt counts each entry as one line.
 const flat = (s) => String(s ?? "").replace(/\s*[\r\n\u2028\u2029]+\s*/g, " ").trim()
 const ctxOf = (agent) => ({ ...(agent?.context ?? {}), agent })
@@ -148,10 +152,10 @@ const hostOf = (ctx) => {
   return ctx.host
 }
 const isError = (l) => l?.level === "error" || l?.level === "pageerror"
-// ASKK's configuration, never read (files.js keeps the same rule).
-const secret = (path) => {
+// ASKK's configuration, never read (files.js keeps the same rule); a glob's last part that can only mean it.
+const secret = (path, glob = false) => {
   const name = String(path).split("/").at(-1) ?? ""
-  return name === ".mcp.json" || (/^\.env(\..+)?$/.test(name) && name !== ".env.example")
+  return name === ".mcp.json" || ((glob ? name.startsWith(".env") : /^\.env(\..+)?$/.test(name)) && name !== ".env.example")
 }
 const inline = (o) =>
   o && Object.keys(o).length
@@ -161,11 +165,13 @@ const inline = (o) =>
     : ""
 const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`
 const list = (v) => (v == null || v === "" ? [] : Array.isArray(v) ? v : String(v).split(",")).map((x) => String(x).trim()).filter(Boolean)
-// A glob's last part that can only mean the configuration.
-const secretGlob = (path) => {
-  const name = String(path).split("/").at(-1) ?? ""
-  return name !== ".env.example" && (name.startsWith(".env") || name === ".mcp.json")
+// A required text: trimmed, or an Error saying what is missing.
+const need = (value, message) => {
+  const text = String(value ?? "").trim()
+  if (!text) throw new Error(message)
+  return text
 }
+const logOf = (ctx) => ctx?.agent?.context?.log ?? ctx?.log
 // The {name}s a text holds.
 const placeholders = (text) => [...String(text ?? "").matchAll(PLACEHOLDER)].map((m) => m[1])
 // A text with each {name} filled from params (values checkParams let through: never a path); one with no value: an Error.
@@ -217,7 +223,7 @@ const twinOf = (p) => ({
   errors: Number(p.errors) || 0,
 })
 
-const headOf = (p) => `${p.status === "closed" ? "■" : "▶"} ${p.id} ${flat(p.url)}${p.title ? ` — "${clip(flat(p.title), 120)}"` : ""}${p.by ? ` (opened by ${p.by})` : ""}${p.status === "closed" ? " closed" : ""}${p.shot ? ` · shot ${p.shot.n}` : ""}${p.errors ? ` · ${p.errors} console error${p.errors === 1 ? "" : "s"}` : ""}`
+const headOf = (p) => `${p.status === "closed" ? "■" : "▶"} ${p.id} ${flat(p.url)}${p.title ? ` — "${clip(flat(p.title), 120)}"` : ""}${p.by ? ` (opened by ${p.by})` : ""}${p.status === "closed" ? " closed" : ""}${p.shot ? ` · shot ${p.shot.n}` : ""}${p.errors ? ` · ${plural(p.errors, "console error")}` : ""}`
 const outline = (text, n = TEXT_LINES) => {
   const lines = String(text ?? "").split("\n").filter((l) => l.trim())
   return { lines: lines.slice(0, n).map((l) => clip(l, LINE_CHARS)), more: Math.max(0, lines.length - n) }
@@ -357,6 +363,37 @@ const itemRef = (x) => {
 const cut = (items, ids, keep, what) => (keep >= items.length ? items : [...items.slice(0, keep), `  … ${items.length - keep} more ${what}: ${ids.slice(keep).join(", ")}`])
 
 export class Preview extends Artifact {
+  static about = "the one pane the owner and agents both watch: live pages and visuals, the owner's questions about what is shown"
+  static commands = {
+    open: { description: "open a page of an app running on this computer (http://localhost:<port>; the desk server's own only on a desk that lets its agents view this app — then an agent's view: you read, navigate, click and type, nothing you do there writes, no eval) and put it in the owner's pane: its text outline", input: { url: "e.g. http://localhost:8001 (a #view after it: the page's view)", width: "page width in px, e.g. 375 for a phone; default 1280", height: "page height in px, e.g. 812; default 800" } },
+    goto: { description: "go to another URL on the page", input: { url: "the URL", id: PAGE } },
+    click: { description: "click an element (a CSS selector) or a point", input: { selector: "e.g. button#save", x: "pixels from the left (instead of selector)", y: "pixels from the top", id: PAGE } },
+    type: { description: "type text (into the selector's element, clicked first)", input: { text: "what to type", selector: "the input (optional)", id: PAGE } },
+    press: { description: "press a key", input: { key: "Enter, Tab, Escape, ArrowDown … or one character", id: PAGE } },
+    scroll: { description: "scroll the page", input: { dy: "pixels down (negative: up)", id: PAGE } },
+    text: { description: "the page's whole text outline: headings, text, links, buttons, inputs", input: { id: PAGE } },
+    eval: { description: "evaluate a JavaScript expression in the page: its value", input: { expression: "e.g. document.querySelectorAll('tr').length", id: PAGE } },
+    console: { description: "the page's console lines and errors", input: { id: PAGE } },
+    shot: { description: "take a screenshot for the owner (you read the page with text)", input: { id: PAGE } },
+    close: { description: "close the page", input: { id: PAGE } },
+    record: { description: "start recording the page: every action on it from now (open-goto-click-type-press-scroll-shot) is a frame the owner plays back — its screenshot, the action, the URL; end with cut", input: { title: "what the recording shows, e.g. 'the goal card after a change'", id: PAGE } },
+    cut: { description: "end your recording (the owner plays it back in the pane)", input: { note: "what it showed (optional)" } },
+    show: {
+      description: "draw a visual in the owner's pane (the same id redraws it): a spec you build — a flow, steps, a matrix, a line, bars, tokens, a scatter or a compare, animated for the owner — a workspace JSON file holding one (read again as it changes), or a terminal session's live output",
+      input: {
+        id: "short id (pipeline, loss, attention, …)",
+        title: "the visual's title",
+        says: "optional: what the owner should see in it, with the numbers",
+        visual: `${VISUAL_HELP} (skill preview); a templated file: {file: "…/tok/{run}/{t}.json", params: {run: "r04", t: 0}}`,
+        bind: "optional, with a {file} visual: {command, watch: [globs], cwd?, lease?, timeout?} — the script that writes the file ({name}s from params), run again when a watched file changes (the owner sees it redraw)",
+      },
+    },
+    focus: { description: "put a page or a visual in the owner's pane (the item there goes on the trail the owner goes back along)", input: { id: "a page id or a visual id", view: "optional: a page's view (its #hash)", params: 'optional, a visual: params merged into its own, e.g. {"t": 7} (a templated file is read for them, its bound script run when missing)' } },
+    answer: { description: "answer a question the owner asked in the preview; show: the page or visual that shows the answer (it goes in the pane)", input: { ask: "question id (q1 …)", text: "the answer, with numbers", show: "optional: the visual or page id to show" } },
+    drop: { description: "drop a visual from the preview", input: { id: "visual id" } },
+  }
+  static owner = { ask: "ownerAsk", open: "ownerOpen", back: "ownerBack", rerun: "ownerRerun" }
+
   // separate: another instance of the desk's preview — it lists only the pages it opened. adapter: the workspace, for
   // visual files (default the host: fs/read).
   constructor({ id = "preview", title, separate = false, adapter = hostFiles, clock = () => new Date() } = {}) {
@@ -367,7 +404,7 @@ export class Preview extends Artifact {
     this.poll = VISUAL_MS // the host refreshes it while a tab watches (kernel-team.js)
     this.clock = clock
     this.adapter = adapter
-    this.state = { pages: [], visuals: [], current: null, trail: [], asks: [], revision: 0 }
+    this.state = { pages: [], visuals: [], current: null, trail: [], asks: [], recordings: [], revision: 0 }
     this.texts = new Map() // page id -> the last text outline read: {at, url, title, lines, more}
     this.fileTexts = new Map() // visual file -> the text last read (a change is a new visual)
     this.mine = separate ? new Set() : null
@@ -522,12 +559,7 @@ export class Preview extends Artifact {
   }
 
   async #pull(ctx) {
-    let r
-    try {
-      r = await hostOf(ctx).get("browser/list", { signal: ctx.signal })
-    } catch (e) {
-      throw new Error(`browser/list: ${hostError(e)}`)
-    }
+    const r = await this.#call("browser/list", null, ctx)
     this.pulled = Date.now()
     this.#take(r?.pages)
   }
@@ -543,7 +575,7 @@ export class Preview extends Artifact {
 
   async #readFiles(ctx) {
     // The bound scripts first: one that just ended well is read below, in this same pass.
-    const binds = await this.#pullBinds(ctx).catch((e) => ((ctx?.agent?.context?.log ?? ctx?.log)?.(`preview: bound scripts not checked: ${e.message}`), new Map()))
+    const binds = await this.#pullBinds(ctx).catch((e) => (logOf(ctx)?.(`preview: bound scripts not checked: ${e.message}`), new Map()))
     const files = [...new Set(this.state.visuals.filter((v) => v.visual?.file).map((v) => v.visual.file))]
     for (const f of [...this.fileTexts.keys()]) if (!files.includes(f)) this.fileTexts.delete(f)
     const read = new Map()
@@ -578,7 +610,7 @@ export class Preview extends Artifact {
       const files = await expandGlob(this.adapter, glob, ctx)
       // a watched folder that would not list: said once per glob, else the script just stops running (2026-10-23 audit)
       const blind = (files.unreadable ?? []).join(", ")
-      if (blind && this.blindWatch?.get(glob) !== blind) (ctx?.agent?.context?.log ?? ctx?.log)?.(`preview: the watch ${glob} cannot see ${blind} — changes there do not re-run its script`)
+      if (blind && this.blindWatch?.get(glob) !== blind) logOf(ctx)?.(`preview: the watch ${glob} cannot see ${blind} — changes there do not re-run its script`)
       ;(this.blindWatch ??= new Map()).set(glob, blind)
       return files.filter((f) => !secret(f.path) && (reads == null || inLane(reads, f.path))).reduce((m, f) => Math.max(m, Number(f.mtime) || 0), 0)
     }
@@ -706,8 +738,7 @@ export class Preview extends Artifact {
   #bindOf(raw, { file, params }, agent, was = null, id = null) {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error('bind: {command, watch: [globs], cwd?, lease?, timeout?} — the script that writes the visual\'s file, run again when a watched file changes')
     const name = agent?.name ?? "the binder"
-    const command = String(raw.command ?? "").trim()
-    if (!command) throw new Error("bind.command: the script that writes the file, e.g. python -B 03_architecture/arch.py --out out/model/arch.json (one program, or several joined by &&; {name}s from the params)")
+    const command = need(raw.command, "bind.command: the script that writes the file, e.g. python -B 03_architecture/arch.py --out out/model/arch.json (one program, or several joined by &&; {name}s from the params)")
     if (command.length > COMMAND_MAX) throw new Error(`bind.command: ${command.length} chars — at most ${COMMAND_MAX}`)
     fill(command, params, "bind.command")
     const watch = list(raw.watch)
@@ -725,8 +756,9 @@ export class Preview extends Artifact {
     const timeout = raw.timeout == null || raw.timeout === "" ? BIND_TIMEOUT : Math.round(Number(raw.timeout))
     if (!Number.isFinite(timeout) || timeout < 1 || timeout > BIND_TIMEOUT_MAX) throw new Error(`bind.timeout: seconds, 1 to ${BIND_TIMEOUT_MAX}`)
     const next = { command, watch: globs, cwd, lease, timeout, by: agent?.name ?? null, writes }
-    const same = was && was.command === command && was.watch.join("\n") === globs.join("\n") && was.cwd === cwd
-    return { ...next, running: same ? was.running : false, session: same ? was.session : null, ran_at: same ? was.ran_at : null, ran: same ? was.ran : null, inputs_at: same ? was.inputs_at : null, exit: same ? was.exit : null, ms: same ? was.ms : null, error: same ? was.error : null, waiting: null, reads }
+    // nothing it runs changed: its history stays
+    const old = was && was.command === command && was.watch.join("\n") === globs.join("\n") && was.cwd === cwd ? was : {}
+    return { ...next, running: old.running ?? false, session: old.session ?? null, ran_at: old.ran_at ?? null, ran: old.ran ?? null, inputs_at: old.inputs_at ?? null, exit: old.exit ?? null, ms: old.ms ?? null, error: old.error ?? null, waiting: null, reads }
   }
 
   // A bind's watch globs checked (at show, and again when params change them) → the globs as written, or an Error:
@@ -750,7 +782,7 @@ export class Preview extends Artifact {
       const t = cleanPath(g)
       if (!t) throw new Error(`bind.watch[${i}]: a workspace path or glob`)
       const p = cleanPath(fill(t, params, `bind.watch[${i}]`))
-      if (GLOB.test(p) ? secretGlob(p) : secret(p)) throw new Error(`bind.watch[${i}]: ${p} is ASKK's configuration — never read`)
+      if (secret(p, GLOB.test(p))) throw new Error(`bind.watch[${i}]: ${p} is ASKK's configuration — never read`)
       if (GLOB.test(p.split("/")[0])) throw new Error(`bind.watch[${i}]: ${p} — a watch starts at a folder (projects/<slug>/…), never a glob at the top`)
       if (reads != null && !(GLOB.test(p) ? reads.some((r) => globCovers(r, p)) : inLane(reads, p))) throw new Error(`bind.watch[${i}]: ${p} is outside ${name}'s reads: lane (${reads.join(", ")})`)
       if (globRegex(p).test(file)) throw new Error(`bind.watch[${i}]: ${t} holds the visual's own file — each run would start the next`)
@@ -825,6 +857,7 @@ export class Preview extends Artifact {
     const r = await this.#call(path, opens ? body : { id, ...body }, ctx)
     const page = r?.page
     if (page?.id && ctx.agent?.name) this.acted.set(ctx.agent.name, page.id)
+    this.#frame(page, path, body)
     if (opens && page?.id) {
       this.mine?.add(page.id)
       this.#merge(page, { current: { kind: "page", id: page.id, ...(view ? { view } : {}) }, force: true })
@@ -842,77 +875,124 @@ export class Preview extends Artifact {
 
   // ---- commands: pages ----
 
-  #open(input = {}, ctx = {}) {
-    const url = String(input.url ?? "").trim()
-    if (!url) throw new Error("url: the app's page on this computer, e.g. http://localhost:8001 (a URL its terminal session printed)")
-    return this.#act("browser/open", { url, by: ctx.agent?.name ?? null }, input, ctx, { opens: true, view: viewOf(url) })
+  open(input = {}, ctx = {}) {
+    const url = need(input.url, "url: the app's page on this computer, e.g. http://localhost:8001 (a URL its terminal session printed)")
+    const given = (v) => v != null && v !== ""
+    const size = { ...(given(input.width) ? { width: Number(input.width) } : {}), ...(given(input.height) ? { height: Number(input.height) } : {}) }
+    return this.#act("browser/open", { url, by: ctx.agent?.name ?? null, ...size }, input, ctx, { opens: true, view: viewOf(url) })
   }
 
-  #goto(input = {}, ctx = {}) {
-    const url = String(input.url ?? "").trim()
-    if (!url) throw new Error("url: where to go")
+  goto(input = {}, ctx = {}) {
+    const url = need(input.url, "url: where to go")
     return this.#act("browser/navigate", { url }, input, ctx)
   }
 
-  #click(input = {}, ctx = {}) {
+  click(input = {}, ctx = {}) {
     const selector = String(input.selector ?? "").trim()
     const xy = input.x != null && input.y != null && input.x !== "" && input.y !== ""
     if (!selector && !xy) throw new Error("selector (a CSS selector, e.g. button#save) or x and y (pixels)")
     return this.#act("browser/click", selector ? { selector } : { x: Number(input.x), y: Number(input.y) }, input, ctx)
   }
 
-  #type(input = {}, ctx = {}) {
+  type(input = {}, ctx = {}) {
     if (input.text == null) throw new Error("text: what to type")
     return this.#act("browser/type", { text: String(input.text), ...(input.selector ? { selector: String(input.selector) } : {}) }, input, ctx)
   }
 
-  #press(input = {}, ctx = {}) {
-    const key = String(input.key ?? "").trim()
-    if (!key) throw new Error("key: Enter, Tab, Escape, ArrowDown … or one character")
+  press(input = {}, ctx = {}) {
+    const key = need(input.key, "key: Enter, Tab, Escape, ArrowDown … or one character")
     return this.#act("browser/press", { key }, input, ctx)
   }
 
-  #scroll(input = {}, ctx = {}) {
+  scroll(input = {}, ctx = {}) {
     const dy = Number(input.dy)
     if (!Number.isFinite(dy)) throw new Error("dy: pixels to scroll down (negative: up)")
     return this.#act("browser/scroll", { dy }, input, ctx)
   }
 
-  async #text(input = {}, ctx = {}) {
+  async text(input = {}, ctx = {}) {
     const id = await this.#page(input, ctx)
     const text = await this.#read(id, ctx)
     return result(`${text.title ? `"${text.title}" ` : ""}${text.url}\n${text.whole || "(no visible text)"}`)
   }
 
-  async #eval(input = {}, ctx = {}) {
-    const expression = String(input.expression ?? "").trim()
-    if (!expression) throw new Error("expression: JavaScript evaluated in the page, e.g. document.title")
+  // The page a command means and the host's answer to `path` for it.
+  async #onPage(path, input, ctx, body = {}) {
     const id = await this.#page(input, ctx)
-    const r = await this.#call("browser/eval", { id, expression }, ctx)
+    return [id, await this.#call(path, { id, ...body }, ctx)]
+  }
+
+  async eval(input = {}, ctx = {}) {
+    const expression = need(input.expression, "expression: JavaScript evaluated in the page, e.g. document.title")
+    const [, r] = await this.#onPage("browser/eval", input, ctx, { expression })
     this.#merge(r?.page)
     const value = typeof r?.value === "string" ? r.value : JSON.stringify(r?.value ?? null)
     return result(`${value ?? "undefined"}${r?.truncated ? "\n… cut by the host" : ""}`)
   }
 
-  async #console(input = {}, ctx = {}) {
-    const id = await this.#page(input, ctx)
-    const r = await this.#call("browser/console", { id }, ctx)
+  async console(input = {}, ctx = {}) {
+    const [, r] = await this.#onPage("browser/console", input, ctx)
     const lines = (r?.lines ?? []).slice(-50).map((l) => `[${l.level}] ${clip(l.text, LINE_CHARS)}`)
     return lines.length ? result(lines.join("\n")) : "no console lines"
   }
 
-  async #shot(input = {}, ctx = {}) {
-    const id = await this.#page(input, ctx)
-    const r = await this.#call("browser/shot", { id }, ctx)
+  async shot(input = {}, ctx = {}) {
+    const [id, r] = await this.#onPage("browser/shot", input, ctx)
     if (ctx.agent?.name) this.acted.set(ctx.agent.name, id)
     this.#merge(r?.page)
+    this.#frame(r?.page, "browser/shot", {})
     const s = r?.shot
     return s ? `shot ${s.n} of ${id}${s.width ? ` (${s.width}×${s.height})` : ""} — the owner sees it in the preview, and it is attached to your next step: look at it there` : `${id}: no screenshot`
   }
 
-  async #close(input = {}, ctx = {}) {
+  // ---- commands: recordings ----
+
+  // A page's recording running now (one at a time per page).
+  #recording(pageId) {
+    return (this.state.recordings ?? []).find((x) => x.status === "recording" && x.page === pageId) ?? null
+  }
+
+  // After an action: a frame on the page's running recording — the shot it left, what was done, where.
+  #frame(page, path, body = {}) {
+    const rec = page?.id ? this.#recording(page.id) : null
+    if (!rec || !page.shot?.n || rec.frames.at(-1)?.n === page.shot.n) return
+    const action = String(path).split("/").pop()
+    const what = body.selector ?? (body.x != null ? `${body.x},${body.y}` : null) ?? body.url ?? body.key ?? (body.text != null ? `"${clip(flat(body.text), 60)}"` : null) ?? (body.dy != null ? `dy ${body.dy}` : null)
+    const frames = [...rec.frames, { n: page.shot.n, at: this.clock().toISOString(), action, what: what == null ? null : clip(flat(String(what)), 120), url: page.url ?? null }].slice(-FRAMES_MAX)
+    this.bump({ recordings: this.state.recordings.map((x) => (x.id === rec.id ? { ...x, frames } : x)) })
+  }
+
+  async record(input = {}, ctx = {}) {
+    const title = clip(flat(need(input.title, "title: what the recording shows")), TITLE_MAX)
     const id = await this.#page(input, ctx)
-    const r = await this.#call("browser/close", { id }, ctx)
+    if (this.#recording(id)) throw new Error(`${id} is being recorded already (${this.#recording(id).id}): ${this.name}.cut ends it`)
+    const by = ctx.agent?.name ?? null
+    const mine = (this.state.recordings ?? []).find((x) => x.status === "recording" && x.by === by)
+    if (mine) throw new Error(`you are recording ${mine.page} already (${mine.id}): ${this.name}.cut first`)
+    await this.#call("browser/record", { id, on: true }, ctx)
+    const n = (this.state.recordings ?? []).reduce((m, x) => Math.max(m, Number(String(x.id).slice(1)) || 0), 0) + 1
+    const rec = { id: `r${n}`, title, page: id, by, at: this.clock().toISOString(), ended_at: null, status: "recording", note: null, frames: [] }
+    const done = (this.state.recordings ?? []).filter((x) => x.status !== "recording")
+    const keep = [...(this.state.recordings ?? []).filter((x) => x.status === "recording"), ...done.slice(-(RECORDINGS_MAX - 1))]
+    this.bump({ recordings: [...keep, rec].sort((a, b) => String(a.at).localeCompare(String(b.at))) })
+    const r = await this.#call("browser/shot", { id }, ctx)
+    this.#merge(r?.page)
+    this.#frame(r?.page, "browser/start", { url: r?.page?.url })
+    return `recording ${rec.id} of ${id}: "${title}" — every action on the page is a frame now; ${this.name}.cut ends it`
+  }
+
+  async cut(input = {}, ctx = {}) {
+    const by = ctx.agent?.name ?? null
+    const rec = (this.state.recordings ?? []).find((x) => x.status === "recording" && x.by === by)
+    if (!rec) throw new Error(`you are recording nothing: ${this.name}.record {title} starts one`)
+    await this.#call("browser/record", { id: rec.page, on: false }, ctx).catch(() => null) // a closed page: its frames stay
+    const note = clip(flat(String(input.note ?? "")), SAYS_MAX) || null
+    this.bump({ recordings: this.state.recordings.map((x) => (x.id === rec.id ? { ...x, status: "done", ended_at: this.clock().toISOString(), note } : x)) })
+    return `recording ${rec.id} ended: ${rec.frames.length} frames of ${rec.page} — the owner plays it back in the pane`
+  }
+
+  async close(input = {}, ctx = {}) {
+    const [id, r] = await this.#onPage("browser/close", input, ctx)
     this.#merge(r?.page)
     this.texts.delete(id)
     return `closed ${id}`
@@ -920,12 +1000,11 @@ export class Preview extends Artifact {
 
   // ---- commands: visuals and the pane ----
 
-  async #show(input = {}, ctx = {}) {
+  async show(input = {}, ctx = {}) {
     const id = String(input.id ?? "").trim()
     if (!VISUAL_ID.test(id)) throw new Error(`id: "${clip(id, 40)}" — a short word for the visual (letters, digits, - or _), e.g. pipeline`)
     if (this.state.pages.some((p) => p.id === id)) throw new Error(`id: ${id} is a page's id — name the visual another way`)
-    const exists = this.state.visuals.some((v) => v.id === id)
-    if (!exists && this.state.visuals.length >= VISUALS_MAX) throw new Error(`the preview holds ${VISUALS_MAX} visuals: ${this.name}.drop one first (${this.state.visuals.map((v) => v.id).join(", ")})`)
+    this.#room(id)
     const want = visualRequest(input.visual)
     let visual = want.spec ?? null
     let read_at = null
@@ -949,8 +1028,7 @@ export class Preview extends Artifact {
     const title = clip(flat(input.title) || id, TITLE_MAX) // one line: the prompt and the pane's strip show it so
     const next = entry({ id, title, says: clip(String(input.says ?? "").trim(), SAYS_MAX), visual, by: ctx.agent?.name ?? null, at: this.clock().toISOString(), template: want.template ?? null, params: want.params ?? null, reads: want.template && reads != null ? list(reads) : null, bind, error, read_at })
     // The list as it is now: another holder may have drawn or dropped one while the file was read.
-    const again = this.state.visuals.some((v) => v.id === id)
-    if (!again && this.state.visuals.length >= VISUALS_MAX) throw new Error(`the preview holds ${VISUALS_MAX} visuals: ${this.name}.drop one first (${this.state.visuals.map((v) => v.id).join(", ")})`)
+    const again = this.#room(id)
     const visuals = again ? this.state.visuals.map((v) => (v.id === id ? next : v)) : [...this.state.visuals, next]
     // a redraw of the item in the pane keeps the drill trail; another visual is a new place: the trail starts again
     const keep = this.state.current?.kind === "visual" && this.state.current.id === id
@@ -958,6 +1036,13 @@ export class Preview extends Artifact {
     if (bind) await this.#readNow(ctx).catch(() => {}) // a missing or stale file: its script starts now
     const b = this.state.visuals.find((v) => v.id === id)?.bind
     return `visual ${id} ${again ? "redrawn" : `added (${visuals.length} of ${VISUALS_MAX})`} [${sourceLine(visual)}] — in the owner's pane${want.file ? `; ${want.file} is read again as it changes` : ""}${b ? `; ${bindLine(b, this.clock().getTime())}` : ""}`
+  }
+
+  // Whether visual `id` is already held; a new one with all the places taken is an Error.
+  #room(id) {
+    const held = this.state.visuals.some((v) => v.id === id)
+    if (!held && this.state.visuals.length >= VISUALS_MAX) throw new Error(`the preview holds ${VISUALS_MAX} visuals: ${this.name}.drop one first (${this.state.visuals.map((v) => v.id).join(", ")})`)
+    return held
   }
 
   // {terminal}: a session of the desk's terminal; "main" / "long" / "<agent>:main" become that session's id.
@@ -981,7 +1066,7 @@ export class Preview extends Artifact {
     throw new Error(`visual.terminal: no session "${clip(ref, 60)}"${listed.length ? ` — sessions: ${listed.join(", ")}` : " — none yet: terminal.start {command} starts one"}`)
   }
 
-  async #focus(input = {}, ctx = {}) {
+  async focus(input = {}, ctx = {}) {
     const id = String(input.id ?? "").trim()
     const view = String(input.view ?? "").trim().replace(/^#/, "")
     let raw = input.params || null
@@ -1019,14 +1104,13 @@ export class Preview extends Artifact {
     return `the owner's pane shows ${this.#describe(item)}${p.status === "closed" ? " (closed: its last screenshot)" : ""}${p.errors ? ` — it has ${plural(p.errors, "console error")}: ${this.name}.console` : ""}`
   }
 
-  async #answer(input = {}, ctx = {}) {
+  async answer(input = {}, ctx = {}) {
     const key = String(input.ask ?? "").trim()
     const q = this.state.asks.find((a) => a.id === key)
     const open = () => this.openAsks().map((a) => a.id).join(", ") || "none"
     if (!q) throw new Error(this.state.asks.length ? `no question ${key || '""'} — open: ${open()}` : "the owner has asked nothing in the preview")
     if (q.answer) throw new Error(`${q.id} is answered already (${q.answer.by ?? "?"}: "${clip(flat(q.answer.text), 80)}") — open: ${open()}`)
-    const text = String(input.text ?? "").trim()
-    if (!text) throw new Error("text: the answer, with the numbers that show it")
+    const text = need(input.text, "text: the answer, with the numbers that show it")
     const raw = input.show && typeof input.show === "object" ? input.show.id : input.show
     const want = raw == null || raw === "" ? null : String(raw).trim()
     let on = want ? this.#item(want) : null
@@ -1042,7 +1126,7 @@ export class Preview extends Artifact {
     return `${q.id} answered${on ? `; the owner's pane shows ${this.#describe(on)}` : ""}${left ? `; ${left} still open` : ""}`
   }
 
-  #drop(input = {}) {
+  drop(input = {}) {
     const id = String(input.id ?? "").trim()
     const v = this.state.visuals.find((x) => x.id === id)
     if (!v) {
@@ -1097,7 +1181,7 @@ export class Preview extends Artifact {
     return ctxOf(agent)
   }
 
-  async #ownerOpen({ visual, params = null } = {}) {
+  async ownerOpen({ visual, params = null } = {}) {
     const id = String(visual ?? "").trim()
     if (!VISUAL_ID.test(id)) throw new Error("visual: the id of the visual to open")
     const v = this.state.visuals.find((x) => x.id === id)
@@ -1106,19 +1190,18 @@ export class Preview extends Artifact {
     return { current: ref, trail: this.state.trail }
   }
 
-  async #ownerBack() {
+  async ownerBack() {
     const trail = [...this.state.trail]
     const to = trail.pop()
     if (!to) throw new Error("nothing to go back to")
-    if (to.kind === "visual" && this.state.visuals.some((v) => v.id === to.id)) {
-      const v = this.state.visuals.find((x) => x.id === to.id)
-      await this.#navigate(to.id, to.params ?? null, this.#ownerCtx(v.by), { trail })
-    } else if (to.kind === "page" && this.state.pages.some((p) => p.id === to.id)) this.#commit({ current: { kind: "page", id: to.id }, trail }, true)
+    const v = to.kind === "visual" && this.state.visuals.find((x) => x.id === to.id)
+    if (v) await this.#navigate(to.id, to.params ?? null, this.#ownerCtx(v.by), { trail })
+    else if (to.kind === "page" && this.state.pages.some((p) => p.id === to.id)) this.#commit({ current: { kind: "page", id: to.id }, trail }, true)
     else this.#commit({ trail }, true) // it is gone: one step back further next time
     return { current: this.state.current, trail: this.state.trail }
   }
 
-  async #ownerRerun({ visual } = {}) {
+  async ownerRerun({ visual } = {}) {
     const id = String(visual ?? "").trim()
     const v = this.state.visuals.find((x) => x.id === id)
     if (!v) throw new Error(this.#unknown(id))
@@ -1133,14 +1216,8 @@ export class Preview extends Artifact {
 
   // ask (sync): a question for the keeper; open / back / rerun (async): the owner drills down, goes back, or runs a
   // visual's bound script now — neither delivers a run.
-  ownerCall(method, args = [], from = "owner") {
-    if (method === "open") return this.#ownerOpen(args[0] ?? {})
-    if (method === "back") return this.#ownerBack(args[0] ?? {})
-    if (method === "rerun") return this.#ownerRerun(args[0] ?? {})
-    if (!OWNER_CALLS.includes(method)) throw new Error(`${this.name}: the owner can ${OWNER_CALLS.join(", ")} (not ${method})`)
-    const { text, on, context = null } = args[0] ?? {}
-    const question = String(text ?? "").trim()
-    if (!question) throw new Error("text: the question")
+  ownerAsk({ text, on, context = null }, from) {
+    const question = need(text, "text: the question")
     if (question.length > ASK_MAX) throw new Error(`text: ${question.length} chars — at most ${ASK_MAX}`)
     const item = on === undefined ? itemRef(this.state.current) : this.#itemOf(on)
     const n = this.state.asks.reduce((m, a) => Math.max(m, Number(String(a.id).slice(1)) || 0), 0) + 1
@@ -1170,7 +1247,8 @@ export class Preview extends Artifact {
     const s = this.state
     const open = s.pages.filter((p) => p.status === "open").length
     const asks = this.openAsks().length
-    const parts = [open && `${open} page${open === 1 ? "" : "s"} open`, s.visuals.length && plural(s.visuals.length, "visual"), s.current && `▶ ${s.current.id}`, asks && `${plural(asks, "question")} open`].filter(Boolean)
+    const rec = (s.recordings ?? []).filter((x) => x.status === "recording").length
+    const parts = [open && `${plural(open, "page")} open`, s.visuals.length && plural(s.visuals.length, "visual"), s.current && `▶ ${s.current.id}`, rec && `● recording`, asks && `${plural(asks, "question")} open`].filter(Boolean)
     return parts.length ? parts.join(" · ") : "nothing in the pane yet"
   }
 
@@ -1196,8 +1274,7 @@ export class Preview extends Artifact {
   // and text outlines fill what is left (a list too long for the block is cut to "… n more: ids").
   render(agent) {
     const s = this.state
-    const own = (c) => !agent || agent.tools?.has(`${this.name}.${c}`)
-    const can = COMMANDS.filter(own).map((c) => `${this.name}.${c}`)
+    const can = this.can(agent)
     const head = `the one pane the owner watches with you: the app's pages (apps on this computer — you read their text, and after you act on a page its new screenshot is attached to your next step; the owner watches the same page) and the visuals you draw; the owner asks about what is in it${can.length ? `: ${can.join(", ")}` : ""}`
     let open = s.pages.filter((p) => p.status === "open")
     const closed = s.pages.length - open.length
@@ -1208,10 +1285,11 @@ export class Preview extends Artifact {
     const now = this.clock().getTime()
     const visualItems = s.visuals.map((v) => `${cur?.kind === "visual" && cur.id === v.id ? "▶" : " "} ${v.id}${v.params ? ` (${paramsText(v.params)})` : ""} "${flat(v.title)}" [${this.#source(v.visual, agent)}]${v.error ? ` — ERROR ${clip(flat(v.error), 160)}` : ""}${v.bind ? ` · ${bindLine(v.bind, now)}` : ""}${v.says ? ` — ${clip(flat(v.says), PROMPT_SAYS)}` : ""}`)
     let visuals = visualItems.length ? ["VISUALS (▶ = in the pane):", ...visualItems] : []
-    const pane = [`IN THE PANE: ${this.#paneLine()}`]
+    const recs = (s.recordings ?? []).filter((x) => x.status === "recording" || x === s.recordings.at(-1))
+    const pane = [`IN THE PANE: ${this.#paneLine()}`, ...recs.map((x) => `RECORDING ${x.id} "${flat(x.title)}" of ${x.page} by ${x.by ?? "?"}: ${x.frames.length} frames${x.status === "recording" ? ` — running (${this.name}.cut ends it)` : " — done"}`)]
     const asked = this.openAsks()
     const askItems = asked.map((a) => `  ${a.id}${a.on ? ` on ${a.on.kind} ${a.on.id}` : ""}${a.context ? ` {${inline(a.context)}}` : ""}: "${flat(a.text)}"`)
-    let asks = askItems.length ? [`OWNER ASKED (open${own("answer") ? ` — ${this.name}.answer each` : ""}):`, ...askItems] : []
+    let asks = askItems.length ? [`OWNER ASKED (open${can.includes(`${this.name}.answer`) ? ` — ${this.name}.answer each` : ""}):`, ...askItems] : []
     const answered = s.asks.filter((a) => a.answer).slice(-PROMPT_ANSWERED)
     let answers = answered.length ? ["ANSWERED (latest):", ...answered.map((a) => `  ${a.id} "${clip(flat(a.text), 120)}" → ${clip(flat(a.answer.text), 160)}${a.answer.on ? ` [${a.answer.on.kind} ${a.answer.on.id}]` : ""}`)] : []
     // Over the block: the answered go first, then the visuals, the open questions and the pages' heads are cut.
@@ -1269,9 +1347,9 @@ export class Preview extends Artifact {
 
   // Saved without the pages (the host's) and without a file visual's data: its path only, read again at start.
   snapshot() {
-    const { visuals, current, trail, asks, revision } = structuredClone(this.state)
+    const { visuals, current, trail, asks, recordings, revision } = structuredClone(this.state)
     const bound = (b) => b && { ...b, running: false, session: null, waiting: null }
-    return { visuals: visuals.map((v) => (v.visual?.file ? entry({ ...v, visual: { file: v.visual.file }, bind: bound(v.bind), error: null, read_at: null }) : v)), current, trail, asks, revision }
+    return { visuals: visuals.map((v) => (v.visual?.file ? entry({ ...v, visual: { file: v.visual.file }, bind: bound(v.bind), error: null, read_at: null }) : v)), current, trail, asks, recordings: recordings ?? [], revision }
   }
 
   // Back from a save (a snapshot, or the whole state the host wrote): visuals (a file one as its path, read again at the
@@ -1316,39 +1394,11 @@ export class Preview extends Artifact {
     this.fileTexts.clear()
     this.filesPulled = 0
     this.forced.clear()
-    this.state = { pages: this.state.pages, visuals, current, trail, asks, revision: Number.isFinite(data.revision) ? data.revision : 0, ...(dropped.length ? { dropped } : {}) }
-  }
-
-  commands() {
-    const tool = (name, description, input, run) => new Tool({ name: `${this.name}.${name}`, type: "dev", view: "preview", description, input, run })
-    const id = "the page (default: the newest open one)"
-    return [
-      tool("open", "open a page of an app running on this computer (http://localhost:<port>, never the desk server's) and put it in the owner's pane: its text outline", { url: "e.g. http://localhost:8001 (a #view after it: the page's view)" }, (i, c) => this.#open(i, c)),
-      tool("goto", "go to another URL on the page", { url: "the URL", id }, (i, c) => this.#goto(i, c)),
-      tool("click", "click an element (a CSS selector) or a point", { selector: "e.g. button#save", x: "pixels from the left (instead of selector)", y: "pixels from the top", id }, (i, c) => this.#click(i, c)),
-      tool("type", "type text (into the selector's element, clicked first)", { text: "what to type", selector: "the input (optional)", id }, (i, c) => this.#type(i, c)),
-      tool("press", "press a key", { key: "Enter, Tab, Escape, ArrowDown … or one character", id }, (i, c) => this.#press(i, c)),
-      tool("scroll", "scroll the page", { dy: "pixels down (negative: up)", id }, (i, c) => this.#scroll(i, c)),
-      tool("text", "the page's whole text outline: headings, text, links, buttons, inputs", { id }, (i, c) => this.#text(i, c)),
-      tool("eval", "evaluate a JavaScript expression in the page: its value", { expression: "e.g. document.querySelectorAll('tr').length", id }, (i, c) => this.#eval(i, c)),
-      tool("console", "the page's console lines and errors", { id }, (i, c) => this.#console(i, c)),
-      tool("shot", "take a screenshot for the owner (you read the page with text)", { id }, (i, c) => this.#shot(i, c)),
-      tool("close", "close the page", { id }, (i, c) => this.#close(i, c)),
-      tool(
-        "show",
-        "draw a visual in the owner's pane (the same id redraws it): a spec you build — a flow, steps, a matrix, a line, bars, tokens, a scatter or a compare, animated for the owner — a workspace JSON file holding one (read again as it changes), or a terminal session's live output",
-        {
-          id: "short id (pipeline, loss, attention, …)",
-          title: "the visual's title",
-          says: "optional: what the owner should see in it, with the numbers",
-          visual: `${VISUAL_HELP} (skill preview); a templated file: {file: "…/tok/{run}/{t}.json", params: {run: "r04", t: 0}}`,
-          bind: "optional, with a {file} visual: {command, watch: [globs], cwd?, lease?, timeout?} — the script that writes the file ({name}s from params), run again when a watched file changes (the owner sees it redraw)",
-        },
-        (i, c) => this.#show(i, c),
-      ),
-      tool("focus", "put a page or a visual in the owner's pane (the item there goes on the trail the owner goes back along)", { id: "a page id or a visual id", view: "optional: a page's view (its #hash)", params: 'optional, a visual: params merged into its own, e.g. {"t": 7} (a templated file is read for them, its bound script run when missing)' }, (i, c) => this.#focus(i, c)),
-      tool("answer", "answer a question the owner asked in the preview; show: the page or visual that shows the answer (it goes in the pane)", { ask: "question id (q1 …)", text: "the answer, with numbers", show: "optional: the visual or page id to show" }, (i, c) => this.#answer(i, c)),
-      tool("drop", "drop a visual from the preview", { id: "visual id" }, (i) => this.#drop(i)),
-    ]
+    // a recording running when the desk stopped ends there (its page went with the host)
+    const recordings = (Array.isArray(data.recordings) ? data.recordings : [])
+      .filter((x) => x?.id && x.page && Array.isArray(x.frames))
+      .slice(-RECORDINGS_MAX)
+      .map((x) => ({ id: String(x.id), title: clip(flat(String(x.title ?? x.id)), TITLE_MAX), page: String(x.page), by: x.by ?? null, at: x.at ?? null, ended_at: x.ended_at ?? (x.status === "recording" ? x.at : null), status: "done", note: x.note ?? (x.status === "recording" ? "interrupted: the desk restarted" : null), frames: x.frames.filter((f) => Number.isInteger(f?.n)).slice(-FRAMES_MAX) }))
+    this.state = { pages: this.state.pages, visuals, current, trail, asks, recordings, revision: Number.isFinite(data.revision) ? data.revision : 0, ...(dropped.length ? { dropped } : {}) }
   }
 }

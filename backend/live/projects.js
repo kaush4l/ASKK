@@ -8,28 +8,11 @@
 //   await unloadProject(name)                  { name }
 //   projectState(p) → { label, tone }          what a row says about it (pure)
 
-import { withBase } from "@/backend/live/base-path"
+import { hostApi } from "@/backend/live/host-api"
 
-async function api(endpoint, body) {
-  let response
-  try {
-    response = await fetch(withBase(`/__askk/${endpoint}`), {
-      method: body ? "POST" : "GET",
-      headers: body ? { "content-type": "application/json" } : undefined,
-      body: body ? JSON.stringify(body) : undefined,
-      cache: "no-store",
-    })
-  } catch {
-    throw new Error("The desk server is not reachable.")
-  }
-  const data = await response.json().catch(() => null)
-  if (!response.ok || !data) throw new Error(data?.error ?? `Request failed (${response.status}).`)
-  return data
-}
-
-export const listProjects = () => api("projects")
-export const loadProject = ({ path, name, setup = true }) => api("projects/load", { path, ...(name ? { name } : {}), setup })
-export const unloadProject = (name) => api("projects/unload", { name })
+export const listProjects = () => hostApi("projects")
+export const loadProject = ({ path, name, setup = true }) => hostApi("projects/load", { body: { path, ...(name ? { name } : {}), setup } })
+export const unloadProject = (name) => hostApi("projects/unload", { body: { name } })
 
 // A row's state: its folder gone, set up (its .agents/project.md written by the first setup), or not yet.
 export function projectState(p) {

@@ -33,7 +33,8 @@ const GRACE_MS = 15_000
 const MAX_FAILURES = 5
 const HIDDEN = new Set(["board", "memory"]) // artifacts the mirror drops: big, and the status never shows them
 
-const redact = (text) => String(text).replace(/-?\d{6,}/g, "<id>")
+// Telegram's errors may quote a chat id; the log never shows one.
+export const redact = (text) => String(text).replace(/-?\d{6,}/g, "<id>")
 const isWatch = (from) => String(from ?? "").startsWith("watch")
 
 // What the status needs of a message: the quest (role user), the report (VERDICT + CONFIDENCE). kind stays (2026-10-17
@@ -50,6 +51,29 @@ function slim(m) {
 }
 const slimState = (s = {}) => ({ status: s.status, activity: s.activity, error: s.error ?? null, working: s.working ?? null, messages: (s.messages ?? []).map(slim) })
 
+// The team's SSE stream: each `data:` line's text to onData(text) in order; resolves when the stream ends. A throw from
+// onData ends it (the caller's catch says so).
+export async function readStream(team, signal, onData) {
+  const reader = team.stream({ signal }).body.getReader()
+  signal.addEventListener("abort", () => reader.cancel().catch(() => {}))
+  const decoder = new TextDecoder()
+  let buffer = ""
+  for (;;) {
+    const { value, done } = await reader.read()
+    if (done) return
+    buffer += decoder.decode(value, { stream: true })
+    for (let cut; (cut = buffer.indexOf("\n\n")) >= 0; ) {
+      const block = buffer.slice(0, cut)
+      buffer = buffer.slice(cut + 2)
+      for (const line of block.split("\n")) if (line.startsWith("data: ")) onData(line.slice(6))
+    }
+  }
+}
+
+// registry-once (2026-10-26): the stream's registry holds each definition in engines[].agent only (an older host's
+// agents copy is still read).
+const agentsOf = (registry) => (registry?.agents ?? (registry?.engines ?? []).map((e) => e.agent)).filter(Boolean).map((a) => ({ name: a.name, agents: a.agents ?? [] }))
+
 // The team's stream as one view { lead, registry, states, kernel }, updated in place; onEvent(e) after each.
 export function mirrorTeam(team, signal, onEvent, log = () => {}) {
   const view = { lead: null, registry: null, states: {}, kernel: { tree: null, artifacts: {} } }
@@ -58,12 +82,12 @@ export function mirrorTeam(team, signal, onEvent, log = () => {}) {
   function apply(e) {
     if (e.type === "snapshot") {
       view.lead = e.registry?.requiredId ?? null
-      view.registry = { agents: (e.registry?.agents ?? []).map((a) => ({ name: a.name, agents: a.agents ?? [] })) }
+      view.registry = { agents: agentsOf(e.registry) }
       view.states = Object.fromEntries(Object.entries(e.states ?? {}).map(([id, s]) => [id, slimState(s)]))
       view.kernel = { tree: e.kernel?.tree ?? null, artifacts: keep(e.kernel?.artifacts) }
     } else if (e.type === "registry") {
       // 2026-10-17: an agent spawned or dismissed (kernel Desk.spawn / dismiss): the new list, the new agents' states.
-      view.registry = { agents: (e.registry?.agents ?? []).map((a) => ({ name: a.name, agents: a.agents ?? [] })) }
+      view.registry = { agents: agentsOf(e.registry) }
       const names = new Set(view.registry.agents.map((a) => a.name))
       for (const id of Object.keys(view.states)) if (!names.has(id)) delete view.states[id]
       for (const [id, s] of Object.entries(e.states ?? {})) view.states[id] = slimState(s)
@@ -79,32 +103,16 @@ export function mirrorTeam(team, signal, onEvent, log = () => {}) {
       for (const id of e.removed ?? []) delete view.kernel.artifacts[id]
     }
   }
-  const done = (async () => {
-    const reader = team.stream({ signal }).body.getReader()
-    signal.addEventListener("abort", () => reader.cancel().catch(() => {}))
-    const decoder = new TextDecoder()
-    let buffer = ""
-    for (;;) {
-      const { value, done } = await reader.read()
-      if (done) break
-      buffer += decoder.decode(value, { stream: true })
-      for (let cut; (cut = buffer.indexOf("\n\n")) >= 0; ) {
-        const block = buffer.slice(0, cut)
-        buffer = buffer.slice(cut + 2)
-        for (const line of block.split("\n")) {
-          if (!line.startsWith("data: ")) continue
-          let e
-          try {
-            e = JSON.parse(line.slice(6))
-          } catch {
-            continue
-          }
-          apply(e)
-          onEvent(e, view)
-        }
-      }
+  const done = readStream(team, signal, (data) => {
+    let e
+    try {
+      e = JSON.parse(data)
+    } catch {
+      return
     }
-  })().catch((error) => {
+    apply(e)
+    onEvent(e, view)
+  }).catch((error) => {
     // the live status message stops following: said, not silent (2026-10-23 audit)
     if (!signal.aborted) log(`telegram: the live status stopped following the desk (${error?.message ?? error})`)
   })

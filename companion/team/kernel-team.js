@@ -39,11 +39,13 @@
 import { appendFileSync, existsSync, mkdirSync, readdirSync, renameSync, writeFileSync, readFileSync, rmSync } from "node:fs"
 import { dirname, join, relative } from "node:path"
 
-import { ownerHelperCall, respawn, SPAWN_NAME } from "../../backend/kernel/index.js"
+import { limitWait, ownerHelperCall, respawn, SPAWN_NAME, usageLimit } from "../../backend/kernel/index.js"
 import { describeActivity } from "../../backend/live/activity.js"
-import { activityOf, cut, freshState, IDLE, nextStats, rows } from "../../backend/live/team-rows.js"
+import { createChannel, createTeamCore, fail, ok } from "../../backend/live/team-core.js"
+import { cut, freshState, nextStats, rows } from "../../backend/live/team-rows.js"
 import { OWNER_CHAT_STEP } from "./kernel-status.js"
 import { boardMarkdown, readBoardFile } from "./board-file.js"
+import { MODELS, SELECTOR_MODELS, setAgentModel } from "./compose.js"
 import { createHistory } from "./kernel-history.js"
 import { archiveKept, keptFolderOf, readKept, writeKept } from "./kept.js"
 import { agentTreeRoot } from "./layout.js"
@@ -56,7 +58,7 @@ const LOG_KEEP = 300 // background log lines kept for a tab that connects later
 const POLL_MIN_MS = 1000 // an artifact's `poll` shorter than this runs at this (the host's refresh of polled artifacts)
 
 // pollMinMs: the shortest poll the host runs for an artifact's `poll` (tests shorten it).
-export async function createKernelTeam({ desk, port, log: hostLog = () => {}, live = process.env.ASKK_KERNEL_FIXTURE ? false : undefined, pollMinMs = POLL_MIN_MS }) {
+export async function createKernelTeam({ desk, port, log: hostLog = () => {}, live = process.env.ASKK_KERNEL_FIXTURE ? false : undefined, pollMinMs = POLL_MIN_MS, goalTickMs = 30000 }) {
   const storageDir = desk.state
   mkdirSync(storageDir, { recursive: true })
   const eventsFile = join(storageDir, "kernel-team.jsonl")
@@ -95,11 +97,7 @@ export async function createKernelTeam({ desk, port, log: hostLog = () => {}, li
   // Tabs on team/stream, and the desk's background log: every line the desk, its watchers, the schedule, the
   // wake book or the Telegram bridge writes goes to the server log and to every tab ({type: "log"}); the newest
   // LOG_KEEP ride in the snapshot. `source` is the line's "<word>:" prefix (watch, desk, radar, telegram, wake…).
-  const clients = new Set()
   const closers = new Set() // each open stream's close (endStreams)
-  const broadcast = (event) => {
-    for (const send of clients) send(event)
-  }
   // the desk log's newest lines outlive a restart (2026-10-23 audit: the Desk log started empty), saved a second after a line
   const logFile = join(storageDir, "desk-log.json")
   const logs = []
@@ -110,23 +108,19 @@ export async function createKernelTeam({ desk, port, log: hostLog = () => {}, li
     logReadError = `${error.message} — kept as ${quarantine(logFile)}`
   }
   let logSave = null
-  const log = (line) => {
-    const text = String(line)
-    hostLog(text)
-    const row = { at: new Date().toISOString(), source: text.match(/^([\w.-]+):\s/)?.[1] ?? "desk", text }
-    logs.push(row)
-    if (logs.length > LOG_KEEP) logs.shift()
-    broadcast({ type: "log", ...row })
-    logSave ??= setTimeout(() => {
-      logSave = null
-      try {
-        writeFileSync(logFile, JSON.stringify(logs))
-      } catch (error) {
-        logSaveFailed(error)
-      }
-    }, 1000)
+  const writeLog = () => {
+    try {
+      writeFileSync(logFile, JSON.stringify(logs))
+    } catch (error) {
+      logSaveFailed(error)
+    }
+  }
+  const saveLog = () => {
+    logSave ??= setTimeout(() => ((logSave = null), writeLog()), 1000)
     logSave.unref?.()
   }
+  const channel = createChannel({ logKeep: LOG_KEEP, logs, hostLog, saveLog })
+  const { clients, broadcast, log } = channel
   // The desks' memory folder at ASKK's root (memory/, 2026-10-17 owner), one folder per desk by its name: the desk's and
   // its teams' memory and reports; every desk's in the same place (desk.js loadDesk sets it; ASKK_MEMORY moves it).
   if (logReadError) log(`desk: the desk log of before the restart did not read (${logReadError})`)
@@ -134,40 +128,22 @@ export async function createKernelTeam({ desk, port, log: hostLog = () => {}, li
   const built = await desk.start({ port, live: live ?? true, log, memory })
   const { desk: team, ready = async () => {}, run: background = null } = built
   const lead = team.lead // team.list: every agent now (spawned ones come and go), never a copy taken at start
-
-  // ---- registry: one engine per kernel agent ---------------------------------------------------
-  // The agent's twin on the UI (kernel Agent.twin()): its definition (role = agent.md body, folder, model, team,
-  // desk), every tool as a spec {name, type, view, description, input} (sub-agents too, type "agent", with `agent`)
-  // and the artifacts it holds. The folder is shown relative to the desk's; status lives in the agent's state.
-  const definition = (a) => {
-    const { element, id, tools, folder, status, ...twin } = a.twin()
-    return {
-      ...twin,
-      folder: folder ? (desk.folder ? relative(desk.folder, folder) : folder) : null,
-      tools: tools.map(({ element, id, ...spec }) => spec),
-      kernel: true,
+  const modelFile = join(storageDir, "model.json")
+  const catalogue = team.models ?? MODELS
+  try {
+    if (live !== false && existsSync(modelFile)) {
+      const savedModel = JSON.parse(readFileSync(modelFile, "utf8"))?.defaultModel
+      if (savedModel && Object.hasOwn(catalogue, savedModel)) team.defaultModel = savedModel
     }
+  } catch (error) {
+    log(`desk: the saved default model did not read (${error.message})`)
   }
-  // Rebuilt in place when an agent is spawned or dismissed (a caller's definition gains or loses its quest tool), so
-  // the next snapshot and the registry event both carry the desk as it is.
-  const registry = { agents: [], edited: [], status: "ready", error: null, requiredId: lead.name, engines: [] }
-  const describeAll = () => {
-    registry.engines = team.list.map((a) => ({ id: a.name, name: a.name, agent: definition(a) }))
-    registry.agents = registry.engines.map((e) => e.agent)
-  }
-  describeAll()
 
   // ---- the desk's shape and its artifacts ------------------------------------------------------
   // Streamed as {type: "kernel", artifact, boards?}; the snapshot carries them all. Every artifact
   // (boards, memories, checklists, quality matrices, the desk's own) by its id "<owner>.<kind>": its twin
   // (kernel Artifact.twin(): kind, view, owner, title, brief — its state in one line —, state, items for a list)
   // with the agents that hold it (Desk.artifacts()).
-  let artifacts = team.artifacts() // id -> { artifact, holders: [agent names] }; scanned again on spawn / dismiss
-  const view = (id) => {
-    const { artifact: x, holders } = artifacts.get(id)
-    return { ...x.twin(), holders }
-  }
-
   // Saved on every change: state/artifacts/<id>.json (latest) and state/days/<ET day>/<id>.json
   // (the day's record, for navigation). Restored at start by the artifact's `keep`: "always", "day"
   // (only from the same ET day), "run" and "file" never (one run's, or a file's own).
@@ -181,9 +157,6 @@ export async function createKernelTeam({ desk, port, log: hostLog = () => {}, li
   mkdirSync(artDir, { recursive: true })
   const fileOf = (id) => `${id.replace(/[^\w.-]/g, "_")}.json`
   const keepOf = (x) => x.keep ?? "day"
-  // Each instance is read back from disk once, when it first appears (2026-10-17 critic: a live shared one re-held after
-  // its last holder was dismissed was restored again by rescan, its in-memory state reset to the last save).
-  const restored = new WeakSet()
   const boardPaths = new WeakMap() // a board → its board.md (null: state/ files), fixed when it first appears
   const boardPath = (x) => {
     if (!boardPaths.has(x)) {
@@ -223,7 +196,6 @@ export async function createKernelTeam({ desk, port, log: hostLog = () => {}, li
     return true
   }
   const restore = (id, x) => {
-    restored.add(x)
     if (x.kind === "board" && restoreBoard(id, x)) return
     const file = join(artDir, fileOf(id))
     if (!existsSync(file) || ["run", "file"].includes(keepOf(x))) return
@@ -235,7 +207,6 @@ export async function createKernelTeam({ desk, port, log: hostLog = () => {}, li
       log(`desk: ${id} not restored (${error.message})`)
     }
   }
-  for (const [id, { artifact: x }] of artifacts) restore(id, x)
   const write = (id, x) => {
     const board = x.kind === "board" ? boardPath(x) : null
     if (board) {
@@ -267,7 +238,7 @@ export async function createKernelTeam({ desk, port, log: hostLog = () => {}, li
       id,
       setTimeout(() => {
         timers.delete(id)
-        const x = artifacts.get(id)?.artifact
+        const x = core.artifacts.get(id)?.artifact
         if (x) write(id, x)
       }, 300),
     )
@@ -280,55 +251,83 @@ export async function createKernelTeam({ desk, port, log: hostLog = () => {}, li
     timers.delete(id)
     write(id, x)
   }
-  const kernel = {
+  // ---- the team: registry, threads, artifacts, run events (backend/live/team-core.js, shared with the tab's host) ------
+  const boot = Date.now().toString(36) // ids unique across processes (2026-10-23 audit: k1, k2 … again after a restart)
+  const core = createTeamCore({
+    team,
+    channel,
     title: desk.title ?? desk.name ?? null,
-    tree: team.tree(),
-    artifacts: Object.fromEntries([...artifacts.keys()].map((id) => [id, view(id)])), // after restore
-  }
+    kernel: { defaultModel: team.defaultModel ?? "default", models: SELECTOR_MODELS.map(({ key, label, provider, id }) => ({ key, label, provider, id })) },
+    maxMessages: MAX_MESSAGES,
+    logChars: HOST_LIMITS.team.logPreviewChars,
+    idOf: (n) => `k${boot}-${n}`,
+    // the folder shown relative to the desk's
+    definition: (twin, folder) => ({ ...twin, folder: folder ? (desk.folder ? relative(desk.folder, folder) : folder) : null }),
+    // every model call counted is saved once its update is in (a chat's or a compaction's too — 2026-10-23 audit)
+    stats: (id, a, e) => (queueMicrotask(saveStats), nextStats(core.states[id]?.stats, a, e)),
+    persist: {
+      restore,
+      save: (id) => save(id),
+      flush: (id, x) => flush(id, x),
+      // the run's rows, in order (an owner chat beside the run is not one of them: its history never holds it)
+      rows: (id, newRows) => trails.get(id)?.times.push(...newRows.filter((m) => m.kind !== "chat").map((m) => Date.parse(m.at))),
+    },
+    hooks: {
+      note,
+      dropped: (text) => log(`desk: ${text}`),
+      rescanned: () => syncPolls(),
+      started(id, e) {
+        try {
+          mkdirSync(runningDir, { recursive: true })
+          writeFileSync(marker(id), JSON.stringify({ at: e.at, request: e.request }))
+        } catch (error) {
+          if (!markFailed) log(`desk: the run marker was not written (${error.message}) — a kill would lose the run in progress`)
+          markFailed = true
+        }
+        started(id, e.request)
+        trails.set(id, { times: [e.at], step: -1, steps: [], guidance: [], notes: [] })
+      },
+      // every step before this one is in the run's record now: the marker a kill would leave holds them (2026-10-23)
+      think: (id, a) => markRunning(id, a),
+      step(id, e, a) {
+        // Step n is the run's steps[n - 1] (every reply but the answer that ends the run is one step there).
+        if (trails.has(id)) trails.get(id).step = e.n - 1
+        const ts = trailStep(id)
+        if (e.images?.length && e.calls?.length && ts) ts.images = e.images
+        // the step in flight, as the thread draws it (2026-10-23 audit: a kill mid-step lost the step it showed)
+        if (e.calls?.length && ts) Object.assign(ts, { thought: e.thought, calls: e.calls, n: e.n, ms: e.ms, results: {} })
+        if (e.calls?.length) markRunning(id, a)
+      },
+      result(id, e, a, row) {
+        const ts = trailStep(id)
+        ts?.arrived.push(e.index)
+        // how it drew live, kept for the record: a helper gone or a tool lent for one phase restores the same (2026-10-23)
+        if (ts) (ts.looks ??= {})[e.index] = { kind: row.kind, view: row.view }
+        if (ts?.results) ts.results[e.index] = { tool: e.tool, ok: e.ok, output: String(e.output ?? "").slice(0, 1500), ...(e.ms != null ? { ms: e.ms } : {}) }
+        markRunning(id, a) // the marker holds the results in so far
+      },
+      gate(id, gate) {
+        const step = trailStep(id)
+        if (step) step.gate = gate
+      },
+      guide(id, e) {
+        const trail = trails.get(id)
+        trail?.guidance.push({ pos: trail.times.length - 1, from: e.from, text: e.text }) // the run's rows before it, after its request
+      },
+      answer: (id, e, a) => ended(id, () => history.record(a, e, null, trails.get(id))),
+      // its steps and trail too: a failed run restores as it showed
+      error: (id, e, a, request) => ended(id, () => history.record(a, e, request, trails.get(id))),
+    },
+  })
+  const { states, update, msg, at, kernel } = core
+  for (const a of team.list) states[a.name] = freshState()
   const deskTeam = lead.board?.team ?? null
-  // Every change is one {type: "kernel", artifact} event (2026-10-17: the lead's state.live second copy of the desk's
-  // own artifacts is gone — nothing read it).
-  const watched = new Map() // artifact id -> its onChange unsubscribe
-  const watch = (id, x) => {
-    watched.set(
-      id,
-      x.onChange(() => {
-        if (artifacts.get(id)?.artifact !== x) return // no holder left (its helper was dismissed)
-        kernel.artifacts[id] = view(id)
-        const patch = { type: "kernel", artifact: kernel.artifacts[id] }
-        broadcast(patch)
-        save(id)
-      }),
-    )
-  }
-  for (const [id, { artifact: x }] of artifacts) watch(id, x)
-  // The artifacts again after a spawn or dismiss: a new one is restored (by keep, once per instance: a live one held
-  // again keeps its state) and watched, one whose holders changed is sent again (a shared board gains its helper), one
-  // no agent holds any more leaves → its id, its waiting save written first.
-  const rescan = () => {
-    const next = team.artifacts()
-    const sent = []
-    for (const [id, { artifact: x, holders }] of next) {
-      const old = artifacts.get(id)
-      if (old?.artifact !== x) {
-        watched.get(id)?.()
-        if (old) flush(id, old.artifact)
-        if (!restored.has(x)) restore(id, x)
-        watch(id, x)
-        sent.push(id)
-      } else if (old.holders.join("\n") !== holders.join("\n")) sent.push(id)
-    }
-    const removed = [...artifacts.keys()].filter((id) => !next.has(id))
-    for (const id of removed) flush(id, artifacts.get(id).artifact)
-    artifacts = next
-    for (const id of removed) {
-      watched.get(id)?.()
-      watched.delete(id)
-      delete kernel.artifacts[id]
-    }
-    for (const id of sent) broadcast({ type: "kernel", artifact: (kernel.artifacts[id] = view(id)) })
-    syncPolls()
-    return removed
+  // a run's end: its marker gone, its stats saved, its run (with the trail) in history.md
+  const ended = (id, record) => {
+    rmSync(marker(id), { force: true })
+    saveStats()
+    record()
+    trails.delete(id)
   }
 
   // ---- artifacts the host refreshes -------------------------------------------------------------
@@ -344,7 +343,7 @@ export async function createKernelTeam({ desk, port, log: hostLog = () => {}, li
   const pollEvery = (x) => (typeof x?.refresh === "function" && Number.isFinite(x.poll) && x.poll > 0 ? Math.max(pollMinMs, x.poll) : 0)
   async function pollOnce(id, entry) {
     if (entry.busy) return
-    const held = artifacts.get(id)
+    const held = core.artifacts.get(id)
     if (held?.artifact !== entry.x) return
     const holder = held.holders.map((name) => team.agents().get(name)).find(Boolean)
     if (!holder) return
@@ -366,7 +365,7 @@ export async function createKernelTeam({ desk, port, log: hostLog = () => {}, li
   function syncPolls() {
     const wanted = new Set()
     if (clients.size > 0 && !terminated) {
-      for (const [id, { artifact: x }] of artifacts) {
+      for (const [id, { artifact: x }] of core.artifacts) {
         const every = pollEvery(x)
         if (!every) continue
         wanted.add(id)
@@ -387,9 +386,6 @@ export async function createKernelTeam({ desk, port, log: hostLog = () => {}, li
   }
 
   // ---- state per engine, from kernel events ----------------------------------------------------
-  const states = Object.fromEntries(team.list.map((a) => [a.name, freshState()]))
-  let seq = 0
-  const at = (ms) => new Date(ms ?? Date.now()).toISOString()
   // The run in progress per agent, beside the kernel's steps (its answer event carries them): what its thread showed
   // that the steps do not hold — each step's results in the order they arrived, its refused-answer row, the owner's
   // guidance and where it fell, each row's time (the Live feed merges agents by time). Recorded with the run
@@ -400,57 +396,21 @@ export async function createKernelTeam({ desk, port, log: hostLog = () => {}, li
     return t && t.step >= 0 ? (t.steps[t.step] ??= { arrived: [], gate: null }) : null
   }
 
-  function update(id, patch, newMessages = []) {
-    const s = (states[id] ??= freshState())
-    const from = s.messages.length
-    const trail = trails.get(id)
-    // The run's rows, in order (an owner chat beside the run is not one of them: its history never holds it).
-    if (trail) trail.times.push(...newMessages.filter((m) => m.kind !== "chat").map((m) => Date.parse(m.at)))
-    let messages = s.messages
-    if (newMessages.length) {
-      messages = [...messages, ...newMessages]
-      if (messages.length > MAX_MESSAGES) messages = messages.slice(-MAX_MESSAGES)
-    }
-    const next = { ...s, ...patch, messages, revision: s.revision + 1 }
-    states[id] = next
-    const out = { ...patch, revision: next.revision }
-    if (newMessages.length) out.messages = messages.length < from + newMessages.length ? { from: 0, items: messages } : { from, items: newMessages }
-    broadcast({ type: "state", id, patch: out })
-  }
-
-  // One model call more in the agent's stats (a step's, or an owner chat's): {calls, totalMs, avgMs, lastMs,
-  // promptChars, replyChars, model, at}.
-  // every model call counted is saved once its update is in (a chat's or a compaction's too — 2026-10-23 audit)
-  const counted = (id, a, e) => (queueMicrotask(saveStats), nextStats(states[id]?.stats, a, e))
-  // The step running now per agent: {stage, since, row, calls: [{index, tool, input}] not answered yet}; row: the
-  // step's thread row (its message id). A result is its call's by the index the kernel's `call` and `result` carry
-  // (the call's place in the step), never by tool name (2026-10-17: two quote calls in one step showed each other's
-  // inputs; "desk.scout", run as scout, kept its row without its brief and stayed in the activity after it reported).
-  const pendingCalls = new Map()
-
-  // ids unique across processes (2026-10-23 audit: k1, k2 … again after a restart, and the narrator took a restored row
-  // for one it had already spoken): the process's start in base 36, then the count
-  const boot = Date.now().toString(36)
-  const msg = (row) => ({ id: `k${boot}-${++seq}`, ...row })
   // A row the kernel's run record does not hold (a compaction, a desk event, a refresh that failed): kept on the run's
   // trail where it fell, so history.md keeps it and a restored thread shows it where it was (2026-10-23).
   // What waits on a debounce, written now (2026-10-23 audit: a stop lost the last second of log lines and artifact saves).
   function flushSaves() {
-    for (const { artifact: x } of artifacts.values()) x.flush?.() // an artifact's own debounce first (a workflow's touch)
+    for (const { artifact: x } of core.artifacts.values()) x.flush?.() // an artifact's own debounce first (a workflow's touch)
     for (const [id, t] of timers) {
       clearTimeout(t)
       timers.delete(id)
-      const x = artifacts.get(id)?.artifact
+      const x = core.artifacts.get(id)?.artifact
       if (x) write(id, x)
     }
     if (logSave) {
       clearTimeout(logSave)
       logSave = null
-      try {
-        writeFileSync(logFile, JSON.stringify(logs))
-      } catch (error) {
-        logSaveFailed(error)
-      }
+      writeLog()
     }
   }
   let markFailed = false
@@ -477,7 +437,6 @@ export async function createKernelTeam({ desk, port, log: hostLog = () => {}, li
   // results arrived, refused answers, the owner's guidance where it fell. 2026-10-17: a restored run was only its
   // request and answer, so research-lead's thread and the Live feed lost every call when its desk reloaded.
   const history = createHistory({ enabled: live !== false, log })
-  const starts = new Map() // agent name -> the request of its run in progress
   // A step from before its refused-answer row was kept (no `gate`): that row from the kernel's note past the step's
   // calls (agent.js: tool gate, format or guide), as the live gate/format case drew it; another note draws nothing.
   const noteGate = (note) => {
@@ -494,7 +453,7 @@ export async function createKernelTeam({ desk, port, log: hostLog = () => {}, li
   const restoredRun = (a, r) => {
     // a note outside any run: its rows alone
     if (r.note) return (r.notes ?? []).filter((n) => n?.row).map((n) => ({ ...n.row, at: n.row.at ?? r.at }))
-    const request = rows.request({ from: r.from, text: r.request }, r.at)
+    const request = rows.request({ from: r.from, text: r.request, ...(r.original ? { original: r.original, rewrite: r.rewrite } : {}) }, r.at)
     // a failed or stopped run ends on its error row, as live
     const answer = r.error ? { ...rows.answer(`Error: ${r.error}`, r.at), error: r.error } : rows.answer(r.answer, r.at, r.flags)
     try {
@@ -585,7 +544,7 @@ export async function createKernelTeam({ desk, port, log: hostLog = () => {}, li
       // the step whose calls are still out: its arrived results, the rest marked cut (never drawn, never restored)
       const live = trail.steps[trail.step]
       if (trail.step === steps.length && live?.calls) steps.push({ thought: live.thought, calls: live.calls, n: live.n, ms: live.ms, results: live.calls.map((c, k) => live.results?.[k] ?? { tool: c.tool, ok: false, output: "(cut off: the server stopped before it answered)", cut: true }) })
-      writeFileSync(marker(id), JSON.stringify({ at: trail.times[0], request: starts.get(id), steps, trail }))
+      writeFileSync(marker(id), JSON.stringify({ at: trail.times[0], request: core.starts.get(id), steps, trail }))
     } catch (error) {
       if (!markFailed) log(`desk: the run marker was not written (${error.message}) — a kill would lose the run in progress`)
       markFailed = true
@@ -601,140 +560,9 @@ export async function createKernelTeam({ desk, port, log: hostLog = () => {}, li
       if (!journalFailed) log(`desk: the event journal (state/kernel-team.jsonl) did not take a line (${error.message})`)
       journalFailed = true
     }
-    switch (e.event) {
-      case "spawn":
-        spawned(e)
-        break
-      case "dismiss":
-        dismissed(e)
-        break
-      case "keep":
-        keptNow(e)
-        break
-      case "proposal":
-        proposal(e)
-        break
-      case "start": {
-        try {
-          mkdirSync(runningDir, { recursive: true })
-          writeFileSync(marker(id), JSON.stringify({ at: e.at, request: e.request }))
-        } catch (error) {
-          if (!markFailed) log(`desk: the run marker was not written (${error.message}) — a kill would lose the run in progress`)
-          markFailed = true
-        }
-        started(id, e.request)
-        starts.set(id, e.request)
-        const first = msg(rows.request(e.request, at(e.at)))
-        update(id, { status: "running", error: null, activity: { phase: "llm", stage: "waiting" }, working: { request: first.id, at: at(e.at) } }, [first])
-        trails.set(id, { times: [e.at], step: -1, steps: [], guidance: [], notes: [] })
-        break
-      }
-      case "think":
-        // every step before this one is in the run's record now: the marker a kill would leave holds them (2026-10-23)
-        markRunning(id, a)
-        update(id, { activity: { phase: "llm", stage: "waiting", n: e.n } }) // n: the step whose model call is in flight
-        break
-      case "step": {
-        // The model call behind the step (kernel Agent: ms, prompt_chars, reply_chars): the agent's stats.
-        if (e.ms != null) update(id, { stats: counted(id, a, e) })
-        // Step n is the run's steps[n - 1] (every reply but the answer that ends the run is one step there).
-        if (trails.has(id)) trails.get(id).step = e.n - 1
-        if (e.images?.length && e.calls?.length && trailStep(id)) trailStep(id).images = e.images
-        // the step in flight, as the thread draws it (2026-10-23 audit: a kill mid-step lost the step it showed)
-        if (e.calls?.length && trailStep(id)) Object.assign(trailStep(id), { thought: e.thought, calls: e.calls, n: e.n, ms: e.ms, results: {} })
-        if (e.calls?.length) markRunning(id, a)
-        if (!e.calls?.length) {
-          if (e.images?.length) note(id, rows.saw(e.images, at(e.at))) // kept where it fell (restored with its screenshots)
-          break
-        }
-        // The step's calls by their index; quests only: the thread now waits for its sub-agents' reports. Each name as
-        // the kernel will run it (Agent.resolveTool), so the first activity already draws "desk.scout" as the quest to
-        // scout (2026-10-17: it drew it as a data tool until the `call` event came). The step row keeps the names as
-        // written.
-        const row = msg(rows.step(e.thought, e.calls, at(e.at), e.images, e.ms, { n: e.n, answer: e.answer }))
-        const step = { stage: e.n, since: at(e.at), row: row.id, calls: e.calls.map((c, index) => ({ index, tool: a.resolveTool(c.tool), input: c.input ?? {} })) }
-        pendingCalls.set(id, step)
-        update(id, { activity: activityOf(a, step) }, [row])
-        break
-      }
-      case "call": {
-        // The tool the kernel runs for call `index`: the step already drew it so (resolveTool); should the kernel run
-        // another, the activity follows the kernel.
-        const step = pendingCalls.get(id)
-        const call = step?.calls.find((c) => c.index === e.index)
-        if (call && call.tool !== e.tool) {
-          call.tool = e.tool
-          update(id, { activity: activityOf(a, step) })
-        }
-        break
-      }
-      case "result": {
-        // The call this result answers, by its index: its inputs for the thread and the Live page; the rest still run.
-        const step = pendingCalls.get(id)
-        const i = step ? step.calls.findIndex((c) => c.index === e.index) : -1
-        const call = i >= 0 ? step.calls.splice(i, 1)[0] : null
-        const row = rows.result(a, e, call?.input ?? e.input, e.index, step?.row, at(e.at))
-        const ts = trailStep(id)
-        ts?.arrived.push(e.index)
-        // how it drew live, kept for the record: a helper gone or a tool lent for one phase restores the same (2026-10-23)
-        if (ts) (ts.looks ??= {})[e.index] = { kind: row.kind, view: row.view }
-        if (ts?.results) ts.results[e.index] = { tool: e.tool, ok: e.ok, output: String(e.output ?? "").slice(0, 1500), ...(e.ms != null ? { ms: e.ms } : {}) }
-        update(id, step ? { activity: activityOf(a, step) } : {}, [msg(row)])
-        markRunning(id, a) // the marker holds the results in so far
-        break
-      }
-      case "gate":
-      case "format": {
-        // The answer was refused (open checklist, report missing fields, no tool called) or the reply had neither
-        // calls nor an answer: the agent goes on; the thread and the Live feed show why.
-        // held: guidance arrived while the model wrote its answer, so the answer waits one step.
-        const content = e.event === "gate" ? `Answer ${e.held ? "held" : "refused"}${e.hard ? " (hard: retries never let it through)" : ""}: ${(e.reasons ?? []).join("; ")}` : `Reply not taken: ${e.note ?? "no calls and no answer"}`
-        const step = trailStep(id)
-        if (step) step.gate = { kind: e.event, content }
-        update(id, { activity: { phase: "llm", stage: "waiting" } }, [msg(rows.gate(e.event, content, at(e.at)))])
-        break
-      }
-      case "compact":
-        // 2026-10-22: the prompt reached 90% of its budget and the older work was folded (kernel #compact): a row in
-        // the thread and the Live feed; its summary's model call in the stats.
-        note(id, rows.compact(e, at(e.at)), e.mode === "model" && e.ms != null ? { stats: counted(id, a, e) } : {})
-        break
-      case "refresh":
-        // 2026-10-23: an artifact's refresh failed before a step (the step went on with its last state), or is back
-        note(id, rows.refresh(e, at(e.at)))
-        break
-      case "guide": {
-        // Owner guidance for the run in progress (call `guide`): a row in the thread and the Live feed; the
-        // agent's next step reads it.
-        const trail = trails.get(id)
-        trail?.guidance.push({ pos: trail.times.length - 1, from: e.from, text: e.text }) // the run's rows before it, after its request
-        update(id, {}, [msg(rows.guidance(e.from, e.text, at(e.at)))])
-        break
-      }
-      case "chat":
-        // The owner's chat (team call `chat`): its question and answer as two rows, its model call in the stats. The
-        // activity and `working` stay the run's (a chat is never the request being worked on).
-        update(id, e.ms != null ? { stats: counted(id, a, e) } : {}, [msg(rows.chatAsked(e.from, e.text, at(e.at - (e.ms ?? 0)))), msg(rows.chatAnswer(e, at(e.at)))])
-        break
-      case "answer":
-        rmSync(marker(id), { force: true })
-        saveStats()
-        pendingCalls.delete(id)
-        starts.delete(id)
-        history.record(a, e, null, trails.get(id))
-        trails.delete(id)
-        update(id, { status: "idle", activity: IDLE, working: null }, [msg(rows.answer(e.answer, at(e.at), e.flags))])
-        break
-      case "error":
-        rmSync(marker(id), { force: true })
-        saveStats()
-        pendingCalls.delete(id)
-        history.record(a, e, starts.get(id), trails.get(id)) // its steps and trail too: a failed run restores as it showed
-        starts.delete(id)
-        trails.delete(id)
-        update(id, { status: "error", activity: IDLE, working: null, error: e.error }, [msg({ ...rows.answer(`Error: ${e.error}`, at(e.at)), error: e.error })])
-        break
-    }
+    const deskEvent = { spawn: spawned, dismiss: dismissed, keep: keptNow, proposal }[e.event]
+    if (deskEvent) deskEvent(e)
+    else core.onEvent(e)
   })
 
   // ---- agents that come and go -----------------------------------------------------------------
@@ -790,12 +618,6 @@ export async function createKernelTeam({ desk, port, log: hostLog = () => {}, li
       log(`desk: ${a.name}'s folder not written (${error.message})`)
     }
   }
-  // 2026-10-23: a desk event (spawn, dismiss, keep, proposal) as a row in the thread of the agent that caused it, so the
-  // run that spawned a helper shows it where it happened, not only in the tree and the desk log.
-  function lifecycle(by, kind, content, e) {
-    if (!by || !states[by]) return
-    note(by, rows.lifecycle(kind, content, at(e.at), { agent: e.agent, goal: e.goal ?? null, keep: e.keep ?? null, team: e.team ?? null }))
-  }
   function spawned(e) {
     const a = team.agents().get(e.agent)
     if (!a) return
@@ -808,16 +630,8 @@ export async function createKernelTeam({ desk, port, log: hostLog = () => {}, li
       // A kept helper back (a restart, an update): its runs from the history.md beside its .md, as a desk agent's.
       if (keptFolders.has(x.name)) restoreAgent(x)
     }
-    describeAll()
-    broadcast({ type: "registry", registry, states: Object.fromEntries(fresh.map((x) => [x.name, states[x.name]])) })
-    rescan()
-    kernel.tree = team.tree()
-    broadcast({ type: "kernel", tree: kernel.tree })
-    const members = fresh.filter((x) => x !== a).map((x) => x.name)
-    const waits = e.proposed ? ` (for this run; keep: desk waits for the owner — from a run that read the web: ${e.proposed.from})` : ""
-    log(`desk: ${e.by} spawned ${members.length ? `team ${a.name} (${members.join(", ")})` : a.name}${waits}: ${String(e.goal ?? "").split("\n")[0].slice(0, HOST_LIMITS.team.logPreviewChars)}`)
-    // a run's spawn, not a kept helper respawned at start (its spawner idle then)
-    if (team.agents().get(e.by)?.current) lifecycle(e.by, "spawn", `Spawned ${members.length ? `team ${a.name} (${members.join(", ")})` : a.name}${waits}: ${String(e.goal ?? "").split("\n")[0]}`, e)
+    core.reshaped({ fresh, scan: true })
+    core.deskSaid.spawn(e, a, fresh.filter((x) => x !== a).map((x) => x.name))
   }
   // 2026-10-20 (kernel builtin/spawn.js: a keep: desk or a kept helper's update from a run that read outside waits for the
   // owner). Kept by the owner's accept (kernel Desk.keep): its agent.md written under its spawner's folder now, members
@@ -826,23 +640,12 @@ export async function createKernelTeam({ desk, port, log: hostLog = () => {}, li
     const a = team.agents().get(e.agent)
     if (!a) return
     for (const x of team.list.filter((x) => x === a || (e.team && x.config.spawned?.team === e.team))) recordSpawn(x, e)
-    describeAll()
-    broadcast({ type: "registry", registry, states: {} })
-    kernel.tree = team.tree()
-    broadcast({ type: "kernel", tree: kernel.tree })
-    log(`desk: ${e.by ?? "owner"} kept ${e.agent}${keptFolders.has(e.agent) ? " — its agent.md is written; it is back at every start" : ""}`)
-    lifecycle(a.config.spawned?.by, "keep", `${e.by ?? "owner"} kept ${e.agent}: it stays on the desk`, e)
+    core.reshaped()
+    core.deskSaid.keep(e, a, keptFolders.has(e.agent) ? " — its agent.md is written; it is back at every start" : "")
   }
   function proposal(e) {
-    describeAll()
-    broadcast({ type: "registry", registry, states: {} })
-    kernel.tree = team.tree()
-    broadcast({ type: "kernel", tree: kernel.tree })
-    const p = e.proposed
-    if (p) log(`desk: ${e.by ?? "?"} proposes ${p.update ? `an update of kept ${e.agent} (${Object.keys(p.update).join(", ")})` : `to keep ${e.agent}`} — not in force, waits for the owner (from a run that read the web: ${p.from})`)
-    else if (e.dropped) log(`desk: ${e.by ?? "owner"} dropped the ${e.dropped === "update" ? "update" : "keep"} proposed for ${e.agent}${e.reason ? `: ${e.reason}` : ""}`)
-    if (p) lifecycle(e.by, "proposal", `Proposed ${p.update ? `an update of ${e.agent}` : `to keep ${e.agent}`} — waits for the owner`, e)
-    else if (e.dropped) lifecycle(team.agents().get(e.agent)?.config.spawned?.by, "proposal", `${e.by ?? "owner"} dropped the ${e.dropped === "update" ? "update" : "keep"} proposed for ${e.agent}${e.reason ? `: ${e.reason}` : ""}`, e)
+    core.reshaped()
+    core.deskSaid.proposal(e)
   }
   // A dismissed agent leaves the registry (its folder and history.md stay); the artifacts only it held leave too. A
   // team leaves one agent per event, its members first (kernel Desk.dismiss), its board with the last of them.
@@ -857,21 +660,16 @@ export async function createKernelTeam({ desk, port, log: hostLog = () => {}, li
       if (to) log(`desk: kept ${e.agent} dismissed — its agent.md moved to ${memory && to.startsWith(memory) ? `memory/${relative(join(memory, ".."), to)}` : to}`)
     }
     delete states[e.agent]
-    pendingCalls.delete(e.agent)
+    core.pending.delete(e.agent)
     trails.delete(e.agent)
-    starts.delete(e.agent)
-    describeAll()
-    broadcast({ type: "registry", registry, states: {} })
-    const removed = rescan()
-    kernel.tree = team.tree()
-    broadcast({ type: "kernel", tree: kernel.tree, ...(removed.length ? { removed } : {}) })
+    core.starts.delete(e.agent)
+    core.reshaped({ scan: true })
     // its stats go with it: a later helper of the same name starts with none (2026-10-23 audit)
     if (savedStats[e.agent] && e.reason !== "update") {
       delete savedStats[e.agent]
       saveStats()
     }
-    log(`desk: ${e.by ?? "owner"} dismissed ${e.agent}${e.reason ? ` (${e.reason})` : ""}`)
-    lifecycle(e.by, "dismiss", `Dismissed ${e.agent}${e.reason ? ` (${e.reason})` : ""}`, e)
+    core.deskSaid.dismiss(e)
   }
 
   // ---- actions ---------------------------------------------------------------------------------
@@ -886,7 +684,19 @@ export async function createKernelTeam({ desk, port, log: hostLog = () => {}, li
   // The owner's chats in flight (team call `chat`) until each ends: work() lists them, so the status bar, the canvas and
   // a desk reload (desks/load waits while work() is not empty) see them; kernel Agent.stop aborts them.
   const chatting = new Set() // {agent, text, at}
-  function run(agent, text, from = "owner") {
+  // The owner's words → a clear request before a run starts (2026-10-24 owner: "The first user input can always go through
+  // sanitize … the input and the voice transcribe"): the host API hands its on-device sanitizer here (useSanitizer, from
+  // companion/capabilities/sanitize.js; null: none on this machine or main.js sanitize: false). Only work the owner gives
+  // (a `via`: typed, voice, telegram) — never a schedule, a wake, a quest. The run's request carries the owner's own words
+  // beside the rewrite (kernel Agent.ask {original, rewrite}); its thread row shows both.
+  let sanitizer = null
+  const rewrite = async (text, via, signal) => {
+    if (!sanitizer || !via) return { text }
+    const r = await sanitizer.sanitize(text, { via, signal }).catch(() => null)
+    return r?.changed ? { text: r.text, original: r.original, rewrite: { via, model: r.model, ms: r.ms } } : { text }
+  }
+  // given: a rewrite made already (the Telegram bridge's: {original, rewrite}) — passed on as it is.
+  function run(agent, text, from = "owner", { via = null, given = null, suffix = "" } = {}) {
     const controller = new AbortController()
     if (!controllers.has(agent.name)) controllers.set(agent.name, new Set())
     controllers.get(agent.name).add(controller)
@@ -899,10 +709,14 @@ export async function createKernelTeam({ desk, port, log: hostLog = () => {}, li
       .then(() => ready())
       .then(() => {
         // Stopped while it waited: it never starts (a line in the desk log, as its acceptance was).
-        if (!controller.signal.aborted) {
-          handed.add(controller)
-          return agent.ask(String(text), { from, signal: controller.signal })
-        }
+        if (!controller.signal.aborted)
+          return (given?.original ? Promise.resolve({ text: String(text), ...given }) : rewrite(String(text), via, controller.signal)).then((r) => {
+            if (controller.signal.aborted) throw new Error("stopped")
+            const request = `${r.text}${suffix}`
+            if (request !== entry.text) (entry.text = request), saveAccepted() // started() finds it by the request it runs
+            handed.add(controller)
+            return agent.ask(request, { from, signal: controller.signal, ...(r.original ? { original: r.original, rewrite: r.rewrite } : {}) })
+          })
         log(`desk: ${from} → ${agent.name} stopped before it started: ${String(text).slice(0, HOST_LIMITS.team.logPreviewChars)}`)
         throw new Error("stopped")
       })
@@ -924,11 +738,10 @@ export async function createKernelTeam({ desk, port, log: hostLog = () => {}, li
     if (entry) (entry.started = true), saveAccepted()
   }
 
-  const ok = (value = null) => ({ ok: true, value })
-  const fail = (message) => ({ ok: false, error: { message } })
+  const viaOf = (o) => (["typed", "voice", "telegram"].includes(o?.via) ? o.via : null)
 
   // The desk's schedule: due runs go to the lead with their goal (checked every 30 s).
-  const schedule = [...artifacts.values()].find((x) => x.artifact.kind === "schedule")?.artifact ?? null
+  const schedule = [...core.artifacts.values()].find((x) => x.artifact.kind === "schedule")?.artifact ?? null
   const scheduleTimer = schedule
     ? setInterval(() => {
         const due = schedule.takeDue(new Date())
@@ -936,6 +749,47 @@ export async function createKernelTeam({ desk, port, log: hostLog = () => {}, li
       }, 30000)
     : null
   scheduleTimer?.unref?.()
+
+  // The desk's standing goal (kernel builtin/goal.js; 2026-10-24 owner: "the desk will set a goal and will keep working
+  // towards the goal"): while one is active and its keeper (else the lead) is idle with nothing queued, its due run starts
+  // from "goal" with the goal, the last progress and the owner's feedback (checked every 30 s, as the schedule).
+  const idle = (agent) => agent && agent.status !== "running" && ![...accepted].some((r) => r.agent === agent.name)
+  const goalTimer = setInterval(() => {
+    if (terminated) return
+    for (const { artifact } of core.artifacts.values()) {
+      if (artifact.kind !== "goal" || typeof artifact.takeDue !== "function") continue
+      const keeperOf = (name) => team.agents().get(name ?? "") ?? lead
+      const due = artifact.takeDue(new Date(), (name) => !idle(keeperOf(name)))
+      if (!due) continue
+      const keeper = keeperOf(due.keeper)
+      // 2026-10-24 owner ("I want to create configurable workflows"): a goal with a workflow resumes through it — the
+      // flow's file says how the desk works toward the goal (default desks/agent/phases/goal-cycle.md: plan → work → judge);
+      // its last step's report is the progress when no step recorded one (Goal.flowEnded).
+      const flow = due.workflow ? core.artifacts.get(due.workflow)?.artifact : null
+      if (due.workflow && flow?.kind === "workflow" && typeof flow.run === "function" && !flow.active) {
+        log(`desk: goal → the workflow ${due.workflow} (${keeper.name}): resumes the standing goal`)
+        artifact.flowStarted(due.workflow)
+        flow
+          .run({ note: "the standing goal's resume" }, { agent: flow.holders?.[0] ?? keeper, owner: true, request: due.text, vars: due.vars, host: keeper.context?.host ?? null })
+          .then(() => {
+            const last = flow.state?.stages?.at(-1)?.id
+            let report = null
+            try {
+              report = last ? (flow.stageDetail?.(last)?.report ?? null) : null
+            } catch {}
+            // the failed stage's own error (a model's usage limit is then told apart from a failure)
+            const failed = flow.state?.stages?.find((s) => s.status === "failed")?.error
+            artifact.flowEnded({ ok: flow.state?.status === "done", report, error: failed ? `${flow.state?.status}: ${failed}` : flow.state?.status })
+          })
+          .catch((error) => (artifact.flowEnded({ ok: false, error: error.message }), log(`desk: the goal's workflow failed: ${error.message}`)))
+        continue
+      }
+      if (due.workflow) log(`desk: goal: the workflow ${due.workflow} ${flow ? "is busy or not a workflow" : "is not held on this desk"} — ${keeper.name} resumes it itself`)
+      log(`desk: goal → ${keeper.name}: resumes the standing goal`)
+      run(keeper, due.text, "goal").catch((error) => log(`desk: the goal's run failed: ${error.message}`))
+    }
+  }, goalTickMs)
+  goalTimer.unref?.()
 
   // The desk's own background work (start's run): it may wake the lead when it is idle.
   const busy = () => lead.status === "running"
@@ -955,7 +809,9 @@ export async function createKernelTeam({ desk, port, log: hostLog = () => {}, li
     if (!target) return fail(`No agent "${agent}" in this desk.`)
     const id = String(from).replace(/^wake /, "")
     run(target, text, from).catch((error) => {
-      const retry = retryWake(wakeBook, { id, error: error.message })
+      // a model's usage limit: the retry waits until it resets (a retry inside the limit fails the same way)
+      const limit = usageLimit(error.message)
+      const retry = retryWake(wakeBook, { id, error: error.message, ...(limit ? { minutes: limitWait(limit) } : {}) })
       log(`wake: ${id} failed: ${error.message}${retry ? ` — retry ${retry.id} at ${retry.at}` : ""}`)
     })
     return ok({ agent: target.name })
@@ -963,9 +819,56 @@ export async function createKernelTeam({ desk, port, log: hostLog = () => {}, li
   const stopWakes = wakeBook && live !== false ? startWakes({ root: desk.workspace, deliver: deliverWake, log: (line) => log(`wake: ${line}`) }) : () => {}
 
   // Owner-level actions on the desk itself (the UI's next-run box; 2026-10-20 the owner's accept or drop of what waits on a
-  // helper, kernel ownerHelperCall: [{helper, reason?}]).
+  // helper, kernel ownerHelperCall: [{helper, reason?}]; the footer's model selector: desk default model and per-agent override).
   async function deskCall(method, args) {
     if (method === "accept" || method === "drop") return ok(await ownerHelperCall(team, method, args[0] ?? {}))
+    if (method === "model") {
+      const raw = typeof args[0] === "string" ? args[0] : args[0]?.model
+      const next = String(raw ?? "").trim()
+      if (!next || !Object.hasOwn(catalogue, next)) return fail(`model: one of ${Object.keys(catalogue).join(", ")}`)
+      team.defaultModel = next
+      kernel.defaultModel = next
+      if (live !== false) {
+        try {
+          writeFileSync(modelFile, JSON.stringify({ defaultModel: next }))
+        } catch (error) {
+          log(`desk: default model not saved (${error.message})`)
+        }
+      }
+      broadcast({ type: "kernel", defaultModel: next })
+      log(`desk: default model → ${next}`)
+      return ok({ defaultModel: next })
+    }
+    if (method === "agentModel") {
+      const { agent: name, model: raw } = args[0] ?? {}
+      const target = name ? team.agents().get(String(name)) : lead
+      if (!target) return fail(`No agent "${name}" in this desk.`)
+      const next = raw == null || raw === "" || raw === "inherit" ? null : String(raw).trim()
+      if (next && !Object.hasOwn(catalogue, next)) return fail(`model: one of ${Object.keys(catalogue).join(", ")}`)
+      if (next) target.config.model = next
+      else delete target.config.model
+      if (target.config.spawned?.input) {
+        if (next) target.config.spawned.input.model = next
+        else delete target.config.spawned.input.model
+        const kept = keptFolders.get(target.name)
+        if (kept && live !== false) {
+          try {
+            writeKept(target, kept, team.agents())
+          } catch (error) {
+            log(`desk: ${target.name}'s agent.md not written (${error.message})`)
+          }
+        }
+      } else if (target.config.folder && live !== false) {
+        try {
+          setAgentModel(target.config.folder, next)
+        } catch (error) {
+          log(`desk: ${target.name}'s model not written to its .md (${error.message})`)
+        }
+      }
+      core.reshaped()
+      log(`desk: ${target.name} model → ${next ?? `desk default (${kernel.defaultModel})`}`)
+      return ok({ agent: target.name, model: next })
+    }
     if (!schedule) return fail("this desk has no schedule")
     if (method === "schedule") return ok(schedule.book(args[0] ?? {}, "owner"))
     if (method === "unschedule") return ok(schedule.clear())
@@ -991,31 +894,15 @@ export async function createKernelTeam({ desk, port, log: hostLog = () => {}, li
     // The owner acts on an artifact through its twin (2026-10-17: the preview's ask, kernel builtin/preview.js): args [{id,
     // …}] → its ownerCall(method, args, "owner"); a {deliver} text goes to its keeper (else the lead) — guidance while it
     // runs, else a new run. → the call's result without the text, + {keeper, delivered: "guided" | "run"}.
-    if (target === "artifact") {
-      const id = String(args[0]?.id ?? "")
-      const x = artifacts.get(id)?.artifact
-      if (typeof x?.ownerCall !== "function") return fail(`no artifact "${id}" takes the owner's calls`)
-      try {
-        // awaited (2026-10-17): the preview's open / back / rerun read files and run scripts first
-        const { deliver, keeper: name, ...rest } = (await x.ownerCall(method, args, "owner")) ?? {}
-        if (!deliver) return ok(rest)
-        const keeper = team.agents().get(name ?? "") ?? lead
-        const guided = keeper.guide(deliver, "owner")
-        if (guided) log(`desk: owner asks on ${id} → ${keeper.name} (guidance): ${deliver.split("\n")[0].slice(0, HOST_LIMITS.team.logPreviewChars)}`)
-        else run(keeper, deliver, "owner").catch((error) => log(`desk: owner's ask on ${id} → ${keeper.name} failed: ${error.message}`))
-        return ok({ ...rest, keeper: keeper.name, delivered: guided ? "guided" : "run" })
-      } catch (error) {
-        return fail(error.message)
-      }
-    }
+    if (target === "artifact") return core.ownerArtifact(method, args, run)
     const agent = target ? team.agents().get(target) : lead // no target: the lead (scripts/send.js --wait)
     if (!agent) return fail(`No agent "${target}" in this desk.`)
     try {
       switch (method) {
-        case "ask": // args: [text, { from }?] — resolves with the answer
-          return ok(await run(agent, args[0], args[1]?.from ?? "owner"))
-        case "send":
-          run(agent, args[0]).catch(() => {})
+        case "ask": // args: [text, { from, via }?] — resolves with the answer (via: the owner's words, rewritten first)
+          return ok(await run(agent, args[0], args[1]?.from ?? "owner", { via: viaOf(args[1]) }))
+        case "send": // args: [text, { via, suffix }?] — suffix: appended after the rewrite (the voice page's read-aloud note)
+          run(agent, args[0], "owner", { via: viaOf(args[1]), suffix: typeof args[1]?.suffix === "string" ? args[1].suffix.slice(0, 400) : "" }).catch(() => {})
           return ok(null)
         case "deposit": {
           const letter = args[0] ?? {}
@@ -1046,7 +933,8 @@ export async function createKernelTeam({ desk, port, log: hostLog = () => {}, li
           // proposed}. A QUEUE: line (or a GUIDE: line with no run left to guide) is a proposal: never started here — the
           // owner starts it (the UI's "Queue it" sends it). In flight it is work (work()); stop aborts it ("stopped").
           const from = args[1]?.from ?? "owner"
-          const said = String(args[0] ?? "").trim()
+          // a spoken question is corrected, never expanded (sanitize via guidance)
+          const said = (await rewrite(String(args[0] ?? "").trim(), args[1]?.via === "voice" ? "guidance" : null)).text
           if (!said) return fail("a chat needs text: what to ask the agent.")
           log(`desk: ${from} asks ${agent.name}: ${said.split("\n")[0].slice(0, HOST_LIMITS.team.logPreviewChars)}`)
           const entry = { agent: agent.name, text: said, at: new Date().toISOString() }
@@ -1060,28 +948,31 @@ export async function createKernelTeam({ desk, port, log: hostLog = () => {}, li
           } finally {
             chatting.delete(entry)
           }
-          const proposed = typeof out.proposed === "string" && out.proposed.trim() ? out.proposed.trim() : null
-          if (proposed) log(`desk: ${agent.name} proposes to ${from} (not started): ${proposed.split("\n")[0].slice(0, HOST_LIMITS.team.logPreviewChars)}`)
-          return ok({ answer: out.answer, guided: !!out.guided, proposed, ...(out.visual ? { visual: out.visual } : {}), ...(out.visualError ? { visualError: out.visualError } : {}) }) // 2026-10-23 audit: the inline answer draws its visual too
+          const value = core.chatValue(out)
+          if (value.proposed) log(`desk: ${agent.name} proposes to ${from} (not started): ${value.proposed.split("\n")[0].slice(0, HOST_LIMITS.team.logPreviewChars)}`)
+          return ok(value)
         }
         case "guide": {
           // args: [text, { from }?] — a note for the run in progress, seen at the agent's next step (kernel
           // Agent.guide). Idle, there is no run to guide: {delivered: false}, and the caller sends it as new work.
           const from = args[1]?.from ?? "owner"
-          const delivered = agent.guide(args[0], from)
+          // a spoken note is corrected only (sanitize via guidance): it keeps its size
+          const note = args[1]?.via === "voice" ? (await rewrite(String(args[0] ?? ""), "guidance")).text : args[0]
+          const delivered = agent.guide(note, from)
           if (delivered) log(`desk: ${from} guides ${agent.name}: ${String(args[0]).trim().slice(0, HOST_LIMITS.team.logPreviewChars)}`)
           return ok({ delivered })
         }
         case "preview":
           await agent.refreshArtifacts?.() // the prompt its next step would see, with its artifacts read fresh
           return ok(agent.render({ text: String(args[0] ?? ""), from: "owner" }, []))
+        case "older": // args: [end, start?] — the thread rows before index end, which the snapshot left out or cut (snapshot-thread-tail, snapshot-steps-lean)
+          return ok(core.older(agent.name, args[0], args[1]))
+        case "artifact": // args: [id] — the full view of an artifact the snapshot sent compact (snapshot-artifact-views)
+          return ok(core.artifact(String(args[0] ?? "")))
         case "clearMemory":
           // 2026-10-23 audit 19: never under a run (it set the agent idle while the run went on): stop it first
           if (agent.busy) return fail(`${agent.name} is working: stop it first, then clear its memory`)
-          agent.history.length = 0
-          update(agent.name, { status: "idle", activity: IDLE, working: null, error: null })
-          states[agent.name] = { ...states[agent.name], messages: [] }
-          broadcast({ type: "state", id: agent.name, patch: { messages: { from: 0, items: [] }, revision: states[agent.name].revision } })
+          core.clearMemory(agent)
           return ok(null)
         default:
           return ok(null) // summarizeMemory, resolveApproval, reconfigure: nothing to do here
@@ -1091,11 +982,12 @@ export async function createKernelTeam({ desk, port, log: hostLog = () => {}, li
     }
   }
 
-  function send({ agent = null, text, from = null } = {}) {
+  // via: the owner's words, rewritten first; original + rewrite: rewritten by the caller already (the Telegram bridge)
+  function send({ agent = null, text, from = null, via = null, original = null, rewrite: made = null } = {}) {
     if (typeof text !== "string" || !text.trim()) return fail("text: what the agent should do.")
     const target = agent ? team.agents().get(agent) : lead
     if (!target) return fail(`No agent "${agent}" in this desk.`)
-    run(target, text.trim(), from ?? "owner").catch(() => {})
+    run(target, text.trim(), from ?? "owner", { via: viaOf({ via }), given: typeof original === "string" && original.trim() ? { original, rewrite: made } : null }).catch(() => {})
     return ok({ engine: target.name, agent: target.name, queued: true })
   }
 
@@ -1114,7 +1006,7 @@ export async function createKernelTeam({ desk, port, log: hostLog = () => {}, li
             syncPolls()
           }
         }
-        sendEvent({ type: "snapshot", registry, states, kernel, log: logs })
+        sendEvent(core.snapshot())
         clients.add(sendEvent)
         syncPolls() // the first tab starts the polled artifacts' refreshes
         ping = setInterval(() => {
@@ -1211,17 +1103,7 @@ export async function createKernelTeam({ desk, port, log: hostLog = () => {}, li
   } catch (error) {
     log(`desk: the run markers left by a stop could not be swept (${error.message})`)
   }
-  for (const [id, st] of Object.entries(states)) {
-    const thread = st?.messages ?? []
-    for (const [i, m] of thread.entries()) {
-      if (m.action !== "lifecycle" || m.kind !== "proposal" || !String(m.content).startsWith("Proposed") || !m.agent) continue
-      if (thread.slice(i + 1).some((x) => x.action === "lifecycle" && x.agent === m.agent)) continue // kept, dropped or dismissed since
-      if (team.agents().get(m.agent)?.config.spawned?.proposed) continue // still waiting
-      const text = `The proposal for ${m.agent} was dropped when the server restarted (proposals are not saved) — propose it again to keep it`
-      note(id, rows.lifecycle("proposal", text, at(), { agent: m.agent }))
-      log(`desk: ${text}`)
-    }
-  }
+  core.droppedProposals("the server restarted")
 
   if (leftQueuedError) log(`desk: the runs queued before the stop did not read (${leftQueuedError}) — look there for what never ran`)
   if (!Array.isArray(leftQueued)) {
@@ -1241,19 +1123,34 @@ export async function createKernelTeam({ desk, port, log: hostLog = () => {}, li
   log(`desk: ${team.list.length} agents ready (lead ${lead.name})`)
   // onLeadAnswer(fn): fn({request, answer, flags, artifacts, deskTeam, at}) after each lead run; returns an unsubscribe.
   const onLeadAnswer = (fn) => (leadAnswers.add(fn), () => leadAnswers.delete(fn))
+  // 2026-10-26: what a tab downloads and parses when it opens the stream — the snapshot's bytes, by part, and its
+  // largest agent states and artifacts (the dev desk's speed measure, through projects/health)
+  function snapshotSize() {
+    const snap = core.snapshot()
+    const len = (v) => JSON.stringify(v ?? null).length
+    const top = (o, n = 4) => Object.entries(o ?? {}).map(([id, v]) => ({ id, bytes: len(v) })).sort((a, b) => b.bytes - a.bytes).slice(0, n)
+    return { bytes: len(snap), parts: { registry: len(snap.registry), states: len(snap.states), kernel: len(snap.kernel), log: len(snap.log) }, states: top(snap.states), artifacts: top(snap.kernel?.artifacts) }
+  }
+
   return {
     storageDir,
     stream,
+    snapshotSize,
     call,
+    // the view of an artifact held on this desk (null: none): the agent's-view gate's Ask 'what' (server/desks.js viewMayCall)
+    viewOf: (id) => core.artifacts.get(id)?.artifact?.view ?? null,
     send,
     announce,
     work,
     onLeadAnswer,
     log, // host code beside the desk (the Telegram bridge) writes to the same trail
+    // the host API's on-device sanitizer (null: none); the Telegram bridge rewrites the owner's own words with it
+    useSanitizer: (s) => void (sanitizer = s ?? null),
+    sanitize: (text, via) => rewrite(String(text ?? ""), via),
     get agents() {
       return team.list.map((a) => a.name) // now: spawned agents count while they are here
     },
-    terminate: () => (flushSaves(), clearInterval(scheduleTimer), stopWakes(), stopBackground?.(), controllers.forEach((set) => set.forEach((c) => c.abort())), (terminated = true), syncPolls()),
+    terminate: () => (flushSaves(), clearInterval(scheduleTimer), clearInterval(goalTimer), stopWakes(), stopBackground?.(), controllers.forEach((set) => set.forEach((c) => c.abort())), (terminated = true), syncPolls()),
     // Every open stream ends: EventSource reconnects on its own, to the desk hosted then (companion/server/desks.js,
     // after a reload), and its snapshot replaces what the tab showed.
     endStreams: () => [...closers].forEach((close) => close()),

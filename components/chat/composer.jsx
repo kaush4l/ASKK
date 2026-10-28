@@ -8,6 +8,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useSpeechInput } from "@/hooks/use-speech"
 import { cn } from "@/lib/utils"
+import { withDictation } from "./dictation-text"
+import { micLook, micTapNote } from "./mic-look"
 
 // The message box: a textarea with live dictation, send, and stop while the
 // engine runs. Shared by the agent page and the dashboard. Controlled: the
@@ -21,13 +23,15 @@ import { cn } from "@/lib/utils"
 // never answered): while running, Enter ASKS (the lead answers here; its answer may
 // pass a note to the run, GUIDE:), and Guide and Queue are buttons. Idle: Enter sends.
 
-// Live dictation into the message box. Disabled, with the reason, where the
-// browser cannot transcribe speech.
-function MicButton({ speech, onToggle, disabled }) {
+// Live dictation into the message box. Off, with the reason, where
+// neither the host (capability speech, any browser — voice-in 2026-10-27,
+// backend/live/listen.js) nor the browser (Safari) can transcribe speech.
+// 2026-10-27 speak-polish (l29): an off mic stays tappable (micLook), and a tap shows its reason under the composer
+// (onOffTap(micTapNote)), since a phone has no hover for the tooltip.
+export function MicButton({ speech, onToggle, onOffTap, disabled }) {
   const { support, listening } = speech
   if (!support) return null
-  const unavailable = !support.supported
-  const label = unavailable ? support.reason : listening ? "Stop dictation" : "Dictate (live transcription)"
+  const look = micLook({ support, listening, disabled })
   return (
     <Tooltip>
       <TooltipTrigger
@@ -36,18 +40,18 @@ function MicButton({ speech, onToggle, disabled }) {
             type="button"
             size="icon"
             variant={listening ? "destructive" : "ghost"}
-            className={cn("rounded-full pointer-coarse:size-10", listening && "animate-pulse")}
-            onClick={onToggle}
-            disabled={unavailable || disabled}
-            aria-label={label}
+            className={cn("rounded-full pointer-coarse:size-10", listening && "animate-pulse", look.off && "opacity-50")}
+            onClick={look.off ? () => onOffTap?.(micTapNote(support)) : onToggle}
+            disabled={look.disabled}
+            aria-label={look.label}
             aria-pressed={listening}
           />
         }
       >
-        {unavailable ? <MicOffIcon /> : <MicIcon />}
+        {look.icon === "off" ? <MicOffIcon /> : <MicIcon />}
       </TooltipTrigger>
       <TooltipContent side="top" className="max-w-64">
-        {label}
+        {look.label}
       </TooltipContent>
     </Tooltip>
   )
@@ -70,8 +74,10 @@ export function Composer({
   // Dictation goes after whatever was typed before it started.
   const dictationBase = React.useRef("")
   const speech = useSpeechInput({
-    onText: (text) => onChange(dictationBase.current ? `${dictationBase.current} ${text}`.trimEnd() : text),
+    onText: (text) => onChange(withDictation(dictationBase.current, text)),
   })
+  // 2026-10-27 speak-polish (l29): the reason a tap on an off mic shows, one line under the composer until typing.
+  const [micNote, setMicNote] = React.useState(null)
   function toggleDictation() {
     if (!speech.listening) dictationBase.current = value.trimEnd()
     speech.toggle()
@@ -112,6 +118,11 @@ export function Composer({
       {above}
       {speech.error && <p className="px-1 pb-2 text-xs text-destructive">{speech.error}</p>}
       {speech.correctionError && <p className="px-1 pb-2 text-xs text-destructive">{speech.correctionError}</p>}
+      {micNote && (
+        <p className="px-1 pb-2 text-xs text-muted-foreground" aria-live="polite">
+          {micNote}
+        </p>
+      )}
       {(speech.listening || speech.correcting) && (
         <p className="px-1 pb-2 text-xs text-muted-foreground" aria-live="polite">
           {speech.correcting ? "Punctuating…" : "Listening · punctuation is added after each pause"}
@@ -121,8 +132,9 @@ export function Composer({
         <Textarea
           value={value}
           onChange={(event) => {
-            // Typing takes over from dictation.
+            // Typing takes over from dictation, and clears an off mic's tap reason.
             if (speech.listening || speech.correcting) speech.release()
+            setMicNote(null)
             onChange(event.target.value)
           }}
           onKeyDown={onKeyDown}
@@ -132,7 +144,7 @@ export function Composer({
           className="max-h-48 min-h-12 resize-none pr-22 pointer-coarse:pr-24 dark:bg-transparent"
         />
         <div className="absolute right-12 bottom-2 pointer-coarse:right-14">
-          <MicButton speech={speech} onToggle={toggleDictation} disabled={disabled} />
+          <MicButton speech={speech} onToggle={toggleDictation} onOffTap={setMicNote} disabled={disabled} />
         </div>
         {running && onStop ? (
           <Button
@@ -162,8 +174,17 @@ export function Composer({
             {asking ? "Enter asks: answered now, the run goes on · Guide: a note its next step reads · Queue: runs after this run" : guiding ? "Guide: read at its next step · Queue: runs after this run" : "Send: new work"}
             {onAsk && !asking ? " · Ask: answered now, no run" : ""}
           </span>
-          {asking && (
-            <Button type="submit" size="sm" className="pointer-coarse:h-10" disabled={!value.trim() || disabled} title="A question answered now from what the agent sees; its run goes on">
+          {/* one Ask: while it runs the submit (Enter asks), first; idle an outline button (Guide and Queue are not shown) */}
+          {onAsk && (
+            <Button
+              type={asking ? "submit" : "button"}
+              variant={asking ? "default" : "outline"}
+              size="sm"
+              className="pointer-coarse:h-10"
+              disabled={!value.trim() || disabled}
+              onClick={asking ? undefined : () => send("ask")}
+              title={`A question answered now from what the agent sees; its run${asking ? "" : ", if any,"} goes on`}
+            >
               <MessageCircleQuestionIcon /> Ask
             </Button>
           )}
@@ -176,19 +197,6 @@ export function Composer({
                 <ListPlusIcon /> Queue
               </Button>
             </>
-          )}
-          {onAsk && !asking && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="pointer-coarse:h-10"
-              disabled={!value.trim() || disabled}
-              onClick={() => send("ask")}
-              title="A question answered now from what the agent sees; its run, if any, goes on"
-            >
-              <MessageCircleQuestionIcon /> Ask
-            </Button>
           )}
         </div>
       )}

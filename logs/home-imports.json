@@ -1,0 +1,815 @@
+{
+  "at": "2026-10-27T05:06:43.688Z",
+  "top": [
+    {
+      "path": "pkg:lucide-react",
+      "bytes": 255312,
+      "via": "components/home/dashboard.jsx"
+    },
+    {
+      "path": "backend/kernel/builtin/workflow.js",
+      "bytes": 96474,
+      "via": "backend/kernel/index.js"
+    },
+    {
+      "path": "backend/kernel/builtin/preview.js",
+      "bytes": 89917,
+      "via": "backend/kernel/index.js"
+    },
+    {
+      "path": "backend/kernel/agent/agent.js",
+      "bytes": 56363,
+      "via": "backend/kernel/index.js"
+    },
+    {
+      "path": "backend/kernel/builtin/surgeon.js",
+      "bytes": 46471,
+      "via": "backend/kernel/index.js"
+    },
+    {
+      "path": "backend/kernel/builtin/goal.js",
+      "bytes": 44470,
+      "via": "backend/kernel/index.js"
+    },
+    {
+      "path": "components/views/artifact.jsx",
+      "bytes": 42829,
+      "via": "components/kernel/desk-levels.jsx"
+    },
+    {
+      "path": "backend/kernel/builtin/files.js",
+      "bytes": 41374,
+      "via": "backend/kernel/index.js"
+    },
+    {
+      "path": "components/preview/visual.jsx",
+      "bytes": 37858,
+      "via": "components/talk/talk-visual.jsx"
+    },
+    {
+      "path": "backend/kernel/builtin/spawn.js",
+      "bytes": 36054,
+      "via": "backend/kernel/index.js"
+    },
+    {
+      "path": "backend/kernel/builtin/studio.js",
+      "bytes": 34973,
+      "via": "backend/kernel/index.js"
+    },
+    {
+      "path": "components/views/studio.jsx",
+      "bytes": 30064,
+      "via": "components/views/artifact.jsx"
+    },
+    {
+      "path": "components/live/workbench/preview-pane.jsx",
+      "bytes": 28830,
+      "via": "components/preview/card.jsx"
+    },
+    {
+      "path": "backend/kernel/builtin/practice.js",
+      "bytes": 27857,
+      "via": "backend/kernel/index.js"
+    },
+    {
+      "path": "backend/kernel/desk/desk.js",
+      "bytes": 26586,
+      "via": "backend/kernel/index.js"
+    },
+    {
+      "path": "backend/kernel/builtin/dev.js",
+      "bytes": 26322,
+      "via": "backend/kernel/index.js"
+    },
+    {
+      "path": "backend/live/workbench.js",
+      "bytes": 25654,
+      "via": "components/agents/thread.jsx"
+    },
+    {
+      "path": "backend/kernel/builtin/audio.js",
+      "bytes": 25575,
+      "via": "backend/kernel/index.js"
+    },
+    {
+      "path": "backend/hardware/speech/pipeline.js",
+      "bytes": 24627,
+      "via": "components/home/talk-panel.jsx"
+    },
+    {
+      "path": "components/workflow/phase.jsx",
+      "bytes": 23989,
+      "via": "components/workflow/viewer.jsx"
+    },
+    {
+      "path": "components/agents/thread.jsx",
+      "bytes": 23115,
+      "via": "components/home/talk-panel.jsx"
+    },
+    {
+      "path": "components/views/goal.jsx",
+      "bytes": 22932,
+      "via": "components/views/artifact.jsx"
+    },
+    {
+      "path": "components/kernel/desk-levels.jsx",
+      "bytes": 22745,
+      "via": "components/home/dashboard.jsx"
+    },
+    {
+      "path": "backend/kernel/builtin/dispatch.js",
+      "bytes": 22021,
+      "via": "backend/kernel/index.js"
+    },
+    {
+      "path": "components/home/talk-panel.jsx",
+      "bytes": 21937,
+      "via": "components/home/dashboard.jsx"
+    },
+    {
+      "path": "backend/kernel/builtin/terminal.js",
+      "bytes": 21571,
+      "via": "backend/kernel/index.js"
+    },
+    {
+      "path": "backend/kernel/builtin/visual.js",
+      "bytes": 21356,
+      "via": "backend/kernel/index.js"
+    },
+    {
+      "path": "backend/live/preview.js",
+      "bytes": 21245,
+      "via": "components/talk/desk-talk.jsx"
+    },
+    {
+      "path": "backend/live/pipeline.js",
+      "bytes": 21022,
+      "via": "components/workflow/flow.jsx"
+    },
+    {
+      "path": "components/views/surgeon.jsx",
+      "bytes": 20621,
+      "via": "components/views/artifact.jsx"
+    },
+    {
+      "path": "backend/kernel/classes.js",
+      "bytes": 20392,
+      "via": "backend/kernel/index.js"
+    },
+    {
+      "path": "pkg:next",
+      "bytes": 18260,
+      "via": "components/home/dashboard.jsx"
+    },
+    {
+      "path": "components/views/pipeline.jsx",
+      "bytes": 15852,
+      "via": "components/workflow/flow.jsx"
+    },
+    {
+      "path": "components/views/runners.jsx",
+      "bytes": 15836,
+      "via": "components/views/artifact.jsx"
+    },
+    {
+      "path": "backend/kernel/builtin/browse.js",
+      "bytes": 15393,
+      "via": "backend/kernel/index.js"
+    },
+    {
+      "path": "components/workflow/viewer.jsx",
+      "bytes": 15285,
+      "via": "components/workflow/card.jsx"
+    },
+    {
+      "path": "backend/live/follow.js",
+      "bytes": 15257,
+      "via": "components/agents/thread.jsx"
+    },
+    {
+      "path": "pkg:@base-ui/react",
+      "bytes": 14544,
+      "via": "components/ui/button.jsx"
+    },
+    {
+      "path": "backend/live/desk.js",
+      "bytes": 14461,
+      "via": "components/kernel/desk-levels.jsx"
+    },
+    {
+      "path": "backend/live/runners.js",
+      "bytes": 13067,
+      "via": "components/views/runners.jsx"
+    },
+    {
+      "path": "components/workflow/flow.jsx",
+      "bytes": 12572,
+      "via": "components/workflow/card.jsx"
+    },
+    {
+      "path": "backend/kernel/builtin/talk.js",
+      "bytes": 12534,
+      "via": "backend/kernel/index.js"
+    },
+    {
+      "path": "backend/kernel/builtin/runners.js",
+      "bytes": 12348,
+      "via": "backend/kernel/index.js"
+    },
+    {
+      "path": "backend/kernel/model/llm.js",
+      "bytes": 11804,
+      "via": "backend/kernel/index.js"
+    },
+    {
+      "path": "backend/live/agent.js",
+      "bytes": 11670,
+      "via": "backend/live/focus.js"
+    },
+    {
+      "path": "backend/kernel/builtin/desks.js",
+      "bytes": 11627,
+      "via": "backend/kernel/index.js"
+    },
+    {
+      "path": "backend/live/term-stream.js",
+      "bytes": 11350,
+      "via": "components/live/workbench/terminal-pane.jsx"
+    },
+    {
+      "path": "components/workflow/editor.jsx",
+      "bytes": 10551,
+      "via": "components/workflow/viewer.jsx"
+    },
+    {
+      "path": "components/views/audio.jsx",
+      "bytes": 10415,
+      "via": "components/views/artifact.jsx"
+    },
+    {
+      "path": "backend/kernel/builtin/plan.js",
+      "bytes": 9426,
+      "via": "backend/kernel/index.js"
+    },
+    {
+      "path": "components/kernel/proposed-desks.jsx",
+      "bytes": 9290,
+      "via": "components/home/dashboard.jsx"
+    },
+    {
+      "path": "components/views/dev.jsx",
+      "bytes": 9262,
+      "via": "components/views/artifact.jsx"
+    },
+    {
+      "path": "backend/live/visual-layout.js",
+      "bytes": 9144,
+      "via": "components/views/runners.jsx"
+    },
+    {
+      "path": "backend/hardware/speech/voices.js",
+      "bytes": 9103,
+      "via": "backend/hardware/speech/pipeline.js"
+    },
+    {
+      "path": "backend/kernel/builtin/ask.js",
+      "bytes": 9011,
+      "via": "backend/kernel/index.js"
+    },
+    {
+      "path": "backend/kernel/tool/tool.js",
+      "bytes": 8945,
+      "via": "backend/kernel/index.js"
+    },
+    {
+      "path": "backend/kernel/builtin/index.js",
+      "bytes": 8927,
+      "via": "backend/kernel/index.js"
+    },
+    {
+      "path": "components/chat/composer.jsx",
+      "bytes": 8701,
+      "via": "components/home/talk-panel.jsx"
+    },
+    {
+      "path": "components/talk/desk-talk.jsx",
+      "bytes": 8573,
+      "via": "components/home/talk-panel.jsx"
+    },
+    {
+      "path": "backend/hardware/speech/microphone.js",
+      "bytes": 8421,
+      "via": "backend/hardware/speech/pipeline.js"
+    },
+    {
+      "path": "backend/live/workflow-view.js",
+      "bytes": 8231,
+      "via": "components/workflow/flow.jsx"
+    },
+    {
+      "path": "components/models/model-panel.jsx",
+      "bytes": 7979,
+      "via": "components/views/studio.jsx"
+    },
+    {
+      "path": "components/live/workbench/terminal-pane.jsx",
+      "bytes": 7771,
+      "via": "components/live/workbench/preview-pane.jsx"
+    },
+    {
+      "path": "components/browser/browser-agent.jsx",
+      "bytes": 7428,
+      "via": "components/home/dashboard.jsx"
+    },
+    {
+      "path": "backend/hardware/speech/narrator.js",
+      "bytes": 7391,
+      "via": "backend/hardware/speech/pipeline.js"
+    },
+    {
+      "path": "lib/speech/recognition.js",
+      "bytes": 7031,
+      "via": "backend/hardware/speech/pipeline.js"
+    },
+    {
+      "path": "backend/live/focus.js",
+      "bytes": 6738,
+      "via": "components/home/dashboard.jsx"
+    },
+    {
+      "path": "components/home/dashboard.jsx",
+      "bytes": 6698,
+      "via": "app/page.jsx"
+    },
+    {
+      "path": "backend/live/visual.js",
+      "bytes": 6461,
+      "via": "components/kernel/state-legend.jsx"
+    },
+    {
+      "path": "backend/kernel/agent/reply.js",
+      "bytes": 6394,
+      "via": "backend/kernel/index.js"
+    },
+    {
+      "path": "components/preview/ask.jsx",
+      "bytes": 6364,
+      "via": "components/live/workbench/preview-pane.jsx"
+    },
+    {
+      "path": "backend/live/surgeon.js",
+      "bytes": 6322,
+      "via": "components/views/surgeon.jsx"
+    },
+    {
+      "path": "backend/kernel/artifact/artifact.js",
+      "bytes": 5698,
+      "via": "backend/kernel/index.js"
+    },
+    {
+      "path": "backend/live/host.js",
+      "bytes": 5638,
+      "via": "components/home/dashboard.jsx"
+    },
+    {
+      "path": "backend/kernel/builtin/web.js",
+      "bytes": 5626,
+      "via": "backend/kernel/index.js"
+    },
+    {
+      "path": "components/preview/recordings.jsx",
+      "bytes": 5616,
+      "via": "components/live/workbench/preview-pane.jsx"
+    },
+    {
+      "path": "backend/live/registry.js",
+      "bytes": 5511,
+      "via": "components/browser/browser-agent.jsx"
+    },
+    {
+      "path": "backend/live/artifact-tail.js",
+      "bytes": 5464,
+      "via": "backend/live/desk.js"
+    },
+    {
+      "path": "components/views/kit.jsx",
+      "bytes": 5425,
+      "via": "components/talk/desk-talk.jsx"
+    },
+    {
+      "path": "backend/kernel/artifact/board.js",
+      "bytes": 5368,
+      "via": "backend/kernel/index.js"
+    },
+    {
+      "path": "components/preview/card.jsx",
+      "bytes": 5245,
+      "via": "components/views/artifact.jsx"
+    },
+    {
+      "path": "lib/config.js",
+      "bytes": 5144,
+      "via": "components/home/dashboard.jsx"
+    },
+    {
+      "path": "backend/live/listen.js",
+      "bytes": 4953,
+      "via": "hooks/use-speech.js"
+    },
+    {
+      "path": "backend/live/term-lines.js",
+      "bytes": 4940,
+      "via": "components/views/artifact.jsx"
+    },
+    {
+      "path": "backend/browser/settings.js",
+      "bytes": 4698,
+      "via": "components/browser/browser-agent.jsx"
+    },
+    {
+      "path": "backend/live/markdown.js",
+      "bytes": 4649,
+      "via": "components/views/markdown.jsx"
+    },
+    {
+      "path": "backend/live/goal.js",
+      "bytes": 4526,
+      "via": "components/home/talk-panel.jsx"
+    },
+    {
+      "path": "backend/hardware/speech/recognizers.js",
+      "bytes": 4483,
+      "via": "backend/hardware/speech/pipeline.js"
+    },
+    {
+      "path": "backend/live/studio.js",
+      "bytes": 4129,
+      "via": "components/views/studio.jsx"
+    },
+    {
+      "path": "backend/live/spawned.js",
+      "bytes": 4127,
+      "via": "components/kernel/desk-levels.jsx"
+    },
+    {
+      "path": "components/views/call-look.jsx",
+      "bytes": 4122,
+      "via": "components/agents/thread.jsx"
+    },
+    {
+      "path": "backend/kernel/builtin/speech.js",
+      "bytes": 3892,
+      "via": "backend/kernel/index.js"
+    },
+    {
+      "path": "backend/kernel/util/yamlish.js",
+      "bytes": 3782,
+      "via": "backend/kernel/index.js"
+    },
+    {
+      "path": "backend/kernel/index.js",
+      "bytes": 3611,
+      "via": "backend/browser/settings.js"
+    },
+    {
+      "path": "components/ui/sheet.jsx",
+      "bytes": 3604,
+      "via": "components/kernel/desk-levels.jsx"
+    },
+    {
+      "path": "backend/kernel/artifact/checklist.js",
+      "bytes": 3599,
+      "via": "backend/kernel/index.js"
+    },
+    {
+      "path": "backend/kernel/agent/report.js",
+      "bytes": 3487,
+      "via": "backend/kernel/index.js"
+    },
+    {
+      "path": "hooks/use-speech.js",
+      "bytes": 3392,
+      "via": "components/chat/composer.jsx"
+    },
+    {
+      "path": "backend/kernel/artifact/schedule.js",
+      "bytes": 3377,
+      "via": "backend/kernel/index.js"
+    },
+    {
+      "path": "components/views/markdown.jsx",
+      "bytes": 3332,
+      "via": "components/views/pipeline.jsx"
+    },
+    {
+      "path": "backend/live/talk.js",
+      "bytes": 3321,
+      "via": "components/home/dashboard.jsx"
+    },
+    {
+      "path": "backend/live/models.js",
+      "bytes": 3277,
+      "via": "components/models/speech-capability.jsx"
+    },
+    {
+      "path": "backend/kernel/agent/router.js",
+      "bytes": 3214,
+      "via": "backend/kernel/index.js"
+    },
+    {
+      "path": "components/workflow/card.jsx",
+      "bytes": 3140,
+      "via": "components/views/artifact.jsx"
+    },
+    {
+      "path": "components/ui/button.jsx",
+      "bytes": 3135,
+      "via": "components/browser/browser-agent.jsx"
+    },
+    {
+      "path": "backend/live/stream.js",
+      "bytes": 3122,
+      "via": "backend/live/talk.js"
+    },
+    {
+      "path": "components/kernel/proposed-helper.jsx",
+      "bytes": 3117,
+      "via": "components/kernel/desk-levels.jsx"
+    },
+    {
+      "path": "pkg:class-variance-authority",
+      "bytes": 3048,
+      "via": "components/ui/button.jsx"
+    },
+    {
+      "path": "backend/live/proposals.js",
+      "bytes": 2934,
+      "via": "components/kernel/proposed-desks.jsx"
+    },
+    {
+      "path": "components/canvas/tap.js",
+      "bytes": 2910,
+      "via": "components/views/goal.jsx"
+    },
+    {
+      "path": "backend/live/signal.js",
+      "bytes": 2757,
+      "via": "components/home/talk-panel.jsx"
+    },
+    {
+      "path": "components/ui/dialog.jsx",
+      "bytes": 2671,
+      "via": "components/kernel/desk-levels.jsx"
+    },
+    {
+      "path": "components/ui/tooltip.jsx",
+      "bytes": 2611,
+      "via": "components/chat/composer.jsx"
+    },
+    {
+      "path": "components/live/workbench/pane.jsx",
+      "bytes": 2508,
+      "via": "components/live/workbench/preview-pane.jsx"
+    },
+    {
+      "path": "components/talk/talk-visual.jsx",
+      "bytes": 2480,
+      "via": "components/agents/thread.jsx"
+    },
+    {
+      "path": "backend/browser/storage.js",
+      "bytes": 2373,
+      "via": "components/browser/browser-agent.jsx"
+    },
+    {
+      "path": "backend/kernel/model/limits.js",
+      "bytes": 2371,
+      "via": "backend/kernel/index.js"
+    },
+    {
+      "path": "components/agents/speak-button.jsx",
+      "bytes": 2354,
+      "via": "components/home/talk-panel.jsx"
+    },
+    {
+      "path": "lib/nav.js",
+      "bytes": 2315,
+      "via": "components/home/dashboard.jsx"
+    },
+    {
+      "path": "components/models/speech-capability.jsx",
+      "bytes": 2286,
+      "via": "components/home/dashboard.jsx"
+    },
+    {
+      "path": "pkg:animejs",
+      "bytes": 2243,
+      "via": "components/preview/visual.jsx"
+    },
+    {
+      "path": "components/agents/speak-look.js",
+      "bytes": 2208,
+      "via": "components/agents/speak-button.jsx"
+    },
+    {
+      "path": "backend/kernel/util/text.js",
+      "bytes": 2196,
+      "via": "backend/kernel/index.js"
+    },
+    {
+      "path": "hooks/use-engines.js",
+      "bytes": 2196,
+      "via": "components/home/dashboard.jsx"
+    },
+    {
+      "path": "backend/live/speak.js",
+      "bytes": 2178,
+      "via": "components/agents/speak-button.jsx"
+    },
+    {
+      "path": "components/views/dev-warm.js",
+      "bytes": 2131,
+      "via": "components/views/dev.jsx"
+    },
+    {
+      "path": "components/agents/thread-bubble.js",
+      "bytes": 2034,
+      "via": "components/agents/thread.jsx"
+    },
+    {
+      "path": "backend/live/audio.js",
+      "bytes": 2016,
+      "via": "components/views/audio.jsx"
+    },
+    {
+      "path": "components/views/agent-tone.js",
+      "bytes": 1955,
+      "via": "components/kernel/desk-levels.jsx"
+    },
+    {
+      "path": "components/sts/stage/caption.jsx",
+      "bytes": 1874,
+      "via": "components/home/talk-panel.jsx"
+    },
+    {
+      "path": "lib/speech/dictation.js",
+      "bytes": 1749,
+      "via": "hooks/use-speech.js"
+    },
+    {
+      "path": "backend/kernel/artifact/quality.js",
+      "bytes": 1730,
+      "via": "backend/kernel/index.js"
+    },
+    {
+      "path": "components/input/rewritten.jsx",
+      "bytes": 1697,
+      "via": "components/home/talk-panel.jsx"
+    },
+    {
+      "path": "components/kernel/decide.jsx",
+      "bytes": 1632,
+      "via": "components/kernel/proposed-desks.jsx"
+    },
+    {
+      "path": "backend/live/activity.js",
+      "bytes": 1285,
+      "via": "components/home/talk-panel.jsx"
+    },
+    {
+      "path": "backend/live/host-api.js",
+      "bytes": 1014,
+      "via": "backend/live/proposals.js"
+    },
+    {
+      "path": "components/chat/mic-look.js",
+      "bytes": 1014,
+      "via": "components/chat/composer.jsx"
+    },
+    {
+      "path": "components/ui/avatar.jsx",
+      "bytes": 1014,
+      "via": "components/agents/thread.jsx"
+    },
+    {
+      "path": "components/views/artifact-head.js",
+      "bytes": 1009,
+      "via": "components/views/artifact.jsx"
+    },
+    {
+      "path": "components/ui/input.jsx",
+      "bytes": 1005,
+      "via": "components/browser/browser-agent.jsx"
+    },
+    {
+      "path": "backend/live/visible.js",
+      "bytes": 900,
+      "via": "backend/live/term-stream.js"
+    },
+    {
+      "path": "components/live/format.js",
+      "bytes": 859,
+      "via": "components/agents/thread.jsx"
+    },
+    {
+      "path": "hooks/use-strip-scroll.js",
+      "bytes": 845,
+      "via": "components/live/workbench/preview-pane.jsx"
+    },
+    {
+      "path": "components/ui/textarea.jsx",
+      "bytes": 802,
+      "via": "components/chat/composer.jsx"
+    },
+    {
+      "path": "components/kernel/tap-classes.js",
+      "bytes": 764,
+      "via": "components/kernel/desk-levels.jsx"
+    },
+    {
+      "path": "lib/ask-point.js",
+      "bytes": 758,
+      "via": "components/views/artifact.jsx"
+    },
+    {
+      "path": "hooks/use-live-store.js",
+      "bytes": 712,
+      "via": "components/live/workbench/terminal-pane.jsx"
+    },
+    {
+      "path": "backend/live/log.js",
+      "bytes": 642,
+      "via": "hooks/use-engines.js"
+    },
+    {
+      "path": "components/kernel/state-legend.jsx",
+      "bytes": 619,
+      "via": "components/home/dashboard.jsx"
+    },
+    {
+      "path": "pkg:cn",
+      "bytes": 612,
+      "via": "lib/utils.js"
+    },
+    {
+      "path": "components/ui/collapsible.jsx",
+      "bytes": 561,
+      "via": "components/agents/thread.jsx"
+    },
+    {
+      "path": "components/home/voice-row.js",
+      "bytes": 560,
+      "via": "components/home/talk-panel.jsx"
+    },
+    {
+      "path": "hooks/use-now.js",
+      "bytes": 559,
+      "via": "components/home/talk-panel.jsx"
+    },
+    {
+      "path": "backend/live/base-path.js",
+      "bytes": 530,
+      "via": "backend/live/host.js"
+    },
+    {
+      "path": "hooks/use-media-query.js",
+      "bytes": 501,
+      "via": "hooks/use-mobile.js"
+    },
+    {
+      "path": "lib/tap-target.js",
+      "bytes": 441,
+      "via": "components/agents/speak-button.jsx"
+    },
+    {
+      "path": "backend/live/time.js",
+      "bytes": 307,
+      "via": "backend/live/goal.js"
+    },
+    {
+      "path": "components/chat/dictation-text.js",
+      "bytes": 280,
+      "via": "components/chat/composer.jsx"
+    },
+    {
+      "path": "hooks/use-mobile.js",
+      "bytes": 196,
+      "via": "components/kernel/desk-levels.jsx"
+    },
+    {
+      "path": "pkg:react",
+      "bytes": 186,
+      "via": "components/home/dashboard.jsx"
+    },
+    {
+      "path": "app/page.jsx",
+      "bytes": 176,
+      "via": null
+    },
+    {
+      "path": "lib/utils.js",
+      "bytes": 24,
+      "via": "components/home/dashboard.jsx"
+    }
+  ]
+}

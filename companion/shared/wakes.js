@@ -19,11 +19,10 @@ import { WAKE_STALE_MINUTES, WAKE_TICK_MS, HOST_LIMITS } from "./config.js"
 
 const MAX_BYTES = HOST_LIMITS.wakes.bookBytes // the book is pruned past this: open wakes + the newest closed rows
 const KEEP_CLOSED = HOST_LIMITS.wakes.keepClosed
-export const wakeRows = parseJsonl
 
 // Booked and not closed (done, missed or cancelled).
 export function openWakes(text) {
-  const rows = wakeRows(text)
+  const rows = parseJsonl(text)
   const closed = new Set(rows.filter((r) => r.done || r.missed || r.cancelled).map((r) => r.id))
   return rows.filter((r) => r.id && r.at && r.message && !r.done && !r.missed && !r.cancelled && !closed.has(r.id))
 }
@@ -45,7 +44,7 @@ export function wakeText(wake) {
 // rows of closed ones. Runs inside the tick, synchronously, in the process
 // that appends the claims, so no row is lost to a concurrent write.
 export function pruneWakes(text) {
-  const rows = wakeRows(text)
+  const rows = parseJsonl(text)
   const open = new Set(openWakes(text).map((w) => w.id))
   const keepFrom = Math.max(0, rows.length - KEEP_CLOSED)
   const kept = rows.filter((r, i) => open.has(r.id) || i >= keepFrom)
@@ -74,7 +73,7 @@ export function claimDueWakes(path, { staleMinutes, now = Date.now(), dryRun = f
 // Returns the booked row, or null (no such wake, already a retry, or a retry already booked).
 export function retryWake(path, { id, error = "", minutes = 5, now = Date.now() }) {
   if (!id || String(id).endsWith("-retry") || !existsSync(path)) return null
-  const rows = wakeRows(readFileSync(path, "utf8"))
+  const rows = parseJsonl(readFileSync(path, "utf8"))
   if (rows.some((r) => r.id === `${id}-retry`)) return null
   const wake = rows.find((r) => r.id === id && r.message)
   if (!wake) return null
@@ -129,7 +128,7 @@ export function startWakes({ root, deliver, staleMinutes = WAKE_STALE_MINUTES, l
 // GET wakes: the book as the UI shows it — open wakes (soonest first) and the
 // newest closed ones (done / missed / cancelled, newest first).
 export function listWakes(text, { recent = HOST_LIMITS.wakes.listRecent } = {}) {
-  const rows = wakeRows(text)
+  const rows = parseJsonl(text)
   const booked = new Map(rows.filter((r) => r.id && r.at).map((r) => [r.id, r]))
   const open = openWakes(text).sort((a, b) => Date.parse(a.at) - Date.parse(b.at))
   const closed = []

@@ -7,7 +7,7 @@
 // narration setting allows and shows every line.
 
 // 2026-10-23: keyed to the kernel's own tool names (backend/kernel/builtin/*.js); the old fs.* / term.* / quest.* keys
-// named tools no desk has any more. null = a bookkeeping call not worth saying.
+// named tools no desk has any more.
 const PHRASES = {
   "files.list": "Looking at a folder",
   "files.read": "Reading a file",
@@ -15,14 +15,12 @@ const PHRASES = {
   "files.edit": "Editing a file",
   "files.append": "Adding to a file",
   "files.search": "Searching the files",
-  "files.focus": null,
   "terminal.run": "Running a command",
   "terminal.start": "Starting a program",
   "terminal.wait": "Waiting on a program",
   "terminal.read": "Reading a program's output",
   "terminal.send": "Typing into a program",
   "terminal.stop": "Stopping a program",
-  "terminal.list": null,
   "web.search": "Searching the web",
   "web.read": "Reading a web page",
   "browse.open": "Opening a web page",
@@ -43,22 +41,15 @@ const PHRASES = {
   "preview.eval": "Checking the page",
   "preview.console": "Reading the page's console",
   "preview.shot": "Taking a screenshot",
-  "preview.close": null,
   "preview.show": "Drawing a picture of it",
-  "preview.focus": null,
-  "preview.drop": null,
   "preview.answer": "Answering your question on the preview",
   "dispatch.start": "Handing work to a teammate",
   "dispatch.wait": "Waiting for the team",
   "dispatch.read": "Reading a teammate's report",
   "dispatch.stop": "Stopping a teammate's job",
-  "dispatch.list": null,
   "plan.write": "Writing the plan",
-  "plan.tick": null,
-  "plan.skip": null,
   "talk.say": "Telling you something",
   "talk.ask": "Asking you a question",
-  "talk.drop": null,
   "agent.spawn": "Creating a helper agent",
   "agent.dismiss": "Ending a helper",
   "agent.catalog": "Looking at what helpers can do",
@@ -71,6 +62,9 @@ const PHRASES = {
   "desk.read": "Reading another desk's files",
   "desk.propose": "Proposing a new tool",
 }
+
+// Bookkeeping calls: nothing to say.
+const QUIET = new Set(["files.focus", "terminal.list", "preview.close", "preview.focus", "preview.drop", "dispatch.list", "plan.tick", "plan.skip", "talk.drop"])
 
 // Tools named after the agent that holds them (`<agent>.practice.tick`): matched by what follows the agent's name.
 const SUFFIXES = {
@@ -85,6 +79,7 @@ const words = (name) => name.replace(/^get_?/, "").replace(/([a-z])([A-Z])/g, "$
 // "github.search_issues" → "Checking github: search issues".
 function toolPhrase(name) {
   if (!name) return "Working"
+  if (QUIET.has(name)) return null
   if (name in PHRASES) return PHRASES[name]
   const suffix = Object.keys(SUFFIXES).find((k) => name.endsWith(`.${k}`))
   if (suffix) return SUFFIXES[suffix]

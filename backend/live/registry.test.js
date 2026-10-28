@@ -6,6 +6,7 @@ import { expect, test } from "bun:test"
 import { EMPTY_STATE } from "./agent.js"
 import { kernelDesk } from "./desk.js"
 import { Registry } from "./registry.js"
+import { wireRegistry } from "./team-core.js"
 
 const def = (name, agents = []) => ({ name, description: "", role: "", tools: agents.map((a) => ({ name: a, type: "agent", view: "quest" })), agents, artifacts: [], kernel: true })
 const registryOf = (...agents) => ({ agents, edited: [], status: "ready", error: null, requiredId: "lead", engines: agents.map((a) => ({ id: a.name, name: a.name, agent: a })) })
@@ -59,4 +60,13 @@ test("the desk store takes the tree from a kernel event, and drops the artifacts
   // An artifact event alone leaves the tree as it was.
   kernelDesk.apply({ type: "kernel", artifact: { id: "lab.board", holders: ["lead", "coder"] } })
   expect(kernelDesk.getSnapshot().tree).toBe(s.tree)
+})
+test("registry-once: the wire registry has no agents copy, and the tab still lists the agents lead first", () => {
+  const wire = wireRegistry(registryOf(def("coder"), def("lead", ["coder"])))
+  expect("agents" in wire).toBe(false)
+  expect(wire.engines.map((e) => e.id)).toEqual(["coder", "lead"])
+  const r = new Registry()
+  r.apply({ type: "snapshot", registry: wire, states: { lead: idle(), coder: idle() }, kernel: { tree: tree("coder"), artifacts: {} }, log: [] })
+  expect(r.getSnapshot().agents.map((a) => a.name)).toEqual(["lead", "coder"])
+  expect(r.getSnapshot().agents[0]).toBe(r.getSnapshot().engines[0].agent)
 })

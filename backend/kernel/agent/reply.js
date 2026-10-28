@@ -1,3 +1,5 @@
+import { scalarReader } from "../util/yamlish.js"
+
 // The agent's reply: TOON-style fields, one per line, with complex values between markers — no JSON to
 // escape, so a multi-line REPORT or a list of predictions goes in as written.
 //
@@ -27,42 +29,27 @@
 
 // The one place a prompt says how to reply (rendered as # RESPONSE, the prompt's last section — read right before the
 // model writes, with # TOOLS just above it): roles and desks never repeat it.
-export const RESPONSE_FORMAT = `Reply in fields, one per line — no JSON object, no code fences.
-Every tool under # TOOLS is yours: call it, and its result comes back in your next prompt (# WORK DONE ON THIS REQUEST); answer from those results, never from the request's numbers alone.
+export const RESPONSE_FORMAT = `Reply in fields, one per line — no JSON object, no code fences:
 thought: one line
+then calls — every tool under # TOOLS is yours; results come back next prompt under # WORK DONE ON THIS REQUEST:
 call: <tool name>
-<input field>: <value>          ← only that tool's inputs as # TOOLS lists them
+<input field>: <value>          ← only that tool's inputs as # TOOLS lists them (field? = optional)
 <input field>: <<<              ← a list or a long text, between <<< and >>>
 - <key>: <value>                ← one item per "- ", its other fields indented below it
   <key>: <value>
 >>>
-More "call:" blocks in one reply run together: batch the independent ones. A tool error names the fix: fix the input and call once more.
-When the work is done — no calls — the answer:
-thought: one line
+call: <tool name>               ← calls in one reply run together: batch the independent ones
+or, when the work is done (no calls), the answer:
 answer: <<<
 <your report>
->>>`
+>>>
+Answer from tool results, never from the request's numbers alone. A tool error names the fix: fix the input, call once more.`
 
 const KEY = /^([A-Za-z_][\w.-]*)\s*:\s?(.*)$/
 const OPEN = "<<<"
 const CLOSE = ">>>"
 
-function scalar(raw) {
-  const v = String(raw ?? "").trim()
-  if (v === "") return ""
-  if (/^-?\d+(\.\d+)?$/.test(v)) return Number(v)
-  if (v === "true" || v === "false") return v === "true"
-  if (v === "null") return null
-  if ((v.startsWith("{") && v.endsWith("}")) || (v.startsWith("[") && v.endsWith("]"))) {
-    try {
-      return JSON.parse(v)
-    } catch {}
-    // [a, b] of bare words: a list (TOON's short list)
-    if (v.startsWith("[")) return v.slice(1, -1).split(",").map((x) => scalar(x.trim().replace(/^["']|["']$/g, ""))).filter((x) => x !== "")
-  }
-  if (v.length >= 2 && v[0] === v.at(-1) && (v[0] === '"' || v[0] === "'")) return v.slice(1, -1)
-  return v
-}
+const scalar = scalarReader(/^-?\d+(\.\d+)?$/, ["null"]) // [a, b] of bare words is a list (TOON's short list)
 
 // key: value lines → an object (a line without a key continues the previous value)
 function fields(lines) {

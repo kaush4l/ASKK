@@ -2,6 +2,7 @@ import { roleLine } from "../agent/agent.js"
 import { SPAWN_NAME, spawnName, withinHolding } from "../desk/desk.js"
 import { Tool } from "../tool/tool.js"
 import { globCovers } from "./files.js"
+import { clip, oneLine } from "../util/text.js"
 
 // agent.spawn / agent.dismiss: an agent makes a helper for a stated goal at run time, and lets it go (2026-10-17
 // owner: agents can spawn sub-agents for a stated goal). The helper is built by the agent's desk (Desk.spawn, through
@@ -25,19 +26,17 @@ import { globCovers } from "./files.js"
 //
 // 2026-10-17 owner ("let the lead, when required, create a sub team to focus on special critical observation and in
 // control on a layer"): the same call builds a TEAM, from the desk's templates or inline, and narrows what it gets.
-//   members    [{name, role, tools?, artifacts?, writes?, reads?, model?, max_steps?, board?, members?}]: the helper
-//              leads them (its own board "<name>.board" under the caller's); each member is bounded by the CALLER
-//              exactly as the helper is (tools, artifacts, lanes). A member that fails builds nothing.
-//   template   a team from the desk's catalogue (env.templates, a desk's teams/ folders): its role, goal (when none is
-//              given), tools, artifacts, writes, reads, model, max_steps and members; the input's own fields win.
+//   members    [{name, role, tools?, artifacts?, writes?, reads?, model?, max_steps?, board?, members?}]: the helper leads
+//              them (its own board "<name>.board" under the caller's); each member is bounded by the CALLER exactly as the
+//              helper is (tools, artifacts, lanes). A member that fails builds nothing.
+//   template   a team from the desk's catalogue (env.templates, a desk's teams/ folders); the input's own fields win.
 //              Its members are named "<team>-<member>"; inline members keep their names.
-//   writes / reads  globs that NARROW the files lanes (default: the caller's): each one covered by one of the caller's
-//              (globCovers, files.js), else "outside your lane"; the caller's "!" exclusions are appended, so none
-//              drops. A caller without reads: reads everywhere, so any reads lane is narrower.
+//   writes / reads  globs that NARROW the files lanes (default: the caller's): each covered by one of the caller's
+//              (globCovers, files.js), else "outside your lane"; the caller's "!" exclusions are appended, so none drops.
+//              A caller without reads: reads everywhere, so any reads lane is narrower.
 //   model      one the desk knows (env.models, when the desk lists them); max_steps 1–300. Default: the caller's.
-//   description / title  its one line (its twin, its card, a member's line in its lead's TOOLS) and its board's
-//              title, from the input or the template; no description → the role's first line that is not a section
-//              header (roleLine: a template role opens on "SPEC" — 2026-10-17 critic: every station showed "SPEC").
+//   description  no description → the role's first line that is not a section header (roleLine: a template role opens on
+//              "SPEC" — 2026-10-17 critic: every station showed "SPEC").
 
 export { SPAWN_NAME } // checked by Desk.spawn too (2026-10-17: it lives in desk.js, where the name is used)
 
@@ -45,13 +44,14 @@ const list = (v) => (v == null || v === "" ? [] : Array.isArray(v) ? v : typeof 
 const text = (v) => (v == null ? "" : typeof v === "string" ? v : Array.isArray(v) ? v.join("\n") : JSON.stringify(v)).trim()
 // A list of objects that arrived as JSON text (members written inside a <<< >>> block) → the list; anything else as is.
 const asJSON = (v) => {
-  if (typeof v !== "string" || !v.trim().startsWith("[")) return v
   try {
-    return JSON.parse(v)
+    return typeof v === "string" && v.trim().startsWith("[") ? JSON.parse(v) : v
   } catch {
     return v
   }
 }
+
+const helperTool = (spec) => new Tool({ type: "spawn", view: "spawn", ...spec })
 
 // The desk the caller belongs to, or an error that says why there is none.
 function homeOf(ctx, tool) {
@@ -245,25 +245,23 @@ function memberRecord(raw, prefix) {
 }
 
 export function spawnTool() {
-  return new Tool({
+  return helperTool({
     name: "agent.spawn",
-    type: "spawn",
-    view: "spawn",
-    description: "make a helper agent for a stated goal: it joins your team and you quest it like your other agents; it gets your soul, model and file lanes, and only the tools and artifacts listed here — never more than yours. With members (or a template) it leads a sub-team on its own board, e.g. to watch or control one layer closely",
+    description: "make a helper agent for a stated goal: it joins your team and you quest it like your other agents; it gets your soul, model and file lanes (writes, reads, model, max_steps default to yours, each only narrower), and only the tools and artifacts listed here — never more than yours. A template fills every field not given. With members (or a template) it leads a sub-team on its own board, e.g. to watch or control one layer closely",
     input: {
-      name: "lowercase, a-z 0-9 -, 2–31 chars (its quest tool's name); from a template: the template's name unless given",
-      role: "what it is for and how it works (its agent.md body); from a template unless given",
-      goal: "the stated goal it works toward; from a template unless given",
-      description: "its one line (its card; a member's line in its lead's TOOLS); default: the template's, else its role's first line; optional",
-      title: "its board's title when it leads members; default: the template's; optional",
-      tools: "names of your own tools, or of the desk's catalogue, it may call — not your agents, not an artifact's commands; optional",
-      artifacts: "ids you hold, or the desk's catalogue types, it shares (name or {type | id, commands, gate}); on one you hold with only some commands it gets those (or fewer, asked) — never a command you lack; optional",
-      template: "a team from the desk's teams/ (its role, goal, tools, artifacts, lanes and members; your fields here win); optional",
+      name: "lowercase, a-z 0-9 -, 2–31 chars (its quest tool's name)",
+      role: "what it is for and how it works (its agent.md body)",
+      goal: "the stated goal it works toward",
+      description: "its one line (its card; a member's line in its lead's TOOLS); default: its role's first line; optional",
+      title: "its board's title when it leads members; optional",
+      tools: "names of your own tools, or of the desk's catalogue — not your agents, not an artifact's commands; optional",
+      artifacts: "ids you hold, or the desk's catalogue types (name or {type | id, commands, gate}); on one you hold it gets your commands on it, or fewer asked; optional",
+      template: "a team from the desk's teams/ (role, goal, tools, artifacts, lanes, members); optional",
       members: "a sub-team it leads: [{name, role, tools?, artifacts?, writes?, reads?, model?, max_steps?, board?}], each bounded by what you hold; optional",
-      writes: "globs it may write, each inside your own writes (default: yours); optional",
-      reads: "globs it may read, each inside your own reads if you have them (default: yours); optional",
-      model: "one of the desk's models (default: yours); optional",
-      max_steps: "1–300 (default: yours); optional",
+      writes: "globs it may write, inside your own writes; optional",
+      reads: "globs it may read, inside your own reads if you have them; optional",
+      model: "one of the desk's models; optional",
+      max_steps: "1–300; optional",
       keep: "run (default: dismissed — with its team — when your run ends) | desk (until agent.dismiss)",
     },
     run: (input = {}, ctx = {}) => {
@@ -307,10 +305,8 @@ export function spawnTool() {
 }
 
 export function dismissTool() {
-  return new Tool({
+  return helperTool({
     name: "agent.dismiss",
-    type: "spawn",
-    view: "spawn",
     description: "dismiss a helper you spawned (agent.spawn) once it has answered; its helpers go with it (a team goes whole: dismiss its lead)",
     input: { name: "the helper's name" },
     run: (input = {}, ctx = {}) => {
@@ -327,17 +323,10 @@ export function dismissTool() {
 // other metadata"): what the caller can give a helper, before it spawns one — its own tools and the desk catalogue's
 // with what each does, the artifacts it holds (with its commands) and the desk's artifact types, the team templates,
 // the models — and the helpers it has now (status, keep, goal, the step their run is at). find narrows tools and types.
-const LINE = 160
-const oneLine = (s) => String(s ?? "").replace(/\s+/g, " ").trim()
-const short = (s, n = LINE) => {
-  const t = oneLine(s)
-  return t.length > n ? `${t.slice(0, n - 1)}…` : t
-}
+const short = (s, n = 160) => clip(oneLine(s), n)
 export function catalogTool() {
-  return new Tool({
+  return helperTool({
     name: "agent.catalog",
-    type: "spawn",
-    view: "spawn",
     description: "before agent.spawn: what you can give a helper — your tools and the desk's (what each does), the artifacts you hold (your commands on each) and the desk's artifact types, team templates, models — and your helpers now (status, keep, goal)",
     input: { find: "words that narrow the tools and types listed (any word matches); optional" },
     run: (input = {}, ctx = {}) => {
@@ -385,10 +374,8 @@ export function catalogTool() {
 // is rewritten) and the new one spawned; when the new spec fails, the old one is spawned again and the error returned.
 export function updateTool() {
   const fields = ["role", "goal", "description", "title", "tools", "artifacts", "writes", "reads", "model", "max_steps", "members", "board"]
-  return new Tool({
+  return helperTool({
     name: "agent.update",
-    type: "spawn",
-    view: "spawn",
     description: "change a helper you spawned — its role (instructions), goal, tools, artifacts, lanes, model or max_steps — or keep it (keep: desk: it stays across runs and restarts, written as its agent.md); only the fields given change",
     input: { name: "the helper's name", role: "optional", goal: "optional", description: "optional", tools: "the whole new list; optional", artifacts: "the whole new list; optional", writes: "optional", reads: "optional", model: "optional", max_steps: "optional", keep: "run | desk; optional" },
     run: async (input = {}, ctx = {}) => {
@@ -452,12 +439,9 @@ export async function respawn(desk, records = [], { log = () => {} } = {}) {
     const name = r?.input?.name
     const caller = desk.list.find((a) => a.name === r?.by)
     if (!name) continue
-    if (!caller) {
-      log(`kept ${name}: its spawner ${r?.by ?? "?"} is not in the desk — not restored`)
-      continue
-    }
-    if (desk.list.some((a) => a.name === name)) {
-      log(`kept ${name}: an agent of that name is in the desk already — not restored`)
+    const skip = !caller ? `its spawner ${r?.by ?? "?"} is not in the desk` : desk.list.some((a) => a.name === name) ? "an agent of that name is in the desk already" : null
+    if (skip) {
+      log(`kept ${name}: ${skip} — not restored`)
       continue
     }
     try {

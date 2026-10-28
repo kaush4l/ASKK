@@ -1,5 +1,4 @@
 import { Artifact } from "../artifact/artifact.js"
-import { Tool } from "../tool/tool.js"
 
 // Practice: an agent's standing orders that it keeps and improves itself (2026-10-20 owner: "the multi-agent setup now
 // becomes a checklist … Give the agent the capability to self-reflect like the retro or the critic we have. Learning
@@ -26,13 +25,9 @@ import { Tool } from "../tool/tool.js"
 // each one changelog line.
 //
 // A run starts with the Checklist's items fresh and open, plus "!reflect" (unless reflect: false): the holder's answer
-// waits while one is open (gate). Commands, id "<agent>.practice" (one per agent), view "practice", keep "file":
-//   <id>.tick {id, evidence}    <id>.skip {id, reason}           this run's items
-//   <id>.edit {section, old?, new?, why}                        old + new: replace that line; new: add; old: remove.
-//                                                               Applies from the next run (this run's items stay).
-//   <id>.reflect {worked, missed, changes}                      the retro: one entry in the retro log, ticks reflect;
-//                                                               refused when it names a change and none was made
-//                                                               ("none: <why>" says why nothing changes)
+// waits while one is open (gate). Commands, id "<agent>.practice" (one per agent), view "practice", keep "file": tick,
+// skip (this run's items), edit (old + new replaces a line, new adds, old removes; from the next run), reflect (the
+// retro; refused when it names a change and none was made — "none: <why>" says why nothing changes).
 // store: {read() → text | null, write(text), seed?() → text | null, retro?(entry text), where?}: compose.js binds the
 // node fs one (memory/<desk>/practice/<agent>.md; seed: practice.md in the agent's folder; retro:
 // memory/<desk>/retros/<agent>.md). Without a store it lives in memory only (tests, a tab).
@@ -120,18 +115,35 @@ export function parseRetros(text) {
 }
 
 export class Practice extends Artifact {
+  static about = "an agent's standing orders it improves itself: checklist, quality, instructions, lessons; held edits wait for the owner"
+  static commandType = "artifact"
+  static commands = {
+    tick: { description: "tick a run checklist item done", input: { id: "item id", evidence: "what shows it is done: a number, a tool result, an artifact" }, run({ id, evidence } = {}) { return this.#close(id, "ticked", evidence) } },
+    skip: { description: "skip a run checklist item that does not apply now", input: { id: "item id", reason: "why it does not apply" }, run({ id, reason } = {}) { return this.#close(id, "skipped", reason) } },
+    edit: {
+      description: "change your standing orders for every later run — a checklist item, a quality bar, an instruction, a lesson, a tool you lack; old + new replaces that line, new alone adds, old alone removes; why: the run's evidence. After this run read the web (or a helper's report that did), an instruction or checklist edit is proposed for the owner, not in force",
+      input: { section: PRACTICE_SECTIONS.join(" | "), old: "the line to replace or remove (a checklist item's id works); optional", new: 'the new line (checklist: "id: text", "!id" = required); optional', why: "the evidence from this run that calls for it" },
+      run(input = {}, { agent, outside } = {}) { return this.edit(input, agent?.name ?? null, { outside: outside ?? agent?.current?.outside }) },
+    },
+    reflect: {
+      description: "the run's retro, your last item: what held, what this run missed (a gap in the checklist, the quality bar, an instruction, a tool), and the edits you made for it",
+      input: { worked: "what held, with its evidence", missed: "what the run lacked, or none (and why you are sure)", changes: 'the practice edits made this run, or "none: <why>"' },
+      run(input = {}, { agent } = {}) { return this.reflectOn(input, agent?.name ?? null) },
+    },
+  }
+  static owner = {
+    accept(a, from) { return this.accept(a.edit, from) },
+    drop(a, from) { return this.drop(a.edit, a.reason, from) },
+  }
+  static ownerCan = "accept or drop a pending edit"
   // seed: {checklist?, quality?, instructions?} lines when the store has no file yet (and no seed of its own).
   constructor({ id, owner = null, store = null, seed = null, reflect = true, requiredWhen = null, clock = () => new Date() } = {}) {
     super({ name: id, title: `${owner ?? id} practice` })
-    this.kind = "practice"
-    this.view = "practice"
-    this.keep = "file" // the file is the source: never saved or restored by the host
-    this.owner = owner
-    this.store = store
+    Object.assign(this, { kind: "practice", view: "practice", keep: "file" }) // the file is the source: never saved or restored by the host
+    Object.assign(this, { owner, store })
     this.seedLines = seed
     this.reflect = reflect !== false
-    this.requiredWhen = requiredWhen
-    this.clock = clock
+    Object.assign(this, { requiredWhen, clock })
     this.sections = emptySections()
     this.edits = 0
     this.pending = []
@@ -410,13 +422,6 @@ export class Practice extends Artifact {
     return { dropped: e.id }
   }
 
-  ownerCall(method, args = [], from = "owner") {
-    const a = args[0] ?? {}
-    if (method === "accept") return this.accept(a.edit, from)
-    if (method === "drop") return this.drop(a.edit, a.reason, from)
-    throw new Error(`${this.name}: the owner can accept or drop a pending edit (not ${method})`)
-  }
-
   reflectOn({ worked, missed, changes } = {}, by = null) {
     const w = clean(worked)
     const m = clean(missed)
@@ -436,28 +441,5 @@ export class Practice extends Artifact {
     this.changed()
     const left = this.open()
     return `reflected (${n} this run); ${left.length ? `${left.length} open: ${left.map((i) => i.id).join(", ")}` : "all done"}`
-  }
-
-  live() {
-    return { view: "practice", data: this.state }
-  }
-
-  commands() {
-    return [
-      new Tool({ name: `${this.name}.tick`, description: "tick a run checklist item done", input: { id: "item id", evidence: "what shows it is done: a number, a tool result, an artifact" }, run: ({ id, evidence } = {}) => this.#close(id, "ticked", evidence) }),
-      new Tool({ name: `${this.name}.skip`, description: "skip a run checklist item that does not apply now", input: { id: "item id", reason: "why it does not apply" }, run: ({ id, reason } = {}) => this.#close(id, "skipped", reason) }),
-      new Tool({
-        name: `${this.name}.edit`,
-        description: "change your standing orders for every later run — a checklist item, a quality bar, an instruction, a lesson, a tool you lack; old + new replaces that line, new alone adds, old alone removes; why: the run's evidence. After this run read the web (or a helper's report that did), an instruction or checklist edit is proposed for the owner, not in force",
-        input: { section: PRACTICE_SECTIONS.join(" | "), old: "the line to replace or remove (a checklist item's id works); optional", new: 'the new line (checklist: "id: text", "!id" = required); optional', why: "the evidence from this run that calls for it" },
-        run: (input = {}, { agent, outside } = {}) => this.edit(input, agent?.name ?? null, { outside: outside ?? agent?.current?.outside }),
-      }),
-      new Tool({
-        name: `${this.name}.reflect`,
-        description: "the run's retro, your last item: what held, what this run missed (a gap in the checklist, the quality bar, an instruction, a tool), and the edits you made for it",
-        input: { worked: "what held, with its evidence", missed: "what the run lacked, or none (and why you are sure)", changes: 'the practice edits made this run, or "none: <why>"' },
-        run: (input = {}, { agent } = {}) => this.reflectOn(input, agent?.name ?? null),
-      }),
-    ]
   }
 }

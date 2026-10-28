@@ -6,37 +6,52 @@
 // agent holds any more, gone with a dismissed helper).
 
 import { isRunRequest } from "@/backend/live/agent"
+import { signal } from "@/backend/live/signal"
 import { teamCall } from "@/backend/live/stream"
+import { skippedOf } from "@/backend/live/artifact-tail"
 
-let state = null // { title, tree, artifacts } — a team's board is one of its artifacts (2026-10-23: the boards tree beside them was never read)
-const listeners = new Set()
-
-function set(next) {
-  state = next
-  for (const fn of listeners) fn()
-}
+// { title, tree, artifacts } — a team's board is one of its artifacts (2026-10-23: the boards tree beside them was never
+// read). An artifact's patch replaces that artifact only: the others keep their identity, so a view of one (useArtifact)
+// redraws for its own changes alone.
+const desk = signal(null, null)
 
 export const kernelDesk = {
-  subscribe(fn) {
-    listeners.add(fn)
-    return () => listeners.delete(fn)
-  },
-  getSnapshot: () => state,
-  getServerSnapshot: () => null,
+  ...desk,
+  getSnapshot: desk.get,
   // A team/stream event (registry.js hands every one over).
   apply(e) {
-    if (e.type === "snapshot") set(e.kernel ?? null)
+    const state = desk.get()
+    if (e.type === "snapshot") desk.set(e.kernel ?? null)
     else if (e.type === "kernel" && state) {
       let artifacts = e.artifact ? { ...state.artifacts, [e.artifact.id]: e.artifact } : state.artifacts
       if (e.removed?.length) artifacts = Object.fromEntries(Object.entries(artifacts ?? {}).filter(([id]) => !e.removed.includes(id)))
-      set({
+      desk.set({
         ...state,
         ...(e.tree ? { tree: e.tree } : {}),
+        ...(e.defaultModel !== undefined ? { defaultModel: e.defaultModel } : {}),
+        ...(e.models ? { models: e.models } : {}),
         artifacts,
       })
     }
   },
+  // A card opened on an artifact the snapshot sent compact (artifact-tail.js): its full view, fetched once from an agent
+  // that holds it (agent call `artifact` [id]); a live patch meanwhile is whole already, so it is kept.
+  async loadFull(id) {
+    const a = desk.get()?.artifacts?.[id]
+    if (!skippedOf(a) || loading.has(id)) return
+    loading.add(id)
+    try {
+      const full = await teamCall(a.holders?.[0], "artifact", [id])
+      const state = desk.get()
+      if (full && skippedOf(state?.artifacts?.[id])) desk.set({ ...state, artifacts: { ...state.artifacts, [id]: full } })
+    } catch {
+      // the compact view stays: it still draws the tree and the newest change
+    } finally {
+      loading.delete(id)
+    }
+  },
 }
+const loading = new Set()
 
 // Every artifact an agent holds, in reading order (the agent page).
 export function artifactsHeldBy(artifacts, agentName) {
@@ -81,6 +96,10 @@ export function currentQuest(state) {
 // plan), quality, board, schedule, text.
 const ORDER = ["preview", "list", "checklist", "dispatch", "quality", "board", "schedule", "text"]
 const rank = (a) => (ORDER.includes(a.view) ? ORDER.indexOf(a.view) : ORDER.length)
+// eq for the desk's artifacts as cards lay them out (useDesk): the same ids, owners, views and holders — a patch to an
+// artifact's state alone keeps the layout, and its tile redraws by itself (useArtifact).
+const layoutKey = (artifacts) => Object.values(artifacts ?? {}).map((a) => `${a.id}|${a.owner}|${a.view}|${(a.holders ?? []).join(",")}`).join("\n")
+export const sameLayout = (a, b) => a === b || layoutKey(a) === layoutKey(b)
 // teams: every team name in the tree — an artifact no team owns (a lone agent's memory) sits on its first holder's card.
 export function artifactsFor(artifacts, { team, lead, teams = null }) {
   return Object.values(artifacts ?? {})
@@ -171,12 +190,25 @@ export const stopDispatchJob = (id, job) => teamCall("artifact", "stop", [{ id, 
 // the host's artifact route → Practice.ownerCall(method, [{id, edit}]). id: the practice's id ("agent.practice"); edit:
 // the pending edit's id ("p1"). → {accepted, what} | {dropped}; rejects with the refusal (gone, cannot apply now).
 export const practiceCall = (id, method, edit) => teamCall("artifact", method, [{ id, edit }])
+// The owner asks "what is this?" (kernel builtin/ask.js, 2026-10-27 ask-context): answered now with no run — the
+// host's artifact route → Ask.ownerCall("what", [{id, question, element}]). id: the ask artifact's id ("ask");
+// element: {artifact, view?} or null. → the answer with its file:line cites; rejects with the refusal (unknown element).
+export const askWhat = (id, question, element = null) => teamCall("artifact", "what", [{ id, question, element }])
 
 // The owner on what waits on a helper (kernel builtin/spawn.js ownerHelperCall, 2026-10-20: a keep: desk, or a kept
 // helper's update, from a run that read the web is proposed, never in force until accepted): method "accept" keeps it /
 // applies the update, "drop" drops the proposal — the host's team call target "desk". helper: its name.
 //   → {accepted, what} | {dropped, what}; rejects with the refusal (gone with its run, running, cannot apply now).
 export const helperCall = (method, helper, reason) => teamCall("desk", method, [{ helper, ...(reason ? { reason } : {}) }])
+
+// The desk's selectable models (footer model selector): default Claude CLI, local oMLX, and Argon (Gemini).
+export const DESK_MODELS = [
+  { key: "default", label: "Default (Claude CLI)", provider: "claude-cli", id: "default" },
+  { key: "omlx", label: "Qwen3.8 27B (oMLX, local)", provider: "openai", id: "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp" },
+  { key: "argon", label: "Argon (Gemini)", provider: "gemini-cli", id: "argon" },
+]
+export const setDeskModel = (model) => teamCall("desk", "model", [{ model }])
+export const setAgentModel = (agent, model) => teamCall("desk", "agentModel", [{ agent, model: model || null }])
 
 // The next run, set by the owner (time "HH:MM" ET or ISO; goal text) — the desk's schedule.
 export const bookNextRun = ({ at, goal }) => teamCall("desk", "schedule", [{ at, goal }])
@@ -192,4 +224,11 @@ export function holdings(engine) {
   const tools = engine?.tools ?? []
   const own = tools.filter((t) => t.kind !== "agent" && !ids.has(String(t.name).split(".")[0]))
   return { tools: own.length, artifacts: held.length, agents: tools.filter((t) => t.kind === "agent").length }
+}
+// /live?desk=<name> (2026-10-26, desk-param: a link to one desk landed on the desk the askk_desk cookie held): the
+// desk the URL names, when the server hosts it and it is not the one shown — else null, so the page reloads at most once.
+//   search: location.search; desks: GET desks → desks ([{name}]); current: the desk shown now.
+export function deskFromQuery(search, desks, current) {
+  const name = new URLSearchParams(search ?? "").get("desk")
+  return name && name !== current && (desks ?? []).some((d) => d?.name === name) ? name : null
 }

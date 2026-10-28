@@ -1,5 +1,5 @@
 import { Artifact } from "../artifact/artifact.js"
-import { Tool } from "../tool/tool.js"
+import { clip, oneLine } from "../util/text.js"
 
 // Studio (2026-10-23 owner: "a live artifact where the input will be taken and the model will be used to generate the
 // image … a workflow where the image is not just created but it can be critiqued and improved based on either users'
@@ -55,8 +55,6 @@ const IMAGES = 60
 const PROMPTS = 30
 const FEEDBACK = 30
 const LIVE = new Set(["queued", "running"])
-const clip = (s, n) => (String(s ?? "").length > n ? `${String(s).slice(0, n - 1)}…` : String(s ?? ""))
-const oneLine = (s) => String(s ?? "").replace(/\s+/g, " ").trim()
 const linesOf = (raw) => (Array.isArray(raw) ? raw : String(raw ?? "").split("\n")).map((l) => oneLine(String(l).replace(/^[-*•\d.)\s]+/, ""))).filter(Boolean)
 
 // scores: {criterion: 0..10} or "criterion: 7" lines → {name: n}; at least one, each 0–10
@@ -85,6 +83,101 @@ function scoresOf(raw) {
 }
 
 export class Studio extends Artifact {
+  static about = "images made on this Mac's open model: prompt versions, critiques, the owner's feedback and the pick"
+  static commands = {
+    goal: { description: "set what the image is for and what done means", input: { goal: "the imagination, the end goal", criteria: "what done means, one per line (scored by critiques)" } },
+    prompt: { description: "save a new prompt version: the optimised prompt and why it changed", input: { text: "the full prompt for the image model (subject, setting, composition, light, style, lens, detail)", negative: "what to keep out (optional)", why: "what this version changes and why" } },
+    generate: { description: "queue images on this Mac's image model from a prompt version — refine an image (from + strength), or edit it (references, mask, auto_mask: when the model accepts them)", input: { v: "prompt version (default the newest)", prompt: "or a prompt given here", seeds: "how many variants, 1–4 (default 1)", seed: "a fixed seed (to compare prompts on the same noise)", preset: "a preset name (default the one in use; none: no preset)", width: "px (default: the preset's, else the model's)", height: "px", steps: "denoising steps (default: the preset's, else the model's)", from: "an image id to refine from", strength: "0..1: how far to move from it (default 0.6)", references: "image ids the edit starts from (the first is edited)", mask: "an image id: white = repaint, black = keep (the owner's mask)", auto_mask: "the object to repaint, named (e.g. the red scarf)" } },
+    wait: { description: "wait until images finish; then you see them on your next step", input: { ids: "image ids, comma-separated (default: yours still running)", seconds: "at most (default 900)" } },
+    critique: { description: "judge an image against the goal and criteria", input: { image: "its id", scores: "0–10 per criterion, e.g. {goal: 7, composition: 6, light: 8}", notes: "what you see: what works, what misses", verdict: "done | revise | discard", next: "for revise: what to change" } },
+    pick: { description: "mark the best image so far", input: { image: "its id", why: "why it is the best" } },
+    look: { description: "see an image again on your next step (to compare)", input: { image: "its id" } },
+    send: { description: "send an image to the owner's Telegram chat (a result, or a choice to ask about)", input: { image: "its id", caption: "what it is, what you want to know (optional)" } },
+    presets: { description: "the presets and what the image model accepts", input: {} },
+    preset: { description: "choose the preset every generate uses (or none)", input: { name: "a preset name, or none", why: "the owner asked, or what made it look better" } },
+  }
+  // The owner: set the goal (→ the keeper's workflow, else the keeper), generate, choose a preset, pick, send, stop,
+  // delete, give feedback (→ the image's maker, else the keeper).
+  static owner = {
+    async goal(a) {
+      this.goal(a, {})
+      const asked = oneLine(a.preset) || "auto"
+      if (asked !== "auto" && this.state.presets.length && ![...this.state.presets.map((p) => p.name), "none"].includes(asked)) throw new Error(`preset: one of ${this.state.presets.map((p) => p.name).join(", ")}, none or auto`)
+      this.bump({ goal: { ...this.state.goal, preset: asked } })
+      // the workflow (expand → preset → generate → critique → refine) when the keeper holds one that takes a preset
+      const flow = this.#flow()
+      if (flow) {
+        const request = `${this.state.goal.text}${this.state.criteria.length ? `\nDone means: ${this.state.criteria.join("; ")}` : ""}`
+        const started = await flow.ownerCall("run", [{ id: flow.name, request, vars: { preset: asked } }])
+        return { goal: this.state.goal, workflow: flow.name, ...started }
+      }
+      const deliver = `The owner set the studio goal: "${this.state.goal.text}"${this.state.criteria.length ? `\nDone means: ${this.state.criteria.join("; ")}` : ""}\nOptimize the prompt (${this.name}.prompt with why), generate (${this.name}.generate, a few seeds), look, critique each against the criteria, and refine — a new prompt version or ${this.name}.generate {from} — until one is done; ${this.name}.pick it and tell the owner what changed between versions.`
+      return { goal: this.state.goal, deliver: `${deliver}\nPreset: ${asked === "auto" ? `none asked — ${this.name}.presets, compare the two that fit on quick drafts, ${this.name}.preset the better` : `${this.name}.preset {name: "${asked}", why: "the owner asked"}`}.`, keeper: this.keeperName }
+    },
+    async generate(a, from) { return { result: await this.generate(a, { by: from }) } },
+    preset(a) { return { result: this.preset({ name: a.name, why: a.why || "the owner chose it" }, {}) } },
+    pick(a) { return { result: this.pick(a, {}) } },
+    async send(a) { return { result: await this.send(a, {}) } },
+    async stop(a) {
+      const img = this.#image(a.image)
+      const { job } = await this.#hostOf({}).post("image/stop", { id: img.id })
+      this.#patchImage(img.id, { status: job.status, error: job.error ?? null })
+      return { image: img.id, status: job.status }
+    },
+    async delete(a) {
+      const ids = [...new Set((Array.isArray(a.images) ? a.images : [a.image]).map((x) => oneLine(x)).filter(Boolean))].slice(0, IMAGES)
+      if (!ids.length) throw new Error("image: the id to delete (or images: a list)")
+      ids.forEach((x) => this.#image(x))
+      const host = this.#hostOf({})
+      const deleted = []
+      for (const x of ids) {
+        try {
+          deleted.push(...(await host.post("image/delete", { id: x })).deleted)
+        } catch (error) {
+          // the host forgot it already (its index keeps 200): only the studio's row is left to drop
+          if (error.status !== 404 && !/no image job/.test(error.message)) {
+            if (deleted.length) this.#drop(deleted)
+            throw error
+          }
+          deleted.push(x)
+        }
+      }
+      this.#drop(deleted)
+      return { deleted }
+    },
+    feedback(a, from) {
+      const text = clip(oneLine(a.text), 1500)
+      if (!text) throw new Error("text: your feedback")
+      const img = a.image ? this.#image(a.image) : null
+      // marks: boxes on the image (x, y, w, h as 0..1 of its size) with a note each; marked: the image with them drawn
+      // (an upload); mask: white where they are (an upload) — for a model that edits under a mask
+      const marks = (Array.isArray(a.marks) ? a.marks : []).slice(0, 12).map((m, i) => {
+        const n = (v) => Math.round(Math.max(0, Math.min(1, Number(v) || 0)) * 1000) / 1000
+        return { n: i + 1, x: n(m.x), y: n(m.y), w: n(m.w), h: n(m.h), note: clip(oneLine(m.note), 300) }
+      })
+      const marked = oneLine(a.marked) || null
+      const mask = oneLine(a.mask) || null
+      this.nf += 1
+      const f = { id: `f${this.nf}`, image: img?.id ?? null, text, marks, marked, mask, from, at: this.clock().toISOString() }
+      this.bump({ feedback: [...this.state.feedback, f].slice(-FEEDBACK) })
+      // the image's maker while it is still on the desk (audit 20: a dismissed helper or step agent never saw the marks)
+      const live = (name) => !!this.keeper?.home?.agents?.().some?.((a) => a.name === name)
+      const keeper = img?.by && img.by !== "owner" && (!this.keeper?.home || live(img.by)) ? img.by : this.keeperName
+      if (marked) {
+        this.marked.set(marked, `the owner's marks on ${img?.id ?? "the image"}: numbered boxes`)
+        this.again.set(keeper, [...(this.again.get(keeper) ?? []), marked])
+      }
+      const where = (m) => `${m.y < 0.33 ? "top" : m.y + m.h > 0.67 ? "bottom" : "middle"}-${m.x < 0.33 ? "left" : m.x + m.w > 0.67 ? "right" : "center"}`
+      const on = img ? ` on ${img.id} (prompt v${img.v ?? "-"}, seed ${img.seed})` : ""
+      const markLines = marks.map((m) => `  mark ${m.n} (${where(m)}, x ${m.x} y ${m.y} w ${m.w} h ${m.h}): ${m.note || "(no note)"}`)
+      const edits = this.state.model?.accepts ?? []
+      const how = mask && edits.includes("mask") && img ? `edit just the marked areas: ${this.name}.generate {from: "${img.id}", mask: "${mask}", prompt: what those areas should become}` : img ? `refine from ${img.id} (${this.name}.generate {from: "${img.id}"}${edits.includes("auto_mask") ? `, or auto_mask: the object to repaint` : ""})` : "a new prompt version"
+      const deliver = [`The owner's feedback${on}: "${text}"`, ...(marks.length ? [`Marked on the image (you see it with the boxes numbered on your next step${marked ? `, ${marked}` : ""}):`, ...markLines] : []), `Act on it: ${how}, or a new prompt version (${this.name}.prompt, why: this feedback); generate, look, critique, and tell the owner what you changed.`].join("\n")
+      return { feedback: f, deliver, keeper }
+    },
+  }
+  static ownerCan = "set the goal, generate, choose a preset, give feedback, pick, send, stop or delete"
+
   constructor({ id = "studio", title, clock = () => new Date(), waitMs = 2000 } = {}) {
     super({ name: id, title: title ?? (id === "studio" ? "studio — images made, critiqued and refined" : `${id} — studio`) })
     this.kind = "studio"
@@ -105,10 +198,6 @@ export class Studio extends Artifact {
 
   // ---- state ----
 
-  #set(patch) {
-    this.state = { ...this.state, ...patch, revision: this.state.revision + 1 }
-    this.changed()
-  }
   #image(id) {
     const key = oneLine(id)
     const img = this.state.images.find((i) => i.id === key)
@@ -116,13 +205,13 @@ export class Studio extends Artifact {
     return img
   }
   #patchImage(id, patch) {
-    this.#set({ images: this.state.images.map((i) => (i.id === id ? { ...i, ...patch } : i)) })
+    this.bump({ images: this.state.images.map((i) => (i.id === id ? { ...i, ...patch } : i)) })
   }
   // images gone: off the state, the pick cleared when it was one, never shown to an agent again
   #drop(ids) {
     const gone = new Set(ids)
     for (const list of this.again.values()) list.splice(0, list.length, ...list.filter((x) => !gone.has(x)))
-    this.#set({ images: this.state.images.filter((i) => !gone.has(i.id)), picked: this.state.picked && gone.has(this.state.picked.image) ? null : this.state.picked })
+    this.bump({ images: this.state.images.filter((i) => !gone.has(i.id)), picked: this.state.picked && gone.has(this.state.picked.image) ? null : this.state.picked })
   }
   #hostOf(ctx) {
     const host = ctx?.host ?? ctx?.agent?.context?.host ?? this.host
@@ -177,12 +266,12 @@ export class Studio extends Artifact {
       // the model chosen in the models folder and the presets: what the agents and the view may ask for
       const model = read.model ?? null
       const presets = (read.presets ?? []).map((p) => ({ name: p.name, title: p.title, when: p.when ?? "", ...(p.width ? { size: `${p.width}×${p.height}` } : {}) }))
-      if (JSON.stringify(model) !== JSON.stringify(this.state.model) || JSON.stringify(presets) !== JSON.stringify(this.state.presets)) this.#set({ model, presets })
+      if (JSON.stringify(model) !== JSON.stringify(this.state.model) || JSON.stringify(presets) !== JSON.stringify(this.state.presets)) this.bump({ model, presets })
       if (!live.length) return
     } catch (error) {
       if (!live.length) return
       const msg = `image host not read: ${error.message}`
-      if (live.some((i) => i.error !== msg)) this.#set({ images: this.state.images.map((i) => (LIVE.has(i.status) ? { ...i, error: msg } : i)) })
+      if (live.some((i) => i.error !== msg)) this.bump({ images: this.state.images.map((i) => (LIVE.has(i.status) ? { ...i, error: msg } : i)) })
       return
     }
     let moved = false
@@ -193,7 +282,7 @@ export class Studio extends Artifact {
       if (Object.entries(next).some(([k, v]) => i[k] !== v)) moved = true
       return { ...i, ...next }
     })
-    if (moved) this.#set({ images })
+    if (moved) this.bump({ images })
   }
 
   // The newest images this holder made (or asked to look at) that it has not seen: on its next model call.
@@ -229,7 +318,7 @@ export class Studio extends Artifact {
     const goal = clip(oneLine(input.goal ?? input.text), 1500)
     if (!goal) throw new Error("goal: what the image is for — the imagination, the end goal")
     const criteria = linesOf(input.criteria).slice(0, 8).map((c) => clip(c, 200))
-    this.#set({ goal: { text: goal, by: ctx.agent?.name ?? "owner", at: this.clock().toISOString() }, criteria })
+    this.bump({ goal: { text: goal, by: ctx.agent?.name ?? "owner", at: this.clock().toISOString() }, criteria })
     return `goal set${criteria.length ? ` with ${criteria.length} criteria` : " — add criteria (what done means) so critiques can score against them"}`
   }
 
@@ -243,7 +332,7 @@ export class Studio extends Artifact {
     const last = this.state.prompts.at(-1)
     if (last && last.text === text && last.negative === negative) throw new Error(`v${last.v} is this prompt already`)
     const v = (last?.v ?? 0) + 1
-    this.#set({ prompts: [...this.state.prompts, { v, text, negative, why, by: ctx.agent?.name ?? "owner", at: this.clock().toISOString() }].slice(-PROMPTS) })
+    this.bump({ prompts: [...this.state.prompts, { v, text, negative, why, by: ctx.agent?.name ?? "owner", at: this.clock().toISOString() }].slice(-PROMPTS) })
     return `prompt v${v} saved — ${this.name}.generate {v: ${v}} to draw it`
   }
 
@@ -275,7 +364,7 @@ export class Studio extends Artifact {
       const { job } = await host.post("image/generate", { prompt: text, negative, seed, width: input.width, height: input.height, steps: input.steps, guidance: input.guidance, from: from?.id, strength: input.strength, preset, references, mask: oneLine(input.mask) || null, auto_mask: oneLine(input.auto_mask) || null, by, note: v ? `v${v}` : null })
       made.push({ id: job.id, v, prompt: text, sent: job.prompt, negative: job.negative ?? negative, seed: job.seed, width: job.width, height: job.height, steps: job.steps, model: job.model, mode: job.mode ?? "generate", preset: job.preset ?? null, from: job.from, strength: job.strength, references: job.references ?? [], mask: job.mask ?? null, auto_mask: job.auto_mask ?? null, by, status: job.status, step: 0, ms: null, error: null, url: null, at: job.at, critiques: [] })
     }
-    this.#set({ images: [...[...made].reverse(), ...this.state.images].slice(0, IMAGES) })
+    this.bump({ images: [...[...made].reverse(), ...this.state.images].slice(0, IMAGES) })
     const m0 = made[0]
     return `queued ${made.map((m) => m.id).join(", ")} (${m0.model} ${m0.mode}${m0.preset ? `, preset ${m0.preset}` : ""}, ${m0.width}×${m0.height}, ${m0.steps} steps${from ? `, from ${from.id} at strength ${m0.strength}` : ""}${m0.mask ? `, mask ${m0.mask}` : ""}${m0.auto_mask ? `, repaint "${m0.auto_mask}"` : ""}) — ${this.name}.wait, then look at them`
   }
@@ -319,7 +408,7 @@ export class Studio extends Artifact {
   pick(input = {}, ctx = {}) {
     const img = this.#image(input.image ?? input.id)
     if (img.status !== "done") throw new Error(`${img.id} is ${img.status}`)
-    this.#set({ picked: { image: img.id, why: clip(oneLine(input.why), 600) || null, by: ctx.agent?.name ?? "owner", at: this.clock().toISOString() } })
+    this.bump({ picked: { image: img.id, why: clip(oneLine(input.why), 600) || null, by: ctx.agent?.name ?? "owner", at: this.clock().toISOString() } })
     return `${img.id} is the pick`
   }
 
@@ -352,13 +441,13 @@ export class Studio extends Artifact {
     const name = oneLine(input.name ?? input.preset)
     if (!name) throw new Error(`name: one of ${this.state.presets.map((p) => p.name).join(", ") || "the presets"}, or none`)
     if (name === "none") {
-      this.#set({ preset: null })
+      this.bump({ preset: null })
       return "no preset: generate uses the model's own defaults"
     }
     if (this.state.presets.length && !this.state.presets.some((p) => p.name === name)) throw new Error(`preset: one of ${this.state.presets.map((p) => p.name).join(", ")} (or none)`)
     const why = clip(oneLine(input.why), 400)
     if (!why) throw new Error("why: the owner asked for it, or what made it look better")
-    this.#set({ preset: { name, why, by: ctx.agent?.name ?? "owner", at: this.clock().toISOString() } })
+    this.bump({ preset: { name, why, by: ctx.agent?.name ?? "owner", at: this.clock().toISOString() } })
     return `preset ${name} in use: every ${this.name}.generate applies it (size, steps, style around the prompt) unless it names another`
   }
 
@@ -369,105 +458,6 @@ export class Studio extends Artifact {
   }
 
   // ---- the owner ----
-
-  async ownerCall(method, args = [], from = "owner") {
-    const a = args[0] ?? {}
-    if (method === "goal") {
-      this.goal(a, {})
-      const asked = oneLine(a.preset) || "auto"
-      if (asked !== "auto" && this.state.presets.length && ![...this.state.presets.map((p) => p.name), "none"].includes(asked)) throw new Error(`preset: one of ${this.state.presets.map((p) => p.name).join(", ")}, none or auto`)
-      this.#set({ goal: { ...this.state.goal, preset: asked } })
-      // the workflow (expand → preset → generate → critique → refine) when the keeper holds one that takes a preset
-      const flow = this.#flow()
-      if (flow) {
-        const request = `${this.state.goal.text}${this.state.criteria.length ? `\nDone means: ${this.state.criteria.join("; ")}` : ""}`
-        const started = await flow.ownerCall("run", [{ id: flow.name, request, vars: { preset: asked } }])
-        return { goal: this.state.goal, workflow: flow.name, ...started }
-      }
-      const deliver = `The owner set the studio goal: "${this.state.goal.text}"${this.state.criteria.length ? `\nDone means: ${this.state.criteria.join("; ")}` : ""}\nOptimize the prompt (${this.name}.prompt with why), generate (${this.name}.generate, a few seeds), look, critique each against the criteria, and refine — a new prompt version or ${this.name}.generate {from} — until one is done; ${this.name}.pick it and tell the owner what changed between versions.`
-      return { goal: this.state.goal, deliver: `${deliver}\nPreset: ${asked === "auto" ? `none asked — ${this.name}.presets, compare the two that fit on quick drafts, ${this.name}.preset the better` : `${this.name}.preset {name: "${asked}", why: "the owner asked"}`}.`, keeper: this.keeperName }
-    }
-    if (method === "generate") return { result: await this.generate(a, { by: from }) }
-    if (method === "preset") return { result: this.preset({ name: a.name, why: a.why || "the owner chose it" }, {}) }
-    if (method === "pick") return { result: this.pick(a, {}) }
-    if (method === "send") return { result: await this.send(a, {}) }
-    if (method === "stop") {
-      const img = this.#image(a.image)
-      const { job } = await this.#hostOf({}).post("image/stop", { id: img.id })
-      this.#patchImage(img.id, { status: job.status, error: job.error ?? null })
-      return { image: img.id, status: job.status }
-    }
-    if (method === "delete") {
-      const ids = [...new Set((Array.isArray(a.images) ? a.images : [a.image]).map((x) => oneLine(x)).filter(Boolean))].slice(0, IMAGES)
-      if (!ids.length) throw new Error("image: the id to delete (or images: a list)")
-      ids.forEach((x) => this.#image(x))
-      const host = this.#hostOf({})
-      const deleted = []
-      for (const x of ids) {
-        try {
-          deleted.push(...(await host.post("image/delete", { id: x })).deleted)
-        } catch (error) {
-          // the host forgot it already (its index keeps 200): only the studio's row is left to drop
-          if (error.status !== 404 && !/no image job/.test(error.message)) {
-            if (deleted.length) this.#drop(deleted)
-            throw error
-          }
-          deleted.push(x)
-        }
-      }
-      this.#drop(deleted)
-      return { deleted }
-    }
-    if (method === "feedback") {
-      const text = clip(oneLine(a.text), 1500)
-      if (!text) throw new Error("text: your feedback")
-      const img = a.image ? this.#image(a.image) : null
-      // marks: boxes on the image (x, y, w, h as 0..1 of its size) with a note each; marked: the image with them drawn
-      // (an upload); mask: white where they are (an upload) — for a model that edits under a mask
-      const marks = (Array.isArray(a.marks) ? a.marks : []).slice(0, 12).map((m, i) => {
-        const n = (v) => Math.round(Math.max(0, Math.min(1, Number(v) || 0)) * 1000) / 1000
-        return { n: i + 1, x: n(m.x), y: n(m.y), w: n(m.w), h: n(m.h), note: clip(oneLine(m.note), 300) }
-      })
-      const marked = oneLine(a.marked) || null
-      const mask = oneLine(a.mask) || null
-      this.nf += 1
-      const f = { id: `f${this.nf}`, image: img?.id ?? null, text, marks, marked, mask, from, at: this.clock().toISOString() }
-      this.#set({ feedback: [...this.state.feedback, f].slice(-FEEDBACK) })
-      // the image's maker while it is still on the desk (audit 20: a dismissed helper or step agent never saw the marks)
-      const live = (name) => !!this.keeper?.home?.agents?.().some?.((a) => a.name === name)
-      const keeper = img?.by && img.by !== "owner" && (!this.keeper?.home || live(img.by)) ? img.by : this.keeperName
-      if (marked) {
-        this.marked.set(marked, `the owner's marks on ${img?.id ?? "the image"}: numbered boxes`)
-        this.again.set(keeper, [...(this.again.get(keeper) ?? []), marked])
-      }
-      const where = (m) => `${m.y < 0.33 ? "top" : m.y + m.h > 0.67 ? "bottom" : "middle"}-${m.x < 0.33 ? "left" : m.x + m.w > 0.67 ? "right" : "center"}`
-      const on = img ? ` on ${img.id} (prompt v${img.v ?? "-"}, seed ${img.seed})` : ""
-      const markLines = marks.map((m) => `  mark ${m.n} (${where(m)}, x ${m.x} y ${m.y} w ${m.w} h ${m.h}): ${m.note || "(no note)"}`)
-      const edits = this.state.model?.accepts ?? []
-      const how = mask && edits.includes("mask") && img ? `edit just the marked areas: ${this.name}.generate {from: "${img.id}", mask: "${mask}", prompt: what those areas should become}` : img ? `refine from ${img.id} (${this.name}.generate {from: "${img.id}"}${edits.includes("auto_mask") ? `, or auto_mask: the object to repaint` : ""})` : "a new prompt version"
-      const deliver = [`The owner's feedback${on}: "${text}"`, ...(marks.length ? [`Marked on the image (you see it with the boxes numbered on your next step${marked ? `, ${marked}` : ""}):`, ...markLines] : []), `Act on it: ${how}, or a new prompt version (${this.name}.prompt, why: this feedback); generate, look, critique, and tell the owner what you changed.`].join("\n")
-      return { feedback: f, deliver, keeper }
-    }
-    throw new Error(`${this.name}: the owner can set the goal, generate, choose a preset, give feedback, pick, send, stop or delete (not ${method})`)
-  }
-
-  // ---- the kernel ----
-
-  commands() {
-    const tool = (name, description, input, run) => new Tool({ name: `${this.name}.${name}`, type: "dev", view: "studio", description, input, run })
-    return [
-      tool("goal", "set what the image is for and what done means", { goal: "the imagination, the end goal", criteria: "what done means, one per line (scored by critiques)" }, (i, c) => this.goal(i, c)),
-      tool("prompt", "save a new prompt version: the optimised prompt and why it changed", { text: "the full prompt for the image model (subject, setting, composition, light, style, lens, detail)", negative: "what to keep out (optional)", why: "what this version changes and why" }, (i, c) => this.prompt(i, c)),
-      tool("generate", "queue images on this Mac's image model from a prompt version — refine an image (from + strength), or edit it (references, mask, auto_mask: when the model accepts them)", { v: "prompt version (default the newest)", prompt: "or a prompt given here", seeds: "how many variants, 1–4 (default 1)", seed: "a fixed seed (to compare prompts on the same noise)", preset: "a preset name (default the one in use; none: no preset)", width: "px (default: the preset's, else the model's)", height: "px", steps: "denoising steps (default: the preset's, else the model's)", from: "an image id to refine from", strength: "0..1: how far to move from it (default 0.6)", references: "image ids the edit starts from (the first is edited)", mask: "an image id: white = repaint, black = keep (the owner's mask)", auto_mask: "the object to repaint, named (e.g. the red scarf)" }, (i, c) => this.generate(i, c)),
-      tool("wait", "wait until images finish; then you see them on your next step", { ids: "image ids, comma-separated (default: yours still running)", seconds: "at most (default 900)" }, (i, c) => this.wait(i, c)),
-      tool("critique", "judge an image against the goal and criteria", { image: "its id", scores: "0–10 per criterion, e.g. {goal: 7, composition: 6, light: 8}", notes: "what you see: what works, what misses", verdict: "done | revise | discard", next: "for revise: what to change" }, (i, c) => this.critique(i, c)),
-      tool("pick", "mark the best image so far", { image: "its id", why: "why it is the best" }, (i, c) => this.pick(i, c)),
-      tool("look", "see an image again on your next step (to compare)", { image: "its id" }, (i, c) => this.look(i, c)),
-      tool("send", "send an image to the owner's Telegram chat (a result, or a choice to ask about)", { image: "its id", caption: "what it is, what you want to know (optional)" }, (i, c) => this.send(i, c)),
-      tool("presets", "the presets and what the image model accepts", {}, () => this.presets()),
-      tool("preset", "choose the preset every generate uses (or none)", { name: "a preset name, or none", why: "the owner asked, or what made it look better" }, (i, c) => this.preset(i, c)),
-    ]
-  }
 
   brief() {
     const s = this.state

@@ -3,6 +3,7 @@
 import * as React from "react"
 
 import { readWakes, WAKES_POLL_MS } from "@/backend/live/wakes"
+import { usePoll } from "@/components/views/kit"
 import { cn } from "@/lib/utils"
 
 const when = (iso) => (iso ? new Date(iso).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "")
@@ -12,16 +13,8 @@ const STATE = { done: "text-emerald-500", missed: "text-amber-500", cancelled: "
 // and the ones lately run, missed or cancelled. Re-read every 30 s.
 export function useWakes() {
   const [book, setBook] = React.useState({ available: false, open: [], recent: [], loading: true })
-  React.useEffect(() => {
-    let alive = true
-    const load = () => readWakes().then((b) => alive && setBook(b))
-    load()
-    const timer = setInterval(load, WAKES_POLL_MS)
-    return () => {
-      alive = false
-      clearInterval(timer)
-    }
-  }, [])
+  const load = React.useCallback(() => readWakes().then(setBook), [])
+  usePoll(load, WAKES_POLL_MS)
   return book
 }
 

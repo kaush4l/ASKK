@@ -1,5 +1,4 @@
 import { Artifact } from "./artifact.js"
-import { Tool } from "../tool/tool.js"
 
 // Checklist: what done means for one agent's run, ticked with evidence. Fresh every run; the
 // agent's final answer is refused while an item is open (the agent's gate, a few times at most).
@@ -7,6 +6,13 @@ import { Tool } from "../tool/tool.js"
 // does not apply now (e.g. a trading item after the close).
 //   new Checklist({ id: "lead.checklist", items: ["teams: every team reported", "!post: posted", …], requiredWhen })
 export class Checklist extends Artifact {
+  static about = "items ticked with evidence; open required items refuse the answer"
+  static commandType = "artifact"
+  static commands = {
+    tick: { description: "tick an item done", input: { id: "item id", evidence: "what proves it" }, run({ id, evidence }) { return this.#set(id, "done", evidence) } },
+    skip: { description: "skip an item that cannot be done", input: { id: "item id", reason: "why" }, run({ id, reason }) { return this.#set(id, "skipped", reason) } },
+  }
+
   constructor({ id, title, items = [], owner = null, requiredWhen = null }) {
     super({ name: id, title: title ?? id })
     this.kind = "checklist"
@@ -66,12 +72,5 @@ export class Checklist extends Artifact {
     this.changed()
     const left = this.open().length
     return `${id} ${status}; ${left ? `${left} open` : "all done"}`
-  }
-
-  commands() {
-    return [
-      new Tool({ name: `${this.name}.tick`, description: "tick an item done", input: { id: "item id", evidence: "what proves it" }, run: ({ id, evidence }) => this.#set(id, "done", evidence) }),
-      new Tool({ name: `${this.name}.skip`, description: "skip an item that cannot be done", input: { id: "item id", reason: "why" }, run: ({ id, reason }) => this.#set(id, "skipped", reason) }),
-    ]
   }
 }

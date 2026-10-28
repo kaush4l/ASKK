@@ -12,6 +12,7 @@
 //
 //   hasWorkbench(artifacts), pickWorkbench(artifacts) → {files, terminal, preview, others}
 //   workbenchTabs({files, preview, pinned, dismissed, max}) → tabs: the one Preview tab first, then files newest first
+//   tabNames(paths) → Map path → a tab's name: its basename, "base · folder" when several paths share it
 //   mergeSessions(twin, polled) → the terminal's sessions, the twin's with what term/list polls know sooner
 //   sessionTabs(sessions) → the Terminal pane's tabs: at most two per agent (its main and long sessions), stable order
 //   sessionLabel(session) → a tab's name: "coder · main", else the session's name
@@ -67,12 +68,43 @@ export function workbenchTabs({ files, preview, pinned = [], dismissed = new Map
   for (const o of state.open ?? []) add(o?.path, o?.at, { open: o })
   for (const m of state.modified ?? []) add(m?.path, m?.at, { modified: m })
   for (const p of pinned) add(p?.path, p?.at, { pinned: true })
-  const fileTabs = [...byPath.values()]
+  const shown = [...byPath.values()]
     .filter((t) => !(dismissed.get(t.path) >= t.at))
     .sort((a, b) => b.at - a.at || a.path.localeCompare(b.path))
     .slice(0, max)
+  const names = tabNames(shown.map((t) => t.path))
+  const fileTabs = shown.map((t) => ({ ...t, name: names.get(t.path) ?? t.name }))
   const previewTab = preview ? [{ id: "preview", kind: "preview", name: "Preview", at: previewActivity(preview.state), items: previewItems(preview.state).length, open: openAsks(preview.state) }] : []
   return [...previewTab, ...fileTabs]
+}
+
+// A tab's name (2026-10-26, critic l20: the parked copy of waiting.js showed as a second "waiting.js" tab): its
+// basename, or — when several paths share it — "base · folder", the folder at the nearest depth where those paths
+// differ; when that folder alone repeats (three or more), the folders from further up down to it, the shortest that is
+// unique ("/" for a file at the root).
+const dirsOf = (path) => String(path).split("/").filter(Boolean).slice(0, -1)
+export function tabNames(paths = []) {
+  const groups = new Map()
+  for (const p of new Set((paths ?? []).filter(Boolean))) groups.set(baseName(p), [...(groups.get(baseName(p)) ?? []), p])
+  const names = new Map()
+  for (const [base, group] of groups) {
+    if (group.length === 1) {
+      names.set(group[0], base)
+      continue
+    }
+    const dirs = group.map(dirsOf)
+    const at = (d, k) => d[d.length - k] // the k-th parent, 1 = nearest
+    const deepest = Math.max(...dirs.map((d) => d.length))
+    let k = 1
+    while (k <= deepest && dirs.every((d) => at(d, k) === at(dirs[0], k))) k++
+    const tag = (d, n) => d.slice(Math.max(0, d.length - n), Math.max(0, d.length - k + 1)).join("/") || "/"
+    group.forEach((p, i) => {
+      let n = k
+      while (n < deepest && dirs.some((d, j) => j !== i && tag(d, n) === tag(dirs[i], n))) n++
+      names.set(p, `${base} · ${tag(dirs[i], n)}`)
+    })
+  }
+  return names
 }
 
 // Following, the editor shows the newest activity: the file last opened or modified, or the preview's last change (a
@@ -266,15 +298,34 @@ export function treeRows(entries = [], { root = "", marks = new Map(), toggled =
   const rows = []
   const walk = (n, depth) => {
     const kids = [...n.kids.values()].sort((a, b) => (b.dir ? 1 : 0) - (a.dir ? 1 : 0) || a.name.localeCompare(b.name))
+    const names = kids.map((k) => k.name)
     for (const k of kids) {
       const quiet = k.name.startsWith(".") || k.skipped
       const expanded = k.dir ? (toggled.has(k.path) ? toggled.get(k.path) : inside.has(k.path) || (depth === 0 && !quiet)) : undefined
-      rows.push({ path: k.path, name: k.name, depth, dir: k.dir, ...(k.dir ? { expanded } : {}), mark: marks.get(k.path) ?? null, inside: inside.has(k.path) })
+      rows.push({ path: k.path, name: k.name, ...nameParts(k.name, names), depth, dir: k.dir, ...(k.dir ? { expanded } : {}), mark: marks.get(k.path) ?? null, inside: inside.has(k.path) })
       if (expanded) walk(k, depth + 1)
     }
   }
   walk(top, 0)
   return rows
+}
+
+// A tree row's name as {head, tail} (2026-10-26, l27: four "2026-10-22-bun-*" rows all read "2026-10-22-bun…"; l44: a
+// fixed-length tail made the notes rows alike): the tail starts on the word where the name parts from the sibling that
+// shares most of its start, so the pane can cut the shared head and keep what tells the rows apart. A short name, or one
+// no sibling shares a word of, stays whole. head + tail is the name.
+export function nameParts(name, siblings = []) {
+  const whole = { head: String(name ?? ""), tail: "" }
+  if (whole.head.length <= 20) return whole
+  let shared = 0
+  for (const s of siblings ?? []) {
+    if (s == null || s === name) continue
+    let i = 0
+    while (i < name.length && i < s.length && name[i] === s[i]) i++
+    shared = Math.max(shared, i)
+  }
+  const cut = Math.max(...["-", "_", "."].map((c) => name.slice(0, shared).lastIndexOf(c))) + 1
+  return cut > 0 && cut < name.length ? { head: name.slice(0, cut), tail: name.slice(cut) } : whole
 }
 
 // A file's text as the editor's lines, at most `max`: {lines, cut} (cut: lines left out).

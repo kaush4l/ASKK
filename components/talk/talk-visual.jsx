@@ -1,6 +1,5 @@
 "use client"
 
-import * as React from "react"
 import { AppWindowIcon } from "lucide-react"
 
 import { openPreview, previewOf } from "@/backend/live/preview"

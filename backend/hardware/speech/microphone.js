@@ -34,7 +34,6 @@ class Tap extends AudioWorkletProcessor {
 registerProcessor("askk-tap", Tap)
 `
 
-
 // Int16 PCM as base64 (the host's speech/transcribe body).
 export function pcmToBase64(pcm) {
   const bytes = new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength)

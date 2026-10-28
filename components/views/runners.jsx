@@ -4,6 +4,7 @@ import * as React from "react"
 
 import { checkLine, clockOf, endsText, fireLine, intervalLabel, parsePlot, runnerCall, runnerCharts, runnerForm, runnerGate, runnerRows, specLine, startRunner, testRunner, windowText } from "@/backend/live/runners"
 import { PALETTE } from "@/backend/live/visual-layout"
+import { MiniButton, Options, Small, submitted, useKeyedCalls, useOwnerCall } from "@/components/views/kit"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
@@ -31,7 +32,7 @@ const fmt = (v) => (v == null ? "—" : Math.abs(v) >= 1000 ? v.toFixed(0) : Mat
 
 export function RunnersView({ id, state, expanded }) {
   const rows = runnerRows(state)
-  const [calls, call] = useRunnerCalls(id)
+  const [calls, act] = useKeyedCalls() // per runner while the owner's call is out: {busy, error}
   if (!expanded) {
     if (!rows.length) return <p className="mt-1 text-xs text-muted-foreground">no runners</p>
     return (
@@ -41,10 +42,7 @@ export function RunnersView({ id, state, expanded }) {
             <span aria-hidden className={cn("size-2 shrink-0 rounded-full", TONE[s.tone])} />
             <span className="min-w-0 truncate font-mono text-foreground/90">{r.id}</span>
             {r.interval != null && <span className="shrink-0 text-[11px] text-muted-foreground">{intervalLabel(r.interval)}</span>}
-            <span className="ml-auto min-w-0 truncate text-[11px] text-muted-foreground">
-              {s.word}
-              {s.detail ? ` · ${s.detail}` : ""}
-            </span>
+            <span className="ml-auto min-w-0 truncate text-[11px] text-muted-foreground">{s.word}{s.detail ? ` · ${s.detail}` : ""}</span>
             <Spark chart={r.chart} />
           </li>
         ))}
@@ -62,9 +60,7 @@ export function RunnersView({ id, state, expanded }) {
       {runnerForm(state) && <NewRunner id={id} can={runnerForm(state)} />}
       {!rows.length && <p className="text-xs text-muted-foreground">no runners — an agent sets them</p>}
       <ul className="grid min-w-0 grid-cols-1 gap-2 @3xl:grid-cols-2">
-        {rows.map(({ r, s }) => (
-          <RunnerCard key={r.id} r={r} s={s} busy={calls[r.id]} onCall={(method) => call(method, r.id)} />
-        ))}
+        {rows.map(({ r, s }) => <RunnerCard key={r.id} r={r} s={s} busy={calls[r.id]} onCall={(method) => act(r.id, () => runnerCall(id, method, r.id))} />)}
       </ul>
     </div>
   )
@@ -105,46 +101,32 @@ function RunnerCard({ r, s, busy, onCall }) {
           <span className="font-sans text-muted-foreground"> · both on the same bar</span>
         </p>
       )}
-      {hours && <p className="text-[11px] break-words text-muted-foreground">window {hours} ET</p>}
-      {ends && <p className="text-[11px] break-words text-muted-foreground">{ends}</p>}
-      {r.last?.note && r.last.note !== s.detail && <p className="text-[11px] break-words text-muted-foreground">{r.last.note}</p>}
-      {r.why && <p className="text-[11px] break-words text-muted-foreground">{r.why}</p>}
-      {checkLine(r) && <p className="text-[11px] break-words text-muted-foreground tabular-nums">{checkLine(r)}</p>}
+      {hours && <Small>window {hours} ET</Small>}
+      {ends && <Small>{ends}</Small>}
+      {r.last?.note && r.last.note !== s.detail && <Small>{r.last.note}</Small>}
+      {r.why && <Small>{r.why}</Small>}
+      {checkLine(r) && <Small className="tabular-nums">{checkLine(r)}</Small>}
       <div className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-[11px] tabular-nums">
         {r.last?.price != null && <span className="text-foreground">{fmt(r.last.price)}</span>}
-        {names.map((n) => (
-          <span key={n} style={{ color: color(n) }}>
-            {n} {fmt(r.last?.values?.[n])}
-          </span>
-        ))}
+        {names.map((n) => <span key={n} style={{ color: color(n) }}>{n} {fmt(r.last?.values?.[n])}</span>)}
         {r.last?.at && <span className="text-muted-foreground">computed {clockOf(r.last.at)} ET</span>}
-        {(r.set_by || r.at) && (
-          <span className="text-muted-foreground">
-            [{[r.set_by, r.at ? `set ${clockOf(r.at)} ET` : null].filter(Boolean).join(" · ")}]
-          </span>
-        )}
+        {(r.set_by || r.at) && <span className="text-muted-foreground">[{[r.set_by, r.at ? `set ${clockOf(r.at)} ET` : null].filter(Boolean).join(" · ")}]</span>}
       </div>
       {(r.chart || r.checks == null) && <Chart chart={r.chart} color={color} />}
-      {fires.length > 0 && <p className="text-[11px] break-words text-muted-foreground">{fires.map(fireLine).join("; ")}</p>}
-      {r.error && <p className="text-[11px] break-words text-red-700 dark:text-red-400">{r.error}</p>}
+      {fires.length > 0 && <Small>{fires.map(fireLine).join("; ")}</Small>}
+      {r.error && <Small tone="error">{r.error}</Small>}
       <div className="mt-1 flex flex-wrap gap-1">
         {running ? <Control label="Pause" busy={busy} onClick={() => onCall("pause")} /> : r.status !== "expired" && !(r.ends_at && Date.parse(r.ends_at) <= Date.now()) && <Control label="Resume" busy={busy} onClick={() => onCall("resume")} />}
         {running && <Control label={r.checks != null ? "Check now" : "Compute now"} busy={busy} onClick={() => onCall("now")} />}
         {running && <Control label="Stop" busy={busy} onClick={() => onCall("stop")} variant="destructive" />}
         <Control label="Remove" busy={busy} onClick={() => onCall("remove")} variant="ghost" />
       </div>
-      {busy?.error && <p className="text-[11px] break-words text-red-700 dark:text-red-400">{busy.error}</p>}
+      {busy?.error && <Small tone="error">{busy.error}</Small>}
     </li>
   )
 }
 
-function Control({ label, busy, onClick, variant = "outline" }) {
-  return (
-    <Button type="button" size="xs" variant={variant} className="h-6 px-2 text-[11px] pointer-coarse:h-10 pointer-coarse:min-w-10" disabled={!!busy?.busy} onClick={onClick}>
-      {label}
-    </Button>
-  )
-}
+const Control = ({ label, busy, ...props }) => <MiniButton variant="outline" disabled={!!busy?.busy} {...props}>{label}</MiniButton>
 
 // The live chart: the price (the bar forming at the right), the plotted values on its scale, the others under it, the
 // bars the condition turned true (dashed), the last price.
@@ -154,32 +136,18 @@ function Chart({ chart, color }) {
   return (
     <figure className="mt-1 min-w-0">
       <svg viewBox={`0 0 ${g.width} ${g.height}`} className="h-auto w-full" role="img" aria-label={`price ${chart.interval ?? ""} ${chart.source ?? ""}`}>
-        {g.marks.map((m, k) => (
-          <line key={k} x1={m.x} x2={m.x} y1={0} y2={g.height} strokeDasharray="3 3" className="stroke-amber-400/80" />
-        ))}
+        {g.marks.map((m, k) => <line key={k} x1={m.x} x2={m.x} y1={0} y2={g.height} strokeDasharray="3 3" className="stroke-amber-400/80" />)}
         <path d={g.price.d} fill="none" strokeWidth="1.5" className="stroke-foreground" />
-        {g.over.map((s) => (
-          <path key={s.name} d={s.d} fill="none" strokeWidth="1.2" stroke={color(s.name)} />
-        ))}
+        {g.over.map((s) => <path key={s.name} d={s.d} fill="none" strokeWidth="1.2" stroke={color(s.name)} />)}
         <circle cx={g.price.last.x} cy={g.price.last.y} r="2.5" className="fill-foreground" />
-        <text x={4} y={11} className="fill-muted-foreground text-[9px]">
-          {fmt(g.price.ys[1])}
-        </text>
-        <text x={4} y={g.height - 4} className="fill-muted-foreground text-[9px]">
-          {fmt(g.price.ys[0])}
-        </text>
+        <text x={4} y={11} className="fill-muted-foreground text-[9px]">{fmt(g.price.ys[1])}</text>
+        <text x={4} y={g.height - 4} className="fill-muted-foreground text-[9px]">{fmt(g.price.ys[0])}</text>
       </svg>
       {g.lower && (
         <svg viewBox={`0 0 ${g.width} ${g.lower.height}`} className="h-auto w-full border-t border-dashed" role="img" aria-label="indicators on their own scale">
-          {g.lower.series.map((s) => (
-            <path key={s.name} d={s.d} fill="none" strokeWidth="1.2" stroke={color(s.name)} />
-          ))}
-          <text x={4} y={10} className="fill-muted-foreground text-[9px]">
-            {fmt(g.lower.ys[1])}
-          </text>
-          <text x={4} y={g.lower.height - 3} className="fill-muted-foreground text-[9px]">
-            {fmt(g.lower.ys[0])}
-          </text>
+          {g.lower.series.map((s) => <path key={s.name} d={s.d} fill="none" strokeWidth="1.2" stroke={color(s.name)} />)}
+          <text x={4} y={10} className="fill-muted-foreground text-[9px]">{fmt(g.lower.ys[1])}</text>
+          <text x={4} y={g.lower.height - 3} className="fill-muted-foreground text-[9px]">{fmt(g.lower.ys[0])}</text>
         </svg>
       )}
       <figcaption className="flex justify-between gap-2 text-[10px] text-muted-foreground">
@@ -196,31 +164,18 @@ function Chart({ chart, color }) {
 function Spark({ chart }) {
   const g = React.useMemo(() => runnerCharts(chart, { width: 64, height: 18, pad: 1 }), [chart])
   if (!g) return null
-  return (
-    <svg viewBox="0 0 64 18" className="h-[18px] w-16 shrink-0" aria-hidden>
-      <path d={g.price.d} fill="none" strokeWidth="1" className="stroke-foreground/70" />
-    </svg>
-  )
+  return <svg viewBox="0 0 64 18" className="h-[18px] w-16 shrink-0" aria-hidden><path d={g.price.d} fill="none" strokeWidth="1" className="stroke-foreground/70" /></svg>
 }
 
-// Per runner {busy, error} while the owner's call is out.
-function useRunnerCalls(id) {
-  const [calls, setCalls] = React.useState({})
-  const call = React.useCallback(
-    async (method, runner) => {
-      setCalls((c) => ({ ...c, [runner]: { busy: true, error: null } }))
-      try {
-        await runnerCall(id, method, runner)
-        setCalls((c) => ({ ...c, [runner]: { busy: false, error: null } }))
-      } catch (error) {
-        setCalls((c) => ({ ...c, [runner]: { busy: false, error: error?.message ?? String(error) } }))
-      }
-    },
-    [id],
-  )
-  return [calls, call]
-}
-
+const FORMULAS = [
+  ["when", "when (the condition)", "cross_above(close, vwap()) and rsi(close, 14) < 70"],
+  ["gateWhen", "gate when (on the gate symbol's bars, the same bar)", "close < 62.1"],
+  ["plot", "plot (name=formula; …)", "vwap=vwap(); ema9=ema(close, 9)"],
+]
+const CHOICES = [
+  ["then", [{ value: "wake", label: "wake the lead" }, { value: "log", label: "log only" }]],
+  ["repeat", [{ value: "once", label: "once" }, { value: "edge", label: "each time" }]],
+]
 const FIELDS = [
   ["id", "id", "my-runner"],
   ["symbol", "symbol", "ABC"],
@@ -234,33 +189,27 @@ const FIELDS = [
   ["gateSymbol", "gate symbol", "NFLX"],
 ]
 
+// The owner's start or test (useOwnerCall's send), and what it said: a test's reading, else the runner started.
+const sendRunner = async (id, kind, spec) => ({ kind, v: await (kind === "test" ? testRunner : startRunner)(id, spec) })
+function saidOf({ kind, v }) {
+  const values = Object.entries(v.values ?? {}).map(([k, x]) => `${k} ${x}`).join(", ")
+  const gate = v.gate ? ` · gate ${v.gate.symbol} ${v.gate.holds == null ? "unread" : v.gate.holds}${v.gate.value != null ? ` @${v.gate.value}` : ""}` : ""
+  const hours = `${v.window ? ` · ${v.window}` : ""}${v.sleeps ? ` · sleeps ${v.sleeps}` : ""}`
+  return kind === "test" ? `holds ${v.holds}${gate}${hours} · ${v.bars} bars · price ${v.price}${values ? ` · ${values}` : ""}${v.proximity?.gap > 0 ? ` · ${v.proximity.gap} to go` : ""} · turned true ${v.times_turned_true}× ${(v.turned_true ?? []).slice(-3).join(", ")}` : `started: ${v.runner}`
+}
+
 // The owner starts or tests a runner: the same spec the agents give <id>.start (a window and a gate are fields, never
 // prose in why: an empty one is left out).
 function NewRunner({ id, can }) {
   const [form, setForm] = React.useState({ id: "", symbol: "", interval: "5m", every: "bar", source: "", warn: "", on: "", from: "", until: "", gateSymbol: "", gateWhen: "", when: "", plot: "", then: "wake", repeat: "once" })
-  const [out, setOut] = React.useState(null)
-  const [busy, setBusy] = React.useState(false)
+  const { busy, note: out, call } = useOwnerCall(sendRunner, id, saidOf)
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
   const spec = () => {
     const { gateSymbol, gateWhen, ...rest } = form
     const gate = gateSymbol.trim() && gateWhen.trim() ? { symbol: gateSymbol.trim(), when: gateWhen.trim() } : undefined
     return { ...rest, source: form.source && form.source !== "auto" ? form.source : undefined, warn: form.warn || undefined, on: form.on.trim() || undefined, from: form.from.trim() || undefined, until: form.until.trim() || undefined, gate, plot: parsePlot(form.plot) }
   }
-  const run = async (kind) => {
-    setBusy(true)
-    setOut(null)
-    try {
-      const v = kind === "test" ? await testRunner(id, spec()) : await startRunner(id, spec())
-      const values = Object.entries(v.values ?? {}).map(([k, x]) => `${k} ${x}`).join(", ")
-      const gate = v.gate ? ` · gate ${v.gate.symbol} ${v.gate.holds == null ? "unread" : v.gate.holds}${v.gate.value != null ? ` @${v.gate.value}` : ""}` : ""
-      const hours = `${v.window ? ` · ${v.window}` : ""}${v.sleeps ? ` · sleeps ${v.sleeps}` : ""}`
-      setOut({ ok: true, text: kind === "test" ? `holds ${v.holds}${gate}${hours} · ${v.bars} bars · price ${v.price}${values ? ` · ${values}` : ""}${v.proximity?.gap > 0 ? ` · ${v.proximity.gap} to go` : ""} · turned true ${v.times_turned_true}× ${(v.turned_true ?? []).slice(-3).join(", ")}` : `started: ${v.runner}` })
-    } catch (error) {
-      setOut({ ok: false, text: error?.message ?? String(error) })
-    } finally {
-      setBusy(false)
-    }
-  }
+  const run = (kind) => call(kind, spec())
   return (
     <details className="group rounded-md border px-2 py-1">
       <summary className="flex min-h-7 cursor-pointer list-none items-center gap-1 text-xs text-muted-foreground hover:text-foreground pointer-coarse:min-h-10 [&::-webkit-details-marker]:hidden">
@@ -269,10 +218,7 @@ function NewRunner({ id, can }) {
       </summary>
       <form
         className="mt-1 flex flex-col gap-1.5"
-        onSubmit={(e) => {
-          e.preventDefault()
-          run("start")
-        }}
+        onSubmit={submitted(() => run("start"))}
       >
         <div className="grid grid-cols-2 gap-1.5 @md:grid-cols-3">
           {FIELDS.map(([k, text, ph]) => (
@@ -282,35 +228,24 @@ function NewRunner({ id, can }) {
             </label>
           ))}
         </div>
-        <label className="flex flex-col text-[11px] text-muted-foreground">
-          when (the condition)
-          <Input value={form.when} onChange={set("when")} placeholder="cross_above(close, vwap()) and rsi(close, 14) < 70" className="h-8 font-mono text-base md:text-xs pointer-coarse:h-10" />
-        </label>
-        <label className="flex flex-col text-[11px] text-muted-foreground">
-          gate when (on the gate symbol's bars, the same bar)
-          <Input value={form.gateWhen} onChange={set("gateWhen")} placeholder="close < 62.1" className="h-8 font-mono text-base md:text-xs pointer-coarse:h-10" />
-        </label>
-        <label className="flex flex-col text-[11px] text-muted-foreground">
-          plot (name=formula; …)
-          <Input value={form.plot} onChange={set("plot")} placeholder="vwap=vwap(); ema9=ema(close, 9)" className="h-8 font-mono text-base md:text-xs pointer-coarse:h-10" />
-        </label>
+        {FORMULAS.map(([k, text, ph]) => (
+          <label key={k} className="flex flex-col text-[11px] text-muted-foreground">
+            {text}
+            <Input value={form[k]} onChange={set(k)} placeholder={ph} className="h-8 font-mono text-base md:text-xs pointer-coarse:h-10" />
+          </label>
+        ))}
         <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
-          <select value={form.then} onChange={set("then")} className="h-8 rounded-md border bg-background px-1 text-base md:text-xs pointer-coarse:h-10" aria-label="then">
-            <option value="wake">wake the lead</option>
-            <option value="log">log only</option>
-          </select>
-          <select value={form.repeat} onChange={set("repeat")} className="h-8 rounded-md border bg-background px-1 text-base md:text-xs pointer-coarse:h-10" aria-label="repeat">
-            <option value="once">once</option>
-            <option value="edge">each time</option>
-          </select>
-          <Button type="submit" size="xs" className="h-8 px-3 text-xs pointer-coarse:h-10" disabled={busy || !can.start || !form.id || !form.when}>
-            Start
-          </Button>
+          {CHOICES.map(([k, items]) => (
+            <select key={k} value={form[k]} onChange={set(k)} className="h-8 rounded-md border bg-background px-1 text-base md:text-xs pointer-coarse:h-10" aria-label={k}>
+              <Options items={items} />
+            </select>
+          ))}
+          <Button type="submit" size="xs" className="h-8 px-3 text-xs pointer-coarse:h-10" disabled={busy || !can.start || !form.id || !form.when}>Start</Button>
           <Button type="button" size="xs" variant="outline" className="h-8 px-3 text-xs pointer-coarse:h-10" disabled={busy || !can.test || !form.when} onClick={() => run("test")}>
             Test
           </Button>
         </div>
-        {out && <p className={cn("text-[11px] break-words", out.ok ? "text-muted-foreground" : "text-red-700 dark:text-red-400")}>{out.text}</p>}
+        {out && <Small tone={out.ok ? "muted" : "error"}>{out.text}</Small>}
       </form>
     </details>
   )

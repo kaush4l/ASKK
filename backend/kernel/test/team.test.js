@@ -170,7 +170,7 @@ describe("agent.spawn {members}: a sub-team under its caller", () => {
     const heard = []
     desk.on((e) => heard.push(e))
     expect(await desk.ask("watch layer 3")).toBe("0.42")
-    expect(prompts.lead[1]).toContain("agent.spawn → spawned team probe (lead probe; members grads, acts; board probe.board) — quest or dispatch probe {requirement, ask, outcome} (stays until agent.dismiss)")
+    expect(prompts.lead[1]).toContain("} → spawned team probe (lead probe; members grads, acts; board probe.board) — quest or dispatch probe {requirement, ask, outcome} (stays until agent.dismiss)")
     const [probe, grads, acts] = ["probe", "grads", "acts"].map((n) => desk.agents().get(n))
     // Its own board, whose parent is the caller's team board.
     expect(probe.board.name).toBe("probe.board")

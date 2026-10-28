@@ -67,9 +67,32 @@ export function followStage(stages, running = false) {
 
 // When a stage's whole detail must be read again (the viewer re-reads on a change, never polls): its status, document,
 // time, turns, reads, gate or refusals moved.
-export const stageKey = (x) => [x.id, x.status, x.file ?? "", x.ms ?? "", x.turns ?? "", x.tools ?? 0, x.gate ? (x.gate.ok ? "ok" : x.gate.problems?.length ?? 1) : "", x.refused ?? 0].join("|")
+export const stageKey = (x) => [x.id, x.status, x.file ?? "", x.ms ?? "", x.turns ?? "", x.tools ?? 0, x.gate ? (x.gate.ok ? "ok" : x.gate.problems?.length ?? 1) : "", x.refused ?? 0, x.shadow ? `${x.shadow.status}:${x.shadow.ms ?? ""}:${x.shadow.differs?.length ?? ""}` : ""].join("|")
 
-const VAR_KIND = { var: "template", rules: "rules", lessons: "learnings", owner_note: "owner note", note: "memory note", carry: "carry", market: "live market", state: "state", input: "code step", data: "data", code: "code results", document: "whole document", gate: "gate failed", failed: "failed", expect: "expected", card_rows: "card rows" }
+// A stage's shadow (kernel workflow.js runShadow, 2026-10-25 the A/B): the same stage run beside it as the other kind.
+// → {label ("B · research" | "B · step agent"), status, elapsed, gate: ok | n problems | null, problems, agent, compare
+// ("3 of 9 data fields differ: side, top, …" | "data agrees" | null), error, cost, file} | null
+export function shadowView(sh, now = Date.now()) {
+  if (!sh) return null
+  const live = sh.status === "running" && sh.started
+  const compare = sh.differs ? (sh.differs.length ? `${sh.differs.length} of ${sh.differs.length + (sh.same ?? 0)} data fields differ: ${sh.differs.slice(0, 6).join(", ")}${sh.differs.length > 6 ? ", …" : ""}` : "data agrees") : null
+  return {
+    label: `B · ${sh.kind === "agent" ? "step agent" : "research"}`,
+    status: sh.status ?? "running",
+    elapsed: live ? took(now - Date.parse(sh.started)) : sh.ms ? took(sh.ms) : "",
+    gate: sh.gate ? (sh.gate.ok ? "ok" : `${sh.gate.problems?.length ?? 1} problems`) : null,
+    problems: sh.gate?.problems ?? [],
+    agent: sh.agent ?? null,
+    turns: sh.turns || null,
+    tools: sh.tools ?? 0,
+    compare,
+    error: sh.error ?? null,
+    cost: sh.cost_usd ? `$${sh.cost_usd.toFixed(2)}` : null,
+    file: sh.file ?? null,
+  }
+}
+
+const VAR_KIND = { var: "template", rules: "rules", lessons: "learnings", owner_note: "owner note", note: "memory note", carry: "carry", market: "live market", news: "news", state: "state", input: "code step", data: "data", code: "code results", document: "whole document", gate: "gate failed", failed: "failed", expect: "expected", card_rows: "card rows" }
 
 // A stage's variables (kernel stepVariables / a desk's own) as the viewer draws them: each with what it is, where it came
 // from, its size, a one-line preview and its whole text (JSON indented; markdown kept for a document).
@@ -221,6 +244,7 @@ export function pipelineView(state, { now = Date.now(), chips = 6 } = {}) {
       gate: x.gate ?? null,
       agent: x.agent ?? null, // a step agent's name (kind agent, the workflow spawned it): its page and live status
       refused: x.refused ?? 0,
+      shadow: shadowView(x.shadow, now),
       flow: flowOf(x.flow),
       turns: x.turns ?? null,
       cost: x.cost_usd ? `$${x.cost_usd.toFixed(2)}` : null,

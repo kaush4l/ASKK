@@ -1,10 +1,9 @@
 "use client"
 
-import * as React from "react"
-
 import { helperCall } from "@/backend/live/desk"
 import { proposedOf } from "@/backend/live/spawned"
-import { Button } from "@/components/ui/button"
+import { Decide, useDecision } from "@/components/kernel/decide"
+import { hm } from "@/backend/live/time"
 
 // What waits on a helper for the owner (2026-10-20, kernel builtin/spawn.js: a keep: desk, or a kept helper's update,
 // from a run that read the web is proposed, never in force until accepted) — the twin of its `spawned.proposed`, drawn
@@ -13,20 +12,10 @@ import { Button } from "@/components/ui/button"
 // target "desk" → kernel ownerHelperCall). Used under a helper's row and card on the home page and on its agent page.
 //   node: a desk-tree node, a definition or an AgentView (proposedOf); nothing drawn when nothing waits.
 
-const clock = (at) => (at ? new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "")
-
 export function ProposedHelper({ node, expanded = false }) {
   const p = proposedOf(node)
-  const [call, setCall] = React.useState({ busy: null, error: null })
-  const act = async (method) => {
-    setCall({ busy: method, error: null })
-    try {
-      await helperCall(method, p.name)
-      setCall({ busy: null, error: null }) // the block leaves with the desk's next tree
-    } catch (error) {
-      setCall({ busy: null, error: error?.message ?? String(error) })
-    }
-  }
+  // the block leaves with the desk's next tree
+  const [call, act] = useDecision((method) => helperCall(method, p.name))
   if (!p) return null
   const keep = p.kind === "keep"
   return (
@@ -44,7 +33,7 @@ export function ProposedHelper({ node, expanded = false }) {
           </>
         )}
         {p.by ? ` · by ${p.by}` : ""}
-        {p.at ? ` · ${clock(p.at)}` : ""}
+        {p.at ? ` · ${hm(p.at)}` : ""}
       </p>
       {keep && p.role && <p className={expanded ? "whitespace-pre-wrap break-words" : "line-clamp-3 break-words"}>{p.role}</p>}
       {p.changes.length > 0 && (
@@ -58,33 +47,13 @@ export function ProposedHelper({ node, expanded = false }) {
         </ul>
       )}
       <p className="break-words text-[11px] text-amber-700 dark:text-amber-400">from a run that read the web{p.from ? `: ${p.from}` : ""}</p>
-      <div className="mt-0.5 flex gap-1.5">
-        <Button
-          type="button"
-          variant="outline"
-          size="xs"
-          className="h-6 px-2 text-[11px] pointer-coarse:h-10 pointer-coarse:min-w-10"
-          disabled={!!call.busy}
-          onClick={() => act("accept")}
-          aria-label={`Accept the ${keep ? "keep" : "update"} proposed for ${p.name}`}
-          title={keep ? `Keep ${p.name}: it stays until dismissed and comes back at every start` : `Apply the update to ${p.name} as its spawner would`}
-        >
-          {call.busy === "accept" ? "Accepting…" : "Accept"}
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="xs"
-          className="h-6 px-2 text-[11px] pointer-coarse:h-10 pointer-coarse:min-w-10"
-          disabled={!!call.busy}
-          onClick={() => act("drop")}
-          aria-label={`Drop the ${keep ? "keep" : "update"} proposed for ${p.name}`}
-          title={keep ? `${p.name} stays for this run only` : `${p.name} stays as it was kept`}
-        >
-          {call.busy === "drop" ? "Dropping…" : "Drop"}
-        </Button>
-      </div>
-      {call.error && <p className="break-words text-[11px] text-red-700 dark:text-red-400">Not done: {call.error}</p>}
+      <Decide
+        call={call}
+        act={act}
+        what={`the ${keep ? "keep" : "update"} proposed for ${p.name}`}
+        acceptTitle={keep ? `Keep ${p.name}: it stays until dismissed and comes back at every start` : `Apply the update to ${p.name} as its spawner would`}
+        dropTitle={keep ? `${p.name} stays for this run only` : `${p.name} stays as it was kept`}
+      />
     </div>
   )
 }

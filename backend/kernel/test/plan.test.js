@@ -98,7 +98,7 @@ describe("Plan", () => {
     const critic = new Agent({ name: "critic", report: false }, { infer }).addArtifact(plan, { commands: ["tick"] })
     await critic.ask("look")
     expect(plan.state.items[0].status).toBe("ticked")
-    expect(prompts[0]).toContain("# plan — plan — the desk's checklist\nthe desk's plan, shared by the agents that hold it: plan.tick {id, evidence} closes an item\nGOAL: g\nrevision 1 by planner")
+    expect(prompts[0]).toContain("# plan — the desk's checklist\nthe desk's plan, shared by the agents that hold it: plan.tick {id, evidence} closes an item\nGOAL: g\nrevision 1 by planner")
     expect(prompts[0]).toContain("[x] a: one ↳ x (planner)")
     expect(prompts[0]).not.toContain("plan.write")
     expect(new Plan().render({ name: "x", tools: new Map() })).toContain("(no plan yet — the planner writes it)")

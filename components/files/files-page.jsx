@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import { useBusy } from "@/components/views/kit"
 import { cn } from "@/lib/utils"
 
 const ICONS = { dir: FolderIcon, link: LinkIcon }
@@ -48,31 +49,18 @@ function PathBar({ rootName, path, onOpen }) {
 // One file: read, or edit and save (a save checks the revision that was read).
 function FileView({ file, writable, onClose, onSave, onDelete }) {
   const [draft, setDraft] = React.useState(null) // text while editing
-  const [saving, setSaving] = React.useState(false)
-  const [error, setError] = React.useState(null)
+  const { busy: saving, error, setError, run } = useBusy()
   const editable = writable && !file.binary && !file.truncated
 
-  async function save() {
-    setSaving(true)
-    setError(null)
-    try {
+  const save = () =>
+    run(async () => {
       await onSave(file, draft)
       setDraft(null)
-    } catch (e) {
-      setError(e.message)
-    } finally {
-      setSaving(false)
-    }
-  }
+    })
 
   async function remove() {
     if (!window.confirm(`Delete ${file.path}? This cannot be undone.`)) return
-    setError(null)
-    try {
-      await onDelete(file)
-    } catch (e) {
-      setError(e.message)
-    }
+    await run(() => onDelete(file))
   }
 
   return (
@@ -126,14 +114,10 @@ function FileView({ file, writable, onClose, onSave, onDelete }) {
 // New file in the current folder.
 function NewFile({ dir, onCreate, onCancel }) {
   const [name, setName] = React.useState("")
-  const [error, setError] = React.useState(null)
+  const { error, run } = useBusy()
   async function create(event) {
     event.preventDefault()
-    try {
-      await onCreate(childOf(dir, name.trim()))
-    } catch (e) {
-      setError(e.message)
-    }
+    await run(() => onCreate(childOf(dir, name.trim())))
   }
   return (
     <form onSubmit={create} className="flex flex-col gap-2 border-b p-2">
@@ -164,8 +148,7 @@ export function FilesPage() {
   const [dir, setDir] = React.useState(null) // { path, entries }
   const [file, setFile] = React.useState(null)
   const [creating, setCreating] = React.useState(false)
-  const [loading, setLoading] = React.useState(false)
-  const [error, setError] = React.useState(null)
+  const { busy: loading, error, setError, run } = useBusy()
 
   React.useEffect(() => {
     workspace().then(setWs)
@@ -174,18 +157,12 @@ export function FilesPage() {
   const open = React.useCallback(
     async (path) => {
       if (!ws) return
-      setLoading(true)
-      setError(null)
-      try {
+      await run(async () => {
         setDir(await ws.list(path))
         setFile(null)
-      } catch (e) {
-        setError(e.message)
-      } finally {
-        setLoading(false)
-      }
+      })
     },
-    [ws]
+    [ws] // eslint-disable-line react-hooks/exhaustive-deps
   )
 
   // ?path= opens that folder (the Projects page links a project's folder here), read in the browser after mount.

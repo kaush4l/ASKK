@@ -15,14 +15,14 @@ export const cut = (v) => {
   return s && s.length > MAX_TEXT ? `${s.slice(0, MAX_TEXT)}…` : (s ?? "")
 }
 
-export const freshState = () => ({ status: "idle", activity: IDLE, messages: [], error: null, revision: 0, working: null, stats: null })
+export const freshState = () => ({ status: "idle", activity: IDLE, messages: [], error: null, revision: 0, working: null, stats: null, inbox: [] })
 
 // {calls, totalMs, avgMs, lastMs, promptChars, replyChars, at} after one more model call (kernel step / chat event).
 export function nextStats(prev, agent, e) {
   const s = prev ?? { calls: 0, totalMs: 0 }
   const calls = s.calls + 1
   const totalMs = s.totalMs + e.ms
-  return { calls, totalMs, avgMs: Math.round(totalMs / calls), lastMs: e.ms, promptChars: e.prompt_chars, replyChars: e.reply_chars, at: new Date(e.at ?? Date.now()).toISOString() } // the model is the agent's own (its page), not repeated here
+  return { calls, totalMs, avgMs: Math.round(totalMs / calls), lastMs: e.ms, promptChars: e.prompt_chars, replyChars: e.reply_chars, at: new Date(e.at ?? Date.now()).toISOString(), ...((e.promptParts ?? s.promptParts) ? { promptParts: e.promptParts ?? s.promptParts } : {}), ...((e.contract ?? s.contract) ? { contract: e.contract ?? s.contract } : {}), ...((e.report ?? s.report) ? { report: e.report ?? s.report } : {}) } // the model is the agent's own (its page), not repeated here
 }
 
 export const isAgentTool = (agent, name) => agent.tools.get(name)?.type === "agent"
@@ -60,13 +60,14 @@ export const compactLine = (e) =>
   `Prompt compacted: ${kChars(e.before_chars)} → ${kChars(e.after_chars)} chars (budget ${kChars(e.budget)}) · ${[e.steps_folded ? `${e.steps_folded} step${e.steps_folded > 1 ? "s" : ""}` : "", e.runs_folded ? `${e.runs_folded} earlier run${e.runs_folded > 1 ? "s" : ""}` : ""].filter(Boolean).join(", ")} folded · ${e.mode === "model" ? "model summary" : `clipped in code${e.error ? ` (summary failed: ${e.error})` : ""}`}`
 
 export const rows = {
-  request: (request, when) => ({ role: "user", content: request.text, from: request.from === "owner" ? null : request.from, kind: request.from === "owner" ? "request" : "quest", at: when }),
+  // original/rewrite (2026-10-24): the owner's own words when the host's on-device model rewrote them (sanitize.js)
+  request: (request, when) => ({ role: "user", content: request.text, from: request.from === "owner" ? null : request.from, kind: request.from === "owner" ? "request" : "quest", at: when, ...(request.original ? { original: request.original, rewrite: request.rewrite ?? null } : {}) }),
   // A step with calls: its thought, then one line per call (`name({...})`).
   // images (2026-10-18): the screenshots the step's model call saw (kernel step event refs: page, n, url, caption).
   // ms (2026-10-23): the step's model call, on its own row.
   // n: the step's number in its run; answer: an answer the model wrote beside its calls (taken only beside artifact
   // commands — else the next row says why not), so the thread shows what it said (2026-10-23)
-  step: (thought, calls, when, images = null, ms = null, { n = null, answer = null } = {}) => ({ role: "assistant", action: "tool", content: [thought, ...calls.map((c) => `${c.tool}(${JSON.stringify(c.input ?? {})})`)].filter(Boolean).join("\n"), at: when, ...(images?.length ? { images } : {}), ...(ms != null ? { ms } : {}), ...(n != null ? { n } : {}), ...(answer != null ? { answer: cut(String(answer)) } : {}) }),
+  step: (thought, calls, when, images = null, ms = null, { n = null, answer = null, route = null } = {}) => ({ role: "assistant", action: "tool", content: [thought, ...calls.map((c) => `${c.tool}(${JSON.stringify(c.input ?? {})})`)].filter(Boolean).join("\n"), at: when, ...(images?.length ? { images } : {}), ...(ms != null ? { ms } : {}), ...(n != null ? { n } : {}), ...(answer != null ? { answer: cut(String(answer)) } : {}), ...(route ? { route } : {}) }),
   saw: (images, when) => ({ role: "assistant", action: "tool", content: "(looked at its screenshots, then answered)", at: when, images }),
   // A call's result with its own call's input (paired by index, live and restored); index: the call's place in its
   // step and row: its step's thread row (message id), so the Live feed keeps the identity the call had while it ran

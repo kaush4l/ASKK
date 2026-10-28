@@ -17,27 +17,36 @@
 //          fired_at}] ≤ max, revision}
 
 import { Artifact } from "../artifact/artifact.js"
-import { Tool } from "../tool/tool.js"
+import { clip } from "../util/text.js"
 
-const clip = (s, n) => (String(s ?? "").length > n ? `${String(s).slice(0, n - 1)}…` : String(s ?? ""))
 const hm = (iso) => (iso ? new Date(iso).toLocaleTimeString("en-US", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }) : "—")
 const round = (x) => (typeof x === "number" && Number.isFinite(x) ? Math.round(x * 1000) / 1000 : x ?? null)
 const ACTIVE = new Set(["running", "paused", "error"])
 
 export class Runners extends Artifact {
+  static about = "periodic checks a desk plugs in, each with its own run state (running, paused, fired …)"
+  static commands = {
+    pause: { description: "pause a runner: it keeps its state and is not checked until resumed", input: { id: "the runner's id", reason: "why" }, run({ id, reason }) { return this.pause(id, reason) } },
+    resume: { description: "resume a paused, errored, stopped or fired runner: checked again from now", input: { id: "the runner's id" }, run({ id }) { return this.resume(id) } },
+    check: { description: "check one running runner now (its reading, gap and whether it fires)", input: { id: "the runner's id" }, run({ id }) { return this.checkNow(id) } },
+  }
+  static owner = {
+    pause({ runner, reason }) { return { said: this.pause(runner, reason ?? "the owner") } },
+    resume({ runner }) { return { said: this.resume(runner) } },
+    now({ runner }) { return this.checkNow(runner).then((said) => ({ said })) },
+    stop({ runner, reason }) { return { said: this.stop(runner, reason ?? "the owner") } },
+    remove({ runner }) { return { said: this.remove(runner) } },
+  }
+  static ownerCan = "pause, resume, now, stop or remove"
+
   constructor({ id = "runners", title, check, prepare, onFire, clock = () => new Date(), every = 1, haltAfter = 3, max = 16, describe } = {}) {
     super({ name: id, title: title ?? `${id} — periodic checks and their run state` })
-    this.kind = "runners"
-    this.view = "runners"
-    this.keep = "always"
+    Object.assign(this, { kind: "runners", view: "runners", keep: "always" })
     this.check = check ?? (async () => null)
     this.prepare = prepare ?? (async () => null)
     this.onFire = onFire ?? (async (r) => `${r.id} fired`)
     this.describe = describe ?? ((r) => r.when ?? r.id)
-    this.clock = clock
-    this.every = every
-    this.haltAfter = haltAfter
-    this.max = max
+    Object.assign(this, { clock, every, haltAfter, max })
     this.state = { runners: [], revision: 0 }
   }
 
@@ -51,10 +60,6 @@ export class Runners extends Artifact {
     const r = this.get(String(id ?? "").trim())
     if (!r) throw new Error(`no runner ${id} — ${this.state.runners.map((x) => x.id).join(", ") || "none set"}`)
     return r
-  }
-  #bump() {
-    this.state.revision = (this.state.revision ?? 0) + 1
-    this.changed()
   }
 
   // A runner set (or replaced, same id): the desk's fields plus its run state, running from now.
@@ -83,7 +88,7 @@ export class Runners extends Artifact {
     if (rest.length >= this.max && drop < 0) throw new Error(`at most ${this.max} runners — stop or remove one first`)
     if (drop >= 0) rest.splice(drop, 1)
     this.state.runners = [r, ...rest]
-    this.#bump()
+    this.bump()
     return r
   }
 
@@ -91,7 +96,7 @@ export class Runners extends Artifact {
     const r = this.#find(id)
     if (r.status !== "running" && r.status !== "error") throw new Error(`${r.id} is ${r.status}: only a running one pauses`)
     Object.assign(r, { status: "paused", paused_why: clip(reason, 200) || null })
-    this.#bump()
+    this.bump()
     return `paused ${r.id}${r.paused_why ? `: ${r.paused_why}` : ""}`
   }
 
@@ -100,21 +105,21 @@ export class Runners extends Artifact {
     if (r.status === "running") return `${r.id} is already running`
     if (r.ends_at && new Date(r.ends_at) <= this.clock()) throw new Error(`${r.id} ended at ${hm(r.ends_at)} ET — set it again`)
     Object.assign(r, { status: "running", paused_why: null, stop_why: null, errors: 0, error: null, next_at: this.clock().toISOString() })
-    this.#bump()
+    this.bump()
     return `resumed ${r.id}`
   }
 
   stop(id, reason = null) {
     const r = this.#find(id)
     Object.assign(r, { status: "stopped", stop_why: clip(reason, 200) || null })
-    this.#bump()
+    this.bump()
     return `stopped ${r.id}`
   }
 
   remove(id) {
     const r = this.#find(id)
     this.state.runners = this.state.runners.filter((x) => x !== r)
-    this.#bump()
+    this.bump()
     return `removed ${r.id}`
   }
 
@@ -123,7 +128,7 @@ export class Runners extends Artifact {
     const r = this.#find(id)
     if (r.status !== "running") throw new Error(`${r.id} is ${r.status}: resume it first`)
     const events = await this.#run([r], this.clock())
-    this.#bump()
+    this.bump()
     return events[0] ?? this.lineOf(r)
   }
 
@@ -137,7 +142,7 @@ export class Runners extends Artifact {
       }
     const due = this.state.runners.filter((r) => r.status === "running" && (!r.next_at || new Date(r.next_at) <= now))
     events.push(...(await this.#run(due, now)))
-    if (events.length || due.length) this.#bump()
+    if (events.length || due.length) this.bump()
     return events
   }
 
@@ -223,24 +228,5 @@ export class Runners extends Artifact {
 
   restore(data) {
     if (data && Array.isArray(data.runners)) this.state = { runners: data.runners.map((r) => (r.when ? r : { ...r, when: this.describe(r) })), revision: data.revision ?? 0 }
-  }
-
-  ownerCall(method, args = []) {
-    const { runner, reason } = args[0] ?? {}
-    if (method === "pause") return { said: this.pause(runner, reason ?? "the owner") }
-    if (method === "resume") return { said: this.resume(runner) }
-    if (method === "stop") return { said: this.stop(runner, reason ?? "the owner") }
-    if (method === "remove") return { said: this.remove(runner) }
-    if (method === "now") return this.checkNow(runner).then((said) => ({ said }))
-    throw new Error(`${this.name}: the owner can pause, resume, now, stop or remove (not ${method})`)
-  }
-
-  commands() {
-    const tool = (name, description, input, run) => new Tool({ name: `${this.name}.${name}`, type: "dev", view: "runners", description, input, run })
-    return [
-      tool("pause", "pause a runner: it keeps its state and is not checked until resumed", { id: "the runner's id", reason: "why" }, ({ id, reason }) => this.pause(id, reason)),
-      tool("resume", "resume a paused, errored, stopped or fired runner: checked again from now", { id: "the runner's id" }, ({ id }) => this.resume(id)),
-      tool("check", "check one running runner now (its reading, gap and whether it fires)", { id: "the runner's id" }, ({ id }) => this.checkNow(id)),
-    ]
   }
 }

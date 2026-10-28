@@ -119,8 +119,8 @@ function fakeTeam({ auto = true, guides = true } = {}) {
       })
       return new Response(body)
     },
-    send({ agent, text, from }) {
-      sends.push({ agent, text, from })
+    send({ agent, text, from, original, rewrite }) {
+      sends.push({ agent, text, from, ...(original ? { original, rewrite } : {}) })
       queue.push({ text, from })
       queueMicrotask(next)
       return { ok: true, value: { agent, queued: true } }
@@ -607,6 +607,17 @@ test("new work carries the conversation before it, oldest first", async () => {
   integrations.push({ id: 2, text: "now in snow" })
   await until(() => team.sends.length === 2)
   expect(team.sends[1].text).toBe("[Telegram — the conversation before this message, oldest first (the last 5 exchanges):\nowner: make a fox\ndesk-x: head heard: make a fox]\nnow in snow")
+})
+
+// 2026-10-24 owner: "The first user input can always go through sanitize": the owner's own words rewritten on-device,
+// the conversation around them as it is, the owner's words passed on beside the rewrite; guidance is left as it is.
+test("new work: the owner's words rewritten on-device, the context kept, the original passed on", async () => {
+  const team = Object.assign(fakeTeam(), { sanitize: async (text, via) => (via === "telegram" && text === "reserch nvdia earnigs" ? { text: "Research Nvidia's earnings.", original: text, rewrite: { via, model: "apple", ms: 500 } } : { text }) })
+  const integrations = botIntegrations()
+  await start({ team, integrations, stateDir: tmp() })
+  integrations.push({ id: 1, text: "reserch nvdia earnigs" })
+  await until(() => team.sends.length === 1)
+  expect(team.sends[0]).toMatchObject({ text: "Research Nvidia's earnings.", original: "reserch nvdia earnigs", rewrite: { via: "telegram" } })
 })
 
 test("a reply to another desk's message goes to that desk, with what it replies to", async () => {

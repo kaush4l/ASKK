@@ -115,3 +115,42 @@ describe("projectRegistry", () => {
     expect(() => projectRegistry({ ...opts }).load({ path: app })).toThrow(/main\.js only/)
   })
 })
+
+describe("a configured worktree", () => {
+  test("missing until init: git worktree add on its branch (made when missing), setup run once there; init again reuses it", () => {
+    const repo = join(home, "code", "repo")
+    mkdirSync(repo, { recursive: true })
+    const sh = (...argv) => Bun.spawnSync(argv, { cwd: repo, stdout: "pipe", stderr: "pipe" })
+    sh("git", "init", "-q", "-b", "main")
+    writeFileSync(join(repo, "a.txt"), "a\n")
+    sh("git", "add", ".")
+    sh("git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "first")
+    const seed = { dev: { path: "../code/repo-dev", worktree: "../code/repo", branch: "desk-dev", setup: ["touch", "installed"] } }
+    const registry = projectRegistry({ seed, base: askk, ...opts })
+    expect(registry.list()).toMatchObject([{ name: "dev", missing: true, branch: "desk-dev" }])
+    expect(registry.folder("dev")).toBeNull()
+    const made = registry.init("dev")
+    expect(made).toMatchObject({ name: "dev", path: join(home, "code", "repo-dev"), branch: "desk-dev", created: true, setup: { command: "touch installed", exit: 0 } })
+    expect(readFileSync(join(made.path, "a.txt"), "utf8")).toBe("a\n")
+    expect(existsSync(join(made.path, "installed"))).toBe(true)
+    expect(readFileSync(join(made.path, ".agents", ".gitignore"), "utf8")).toBe(AGENTS_IGNORE)
+    expect(sh("git", "branch", "--list", "desk-dev").stdout.toString()).toContain("desk-dev")
+    expect(registry.folder("dev")).toBe(made.path)
+    expect(registry.init("dev")).toMatchObject({ created: false, setup: null })
+    // a fresh registry (a restart) finds the folder made
+    expect(projectRegistry({ seed, base: askk, ...opts }).list()).toMatchObject([{ name: "dev", missing: false, branch: "desk-dev" }])
+  })
+})
+
+describe("ASKK itself (self: true)", () => {
+  test("main.js self: true mounts ASKK's own root, nothing inside or around it; without it ASKK is refused", () => {
+    const log = []
+    const seed = { askk: { path: askk, self: true }, inside: { path: join(askk, "custom"), self: true }, plain: askk }
+    const registry = projectRegistry({ seed, base: home, ...opts, log: (l) => log.push(l) })
+    expect(registry.list().map((e) => [e.name, e.self ?? false])).toEqual([["askk", true]])
+    expect(registry.folder("askk")).toBe(askk)
+    expect(log.join("\n")).toMatch(/projects\.inside left out: .*ASKK's own folder/)
+    expect(log.join("\n")).toMatch(/projects\.plain left out: .*ASKK itself/)
+    expect(registry.init("askk")).toMatchObject({ name: "askk", path: askk, created: false, branch: null })
+  })
+})

@@ -6,11 +6,13 @@
 //     the lead's run in progress, else its last run: the request, who asked, how it ended
 //   deskPhase(artifacts, state) -> { kind: workflow | plan | activity, title, now, done, total, segments } | null
 //     a staged workflow running (else its last run), else the plan's open items, else what the lead does now
-//   conversation(messages, {limit}) -> [{ id, side: you | lead, kind: request | answer, text, at } | { id, kind: chat,
+//   conversation(messages, {limit}) -> [{ id, side: you | lead, kind: request | answer, text, at, original?, rewrite? } | { id, kind: chat,
 //     question, answer, taken }] — only what the owner said to the lead and what came back: requests (the desk and
 //     Telegram) and their answers, an ask and its reply as one pair (its rows whole: a visual, proposed work, guided) —
 //     never quests, wakes, tool rows or guidance; the newest `limit`, oldest first
 //   ownerFrom(from) -> true for the owner (no from, "owner", "telegram:<who>")
+// The dashboard's live rows (2026-10-25, out of its components): ago / since (times in words), lastTool (the current
+// run's last call), busy (any agent at work).
 
 import { isRunRequest, threadItems } from "@/backend/live/agent"
 
@@ -73,7 +75,7 @@ export function conversation(messages = [], { limit = 6 } = {}) {
     const m = item.message
     if (isRunRequest(m)) {
       owned = ownerRequest(m)
-      if (owned) out.push({ id: m.id, side: "you", kind: "request", text: String(m.content ?? ""), at: m.at ?? null, from: m.from ?? null })
+      if (owned) out.push({ id: m.id, side: "you", kind: "request", text: String(m.content ?? ""), at: m.at ?? null, from: m.from ?? null, ...(m.original ? { original: m.original, rewrite: m.rewrite ?? null } : {}) })
     } else if (m.role === "assistant" && m.action === "answer" && owned) {
       out.push({ id: m.id, side: "lead", kind: "answer", text: String(m.content ?? ""), at: m.at ?? null, error: !!m.error })
       owned = false
@@ -81,3 +83,31 @@ export function conversation(messages = [], { limit = 6 } = {}) {
   }
   return out.slice(-limit)
 }
+
+// "just now", "5 min ago", "3 h ago", "2 d ago" ("" for no time).
+export function ago(iso, now = Date.now()) {
+  const s = Math.max(0, Math.round((now - Date.parse(iso)) / 1000))
+  if (!Number.isFinite(s)) return ""
+  if (s < 45) return "just now"
+  const m = Math.round(s / 60)
+  return m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`
+}
+
+// How long since, while it runs: "42 s", "3 min 5 s", "1 h 4 min".
+export function since(iso, now) {
+  const s = Math.max(0, Math.round((now - Date.parse(iso)) / 1000))
+  return Number.isFinite(s) ? (s < 60 ? `${s} s` : s < 3600 ? `${Math.floor(s / 60)} min ${s % 60} s` : `${Math.floor(s / 3600)} h ${Math.floor((s % 3600) / 60)} min`) : null
+}
+
+// The current run's last tool row (guidance and an owner chat are not a run).
+export function lastTool(state) {
+  const messages = state?.messages ?? []
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i]
+    if (m.role === "tool" && m.name) return m
+    if (isRunRequest(m)) return null
+  }
+  return null
+}
+
+export const busy = (states) => states.some((s) => s?.status === "running" || s?.activity?.phase === "waiting")

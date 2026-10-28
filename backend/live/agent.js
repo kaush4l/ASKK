@@ -11,6 +11,7 @@
 //   back as `proposed`, and the owner starts that work with one click ("Queue it": queueProposal → send).
 
 import { IDLE } from "@/backend/live/activity"
+import { signal } from "@/backend/live/signal"
 import { teamCall } from "@/backend/live/stream"
 
 export const EMPTY_STATE = Object.freeze({
@@ -21,10 +22,16 @@ export const EMPTY_STATE = Object.freeze({
   revision: 0,
   working: null,
   stats: null,
+  messagesSkipped: 0,
 })
 
-// A patch's messages arrive as { from, items }: kept up to `from`, then items.
-const patchMessages = (messages, { from, items }) => [...messages.slice(0, from), ...items]
+// A patch's messages arrive as { from, items }, `from` indexing the whole thread: the tab holds its tail only
+// (2026-10-26, snapshot-thread-tail: the snapshot left messagesSkipped rows out), so rows are kept up to
+// from − messagesSkipped, then items. A from before the tail (0: the thread restarted) gives items as the rows.
+export function patchMessages({ messages = [], messagesSkipped: skipped = 0 }, { from, items }) {
+  if (from < skipped) return { messages: items, messagesSkipped: from }
+  return { messages: [...messages.slice(0, from - skipped), ...items], messagesSkipped: skipped }
+}
 
 // A message that starts a run (its request): the owner's, a quest, the schedule's — never guidance for a run in
 // progress nor an owner chat (2026-10-17: a chat row would have read as the working request and the run's start).
@@ -61,11 +68,22 @@ export function threadItems(messages = []) {
   return items
 }
 
+// The newest error an agent met (2026-10-26, agent-error-reason: the agent page shows why, not a bare "error"):
+// the newest message row holding an `error` → { text, at }; else state.error with no time; else null.
+export function lastError(state) {
+  const row = (state?.messages ?? []).findLast((m) => m?.error)
+  if (row) return { text: String(row.error), at: row.at ?? null }
+  return state?.error ? { text: String(state.error), at: null } : null
+}
+
 // What became of a chat besides its answer: its GUIDE: line went into the run in progress (2026-10-17, amendment M1:
 // work it proposed is not a note but an action, "Queue it").
 export function chatNote({ guided } = {}) {
   return guided ? "→ added to the run as guidance" : null
 }
+
+// The thread's button for the rows the snapshot left out (snapshot-thread-tail): null when none were.
+export const olderLabel = (skipped) => (skipped > 0 ? `Show ${skipped} older row${skipped === 1 ? "" : "s"}` : null)
 
 // Ask an agent a question (team call `chat`); never throws: { question, answer, guided, proposed } or { question, error }.
 // proposed: the work its answer proposes (a QUEUE: line, or a GUIDE: line with no run to guide), for the owner to queue.
@@ -97,15 +115,11 @@ export async function queueProposal(engine, proposed) {
   }
 }
 
-// Whether the thread already shows this answer as a chat row (the agent page then draws it there, not inline).
-export const chatShown = (messages, answer) => answer != null && (messages ?? []).some((m) => m.kind === "chat" && m.role === "assistant" && m.content === answer)
-
 // A tool as a spec; an older server sends names only.
 const toolSpec = (t) => (typeof t === "string" ? { name: t, type: "function", view: null, description: "", input: {} } : t)
 
 export class AgentView {
-  #listeners = new Set()
-  #state = EMPTY_STATE
+  state = signal(EMPTY_STATE)
 
   constructor({ id, name, agent }) {
     this.id = id
@@ -118,6 +132,8 @@ export class AgentView {
     this.agent = agent
     this.description = agent.description ?? ""
     this.role = agent.role ?? ""
+    this.soul = agent.soul ?? ""
+    this.soulFile = agent.soul_file ?? null
     this.folder = agent.folder ?? null
     this.team = agent.team ?? null
     this.model = agent.model ?? null
@@ -128,11 +144,11 @@ export class AgentView {
     this.tools = specs.map((t) => ({ ...t, kind: t.type === "agent" ? "agent" : "tool" }))
   }
 
-  getSnapshot = () => this.#state
+  getSnapshot = this.state.get
+  subscribe = this.state.subscribe
 
-  subscribe = (listener) => {
-    this.#listeners.add(listener)
-    return () => this.#listeners.delete(listener)
+  get #state() {
+    return this.state.get()
   }
 
   get status() {
@@ -147,13 +163,12 @@ export class AgentView {
   apply(patch, full = false) {
     const { messages, ...rest } = patch
     const next = full ? { ...EMPTY_STATE, ...rest } : { ...this.#state, ...rest }
-    if (messages) next.messages = full ? messages : patchMessages(this.#state.messages, messages)
-    this.#state = next
-    for (const listener of this.#listeners) listener()
+    if (messages) Object.assign(next, full ? { messages } : patchMessages(this.#state, messages))
+    this.state.set(next)
   }
 
   dispose() {
-    this.#listeners.clear()
+    this.state.clear()
   }
 
   // ── actions (the desk server runs them) ──────────────────────────────
@@ -164,8 +179,10 @@ export class AgentView {
 
   // Work for the agent, without waiting for the answer. Returns the call (resolves once the host took it, rejects with
   // its refusal) for a caller that says what became of it (queueProposal); a caller that drops it hears nothing.
-  send(text) {
-    const call = this.#call("send", [text])
+  // meta (2026-10-24): {via: typed | voice, suffix?} — the owner's words, rewritten on-device by the host before the run
+  // (companion/capabilities/sanitize.js); suffix: a note appended after the rewrite (the voice page's "read aloud" line).
+  send(text, meta = null) {
+    const call = this.#call("send", meta ? [text, meta] : [text])
     call.catch(() => {})
     return call
   }
@@ -179,6 +196,32 @@ export class AgentView {
     this.#call("stop").catch(() => {})
   }
 
+  // The rows the snapshot left out (team call `older` [skipped]), put before the thread; resolves the count loaded
+  // (0 when none were left out, or a patch moved the thread meanwhile).
+  async loadOlder() {
+    const skipped = this.#state.messagesSkipped
+    if (!skipped) return 0
+    const { items = [] } = (await this.#call("older", [skipped])) ?? {}
+    const s = this.#state
+    if (s.messagesSkipped !== skipped) return 0
+    this.state.set({ ...s, messages: [...items, ...s.messages], messagesSkipped: Math.max(0, skipped - items.length) })
+    return items.length
+  }
+
+  // The whole row of a step the snapshot sent cut (snapshot-steps-lean: contentCut), through the call `older` [end,
+  // start]; resolves true once it is back in place (false when the thread moved meanwhile).
+  async loadStep(id) {
+    const at = this.#state.messages.findIndex((m) => m.id === id)
+    if (at < 0) return false
+    const index = (this.#state.messagesSkipped ?? 0) + at
+    const { items = [] } = (await this.#call("older", [index + 1, index])) ?? {}
+    const s = this.#state
+    const i = s.messages.findIndex((m) => m.id === id)
+    if (i < 0 || items[0]?.id !== id) return false
+    this.state.set({ ...s, messages: s.messages.map((m, j) => (j === i ? items[0] : m)) })
+    return true
+  }
+
   // The prompt its next step would see.
   preview(text = "") {
     return this.#call("preview", [text])
@@ -190,8 +233,8 @@ export class AgentView {
   }
 
   // A note for the run in progress, read at its next step; resolves { delivered } (false: no run to guide).
-  guide(text) {
-    return this.#call("guide", [text])
+  guide(text, meta = null) {
+    return this.#call("guide", meta ? [text, meta] : [text])
   }
 
   // A question answered now (2026-10-17 owner: "talk with the lead to understand what is currently already there and
@@ -199,7 +242,7 @@ export class AgentView {
   // { answer, guided, proposed }: guided — the answer's GUIDE line became a note for the run in progress; proposed —
   // the work its QUEUE line (or a GUIDE line with no run to guide) proposes; the host starts nothing, the owner may
   // queue it (2026-10-17, amendment M1).
-  chat(text) {
-    return this.#call("chat", [text])
+  chat(text, meta = null) {
+    return this.#call("chat", meta ? [text, meta] : [text])
   }
 }

@@ -3,14 +3,16 @@
 import * as React from "react"
 import { BoxIcon, ChevronDownIcon, Maximize2Icon, PlayIcon, SquareIcon, WrenchIcon, XIcon } from "lucide-react"
 
-import { agentVisual, artifactsFor, cardArtifacts, cardRows, currentQuest, heldTiles, holdings, namesIn, teamStatus, teamTitle, VISUAL_STATES } from "@/backend/live/desk"
+import { agentVisual, artifactsFor, cardArtifacts, cardRows, currentQuest, heldTiles, holdings, namesIn, sameLayout, teamStatus, teamTitle } from "@/backend/live/desk"
 import { spawnedLine } from "@/backend/live/spawned"
 import { ProposedHelper } from "@/components/kernel/proposed-helper"
+import { CHIP_BTN, TILE_HEAD } from "@/components/kernel/tap-classes"
+import { pulse, ring, TONE } from "@/components/views/agent-tone"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet"
 import { ArtifactBody } from "@/components/views/artifact"
-import { useDesk, useEngineStates, useEngines } from "@/hooks/use-engines"
+import { useAgent, useArtifact, useDesk, useEngineStates, useEngines, useNamed } from "@/hooks/use-engines"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { cn } from "@/lib/utils"
 
@@ -27,23 +29,15 @@ import { cn } from "@/lib/utils"
 // tile — its compact view drawn as it changes — and a click opens it big: a dialog on a wide screen, a sheet from the
 // bottom on a phone, with the artifact's whole view (the preview: the one pane, with its ask box).
 
-// Visual state → colors. Motion only while the thread works.
-const TONE = {
-  llm: { ring: "border-violet-500", dot: "bg-violet-500 motion-safe:animate-pulse", soft: "border-violet-500/70 bg-violet-500/10", text: "text-violet-400" },
-  tool: { ring: "border-amber-400", dot: "bg-amber-400 motion-safe:animate-pulse", soft: "border-amber-400/70 bg-amber-400/10", text: "text-amber-400" },
-  quest: { ring: "border-blue-500", dot: "bg-blue-500 motion-safe:animate-pulse", soft: "border-blue-500/70 bg-blue-500/10", text: "text-blue-400" },
-  waiting: { ring: "border-sky-400 border-dashed", dot: "bg-sky-400", soft: "border-sky-400/70 bg-sky-400/10", text: "text-sky-400" },
-  error: { ring: "border-red-500", dot: "bg-red-500", soft: "border-red-500/70 bg-red-500/10", text: "text-red-400" },
-  done: { ring: "border-emerald-500/60", dot: "bg-emerald-500", soft: "border-emerald-500/50 bg-emerald-500/5", text: "text-emerald-400" },
-  idle: { ring: "border-border", dot: "bg-muted-foreground/40", soft: "border-border", text: "text-muted-foreground" },
-}
 const STATUS_TONE = { working: "llm", reported: "done", error: "error", idle: "idle" }
 
-export function DeskLevels({ onOpen, compact = false }) {
-  const desk = useDesk()
-  const { engines } = useEngines()
-  const states = useEngineStates(engines)
-  const byName = React.useMemo(() => Object.fromEntries(engines.map((e, i) => [e.id, { engine: e, state: states[i] }])), [engines, states])
+// Each part subscribes to what it draws (hooks/use-engines.js): the cards to the tree and the artifacts' layout, a row
+// to its agent, a tile to its artifact — one agent's step or one artifact's patch redraws that row or tile alone.
+export function DeskLevels({ onOpen }) {
+  const tree = useDesk((d) => d?.tree)
+  const title = useDesk((d) => d?.title)
+  const artifacts = useDesk((d) => d?.artifacts ?? {}, sameLayout)
+  const everyone = useEngines((r) => r.engines.length)
   const [open, setOpen] = React.useState(() => new Set())
   const toggle = (key) => setOpen((prev) => {
     const next = new Set(prev)
@@ -62,23 +56,20 @@ export function DeskLevels({ onOpen, compact = false }) {
     const id = new URLSearchParams(window.location.search).get("open")
     if (id) expand(id, null)
   }, [expand])
-  if (!desk?.tree) return null
-  const { tree } = desk
-  const teams = new Set(teamsOf(tree))
-  const ctx = { byName, artifacts: desk.artifacts ?? {}, teams, onOpen, title: desk.title, everyone: engines.length, expand, nodes: nodesOf(tree) }
+  const ctx = React.useMemo(() => tree && { artifacts, teams: new Set(teamsOf(tree)), onOpen, title, everyone, expand, nodes: nodesOf(tree) }, [tree, artifacts, onOpen, title, everyone, expand])
+  if (!tree) return null
 
   return (
     <section className="flex min-w-0 flex-col gap-3" aria-label="Desk">
-      {!compact && <Legend />}
       <TeamCard node={tree} path={tree.name} ctx={ctx} desk expanded={open.has(tree.name)} onToggle={() => toggle(tree.name)} />
       <Arrow />
-      <div className="grid items-start gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="grid items-start gap-3 @2xl:grid-cols-2 @5xl:grid-cols-3">
         {tree.agents.map((t) => {
           const path = `${tree.name}/${t.name}`
           return <TeamCard key={path} node={t} path={path} ctx={ctx} expanded={open.has(path)} onToggle={() => toggle(path)} />
         })}
       </div>
-      <ArtifactBig artifact={big ? (ctx.artifacts[big.id] ?? null) : null} from={big?.from} open={bigOpen && !!ctx.artifacts[big?.id]} onOpenChange={setBigOpen} />
+      <ArtifactBig id={big?.id} from={big?.from} open={bigOpen} onOpenChange={setBigOpen} />
     </section>
   )
 }
@@ -92,45 +83,31 @@ const nodesOf = (node, out = new Map()) => {
   return out
 }
 
-function Legend() {
-  return (
-    <ul className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground" aria-label="State colors">
-      {VISUAL_STATES.map((s) => (
-        <li key={s.id} className="flex items-center gap-1">
-          <span className={cn("size-2 rounded-full", TONE[s.id].dot.replace(/motion-safe:\S+/, ""))} />
-          {s.label}
-        </li>
-      ))}
-    </ul>
-  )
-}
-
 // ── a team = a card ──────────────────────────────────────────────────────
 
 function TeamCard({ node, path, ctx, desk = false, expanded, onToggle }) {
-  const { byName } = ctx
-  const lead = byName[node.name]
+  const lead = useAgent(node.name)
   const name = teamTitle(node)
-  const status = desk ? teamStatus([lead?.state]) : teamStatus(namesIn(node).map((n) => byName[n]?.state))
+  const status = useTeamStatus(desk ? [node.name] : namesIn(node))
   const tone = TONE[STATUS_TONE[status]]
-  const quest = currentQuest(lead?.state)
+  const quest = currentQuest(lead.state)
   // the desk card: its own; a team card: its own and its sub-teams' (none of them has a card)
   const owned = desk ? artifactsFor(ctx.artifacts, { team: node.team ?? node.name, lead: node.name, teams: ctx.teams }) : cardArtifacts(ctx.artifacts, node, { teams: ctx.teams })
   const spawned = desk ? null : spawnedLine(node)
   const rows = desk ? [] : cardRows(node)
   const detailId = `detail-${path.replace(/\W/g, "-")}`
-  const running = lead?.state?.status === "running" || lead?.state?.activity?.phase === "waiting"
+  const running = lead.state?.status === "running" || lead.state?.activity?.phase === "waiting"
 
   return (
-    <article id={desk ? undefined : `card-${node.name}`} className={cn("flex min-w-0 scroll-mt-4 flex-col rounded-xl border-2 bg-card transition-colors", tone.ring)} aria-label={`${name}`}>
+    <article id={desk ? undefined : `card-${node.name}`} className={cn("flex min-w-0 scroll-mt-4 flex-col rounded-xl border-2 bg-card transition-colors", ring(tone))} aria-label={name}>
       <div className="flex items-center gap-1 pr-2">
         <button type="button" onClick={onToggle} aria-expanded={expanded} aria-controls={detailId} className="flex min-h-12 min-w-0 flex-1 items-center gap-2 px-3 pt-2 text-left">
-          <span className={cn("size-2.5 shrink-0 rounded-full", tone.dot)} />
+          <span className={cn("size-2.5 shrink-0 rounded-full", pulse(tone))} />
           <h3 className={cn("truncate", desk ? "text-xl" : "text-lg")}>{desk ? (ctx.title ?? name) : name}</h3>
           <span className={cn("ml-auto shrink-0 text-xs", tone.text)}>{status}</span>
           <ChevronDownIcon className={cn("size-4 shrink-0 text-muted-foreground transition-transform duration-300 motion-reduce:transition-none", expanded && "rotate-180")} />
         </button>
-        {desk && lead?.engine && (
+        {desk && lead.engine && (
           running ? (
             <Button variant="destructive" size="sm" className="mt-2 h-10" onClick={() => lead.engine.stop()} title="Stop the lead's run">
               <SquareIcon /> Stop
@@ -149,7 +126,7 @@ function TeamCard({ node, path, ctx, desk = false, expanded, onToggle }) {
         {node.goal && <p className={cn("text-xs text-muted-foreground", !expanded && "line-clamp-3")}>{node.goal}</p>}
 
         {/* lead */}
-        <AgentRow label={node.agents.length ? "lead" : null} name={node.name} item={lead} onOpen={ctx.onOpen} lead />
+        <AgentRow label={node.agents.length ? "lead" : null} name={node.name} onOpen={ctx.onOpen} lead />
         <HeldArtifacts name={node.name} ctx={ctx} skip={owned} />
 
         {/* the quest the lead works */}
@@ -163,29 +140,17 @@ function TeamCard({ node, path, ctx, desk = false, expanded, onToggle }) {
         {/* the agents it holds: the desk's as chips (their cards follow below), a team's as rows */}
         {desk ? (
           <ul className="flex flex-wrap gap-1.5" aria-label="Teams">
-            {node.agents.map((m) => {
-              const st = teamStatus(namesIn(m).map((n) => byName[n]?.state))
-              const t = TONE[STATUS_TONE[st]]
-              return (
-                <li key={m.name}>
-                  <button
-                    type="button"
-                    onClick={() => document.getElementById(`card-${m.name}`)?.scrollIntoView({ behavior: "smooth", block: "start" })}
-                    className={cn("flex h-10 items-center gap-1.5 rounded-full border px-3 text-sm hover:bg-accent", t.ring)}
-                  >
-                    <span className={cn("size-2 rounded-full", t.dot)} />
-                    {teamTitle(m)}
-                    <span className={cn("text-xs", t.text)}>{st}</span>
-                  </button>
-                </li>
-              )
-            })}
+            {node.agents.map((m) => (
+              <li key={m.name}>
+                <TeamChip node={m} />
+              </li>
+            ))}
           </ul>
         ) : rows.length ? (
           <ul className="flex flex-col" aria-label="Agents">
             {rows.map((r) => (
               <li key={r.name} style={r.depth ? { marginLeft: `${r.depth * 0.75}rem` } : undefined} className={cn("min-w-0", r.depth > 0 && "border-l border-dashed pl-1")}>
-                <AgentRow label={r.lead ? "team" : null} name={r.name} item={byName[r.name]} onOpen={ctx.onOpen} />
+                <AgentRow label={r.lead ? "team" : null} name={r.name} onOpen={ctx.onOpen} />
                 <ProposedHelper node={ctx.nodes.get(r.name)} expanded={expanded} />
                 <HeldArtifacts name={r.name} ctx={ctx} skip={owned} />
               </li>
@@ -197,7 +162,7 @@ function TeamCard({ node, path, ctx, desk = false, expanded, onToggle }) {
         {owned.length > 0 && (
           <section className={TILES} aria-label={`${name} artifacts`}>
             {owned.map((a) => (
-              <ArtifactTile key={a.id} artifact={a} onExpand={ctx.expand} />
+              <ArtifactTile key={a.id} id={a.id} onExpand={ctx.expand} />
             ))}
           </section>
         )}
@@ -217,23 +182,49 @@ function TeamCard({ node, path, ctx, desk = false, expanded, onToggle }) {
   )
 }
 
+// A team's live status from its agents' states (re-renders when it changes, not on every step).
+const useTeamStatus = (names) => useEngineStates(useNamed(names), teamStatus)
+
+// The desk card's chip for one of its teams: its status, a click scrolls to its card.
+function TeamChip({ node }) {
+  const st = useTeamStatus(namesIn(node))
+  const t = TONE[STATUS_TONE[st]]
+  return (
+    <button
+      type="button"
+      onClick={() => document.getElementById(`card-${node.name}`)?.scrollIntoView({ behavior: "smooth", block: "start" })}
+      className={cn("flex h-10 items-center gap-1.5 rounded-full border px-3 text-sm hover:bg-accent", ring(t))}
+    >
+      <span className={cn("size-2 rounded-full", pulse(t))} />
+      {teamTitle(node)}
+      <span className={cn("text-xs", t.text)}>{st}</span>
+    </button>
+  )
+}
+
 // One line per thread: dot, name, live message.
-function AgentRow({ label, name, item, onOpen, lead = false }) {
-  const v = agentVisual(item?.state, item?.engine?.agent?.agents ?? [])
+function AgentRow({ label, name, onOpen, lead = false }) {
+  const item = useAgent(name)
+  const v = agentVisual(item.state, item.engine?.agent?.agents ?? [])
   const tone = TONE[v.state]
   return (
     <button
       type="button"
-      onClick={() => item && onOpen?.(item.engine)}
-      title={`Open ${item?.engine?.name ?? name}`}
+      onClick={() => item.engine && onOpen?.(item.engine)}
+      title={`Open ${item.engine?.name ?? name}`}
       className="flex min-h-10 w-full min-w-0 items-center gap-2 rounded-md px-1 text-left hover:bg-accent"
     >
-      <span className={cn("size-2 shrink-0 rounded-full", tone.dot)} />
+      <span className={cn("size-2 shrink-0 rounded-full", pulse(tone))} />
       {label && <span className="shrink-0 text-[11px] uppercase text-muted-foreground">{label}</span>}
       <span className={cn("shrink-0", lead ? "text-base" : "text-sm")}>{name}</span>
-      {/opus/i.test(item?.engine?.agent?.model ?? "") && <span className="shrink-0 rounded border px-1 text-[10px] uppercase text-violet-300" title="Runs on Opus">opus</span>}
+      {/opus/i.test(item.engine?.agent?.model ?? "") && <span className="shrink-0 rounded border px-1 text-[10px] uppercase text-violet-300" title="Runs on Opus">opus</span>}
       <span className={cn("min-w-0 flex-1 truncate text-xs", v.state === "idle" ? "text-muted-foreground" : tone.text)}>{v.message}</span>
-      {item?.engine && <Holdings engine={item.engine} />}
+      {item.state?.inbox?.length > 0 && (
+        <span className="shrink-0 rounded-full border px-1.5 text-[11px] tabular-nums motion-safe:animate-in motion-safe:zoom-in" title={item.state.inbox.map((m) => `${m.from}: ${m.text}`).join("\n")}>
+          {item.state.inbox.length} waiting
+        </span>
+      )}
+      {item.engine && <Holdings engine={item.engine} />}
     </button>
   )
 }
@@ -262,7 +253,7 @@ function HeldArtifacts({ name, ctx, skip = [], chips = false }) {
       <ul className="flex flex-wrap justify-center gap-1 pt-1" aria-label={`${name}'s artifacts`}>
         {held.map((a) => (
           <li key={a.id}>
-            <ChipButton artifact={a} onExpand={ctx.expand} />
+            <ChipButton id={a.id} onExpand={ctx.expand} />
           </li>
         ))}
       </ul>
@@ -271,7 +262,7 @@ function HeldArtifacts({ name, ctx, skip = [], chips = false }) {
   return (
     <div className={cn(TILES, "pb-1 pl-5")} aria-label={`${name}'s artifacts`} role="group">
       {held.map((a) => (
-        <ArtifactTile key={a.id} artifact={a} onExpand={ctx.expand} />
+        <ArtifactTile key={a.id} id={a.id} onExpand={ctx.expand} />
       ))}
     </div>
   )
@@ -285,8 +276,10 @@ const CONTROLS = "button, a, input, select, textarea, summary, label, [role=butt
 // One artifact small and live: its id and brief over its compact view; a click opens it big. The head is the button
 // (keyboard, screen readers, focus comes back to it when the big view closes); a click on the body opens it too,
 // unless it lands on one of the body's own controls.
-function ArtifactTile({ artifact: a, onExpand }) {
+function ArtifactTile({ id, onExpand }) {
+  const a = useArtifact(id)
   const ref = React.useRef(null)
+  if (!a) return null
   const open = () => onExpand(a.id, ref.current)
   return (
     <div
@@ -305,7 +298,7 @@ function ArtifactTile({ artifact: a, onExpand }) {
         }}
         aria-haspopup="dialog"
         title={`Open ${a.id}${a.title ? ` — ${a.title}` : ""} big`}
-        className="flex min-h-8 min-w-0 items-center gap-1.5 text-left text-[11px] text-muted-foreground hover:text-foreground pointer-coarse:min-h-10"
+        className={TILE_HEAD}
       >
         <span className="shrink-0 font-mono text-foreground/80">{a.id}</span>
         <span className="min-w-0 truncate">{a.brief || a.title}</span>
@@ -319,8 +312,10 @@ function ArtifactTile({ artifact: a, onExpand }) {
   )
 }
 
-function ChipButton({ artifact: a, onExpand }) {
+function ChipButton({ id, onExpand }) {
+  const a = useArtifact(id)
   const ref = React.useRef(null)
+  if (!a) return null
   return (
     <button
       ref={ref}
@@ -328,85 +323,82 @@ function ChipButton({ artifact: a, onExpand }) {
       onClick={() => onExpand(a.id, ref.current)}
       aria-haspopup="dialog"
       title={a.brief || a.title}
-      className="rounded border px-1.5 font-mono text-[11px] leading-5 text-muted-foreground hover:text-foreground pointer-coarse:min-h-10"
+      className={CHIP_BTN}
     >
       {a.id}
     </button>
   )
 }
 
-// An artifact big: its whole view — a dialog on a wide screen, a sheet from the bottom (near full height) on a phone.
-// Esc, the close button or a tap outside closes it; focus goes back to the tile it was opened from.
-export function ArtifactBig({ artifact: a, from, open, onOpenChange }) {
-  const phone = useIsMobile()
-  const finalFocus = React.useCallback(() => (from?.isConnected ? from : true), [from])
-  const head = a && (
-    <div className="flex min-w-0 shrink-0 items-start gap-2 border-b px-3 py-2">
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <Title phone={phone} className="flex min-w-0 items-baseline gap-2 text-base">
-          <span className="shrink-0 font-mono">{a.id}</span>
-          <span className="min-w-0 truncate text-sm text-muted-foreground">{a.state?.config?.title ?? a.title}</span>
-        </Title>
-        <Description phone={phone} className="truncate text-xs">
-          {a.brief || `held by ${(a.holders ?? []).join(", ") || "no one"}`}
-        </Description>
-      </div>
-      <Button variant="ghost" size="icon" className="shrink-0 pointer-coarse:size-10" onClick={() => onOpenChange(false)} aria-label="Close">
-        <XIcon />
-      </Button>
-    </div>
-  )
-  const body = a && (
-    <div className="flex min-h-0 flex-1 flex-col overflow-auto px-3 pb-3">
-      <ArtifactBody artifact={a} expanded fill />
-    </div>
-  )
-  if (phone) {
-    return (
-      <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent side="bottom" showCloseButton={false} finalFocus={finalFocus} className="gap-0 rounded-t-xl p-0 data-[side=bottom]:h-[92svh]">
-          {head}
-          {body}
-        </SheetContent>
-      </Sheet>
-    )
-  }
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent showCloseButton={false} finalFocus={finalFocus} className="flex h-[min(88svh,60rem)] w-[min(76rem,calc(100%-2rem))] max-w-none flex-col gap-0 p-0 sm:max-w-none">
-        {head}
-        {body}
-      </DialogContent>
-    </Dialog>
-  )
+// The big view's parts: a sheet from the bottom on a phone, a dialog on a wide screen.
+const BIG = {
+  phone: { Root: Sheet, Content: SheetContent, Title: SheetTitle, Description: SheetDescription, content: { side: "bottom", className: "gap-0 rounded-t-xl p-0 data-[side=bottom]:h-[92svh]" } },
+  wide: { Root: Dialog, Content: DialogContent, Title: DialogTitle, Description: DialogDescription, content: { className: "flex h-[min(88svh,60rem)] w-[min(76rem,calc(100%-2rem))] max-w-none flex-col gap-0 p-0 sm:max-w-none" } },
 }
 
-const Title = ({ phone, ...props }) => (phone ? <SheetTitle {...props} /> : <DialogTitle {...props} />)
-const Description = ({ phone, ...props }) => (phone ? <SheetDescription {...props} /> : <DialogDescription {...props} />)
+// An artifact big: its whole view — a dialog on a wide screen, a sheet from the bottom (near full height) on a phone.
+// Esc, the close button or a tap outside closes it; focus goes back to the tile it was opened from.
+// `id` follows the artifact live (closed once it is gone); `artifact` draws one given.
+export function ArtifactBig({ id, artifact, from, open, onOpenChange }) {
+  const live = useArtifact(id)
+  const a = artifact ?? live
+  const phone = useIsMobile()
+  const finalFocus = React.useCallback(() => (from?.isConnected ? from : true), [from])
+  const { Root, Content, Title, Description, content } = BIG[phone ? "phone" : "wide"]
+  return (
+    <Root open={open && !!a} onOpenChange={onOpenChange}>
+      <Content showCloseButton={false} finalFocus={finalFocus} {...content}>
+        {a && (
+          <div className="flex min-w-0 shrink-0 items-start gap-2 border-b px-3 py-2">
+            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <Title className="flex min-w-0 items-baseline gap-2 text-base">
+                <span className="shrink-0 font-mono">{a.id}</span>
+                <span className="min-w-0 truncate text-sm text-muted-foreground">{a.state?.config?.title ?? a.title}</span>
+              </Title>
+              <Description className="truncate text-xs">
+                {a.brief || `held by ${(a.holders ?? []).join(", ") || "no one"}`}
+              </Description>
+            </div>
+            <Button variant="ghost" size="icon" className="shrink-0 pointer-coarse:size-10" onClick={() => onOpenChange(false)} aria-label="Close">
+              <XIcon />
+            </Button>
+          </div>
+        )}
+        {a && (
+          <div className="flex min-h-0 flex-1 flex-col overflow-auto px-3 pb-3">
+            <ArtifactBody artifact={a} expanded fill />
+          </div>
+        )}
+      </Content>
+    </Root>
+  )
+}
 
 // ── expanded: the tree ───────────────────────────────────────────────────
 
 function TeamTree({ node, ctx, desk }) {
   return (
     <div className="flex flex-col items-center">
-      <AgentNode node={node} item={ctx.byName[node.name]} onOpen={ctx.onOpen} />
-      <div className="w-full max-w-72">
-        <HeldArtifacts name={node.name} ctx={ctx} chips />
-      </div>
+      <TreeColumn node={node} ctx={ctx} />
       {node.agents.length > 0 && <Arrow />}
       <div className={cn("grid w-full gap-3", desk ? "grid-cols-2 sm:grid-cols-3" : "grid-cols-1")}>
         {node.agents.map((m) => (
-          <div key={m.name} className="flex min-w-0 flex-col items-center">
-            <AgentNode node={m} label={teamTitle(m)} item={ctx.byName[m.name]} onOpen={ctx.onOpen} />
-            <div className="w-full max-w-72">
-              <HeldArtifacts name={m.name} ctx={ctx} chips />
-            </div>
-          </div>
+          <TreeColumn key={m.name} node={m} label={teamTitle(m)} ctx={ctx} />
         ))}
       </div>
     </div>
   )
 }
+
+// A thread in the tree with the artifacts it holds as chips under it.
+const TreeColumn = ({ node, label, ctx }) => (
+  <div className="flex w-full min-w-0 flex-col items-center">
+    <AgentNode node={node} label={label} onOpen={ctx.onOpen} />
+    <div className="w-full max-w-72">
+      <HeldArtifacts name={node.name} ctx={ctx} chips />
+    </div>
+  </div>
+)
 
 function Arrow() {
   return (
@@ -420,21 +412,22 @@ function Arrow() {
 // One thread in the tree: speech bubble over the node, tools as chips.
 // Tool chips by type: a function plain, an MCP tool dotted, an agent (a quest) solid.
 const TYPE_CHIP = { mcp: "border-dotted", agent: "border-solid", function: "" }
-function AgentNode({ node, label, item, onOpen }) {
+function AgentNode({ node, label, onOpen }) {
   const name = node.name
-  const v = agentVisual(item?.state, item?.engine?.agent?.agents ?? [])
+  const item = useAgent(name)
+  const v = agentVisual(item.state, item.engine?.agent?.agents ?? [])
   const tone = TONE[v.state]
   const tools = [...(node.tools ?? []), ...(node.agents ?? []).map((a) => ({ name: a.name, type: "agent" }))]
-  const steps = (item?.state?.messages ?? []).filter((m) => m.role === "assistant" && m.action === "tool").length
+  const steps = (item.state?.messages ?? []).filter((m) => m.role === "assistant" && m.action === "tool").length
   return (
     <div className="flex w-full max-w-72 flex-col items-center">
       <div role="status" aria-live="polite" className={cn("relative mb-2 w-full rounded-md border px-2 py-1 text-xs", v.state === "idle" ? "border-transparent text-muted-foreground" : tone.soft)}>
         <span className="line-clamp-3 break-words">{v.message}</span>
         {v.state !== "idle" && <span aria-hidden className={cn("absolute -bottom-[5px] left-1/2 size-2 -translate-x-1/2 rotate-45 border-b border-r bg-card", tone.soft.split(" ")[0])} />}
       </div>
-      <button type="button" onClick={() => item && onOpen?.(item.engine)} title={`Open ${name}`} className={cn("flex w-full flex-col gap-1 rounded-lg border-2 bg-card p-2 text-left hover:bg-accent", tone.ring)}>
+      <button type="button" onClick={() => item.engine && onOpen?.(item.engine)} title={`Open ${name}`} className={cn("flex w-full flex-col gap-1 rounded-lg border-2 bg-card p-2 text-left hover:bg-accent", ring(tone))}>
         <span className="flex min-w-0 items-center gap-2">
-          <span className={cn("size-2.5 shrink-0 rounded-full", tone.dot)} />
+          <span className={cn("size-2.5 shrink-0 rounded-full", pulse(tone))} />
           <span className="truncate text-sm">{label && label !== name ? `${label} · ${name}` : name}</span>
           <span className="ml-auto shrink-0 text-xs text-muted-foreground">{steps ? `${steps} st` : ""}</span>
         </span>

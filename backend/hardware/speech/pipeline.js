@@ -7,21 +7,14 @@
 // getSnapshot, like an engine). Level and spectrum are read per frame
 // (level(), spectrum()), never pushed through React.
 //
-// Two ways to listen:
-//   wake    (default) everything said is transcribed live, but only what
-//           follows the wake word ("computer …", configurable) is a command;
-//           it is sent after a long pause (commandPauseMs, 2 s), so a short
-//           breath mid-sentence never cuts it. Saying the wake word while the
-//           voice speaks interrupts it.
-//   direct  every utterance is a command: hands-free (it ends after
-//           endSilenceMs of silence) or push to talk; louder speech
+// Three ways to listen (DEFAULTS.listen):
+//   wake    (default) everything said is transcribed live, but only what follows the wake word ("computer …") is a command;
+//           it is sent after a long pause (commandPauseMs, 2 s). Saying the wake word while the voice speaks interrupts it.
+//   direct  every utterance is a command: hands-free (it ends after endSilenceMs) or push to talk; louder speech
 //           interrupts the voice (barge-in).
-//   once    (2026-10-23 owner: "a continuous transcription versus a singular
-//           transcription") one command, no wake word: it ends at the same
-//           long pause as a wake command (commandPauseMs), is sent, and the
-//           mic closes.
-// What was heard is dropped when it is only the voice's own echo. "Stop"
-// silences it.
+//   once    (2026-10-23 owner: "a continuous transcription versus a singular transcription") one command, no wake word,
+//           ended by the same long pause as a wake command; it is sent and the mic closes.
+// What was heard is dropped when it is only the voice's own echo. "Stop" silences it.
 //
 // Listening and speaking are separate (2026-10-23 owner: "The pipeline is also not a default on for both. I might want
 // to speak but watch the output. The user speaking is not an automatic on for talking"): `speak` (off by default) is
@@ -91,6 +84,8 @@ function loadSettings() {
     return { ...DEFAULTS }
   }
 }
+
+const macOf = (status) => ({ recognize: status.recognize && status.ready, voice: status.voice, error: status.error, stt: status.stt ?? null, tts: status.tts ?? null })
 
 const words = (text) => text.toLowerCase().match(/[\p{L}\p{N}']+/gu) ?? []
 
@@ -179,19 +174,8 @@ export class SpeechToSpeech {
 
   #set(patch) {
     const next = { ...this.#state, ...patch }
-    next.phase = next.speaking
-      ? "speaking"
-      : next.armed
-        ? "armed"
-        : next.transcribing
-          ? "transcribing"
-          : next.hearing
-            ? "hearing"
-          : next.lead && (next.lead.status === "running" || next.lead.activity?.phase === "waiting")
-            ? "working"
-            : next.listening
-              ? "listening"
-              : "idle"
+    const working = next.lead && (next.lead.status === "running" || next.lead.activity?.phase === "waiting")
+    next.phase = next.speaking ? "speaking" : next.armed ? "armed" : next.transcribing ? "transcribing" : next.hearing ? "hearing" : working ? "working" : next.listening ? "listening" : "idle"
     this.#state = next
     for (const listener of this.#listeners) listener()
   }
@@ -214,7 +198,7 @@ export class SpeechToSpeech {
     if (host.capabilities?.includes("speech")) {
       try {
         const status = await hostGet("speech/status") // also warms the recognizer
-        mac = { recognize: status.recognize && status.ready, voice: status.voice, error: status.error, stt: status.stt ?? null, tts: status.tts ?? null }
+        mac = macOf(status)
       } catch (error) {
         mac.error = error.message
       }
@@ -258,7 +242,8 @@ export class SpeechToSpeech {
 
   // The host's voice model changed (the model panel): the next sentence uses it.
   resetVoice() {
-    this.#voice?.cancel()
+    if (this.#voice?.dispose) this.#voice.dispose()
+    else this.#voice?.cancel()
     this.#voice = null
   }
 
@@ -267,7 +252,7 @@ export class SpeechToSpeech {
     if (!this.#state.support?.host) return
     try {
       const status = await hostGet("speech/status")
-      this.#set({ support: { ...this.#state.support, mac: { recognize: status.recognize && status.ready, voice: status.voice, error: status.error, stt: status.stt ?? null, tts: status.tts ?? null } } })
+      this.#set({ support: { ...this.#state.support, mac: macOf(status) } })
     } catch (error) {
       this.#set({ support: { ...this.#state.support, mac: { ...this.#state.support.mac, error: error.message } } })
     }
@@ -496,7 +481,8 @@ export class SpeechToSpeech {
     this.#turn("you", text, meta)
     // a refusal is said (audit 19: it was swallowed and the turn read as sent)
     const { short, speak } = this.#state.settings
-    this.#engine.send(short && speak ? `${text}${VOICE_NOTE}` : text)?.catch?.((error) => this.#fail(`Not sent to ${this.#engine?.name ?? "the lead"}: ${error.message}`))
+    // via voice: the host corrects and rewrites the transcript on-device first (sanitize.js); the read-aloud note after it
+    this.#engine.send(text, { via: "voice", ...(short && speak ? { suffix: VOICE_NOTE } : {}) })?.catch?.((error) => this.#fail(`Not sent to ${this.#engine?.name ?? "the lead"}: ${error.message}`))
   }
 
   // Stop speaking now and forget what was queued.

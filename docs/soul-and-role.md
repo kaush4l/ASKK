@@ -8,7 +8,7 @@ Every agent's prompt starts with two sections that do different jobs.
 | Changes | Almost never. One soul is shared by every agent | Per agent: developer, architect, tester, debugger, writer… |
 | Contains | How it treats truth, the owner, scope, risk, and other people's words | What the work looks like, its rules, the tools and artifacts it uses, what has been learned about doing it well |
 | Never contains | A job, a domain, tools, procedures, expertise claims | Values that should hold in every role |
-| File | the desk's soul (e.g. `custom/<desk>/agents/soul.md`, a team's own `soul.md`) | the `agent.md` body |
+| File | `<desk>/soul.md` (beside main.js), else the desks root's `soul.md` (`custom/soul.md` for every local desk), else the repo-wide `desks/soul.md`; a mounted desk's agents use that desk's (`compose.js` `readSoul`; frontmatter stays out of the prompt; the agent page's Soul tab shows the text and its file) | the `<agent>.md` body |
 
 A person works the same way. The same person can be a developer in the
 morning, an architect after lunch and a poet at night. Their character, which

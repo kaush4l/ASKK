@@ -18,9 +18,7 @@ export const readsOutside = (name, tool = null) =>
 export class Tool {
   constructor({ name, description = "", input = {}, run, type = "function", view = null, outside = null }) {
     if (!name) throw new Error("tool needs a name")
-    this.name = name
-    this.type = type
-    this.view = view
+    Object.assign(this, { name, type, view })
     this.outside = typeof outside === "boolean" ? outside : null
     this.description = description
     this.input = input // {field: "what it means"}
@@ -43,9 +41,26 @@ export class Tool {
   }
 
   describe() {
-    const fields = Object.entries(this.input).map(([k, v]) => `${k}: ${v}`).join(", ")
+    const fields = Object.entries(this.input).map(([k, v]) => fieldLine(k, v)).join(", ")
     return `- ${this.name} {${fields}} — ${this.description}`
   }
+}
+
+// A field in # TOOLS: an optional one is marked "?" (the response format says so) and its text loses the word — tools
+// wrote it four ways ("optional", "(optional)", "; optional", "(…; optional)"), each step paid for every one.
+const OPTIONAL = [
+  [/^optional$/i, ""],
+  [/\s*\(optional\)$/i, ""],
+  [/\s*[;,]\s*optional$/i, ""],
+  [/\s*;\s*optional\)$/i, ")"],
+  [/\(optional,\s*(?:and\s+)?/i, "("],
+]
+function fieldLine(key, value) {
+  const text = String(value)
+  const rule = OPTIONAL.find(([re]) => re.test(text))
+  if (!rule) return `${key}: ${text}`
+  const rest = text.replace(...rule)
+  return rest ? `${key}?: ${rest}` : `${key}?`
 }
 
 // Another agent (or a team's lead) as a tool: the call hands it a quest; the result is its report.

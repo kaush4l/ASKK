@@ -54,17 +54,14 @@ export function spawnName(raw) {
 // → the caller's own; each one asked must be the caller's. → the helper's subset (null = every command). 2026-10-17
 // (critic): a caller holding terminal [read, wait] gave its helper start and stop.
 export function withinHolding(own, asked, id) {
-  const short = (c) => {
-    const s = String(c).trim()
-    return s.startsWith(`${id}.`) ? s.slice(id.length + 1) : s
-  }
-  const want = asked == null ? null : [].concat(asked).map(short).filter(Boolean)
+  const want = asked == null ? null : [].concat(asked).map((c) => commandOf(id, String(c).trim())).filter(Boolean)
   if (!own) return want
   if (want == null) return [...own]
   const extra = want.filter((c) => !own.includes(c))
   if (extra.length) throw notYours(extra, own, id)
   return want
 }
+const commandOf = (id, name) => (name.startsWith(`${id}.`) ? name.slice(id.length + 1) : name)
 const notYours = (extra, own, id) => new Error(`${extra.join(", ")} ${extra.length > 1 ? "are" : "is"} not yours on ${id} (yours: ${own.join(", ") || "none"})`)
 // A member in a spawn spec's tools: a nested agent spec (buildAgent builds it under the helper).
 const isMember = (t) => !!t && typeof t === "object" && !(t instanceof Tool) && t.type === "agent"
@@ -144,25 +141,20 @@ export class Desk {
     for (const tap of this.#taps) tap.fn(payload)
   }
 
-  // A helper for `caller`, built now (agent.spawn): spec {name, role, goal, tools?, artifacts?, keep?: run | desk}
-  // in buildAgent's shapes (tool names or instances, artifact {type, commands?, gate?} or {artifact, commands?,
-  // gate?}). It runs as its caller does — soul, model, models, fallbacks, maxSteps, report, system, its files lanes
-  // (writes, reads) and board: false copied unless the spec sets them (agent.spawn checks a set lane is within the
-  // caller's) — sits in the caller's team (the caller's board, else the one above it), uses the caller's context (a
-  // mounted desk's own), and becomes the caller's AgentTool "<name>: <goal>". keep "run" (the default): dismissed when
-  // the caller's run ends. → the new agent. Nothing changes when it fails (the build is undone). Its name passes
-  // SPAWN_NAME. An artifact it shares with its caller is held within the caller's commands subset (withinHolding): an
-  // instance the caller holds comes with the caller's subset unless a narrower one is asked; one that came another way
-  // (a catalogue type that resolved to the caller's instance) and holds more is refused.
-  // 2026-10-17 owner ("let the lead, when required, create a sub team"): a spec whose tools hold members ({type:
-  // "agent", name, role, …}, any depth) builds a TEAM — the helper leads it with its own board "<name>.board" under the
-  // caller's. Every agent built is wired as the helper is (home, the caller's context, every tap, the caller's
-  // config copied unless its own spec sets it, config.spawned {by: its builder, goal, at, keep, team: the helper's
-  // name}), every one is bounded by the caller's holdings, keep run dismisses the whole team, and the desk emits one
-  // spawn event per agent, the helper first.
+  // A helper for `caller`, built now (agent.spawn): spec {name, role, goal, tools?, artifacts?, keep?: run | desk} in
+  // buildAgent's shapes. It runs as its caller does — soul, model, models, fallbacks, maxSteps, report, system, its files
+  // lanes and board: false copied unless the spec sets them (agent.spawn checks a set lane is within the caller's) — sits
+  // in the caller's team, uses the caller's context, and becomes the caller's AgentTool "<name>: <goal>". keep "run" (the
+  // default): dismissed when the caller's run ends. → the new agent; nothing changes when it fails (the build is undone).
+  // An artifact it shares with its caller is held within the caller's commands subset (withinHolding): one that came
+  // another way (a catalogue type that resolved to the caller's instance) and holds more is refused.
+  // 2026-10-17 owner ("let the lead, when required, create a sub team"): a spec whose tools hold members ({type: "agent",
+  // …}, any depth) builds a TEAM — the helper leads it with its own board "<name>.board" under the caller's; every agent
+  // built is wired as the helper is (config.spawned {by, goal, at, keep, team}), bounded by the caller's holdings, keep
+  // run dismisses the whole team, and the desk emits one spawn event per agent, the helper first.
   // 2026-10-17 (critic): a team board's id is "<team>.board", and a team's name need not be an agent's (a convention
-  // desk's lead leads the team named after the desk): a name — the helper's or a member's — whose board id is already
-  // in the desk is refused before anything is built (a second "<desk>.board" had no twin and misreported holders).
+  // desk's lead leads the team named after the desk): a name whose board id is already in the desk is refused before
+  // anything is built (a second "<desk>.board" had no twin and misreported holders).
   spawn(spec, caller) {
     if (!caller || caller.home !== this || !this.list.includes(caller)) throw new Error("spawn: the caller is not an agent of this desk")
     const name = spawnName(spec?.name)
@@ -177,7 +169,7 @@ export class Desk {
     const managed = spec?.managed === true
     const c = caller.config
     // board: a caller kept off its team's board (board: false) spawns helpers kept off it too.
-    const inherited = Object.fromEntries(["soul", "model", "models", "fallbacks", "maxSteps", "report", "system", "writes", "reads", "board"].filter((k) => c[k] !== undefined).map((k) => [k, c[k]]))
+    const inherited = Object.fromEntries(["soul", "soulFile", "model", "defaultModel", "models", "fallbacks", "maxSteps", "report", "system", "writes", "reads", "board"].filter((k) => c[k] !== undefined).map((k) => [k, c[k]]))
     // 2026-10-20: spec.at — when a kept helper was first made (respawn after a restart); spec.input — the spawn input as
     // plain data (agent.spawn's record), kept on the helper's config.spawned for its agent.md and agent.update.
     const at = typeof spec?.at === "string" && !Number.isNaN(Date.parse(spec.at)) ? spec.at : new Date().toISOString()
@@ -209,10 +201,7 @@ export class Desk {
         for (const x of a.artifacts) {
           const own = caller.artifacts.includes(x) ? ownOf(x) : null
           if (!own) continue
-          const short = (t) => (t.name.startsWith(`${x.id}.`) ? t.name.slice(x.id.length + 1) : t.name)
-          const got = a.holding.get(x.id)?.commands ?? x.commands().map(short)
-          const extra = got.filter((cmd) => !own.includes(cmd))
-          if (extra.length) throw notYours(extra, own, x.id)
+          withinHolding(own, a.holding.get(x.id)?.commands ?? x.commands().map((t) => t.name), x.id) // throws what it holds beyond the caller's
         }
     } catch (error) {
       // Undone: every agent built so far leaves the list, its artifacts, and its team board the board above.

@@ -4,7 +4,7 @@ import * as React from "react"
 import { BotIcon, CheckIcon, ChevronRightIcon, ListPlusIcon, MessageCircleQuestionIcon, UserIcon, XIcon } from "lucide-react"
 
 import { describeActivity } from "@/backend/live/activity"
-import { chatNote, queueProposal, threadItems } from "@/backend/live/agent"
+import { chatNote, olderLabel, queueProposal, threadItems } from "@/backend/live/agent"
 import { eventTarget, questAsk, toolCall } from "@/backend/live/follow"
 import { callLook } from "@/backend/live/visual"
 import { shotSrc } from "@/backend/live/workbench"
@@ -15,6 +15,9 @@ import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { CallIcon, toneOf } from "@/components/views/call-look"
 import { cn } from "@/lib/utils"
+import { Rewritten } from "@/components/input/rewritten"
+import { SpeakButton } from "./speak-button"
+import { bubbleClasses, capClasses, capEdge, stepLoadLabel } from "./thread-bubble"
 
 // One agent's runs as a thread, from its kernel messages (companion/team/kernel-team.js): the request (the owner's,
 // or a quest from the agent above, the schedule, a wake, Telegram), each step (its thought and calls), each call's
@@ -67,16 +70,23 @@ function ToolEvent({ engine, message }) {
   )
 }
 
-// An answer the kernel refused (or a reply it could not take): the agent goes on.
-const GATE = callLook({ kind: "gate" })
-function GateEvent({ message }) {
+// A one-line note in the thread (a refused answer, a lifecycle event, a refresh): the call kind's icon, then the words.
+function Note({ look, className, children, ...data }) {
   return (
-    <div data-call-kind={GATE.kind} className={cn("flex items-start gap-1.5 pl-11 text-xs", toneOf(GATE).text)}>
-      <CallIcon look={GATE} className="mt-0.5 size-3.5" />
-      <span className="min-w-0 break-words">{message.content}</span>
+    <div data-call-kind={look.kind} className={cn("flex items-start gap-1.5 pl-11 text-xs", className)} {...data}>
+      <CallIcon look={look} className="mt-0.5 size-3.5" />
+      {children}
     </div>
   )
 }
+
+// An answer the kernel refused (or a reply it could not take): the agent goes on.
+const GATE = callLook({ kind: "gate" })
+const GateEvent = ({ message }) => (
+  <Note look={GATE} className={toneOf(GATE).text}>
+    <span className="min-w-0 break-words">{message.content}</span>
+  </Note>
+)
 
 // The prompt reached 90% of its budget and the run's older work was folded into one summary (kernel event compact).
 const COMPACT = callLook({ kind: "compact" })
@@ -94,17 +104,14 @@ function CompactEvent({ message }) {
       </div>
       {c && (
         <div data-compact className="flex min-w-0 flex-wrap gap-1.5 pl-5 font-mono text-[11px] text-muted-foreground">
-          <span className="rounded border px-1.5 tabular-nums">
-            {kChars(c.before_chars)} → {kChars(c.after_chars)} chars
-          </span>
-          {pct != null && <span className="rounded border px-1.5 tabular-nums">{pct}% of {kChars(c.budget)}</span>}
-          {c.steps_folded > 0 && <span className="rounded border px-1.5 tabular-nums">{c.steps_folded} steps folded</span>}
-          {c.runs_folded > 0 && <span className="rounded border px-1.5 tabular-nums">{c.runs_folded} earlier runs folded</span>}
-          <span className="rounded border px-1.5">
-            {c.mode === "model" ? "model summary" : "clipped in code"}
-            {c.ms != null ? ` · ${duration(c.ms)}` : ""}
-          </span>
-          {c.n != null && <span className="rounded border px-1.5 tabular-nums">before step {c.n}</span>}
+          {[
+            `${kChars(c.before_chars)} → ${kChars(c.after_chars)} chars`,
+            pct != null && `${pct}% of ${kChars(c.budget)}`,
+            c.steps_folded > 0 && `${c.steps_folded} steps folded`,
+            c.runs_folded > 0 && `${c.runs_folded} earlier runs folded`,
+            `${c.mode === "model" ? "model summary" : "clipped in code"}${c.ms != null ? ` · ${duration(c.ms)}` : ""}`,
+            c.n != null && `before step ${c.n}`,
+          ].filter(Boolean).map((chip) => <span key={chip} className="rounded border px-1.5 tabular-nums">{chip}</span>)}
           {c.error && <span className="text-destructive">summary failed: {c.error}</span>}
         </div>
       )}
@@ -117,27 +124,23 @@ function CompactEvent({ message }) {
 const LIFECYCLE = callLook({ kind: "spawn" })
 function LifecycleEvent({ message }) {
   return (
-    <div data-call-kind={LIFECYCLE.kind} data-lifecycle={message.kind} className={cn("flex flex-wrap items-start gap-1.5 pl-11 text-xs", toneOf(LIFECYCLE).text)}>
-      <CallIcon look={LIFECYCLE} className="mt-0.5 size-3.5" />
+    <Note look={LIFECYCLE} data-lifecycle={message.kind} className={cn("flex-wrap", toneOf(LIFECYCLE).text)}>
       <span className="min-w-0 break-words">{message.content}</span>
       {message.keep && <span className="rounded border px-1 text-[10px]">keep {message.keep}</span>}
       {message.team && message.team !== message.agent && <span className="rounded border px-1 text-[10px]">team {message.team}</span>}
       {message.goal && !String(message.content ?? "").includes(message.goal) && <span className="w-full pl-5 break-words text-muted-foreground">goal: {message.goal}</span>}
-    </div>
+    </Note>
   )
 }
 
 // An artifact's refresh before a step failed — the step used its last state — or came back (2026-10-23, kernel event
 // refresh; before, only the prompt said so).
 const REFRESH = callLook({ type: "artifact" })
-function RefreshEvent({ message }) {
-  return (
-    <div data-call-kind={REFRESH.kind} data-refresh={message.ok ? "ok" : "failed"} className={cn("flex items-start gap-1.5 pl-11 text-xs", message.ok ? "text-muted-foreground" : "text-amber-700 dark:text-amber-300")}>
-      <CallIcon look={REFRESH} className="mt-0.5 size-3.5" />
-      <span className="min-w-0 break-words">{message.content}</span>
-    </div>
-  )
-}
+const RefreshEvent = ({ message }) => (
+  <Note look={REFRESH} data-refresh={message.ok ? "ok" : "failed"} className={message.ok ? "text-muted-foreground" : "text-amber-700 dark:text-amber-300"}>
+    <span className="min-w-0 break-words">{message.content}</span>
+  </Note>
+)
 
 // Guidance for the run in progress (team call `guide`): no new run — the agent's next step reads it once.
 const GUIDANCE = callLook({ kind: "guidance" })
@@ -230,8 +233,9 @@ export function ChatPair({ engine, question, answer, pending = false, error = nu
           </p>
           {(a.visual || a.visualError) && <TalkVisual visual={a.visual} error={a.visualError} />}
           {a.proposed && <ProposedWork engine={engine} proposed={a.proposed} taken={taken} onQueued={onQueued} />}
-          {(note || at) && (
-            <p className="flex flex-wrap gap-x-2 text-[11px] text-muted-foreground">
+          {(note || at || a.content) && (
+            <p className="flex flex-wrap items-center gap-x-2 text-[11px] text-muted-foreground">
+              {a.content && <SpeakButton text={a.content} />}
               {note && <span className="text-primary">{note}</span>}
               {at && <span className="tabular-nums">{new Date(at).toLocaleString()}</span>}
             </p>
@@ -245,7 +249,54 @@ export function ChatPair({ engine, question, answer, pending = false, error = nu
 // A message's text never grows past half the viewport (2026-10-22 owner, a workflow step agent's thread: "Limit the size
 // to a view point and make the internal content scroll area"): a step's 70k-char request or its long answer scrolls inside
 // its bubble, so the thread stays a list of turns.
-const CAPPED = "max-h-[50svh] overflow-y-auto overscroll-contain"
+// 2026-10-26 bubble-scroll-fade: while more text waits below, the bottom fades (capClasses); at its end, or when it fits,
+// the edge is plain. Capped measures itself (capEdge) on render, on resize and as it scrolls.
+function Capped({ className, children, ...props }) {
+  const ref = React.useRef(null)
+  const [edge, setEdge] = React.useState({ overflowing: false, atEnd: true })
+  const measure = React.useCallback(() => {
+    const el = ref.current
+    if (!el) return
+    const next = capEdge(el)
+    setEdge((e) => (e.overflowing === next.overflowing && e.atEnd === next.atEnd ? e : next))
+  }, [])
+  React.useLayoutEffect(() => {
+    measure()
+    const el = ref.current
+    if (!el || typeof ResizeObserver === "undefined") return
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [measure, children])
+  return <p ref={ref} onScroll={measure} className={cn(className, capClasses(edge))} {...props}>{children}</p>
+}
+
+// A step the snapshot sent cut (snapshot-steps-lean): one 40px control that loads the whole row through the agent call `older`.
+// 2026-10-26 full-step-failed-note: a load that resolves false or rejects says "Not loaded…" beside the button, which
+// stays enabled so the owner can try again.
+function FullStep({ engine, id }) {
+  const [loading, setLoading] = React.useState(false)
+  const [failed, setFailed] = React.useState(false)
+  const load = () => {
+    setFailed(false)
+    setLoading(true)
+    Promise.resolve()
+      .then(() => engine.loadStep(id))
+      .then((ok) => { if (ok === false) setFailed(true) })
+      .catch(() => setFailed(true))
+      .finally(() => setLoading(false))
+  }
+  const label = stepLoadLabel({ loading })
+  const note = stepLoadLabel({ failed: true })
+  return (
+    <div className="flex min-w-0 flex-wrap items-center gap-2">
+      <Button variant="outline" size="xs" className="min-h-10 self-start" disabled={loading || !engine?.loadStep} onClick={load}>
+        {label.text}
+      </Button>
+      {failed && !loading && <span role="status" className={cn("text-xs", note.className)}>{note.text}</span>}
+    </div>
+  )
+}
 
 function Message({ engine, message }) {
   if (message.role === "tool") return <ToolEvent engine={engine} message={message} />
@@ -256,19 +307,19 @@ function Message({ engine, message }) {
   if (message.action === "refresh") return <RefreshEvent message={message} />
   const isUser = message.role === "user"
   const step = message.action === "tool"
+  const cls = bubbleClasses({ isUser, step })
   return (
-    <div className={cn("flex gap-3", isUser && "flex-row-reverse")}>
-      <Avatar className="size-8">
+    <div className={cls.row}>
+      <Avatar className={cls.avatar}>
         <AvatarFallback>{isUser ? <UserIcon className="size-4" /> : <BotIcon className="size-4" />}</AvatarFallback>
       </Avatar>
       <div className={cn("flex max-w-[85%] min-w-0 flex-col gap-1.5 rounded-2xl px-4 py-2 text-sm", isUser ? "bg-primary text-primary-foreground" : "bg-muted", step && "bg-transparent border")}>
         {isUser && message.from && <span className="text-xs opacity-70">from {message.from}</span>}
-        {step ? (
-          <p className={cn("font-mono text-xs break-all whitespace-pre-wrap", CAPPED)}>{message.content}</p>
-        ) : (
-          <p className={cn("whitespace-pre-wrap break-words", CAPPED)}>{message.content}</p>
-        )}
-        {step && message.answer != null && <p data-step-answer className={cn("border-l-2 border-amber-500/60 pl-2 text-xs break-words whitespace-pre-wrap", CAPPED)}>answer written beside its calls: {message.answer}</p>}
+        <Capped className={cls.text}>{message.content}</Capped>
+        {step && message.contentCut && <FullStep engine={engine} id={message.id} />}
+        {isUser && message.original && <Rewritten original={message.original} rewrite={message.rewrite} />}
+        {step && message.answer != null && <Capped data-step-answer className="border-l-2 border-amber-500/60 pl-2 text-xs break-words whitespace-pre-wrap">answer written beside its calls: {message.answer}</Capped>}
+        {message.route && <RouteChip route={message.route} />}
         {message.images?.length > 0 && <SeenShots images={message.images} />}
         {message.flags?.length > 0 && (
           <span data-answer-flags className="text-xs text-amber-700 dark:text-amber-300">
@@ -276,6 +327,7 @@ function Message({ engine, message }) {
           </span>
         )}
         {message.error && <span className="text-xs text-destructive">{message.error}</span>}
+        {!isUser && !step && message.content && <SpeakButton text={message.content} className="self-start text-[11px] text-muted-foreground" />}
         {message.at && (
           <span className={cn("text-[10px] tabular-nums", isUser ? "opacity-60" : "text-muted-foreground")}>
             {new Date(message.at).toLocaleString()}
@@ -290,6 +342,14 @@ function Message({ engine, message }) {
 
 // The screenshots this step's model call saw (2026-10-18 owner: "the screenshot will be included along with the next
 // request … and I can also observe it"): each as the model got it, its caption under it; a click opens it whole.
+// 2026-10-27 step router (docs/jepa-router.md): what the router predicted for this step — acted (no model call)
+// or shadow (recorded beside the model's own choice, agreeing or not).
+function RouteChip({ route }) {
+  const tools = route.predicted?.join(", ")
+  const text = route.acted ? `script route · ${tools}` : route.mode === "script" ? `router shadow · ${tools} · ${route.agree ? "agrees" : "differs"}` : "router · big"
+  return <div className="mt-1 text-xs text-muted-foreground">{text}{route.p != null ? ` · p ${Number(route.p).toFixed(2)}` : ""}</div>
+}
+
 function SeenShots({ images }) {
   return (
     <div className="flex min-w-0 flex-wrap gap-2">
@@ -325,14 +385,34 @@ export function ActivityLine({ engine, activity }) {
 }
 
 // engine: the agent (its tool specs give each call's type, as in the Live feed).
-export function Thread({ engine, messages, empty }) {
+// The rows the snapshot left out (snapshot-thread-tail): one button that loads them through the agent call `older`.
+function OlderRows({ engine, skipped }) {
+  const [loading, setLoading] = React.useState(false)
+  const label = olderLabel(skipped)
+  if (!label) return null
+  const load = () => {
+    setLoading(true)
+    engine.loadOlder().catch(() => {}).finally(() => setLoading(false))
+  }
+  return (
+    <Button variant="outline" size="sm" className="min-h-10 self-center sm:min-h-8" disabled={loading} onClick={load}>
+      {loading ? "Loading…" : label}
+    </Button>
+  )
+}
+
+// skipped: the rows before these the snapshot left out (state.messagesSkipped).
+export function Thread({ engine, messages, empty, skipped = 0 }) {
   const endRef = React.useRef(null)
+  const last = messages.at(-1)
+  // the newest row, not every change: older rows put before the thread keep the reader where they are
   React.useEffect(() => {
     endRef.current?.scrollIntoView({ block: "end" })
-  }, [messages])
+  }, [last])
   if (!messages.length) return <p className="py-12 text-center text-sm text-muted-foreground">{empty}</p>
   return (
     <div className="flex flex-col gap-4">
+      <OlderRows engine={engine} skipped={skipped} />
       {threadItems(messages).map((item, i) =>
         item.type === "chat" ? (
           <ChatPair key={item.id ?? `chat-${i}`} engine={engine} question={item.question} answer={item.answer} taken={item.taken} className="self-stretch sm:mx-11" />

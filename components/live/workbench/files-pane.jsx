@@ -3,6 +3,8 @@
 import * as React from "react"
 import { ChevronRightIcon, FolderTreeIcon } from "lucide-react"
 
+import { skippedOf } from "@/backend/live/artifact-tail"
+import { kernelDesk } from "@/backend/live/desk"
 import { fileMarks, treeRows, twinTree } from "@/backend/live/workbench"
 import { Empty, PaneHeader } from "@/components/live/workbench/pane"
 import { cn } from "@/lib/utils"
@@ -13,28 +15,81 @@ const MARK = {
   focus: { dot: "bg-violet-500", text: "text-violet-700 dark:text-violet-300", label: "focus" },
 }
 
+// A tree row's name classes: a row with a cut tail gets a fixed-width head, so the tails of long names start in one column;
+// in a narrow pane the head shrinks first (shrink-[999], down to 1ch), so the distinguishing tail stays readable.
+export function nameClasses(row) {
+  return row?.tail
+    ? { head: "w-[7ch] min-w-[1ch] shrink-[999] truncate", tail: "min-w-0 truncate" }
+    : { head: "min-w-0 truncate", tail: "" }
+}
+
+// The Files header's root: its last folder ("dev" for work/dev), so it reads in a narrow header; the full path in its title.
+export function rootLabel(root) {
+  const path = String(root ?? "").replace(/\/+$/, "")
+  return path ? { label: path.split("/").pop(), title: path } : { label: "workspace", title: "workspace" }
+}
+
+// The Files header's state dot: emerald while fs/watch is open, muted for the twin or an error; the word only in its title.
+export function headerState(live) {
+  if (live?.live) return { dot: "bg-emerald-500", title: "live — watching the disk (fs/watch)" }
+  if (live?.error) return { dot: "bg-muted-foreground/50", title: String(live.error) }
+  return { dot: "bg-muted-foreground/50", title: "twin — from the files artifact, refreshed at each agent step" }
+}
+
+// A tree row's height: a 40px target on a phone (or any coarse pointer), dense 28px rows from sm up.
+export function rowClasses() {
+  return "min-h-10 sm:min-h-7 pointer-coarse:min-h-10"
+}
+
+// The Files header's parts: the root kept whole (shrink-0, cut only past 12ch), the modified count compact ("30") beside
+// an amber dot with "30 modified" in its title; no count when nothing is modified; the live/twin state as a dot.
+export function headerParts(root, modified, live) {
+  const n = Number(modified) || 0
+  return {
+    ...rootLabel(root),
+    rootClass: "shrink-0 max-w-[12ch] truncate",
+    count: n > 0 ? String(n) : null,
+    countTitle: n > 0 ? `${n} modified` : null,
+    state: headerState(live),
+    stateHit: "grid size-10 shrink-0 place-items-center sm:size-auto",
+  }
+}
+
 // Files: the files twin's tree (the disk's while fs/watch is open: `live`), modified files marked, folders opening
 // where the agents work. A click on a file opens its tab; on a folder, folds it.
 export function FilesPane({ files, live, activePath, onOpen }) {
   const [toggled, setToggled] = React.useState(() => new Map())
+  // snapshot-files-lean: the snapshot's files copy holds its tree as a count; with fs/watch closed, fetch the full view once
+  const skipped = skippedOf(files)
+  React.useEffect(() => {
+    if (!live?.entries && skipped && files?.id) kernelDesk.loadFull(files.id)
+  }, [live?.entries, skipped, files?.id])
   const root = files?.state?.root ?? ""
   const marks = React.useMemo(() => fileMarks(files), [files])
   const entries = React.useMemo(() => live?.entries ?? twinTree(files), [live?.entries, files])
   const rows = React.useMemo(() => treeRows(entries, { root, marks, toggled }), [entries, root, marks, toggled])
   const modified = files?.state?.modified?.length ?? 0
+  const head = headerParts(root, modified, live)
 
   return (
     <section aria-label="Files" className="flex min-h-0 flex-1 flex-col">
       <PaneHeader icon={FolderTreeIcon} title="Files">
-        <span className="min-w-0 truncate font-mono" title={root || "workspace"}>
-          {root || "workspace"}
+        <span className={cn(head.rootClass, "font-mono")} title={head.title}>
+          {head.label}
         </span>
-        {modified > 0 && <span className="ml-auto shrink-0 text-amber-700 dark:text-amber-300">{modified} modified</span>}
+        {head.count && (
+          <span className="ml-auto flex shrink-0 items-center gap-1 text-amber-700 dark:text-amber-300" title={head.countTitle}>
+            <span className="size-1.5 rounded-full bg-amber-500" aria-hidden />
+            {head.count}
+          </span>
+        )}
         <span
-          className={cn("shrink-0", modified > 0 ? "" : "ml-auto", live?.live ? "text-emerald-600 dark:text-emerald-400" : "")}
-          title={live?.live ? "Watching the disk (fs/watch)" : (live?.error ?? "From the files artifact, refreshed at each agent step")}
+          role="img"
+          aria-label={head.state.title}
+          title={head.state.title}
+          className={cn(head.stateHit, modified > 0 ? "" : "ml-auto")}
         >
-          {live?.live ? "live" : "twin"}
+          <span className={cn("size-1.5 rounded-full", head.state.dot)} aria-hidden />
         </span>
       </PaneHeader>
       {!files && <Empty>This desk has no files artifact.</Empty>}
@@ -52,7 +107,8 @@ export function FilesPane({ files, live, activePath, onOpen }) {
                 title={r.path}
                 style={{ paddingLeft: `${0.5 + r.depth * 0.75}rem` }}
                 className={cn(
-                  "flex min-h-7 w-full min-w-0 items-center gap-1 pr-2 text-left hover:bg-accent pointer-coarse:min-h-10",
+                  "flex w-full min-w-0 items-center gap-1 pr-2 text-left hover:bg-accent",
+                  rowClasses(),
                   r.dir ? "text-muted-foreground" : (mark?.text ?? "text-foreground/90"),
                   !r.dir && r.path === activePath && "border-l-2 border-l-primary"
                 )}
@@ -62,9 +118,17 @@ export function FilesPane({ files, live, activePath, onOpen }) {
                 ) : (
                   <span className="w-3 shrink-0" aria-hidden />
                 )}
-                <span className="min-w-0 truncate">
-                  {r.name}
-                  {r.dir ? "/" : ""}
+                <span className="flex min-w-0">
+                  <span className={nameClasses(r).head}>
+                    {r.head ?? r.name}
+                    {r.tail ? "" : r.dir ? "/" : ""}
+                  </span>
+                  {r.tail && (
+                    <span className={nameClasses(r).tail}>
+                      {r.tail}
+                      {r.dir ? "/" : ""}
+                    </span>
+                  )}
                 </span>
                 {mark && <span className={cn("ml-auto size-1.5 shrink-0 rounded-full", mark.dot)} aria-label={mark.label} />}
                 {r.dir && r.inside && !r.expanded && <span className="ml-auto size-1.5 shrink-0 rounded-full bg-amber-500/60" aria-label="changes inside" />}

@@ -8,10 +8,26 @@
 // <desk>/<agent>/<agent>.md). The hosted version runs the same idea in the browser (backend/browser/desk.js) with the kit
 // parts a browser can run.
 
-import { mkdirSync } from "node:fs"
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 
 import { conventionDesk, MODELS } from "../../companion/team/compose.js"
+import { scriptRouter, withShadowFill } from "../../backend/kernel/index.js"
+
+// 2026-10-27 step router in shadow (docs/jepa-router.md): each agent's router learned from its own exported steps
+// (`bun scripts/steps.js desks --out memory/agent/router/steps.jsonl`); it records a prediction on every step and,
+// for a read-only call with fixed arguments seen ≥ 90% after the same two calls, runs it without a model call. No file: no router.
+const STEPS = join(import.meta.dir, "../../memory/agent/router/steps.jsonl")
+const SHADOW = join(import.meta.dir, "../../memory/agent/router/shadow.jsonl")
+const PORT = Number(process.env.ASKK_PORT ?? 1111)
+// the local route in shadow: Apple's on-device model writes a call's input from the thought and tool alone
+async function appleFill({ request, thought, tool, examples }) {
+  const prompt = `Write the JSON input for one tool call. Reply with the JSON object only.\nTOOL: ${tool}\nEARLIER INPUTS OF THIS TOOL (shape only):\n${examples.slice(-2).map((e) => JSON.stringify(e.input)).join("\n")}\nREQUEST: ${String(request).slice(0, 400)}\nTHOUGHT (what this call must do): ${thought}`
+  const res = await fetch(`http://localhost:${PORT}/__askk/llm/apple/v1/chat/completions`, { method: "POST", headers: { "content-type": "application/json", origin: `http://localhost:${PORT}` }, body: JSON.stringify({ model: "apple", messages: [{ role: "user", content: prompt }] }), signal: AbortSignal.timeout(20000) })
+  const text = (await res.json()).choices?.[0]?.message?.content ?? ""
+  try { return JSON.parse(text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1)) } catch { return null }
+}
+const rows = existsSync(STEPS) ? readFileSync(STEPS, "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l)) : []
 
 export default conventionDesk({
   title: "Agent",
@@ -21,6 +37,12 @@ export default conventionDesk({
   defaultModel: "default",
   fallbacks: [],
   maxSteps: 120,
+  router: (name) => {
+    const own = rows.filter((r) => r.agent === name)
+    if (!own.length) return null
+    const examples = Object.groupBy(own.filter((r) => r.ok), (r) => r.action)
+    return withShadowFill(scriptRouter(own, { act: true }), { fill: appleFill, examples, log: (row) => appendFileSync(SHADOW, JSON.stringify({ agent: name, ...row }) + "\n") })
+  },
   // init: before the agent is built, every start — its workspace folders.
   init: async ({ dir }) => {
     for (const folder of ["work", "notes"]) mkdirSync(join(dir, "data", folder), { recursive: true })

@@ -13,7 +13,7 @@ const kidsOf = (node) => node.children ?? node.agents ?? []
 const stateOf = (states, name) => (states instanceof Map ? states.get(name) : states?.[name]) ?? null
 const startedAt = (s) => Date.parse(s?.activity?.since ?? s?.working?.at ?? "") || 0
 
-export function atWork(state) {
+function atWork(state) {
   const phase = state?.activity?.phase
   if (!AT_WORK.has(phase) || state.status === "error") return false
   return state.status === "running" || phase === "waiting"

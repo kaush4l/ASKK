@@ -1,5 +1,6 @@
 import {
   AudioLinesIcon,
+  TargetIcon,
   BotIcon,
   CalendarClockIcon,
   ClipboardListIcon,
@@ -51,6 +52,7 @@ export const CALL_ICONS = {
   "messages-square": MessagesSquareIcon,
   image: ImageIcon,
   "audio-lines": AudioLinesIcon, // 2026-10-24: audio commands
+  target: TargetIcon, // 2026-10-24: the standing goal's commands
   blocks: BlocksIcon, // 2026-10-20: desk.* calls
   "notebook-pen": NotebookPenIcon, // 2026-10-20: practice commands
   shrink: ShrinkIcon, // 2026-10-22: a prompt compaction

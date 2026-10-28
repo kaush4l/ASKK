@@ -40,6 +40,7 @@
 import { isIP } from "node:net"
 import { HttpError } from "../shared/http.js"
 import { HOST_LIMITS } from "../shared/config.js"
+import { attempt } from "../shared/safe.js"
 
 const UA = "Mozilla/5.0 (compatible; ASKK/1.0; +https://github.com/kaush4l/ASKK)"
 // Wikimedia's User-Agent policy: a descriptive agent naming the project (no contact address here).
@@ -49,13 +50,13 @@ const MAX_BYTES = LIMITS.readBytes
 const MAX_TEXT = LIMITS.readChars
 const TIMEOUT = LIMITS.timeoutMs
 
-const WebError = HttpError
 const SOURCES = ["web", "wikipedia", "arxiv", "hn"]
 const FALLBACK = ["wikipedia", "arxiv", "hn"]
 
 // An error that says why an engine did not answer: "rate-limited" (after its retries) or "cooling".
-const engineError = (status, message, reason) => Object.assign(new WebError(status, message), { reason })
-const unreachable = (message) => Object.assign(new WebError(502, message), { down: true })
+const engineError = (status, message, reason) => Object.assign(new HttpError(status, message), { reason })
+// A 502 for an engine that answered badly; `down`: it is skipped a while.
+const badAnswer = (message, down) => Object.assign(new HttpError(502, message), { down })
 // Its first part, for a note: "duckduckgo rate-limited (3 tries; skipped for 120 s)".
 const brief = (error) => error.message.replace(/: .*$|\.$/, "")
 
@@ -126,18 +127,14 @@ export function privateAddress(ip) {
 
 // The URL and the checked address its host resolved to (the one to connect to).
 async function publicUrl(net, raw) {
-  let url
-  try {
-    url = new URL(raw)
-  } catch {
-    throw new WebError(400, `Not a URL: ${raw}`)
-  }
-  if (!["http:", "https:"].includes(url.protocol)) throw new WebError(400, "Only http(s) URLs can be read.")
+  const url = attempt(() => new URL(raw))
+  if (!url) throw new HttpError(400, `Not a URL: ${raw}`)
+  if (!["http:", "https:"].includes(url.protocol)) throw new HttpError(400, "Only http(s) URLs can be read.")
   const host = url.hostname.replace(/^\[|\]$/g, "")
-  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local")) throw new WebError(403, "Local addresses cannot be read.")
+  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local")) throw new HttpError(403, "Local addresses cannot be read.")
   const addresses = isIP(host) ? [{ address: host }] : await Promise.resolve(net.lookup(host)).catch(() => [])
-  if (!addresses.length) throw new WebError(502, `Cannot resolve ${host}.`)
-  if (addresses.some(({ address }) => privateAddress(address))) throw new WebError(403, "Private network addresses cannot be read.")
+  if (!addresses.length) throw new HttpError(502, `Cannot resolve ${host}.`)
+  if (addresses.some(({ address }) => privateAddress(address))) throw new HttpError(403, "Private network addresses cannot be read.")
   // Every answer was checked; connect to an IPv4 one when there is one (a network without IPv6 still connects).
   const pick = addresses.find(({ address }) => isIP(address) === 4) ?? addresses[0]
   return { url, address: isIP(host) ? null : pick.address }
@@ -152,7 +149,7 @@ async function fetchPublic(net, raw, { timeoutMs = TIMEOUT, ...init } = {}) {
   for (let hop = 0; hop <= 5; hop++) {
     const via = url.protocol === "http:" ? address : null
     const response = await net.fetch(url, { ...init, redirect: "manual", headers: { "user-agent": UA, "accept-language": "en", ...init.headers } }, timeoutMs, via).catch((error) => {
-      throw unreachable(`${url.host} is not reachable (${error.name === "TimeoutError" ? "timeout" : error.message}).`)
+      throw badAnswer(`${url.host} is not reachable (${error.name === "TimeoutError" ? "timeout" : error.message}).`, true)
     })
     if (response.status >= 300 && response.status < 400 && response.headers.get("location")) {
       ;({ url, address } = await publicUrl(net, new URL(response.headers.get("location"), url).href))
@@ -160,7 +157,7 @@ async function fetchPublic(net, raw, { timeoutMs = TIMEOUT, ...init } = {}) {
     }
     return { url, response }
   }
-  throw new WebError(502, "Too many redirects.")
+  throw new HttpError(502, "Too many redirects.")
 }
 
 // The URL with its host replaced by an address (IPv6 in brackets); path, query and port kept.
@@ -200,21 +197,25 @@ const decode = (s) =>
 const strip = (html) => decode(html.replace(/<[^>]+>/g, "")).replace(/\s+/g, " ").trim()
 const clip = (text, max = LIMITS.snippetChars) => (text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text)
 
+const titleOf = (html) => strip(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? "")
+// Markup removed, entities decoded, each line cleaned by `tidyLine`, blank runs squeezed.
+const plain = (markup, tidyLine) =>
+  decode(markup.replace(/<[^>]+>/g, ""))
+    .split("\n")
+    .map(tidyLine)
+    .filter((line, i, all) => line || all[i - 1])
+    .join("\n")
+    .trim()
+
 export function htmlToText(html) {
-  const title = strip(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? "")
+  const title = titleOf(html)
   const body = (html.match(/<(main|article)\b[\s\S]*?<\/\1>/i)?.[0] ?? html.match(/<body[\s\S]*<\/body>/i)?.[0] ?? html)
     .replace(/<(script|style|noscript|svg|nav|footer|header|form|iframe)\b[\s\S]*?<\/\1>/gi, " ")
     .replace(/<!--[\s\S]*?-->/g, " ")
     .replace(/<\/(p|div|section|li|tr|h[1-6]|pre|blockquote)>|<br\s*\/?>/gi, "\n")
     .replace(/<li[^>]*>/gi, "\n- ")
     .replace(/<h([1-6])[^>]*>/gi, (_, n) => `\n${"#".repeat(Number(n))} `)
-  const text = decode(body.replace(/<[^>]+>/g, ""))
-    .split("\n")
-    .map((line) => line.replace(/[ \t\f\v]+/g, " ").trim())
-    .filter((line, i, all) => line || all[i - 1])
-    .join("\n")
-    .trim()
-  return { title, text }
+  return { title, text: plain(body, (line) => line.replace(/[ \t\f\v]+/g, " ").trim()) }
 }
 
 // ── HTML → a page to navigate ───────────────────────────────────────────
@@ -234,18 +235,16 @@ const absolute = (href, base) => {
   if (href == null) return null
   const raw = href.trim()
   if (!raw || raw.startsWith("#")) return null
-  try {
+  return attempt(() => {
     const url = new URL(raw, base)
     if (url.protocol !== "http:" && url.protocol !== "https:") return null
     url.hash = ""
     return url.href
-  } catch {
-    return null
-  }
+  })
 }
 
 export function htmlToPage(html, pageUrl) {
-  const title = strip(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? "")
+  const title = titleOf(html)
   const base = absolute(attr(html.match(/<base\b[^>]*>/i)?.[0] ?? "", "href"), pageUrl) ?? pageUrl
   const links = []
   const numbers = new Map() // url -> n
@@ -295,12 +294,7 @@ export function htmlToPage(html, pageUrl) {
     .replace(/<li[^>]*>/gi, "\n- ")
     .replace(/<h([1-6])[^>]*>/gi, (_, n) => `\n${"#".repeat(Number(n))} `)
     .replace(/<(td|th)[^>]*>/gi, " | ")
-  const text = decode(body.replace(/<[^>]+>/g, ""))
-    .split("\n")
-    .map((line) => line.replace(/[ \t\f\v]+/g, " ").replace(/ +\[/g, " [").replace(/\] +([.,;:!?)])/g, "]$1").trim())
-    .filter((line, i, all) => line || all[i - 1])
-    .join("\n")
-    .trim()
+  const text = plain(body, (line) => line.replace(/[ \t\f\v]+/g, " ").replace(/ +\[/g, " [").replace(/\] +([.,;:!?)])/g, "]$1").trim())
   return { title, text, links, forms }
 }
 
@@ -308,7 +302,7 @@ export function htmlToPage(html, pageUrl) {
 // Each takes (net, query, limit) and returns [{ title, url, snippet, source }]. A rate-limited answer throws
 // with `rateLimited: true` (the queue retries it, then cools the engine); one the host did not answer (no answer,
 // timeout, 5xx) with `down: true` (the engine is skipped a while, so a queue does not wait out timeout after timeout).
-const rateLimited = (message) => Object.assign(new WebError(429, message), { rateLimited: true })
+const rateLimited = (message) => Object.assign(new HttpError(429, message), { rateLimited: true })
 
 async function searxng(net, base, query, limit) {
   const url = new URL("search", base.endsWith("/") ? base : `${base}/`)
@@ -316,9 +310,7 @@ async function searxng(net, base, query, limit) {
   // The owner's own instance may run on this machine: no public-address check.
   const response = await net.fetch(url, { headers: { "user-agent": UA } }, TIMEOUT).catch(() => null)
   if (response?.status === 429) throw rateLimited(`SearXNG at ${url.origin} is rate-limiting (429).`)
-  if (!response?.ok) {
-    throw Object.assign(new WebError(502, `SearXNG at ${url.origin} did not answer (is format json enabled?).`), { down: !response || response.status >= 500 })
-  }
+  if (!response?.ok) throw badAnswer(`SearXNG at ${url.origin} did not answer (is format json enabled?).`, !response || response.status >= 500)
   const data = await response.json()
   return (data.results ?? []).slice(0, limit).map((r) => ({ title: r.title ?? "", url: r.url, snippet: r.content ?? "", source: "searxng" }))
 }
@@ -330,7 +322,7 @@ async function duckduckgo(net, query, limit) {
     body: new URLSearchParams({ q: query }).toString(),
   })
   if (response.status === 429 || response.status === 403) throw rateLimited(`DuckDuckGo answered ${response.status}.`)
-  if (!response.ok) throw Object.assign(new WebError(502, `DuckDuckGo answered ${response.status}.`), { down: response.status >= 500 })
+  if (!response.ok) throw badAnswer(`DuckDuckGo answered ${response.status}.`, response.status >= 500)
   const html = await readBody(response)
   const results = []
   for (const block of html.split(/class="result results_links/).slice(1)) {
@@ -349,18 +341,18 @@ async function duckduckgo(net, query, limit) {
   return results
 }
 
+const apiUrl = (base, params) => `${base}?${new URLSearchParams(params)}`
+
 // A public API's JSON or XML body, through the public-address checks.
 async function apiBody(net, name, url) {
   const { response } = await fetchPublic(net, url, { timeoutMs: LIMITS.apiTimeoutMs, headers: { "user-agent": API_UA } })
   if (response.status === 429 || response.status === 503) throw rateLimited(`${name} answered ${response.status} (rate limit).`)
-  if (!response.ok) throw Object.assign(new WebError(502, `${name} answered ${response.status}.`), { down: response.status >= 500 })
+  if (!response.ok) throw badAnswer(`${name} answered ${response.status}.`, response.status >= 500)
   return readBody(response)
 }
 
 async function wikipedia(net, query, limit) {
-  const url = new URL("https://en.wikipedia.org/w/api.php")
-  url.search = new URLSearchParams({ action: "query", list: "search", srsearch: query, format: "json", srlimit: String(limit) }).toString()
-  return parseWikipedia(await apiBody(net, "Wikipedia", url.href))
+  return parseWikipedia(await apiBody(net, "Wikipedia", apiUrl("https://en.wikipedia.org/w/api.php", { action: "query", list: "search", srsearch: query, format: "json", srlimit: String(limit) })))
 }
 
 export function parseWikipedia(body) {
@@ -377,9 +369,7 @@ async function arxiv(net, query, limit) {
   // arXiv's query syntax: every word as all:<word>, joined with AND; operators and punctuation dropped.
   const words = query.replace(/[^\p{L}\p{N}\s.-]/gu, " ").split(/\s+/).filter((w) => w && !/^(and|or|andnot)$/i.test(w))
   if (!words.length) return []
-  const url = new URL("https://export.arxiv.org/api/query")
-  url.search = new URLSearchParams({ search_query: words.map((w) => `all:${w}`).join(" AND "), start: "0", max_results: String(limit), sortBy: "relevance" }).toString()
-  return parseArxiv(await apiBody(net, "arXiv", url.href))
+  return parseArxiv(await apiBody(net, "arXiv", apiUrl("https://export.arxiv.org/api/query", { search_query: words.map((w) => `all:${w}`).join(" AND "), start: "0", max_results: String(limit), sortBy: "relevance" })))
 }
 
 export function parseArxiv(xml) {
@@ -395,9 +385,7 @@ export function parseArxiv(xml) {
 }
 
 async function hn(net, query, limit) {
-  const url = new URL("https://hn.algolia.com/api/v1/search")
-  url.search = new URLSearchParams({ query, tags: "story", hitsPerPage: String(limit) }).toString()
-  return parseHn(await apiBody(net, "HN Algolia", url.href))
+  return parseHn(await apiBody(net, "HN Algolia", apiUrl("https://hn.algolia.com/api/v1/search", { query, tags: "story", hitsPerPage: String(limit) })))
 }
 
 export function parseHn(body) {
@@ -463,10 +451,7 @@ export function createWeb(env = process.env, deps = {}) {
   const clock = { now: deps.now ?? (() => Date.now()), sleep: deps.sleep ?? ((ms) => Bun.sleep(ms)) }
   const state = deps.state ?? (deps.now || deps.sleep ? createSearchState(clock) : (processState ??= createSearchState(clock)))
   const send = deps.fetch ?? ((url, init) => fetch(url, init))
-  let searxOrigin = null
-  try {
-    searxOrigin = searx ? new URL(searx).origin : null
-  } catch {}
+  const searxOrigin = attempt(() => (searx ? new URL(searx).origin : null))
   // Every request to an engine's host waits for its spacing, whoever makes it: a search, a retry, a redirect hop, or
   // web/read of a DuckDuckGo page. The timeout starts once the request may go.
   const queueFor = (url) =>
@@ -548,7 +533,7 @@ export function createWeb(env = process.env, deps = {}) {
     // An engine error already names its source ("arxiv rate-limited (…)"); others get it in front.
     const failure = (source, error) => (error?.reason ? brief(error) : `${source}: ${String(error?.message ?? error).replace(/\.$/, "")}`)
     const failed = FALLBACK.flatMap((source, i) => (settled[i].status === "rejected" ? [failure(source, settled[i].reason)] : []))
-    if (!answered.length) throw new WebError(status === 429 ? 429 : 502, `${why}; the fallback failed too (${failed.join("; ")})`)
+    if (!answered.length) throw new HttpError(status === 429 ? 429 : 502, `${why}; the fallback failed too (${failed.join("; ")})`)
     const lists = settled.map((r) => (r.status === "fulfilled" ? r.value.results : []))
     const results = []
     const seen = new Set()
@@ -576,14 +561,24 @@ export function createWeb(env = process.env, deps = {}) {
     return { engine, query, results }
   }
 
+  // A public page's body, and whether it is markup.
+  async function readPage(raw) {
+    const { url, response } = await fetchPublic(net, String(raw ?? ""))
+    if (!response.ok) throw new HttpError(502, `${url.host} answered ${response.status}.`)
+    const type = response.headers.get("content-type") ?? ""
+    const body = await readBody(response)
+    return { url, body, type, html: /html|xml/.test(type) || /^\s*</.test(body) }
+  }
+  const shown = (text) => (text.length > MAX_TEXT ? { text: `${text.slice(0, MAX_TEXT)}\n…[truncated]`, truncated: true } : { text, truncated: false })
+
   return {
     engine,
     sources: SOURCES,
     async search(query, limit = LIMITS.searchResults, source = "web") {
       query = String(query ?? "").trim().replace(/\s+/g, " ")
-      if (!query) throw new WebError(400, "Give a query (q).")
+      if (!query) throw new HttpError(400, "Give a query (q).")
       source = String(source ?? "web").trim().toLowerCase() || "web"
-      if (!SOURCES.includes(source)) throw new WebError(400, `Unknown source "${source}"; use one of: ${SOURCES.join(", ")}.`)
+      if (!SOURCES.includes(source)) throw new HttpError(400, `Unknown source "${source}"; use one of: ${SOURCES.join(", ")}.`)
       const n = Math.min(Math.max(Number(limit) || LIMITS.searchResults, 1), LIMITS.searchResultsMax)
       const answer =
         source === "web"
@@ -592,25 +587,16 @@ export function createWeb(env = process.env, deps = {}) {
       return { ...answer, query }
     },
     async read(raw) {
-      const { url, response } = await fetchPublic(net, String(raw ?? ""))
-      if (!response.ok) throw new WebError(502, `${url.host} answered ${response.status}.`)
-      const type = response.headers.get("content-type") ?? ""
-      const body = await readBody(response)
-      const page = /html|xml/.test(type) || /^\s*</.test(body) ? htmlToText(body) : { title: "", text: body.trim() }
-      const truncated = page.text.length > MAX_TEXT
-      return { url: url.href, title: page.title, text: truncated ? `${page.text.slice(0, MAX_TEXT)}\n…[truncated]` : page.text, truncated }
+      const { url, body, html } = await readPage(raw)
+      const page = html ? htmlToText(body) : { title: "", text: body.trim() }
+      return { url: url.href, title: page.title, ...shown(page.text) }
     },
     // The page to navigate (htmlToPage): the same public-address checks at every hop as read; the address it landed on
     // (after redirects) is the base its links resolve against. Not HTML: its text, no links.
     async page(raw) {
-      const { url, response } = await fetchPublic(net, String(raw ?? ""))
-      if (!response.ok) throw new WebError(502, `${url.host} answered ${response.status}.`)
-      const type = response.headers.get("content-type") ?? ""
-      const body = await readBody(response)
-      const html = /html|xml/.test(type) || /^\s*</.test(body)
+      const { url, body, html, type } = await readPage(raw)
       const page = html ? htmlToPage(body, url.href) : { title: "", text: body.trim(), links: [], forms: [] }
-      const truncated = page.text.length > MAX_TEXT
-      return { url: url.href, title: page.title, type: type.split(";")[0].trim(), text: truncated ? `${page.text.slice(0, MAX_TEXT)}\n…[truncated]` : page.text, truncated, links: page.links, forms: page.forms }
+      return { url: url.href, title: page.title, type: type.split(";")[0].trim(), ...shown(page.text), links: page.links, forms: page.forms }
     },
   }
 }

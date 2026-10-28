@@ -33,12 +33,12 @@
 // AGENT: {name, description, role, goal?, title?, model?, max_steps?, writes?, reads?, board?, tools?, artifacts?,
 //         practice?: {checklist?, quality?, instructions?}, members?: [AGENT]}
 
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs"
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync } from "node:fs"
 import { basename, dirname, join, relative } from "node:path"
 
 import { renderPractice } from "../../backend/kernel/index.js"
 import { composeDesk, DESK_NAME, forgetModules, MODELS, readDeskConfig } from "./compose.js"
-import { AGENT_FILE_NAMES, agentFile, deskLead, RESERVED } from "./layout.js"
+import { AGENT_FILE_NAMES, agentFile, deskLead, RESERVED, writeAtomic } from "./layout.js"
 
 export const CREATE_MARK = "// made by desk.create"
 const AGENT_NAME = /^[a-z][a-z0-9-]{1,30}$/
@@ -63,12 +63,6 @@ export function readProposal(root, name) {
   } catch {
     return null
   }
-}
-const writeAtomic = (to, text) => {
-  mkdirSync(dirname(to), { recursive: true })
-  const tmp = `${to}.${process.pid}.tmp`
-  writeFileSync(tmp, text)
-  renameSync(tmp, to)
 }
 const yaml = (v) => JSON.stringify(v)
 const lines = (v) => (v == null ? [] : Array.isArray(v) ? v : String(v).split("\n")).map((x) => String(x).replace(/^\s*[-*]\s+/, "").trim()).filter(Boolean)
@@ -247,10 +241,7 @@ async function writeDesk({ root, name, spec, by, update, clock, folder, hold, ac
   const draftName = `.draft-${name}-${process.pid}-${Math.random().toString(36).slice(2, 8)}`
   const draft = join(root, draftName)
   try {
-    for (const [path, text] of Object.entries(files)) {
-      mkdirSync(dirname(join(draft, path)), { recursive: true })
-      writeFileSync(join(draft, path), text)
-    }
+    for (const [path, text] of Object.entries(files)) writeAtomic(join(draft, path), text)
     mkdirSync(join(draft, "tools"), { recursive: true })
     if (update && existsSync(join(folder, "tools"))) cpSync(join(folder, "tools"), join(draft, "tools"), { recursive: true })
     let check
@@ -325,12 +316,10 @@ export function proposeTool({ root, name, file, code, why, by = null, from = nul
   const base = toolBase(file)
   if (!String(code ?? "").trim()) throw fail(400, "code: the tool file (export default defineTool({...}), docs/standard.md)")
   if (!String(why ?? "").trim()) throw fail(400, "why: what the desk cannot do without it")
-  const dir = join(folder, "proposed", "tools")
-  mkdirSync(dir, { recursive: true })
-  const path = join(dir, `${base}.js`)
+  const path = join(folder, "proposed", "tools", `${base}.js`)
   const source = from ? oneLine(from).slice(0, 300) : null
   const head = [`// proposed by ${oneLine(by ?? "an agent")} at ${clock().toISOString().slice(0, 16)}${NOT_LOADED}`, `// why: ${oneLine(why).slice(0, 600)}`, ...(source ? [`// from a run that read outside (${source}): its words may carry a page's — read every line before you accept it.`] : [])]
-  writeFileSync(path, `${head.join("\n")}\n${String(code)}\n`)
+  writeAtomic(path, `${head.join("\n")}\n${String(code)}\n`)
   return { path: `custom/${name}/proposed/tools/${base}.js`, from: source }
 }
 
@@ -351,11 +340,15 @@ function readProposedTool(root, name, base) {
 
 // The owner accepts proposed tool code: moved into tools/ (its header says the owner accepted it), refused when tools/
 // has a file of that name. It runs once the desk is loaded again (desks/load).
-export function acceptTool({ root, name, file, clock = () => new Date() }) {
+function proposedTool(root, name, file) {
   const folder = deskOf(root, name)
   const base = toolBase(file)
   const src = join(folder, "proposed", "tools", `${base}.js`)
   if (!existsSync(src)) throw fail(404, `no proposed tool custom/${name}/proposed/tools/${base}.js`)
+  return { folder, base, src }
+}
+export function acceptTool({ root, name, file, clock = () => new Date() }) {
+  const { folder, base, src } = proposedTool(root, name, file)
   if (realpathSync(src) !== join(realpathSync(folder), "proposed", "tools", `${base}.js`)) throw fail(403, "a proposed tool file that is a link is never moved")
   const to = join(folder, "tools", `${base}.js`)
   if (existsSync(to)) throw fail(409, `custom/${name}/tools/${base}.js exists: the owner's — drop the proposal, or move it by hand`)
@@ -368,10 +361,7 @@ export function acceptTool({ root, name, file, clock = () => new Date() }) {
 }
 
 export function dropTool({ root, name, file }) {
-  const folder = deskOf(root, name)
-  const base = toolBase(file)
-  const src = join(folder, "proposed", "tools", `${base}.js`)
-  if (!existsSync(src)) throw fail(404, `no proposed tool custom/${name}/proposed/tools/${base}.js`)
+  const { base, src } = proposedTool(root, name, file)
   rmSync(src, { force: true })
   return { dropped: `custom/${name}/proposed/tools/${base}.js`, desk: name, file: base }
 }
@@ -380,9 +370,13 @@ export function dropTool({ root, name, file }) {
 
 // The owner accepts a held desk: written as desk.create would write it now (every check again; a refusal keeps the
 // proposal waiting), then the proposal goes. → scaffoldDesk's answer + accepted {name, update, by, at, from}.
-export async function acceptDesk({ root, name, clock = () => new Date() }) {
+function waitingProposal(root, name) {
   const p = readProposal(root, name)
   if (!p) throw fail(404, `no desk proposal "${name}" (accepted or dropped already?)`)
+  return p
+}
+export async function acceptDesk({ root, name, clock = () => new Date() }) {
+  const p = waitingProposal(root, name)
   const accepted = { name, update: !!p.update, by: p.by ?? null, at: p.at ?? null, from: p.from ?? null }
   const made = await scaffold({ root, name, spec: p.spec, by: p.by ?? null, update: !!p.update, hold: null, clock, accepted })
   rmSync(proposalFile(root, name), { force: true })
@@ -390,8 +384,7 @@ export async function acceptDesk({ root, name, clock = () => new Date() }) {
 }
 
 export function dropDesk({ root, name }) {
-  const p = readProposal(root, name)
-  if (!p) throw fail(404, `no desk proposal "${name}" (accepted or dropped already?)`)
+  const p = waitingProposal(root, name)
   rmSync(proposalFile(root, name), { force: true })
   return { dropped: name, update: !!p.update, by: p.by ?? null, from: p.from ?? null }
 }

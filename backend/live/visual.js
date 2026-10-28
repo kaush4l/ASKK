@@ -71,6 +71,7 @@ const LOOKS = {
   pipeline: { tone: "indigo", icon: "workflow" },
   studio: { tone: "fuchsia", icon: "image" }, // 2026-10-23: studio.prompt / generate / critique / pick — images made, judged and refined
   audio: { tone: "yellow", icon: "audio-lines" }, // 2026-10-24: audio.make / transcribe / send — scripts made into audio files, files read back
+  goal: { tone: "emerald", icon: "target" }, // 2026-10-24: goal.set / progress / met / pause — the desk's standing goal and every run's step toward it
   text: { tone: "slate", icon: "file-text" }, // 2026-10-23: a tool whose result is text to read (a report, a note) // 2026-10-23: a workflow's run / stop — phases in sequence or side by side
 }
 export const CALL_KINDS = Object.keys(LOOKS)
@@ -90,7 +91,7 @@ function callKind({ kind, type, view, name = "" } = {}) {
   if (view === "web" || view === "browse" || type === "web" || String(name).startsWith("web.")) return "web"
   if (view === "terminal" || type === "terminal") return "terminal"
   if (view === "files" || view === "preview" || view === "talk") return view
-  if (view === "dispatch" || view === "runners" || view === "pipeline" || view === "text" || view === "studio" || view === "audio") return view
+  if (view === "dispatch" || view === "runners" || view === "pipeline" || view === "text" || view === "studio" || view === "audio" || view === "goal") return view
   if (ARTIFACT_VIEWS.has(view)) return view
   if (type === "artifact") return "artifact"
   if (view === "data") return "data"

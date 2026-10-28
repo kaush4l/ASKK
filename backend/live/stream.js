@@ -44,10 +44,18 @@ export function connectTeam(onEvent, onError = () => {}) {
   return () => source.close()
 }
 
+// 2026-10-27 ask-answer: a call's error text from either shape — the team's {error: {message}} or a host-api route's
+// {error: "<string>"} (companion/server/host-api.js:422) — so the page shows the reason, never a bare "Team call failed"
+export function errorText(error) {
+  if (typeof error === "string" && error.trim()) return error
+  if (typeof error?.message === "string" && error.message.trim()) return error.message
+  return "Team call failed"
+}
+
 export async function teamCall(target, method, args = []) {
   if (local) {
     const result = await local.call({ target, method, args })
-    if (!result.ok) throw new Error(result.error?.message ?? "Team call failed")
+    if (!result.ok) throw new Error(errorText(result.error))
     return result.value
   }
   const response = await fetch(withBase("/__askk/team/call"), {
@@ -56,6 +64,6 @@ export async function teamCall(target, method, args = []) {
     body: JSON.stringify({ target, method, args }),
   })
   const result = await response.json().catch(() => ({ ok: false, error: { message: `HTTP ${response.status}` } }))
-  if (!result.ok) throw Object.assign(new Error(result.error?.message ?? "Team call failed"), { name: result.error?.name ?? "Error" })
+  if (!result.ok) throw Object.assign(new Error(errorText(result.error)), { name: result.error?.name ?? "Error" })
   return result.value
 }

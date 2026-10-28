@@ -4,9 +4,12 @@ import * as React from "react"
 import { ArrowDownIcon, BotIcon, CodeIcon, GlobeIcon, PencilLineIcon, SparklesIcon } from "lucide-react"
 
 import { describeActivity } from "@/backend/live/activity"
-import { flowLayout } from "@/backend/live/workflow-view"
-import { useEngines, useEngineState } from "@/hooks/use-engines"
+import { pipelineView } from "@/backend/live/pipeline"
+import { ShadowLine } from "@/components/views/pipeline"
+import { flowLayout, nowLine, phaseCards, progressOf } from "@/backend/live/workflow-view"
 import { cn } from "@/lib/utils"
+import { useAgent } from "@/hooks/use-engines"
+import { useNow } from "@/hooks/use-now"
 
 // The flow of a workflow (components/workflow/workflow-page.jsx): the run's progress by phase, what runs right now, and
 // the phases in order — each a card with how it runs, what it reads (in) and what it hands on (out), its live state. The
@@ -23,6 +26,16 @@ export const TONE = {
   waiting: { dot: "border border-muted-foreground/50", card: "border-dashed border-border", text: "text-muted-foreground", bar: "bg-muted-foreground/15" },
 }
 export const tone = (status) => TONE[status] ?? TONE.waiting
+
+// A workflow artifact's state as its tile and its viewer draw it (its clock ticks while it runs): the pipeline view, the
+// phase cards, the progress by phase and what runs right now.
+export function useWorkflow(state) {
+  const running = state?.status === "running"
+  const v = pipelineView(state, { now: useNow(1000, running) })
+  const cfg = state?.config ?? null
+  const cards = phaseCards(cfg, v.stages)
+  return { running, v, cfg, cards, progress: progressOf(cards), live: nowLine(cards, { status: v.status }) }
+}
 
 export const StatusDot = ({ status, className }) => <span aria-hidden className={cn("inline-block size-2 shrink-0 rounded-full", tone(status).dot, className)} />
 
@@ -52,18 +65,14 @@ export function ProgressBar({ progress, onPick, selected }) {
       <div className="flex h-2 min-w-0 flex-1 gap-0.5" role="progressbar" aria-valuemin={0} aria-valuemax={progress.total} aria-valuenow={progress.settled} aria-label="Phases settled">
         {progress.segments.map((s) => (onPick ? <button key={s.id} type="button" title={`${s.id}: ${s.status}`} onClick={() => onPick(s.id)} className={seg(s)} /> : <span key={s.id} title={`${s.id}: ${s.status}`} className={seg(s)} />))}
       </div>
-      <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-        {progress.settled}/{progress.total}
-      </span>
+      <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{progress.settled}/{progress.total}</span>
     </div>
   )
 }
 
 // What an agent is doing now, from its live state (its last call or thought).
 export function useActivity(name) {
-  const { engines } = useEngines()
-  const engine = name ? (engines.find((e) => e.name === name) ?? null) : null
-  const st = useEngineState(engine)
+  const { state: st } = useAgent(name)
   return st?.status === "running" && st?.activity ? describeActivity(st.activity) : ""
 }
 
@@ -82,13 +91,7 @@ function NowItem({ item, onPick }) {
 // The live line: every phase running right now (a click shows it), what its agent does.
 export function NowStrip({ items, onPick }) {
   if (!items.length) return null
-  return (
-    <div className="flex min-w-0 flex-col gap-1" aria-live="polite">
-      {items.map((it) => (
-        <NowItem key={it.id} item={it} onPick={onPick} />
-      ))}
-    </div>
-  )
+  return <div className="flex min-w-0 flex-col gap-1" aria-live="polite">{items.map((it) => <NowItem key={it.id} item={it} onPick={onPick} />)}</div>
 }
 
 // One phase as a card: status, number and title, how it runs, in → out, its time; running: what it does now.
@@ -112,36 +115,26 @@ function PhaseCard({ card, selected, onPick, compact = false, changed = false })
       </span>
       <span className="flex min-w-0 items-center gap-1 text-[11px] text-muted-foreground">
         <KindIcon label={card.how.label} />
-        <span className="min-w-0 truncate">
-          {card.how.label}
-          {card.how.detail ? ` · ${card.how.detail}` : ""}
-        </span>
+        <span className="min-w-0 truncate">{card.how.label}{card.how.detail ? ` · ${card.how.detail}` : ""}</span>
         {card.title !== card.id && <span className="ml-auto shrink-0 font-mono">{card.id}</span>}
       </span>
       {!compact && (ins.length > 0 || card.reads.board) && (
         <span className="flex min-w-0 flex-wrap items-center gap-1">
           <span className="w-6 shrink-0 text-[10px] tracking-wide text-muted-foreground uppercase">in</span>
-          {ins.map((v) => (
-            <Chip key={v.name} kind={v.kind} title={v.from === "run" ? "a run variable" : `from ${v.from}`}>
-              {v.name}
-            </Chip>
-          ))}
+          {ins.map((v) => <Chip key={v.name} kind={v.kind} title={v.from === "run" ? "a run variable" : `from ${v.from}`}>{v.name}</Chip>)}
           {card.reads.board && <Chip kind="board">board</Chip>}
         </span>
       )}
       {!compact && card.hands.length > 0 && (
         <span className="flex min-w-0 flex-wrap items-center gap-1">
           <span className="w-6 shrink-0 text-[10px] tracking-wide text-muted-foreground uppercase">out</span>
-          {card.hands.map((h) => (
-            <Chip key={h.name} kind="out" title={`{{${h.name}}}`}>
-              {h.field}
-            </Chip>
-          ))}
+          {card.hands.map((h) => <Chip key={h.name} kind="out" title={`{{${h.name}}}`}>{h.field}</Chip>)}
         </span>
       )}
       {doing && <span className="min-w-0 truncate text-[11px] text-emerald-700 dark:text-emerald-400">{doing}</span>}
       {/* 2026-10-23: the head of what it handed on this run; while it waits, the run before's (status, when, how long) */}
       {!compact && card.row?.head && card.status !== "running" && <span data-stage-head className="min-w-0 truncate text-[11px] text-muted-foreground" title={card.row.head}>{card.row.head}</span>}
+      {!compact && card.row?.shadow && <ShadowLine shadow={card.row.shadow} compact />}
       {!compact && card.last && (card.status === "waiting" || card.status === "running") && (
         <span data-stage-last className="min-w-0 truncate text-[11px] text-muted-foreground">
           before: run {card.last.run ?? "earlier"} · {card.last.status}
@@ -187,9 +180,7 @@ export function FlowColumn({ cards, selected, onPick, following = false, changed
     <nav aria-label="Phases" className="min-w-0">
       {compactOnPhone && (
         <div ref={strip} className="flex min-w-0 gap-1.5 overflow-x-auto pb-1 lg:hidden">
-          {cards.map((c) => (
-            <PhaseCard key={c.id} card={c} selected={c.id === selected} onPick={onPick} compact changed={changed?.has(c.id)} />
-          ))}
+          {cards.map((c) => <PhaseCard key={c.id} card={c} selected={c.id === selected} onPick={onPick} compact changed={changed?.has(c.id)} />)}
         </div>
       )}
       <ol className={cn("min-w-0 flex-col", compactOnPhone ? "hidden lg:flex" : "flex")}>

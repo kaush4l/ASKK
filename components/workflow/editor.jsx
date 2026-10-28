@@ -6,6 +6,7 @@ import { CheckIcon, HistoryIcon, XIcon } from "lucide-react"
 import { checkWorkflow, saveWorkflow, workflowSource, workflowVersion } from "@/backend/live/pipeline"
 import { errorLine, phaseCards, phaseOffset } from "@/backend/live/workflow-view"
 import { Button } from "@/components/ui/button"
+import { MiniButton, Small, errorText, useBusy } from "@/components/views/kit"
 import { cn } from "@/lib/utils"
 
 import { FlowColumn } from "./flow"
@@ -17,13 +18,15 @@ import { FlowColumn } from "./flow"
 // kept: Earlier versions brings one back); a run going keeps the steps it loaded.
 
 const CHECK_MS = 450
+const etStamp = (at) => new Date(at).toLocaleString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false })
 
 export function WorkflowEditor({ id, config, focus, onClose, onSaved }) {
   const [name, setName] = React.useState(null)
   const [src, setSrc] = React.useState({ busy: true, error: null, value: null })
   const [draft, setDraft] = React.useState("")
   const [check, setCheck] = React.useState({ busy: false, value: null })
-  const [save, setSave] = React.useState({ busy: false, error: null, note: null })
+  const save = useBusy()
+  const [saved, setSaved] = React.useState(null) // what the last save or version load did
   const area = React.useRef(null)
   const placed = React.useRef(false)
 
@@ -37,7 +40,7 @@ export function WorkflowEditor({ id, config, focus, onClose, onSaved }) {
         setDraft(v.text)
         return v
       } catch (error) {
-        setSrc({ busy: false, error: error?.message ?? String(error), value: null })
+        setSrc({ busy: false, error: errorText(error), value: null })
         return null
       }
     },
@@ -69,7 +72,7 @@ export function WorkflowEditor({ id, config, focus, onClose, onSaved }) {
         const value = await checkWorkflow(id, name, draft)
         if (live) setCheck({ busy: false, value })
       } catch (error) {
-        if (live) setCheck({ busy: false, value: { ok: false, error: error?.message ?? String(error) } })
+        if (live) setCheck({ busy: false, value: { ok: false, error: errorText(error) } })
       }
     }, CHECK_MS)
     return () => {
@@ -95,25 +98,24 @@ export function WorkflowEditor({ id, config, focus, onClose, onSaved }) {
     el.setSelectionRange(at, at)
     el.scrollTop = Math.max(0, ((n - 1) / Math.max(1, draft.split("\n").length)) * el.scrollHeight - 24)
   }
-  const onSave = async () => {
-    setSave({ busy: true, error: null, note: null })
-    try {
+  const onSave = () =>
+    save.run(async () => {
+      setSaved(null)
       const r = await saveWorkflow(id, name, draft, src.value.revision)
       await load(name)
       onSaved?.()
-      setSave({ busy: false, error: null, note: r.changed ? `Saved ${r.saved} — in force from the next run${r.next_run ? " (one is going: it keeps what it loaded)" : ""}.` : "No change to save." })
-    } catch (error) {
-      setSave({ busy: false, error: error?.message ?? String(error), note: null })
-    }
-  }
+      setSaved(r.changed ? `Saved ${r.saved} — in force from the next run${r.next_run ? " (one is going: it keeps what it loaded)" : ""}.` : "No change to save.")
+    })
   const onVersion = async (file) => {
     if (!file) return
     try {
       const v = await workflowVersion(id, file)
       setDraft(v.text)
-      setSave({ busy: false, error: null, note: `Loaded the version from ${new Date(v.at).toLocaleString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false })} ET — Save to bring it back.` })
+      save.setError(null)
+      setSaved(`Loaded the version from ${etStamp(v.at)} ET — Save to bring it back.`)
     } catch (error) {
-      setSave({ busy: false, error: error?.message ?? String(error), note: null })
+      save.setError(errorText(error))
+      setSaved(null)
     }
   }
 
@@ -123,11 +125,7 @@ export function WorkflowEditor({ id, config, focus, onClose, onSaved }) {
         <h2 className="text-base text-foreground">Edit the workflow</h2>
         {src.value?.files?.length > 1 ? (
           <select aria-label="File" value={name ?? ""} onChange={(e) => (dirty && !window.confirm("Drop the changes to this file?") ? null : load(e.target.value))} className="h-8 max-w-full rounded border bg-transparent px-2 font-mono text-base sm:text-xs pointer-coarse:h-10">
-            {src.value.files.map((f) => (
-              <option key={f} value={f}>
-                {f}
-              </option>
-            ))}
+            {src.value.files.map((f) => <option key={f} value={f}>{f}</option>)}
           </select>
         ) : (
           name && <span className="font-mono text-xs text-muted-foreground">{name}</span>
@@ -139,9 +137,7 @@ export function WorkflowEditor({ id, config, focus, onClose, onSaved }) {
             <select aria-label="Earlier versions" value="" onChange={(e) => onVersion(e.target.value)} className="h-8 max-w-[12rem] rounded border bg-transparent px-1 text-base sm:text-xs pointer-coarse:h-10">
               <option value="">Earlier versions ({src.value.versions.length})</option>
               {src.value.versions.map((v) => (
-                <option key={v.file} value={v.file}>
-                  {new Date(v.at).toLocaleString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false })} ET
-                </option>
+                <option key={v.file} value={v.file}>{etStamp(v.at)} ET</option>
               ))}
             </select>
           </label>
@@ -150,7 +146,7 @@ export function WorkflowEditor({ id, config, focus, onClose, onSaved }) {
           <XIcon className="size-4" />
         </Button>
       </header>
-      {src.error && <p className="text-[11px] break-words text-red-700 dark:text-red-400">{src.error}</p>}
+      {src.error && <Small tone="error">{src.error}</Small>}
 
       <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
         <div className="flex min-w-0 flex-col gap-1">
@@ -180,21 +176,17 @@ export function WorkflowEditor({ id, config, focus, onClose, onSaved }) {
             ) : (
               <span className="min-w-0 break-words text-red-700 dark:text-red-400">Does not load{line ? ` (line ${line})` : ""}: {result.error}</span>
             )}
-            {line && (
-              <Button type="button" size="xs" variant="outline" className="h-7 px-2 text-[11px] pointer-coarse:h-10" onClick={() => goLine(line)}>
-                Go to line {line}
-              </Button>
-            )}
+            {line && <MiniButton variant="outline" className="h-7" onClick={() => goLine(line)}>Go to line {line}</MiniButton>}
           </div>
           {next && (changed.size > 0 || removed.length > 0) && (
-            <p className="text-[11px] text-amber-700 dark:text-amber-400">
+            <Small tone="warn">
               {changed.size ? `This draft changes ${[...changed].join(", ")}` : ""}
               {changed.size && removed.length ? " · " : ""}
               {removed.length ? `removes ${removed.join(", ")}` : ""} — their outputs so far came from the old text.
-            </p>
+            </Small>
           )}
-          {next?.description && <p className="text-[11px] break-words whitespace-pre-line text-muted-foreground">{next.description}</p>}
-          <div className={cn("min-w-0 overflow-y-auto lg:max-h-[64svh]", !next && "opacity-50")}>{next ? <FlowColumn cards={cards} changed={changed} compactOnPhone={false} /> : <p className="text-[11px] text-muted-foreground">The phases show here when the file loads.</p>}</div>
+          {next?.description && <Small className="whitespace-pre-line">{next.description}</Small>}
+          <div className={cn("min-w-0 overflow-y-auto lg:max-h-[64svh]", !next && "opacity-50")}>{next ? <FlowColumn cards={cards} changed={changed} compactOnPhone={false} /> : <Small>The phases show here when the file loads.</Small>}</div>
         </div>
       </div>
 
@@ -205,8 +197,8 @@ export function WorkflowEditor({ id, config, focus, onClose, onSaved }) {
         <Button type="button" size="sm" variant="ghost" className="h-8 px-3 text-xs pointer-coarse:h-10" disabled={!dirty || save.busy} onClick={() => setDraft(src.value.text)}>
           Undo changes
         </Button>
-        {save.note && <span className="text-[11px] text-emerald-700 dark:text-emerald-400">{save.note}</span>}
-        {save.error && <span className="min-w-0 text-[11px] break-words text-red-700 dark:text-red-400">{save.error}</span>}
+        {saved && <span className="text-[11px] text-emerald-700 dark:text-emerald-400">{saved}</span>}
+        {save.error && <Small tone="error" as="span" className="min-w-0">{save.error}</Small>}
       </footer>
     </section>
   )

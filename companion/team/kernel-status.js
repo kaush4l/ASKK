@@ -44,10 +44,6 @@ export const clip = (text, n) => {
   return s.length > n ? `${s.slice(0, Math.max(1, n - 1)).trimEnd()}…` : s
 }
 const ms = (t) => (t == null ? NaN : typeof t === "number" ? t : Date.parse(t))
-const findLast = (list, fn) => {
-  for (let i = list.length - 1; i >= 0; i--) if (fn(list[i])) return list[i]
-  return null
-}
 
 // A report's VERDICT line and CONFIDENCE (5-line REPORT: VERDICT/EVIDENCE/CONFIDENCE/FALSIFIER/GAPS);
 // a free-form answer gives its first line.
@@ -77,14 +73,14 @@ export const isRunWork = (w) => w?.step !== OWNER_CHAT_STEP
 export function leadRun({ lead, states }) {
   const s = states?.[lead]
   const messages = s?.messages ?? []
-  const request = (s?.working?.request && messages.find((m) => m.id === s.working.request)) || findLast(messages, isRunRequest)
+  const request = (s?.working?.request && messages.find((m) => m.id === s.working.request)) || messages.findLast(isRunRequest)
   if (!request) return null
   return { startedAt: ms(s?.working?.at ?? request.at), goal: request.content, from: request.from ?? "owner" }
 }
 
 // How a run ended, from the lead's answer after it started: { kind: "answer" | "error" | "stopped", text }.
 export function runOutcome({ lead, states }, startedAt) {
-  const answer = findLast(states?.[lead]?.messages ?? [], (m) => m.action === "answer" && ms(m.at) >= startedAt - 1000)
+  const answer = (states?.[lead]?.messages ?? []).findLast((m) => m.action === "answer" && ms(m.at) >= startedAt - 1000)
   if (!answer) return null
   if (answer.error) return { kind: /^stopped\b|abort/i.test(String(answer.error)) ? "stopped" : "error", text: String(answer.error) }
   return { kind: "answer", text: answer.content ?? "" }
@@ -152,7 +148,7 @@ function agentNow(name, { states, registry, since }) {
   const inRun = (m) => ms(m.at) >= since - 1000
   const running = s?.status === "running"
   const started = running || messages.some((m) => isRunRequest(m) && inRun(m))
-  const answer = findLast(messages, (m) => m.action === "answer" && inRun(m))
+  const answer = messages.findLast((m) => m.action === "answer" && inRun(m))
   if (running) {
     const sub = registry?.agents?.find((a) => a.name === name)?.agents ?? []
     const v = agentVisual(s, sub)

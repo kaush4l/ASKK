@@ -6,13 +6,13 @@ import { ArrowDownIcon, CheckIcon, FileInputIcon, FileOutputIcon, GitCompareIcon
 import { runSteps } from "@/backend/live/follow"
 import { lastOutput, size, stageDetail, stepFile, varsView } from "@/backend/live/pipeline"
 import { compareFields } from "@/backend/live/workflow-view"
-import { Button } from "@/components/ui/button"
+import { Fold, MiniButton, Small } from "@/components/views/kit"
 import { Markdown } from "@/components/views/markdown"
-import { StepAgent } from "@/components/views/pipeline"
-import { useEngines, useEngineState } from "@/hooks/use-engines"
+import { ShadowLine, StepAgent } from "@/components/views/pipeline"
 import { cn } from "@/lib/utils"
 
 import { Chip, KindIcon, StatusDot, tone } from "./flow"
+import { useAgent } from "@/hooks/use-engines"
 
 // One phase of the workflow (components/workflow/workflow-page.jsx), drawn as the process it is: INPUT (what it reads —
 // each variable by value and where it came from), WORK (how it runs — its agent's loop live, its reads, the prompt as
@@ -55,11 +55,7 @@ function Section({ icon: Icon, title, note, accent, children, action }) {
   )
 }
 
-const Flow = () => (
-  <div className="flex justify-center text-muted-foreground" aria-hidden>
-    <ArrowDownIcon className="size-4" />
-  </div>
-)
+const Flow = () => <div className="flex justify-center text-muted-foreground" aria-hidden><ArrowDownIcon className="size-4" /></div>
 
 export function PhaseDetail({ id, card, running, onEdit, onRunFrom, runBusy, editable }) {
   const ran = card.status !== "waiting" && card.status !== "skipped" && !!card.row
@@ -76,21 +72,18 @@ export function PhaseDetail({ id, card, running, onEdit, onRunFrom, runBusy, edi
       <header className={cn("flex min-w-0 flex-col gap-1 rounded-lg border px-3 py-2.5", t.card)}>
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
           <StatusDot status={card.status} />
-          <h2 className="min-w-0 text-lg break-words text-foreground">
-            <span className="font-mono text-sm text-muted-foreground">{card.n ? `${card.n}. ` : ""}</span>
-            {card.title}
-          </h2>
+          <h2 className="min-w-0 text-lg break-words text-foreground"><span className="font-mono text-sm text-muted-foreground">{card.n ? `${card.n}. ` : ""}</span>{card.title}</h2>
           <span className={cn("rounded border px-1.5 text-[11px]", t.card, t.text)}>{card.status}</span>
           <span className="ml-auto flex shrink-0 gap-1">
             {editable && card.step && (
-              <Button type="button" size="xs" variant="outline" className="h-7 gap-1 px-2 text-[11px] pointer-coarse:h-10" onClick={() => onEdit(card.id)} title="Edit this phase in the workflow file">
+              <MiniButton variant="outline" className="h-7 gap-1" onClick={() => onEdit(card.id)} title="Edit this phase in the workflow file">
                 <PencilLineIcon aria-hidden className="size-3" /> Edit
-              </Button>
+              </MiniButton>
             )}
             {!running && card.step && card.kind !== "code" && (
-              <Button type="button" size="xs" variant="outline" className="h-7 gap-1 px-2 text-[11px] pointer-coarse:h-10" disabled={runBusy} onClick={() => onRunFrom(card.id)} title="Run this phase again and every phase after it; the ones before keep today's output">
+              <MiniButton variant="outline" className="h-7 gap-1" disabled={runBusy} onClick={() => onRunFrom(card.id)} title="Run this phase again and every phase after it; the ones before keep today's output">
                 <PlayIcon aria-hidden className="size-3" /> Run from here
-              </Button>
+              </MiniButton>
             )}
           </span>
         </div>
@@ -107,9 +100,9 @@ export function PhaseDetail({ id, card, running, onEdit, onRunFrom, runBusy, edi
           {card.elapsed && <span className={t.text}>· {card.elapsed}</span>}
           {card.run && <span>· run {card.run}</span>}
         </p>
-        {card.edited && <p className="text-[11px] text-amber-700 dark:text-amber-400">The workflow file changed since this output — the next run uses the new wording.</p>}
-        {card.error && <p className="text-[11px] break-words text-red-700 dark:text-red-400">{card.error}</p>}
-        {detail.error && <p className="text-[11px] break-words text-red-700 dark:text-red-400">{detail.error}</p>}
+        {card.edited && <Small tone="warn">The workflow file changed since this output — the next run uses the new wording.</Small>}
+        {card.error && <Small tone="error">{card.error}</Small>}
+        {detail.error && <Small tone="error">{detail.error}</Small>}
       </header>
 
       <Inputs card={card} detail={d} last={pending ? last.value : null} />
@@ -132,29 +125,25 @@ function Inputs({ card, detail, last }) {
   if (card.kind === "code") {
     return (
       <Section icon={FileInputIcon} title="Input" note="the desk's records — a code step reads no prompt">
-        <p className="text-[11px] text-muted-foreground">It reads what the desk keeps (its state, memory, live data) when it runs.</p>
+        <Small>It reads what the desk keeps (its state, memory, live data) when it runs.</Small>
       </Section>
     )
   }
   const declared = [...card.reads.vars, ...card.reads.inputs]
   return (
     <Section icon={FileInputIcon} title="Input" note={vars ? `${vars.length} variables · ${from}` : declared.length ? `${declared.length} named in its text · filled when it runs` : "nothing named"}>
-      {unread?.length > 0 && <p className="text-[11px] break-words text-amber-700 dark:text-amber-300">did not read: {unread.join("; ")}</p>}
+      {unread?.length > 0 && <Small tone="warn" className="dark:text-amber-300">did not read: {unread.join("; ")}</Small>}
       {vars ? (
         <VarRows vars={vars} />
       ) : declared.length ? (
         <div className="flex min-w-0 flex-wrap gap-1">
-          {declared.map((v) => (
-            <Chip key={v.name} kind={FROM_TONE[v.kind] ?? "run"} title={v.from === "run" ? "a run variable" : `from ${v.from}`}>
-              {`{{${v.name}}}`}
-            </Chip>
-          ))}
+          {declared.map((v) => <Chip key={v.name} kind={FROM_TONE[v.kind] ?? "run"} title={v.from === "run" ? "a run variable" : `from ${v.from}`}>{`{{${v.name}}}`}</Chip>)}
         </div>
       ) : (
-        <p className="text-[11px] text-muted-foreground">Its text names no variables.</p>
+        <Small>Its text names no variables.</Small>
       )}
       <FlowLine flow={card.flow} />
-      {!vars && <p className="text-[11px] text-muted-foreground">{card.reads.board ? "It also reads the board: every earlier phase's whole report." : card.kind === "phase" || card.step?.own ? "No board: it reads only these." : ""}</p>}
+      {!vars && <Small>{card.reads.board ? "It also reads the board: every earlier phase's whole report." : card.kind === "phase" || card.step?.own ? "No board: it reads only these." : ""}</Small>}
     </Section>
   )
 }
@@ -165,11 +154,7 @@ function FlowLine({ flow }) {
   if (!flow || (!flow.in?.length && !flow.prompt && !flow.out)) return null
   return (
     <div data-flow className="flex min-w-0 flex-wrap items-center gap-1 font-mono text-[10px] text-muted-foreground">
-      {(flow.in ?? []).map((g) => (
-        <span key={g.kind} className="rounded border px-1.5" title={`from ${g.from.join(", ")}`}>
-          {g.label} {size(g.chars)}
-        </span>
-      ))}
+      {(flow.in ?? []).map((g) => <span key={g.kind} className="rounded border px-1.5" title={`from ${g.from.join(", ")}`}>{g.label} {size(g.chars)}</span>)}
       {flow.prompt && <span className="rounded border border-foreground/30 px-1.5">→ prompt {flow.prompt}</span>}
       {flow.out && (
         <span className="rounded border px-1.5">
@@ -193,17 +178,12 @@ function VarRows({ vars }) {
           <details className="min-w-0">
             <summary className="flex min-h-7 min-w-0 cursor-pointer list-none flex-wrap items-baseline gap-x-2 pointer-coarse:min-h-10 [&::-webkit-details-marker]:hidden">
               <span className="font-mono text-xs text-foreground/90">{r.name}</span>
-              <span className="text-[11px] text-muted-foreground">
-                {r.from && r.from !== r.name ? `from ${r.from}` : r.label} · {r.size}
-                {r.clipped ? " (clipped)" : ""}
-              </span>
+              <span className="text-[11px] text-muted-foreground">{r.from && r.from !== r.name ? `from ${r.from}` : r.label} · {r.size}{r.clipped ? " (clipped)" : ""}</span>
               <span className={cn("min-w-0 basis-full truncate text-[11px]", r.missing ? "text-amber-700 dark:text-amber-400" : "text-muted-foreground")}>{r.preview || (r.empty ? "(none)" : "")}</span>
             </summary>
             {r.text &&
               (r.markdown ? (
-                <div className="max-h-[50svh] min-w-0 overflow-auto py-1">
-                  <Markdown text={r.text} />
-                </div>
+                <div className="max-h-[50svh] min-w-0 overflow-auto py-1"><Markdown text={r.text} /></div>
               ) : (
                 <Pre text={r.text} className="my-1" />
               ))}
@@ -219,9 +199,7 @@ const STEP_MARK = { think: "thinks", gate: "refused", answer: "answers", guidanc
 
 // The agent's loop inside the phase, newest last: each call (✓ / ✕), thought, refusal and the answer as it comes.
 function AgentLoop({ name, live }) {
-  const { engines } = useEngines()
-  const engine = engines.find((e) => e.name === name) ?? null
-  const st = useEngineState(engine)
+  const { state: st } = useAgent(name)
   const { steps, hidden } = runSteps(st, { limit: live ? 10 : 6 })
   if (!steps.length) return null
   return (
@@ -245,12 +223,13 @@ function Work({ card, detail, last, file }) {
   return (
     <Section icon={WorkflowIcon} title="Work" note={[`${card.how.label}${card.how.detail ? ` ${card.how.detail}` : ""}`, stats].filter(Boolean).join(" · ")} accent={running ? "border-emerald-500/60" : undefined}>
       {card.kind === "code" ? (
-        <p className="text-[11px] text-muted-foreground">The desk&apos;s code {file?.code ? <code className="font-mono">{file.code}</code> : null} runs — no model call.</p>
+        <Small>The desk&apos;s code {file?.code ? <code className="font-mono">{file.code}</code> : null} runs — no model call.</Small>
       ) : (
         <>
           {card.agent && <StepAgent name={card.agent} refused={card.row?.refused ?? 0} />}
           {/* live only: once it settles, the same agent may already run a later phase (its thread is on its page) */}
           {card.agent && running && <AgentLoop name={card.agent} live />}
+          <ShadowLine shadow={card.row?.shadow} />
           {card.row?.chips?.length > 0 && (
             <div className="flex min-w-0 flex-wrap gap-1">
               {card.row.chips.map((c, i) =>
@@ -259,9 +238,7 @@ function Work({ card, detail, last, file }) {
                     {c.label}
                   </a>
                 ) : (
-                  <span key={i} title={c.title} className="max-w-[14rem] truncate rounded border border-dashed px-1.5 text-[11px] text-muted-foreground">
-                    ⌕ {c.label}
-                  </span>
+                  <span key={i} title={c.title} className="max-w-[14rem] truncate rounded border border-dashed px-1.5 text-[11px] text-muted-foreground">⌕ {c.label}</span>
                 ),
               )}
               {card.row.more > 0 && <span className="text-[11px] text-muted-foreground">+{card.row.more}</span>}
@@ -269,31 +246,23 @@ function Work({ card, detail, last, file }) {
           )}
           {/* 2026-10-23 audit: the step's own limits and the report format its file asks for (config twin) */}
           {(card.step?.min_calls != null || card.step?.max_steps != null || card.step?.status) && (
-            <p className="text-[11px] text-muted-foreground">
+            <Small>
               {[card.step.max_steps != null ? `≤ ${card.step.max_steps} steps` : null, card.step.min_calls != null ? `≥ ${card.step.min_calls} calls before it answers` : null, card.step.status ? `status ${card.step.status}` : null].filter(Boolean).join(" · ")}
-            </p>
+            </Small>
           )}
-          {card.step?.output && (
-            <details className="min-w-0">
-              <summary className="min-h-7 cursor-pointer text-[11px] text-muted-foreground pointer-coarse:min-h-10">The report&apos;s format (### Output)</summary>
-              <Pre text={card.step.output} />
-            </details>
-          )}
-          {!card.agent && running && <p className="text-[11px] text-emerald-700 dark:text-emerald-400">Working — {card.tools ? `${card.tools} reads so far` : "no reads yet"}.</p>}
-          {!running && card.status === "waiting" && <p className="text-[11px] text-muted-foreground">Not run yet{card.step?.after?.length ? ` — it starts when ${card.step.after.join(" and ")} ${card.step.after.length > 1 ? "settle" : "settles"}` : ""}.</p>}
-          <details className="min-w-0">
-            <summary className="min-h-7 cursor-pointer text-[11px] text-muted-foreground pointer-coarse:min-h-10">
-              {sent ? `The prompt as sent${detail?.prompt ? "" : ` in run ${last?.run ?? "before"}`} · ${sent.length.toLocaleString()} chars` : file?.body ? "The prompt's template (its {{variables}} are filled at the run)" : "No prompt yet"}
-            </summary>
+          {card.step?.output && <Fold title="The report's format (### Output)"><Pre text={card.step.output} /></Fold>}
+          {!card.agent && running && <Small className="text-emerald-700 dark:text-emerald-400">Working — {card.tools ? `${card.tools} reads so far` : "no reads yet"}.</Small>}
+          {!running && card.status === "waiting" && <Small>Not run yet{card.step?.after?.length ? ` — it starts when ${card.step.after.join(" and ")} ${card.step.after.length > 1 ? "settle" : "settles"}` : ""}.</Small>}
+          <Fold title={sent ? `The prompt as sent${detail?.prompt ? "" : ` in run ${last?.run ?? "before"}`} · ${sent.length.toLocaleString()} chars` : file?.body ? "The prompt's template (its {{variables}} are filled at the run)" : "No prompt yet"}>
             {(sent || file?.body) && <Pre text={sent ?? file.body} className="mt-1" />}
             {/* 2026-10-23 audit: the ```data block the step must end with (its schema's example) */}
             {file?.example && (
               <>
-                <p className="mt-1 text-[11px] text-muted-foreground">The data block it must end with:</p>
+                <Small className="mt-1">The data block it must end with:</Small>
                 <Pre text={typeof file.example === "string" ? file.example : JSON.stringify(file.example, null, 1)} className="mt-1" />
               </>
             )}
-          </details>
+          </Fold>
         </>
       )}
     </Section>
@@ -317,21 +286,21 @@ function Output({ card, detail, last, pending, compare, setCompare, busy }) {
       accent={card.status === "done" ? "border-sky-500/40" : card.status === "failed" ? "border-red-500/50" : undefined}
       action={
         canCompare && (
-          <Button type="button" size="xs" variant={compare ? "outline" : "ghost"} aria-pressed={compare} className="h-7 gap-1 px-2 text-[11px] pointer-coarse:h-10" onClick={() => setCompare((x) => !x)} title="This run's output beside the run before's">
+          <MiniButton variant={compare ? "outline" : "ghost"} aria-pressed={compare} className="h-7 gap-1" onClick={() => setCompare((x) => !x)} title="This run's output beside the run before's">
             <GitCompareIcon aria-hidden className="size-3" /> {compare ? "Comparing" : `Compare with ${card.last.run ?? "before"}`}
-          </Button>
+          </MiniButton>
         )
       }
     >
-      {gate && (gate.ok ? <p className="flex items-center gap-1 text-[11px] text-emerald-700 dark:text-emerald-400"><CheckIcon aria-hidden className="size-3" /> checked{gate.retried ? " (after a retry)" : ""}</p> : <Problems problems={d?.problems?.length ? d.problems : gate.problems} />)}
+      {gate && (gate.ok ? <Small className="flex items-center gap-1 text-emerald-700 dark:text-emerald-400"><CheckIcon aria-hidden className="size-3" /> checked{gate.retried ? " (after a retry)" : ""}</Small> : <Problems problems={d?.problems?.length ? d.problems : gate.problems} />)}
       {compare && canCompare ? (
         <Compare fields={fields} now={detail} before={last} lastEdited={card.lastEdited} />
       ) : d ? (
         <Answer d={d} fields={fields} dim={!!showLast} />
       ) : busy || last.busy ? (
-        <p className="text-[11px] text-muted-foreground">Reading…</p>
+        <Small>Reading…</Small>
       ) : (
-        <p className="text-[11px] text-muted-foreground">{card.status === "running" ? "It shows here when the phase ends." : card.status === "waiting" ? "Nothing yet." : "No output."}</p>
+        <Small>{card.status === "running" ? "It shows here when the phase ends." : card.status === "waiting" ? "Nothing yet." : "No output."}</Small>
       )}
     </Section>
   )
@@ -339,7 +308,7 @@ function Output({ card, detail, last, pending, compare, setCompare, busy }) {
 
 // One output: its report fields as rows (field → value), its ```data, then the whole answer.
 function Answer({ d, fields, dim }) {
-  if (d.kind === "code") return d.state ? <Pre text={d.state} /> : <p className="text-[11px] text-muted-foreground">No record.</p>
+  if (d.kind === "code") return d.state ? <Pre text={d.state} /> : <Small>No record.</Small>
   const report = d.report ?? {}
   const has = fields.filter((f) => report[f] != null)
   const missing = d.report ? fields.filter((f) => report[f] == null) : []
@@ -350,30 +319,20 @@ function Answer({ d, fields, dim }) {
           {has.map((f) => (
             <div key={f} className="min-w-0 border-l-2 border-sky-500/60 pl-2">
               <dt className="font-mono text-[11px] text-sky-700 dark:text-sky-300">{f}</dt>
-              <dd className="min-w-0 text-sm">
-                <Markdown text={report[f]} />
-              </dd>
+              <dd className="min-w-0 text-sm"><Markdown text={report[f]} /></dd>
             </div>
           ))}
         </dl>
       )}
-      {missing.length > 0 && d.text && <p className="text-[11px] text-amber-700 dark:text-amber-400">Not in the answer: {missing.join(", ")}</p>}
+      {missing.length > 0 && d.text && <Small tone="warn">Not in the answer: {missing.join(", ")}</Small>}
       {d.data && <DataRows data={d.data} />}
-      {d.code && (
-        <details className="min-w-0">
-          <summary className="min-h-7 cursor-pointer text-[11px] text-muted-foreground pointer-coarse:min-h-10">code results · {Object.keys(d.code).join(", ")}</summary>
-          <Pre text={JSON.stringify(d.code, null, 1)} />
-        </details>
-      )}
+      {d.code && <Fold title={`code results · ${Object.keys(d.code).join(", ")}`}><Pre text={JSON.stringify(d.code, null, 1)} /></Fold>}
       {d.text ? (
-        <details className="min-w-0" open={!has.length && !d.data}>
-          <summary className="min-h-7 cursor-pointer text-[11px] text-muted-foreground pointer-coarse:min-h-10">The whole answer · {d.text.length.toLocaleString()} chars</summary>
-          <div className="max-h-[60svh] min-w-0 overflow-auto pt-1">
-            <Markdown text={d.text} />
-          </div>
-        </details>
+        <Fold open={!has.length && !d.data} title={`The whole answer · ${d.text.length.toLocaleString()} chars`}>
+          <div className="max-h-[60svh] min-w-0 overflow-auto pt-1"><Markdown text={d.text} /></div>
+        </Fold>
       ) : (
-        !has.length && <p className="text-[11px] text-muted-foreground">No document.</p>
+        !has.length && <Small>No document.</Small>
       )}
       {d.file && <p className="font-mono text-[10px] break-all text-muted-foreground">{d.file}</p>}
     </div>
@@ -386,19 +345,10 @@ function Problems({ problems = [] }) {
   const head = problems.slice(0, 8)
   const rest = problems.slice(8)
   return (
-    <div className="min-w-0 text-[11px] break-words text-amber-700 dark:text-amber-400">
-      <ul className="flex min-w-0 flex-col gap-0.5">
-        {head.map((p, n) => <li key={n}>⚠ {p}</li>)}
-      </ul>
-      {rest.length > 0 && (
-        <details className="min-w-0">
-          <summary className="min-h-7 cursor-pointer text-muted-foreground pointer-coarse:min-h-10">+{rest.length} more problems</summary>
-          <ul className="flex min-w-0 flex-col gap-0.5">
-            {rest.map((p, n) => <li key={n}>⚠ {p}</li>)}
-          </ul>
-        </details>
-      )}
-    </div>
+    <Small as="div" tone="warn" className="min-w-0">
+      <ul className="flex min-w-0 flex-col gap-0.5">{head.map((p, n) => <li key={n}>⚠ {p}</li>)}</ul>
+      {rest.length > 0 && <Fold title={`+${rest.length} more problems`}><ul className="flex min-w-0 flex-col gap-0.5">{rest.map((p, n) => <li key={n}>⚠ {p}</li>)}</ul></Fold>}
+    </Small>
   )
 }
 
@@ -406,8 +356,7 @@ function Problems({ problems = [] }) {
 function DataRows({ data }) {
   const entries = Object.entries(data ?? {})
   return (
-    <details className="min-w-0" open>
-      <summary className="min-h-7 cursor-pointer text-[11px] text-muted-foreground pointer-coarse:min-h-10">data · {entries.length} fields</summary>
+    <Fold open title={`data · ${entries.length} fields`}>
       <dl className="grid min-w-0 grid-cols-[minmax(0,10rem)_minmax(0,1fr)] gap-x-2 gap-y-0.5 text-[11px]">
         {entries.map(([k, v]) => (
           <React.Fragment key={k}>
@@ -418,20 +367,20 @@ function DataRows({ data }) {
           </React.Fragment>
         ))}
       </dl>
-    </details>
+    </Fold>
   )
 }
 
 // This run's output beside the run before's: field by field (a changed one marked), else the two answers.
 function Compare({ fields, now, before, lastEdited }) {
-  if (before.busy && !before.value) return <p className="text-[11px] text-muted-foreground">Reading the run before…</p>
-  if (before.error) return <p className="text-[11px] break-words text-red-700 dark:text-red-400">{before.error}</p>
+  if (before.busy && !before.value) return <Small>Reading the run before…</Small>
+  if (before.error) return <Small tone="error">{before.error}</Small>
   const b = before.value
   if (!b || !now) return null
   const head = (
-    <p className="text-[11px] text-muted-foreground">
+    <Small>
       run {b.run ?? "before"} → this run{lastEdited ? " · the workflow file changed in between" : ""}
-    </p>
+    </Small>
   )
   if (fields.length) {
     const rows = compareFields(fields, now.report, b.report)
@@ -444,14 +393,8 @@ function Compare({ fields, now, before, lastEdited }) {
               {r.field} {r.same ? <span className="text-muted-foreground">· same</span> : <span className="text-amber-700 dark:text-amber-400">· changed</span>}
             </p>
             <div className="grid min-w-0 gap-2 md:grid-cols-2">
-              <div className="min-w-0 text-[11px] text-muted-foreground">
-                <p className="text-[10px] tracking-wide uppercase">before</p>
-                <Markdown text={r.before ?? "—"} />
-              </div>
-              <div className="min-w-0 text-sm">
-                <p className="text-[10px] tracking-wide text-muted-foreground uppercase">now</p>
-                <Markdown text={r.now ?? "—"} />
-              </div>
+              <div className="min-w-0 text-[11px] text-muted-foreground"><p className="text-[10px] tracking-wide uppercase">before</p><Markdown text={r.before ?? "—"} /></div>
+              <div className="min-w-0 text-sm"><p className="text-[10px] tracking-wide text-muted-foreground uppercase">now</p><Markdown text={r.now ?? "—"} /></div>
             </div>
           </div>
         ))}
@@ -462,12 +405,8 @@ function Compare({ fields, now, before, lastEdited }) {
     <div className="flex min-w-0 flex-col gap-2">
       {head}
       <div className="grid min-w-0 gap-2 md:grid-cols-2">
-        <div className="max-h-[50svh] min-w-0 overflow-auto rounded-md border px-2 py-1 text-muted-foreground">
-          <Markdown text={b.text ?? b.state ?? "—"} />
-        </div>
-        <div className="max-h-[50svh] min-w-0 overflow-auto rounded-md border px-2 py-1">
-          <Markdown text={now.text ?? now.state ?? "—"} />
-        </div>
+        <div className="max-h-[50svh] min-w-0 overflow-auto rounded-md border px-2 py-1 text-muted-foreground"><Markdown text={b.text ?? b.state ?? "—"} /></div>
+        <div className="max-h-[50svh] min-w-0 overflow-auto rounded-md border px-2 py-1"><Markdown text={now.text ?? now.state ?? "—"} /></div>
       </div>
     </div>
   )

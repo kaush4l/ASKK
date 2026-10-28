@@ -1,0 +1,30 @@
+{
+  "at": "2026-10-27T05:06:43.681Z",
+  "pages": [
+    {
+      "path": "/",
+      "status": 200,
+      "ms": 630
+    },
+    {
+      "path": "/live",
+      "status": 200,
+      "ms": 32
+    },
+    {
+      "path": "/compose",
+      "status": 200,
+      "ms": 31
+    },
+    {
+      "path": "/agents",
+      "status": 200,
+      "ms": 26
+    },
+    {
+      "path": "/canvas",
+      "status": 200,
+      "ms": 27
+    }
+  ]
+}

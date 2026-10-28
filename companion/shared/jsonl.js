@@ -14,7 +14,7 @@ export function parseJsonl(text) {
   })
 }
 
-// Every row of a file; [] when it does not exist.
+// Every row of a file; [] when it does not exist (desks read their own ledgers with it).
 export const readJsonl = (path) => (existsSync(path) ? parseJsonl(readFileSync(path, "utf8")) : [])
 
 // Append one row, creating the folder when `mkdir` (default) is set.

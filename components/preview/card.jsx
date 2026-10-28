@@ -18,11 +18,7 @@ import { cn } from "@/lib/utils"
 // over the whole viewport (EnlargedPage).
 export function PreviewCard({ artifact, state, expanded, fill = false }) {
   if (expanded) {
-    return (
-      <div className={cn("mt-1 flex min-h-0 flex-col overflow-hidden rounded-md border", fill ? "flex-1" : "h-[75svh] min-h-96")}>
-        <PreviewPane artifact={artifact ?? { state }} />
-      </div>
-    )
+    return <div className={cn("mt-1 flex min-h-0 flex-col overflow-hidden rounded-md border", fill ? "flex-1" : "h-[75svh] min-h-96")}><PreviewPane artifact={artifact ?? { state }} /></div>
   }
   return (
     <>
@@ -42,25 +38,13 @@ function PreviewThumb({ artifact, state }) {
   return (
     <div className="mt-1 flex min-w-0 flex-col gap-1 text-xs">
       <p className="flex min-w-0 items-baseline gap-1.5">
-        <span className="shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden>
-          ▶
-        </span>
+        <span className="shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden>▶</span>
         <span className="min-w-0 truncate text-foreground">{item.title}</span>
-        {items.length > 1 && (
-          <span className="ml-auto shrink-0 text-[11px] text-muted-foreground tabular-nums">
-            {items.findIndex((i) => i.key === item.key) + 1}/{items.length}
-          </span>
-        )}
+        {items.length > 1 && <span className="ml-auto shrink-0 text-[11px] text-muted-foreground tabular-nums">{items.findIndex((i) => i.key === item.key) + 1}/{items.length}</span>}
       </p>
-      <div className="max-h-40 min-w-0 overflow-hidden">
-        <Small item={item} state={state} artifacts={desk?.artifacts} artifact={artifact} />
-      </div>
+      <div className="max-h-40 min-w-0 overflow-hidden"><Small item={item} state={state} artifacts={desk?.artifacts} artifact={artifact} /></div>
       {item.entry?.says && <p className="line-clamp-2 break-words text-muted-foreground">{item.entry.says}</p>}
-      {open > 0 && (
-        <p className="text-amber-700 dark:text-amber-400">
-          {open} question{open === 1 ? "" : "s"} open
-        </p>
-      )}
+      {open > 0 && <p className="text-amber-700 dark:text-amber-400">{open} question{open === 1 ? "" : "s"} open</p>}
     </div>
   )
 }
@@ -91,9 +75,7 @@ function SmallPage({ page: p, view, artifact }) {
     <div className="flex min-w-0 flex-col gap-1">
       <p className="flex min-w-0 items-center gap-1.5">
         <span className={cn("shrink-0", p.status === "open" ? "text-emerald-500" : "text-muted-foreground")}>●</span>
-        <span className="min-w-0 truncate font-mono" title={p.url}>
-          {p.url}
-        </span>
+        <span className="min-w-0 truncate font-mono" title={p.url}>{p.url}</span>
         {errors > 0 && <span className="ml-auto shrink-0 text-[11px] text-red-500">{errors} error{errors === 1 ? "" : "s"}</span>}
         {p.url && <EnlargeButton onClick={() => setEnlarged(true)} className={cn("h-6 text-[11px]", errors > 0 ? "" : "ml-auto")} />}
       </p>

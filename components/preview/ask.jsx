@@ -7,8 +7,9 @@ import { describeActivity } from "@/backend/live/activity"
 import { askable, askPreview, askThread, contextLine, onKey, onLine } from "@/backend/live/preview"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { useEngines, useEngineState } from "@/hooks/use-engines"
+import { Small, useBusy } from "@/components/views/kit"
 import { cn } from "@/lib/utils"
+import { useAgent } from "@/hooks/use-engines"
 
 // The owner's side of the one preview pane (2026-10-17 owner: "I can ask follow up questions and agent can update
 // visuals and answer me as well"): the questions asked about what is in the pane — the open ones, and the last answers
@@ -31,10 +32,7 @@ export function PreviewQuestions({ state, onShow }) {
         return (
           <div key={a.id} className="flex min-w-0 flex-col gap-1 text-sm">
             <p className="break-words">
-              <span className="text-[11px] text-muted-foreground">
-                {a.id} · you{a.on ? ` on ${onLine(a.on)}` : ""}
-                {a.context ? ` (${contextLine(a.context)})` : ""}
-              </span>
+              <span className="text-[11px] text-muted-foreground">{a.id} · you{a.on ? ` on ${onLine(a.on)}` : ""}{a.context ? ` (${contextLine(a.context)})` : ""}</span>
               <br />
               {a.text}
             </p>
@@ -48,9 +46,7 @@ export function PreviewQuestions({ state, onShow }) {
                 title={`Show ${onLine(a.answer.on)}`}
               >
                 <span className="whitespace-pre-wrap break-words">{a.answer.text}</span>
-                <span className="text-[11px] text-muted-foreground">
-                  {a.answer.by ? `${a.answer.by} · ` : ""}show {onLine(a.answer.on)}
-                </span>
+                <span className="text-[11px] text-muted-foreground">{a.answer.by ? `${a.answer.by} · ` : ""}show {onLine(a.answer.on)}</span>
               </button>
             ) : (
               <div className="rounded-md border px-2 py-1.5">
@@ -68,13 +64,11 @@ export function PreviewQuestions({ state, onShow }) {
 // The ask box: about the item in the pane (`item`: {kind, id, title}), with what the owner pointed at as a chip.
 export function PreviewAsk({ artifact, item, pointed, onClearPoint }) {
   const state = artifact?.state
-  const { engines } = useEngines()
   const keeperName = artifact?.holders?.[0] ?? null
-  const keeper = engines.find((e) => e.name === keeperName) ?? null
-  const keeperState = useEngineState(keeper)
+  const { engine: keeper, state: keeperState } = useAgent(keeperName)
   const [text, setText] = React.useState("")
   const [note, setNote] = React.useState(null)
-  const [busy, setBusy] = React.useState(false)
+  const { busy, error, run } = useBusy()
   const box = React.useRef(null)
   const id = React.useId()
   React.useEffect(() => {
@@ -87,25 +81,20 @@ export function PreviewAsk({ artifact, item, pointed, onClearPoint }) {
   const running = keeperState?.status === "running"
 
   if (!askable(state)) {
-    return <p className="text-[11px] text-muted-foreground">This desk&apos;s preview takes questions once the desk server restarts on the new preview.</p>
+    return <Small>This desk&apos;s preview takes questions once the desk server restarts on the new preview.</Small>
   }
 
   async function submit(event) {
     event.preventDefault()
     if (!content || busy || !artifact?.id) return
-    setBusy(true)
     setNote(null)
-    try {
+    await run(async () => {
       const r = await askPreview(artifact.id, { text: content, on: item ? { kind: item.kind, id: item.id } : null, context: pointed?.context ?? null })
       setText("")
       onClearPoint()
       const name = r?.keeper ?? who
       setNote(r?.delivered === "guided" ? `${r?.ask?.id ?? "Asked"}: ${name} reads it at its next step and answers here.` : `${r?.ask?.id ?? "Asked"}: ${name} starts on it and answers here.`)
-    } catch (error) {
-      setNote(`Not sent: ${error.message}`)
-    } finally {
-      setBusy(false)
-    }
+    })
   }
 
   return (
@@ -135,15 +124,9 @@ export function PreviewAsk({ artifact, item, pointed, onClearPoint }) {
           placeholder={item?.kind === "page" ? "What changed on this page?" : "Why does this step take longest?"}
           className="min-h-10 text-base md:text-sm"
         />
-        <Button type="submit" size="icon" className={cn("shrink-0 pointer-coarse:size-10")} aria-label="Ask about what is in the preview" disabled={!content || busy}>
-          <SendIcon />
-        </Button>
+        <Button type="submit" size="icon" className={cn("shrink-0 pointer-coarse:size-10")} aria-label="Ask about what is in the preview" disabled={!content || busy}><SendIcon /></Button>
       </div>
-      {note && (
-        <p className="text-[11px] text-muted-foreground" aria-live="polite">
-          {note}
-        </p>
-      )}
+      {(error || note) && <Small aria-live="polite">{error ? `Not sent: ${error}` : note}</Small>}
     </form>
   )
 }

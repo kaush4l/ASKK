@@ -113,6 +113,20 @@ describe("Workflow artifact", () => {
     expect(wf.state.status).toBe("failed")
   })
 
+  test("a model's usage limit fails the step at once: no retries burned on it (2026-10-26)", async () => {
+    const limited = new Error("claude: You've hit your session limit · resets 10:10am (America/New_York)")
+    const host = scriptHost({ read: [limited], card: ["DECISION PASS"] })
+    const wf = new Workflow({ steps: steps(), host, clock: () => at, settings: { critical: ["read"], retries: 2 }, ...plugins() })
+    await wf.run({})
+    expect(host.calls.filter((c) => c.id === "read")).toHaveLength(1)
+    expect(wf.state.stages.find((r) => r.id === "read")).toMatchObject({ status: "failed" })
+    expect(wf.state.stages.find((r) => r.id === "read").error).toContain("session limit")
+    // any other error still gets its retries
+    const host2 = scriptHost({ read: [new Error("socket hang up")], card: ["DECISION PASS"] })
+    await new Workflow({ steps: steps(), host: host2, clock: () => at, settings: { critical: ["read"], retries: 2 }, ...plugins() }).run({})
+    expect(host2.calls.filter((c) => c.id === "read")).toHaveLength(3)
+  })
+
   test("re-run from a step reuses today's earlier outputs and re-runs code steps", async () => {
     const host = scriptHost({ read: [data({ score: 1 })], card: ["DECISION PASS"] })
     let codeRuns = 0

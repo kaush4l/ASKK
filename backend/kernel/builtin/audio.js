@@ -1,5 +1,5 @@
 import { Artifact } from "../artifact/artifact.js"
-import { Tool } from "../tool/tool.js"
+import { clip, oneLine } from "../util/text.js"
 
 // Audio (2026-10-24 owner: "I want an audio generation pipeline such that, even the lead is able to use TTS model to
 // create audio files. So the audio transcription can be a tool as well … It can be a story, talk, class, explanation or
@@ -9,18 +9,9 @@ import { Tool } from "../tool/tool.js"
 // companion/capabilities/audiogen.js; the models in models/tts and models/stt, each run as a command per call). Id
 // `audio`, view and kind `audio`, keep `always`, poll 3 s (a job's progress while a tab is on the stream).
 //
-//   audio.models     {}                       the text-to-speech and speech-to-text models: in use, installed, voices,
-//                                             options, and each tts model's SCRIPT FORMAT — how to write for it
-//   audio.prepare    {model, kind?}           get a catalogue model onto this Mac (added, installed; weights on first use)
-//   audio.make       {text | file, title, model?, voice?, speed?, options?}   a script → an audio file (queued) → its id;
-//                                             file: a workspace path to read the script from
-//   audio.wait       {ids?, seconds?}         until they are done (default: yours still running)
-//   audio.transcribe {id | path, model?}      an audio file → its text; for an id, how much of its script was heard
-//   audio.send       {id, chapter?, caption?} the file (or one chapter) to the owner's personal Telegram chat
-//   audio.styles     {}                       the voice styles: how each is voiced and how to WRITE it (its guide)
-//   audio.style      {name, model?, voice?, speed?, options?, writing?, why}   a style set from the owner's feedback
-//   audio.samples    {text, styles?, title?}  the same passage in each style, one chapter each, sent for the owner to
-//                                             compare and give feedback on (the styles are then set from it)
+// Commands (the table below has their inputs): models, prepare, make (a script or a workspace file → a queued audio id),
+// wait, transcribe (for an id, how much of its script was heard), send (the file or one chapter to the owner's Telegram),
+// styles, style (set from the owner's feedback), samples (one passage in each style, sent to compare).
 //
 // Long pieces (2026-10-24 owner: "something that can be long as well … the background story, the prelude story and the
 // narrative story. With expressiveness"): a script holds [chapter: title] and [style: name] lines, each alone on its line;
@@ -36,15 +27,23 @@ import { Tool } from "../tool/tool.js"
 const JOBS = 30
 const TRANSCRIPTS = 12
 const LIVE = new Set(["queued", "running"])
-const clip = (s, n) => (String(s ?? "").length > n ? `${String(s).slice(0, n - 1)}…` : String(s ?? ""))
-const oneLine = (s) => String(s ?? "").replace(/\s+/g, " ").trim()
 // a number however it is written — "eighteen fifty-seven" in a script, "1857" in a transcript — is one token "#"
 const NUMBER = /^(\d[\d,.]*(st|nd|rd|th|s)?|zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|billion|point|and)$/
+// A word: letters and digits of any script — built at run time, since an engine without Unicode property escapes
+// (StarlingMonkey in a WebAssembly component, docs/portability.md §5) rejects the literal while parsing the module;
+// there it falls back to Latin letters, digits and every non-ASCII letter range.
+const WORD = (() => {
+  try {
+    return new RegExp("[\\p{L}\\p{N}']+", "gu")
+  } catch {
+    return /[A-Za-z0-9À-ɏͰ-῿Ⰰ-￯']+/g
+  }
+})()
 const words = (s) => {
   const raw = String(s ?? "")
     .toLowerCase()
     .replace(/\[\[[^\]]*\]\]/g, " ")
-    .match(/[\p{L}\p{N}']+/gu) ?? []
+    .match(WORD) ?? []
   const out = []
   for (const w of raw) {
     // "and" counts as part of a number only between number words ("one hundred and five")
@@ -84,22 +83,35 @@ function optionsOf(raw) {
 }
 
 export class Audio extends Artifact {
+  static about = "scripts voiced on this Mac's speech models, files transcribed back, sent to the owner's Telegram"
+  static commands = {
+    models: { description: "the speech models: in use, installed, voices, options, and how to write a script for each (its SCRIPT FORMAT)", input: {} },
+    prepare: { description: "get a catalogue speech model onto this Mac: added and installed (its weights download on first use)", input: { model: "its name (audio.models lists the catalogue)", kind: "tts or stt (default: found from the name)" } },
+    make: { description: "make an audio file from a script — [chapter: title] and [style: name] lines make a long, multi-voice piece that streams out chapter by chapter; unstyled text uses the model given, in its SCRIPT FORMAT", input: { text: "the script, as it should be spoken", file: "or a workspace path holding the script (a long one)", title: "what it is (names the file and the Telegram posts)", model: "a tts model for unstyled text (default: the one in use)", voice: "one of its voices", speed: "0.5–2", options: "that model's options for unstyled text, e.g. exaggeration: 0.8", style: "the style for text before any [style:] line", send: "true: each chapter to the owner's Telegram chat as soon as it is made" } },
+    wait: { description: "wait until audio files are made", input: { ids: "audio ids, comma-separated (default: yours still running)", seconds: "at most (default 900)" } },
+    transcribe: { description: "an audio file to text on the speech-to-text model; for a file made here, how much of its script was heard", input: { id: "an audio id made here", chapter: "one chapter of it (a number)", path: "or a workspace audio file (wav, m4a, mp3 …)", model: "an stt model (default: the one in use)" } },
+    send: { description: "send a finished audio file, or one chapter of it, to the owner's personal Telegram chat", input: { id: "the audio id", chapter: "one chapter (a number; default the whole)", caption: "a line about it (default: its title and length)" } },
+    styles: { description: "the voice styles: how each is voiced and its WRITING guide — read it before writing a styled script", input: {} },
+    style: { description: "set a voice style from the owner's feedback (their words in why)", input: { name: "the style", model: "a tts model", voice: "one of its voices", speed: "0.5–2", options: "its options, e.g. exaggeration: 0.9", about: "what it is", use: "when to use it", writing: "its writing guide, whole (replaces it)", why: "the owner's feedback, in their words" } },
+    samples: { description: "the same short passage voiced in each style (a chapter each), sent to the owner to compare — then audio.style from their feedback", input: { text: "two to four sentences", styles: "style names, comma-separated (default: all)", title: "what they are samples of", send: "default true" } },
+  }
+  static owner = {
+    async make(a, from) { return { result: await this.make({ ...a, title: a.title || clip(oneLine(a.text), 60) }, { by: from }) } },
+    async send(a) { return { result: await this.send({ id: a.audio, chapter: a.chapter }, {}) } },
+    async transcribe(a) { return { result: await this.transcribe({ id: a.audio, path: a.path }, {}) } },
+    async stop(a) { const j = this.#job(a.audio); const r = await this.#hostOf({}).post("audio/stop", { id: j.id }); await this.refresh(null); return { audio: j.id, status: r.job?.status } },
+    async delete(a) { const j = this.#job(a.audio); const r = await this.#hostOf({}).post("audio/delete", { id: j.id }); this.bump({ jobs: this.state.jobs.filter((x) => x.id !== j.id) }); await this.refresh(null); return { deleted: r.deleted } },
+  }
+  static ownerCan = "make, send, transcribe, stop or delete"
   constructor({ id = "audio", title, clock = () => new Date(), waitMs = 2000 } = {}) {
     super({ name: id, title: title ?? (id === "audio" ? "audio — scripts made into audio files, files transcribed" : `${id} — audio`) })
-    this.kind = "audio"
-    this.view = "audio"
-    this.keep = "always"
+    Object.assign(this, { kind: "audio", view: "audio", keep: "always" })
     this.poll = 3000
-    this.clock = clock
-    this.waitMs = waitMs
+    Object.assign(this, { clock, waitMs })
     this.host = null // a holder's host (the owner's calls have no agent)
     this.state = { jobs: [], tts: null, stt: null, models: { tts: [], stt: [] }, catalog: { tts: [], stt: [] }, styles: [], transcripts: [], revision: 0 }
   }
 
-  #set(patch) {
-    this.state = { ...this.state, ...patch, revision: this.state.revision + 1 }
-    this.changed()
-  }
   #hostOf(ctx) {
     const host = ctx?.host ?? ctx?.agent?.context?.host ?? this.host
     if (!host?.post) throw new Error("no audio host here: start the desk server on a Mac (capability audio)")
@@ -146,7 +158,7 @@ export class Audio extends Artifact {
       catalog: read.catalog ?? { tts: [], stt: [] },
       styles: (read.styles ?? []).map((st) => ({ name: st.name, title: st.title, about: st.about ?? "", use: st.use ?? "", model: st.model ?? null, voice: st.voice ?? null, speed: st.speed ?? null, options: st.options ?? {}, writing: st.writing ?? "", changes: st.changes ?? [], ok: st.ok !== false, problem: st.problem ?? null })),
     }
-    if (JSON.stringify(next) !== JSON.stringify({ jobs: this.state.jobs, tts: this.state.tts, stt: this.state.stt, models: this.state.models, catalog: this.state.catalog, styles: this.state.styles })) this.#set(next)
+    if (JSON.stringify(next) !== JSON.stringify({ jobs: this.state.jobs, tts: this.state.tts, stt: this.state.stt, models: this.state.models, catalog: this.state.catalog, styles: this.state.styles })) this.bump(next)
   }
 
   // ---- the agents ----
@@ -231,7 +243,7 @@ export class Audio extends Artifact {
       match = heardShare(text, heard.text)
     }
     const t = { of: id ?? path, chapter, text: clip(heard.text, 4000), model: heard.model, seconds: heard.seconds ?? null, match, by: ctx.agent?.name ?? "owner", at: this.clock().toISOString() }
-    this.#set({ transcripts: [t, ...this.state.transcripts].slice(0, TRANSCRIPTS) })
+    this.bump({ transcripts: [t, ...this.state.transcripts].slice(0, TRANSCRIPTS) })
     await this.refresh(ctx.agent ?? null)
     const verdict = match == null ? "" : `\nHEARD ${Math.round(match * 100)}% of the script's words, in order${match < 0.9 ? " — below 90%: find what it skipped or misread (numbers, names, symbols), write those as spoken, and make it again" : ""}`
     return `${heard.model}, ${Math.round(heard.seconds ?? 0)} s:\n${clip(heard.text, 6000)}${verdict}`
@@ -287,40 +299,6 @@ export class Audio extends Artifact {
   gate(agent) {
     const mine = this.state.jobs.filter((j) => LIVE.has(j.status) && j.by === agent?.name)
     return mine.length ? `${mine.length} of your audio files are still being made (${mine.map((j) => j.id).join(", ")}): ${this.name}.wait, transcribe, send` : null
-  }
-
-  // ---- the owner ----
-
-  async ownerCall(method, args = [], from = "owner") {
-    const a = args[0] ?? {}
-    if (method === "make") return { result: await this.make({ ...a, title: a.title || clip(oneLine(a.text), 60) }, { by: from }) }
-    if (method === "send") return { result: await this.send({ id: a.audio, chapter: a.chapter }, {}) }
-    if (method === "transcribe") return { result: await this.transcribe({ id: a.audio, path: a.path }, {}) }
-    if (method === "stop" || method === "delete") {
-      const j = this.#job(a.audio)
-      const r = await this.#hostOf({}).post(`audio/${method}`, { id: j.id })
-      if (method === "delete") this.#set({ jobs: this.state.jobs.filter((x) => x.id !== j.id) })
-      await this.refresh(null)
-      return method === "delete" ? { deleted: r.deleted } : { audio: j.id, status: r.job?.status }
-    }
-    throw new Error(`${this.name}: the owner can make, send, transcribe, stop or delete (not ${method})`)
-  }
-
-  // ---- the kernel ----
-
-  commands() {
-    const tool = (name, description, input, run) => new Tool({ name: `${this.name}.${name}`, type: "dev", view: "audio", description, input, run })
-    return [
-      tool("models", "the speech models: in use, installed, voices, options, and how to write a script for each (its SCRIPT FORMAT)", {}, () => this.models()),
-      tool("prepare", "get a catalogue speech model onto this Mac: added and installed (its weights download on first use)", { model: "its name (audio.models lists the catalogue)", kind: "tts or stt (default: found from the name)" }, (i, c) => this.prepare(i, c)),
-      tool("make", "make an audio file from a script — [chapter: title] and [style: name] lines make a long, multi-voice piece that streams out chapter by chapter; unstyled text uses the model given, in its SCRIPT FORMAT", { text: "the script, as it should be spoken", file: "or a workspace path holding the script (a long one)", title: "what it is (names the file and the Telegram posts)", model: "a tts model for unstyled text (default: the one in use)", voice: "one of its voices", speed: "0.5–2", options: "that model's options for unstyled text, e.g. exaggeration: 0.8", style: "the style for text before any [style:] line", send: "true: each chapter to the owner's Telegram chat as soon as it is made" }, (i, c) => this.make(i, c)),
-      tool("wait", "wait until audio files are made", { ids: "audio ids, comma-separated (default: yours still running)", seconds: "at most (default 900)" }, (i, c) => this.wait(i, c)),
-      tool("transcribe", "an audio file to text on the speech-to-text model; for a file made here, how much of its script was heard", { id: "an audio id made here", chapter: "one chapter of it (a number)", path: "or a workspace audio file (wav, m4a, mp3 …)", model: "an stt model (default: the one in use)" }, (i, c) => this.transcribe(i, c)),
-      tool("send", "send a finished audio file, or one chapter of it, to the owner's personal Telegram chat", { id: "the audio id", chapter: "one chapter (a number; default the whole)", caption: "a line about it (default: its title and length)" }, (i, c) => this.send(i, c)),
-      tool("styles", "the voice styles: how each is voiced and its WRITING guide — read it before writing a styled script", {}, () => this.styles()),
-      tool("style", "set a voice style from the owner's feedback (their words in why)", { name: "the style", model: "a tts model", voice: "one of its voices", speed: "0.5–2", options: "its options, e.g. exaggeration: 0.9", about: "what it is", use: "when to use it", writing: "its writing guide, whole (replaces it)", why: "the owner's feedback, in their words" }, (i, c) => this.style(i, c)),
-      tool("samples", "the same short passage voiced in each style (a chapter each), sent to the owner to compare — then audio.style from their feedback", { text: "two to four sentences", styles: "style names, comma-separated (default: all)", title: "what they are samples of", send: "default true" }, (i, c) => this.samples(i, c)),
-    ]
   }
 
   brief() {

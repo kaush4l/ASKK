@@ -43,7 +43,7 @@ export function GuideBox({ engine, state }) {
   }
   function queue() {
     if (!content) return
-    engine.send(content)
+    engine.send(content, { via: "typed" })
     setNote(running ? `Queued for ${engine.name}: it runs after the current run.` : `Sent to ${engine.name}.`)
     setText("")
   }

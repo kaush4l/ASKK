@@ -11,6 +11,7 @@ import { AgentView } from "@/backend/live/agent"
 import { kernelDesk } from "@/backend/live/desk"
 import { detectHost, hasCapability, resetHost } from "@/backend/live/host"
 import { deskLog } from "@/backend/live/log"
+import { signal } from "@/backend/live/signal"
 import { connectTeam } from "@/backend/live/stream"
 
 // What the server rendered (no desk yet). Hydration reads it, never the live state: a view inside a Suspense boundary
@@ -21,30 +22,33 @@ const INITIAL = Object.freeze({
   error: null,
   connected: false, // the stream is open (it reconnects on its own)
   agents: [], // definitions, lead first
-  engines: [], // AgentView per agent (named engines for the views that predate the kernel)
+  engines: [], // AgentView per agent, the lead first (named engines for the views that predate the kernel)
+  byName: new Map(), // the engines by agent name
   requiredId: null, // the lead
   activeId: null, // the agent selected in this tab
 })
 
 export class Registry {
-  #listeners = new Set()
-  #state = INITIAL
-
-  getSnapshot = () => this.#state
-  getServerSnapshot = () => INITIAL
+  state = signal(INITIAL, INITIAL)
+  // signal-shaped, so a view's subscription (useValue) also starts it
+  get = this.state.get
+  server = this.state.server
+  getSnapshot = this.get
 
   // A view that subscribes starts the registry (start is a no-op once started). 2026-10-17: a hot reload re-creates this
   // module while the views stay mounted — their mount effect never runs again, and the new registry sat idle
   // ("Connecting to the desk…") until a manual reload; React subscribes again to the new instance, so it starts here.
   subscribe = (listener) => {
-    this.#listeners.add(listener)
     queueMicrotask(() => this.start())
-    return () => this.#listeners.delete(listener)
+    return this.state.subscribe(listener)
+  }
+
+  get #state() {
+    return this.state.get()
   }
 
   #set(patch) {
-    this.#state = { ...this.#state, ...patch }
-    for (const listener of this.#listeners) listener()
+    this.state.set({ ...this.#state, ...patch })
   }
 
   async start() {
@@ -75,21 +79,23 @@ export class Registry {
 
   #mirror(registry, states = null) {
     const known = new Map(this.#state.engines.map((e) => [e.id, e]))
+    const lead = registry.requiredId
     const engines = registry.engines.map(({ id, name, agent }) => {
       const engine = known.get(id) ?? new AgentView({ id, name, agent })
       engine.describe(agent)
       if (states?.[id]) engine.apply(states[id], true)
       return engine
-    })
+    }).sort((a, b) => (a.id === lead ? -1 : b.id === lead ? 1 : 0))
     for (const [id, engine] of known) if (!engines.some((e) => e.id === id)) engine.dispose()
-    const activeId = engines.some((e) => e.id === this.#state.activeId) ? this.#state.activeId : registry.requiredId
+    const activeId = engines.some((e) => e.id === this.#state.activeId) ? this.#state.activeId : lead
     this.#set({
       status: registry.status === "error" ? "error" : "ready",
       error: registry.error ?? null,
       connected: true,
-      agents: registry.agents,
+      agents: engines.map((e) => e.agent), // registry-once: the stream sends each definition once, in engines[].agent
       requiredId: registry.requiredId,
       engines,
+      byName: new Map(engines.map((e) => [e.name, e])),
       activeId,
     })
   }
@@ -100,8 +106,7 @@ export class Registry {
     const { stopBrowserDesk } = await import("@/backend/browser/start")
     await stopBrowserDesk() // the old team ends before a new one restores from the same store
     for (const e of this.#state.engines) e.dispose()
-    this.#state = INITIAL
-    for (const listener of this.#listeners) listener()
+    this.state.set(INITIAL)
     return this.start()
   }
 
@@ -110,7 +115,7 @@ export class Registry {
   }
 
   byName(name) {
-    return this.#state.engines.find((e) => e.name === name) ?? null
+    return this.#state.byName.get(name) ?? null
   }
 }
 

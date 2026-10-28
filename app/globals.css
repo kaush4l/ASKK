@@ -129,6 +129,20 @@
     font-synthesis-weight: none;
   }
 }
+/* Glass (Apple's Liquid Glass on the web): the material of chrome that floats over content — toolbars, an inspector,
+   a legend, a floating button. What is behind shows through, blurred and saturated, under a light rim, so the content
+   stays the subject and the chrome reads as a layer above it. Never on content itself (cards, rows, the page): there
+   OLED black and borders stay. Opaque when the system asks for less transparency. */
+@utility glass {
+  background-color: color-mix(in oklch, var(--background) 62%, transparent);
+  backdrop-filter: blur(18px) saturate(1.6);
+  border-color: color-mix(in oklch, var(--foreground) 14%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in oklch, white 18%, transparent), 0 10px 30px -14px oklch(0 0 0 / 0.5);
+  @media (prefers-reduced-transparency: reduce) {
+    background-color: var(--background);
+    backdrop-filter: none;
+  }
+}
 /* Status text that doesn't fit its bubble scrolls (two copies, shift by one). */
 @theme {
   --animate-marquee: marquee 6s linear infinite;

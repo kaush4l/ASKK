@@ -96,5 +96,15 @@ describe("preview visual geometry", () => {
     expect(hitStroke(true, 0.5, 9)).toBe(71) // a label drawn at half size: (9 + 71) × 0.5 = 40 px
     expect(hitStroke(true, 2, 50)).toBe(0) // already big enough
   })
+
+  test("2026-10-27 matrixRange: no frames, null frames or a malformed range never throw; the empty range is safe", () => {
+    expect(matrixRange({})).toEqual([0, 1])
+    expect(matrixRange({ frames: [] })).toEqual([0, 1])
+    expect(matrixRange({ diverging: true })).toEqual([-1, 1])
+    expect(matrixRange({ frames: [null, { values: [[2, 4]] }, {}] })).toEqual([2, 4])
+    expect(matrixRange({ range: [0], frames: [{ values: [[1, 3]] }] })).toEqual([1, 3])
+    expect(matrixRange({ range: ["a", 2], frames: [] })).toEqual([0, 1])
+    expect(matrixRange({ range: [0, NaN], frames: [{ values: [[-2, 1]] }], diverging: true })).toEqual([-2, 2])
+  })
 })
 

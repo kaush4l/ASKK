@@ -14,8 +14,8 @@ const quest = (ask) => ({ requirement: "a kit test", ask, outcome: "one line" })
 
 describe("BUILTIN", () => {
   test("the catalogue: tools and artifact types by name, each a factory of desk options", () => {
-    expect(Object.keys(BUILTIN.tools)).toEqual(["web.search", "web.read", "agent.spawn", "agent.dismiss", "agent.catalog", "agent.update", "desk.list", "desk.create", "desk.check", "desk.load", "desk.ask", "desk.read", "desk.propose"]) // 2026-10-20: catalog, update and the desk tools
-    expect(Object.keys(BUILTIN.artifacts)).toEqual(["files", "terminal", "preview", "plan", "dispatch", "browse", "talk", "studio", "audio", "workflow", "practice"]) // 2026-10-22: workflow; 2026-10-20: practice; 2026-10-17: no stage — the preview is the one pane; 2026-10-18: no charts (a dashboard is a page in it), browse and talk added
+    expect(Object.keys(BUILTIN.tools)).toEqual(["web.search", "web.read", "speech.say", "agent.spawn", "agent.dismiss", "agent.catalog", "agent.update", "desk.list", "desk.create", "desk.check", "desk.load", "desk.ask", "desk.read", "desk.propose"]) // 2026-10-20: catalog, update and the desk tools
+    expect(Object.keys(BUILTIN.artifacts)).toEqual(["files", "terminal", "preview", "plan", "dispatch", "browse", "talk", "ask", "goal", "dev", "studio", "surgeon", "audio", "workflow", "practice"]) // 2026-10-26: surgeon; 2026-10-25: dev; 2026-10-24: goal; 2026-10-22: workflow; 2026-10-20: practice; 2026-10-17: no stage — the preview is the one pane; 2026-10-18: no charts (a dashboard is a page in it), browse and talk added
     const kit = builtinKit({ clock })
     for (const t of Object.values(kit.tools)) expect(t).toBeInstanceOf(Tool)
     expect(kit.tools["web.search"]).toMatchObject({ name: "web.search", type: "function", view: "web" })
@@ -48,7 +48,7 @@ describe("BUILTIN", () => {
     expect(all.get("plan").holders).toEqual(["lead", "coder"])
     expect(all.get("notes")).toMatchObject({ holders: ["coder"] })
     expect(all.get("notes").artifact).not.toBe(all.get("files").artifact)
-    expect([...desk.agents().get("coder").tools.keys()].filter((k) => k.startsWith("notes."))).toEqual(["notes.list", "notes.read", "notes.write", "notes.edit", "notes.append", "notes.search", "notes.focus"])
+    expect([...desk.agents().get("coder").tools.keys()].filter((k) => k.startsWith("notes."))).toEqual(["notes.list", "notes.open", "notes.close", "notes.read", "notes.write", "notes.edit", "notes.append", "notes.search", "notes.focus"])
     // The plan gates only the holder that asked for it.
     expect(desk.lead.gates("done").join()).toContain("no plan yet — ask the planner to write plan")
     expect(desk.agents().get("coder").gates("done").join()).not.toContain("plan")
@@ -68,7 +68,7 @@ describe("BUILTIN", () => {
     const desk = buildDesk({ name: "coder", writes: ["projects/**"], artifacts: ["files", "terminal", "preview", "plan"] }, { infer: scripted({}), artifacts: kit.artifacts, context: { host } })
     const coder = desk.lead
     const run = (tool, input) => coder.tools.get(tool).run(input, { ...coder.context, agent: coder })
-    await run("files.read", { path: "projects/x/train.py" })
+    await run("files.open", { paths: "projects/x/train.py" })
     await run("files.edit", { path: "projects/x/train.py", old: "a = 1", new: "a = 2" })
     await run("files.focus", { path: "projects" })
     await run("terminal.run", { command: "uv run train.py" })
@@ -80,8 +80,8 @@ describe("BUILTIN", () => {
     expect(files).toMatchObject({ kind: "files", view: "files", keep: "always", holders: ["coder"] })
     expect(keys(files.state)).toEqual(["root", "tree", "truncated", "open", "modified", "focus", "unreadable"])
     expect(keys(files.state.tree[0])).toEqual(["path", "size", "mtime", "dir"])
-    expect(keys(files.state.open[0])).toEqual(["path", "by", "at"])
-    expect(keys(files.state.modified[0])).toEqual(["path", "by", "at", "op", "added", "removed", "diff"])
+    expect(keys(files.state.open[0])).toEqual(["path", "by", "at", "lines"])
+    expect(keys(files.state.modified[0])).toEqual(["path", "by", "at", "op", "added", "removed", "diff", "why", "notes"])
     expect(keys(files.state.focus)).toEqual(["path", "by", "at"])
     expect(files.state).toMatchObject({ root: "projects", truncated: false, focus: { path: "projects", by: "coder" }, open: [{ path: "projects/x/train.py", by: "coder" }] })
     const terminal = twin.terminal
@@ -90,7 +90,7 @@ describe("BUILTIN", () => {
     expect(keys(terminal.state.sessions[0])).toEqual(["id", "name", "command", "cwd", "agent", "slot", "lease", "runs", "status", "exit", "startedAt", "endedAt", "urls", "tail"])
     const preview = twin.preview
     expect(preview).toMatchObject({ kind: "preview", view: "preview", keep: "always" })
-    expect(keys(preview.state)).toEqual(["pages", "visuals", "current", "trail", "asks", "revision"])
+    expect(keys(preview.state)).toEqual(["pages", "visuals", "current", "trail", "asks", "recordings", "revision"])
     expect(preview.state.current).toMatchObject({ kind: "page", id: preview.state.pages[0].id })
     expect(keys(preview.state.pages[0])).toEqual(["id", "url", "title", "status", "by", "at", "shot", "console", "errors"])
     expect(keys(preview.state.pages[0].shot)).toEqual(["n", "at", "width", "height", "url"])

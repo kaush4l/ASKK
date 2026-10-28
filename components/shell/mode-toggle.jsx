@@ -12,6 +12,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 
+const THEMES = [["light", SunIcon, "Light"], ["dark", MoonIcon, "Dark"], ["system", MonitorIcon, "System"]]
+
 export function ModeToggle() {
   const { theme, setTheme } = useTheme()
 
@@ -25,15 +27,11 @@ export function ModeToggle() {
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuRadioGroup value={theme} onValueChange={setTheme}>
-          <DropdownMenuRadioItem value="light">
-            <SunIcon /> Light
-          </DropdownMenuRadioItem>
-          <DropdownMenuRadioItem value="dark">
-            <MoonIcon /> Dark
-          </DropdownMenuRadioItem>
-          <DropdownMenuRadioItem value="system">
-            <MonitorIcon /> System
-          </DropdownMenuRadioItem>
+          {THEMES.map(([value, Icon, label]) => (
+            <DropdownMenuRadioItem key={value} value={value}>
+              <Icon /> {label}
+            </DropdownMenuRadioItem>
+          ))}
         </DropdownMenuRadioGroup>
       </DropdownMenuContent>
     </DropdownMenu>

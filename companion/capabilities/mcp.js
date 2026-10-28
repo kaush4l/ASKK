@@ -32,6 +32,7 @@ import { dirname, resolve } from "node:path"
 import { expandEnv, oauthHeaders } from "./oauth-file.js"
 import { HttpError, httpError } from "../shared/http.js"
 import { HOST_LIMITS } from "../shared/config.js"
+import { streamLines } from "../shared/lines.js"
 
 const PROTOCOL = "2025-06-18"
 const TIMEOUT = HOST_LIMITS.mcp.requestTimeoutMs // ms per request (tools/call: 5 min)
@@ -58,23 +59,16 @@ function stdioTransport({ command, args = [], env = {}, cwd }, base) {
   let stderr = ""
   let closed = null
   ;(async () => {
-    const decoder = new TextDecoder()
-    let buffer = ""
-    for await (const chunk of proc.stdout) {
-      buffer += decoder.decode(chunk, { stream: true })
-      let newline
-      while ((newline = buffer.indexOf("\n")) !== -1) {
-        const line = buffer.slice(0, newline).trim()
-        buffer = buffer.slice(newline + 1)
-        if (!line) continue
-        let message
-        try {
-          message = JSON.parse(line)
-        } catch {
-          continue // a log line on stdout; not a message
-        }
-        handler(message)
+    for await (const raw of streamLines(proc.stdout)) {
+      const line = raw.trim()
+      if (!line) continue
+      let message
+      try {
+        message = JSON.parse(line)
+      } catch {
+        continue // a log line on stdout; not a message
       }
+      handler(message)
     }
   })().catch(() => {})
   ;(async () => {

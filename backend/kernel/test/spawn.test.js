@@ -56,11 +56,11 @@ describe("Desk.spawn through agent.spawn", () => {
     const lead = desk.lead
     const counter = desk.agents().get("counter")
     // The spawn tool's answer, then the quest went to the helper and came back with its report.
-    expect(prompts.lead[1]).toContain("agent.spawn → spawned counter — quest it with counter {requirement, ask, outcome} (stays until agent.dismiss)")
+    expect(prompts.lead[1]).toMatch(/agent\.spawn \{name: counter[^\n]*\} → spawned counter — quest it with counter \{requirement, ask, outcome\} \(stays until agent\.dismiss\)/)
     expect(prompts.lead[1]).toContain("- counter {requirement, ask, outcome} — counter: count the corpus") // in # TOOLS at the next step
     expect(prompts.counter[0]).toContain("# REQUEST (from lead)\nREQUIREMENT: the corpus is data/tiny.txt")
     expect(prompts.counter[0].startsWith("You work on the lab desk.")).toBe(true) // the caller's soul
-    expect(prompts.lead[2]).toContain("counter → 1200")
+    expect(prompts.lead[2]).toMatch(/counter \{requirement: [^\n]*\} → 1200/)
     // Taps added before it existed heard its run, and the desk's own spawn event.
     expect(heard).toContain("counter:spawn")
     expect(heard).toEqual(expect.arrayContaining(["counter:start", "counter:step", "counter:answer"]))
@@ -358,10 +358,10 @@ describe("kept helpers from a run that read the web", () => {
     const events = []
     desk.on((e) => ["spawn", "dismiss", "keep"].includes(e.event) && events.push(e))
     expect(await desk.ask("read and keep")).toBe("done")
-    expect(prompts.lead[2]).toContain(`agent.spawn → spawned mailer — quest it with mailer {requirement, ask, outcome} ${HELD}`)
+    expect(prompts.lead[2]).toContain(`→ spawned mailer — quest it with mailer {requirement, ask, outcome} ${HELD}`)
     // the catalog names that it waits, never more
     expect(prompts.lead[3]).toContain("- mailer (keep run; keep desk waits for the owner) — idle · goal: mail it")
-    expect(prompts.coder[1]).toContain(`agent.spawn → spawned keeper — quest it with keeper {requirement, ask, outcome} ${HELD}`)
+    expect(prompts.coder[1]).toContain(`agent.spawn {name: keeper, role: Keeps., goal: keep, keep: desk} → spawned keeper — quest it with keeper {requirement, ask, outcome} ${HELD}`)
     const spawns = events.filter((e) => e.event === "spawn")
     expect(spawns.map((e) => [e.agent, e.keep, e.proposed?.keep, e.proposed?.from, e.proposed?.by])).toEqual([
       ["mailer", "run", "desk", "web.read", "lead"],

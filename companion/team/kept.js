@@ -14,13 +14,12 @@
 //   writeKept(agent, folder, agents)           keptText written atomically (<name>.md; an existing agent.md is kept one)
 //   archiveKept(folder, memory, name, now)     the folder → memory/<desk>/archive/agents/<YYYY-MM-DD>-<name>[-n]/
 
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs"
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync } from "node:fs"
 import { basename, join, relative, resolve, sep } from "node:path"
 
 import { SPAWN_NAME } from "../../backend/kernel/index.js"
-import { AGENT_FILE_NAMES, agentFile } from "./layout.js"
+import { AGENT_FILE_NAMES, agentFile, FRONT, writeAtomic } from "./layout.js"
 
-const FRONT = /^---\n([\s\S]*?)\n---\n?/
 // p is root or below it (the standard's agent tree is the lead's folder itself: the lead keeps helpers inside it).
 const within = (root, p) => {
   const rel = relative(resolve(root), resolve(p))
@@ -164,13 +163,9 @@ export function readKept(folders = [], log = () => {}) {
 }
 
 export function writeKept(agent, folder, agents) {
-  mkdirSync(folder, { recursive: true })
   const legacy = join(folder, "agent.md")
   const own = join(folder, `${basename(folder)}.md`)
-  const file = existsSync(legacy) && !existsSync(own) ? legacy : own
-  const tmp = `${file}.${process.pid}.tmp`
-  writeFileSync(tmp, keptText(agent, agents))
-  renameSync(tmp, file)
+  writeAtomic(existsSync(legacy) && !existsSync(own) ? legacy : own, keptText(agent, agents))
 }
 
 export function archiveKept(folder, memory, name, now = new Date()) {

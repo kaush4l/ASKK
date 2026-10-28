@@ -14,12 +14,14 @@ import {
   fullPath,
   hasWorkbench,
   mergeSessions,
+  nameParts,
   noteOutput,
   paneIds,
   pickWorkbench,
   sessionLabel,
   sessionTabs,
   shotSrc,
+  tabNames,
   treeRows,
   twinTree,
   workbenchTabs,
@@ -96,6 +98,38 @@ test("tabs: the owner's pinned files join; a dismissed tab stays closed until it
   expect(tabs.map((t) => t.path)).toEqual(["projects/llm/runs/1/log.txt", "projects/llm/train.py", "projects/llm/notes.md"])
   expect(tabs[0].pinned).toBe(true)
   expect(workbenchTabs({ files, max: 1 }).length).toBe(1)
+})
+
+// 2026-10-26, critic l20: the work/dev/parked copy of waiting.js showed as a second tab also named "waiting.js".
+test("tabs: same-named files are told apart by their folder; one path is one tab; a unique name stays plain", () => {
+  const live = "projects/powerhouse/backend/live/waiting.js"
+  const parked = "work/dev/parked/backend/live/waiting.js"
+  const twin = {
+    state: {
+      open: [{ path: live, by: "dev", at: "2026-10-26T02:00:00Z" }, { path: "projects/powerhouse/backend/live/preview.js", by: "coder", at: "2026-10-26T02:01:00Z" }],
+      modified: [
+        { path: live, by: "dev", at: "2026-10-26T02:02:00Z", op: "create" },
+        { path: parked, by: "dev", at: "2026-10-26T02:03:00Z", op: "create" },
+      ],
+    },
+  }
+  const tabs = workbenchTabs({ files: twin })
+  const waiting = tabs.filter((t) => t.path.endsWith("/waiting.js"))
+  expect(waiting.length).toBe(2)
+  expect(waiting.every((t) => t.name.startsWith("waiting.js"))).toBe(true)
+  expect(new Set(waiting.map((t) => t.name)).size).toBe(2)
+  expect(Object.fromEntries(waiting.map((t) => [t.path, t.name]))).toEqual({ [live]: "waiting.js · powerhouse", [parked]: "waiting.js · parked" })
+  expect(tabs.find((t) => t.path.endsWith("/preview.js")).name).toBe("preview.js")
+  // the same path opened and modified: one tab, its plain name
+  const one = workbenchTabs({ files: { state: { open: twin.state.open.slice(0, 1), modified: twin.state.modified.slice(0, 1) } } })
+  expect(one.map((t) => t.name)).toEqual(["waiting.js"])
+  // the twin dismissed: the label is plain again
+  expect(workbenchTabs({ files: twin, dismissed: new Map([[parked, Date.parse("2026-10-26T03:00:00Z")]]) }).find((t) => t.path === live).name).toBe("waiting.js")
+  // differ only further up, or three of a name: the shortest suffix that tells them apart
+  const names = tabNames(["a/x/live/w.js", "b/x/live/w.js", "a/y/live/w.js"])
+  expect([...names.values()]).toEqual(["w.js · a/x", "w.js · b/x", "w.js · y"])
+  // a file at the root: the nearest folder already differs, the root one reads "/"
+  expect([...tabNames(["a/live/w.js", "w.js"]).values()]).toEqual(["w.js · live", "w.js · /"])
 })
 
 test("follow: the newest tab; the session with the newest output; the newest shot", () => {
@@ -276,6 +310,26 @@ test("tree rows: folders first, open where a marked file is, the owner's toggles
   // dot-folders and folders the host did not expand start closed
   const quiet = treeRows([{ path: "p/.git", dir: true, skipped: true }, { path: "p/.cache/x", dir: false }, { path: "p/src/a.py", dir: false }], { root: "p" })
   expect(quiet.map((r) => r.name)).toEqual([".cache", ".git", "src", "a.py"])
+})
+
+// 2026-10-26, l27: four "2026-10-22-bun-*" rows all read "2026-10-22-bun…"; l44: a fixed tail made the notes rows alike.
+test("tree names: a long name keeps its tail", () => {
+  expect(nameParts("a.py")).toEqual({ head: "a.py", tail: "" })
+  const long = "2026-10-22-bun-1.4-highlights-notes.md"
+  const p = nameParts(long, [long, "2026-10-22-bun-yaml-notes.md", "2026-10-22-brief.md"])
+  expect(p.tail.endsWith("notes.md")).toBe(true)
+  expect(p.head + p.tail).toBe(long)
+  expect(p).toEqual({ head: "2026-10-22-bun-", tail: "1.4-highlights-notes.md" })
+  // the live notes rows: the tail starts on the word that tells them apart, not on the date they share
+  const notes = ["bun-1.4-highlights-2026-10-22.md", "bun-image-2026-10-22.md", "bun-markdown-2026-10-22.md", "bun-yaml-2026-10-22.md"]
+  expect(notes.map((n) => nameParts(n, notes).tail)).toEqual(["1.4-highlights-2026-10-22.md", "image-2026-10-22.md", "markdown-2026-10-22.md", "yaml-2026-10-22.md"])
+  // a long name no sibling shares the start of stays whole
+  expect(nameParts("releases-2026-10-20.md", notes)).toEqual({ head: "releases-2026-10-20.md", tail: "" })
+  // treeRows gives each row its parts, split against its siblings
+  const rows = treeRows(notes.map((n) => ({ path: `w/notes/${n}`, dir: false })), { root: "w" })
+  expect(rows.find((r) => r.name === "bun-image-2026-10-22.md")).toMatchObject({ head: "bun-", tail: "image-2026-10-22.md" })
+  expect(new Set(rows.filter((r) => !r.dir).map((r) => r.tail)).size).toBe(4)
+  expect(rows.every((r) => r.head + r.tail === r.name)).toBe(true)
 })
 
 test("a file's lines for the editor, capped", async () => {

@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { existsSync, mkdtempSync, realpathSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { allowedUrl, browserRoutes, createBrowser, sameDocument } from "./browser.js"
+import { agentView, allowedUrl, browserRoutes, createBrowser, enterView, sameDocument } from "./browser.js"
 
 const state = realpathSync(mkdtempSync(join(tmpdir(), "browser-test-")))
 let desk // the desk server: never shown
@@ -192,4 +192,52 @@ test("sameDocument: hash, reload or a real navigation", () => {
   expect(sameDocument("http://127.0.0.1:8090/model.html", "http://127.0.0.1:8090/model.html?fresh=1#L3")).toBeNull()
   expect(sameDocument("http://127.0.0.1:8090/a", "http://127.0.0.1:8091/a#x")).toBeNull()
   expect(sameDocument("", "http://127.0.0.1:8090/a#x")).toBeNull()
+})
+
+// 2026-10-25: a desk with browser: {app: true} sees this app itself — through view/enter, marked, writes refused.
+describe("an agent's view of this app", () => {
+  let self
+  let viewer
+  const seen = []
+  beforeAll(() => {
+    self = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      async fetch(req) {
+        const url = new URL(req.url)
+        if (url.pathname === "/__askk/view/enter") return enterView(url)
+        if (url.pathname === "/__askk/write") {
+          seen.push({ method: req.method, agent: agentView(req) })
+          return agentView(req) && req.method !== "GET" ? Response.json({ error: "refused" }, { status: 403 }) : Response.json({ ok: true })
+        }
+        return new Response(`<title>App</title><h1 id="out">idle</h1><button id="w" onclick="fetch('/__askk/write', {method: 'POST'}).then((r) => { document.querySelector('#out').textContent = 'status ' + r.status })">Write</button>`, { headers: { "content-type": "text/html" } })
+      },
+    })
+    viewer = createBrowser({ state, blockedPorts: () => [self.port, desk.port], appPorts: () => [self.port] })
+  })
+  afterAll(() => {
+    viewer?.closeAll()
+    self?.stop(true)
+  })
+
+  test("the app's port opens marked: a read passes, its own script's POST carries the mark and is refused, eval is refused", async () => {
+    const { page } = await viewer.open({ url: `http://127.0.0.1:${self.port}/` })
+    expect(page).toMatchObject({ status: "open", app: true, url: `http://127.0.0.1:${self.port}/` })
+    await viewer.click({ id: page.id, selector: "#w" })
+    await Bun.sleep(300)
+    expect((await viewer.text({ id: page.id })).text).toContain("status 403")
+    expect(seen.at(-1)).toEqual({ method: "POST", agent: true })
+    expect(viewer.evaluate({ id: page.id, expression: "1" })).rejects.toThrow(/agent's view of this app: no eval/)
+    // closed: its token is gone — a request with it is no agent's any more
+    viewer.close({ id: page.id })
+    expect(agentView(new Request("http://x/", { headers: { cookie: "askk_view=nope" } }))).toBe(false)
+  })
+
+  test("without appPorts the port stays refused; enter with an unknown token is refused; a recording keeps its shots", async () => {
+    expect(browser.open({ url: `http://127.0.0.1:${desk.port}/` })).rejects.toThrow(/desk server's own/)
+    expect(enterView(new URL(`http://127.0.0.1:${self.port}/__askk/view/enter?t=forged&to=/`)).status).toBe(403)
+    const { page } = await viewer.open({ url: `http://127.0.0.1:${self.port}/` })
+    expect(viewer.record({ id: page.id, on: true }).page.recording).toBe(true)
+    expect(viewer.record({ id: page.id, on: false }).page.recording).toBeUndefined()
+  })
 })

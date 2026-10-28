@@ -33,11 +33,13 @@
 // Files: <state>/audio/<id>.wav and .m4a (the whole), <id>-c<n>.wav and .m4a (a chapter, when there are several),
 // <id>.txt (the script), index.json (≤ KEEP jobs; a job running or queued when the server stopped comes back interrupted).
 
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { joinWavs } from "../hardware/speech/index.js"
 import { API_PREFIX } from "../shared/config.js"
-import { httpError } from "../shared/http.js"
+import { forward, httpError } from "../shared/http.js"
+import { loadJobIndex, saveJobIndex } from "../shared/job-index.js"
+import { unlink } from "../shared/safe.js"
 
 const KEEP = 100
 const ID = /^aud-[a-z0-9]+-\d+$/
@@ -102,19 +104,7 @@ export async function createAudiogen({ state, speech, files = null, integrations
   const dir = join(state, "audio")
   mkdirSync(dir, { recursive: true })
   const index = join(dir, "index.json")
-  let jobs = []
-  try {
-    jobs = existsSync(index) ? JSON.parse(readFileSync(index, "utf8")) : []
-    if (!Array.isArray(jobs)) throw new Error("not a list")
-  } catch (error) {
-    const aside = `${index}.unreadable-${Date.now()}`
-    renameSync(index, aside)
-    log(`audio: ${index} unreadable (${error.message}) — moved to ${aside}`)
-    jobs = []
-  }
-  let woke = 0
-  jobs = jobs.map((j) => (["running", "queued"].includes(j.status) ? (woke++, { ...j, status: "interrupted", error: "the desk server stopped while it waited or ran" }) : j))
-  if (woke) log(`audio: ${woke} job${woke === 1 ? "" : "s"} interrupted by the last stop`)
+  let jobs = loadJobIndex(index, "audio", log)
   let seq = jobs.length
   const boot = Date.now().toString(36)
   let current = null
@@ -122,16 +112,9 @@ export async function createAudiogen({ state, speech, files = null, integrations
   let closed = false
 
   const path = (id, ext, chapter = null) => join(dir, `${id}${chapter ? `-c${chapter}` : ""}.${ext}`)
-  const save = () => {
-    try {
-      writeFileSync(`${index}.tmp`, JSON.stringify(jobs.slice(0, KEEP)))
-      renameSync(`${index}.tmp`, index)
-    } catch (error) {
-      log(`audio: index not saved: ${error.message}`)
-    }
-  }
+  const save = () => saveJobIndex(index, jobs.slice(0, KEEP), "audio", log)
   const drop = (id) => {
-    for (const f of readdirSync(dir)) if (f.startsWith(`${id}.`) || f.startsWith(`${id}-`)) Bun.file(join(dir, f)).delete().catch(() => {})
+    for (const f of readdirSync(dir)) if (f.startsWith(`${id}.`) || f.startsWith(`${id}-`)) unlink(join(dir, f))
   }
   const trim = (list) => {
     for (const j of list.slice(KEEP)) drop(j.id)
@@ -160,7 +143,7 @@ export async function createAudiogen({ state, speech, files = null, integrations
     const fixed = file.replace(/\.wav$/, "-r.wav")
     await resample(file, fixed)
     const bytes = await Bun.file(fixed).arrayBuffer()
-    Bun.file(fixed).delete().catch(() => {})
+    unlink(fixed)
     return bytes
   }
 
@@ -183,7 +166,7 @@ export async function createAudiogen({ state, speech, files = null, integrations
         patch(job.id, (j) => ({ parts: { ...j.parts, done: j.parts.done + 1 } }))
       }
     } finally {
-      for (const f of temp) Bun.file(f).delete().catch(() => {})
+      for (const f of temp) unlink(f)
     }
     return joinWavs(pieces, GAP.segment)
   }
@@ -305,6 +288,10 @@ export async function createAudiogen({ state, speech, files = null, integrations
     if (!c) throw httpError(404, `${j.id} has no chapter ${n} (${(j.chapters ?? []).map((x) => x.n).join(", ")})`)
     return c
   }
+  // the job (or its chapter) must be done
+  const madeAudio = (j, c) => {
+    if ((c ?? j).status !== "done") throw httpError(400, `${j.id}${c ? ` chapter ${c.n}` : ""} is ${(c ?? j).status}, not audio yet`)
+  }
   // a chapter's own file when the job has several, else the whole
   const audioPath = (j, c, ext) => (c && (j.chapters?.length ?? 0) > 1 ? path(j.id, ext, c.n) : path(j.id, ext))
 
@@ -315,8 +302,7 @@ export async function createAudiogen({ state, speech, files = null, integrations
     if (body.id) {
       job = find(body.id)
       ch = chapterOf(job, body.chapter)
-      const ready = ch ? ch.status === "done" : job.status === "done"
-      if (!ready) throw httpError(400, `${job.id}${ch ? ` chapter ${ch.n}` : ""} is ${ch?.status ?? job.status}, not audio yet`)
+      madeAudio(job, ch)
       file = existsSync(audioPath(job, ch, "m4a")) ? audioPath(job, ch, "m4a") : audioPath(job, ch, "wav")
     } else if (body.path) {
       if (!files?.realPath) throw httpError(501, "no workspace here")
@@ -334,8 +320,7 @@ export async function createAudiogen({ state, speech, files = null, integrations
   async function send(body = {}) {
     const j = find(body.id)
     const ch = chapterOf(j, body.chapter)
-    const ready = ch ? ch.status === "done" : j.status === "done"
-    if (!ready) throw httpError(400, `${j.id}${ch ? ` chapter ${ch.n}` : ""} is ${ch?.status ?? j.status}, not audio yet`)
+    madeAudio(j, ch)
     const b = bot()
     if (!b?.send) throw httpError(501, "no Telegram bot that sends audio here (integrations/telegram, TELEGRAM_BOT_TOKEN)")
     const to = body.to === "group" ? "group" : "owner"
@@ -493,13 +478,5 @@ export const audioRoutes = (audio) => ({
     "audio/script": (params) => audio.script(params.get("id"), params.get("chapter")),
     "audio/styles": () => audio.styles(),
   },
-  POST: {
-    "audio/make": (body) => audio.make(body),
-    "audio/prepare": (body) => audio.prepare(body),
-    "audio/style": (body) => audio.setStyle(body),
-    "audio/transcribe": (body) => audio.transcribe(body),
-    "audio/send": (body) => audio.send(body),
-    "audio/stop": (body) => audio.stop(body),
-    "audio/delete": (body) => audio.remove(body),
-  },
+  POST: forward("audio", audio, { make: "make", prepare: "prepare", style: "setStyle", transcribe: "transcribe", send: "send", stop: "stop", delete: "remove" }),
 })

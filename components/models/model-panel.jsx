@@ -5,6 +5,7 @@ import { DownloadIcon, PlayIcon, PlusIcon, RotateCcwIcon } from "lucide-react"
 
 import { KIND_LABEL, choiceLabel, loadModels, modelCall, optionRows, statusOf } from "@/backend/live/models"
 import { Button } from "@/components/ui/button"
+import { CallNote, Options, useOwnerCall, usePoll } from "@/components/views/kit"
 import { cn } from "@/lib/utils"
 
 // The model panel (2026-10-23 owner: "In the panel I want the ability to choose the model, their parameters can be
@@ -32,41 +33,29 @@ function Option({ row, onSet, busy }) {
         <input id={id} type="checkbox" checked={!!row.value} disabled={busy} onChange={(e) => set(e.target.checked)} className="size-5 accent-foreground" />
       ) : row.type === "choice" ? (
         <select id={id} value={String(row.value ?? "")} disabled={busy} onChange={(e) => set(e.target.value)} className={input}>
-          {row.choices.map((c) => (
-            <option key={String(c)} value={String(c)}>
-              {choiceLabel(c)}
-            </option>
-          ))}
+          <Options items={row.choices.map((c) => ({ value: String(c), label: choiceLabel(c) }))} />
         </select>
-      ) : row.type === "number" ? (
-        <NumberField id={id} row={row} busy={busy} onCommit={set} />
       ) : (
-        <TextField id={id} row={row} busy={busy} onCommit={set} />
+        <CommitField id={id} row={row} busy={busy} onCommit={set} number={row.type === "number"} />
       )}
       {row.about && <span className="text-[11px] text-muted-foreground">{row.about}</span>}
     </div>
   )
 }
 
-// a field saved when it is left or Enter is pressed — never per keystroke (each save rewrites the md file)
-function NumberField({ id, row, busy, onCommit }) {
+// a field saved when it is left or Enter is pressed — never per keystroke (each save rewrites the md file); a number
+// field commits a number (empty: null)
+function CommitField({ id, row, busy, onCommit, number }) {
   const [v, setV] = React.useState(String(row.value ?? ""))
   React.useEffect(() => setV(String(row.value ?? "")), [row.value])
-  const commit = () => v !== String(row.value ?? "") && onCommit(v === "" ? null : Number(v))
-  return <input id={id} type="number" inputMode="decimal" min={row.min} max={row.max} step={row.step ?? "any"} value={v} disabled={busy} onChange={(e) => setV(e.target.value)} onBlur={commit} onKeyDown={(e) => e.key === "Enter" && commit()} className={cn(input, "w-28")} />
-}
-function TextField({ id, row, busy, onCommit }) {
-  const [v, setV] = React.useState(String(row.value ?? ""))
-  React.useEffect(() => setV(String(row.value ?? "")), [row.value])
-  const commit = () => v !== String(row.value ?? "") && onCommit(v)
-  return <input id={id} value={v} disabled={busy} onChange={(e) => setV(e.target.value)} onBlur={commit} onKeyDown={(e) => e.key === "Enter" && commit()} className={input} />
+  const commit = () => v !== String(row.value ?? "") && onCommit(!number ? v : v === "" ? null : Number(v))
+  const kind = number ? { type: "number", inputMode: "decimal", min: row.min, max: row.max, step: row.step ?? "any" } : {}
+  return <input id={id} {...kind} value={v} disabled={busy} onChange={(e) => setV(e.target.value)} onBlur={commit} onKeyDown={(e) => e.key === "Enter" && commit()} className={number ? cn(input, "w-28") : input} />
 }
 
 export function ModelPanel({ kind, onChange }) {
   const [data, setData] = React.useState(null)
   const [error, setError] = React.useState(null)
-  const [note, setNote] = React.useState(null)
-  const [busy, setBusy] = React.useState(false)
   const refresh = React.useCallback(async () => {
     try {
       setData(await loadModels())
@@ -81,25 +70,15 @@ export function ModelPanel({ kind, onChange }) {
   const k = data?.kinds?.[kind]
   const installing = k?.models.some((m) => m.installing)
   // an install runs in the background: look again until it ends
-  React.useEffect(() => {
-    if (!installing) return
-    const t = setInterval(refresh, 4000)
-    return () => clearInterval(t)
-  }, [installing, refresh])
-  const act = async (action, body, said) => {
-    setBusy(true)
-    setNote(null)
-    try {
-      const r = await modelCall(action, { kind, ...body })
-      setNote({ ok: true, text: typeof said === "function" ? said(r) : said })
-      await refresh()
-      onChange?.()
-    } catch (e) {
-      setNote({ ok: false, text: e.message })
-    } finally {
-      setBusy(false)
-    }
-  }
+  usePoll(refresh, 4000, installing)
+  // the call, then the list again; `said` words what it did (text, or from the host's answer)
+  const { busy, note, call } = useOwnerCall(async (k, action, { body, said }) => {
+    const r = await modelCall(action, { kind: k, ...body })
+    await refresh()
+    onChange?.()
+    return typeof said === "function" ? said(r) : said
+  }, kind, (text) => text)
+  const act = (action, body, said) => call(action, { body, said })
   if (error) return <p className="text-xs text-destructive">Models not read: {error}</p>
   if (!k) return <p className="text-xs text-muted-foreground">Reading the models…</p>
   const model = k.models.find((m) => m.name === k.selected) ?? null
@@ -164,7 +143,7 @@ export function ModelPanel({ kind, onChange }) {
           </ul>
         </details>
       )}
-      {note && <p className={cn("text-xs", note.ok ? "text-muted-foreground" : "text-destructive")}>{note.text}</p>}
+      <CallNote note={note} />
     </div>
   )
 }

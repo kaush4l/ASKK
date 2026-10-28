@@ -16,6 +16,8 @@ import { PreviewPane } from "@/components/live/workbench/preview-pane"
 import { TerminalPane } from "@/components/live/workbench/terminal-pane"
 import { Button } from "@/components/ui/button"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup, useResizableLayout } from "@/components/ui/resizable"
+import { useLiveStore } from "@/hooks/use-live-store"
+import { useMediaQuery } from "@/hooks/use-media-query"
 import { LIMITS } from "@/lib/config"
 import { cn } from "@/lib/utils"
 
@@ -28,51 +30,18 @@ import { cn } from "@/lib/utils"
 // of the owner's pauses it.
 
 const PANE = { overflow: "hidden" } // a pane scrolls inside itself, never its panel
-const noSubscribe = () => () => {}
-const noSnapshot = () => null
-const WINDOWS = [
-  { id: "files", label: "Files" },
-  { id: "editor", label: "Editor" },
-  { id: "preview", label: "Preview" },
-  { id: "terminal", label: "Terminal" },
-  { id: "feed", label: "Feed" },
-]
+const WINDOWS = ["Files", "Editor", "Preview", "Terminal", "Feed"].map((label) => ({ id: label.toLowerCase(), label }))
 
 // md and up: panels; below: windows. null until known (the first client render), so a phone never opens the desktop
 // panes' streams.
-function useWide() {
-  const query = `(min-width: ${LIMITS.ui.mobileBreakpointPx}px)`
-  return React.useSyncExternalStore(
-    (fn) => {
-      const mql = window.matchMedia(query)
-      mql.addEventListener("change", fn)
-      return () => mql.removeEventListener("change", fn)
-    },
-    () => window.matchMedia(query).matches,
-    () => null
-  )
-}
+const useWide = () => useMediaQuery(`(min-width: ${LIMITS.ui.mobileBreakpointPx}px)`, null)
 
 // The files root's disk tree, live while fs/watch is open (backend/live/fs-watch.js).
-function useLiveTree(root, enabled) {
-  const tree = React.useMemo(() => (enabled ? new LiveTree(root) : null), [root, enabled])
-  React.useEffect(() => {
-    tree?.start()
-    return () => tree?.close()
-  }, [tree])
-  return React.useSyncExternalStore(tree?.subscribe ?? noSubscribe, tree?.getSnapshot ?? noSnapshot, noSnapshot)
-}
+const useLiveTree = (root, enabled) => useLiveStore(() => (enabled ? new LiveTree(root) : null), [root, enabled])
 
 // Every session's last lines from term/list (backend/live/term-stream.js TermActivity), so the Terminal pane and its
 // follow see sessions and output the terminal twin has not caught up with; null without a terminal artifact.
-function useTermActivity(enabled) {
-  const act = React.useMemo(() => (enabled ? new TermActivity() : null), [enabled])
-  React.useEffect(() => {
-    act?.start()
-    return () => act?.close()
-  }, [act])
-  return React.useSyncExternalStore(act?.subscribe ?? noSubscribe, act?.getSnapshot ?? noSnapshot, noSnapshot)
-}
+const useTermActivity = (enabled) => useLiveStore(() => (enabled ? new TermActivity() : null), [enabled])
 
 const NONE = { tab: null, file: null, page: null, session: null }
 
@@ -109,7 +78,11 @@ function useWorkbench({ files, terminal, preview }, { following, setFollowing })
   if (!following && !frozen) setFrozen(paneIds({ following: true, followed, lists }))
   const ids = paneIds({ following, chosen, frozen, followed, lists })
 
-  const pause = () => setFollowing(false)
+  // the owner's pick: what a pane shows from now on, and the follow pauses
+  const choose = (patch) => {
+    setChosen((c) => ({ ...c, ...patch }))
+    setFollowing(false)
+  }
   return {
     tabs,
     fileTabs,
@@ -119,19 +92,13 @@ function useWorkbench({ files, terminal, preview }, { following, setFollowing })
     itemKey: ids.page,
     sessions,
     session: sessions.find((s) => s.id === ids.session) ?? null,
-    pickTab(t) {
-      setChosen((c) => ({ ...c, tab: t.id, ...(t.kind === "file" ? { file: t.id } : {}) }))
-      pause()
-    },
+    pickTab: (t) => choose({ tab: t.id, ...(t.kind === "file" ? { file: t.id } : {}) }),
     // the owner's pick in the preview pane's strip (or an answer's item)
-    pickItem(key) {
-      setChosen((c) => ({ ...c, page: key }))
-      pause()
-    },
+    pickItem: (key) => choose({ page: key }),
     closeTab(t) {
       setDismissed((m) => new Map(m).set(t.path, Date.now()))
       setPinned((p) => p.filter((x) => x.path !== t.path))
-      pause()
+      setFollowing(false)
     },
     openFile(path) {
       setDismissed((m) => {
@@ -140,13 +107,9 @@ function useWorkbench({ files, terminal, preview }, { following, setFollowing })
         return next
       })
       setPinned((p) => [...p.filter((x) => x.path !== path), { path, at: Date.now() }])
-      setChosen((c) => ({ ...c, tab: `file:${path}`, file: `file:${path}` }))
-      pause()
+      choose({ tab: `file:${path}`, file: `file:${path}` })
     },
-    pickSession(id) {
-      setChosen((c) => ({ ...c, session: id }))
-      pause()
-    },
+    pickSession: (id) => choose({ session: id }),
   }
 }
 

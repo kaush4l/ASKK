@@ -470,7 +470,7 @@ test("preview: the prompt the next step would see, with its artifacts refreshed 
   const tail = Object.assign(new Artifact({ name: "tail" }), { refresh: async () => void n++, render: () => `refreshed ${n}` })
   const desk = { state: mkdtempSync(join(tmpdir(), "kt-")), start: async () => ({ desk: buildDesk({ name: "lead", report: false, artifacts: [tail] }, { infer: async () => "" }) }) }
   const team = await createKernelTeam({ desk, port: 0, live: false })
-  expect((await team.call({ target: "lead", method: "preview", args: ["go"] })).value).toContain("# tail — tail\nrefreshed 1")
+  expect((await team.call({ target: "lead", method: "preview", args: ["go"] })).value).toContain("# tail\nrefreshed 1")
   team.terminate()
 })
 

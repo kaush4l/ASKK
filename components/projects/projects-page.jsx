@@ -15,34 +15,36 @@ import { listProjects, loadNote, loadProject, projectState, unloadProject } from
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { useBusy, usePoll } from "@/components/views/kit"
 import { ROUTES } from "@/lib/config"
 import { cn } from "@/lib/utils"
 
 const TONE = { ok: "text-emerald-500", wait: "text-amber-500", error: "text-destructive" }
 const REFRESH_MS = 8000 // the list again while the page is open (a setup run writes .agents/project.md)
 
+// A labelled text input of the form: not autocompleted or spell-checked, 16px on phones (no iOS zoom), 40px to touch.
+const Field = ({ label, ...props }) => (
+  <label className="flex min-w-0 flex-col gap-1 text-sm">
+    {label}
+    <Input autoComplete="off" spellCheck={false} className="text-base md:text-sm pointer-coarse:h-10" {...props} />
+  </label>
+)
+
 function LoadForm({ onLoaded, disabled }) {
   const [path, setPath] = React.useState("")
   const [name, setName] = React.useState("")
   const [setup, setSetup] = React.useState(true)
-  const [busy, setBusy] = React.useState(false)
-  const [error, setError] = React.useState(null)
+  const { busy, error, run } = useBusy()
 
   async function submit(event) {
     event.preventDefault()
     if (!path.trim()) return
-    setBusy(true)
-    setError(null)
-    try {
+    await run(async () => {
       const result = await loadProject({ path: path.trim(), name: name.trim() || undefined, setup })
       setPath("")
       setName("")
       onLoaded(result)
-    } catch (e) {
-      setError(e.message)
-    } finally {
-      setBusy(false)
-    }
+    })
   }
 
   return (
@@ -55,32 +57,8 @@ function LoadForm({ onLoaded, disabled }) {
         </p>
       </div>
       <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem]">
-        <label className="flex min-w-0 flex-col gap-1 text-sm">
-          Folder
-          <Input
-            id="project-path"
-            value={path}
-            onChange={(e) => setPath(e.target.value)}
-            placeholder="~/code/my-app"
-            autoComplete="off"
-            spellCheck={false}
-            className="text-base md:text-sm pointer-coarse:h-10"
-            disabled={disabled || busy}
-          />
-        </label>
-        <label className="flex min-w-0 flex-col gap-1 text-sm">
-          Name (optional)
-          <Input
-            id="project-name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="from the folder"
-            autoComplete="off"
-            spellCheck={false}
-            className="text-base md:text-sm pointer-coarse:h-10"
-            disabled={disabled || busy}
-          />
-        </label>
+        <Field label="Folder" id="project-path" value={path} onChange={(e) => setPath(e.target.value)} placeholder="~/code/my-app" disabled={disabled || busy} />
+        <Field label="Name (optional)" id="project-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="from the folder" disabled={disabled || busy} />
       </div>
       <label className="flex items-start gap-2 text-sm">
         <input type="checkbox" checked={setup} onChange={(e) => setSetup(e.target.checked)} className="mt-0.5 size-4 shrink-0 pointer-coarse:size-5" disabled={disabled || busy} />
@@ -174,12 +152,7 @@ export function ProjectsPage() {
   React.useEffect(() => {
     detectHost().then(setHost)
   }, [])
-  React.useEffect(() => {
-    if (!enabled) return
-    refresh()
-    const timer = setInterval(refresh, REFRESH_MS)
-    return () => clearInterval(timer)
-  }, [enabled, refresh])
+  usePoll(refresh, REFRESH_MS, enabled)
 
   const loaded = (result) => {
     setNote(loadNote(result))

@@ -1,5 +1,6 @@
 import { Artifact } from "../artifact/artifact.js"
-import { QUEST_INPUT, questText, Tool } from "../tool/tool.js"
+import { QUEST_INPUT, questText } from "../tool/tool.js"
+import { clipAfter as clip, oneLine } from "../util/text.js"
 
 // Dispatch: work that runs while its dispatcher keeps working (2026-10-17 owner: "let more teams work in parallel and
 // in various levels and stages of the building"). A quest blocks the caller's step until its report comes back;
@@ -8,14 +9,10 @@ import { QUEST_INPUT, questText, Tool } from "../tool/tool.js"
 // holder's prompt until dispatch.wait or dispatch.read delivers it. One instance per desk (id "dispatch"); each
 // holder sees and drives its own jobs, the twin shows every job.
 //
-//   dispatch.start {to, requirement, ask, outcome}  to: one of the holder's agents (its quest tool; a team prefix is
-//                                     fine); the brief as a quest's (refused without the three); ≤ 6 running per holder
-//   dispatch.wait  {ids?, seconds?}   until one of them ends (default: every running job of the holder), seconds pass
-//                                     (default 300, 5..1800), owner guidance arrives for the holder, or its run stops
-//   dispatch.read  {id}               the whole report (≤ 20000 chars) or the error
-//   dispatch.stop  {id}               aborts the job: the target's run stops at its next step boundary, its own quests
-//                                     get the signal (only the holder that started it; the owner through stop(id))
-//   dispatch.list                     the holder's jobs, one line each
+// Commands: start {to, requirement, ask, outcome} (to: one of the holder's agents, a team prefix is fine; ≤ 6 running per
+// holder), wait {ids?, seconds?} (until one of them ends — default: every running job of the holder —, seconds pass
+// (default 300, 5..1800), owner guidance arrives for the holder, or its run stops), read (the report, ≤ 20000 chars, or
+// the error), stop (only the holder that started it; the owner through stop(id)), list.
 //
 // A holder's run that is stopped (its signal aborts) stops the jobs it started. gate(agent) refuses the holder's answer
 // while any of its jobs runs — a hard reason ({reason, hard: true}: Agent never lets it through after gateRetries).
@@ -45,8 +42,6 @@ const ASK_PROMPT = 120
 const FINISHED_LINES = 12 // finished jobs in the prompt
 
 const list = (v) => (v == null || v === "" ? [] : Array.isArray(v) ? v : String(v).split(/[,\s]+/)).map((x) => String(x).trim()).filter(Boolean)
-const clip = (s, n) => (String(s).length > n ? `${String(s).slice(0, n)}…` : String(s))
-const oneLine = (s) => String(s ?? "").replace(/\s+/g, " ").trim()
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
 // 12m04s (a job that ended), 12m (one that runs)
 const took = (ms) => {
@@ -66,15 +61,38 @@ const askOf = (text) => {
   return a < 0 ? text : text.slice(a + 6, o > a ? o : undefined)
 }
 
+const JOB_INPUT = "a job id (j3)"
+
 export class Dispatch extends Artifact {
+  static about = "quests handed to agents in parallel: start, wait, read, stop; no job outlives its holder's run"
+  // The brief's fields are explained once above the TOOLS list (Agent.render), as for a quest.
+  static commands = {
+    start: { description: `hand one of your agents a brief and keep working while it runs (a quest waits for its report; this does not): the job's id — at most ${RUNNING_MAX} running`, input: { to: "the agent (one of your quest tools)", ...QUEST_INPUT }, usage: "{to, requirement, ask, outcome}", run(i, c) { return this.#start(i, c) } },
+    wait: { description: `wait until a job ends, owner guidance arrives or seconds pass: the reports that came back, what still runs`, input: { ids: "job ids (default: every running job of yours)", seconds: `at most ${WAIT_MAX} (default ${WAIT_DEFAULT}, at least ${WAIT_MIN})` }, run(i, c) { return this.#wait(i, c) } },
+    read: { description: "a job's whole report, or its error", input: { id: JOB_INPUT }, run(i, c) { return this.#read(i, c) } },
+    stop: { description: "stop a job you started (its run ends at its next step)", input: { id: JOB_INPUT }, run(i, c) { return this.#stop(i, c) } },
+    list: { description: "your jobs, one line each", input: {}, run(i, c) { return this.#list(i, c) } },
+  }
+  // The owner acts on the twin (the host's team/call {target: "artifact", method, args: [{id, job}]}): "stop" stops that
+  // one job (its error names the owner) → {stopped: job}. 2026-10-17 (critic): stopping the target agent was the only
+  // way, and it ended every other run queued on it. An unknown method, job, or one not running → throws.
+  static owner = {
+    stop(a) {
+      const id = String(a.job ?? "").trim()
+      if (!id) throw new Error("job: the job to stop (j3)")
+      const job = this.jobs.get(id)
+      if (!job) throw new Error(`no job ${id}`)
+      if (job.status !== "running") throw new Error(`${id} is not running (${job.status})`)
+      this.stop(id, null)
+      return { stopped: id }
+    },
+  }
+  static ownerCan = "stop a job"
   // secondMs: how long a wait's second lasts (tests shorten it); clock: the timestamps and the elapsed times.
   constructor({ id = "dispatch", title, clock = () => new Date(), secondMs = 1000 } = {}) {
     super({ name: id, title: title ?? (id === "dispatch" ? "dispatch — work that runs while you work" : `${id} — dispatch`) })
-    this.kind = "dispatch"
-    this.view = "dispatch"
-    this.keep = "file" // a job is a run in this process: never restored
-    this.clock = clock
-    this.secondMs = secondMs
+    Object.assign(this, { kind: "dispatch", view: "dispatch", keep: "file" }) // a job is a run in this process: never restored
+    Object.assign(this, { clock, secondMs })
     this.state = { jobs: [] }
     this.jobs = new Map() // id -> job (oldest first)
     this.n = 0
@@ -129,20 +147,6 @@ export class Dispatch extends Artifact {
     return this.#halt(job, by == null ? "stopped by the owner" : `stopped by ${by}`)
   }
 
-  // The owner acts on the twin (the host's team/call {target: "artifact", method, args: [{id, job}]}): "stop" stops that
-  // one job (its error names the owner) → {stopped: job}. 2026-10-17 (critic): stopping the target agent was the only
-  // way, and it ended every other run queued on it. An unknown method, job, or one not running → throws.
-  ownerCall(method, args = [], _from = "owner") {
-    if (method !== "stop") throw new Error(`${this.name}: the owner can stop a job (not ${method})`)
-    const id = String(args[0]?.job ?? "").trim()
-    if (!id) throw new Error("job: the job to stop (j3)")
-    const job = this.jobs.get(id)
-    if (!job) throw new Error(`no job ${id}`)
-    if (job.status !== "running") throw new Error(`${id} is not running (${job.status})`)
-    this.stop(id, null)
-    return { stopped: id }
-  }
-
   // A holder's run ends (an answer — flagged or at maxSteps — or an error, a stop): the jobs it left running stop.
   attach(agent) {
     if (!agent?.name || typeof agent.on !== "function") return
@@ -192,7 +196,7 @@ export class Dispatch extends Artifact {
     if (!j.delivered) queueMicrotask(() => this.#publish())
     j.delivered = true
     if (j.status === "done") j.holder.reported?.add(j.to) // a sibling that works from its report may be called now
-    if (j.status !== "done") return `${this.#line(j, { ask: false })}: ${j.error ?? "(no reason given)"}`
+    if (j.status !== "done") return this.#failed(j)
     const report = j.report ?? ""
     const more = max < REPORT_READ ? `${this.name}.read {id: ${j.id}} for all of it` : `its first ${max} shown`
     const cut = report.length > max ? `\n… ${more} (${report.length} chars)` : ""
@@ -310,11 +314,14 @@ export class Dispatch extends Artifact {
     return out.join("\n\n")
   }
 
+  #job({ id }, ctx) {
+    const job = this.jobs.get(String(id ?? "").trim())
+    if (!job) throw new Error(`id: no job ${String(id ?? "").trim() || "given"} (yours: ${this.#own(ctx.agent?.name).map((j) => j.id).join(", ") || "none"})`)
+    return job
+  }
+
   #read(input = {}, ctx = {}) {
-    const id = String(input.id ?? "").trim()
-    const job = this.jobs.get(id)
-    const mine = this.#own(ctx.agent?.name).map((j) => j.id)
-    if (!job) throw new Error(`id: no job ${id || "given"} (yours: ${mine.join(", ") || "none"})`)
+    const job = this.#job(input, ctx)
     if (job.status === "running") return `${this.#line(job)} — still running: ${this.name}.wait {ids: [${job.id}]} for its report`
     if (job.by !== ctx.agent?.name) return this.#text(job)
     return this.#delivered(job, REPORT_READ)
@@ -322,17 +329,17 @@ export class Dispatch extends Artifact {
 
   // Another holder's finished job, read without delivering it.
   #text(j) {
-    if (j.status !== "done") return `${this.#line(j, { ask: false })}: ${j.error ?? "(no reason given)"}`
-    return `${this.#line(j, { ask: false })} (by ${j.by}):\n${clip(j.report ?? "", REPORT_READ)}`
+    return j.status !== "done" ? this.#failed(j) : `${this.#line(j, { ask: false })} (by ${j.by}):\n${clip(j.report ?? "", REPORT_READ)}`
+  }
+
+  #failed(j) {
+    return `${this.#line(j, { ask: false })}: ${j.error ?? "(no reason given)"}`
   }
 
   #stop(input = {}, ctx = {}) {
-    const id = String(input.id ?? "").trim()
-    const job = this.jobs.get(id)
-    const mine = this.#own(ctx.agent?.name).map((j) => j.id)
-    if (!job) throw new Error(`id: no job ${id || "given"} (yours: ${mine.join(", ") || "none"})`)
+    const job = this.#job(input, ctx)
     if (job.status !== "running") return `${this.#line(job, { ask: false })} — it is not running`
-    this.stop(id, ctx.agent?.name ?? null)
+    this.stop(job.id, ctx.agent?.name ?? null)
     return `${job.id} → ${job.to} stopped: its run ends at its next step`
   }
 
@@ -340,23 +347,6 @@ export class Dispatch extends Artifact {
     const mine = this.#own(ctx.agent?.name).reverse()
     if (!mine.length) return `no jobs yet (${this.name}.start starts one)`
     return mine.map((j) => `${this.#line(j)}${j.status !== "running" ? (j.delivered ? " (delivered)" : " (report waiting)") : ""}`).join("\n")
-  }
-
-  commands() {
-    const tool = (name, description, input, run, describe = null) => {
-      const t = new Tool({ name: `${this.name}.${name}`, type: "dev", view: "dispatch", description, input, run })
-      if (describe) t.describe = () => `- ${t.name} ${describe} — ${t.description}`
-      return t
-    }
-    const id = "a job id (j3)"
-    return [
-      // The brief's fields are explained once above the TOOLS list (Agent.render), as for a quest.
-      tool("start", `hand one of your agents a brief and keep working while it runs (a quest waits for its report; this does not): the job's id — at most ${RUNNING_MAX} running`, { to: "the agent (one of your quest tools)", ...QUEST_INPUT }, (i, c) => this.#start(i, c), "{to, requirement, ask, outcome}"),
-      tool("wait", `wait until a job ends, owner guidance arrives or seconds pass: the reports that came back, what still runs`, { ids: "job ids (default: every running job of yours)", seconds: `at most ${WAIT_MAX} (default ${WAIT_DEFAULT}, at least ${WAIT_MIN})` }, (i, c) => this.#wait(i, c)),
-      tool("read", "a job's whole report, or its error", { id }, (i, c) => this.#read(i, c)),
-      tool("stop", "stop a job you started (its run ends at its next step)", { id }, (i, c) => this.#stop(i, c)),
-      tool("list", "your jobs, one line each", {}, (i, c) => this.#list(i, c)),
-    ]
   }
 
   // ---- gate ----
@@ -382,8 +372,7 @@ export class Dispatch extends Artifact {
 
   // The holder's own jobs: what runs (and where its target is), the reports not yet delivered, the rest counted.
   render(agent) {
-    const own = (c) => !agent || agent.tools?.has(`${this.name}.${c}`)
-    const can = ["start", "wait", "read", "stop", "list"].filter(own).map((c) => `${this.name}.${c}`)
+    const can = this.can(agent)
     const head = `the desk's dispatch: hand a brief to one of your agents and keep working while it runs${can.length ? `: ${can.join(", ")}` : ""} — your answer waits until none of your jobs runs`
     const mine = agent ? this.#own(agent.name) : [...this.jobs.values()]
     if (!mine.length) return `${head}\n(no jobs yet)`

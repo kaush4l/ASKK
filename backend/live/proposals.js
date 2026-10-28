@@ -11,35 +11,18 @@
 //   agentRows(lead) → [{depth, ...agent}]         a proposed desk's agents, the lead first, members indented (pure)
 //   fromLine(from), acceptNote(result), proposalTitle(p)   the block's words (pure)
 
-import { withBase } from "@/backend/live/base-path"
-
-async function api(endpoint, body) {
-  let response
-  try {
-    response = await fetch(withBase(`/__askk/${endpoint}`), {
-      method: body ? "POST" : "GET",
-      headers: body ? { "content-type": "application/json" } : undefined,
-      body: body ? JSON.stringify(body) : undefined,
-      cache: "no-store",
-    })
-  } catch {
-    throw new Error("The desk server is not reachable.")
-  }
-  const data = await response.json().catch(() => null)
-  if (!response.ok || !data) throw new Error(data?.error ?? `Request failed (${response.status}).`)
-  return data
-}
+import { hostApi } from "@/backend/live/host-api"
 
 export async function loadProposals() {
   try {
-    const data = await api("desks/proposed")
+    const data = await hostApi("desks/proposed")
     return { desks: data.desks ?? [], tools: data.tools ?? [] }
   } catch {
     return null
   }
 }
 
-export const proposalCall = (method, { name, tool = null, reason = "" }) => api(method === "accept" ? "desks/accept" : "desks/drop", { name, ...(tool ? { tool } : {}), ...(reason ? { reason } : {}) })
+export const proposalCall = (method, { name, tool = null, reason = "" }) => hostApi(method === "accept" ? "desks/accept" : "desks/drop", { body: { name, ...(tool ? { tool } : {}), ...(reason ? { reason } : {}) } })
 
 // The lead, then each member under its lead (depth 1, 2 …): what each would be and hold.
 export function agentRows(lead, depth = 0) {

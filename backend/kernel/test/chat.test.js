@@ -63,7 +63,7 @@ describe("Agent.chat", () => {
     expect(events[0].ms).toBeGreaterThanOrEqual(0)
     // The same sections as a step's prompt, the run's REQUEST idle, then the chat and its format.
     expect(p.startsWith(`${SOUL}\n\n# YOU ARE lead\n${ROLE}`)).toBe(true)
-    expect(headers(p)).toEqual(["# YOU ARE lead", "# line — the line", "# REQUEST", "# EARLIER RUNS", "# TOOLS", "# OWNER CHAT", "# RESPONSE"])
+    expect(headers(p)).toEqual(["# YOU ARE lead", "# TOOLS", "# line — the line", "# REQUEST", "# EARLIER RUNS", "# OWNER CHAT", "# RESPONSE"])
     expect(p).toContain("# REQUEST\n(idle: no run in progress)")
     expect(p).toContain("BASE: sample-app 12M, val_bpb 1.42 (refreshed 1)") // artifacts refreshed first
     expect(p).toContain("> owner: train the base\n< val_bpb 1.42")

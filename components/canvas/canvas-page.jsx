@@ -3,20 +3,20 @@
 import * as React from "react"
 
 import { fit, focus, nearZoom, zoomLevel } from "@/backend/live/camera"
-import { layoutToFit, nodeRect, placeAt } from "@/backend/live/canvas-layout"
-import { artifactsHeldBy, currentQuest } from "@/backend/live/desk"
+import { layoutDesk, layoutToFit, nodeRect, placeAt } from "@/backend/live/canvas-layout"
+import { artifactsHeldBy, currentQuest, sameLayout } from "@/backend/live/desk"
 import { followTarget, questsOut } from "@/backend/live/follow-target"
 import { teamTree, treeNames } from "@/backend/live/team-tree"
-import { VISUAL_STATES } from "@/backend/live/visual"
 import { AgentNode } from "@/components/canvas/agent-node"
 import { ArtifactNode } from "@/components/canvas/artifact-node"
 import { DeskFrame } from "@/components/canvas/desk-frame"
 import { Edges } from "@/components/canvas/edges"
+import { fitKey, glideTarget, openDue, refitDue } from "@/components/canvas/settle"
+import { followLabel, followPillClasses, insetFor, toolbarClasses } from "@/components/canvas/tap"
 import { Toolbar } from "@/components/canvas/toolbar"
 import { useCamera } from "@/components/canvas/use-camera"
-import { TONE } from "@/components/views/agent-tone"
+import { StateLegend } from "@/components/kernel/state-legend"
 import { useDesk, useEngineStates, useEngines } from "@/hooks/use-engines"
-import { cn } from "@/lib/utils"
 
 // The desk on a canvas: every agent a node laid out from the desk's tree (backend/live/canvas-layout.js), its
 // artifacts under it, a frame around each team and each desk mounted inside this one, a line from each lead to
@@ -26,9 +26,12 @@ import { cn } from "@/lib/utils"
 // Everything here reads the stores; nothing runs in the tab.
 
 const ZOOM_STEP = 1.25
-// Screen px the floating controls take along the top (toolbar) and bottom (follow line) edges: Fit keeps them clear.
-const INSET = { top: 56, bottom: 40 }
-const fitArea = (vp) => (vp.w && vp.h ? { w: vp.w, h: Math.max(1, vp.h - INSET.top - INSET.bottom) } : null)
+const NONE = []
+// Fit keeps the floating controls clear (tap.js insetFor: the toolbar on top, or below sm at the bottom with the follow line).
+const fitArea = (vp) => {
+  const inset = insetFor(vp.w)
+  return vp.w && vp.h ? { w: vp.w, h: Math.max(1, vp.h - inset.top - inset.bottom) } : null
+}
 
 // A dot grid that moves with the camera, its dots never closer than 18 px on screen (so it never greys the black).
 function dots({ x, y, z }) {
@@ -41,37 +44,30 @@ function dots({ x, y, z }) {
   }
 }
 
-// What the artifacts look like to the layout (ids, views, owners, holders): it moves only when these change.
-const artifactShape = (artifacts) =>
-  Object.values(artifacts ?? {})
-    .map((a) => `${a.id}|${a.view}|${a.owner}|${(a.holders ?? []).join(",")}`)
-    .sort()
-    .join(";")
-
-function Legend({ className }) {
-  return (
-    <ul className={cn("flex gap-x-3 rounded-full border bg-background/90 px-3 py-1 text-[11px] text-muted-foreground backdrop-blur", className)} aria-label="State colours">
-      {VISUAL_STATES.map((s) => (
-        <li key={s.id} className="flex items-center gap-1">
-          <span aria-hidden className={cn("size-2 rounded-full", TONE[s.id].dot)} />
-          {s.label}
-        </li>
-      ))}
-    </ul>
-  )
-}
-
-function DeskCanvas({ engines, states, desk, connecting }) {
-  const byName = React.useMemo(() => new Map(engines.map((e, i) => [e.agent?.name ?? e.id, { engine: e, state: states[i] }])), [engines, states])
-  const statesByName = React.useMemo(() => new Map([...byName].map(([name, { state }]) => [name, state])), [byName])
+// The canvas reads the tree and the artifacts' layout (ids, views, owners, holders: an artifact's state alone never moves
+// it), and every state for follow, the quest lines and the lit artifacts; each node subscribes to its own agent or
+// artifact (AgentNode, ArtifactNode), so a step or a patch redraws that node and the lines, not every card.
+function DeskCanvas({ engines, connecting }) {
+  const states = useEngineStates(engines)
+  const statesByName = React.useMemo(() => new Map(engines.map((e, i) => [e.agent?.name ?? e.id, states[i]])), [engines, states])
+  const enginesByName = React.useMemo(() => new Map(engines.map((e) => [e.agent?.name ?? e.id, e])), [engines])
+  const kernelTree = useDesk((d) => d?.tree)
+  const deskTitle = useDesk((d) => (d?.tree ? d.title : null))
+  const artifacts = useDesk((d) => d?.artifacts, sameLayout)
   const agents = React.useMemo(() => engines.map((e) => e.agent ?? { name: e.id }), [engines])
-  const tree = React.useMemo(() => teamTree(agents, { root: agents[0]?.name, kernel: desk?.tree }), [agents, desk?.tree])
+  const tree = React.useMemo(() => teamTree(agents, { root: agents[0]?.name, kernel: kernelTree }), [agents, kernelTree])
 
   const [follow, setFollow] = React.useState(true)
   const [focused, setFocused] = React.useState(null)
+  const [opened, setOpened] = React.useState(null) // the artifact a tap or click opened (Fit, Follow or a hand clears it)
+  const held = React.useRef(false) // the owner's first Fit, open, Follow, pan or zoom holds the camera (settle.js refitDue)
 
   const camera = useCamera({
-    onManual: () => setFollow(false),
+    onManual: () => {
+      held.current = true
+      setFollow(false)
+      setOpened(null)
+    },
     onKey: (key) => {
       if (key === "0") fitAll()
       else if (key === "f") toggleFollow()
@@ -83,16 +79,15 @@ function DeskCanvas({ engines, states, desk, connecting }) {
   const { ref, cam, viewport, set, glideTo, zoomBy } = camera
   const level = zoomLevel(cam.z)
 
-  // The layout for this viewport's shape (a wide desk wraps its teams into columns on a tall screen); it moves
-  // only when the tree, the artifacts' places or the viewport change.
-  const artifacts = desk?.artifacts
-  const artifactsRef = React.useRef(artifacts)
-  artifactsRef.current = artifacts
-  const shape = artifactShape(artifacts)
-  const layout = React.useMemo(
-    () => layoutToFit(tree, { artifacts: artifactsRef.current }, fitArea(viewport)),
-    [tree, shape, viewport]
-  )
+  // The layout for this viewport's shape (a wide desk wraps its teams into columns on a tall screen). The wrap is
+  // picked once per desk and viewport size (settle.js fitKey); a live artifact change moves cards, never flips it.
+  const shown = fitKey({ tree, viewport })
+  const picked = React.useRef({ key: null, wrap: undefined })
+  if (refitDue({ fitted: picked.current.key, shown, held: held.current })) {
+    picked.current = { key: shown, wrap: layoutToFit(tree, { artifacts }, fitArea(viewport)).wrap }
+  }
+  const wrap = picked.current.wrap
+  const layout = React.useMemo(() => layoutDesk(tree, { artifacts, wrap }), [tree, artifacts, wrap])
   const holds = React.useMemo(() => new Map((tree ? treeNames(tree) : []).map((name) => [name, artifactsHeldBy(artifacts, name)])), [tree, artifacts])
 
   // Live: who the camera follows, which quests are out (lead → member), which artifacts are being worked.
@@ -110,48 +105,57 @@ function DeskCanvas({ engines, states, desk, connecting }) {
 
   // The latest layout and viewport for the callbacks the nodes hold (stable, so a camera move re-renders no node).
   const latest = React.useRef({})
-  latest.current = { layout, viewport, glideTo }
+  latest.current = { layout, viewport, glideTo, cam, opened }
   const cameraOn = (rect) => {
     const { viewport: vp } = latest.current
     return focus(rect, vp, nearZoom(rect, vp))
   }
-  const onFocus = React.useCallback((name) => {
-    const rect = nodeRect(latest.current.layout, name)
+  // A click on an agent (focused) or an artifact: Follow off, the camera to it.
+  const focusOn = (id, kind) => {
+    const rect = nodeRect(latest.current.layout, id, kind)
     if (!rect) return
+    held.current = true
     setFollow(false)
-    setFocused(name)
-    latest.current.glideTo(cameraOn(rect))
-  }, [])
-  const onFocusArtifact = React.useCallback((id) => {
-    const rect = nodeRect(latest.current.layout, id, "artifact")
-    if (!rect) return
-    setFollow(false)
-    latest.current.glideTo(cameraOn(rect))
-  }, [])
+    if (!kind) setFocused(id)
+    setOpened(kind === "artifact" ? id : null)
+    const to = cameraOn(rect)
+    // A repeat open of the card already shown, the camera on it (a tap and its click), never re-glides (settle.js openDue).
+    if (kind === "artifact" && !openDue({ opened: latest.current.opened, id, cam: latest.current.cam, to })) return
+    latest.current.glideTo(to)
+  }
+  const onFocus = React.useCallback((name) => focusOn(name), []) // eslint-disable-line react-hooks/exhaustive-deps
+  const onFocusArtifact = React.useCallback((id) => focusOn(id, "artifact"), []) // eslint-disable-line react-hooks/exhaustive-deps
   function fitAll() {
+    held.current = true
     setFollow(false)
     setFocused(null)
-    glideTo(fit(layout.bounds, viewport, 32, INSET))
+    setOpened(null)
+    glideTo(fit(layout.bounds, viewport, 32, insetFor(viewport.w)))
   }
   // One rule: Follow and a focused agent never hold together — Follow on clears the focus, a focus (a click)
   // turns Follow off, so does a hand on the camera.
   function toggleFollow() {
     const next = !follow
+    held.current = true
     setFollow(next)
     if (!next) return
     setFocused(null)
     const rect = target ? nodeRect(layout, target) : null
-    glideTo(rect ? cameraOn(rect) : fit(layout.bounds, viewport, 32, INSET))
+    // An opened card with no work to follow stays shown, never glided away to Fit (settle.js glideTarget).
+    const to = glideTarget({ opened, rect: rect && cameraOn(rect), fitTo: fit(layout.bounds, viewport, 32, insetFor(viewport.w)) })
+    if (!to) return
+    setOpened(null)
+    glideTo(to)
   }
 
-  // First sight of a desk (or of a new shape of it): all of it. Then Follow glides in to the work (and on, whenever
-  // the work moves).
+  // First sight of a desk (or of a new viewport size, until the owner holds the camera: settle.js refitDue): all of
+  // it. Then Follow glides in to the work (and on, whenever the work moves).
   const fitted = React.useRef(null)
-  const shown = `${tree?.name}|${layout.wrap}`
   React.useEffect(() => {
-    if (!viewport.w || !viewport.h || !layout.nodes.length || fitted.current === shown) return
+    if (!viewport.w || !viewport.h || !layout.nodes.length) return
+    if (!refitDue({ fitted: fitted.current, shown, held: held.current })) return
     fitted.current = shown
-    set(fit(layout.bounds, viewport, 32, INSET))
+    set(fit(layout.bounds, viewport, 32, insetFor(viewport.w)))
   }, [viewport, layout, shown, set])
 
   const targetRect = target ? nodeRect(layout, target) : null
@@ -188,33 +192,29 @@ function DeskCanvas({ engines, states, desk, connecting }) {
             <ArtifactNode
               key={`artifact:${node.id}`}
               node={node}
-              artifact={artifacts?.[node.id]}
               level={level}
               active={calling.some((name) => name.startsWith(`${node.id}.`))}
+              onOpen={onFocusArtifact}
             />
           ))}
-          {agentsLaid.map((node) => {
-            const item = byName.get(node.id)
-            return (
-              <AgentNode
-                key={`agent:${node.id}`}
-                node={node}
-                engine={item?.engine ?? null}
-                state={item?.state ?? null}
-                level={level}
-                focused={focused === node.id}
-                deskTitle={desk?.tree ? desk.title : null}
-                holds={holds.get(node.id) ?? []}
-                onFocus={onFocus}
-                onFocusArtifact={onFocusArtifact}
-              />
-            )
-          })}
+          {agentsLaid.map((node) => (
+            <AgentNode
+              key={`agent:${node.id}`}
+              node={node}
+              engine={enginesByName.get(node.id) ?? null}
+              level={level}
+              focused={focused === node.id}
+              deskTitle={deskTitle}
+              holds={holds.get(node.id) ?? NONE}
+              onFocus={onFocus}
+              onFocusArtifact={onFocusArtifact}
+            />
+          ))}
         </div>
       </div>
 
       <Toolbar
-        className="absolute top-3 right-3 z-10"
+        className={toolbarClasses()}
         zoom={Math.round(cam.z * 100)}
         follow={follow}
         onZoomOut={() => zoomBy(1 / ZOOM_STEP)}
@@ -223,10 +223,10 @@ function DeskCanvas({ engines, states, desk, connecting }) {
         onFit={fitAll}
         onFollow={toggleFollow}
       />
-      <p className="pointer-events-none absolute bottom-3 left-3 z-10 max-w-[calc(100%-1.5rem)] truncate rounded-full border bg-background/90 px-3 py-1 text-xs text-muted-foreground backdrop-blur" aria-live="polite">
-        {follow ? (target ? `Following ${target}` : "Follow: waiting for work") : focused ? `Focused on ${focused}` : "Follow off"}
+      <p className={followPillClasses()} aria-live="polite">
+        {followLabel({ follow, target, focused, opened })}
       </p>
-      <Legend className="absolute right-3 bottom-3 z-10 hidden xl:flex" />
+      <StateLegend className="absolute right-3 bottom-3 z-10 glass hidden rounded-full border px-3 py-1 xl:flex" />
       {(connecting || !tree) && (
         <p className="absolute inset-0 grid place-items-center text-sm text-muted-foreground">{connecting ? "Connecting to the desk…" : "No agents on this desk."}</p>
       )}
@@ -248,18 +248,14 @@ function Offline() {
 }
 
 export function CanvasPage() {
-  const { engines, requiredId, status, error } = useEngines()
-  // The lead first: it is the root of the tree.
-  const ordered = React.useMemo(() => [...engines].sort((a, b) => (a.id === requiredId ? -1 : b.id === requiredId ? 1 : 0)), [engines, requiredId])
-  const states = useEngineStates(ordered)
-  const desk = useDesk()
+  const { engines, status, error } = useEngines()
 
   if (status === "offline") return <Offline />
   if (status === "error") return <p className="p-8 text-center text-sm text-destructive">The desk failed to start: {error}</p>
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <h1 className="sr-only">Canvas</h1>
-      <DeskCanvas engines={ordered} states={states} desk={desk} connecting={status !== "ready" && !ordered.length} />
+      <DeskCanvas engines={engines} connecting={status !== "ready" && !engines.length} />
     </div>
   )
 }

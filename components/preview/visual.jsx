@@ -7,6 +7,7 @@ import { ChevronRightIcon, PauseIcon, PlayIcon, SkipBackIcon, SkipForwardIcon } 
 import { linkFor, metaText, paramsText } from "@/backend/live/preview"
 import { CELL_TEXT_PX, cellColor, hitStroke, cellInk, cellText, flowLayout, linePaths, matrixRange, paletteOf, scatterScales, tokenColorOf, tokenHeat, tokenRange } from "@/backend/live/visual-layout"
 import { Button } from "@/components/ui/button"
+import { useMediaQuery } from "@/hooks/use-media-query"
 import { cn } from "@/lib/utils"
 
 // A visual an agent built for the owner (kernel builtin/visual.js), drawn and animated with anime.js (2026-10-17 owner:
@@ -41,6 +42,17 @@ function play(targets, params, after = 2500) {
     pause: () => (clearTimeout(t), a.pause()),
     revert: () => (clearTimeout(t), a.revert()),
   }
+}
+
+// An effect that plays `params()` on the elements under `ref` that match `selector` (none: nothing), paused (or reverted:
+// `end`) when `deps` change; `wrap` turns the elements into anime's targets (svg.createDrawable).
+function usePlay(ref, selector, params, deps, { end = "pause", wrap = (els) => els } = {}) {
+  React.useEffect(() => {
+    const els = ref.current?.querySelectorAll(selector)
+    if (!els?.length) return
+    const a = play(wrap(els), params())
+    return () => a[end]()
+  }, deps) // eslint-disable-line react-hooks/exhaustive-deps
 }
 
 export function PreviewVisual({ visual, onPoint = () => {}, onOpen = null, compact = false }) {
@@ -88,18 +100,7 @@ function useBoxWidth() {
   return [ref, width]
 }
 // A touch screen (pointer: coarse): small marks get an invisible hit area of at least HIT_PX around them (hitStroke).
-function useCoarse() {
-  const [coarse, setCoarse] = React.useState(false)
-  React.useEffect(() => {
-    const q = typeof window !== "undefined" ? window.matchMedia?.("(pointer: coarse)") : null
-    if (!q) return
-    const on = () => setCoarse(q.matches)
-    on()
-    q.addEventListener?.("change", on)
-    return () => q.removeEventListener?.("change", on)
-  }, [])
-  return coarse
-}
+const useCoarse = () => useMediaQuery("(pointer: coarse)")
 // before the first measure: `before` (the compact or full default)
 const fitWidth = (box, before, max = 720, min = 320) => (box ? Math.max(min, Math.min(max, box)) : before)
 
@@ -132,19 +133,17 @@ function useClock(count, { auto = true, baseMs = 1000 } = {}) {
   return { i, go, playing, toggle, speed, setSpeed, count }
 }
 
+const StepButton = ({ icon: Icon, ...props }) => <Button variant="ghost" size="icon-sm" className="pointer-coarse:size-10" {...props}><Icon /></Button>
+
 function ClockBar({ clock, label, unit = "frame" }) {
   if (clock.count < 2) return null
   return (
     <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-      <Button variant="ghost" size="icon-sm" className="pointer-coarse:size-10" onClick={() => clock.go(clock.i - 1)} disabled={clock.i === 0} aria-label={`Previous ${unit}`}>
-        <SkipBackIcon />
-      </Button>
+      <StepButton icon={SkipBackIcon} onClick={() => clock.go(clock.i - 1)} disabled={clock.i === 0} aria-label={`Previous ${unit}`} />
       <Button variant="outline" size="icon-sm" className="pointer-coarse:size-10" onClick={clock.toggle} aria-label={clock.playing ? "Pause" : "Play"}>
         {clock.playing ? <PauseIcon /> : <PlayIcon />}
       </Button>
-      <Button variant="ghost" size="icon-sm" className="pointer-coarse:size-10" onClick={() => clock.go(clock.i + 1)} disabled={clock.i >= clock.count - 1} aria-label={`Next ${unit}`}>
-        <SkipForwardIcon />
-      </Button>
+      <StepButton icon={SkipForwardIcon} onClick={() => clock.go(clock.i + 1)} disabled={clock.i >= clock.count - 1} aria-label={`Next ${unit}`} />
       <input
         type="range"
         min={0}
@@ -154,16 +153,9 @@ function ClockBar({ clock, label, unit = "frame" }) {
         aria-label={`${unit} ${clock.i + 1} of ${clock.count}`}
         className="h-10 min-w-24 flex-1 accent-fuchsia-500 md:h-6"
       />
-      <span className="tabular-nums">
-        {unit} {clock.i + 1}/{clock.count}
-        {label ? ` · ${label}` : ""}
-      </span>
+      <span className="tabular-nums">{unit} {clock.i + 1}/{clock.count}{label ? ` · ${label}` : ""}</span>
       <select value={clock.speed} onChange={(e) => clock.setSpeed(Number(e.target.value))} aria-label="Speed" className="h-10 rounded border bg-background px-1 text-base md:h-7 md:text-xs">
-        {SPEEDS.map((s) => (
-          <option key={s} value={s}>
-            {s}×
-          </option>
-        ))}
+        {SPEEDS.map((s) => <option key={s} value={s}>{s}×</option>)}
       </select>
     </div>
   )
@@ -190,16 +182,8 @@ function FlowBody({ v, onPoint, onOpen, compact }) {
   const lit = new Set(layout.order.slice(0, clock.i + 1))
   const current = layout.order[clock.i]
 
-  React.useEffect(() => {
-    const root = ref.current
-    if (!root) return
-    const a = play(root.querySelectorAll("[data-node]"), { opacity: [0, 1], scale: [0.6, 1], delay: stagger(45), duration: ms(500), ease: "outBack" })
-    const b = play(svg.createDrawable(root.querySelectorAll("[data-edge]")), { draw: ["0 0", "0 1"], delay: stagger(30, { start: 150 }), duration: ms(700), ease: "inOutSine" })
-    return () => {
-      a.revert()
-      b.revert()
-    }
-  }, [layout])
+  usePlay(ref, "[data-node]", () => ({ opacity: [0, 1], scale: [0.6, 1], delay: stagger(45), duration: ms(500), ease: "outBack" }), [layout], { end: "revert" })
+  usePlay(ref, "[data-edge]", () => ({ draw: ["0 0", "0 1"], delay: stagger(30, { start: 150 }), duration: ms(700), ease: "inOutSine" }), [layout], { end: "revert", wrap: svg.createDrawable })
 
   // The current step: its node pulses and a dot runs along each edge into it from a node already lit.
   React.useEffect(() => {
@@ -233,11 +217,7 @@ function FlowBody({ v, onPoint, onOpen, compact }) {
           return (
             <g key={`${e.from}-${e.to}-${k}`}>
               <path data-edge data-edge-index={k} d={e.path} fill="none" className={cn("transition-colors duration-500", on ? "stroke-fuchsia-400" : "stroke-muted-foreground/40")} strokeWidth={e.weight != null ? 1 + 3 * Math.min(1, Math.abs(e.weight)) : 1.5} />
-              {e.label && (
-                <text x={(p.x + q.x) / 2} y={(p.y + q.y) / 2 - 6} textAnchor="middle" className="fill-muted-foreground text-[10px]">
-                  {e.label}
-                </text>
-              )}
+              {e.label && <Tick x={(p.x + q.x) / 2} y={(p.y + q.y) / 2 - 6} textAnchor="middle">{e.label}</Tick>}
               <circle data-dot={k} r={4} className="fill-fuchsia-300" style={{ opacity: 0 }} />
             </g>
           )
@@ -257,19 +237,9 @@ function FlowBody({ v, onPoint, onOpen, compact }) {
             >
               <title>{[n.label, n.note, n.value != null ? `value ${n.value}` : "", linkTitle(link)].filter(Boolean).join(" — ")}</title>
               <rect x={-w / 2} y={-16} width={w} height={32} rx={8} className={cn("transition-colors duration-500", n.id === current ? "fill-fuchsia-500/30 stroke-fuchsia-300" : on ? "fill-fuchsia-500/10 stroke-fuchsia-400/80" : "fill-background stroke-muted-foreground/50")} strokeWidth={1.5} />
-              <text textAnchor="middle" dy="0.35em" className="fill-foreground text-[12px]">
-                {n.label}
-              </text>
-              {link && (
-                <text x={w / 2 - 8} textAnchor="middle" dy="0.35em" className="fill-fuchsia-300 text-[12px]" aria-hidden>
-                  ›
-                </text>
-              )}
-              {n.value != null && (
-                <text textAnchor="middle" y={28} className="fill-muted-foreground text-[10px]">
-                  {fmt(n.value)}
-                </text>
-              )}
+              <text textAnchor="middle" dy="0.35em" className="fill-foreground text-[12px]">{n.label}</text>
+              {link && <text x={w / 2 - 8} textAnchor="middle" dy="0.35em" className="fill-fuchsia-300 text-[12px]" aria-hidden>›</text>}
+              {n.value != null && <Tick textAnchor="middle" y={28}>{fmt(n.value)}</Tick>}
             </g>
             </g>
           )
@@ -287,12 +257,7 @@ function FlowBody({ v, onPoint, onOpen, compact }) {
 function StepsBody({ v, onPoint, onOpen }) {
   const clock = useClock(v.steps.length, { baseMs: 1400 })
   const ref = React.useRef(null)
-  React.useEffect(() => {
-    const el = ref.current?.querySelector(`[data-step="${clock.i}"]`)
-    if (!el) return
-    const a = play(el, { opacity: [0, 1], translateX: [-10, 0], duration: ms(450), ease: "outQuad" })
-    return () => a.pause()
-  }, [clock.i])
+  usePlay(ref, `[data-step="${clock.i}"]`, () => ({ opacity: [0, 1], translateX: [-10, 0], duration: ms(450), ease: "outQuad" }), [clock.i])
   return (
     <div className="flex flex-col gap-2">
       <ol ref={ref} className="flex flex-col gap-1.5">
@@ -307,10 +272,7 @@ function StepsBody({ v, onPoint, onOpen }) {
               className={cn("flex w-full items-start gap-2 rounded-md border px-2 py-1.5 text-left pointer-coarse:min-h-10", k === clock.i ? "border-fuchsia-400/70" : "opacity-80", link && "cursor-zoom-in")}
             >
               <span className="mt-0.5 w-5 shrink-0 text-xs tabular-nums text-muted-foreground">{k + 1}</span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm">{s.title}</span>
-                {s.detail && <span className="block text-xs text-muted-foreground">{s.detail}</span>}
-              </span>
+              <span className="min-w-0 flex-1"><span className="block text-sm">{s.title}</span>{s.detail && <span className="block text-xs text-muted-foreground">{s.detail}</span>}</span>
               {s.value && <span className="shrink-0 rounded-full border px-2 text-xs tabular-nums">{s.value}</span>}
               {link && <ChevronRightIcon className="mt-0.5 size-4 shrink-0 text-fuchsia-400" aria-hidden />}
             </button>
@@ -338,18 +300,10 @@ function MatrixBody({ v, onPoint, onOpen, compact }) {
   const ref = React.useRef(null)
   const first = React.useMemo(() => v.frames[0].values.flat().map((x) => cellColor(x, range, v.diverging)), [v, range])
 
-  React.useEffect(() => {
-    const cells = ref.current?.querySelectorAll("[data-cell]")
-    if (!cells?.length) return
-    const a = play(cells, { opacity: [0, 1], delay: stagger(Math.max(1, 400 / (R * C)), { grid: [R, C], from: "center" }), duration: ms(350) })
-    return () => a.revert()
-  }, [v, R, C])
-  React.useEffect(() => {
-    const cells = ref.current?.querySelectorAll("[data-cell]")
-    if (!cells?.length) return
+  usePlay(ref, "[data-cell]", () => ({ opacity: [0, 1], delay: stagger(Math.max(1, 400 / (R * C)), { grid: [R, C], from: "center" }), duration: ms(350) }), [v, R, C], { end: "revert" })
+  usePlay(ref, "[data-cell]", () => {
     const flat = v.frames[clock.i].values.flat()
-    const a = play(cells, { fill: (_, k) => cellColor(flat[k], range, v.diverging), duration: ms(380), ease: "outQuad" })
-    return () => a.pause()
+    return { fill: (_, k) => cellColor(flat[k], range, v.diverging), duration: ms(380), ease: "outQuad" }
   }, [clock.i, v, range])
 
   const frame = v.frames[clock.i]
@@ -360,29 +314,19 @@ function MatrixBody({ v, onPoint, onOpen, compact }) {
   // a link label's hit area on a touch screen: its 9-unit glyphs plus a transparent stroke, ≥ HIT px tall on screen
   const scale = boxWidth ? Math.min(boxWidth, 720) / (lw + C * cell) : 1
   const labelHit = hitStroke(coarse, scale, 9)
+  const labelText = (key, text, link, context, at) => (
+    <text key={key} {...at} className={cn("text-[9px]", link ? "cursor-zoom-in fill-fuchsia-300 underline" : "fill-muted-foreground")} stroke={link && labelHit ? "transparent" : undefined} strokeWidth={link && labelHit ? labelHit : undefined} onClick={link ? () => follow(onPoint, onOpen, context, link) : undefined}>
+      {link && <title>{linkTitle(link)}</title>}
+      {text}
+    </text>
+  )
   const label = (i, j) => ({ visual: "matrix", row: v.rows?.[i] ?? i, col: v.cols?.[j] ?? j, value: frame.values[i][j], ...(cellText(v, frame, i, j) ? { text: cellText(v, frame, i, j) } : {}), ...(frame.label ? { frame: frame.label } : {}) })
   return (
     <div ref={box} className="flex flex-col gap-2">
       <div className="overflow-auto">
         <svg ref={ref} viewBox={`0 0 ${lw + C * cell} ${lh + R * cell}`} className="h-auto w-full max-w-[720px]" role="img" aria-label={v.title || "matrix"}>
-          {v.cols?.map((c, j) => {
-            const link = colLink(j)
-            return (
-              <text key={`c${j}`} transform={`translate(${lw + j * cell + cell / 2} ${lh - 4}) rotate(-50)`} className={cn("text-[9px]", link ? "cursor-zoom-in fill-fuchsia-300 underline" : "fill-muted-foreground")} stroke={link && labelHit ? "transparent" : undefined} strokeWidth={link && labelHit ? labelHit : undefined} onClick={link ? () => follow(onPoint, onOpen, { visual: "matrix", col: c }, link) : undefined}>
-                {link && <title>{linkTitle(link)}</title>}
-                {c}
-              </text>
-            )
-          })}
-          {v.rows?.map((r, i) => {
-            const link = rowLink(i)
-            return (
-              <text key={`r${i}`} x={lw - 4} y={lh + i * cell + cell / 2} dy="0.35em" textAnchor="end" className={cn("text-[9px]", link ? "cursor-zoom-in fill-fuchsia-300 underline" : "fill-muted-foreground")} stroke={link && labelHit ? "transparent" : undefined} strokeWidth={link && labelHit ? labelHit : undefined} onClick={link ? () => follow(onPoint, onOpen, { visual: "matrix", row: r }, link) : undefined}>
-                {link && <title>{linkTitle(link)}</title>}
-                {r}
-              </text>
-            )
-          })}
+          {v.cols?.map((c, j) => labelText(`c${j}`, c, colLink(j), { visual: "matrix", col: c }, { transform: `translate(${lw + j * cell + cell / 2} ${lh - 4}) rotate(-50)` }))}
+          {v.rows?.map((r, i) => labelText(`r${i}`, r, rowLink(i), { visual: "matrix", row: r }, { x: lw - 4, y: lh + i * cell + cell / 2, dy: "0.35em", textAnchor: "end" }))}
           {frame.values.map((row, i) =>
             row.map((_, j) => {
               const link = rowLink(i) ?? colLink(j)
@@ -441,47 +385,25 @@ function LineBody({ v, onPoint, onOpen, compact }) {
   const color = React.useMemo(() => paletteOf(v.series.map((s) => s.name)), [v])
   const ref = React.useRef(null)
   const shape = v.series.length
-  React.useEffect(() => {
-    const paths = ref.current?.querySelectorAll("[data-series]")
-    if (!paths?.length) return
-    const a = play(svg.createDrawable(paths), { draw: ["0 0", "0 1"], delay: stagger(150), duration: ms(1200), ease: "inOutSine" })
-    return () => a.revert()
-  }, [shape])
+  usePlay(ref, "[data-series]", () => ({ draw: ["0 0", "0 1"], delay: stagger(150), duration: ms(1200), ease: "inOutSine" }), [shape], { end: "revert", wrap: svg.createDrawable })
   return (
     <div ref={box} className="flex flex-col gap-2">
       <svg ref={ref} viewBox={`0 0 ${W} ${H}`} className="h-auto w-full" role="img" aria-label={v.title || "line chart"}>
         <line x1={44} x2={W - 22} y1={H - 44} y2={H - 44} className="stroke-muted-foreground/40" />
         <line x1={44} x2={44} y1={22} y2={H - 44} className="stroke-muted-foreground/40" />
-        <text x={40} y={26} textAnchor="end" className="fill-muted-foreground text-[10px]">
-          {fmt(L.ys[1])}
-        </text>
-        <text x={40} y={H - 44} textAnchor="end" className="fill-muted-foreground text-[10px]">
-          {fmt(L.ys[0])}
-        </text>
-        <text x={44} y={H - 28} className="fill-muted-foreground text-[10px]">
-          {fmt(L.xs[0])}
-        </text>
-        <text x={W - 22} y={H - 28} textAnchor="end" className="fill-muted-foreground text-[10px]">
-          {fmt(L.xs[1])}
-          {v.x ? ` ${v.x}` : ""}
-        </text>
-        {v.y && (
-          <text x={48} y={14} className="fill-muted-foreground text-[10px]">
-            {v.y}
-          </text>
-        )}
+        <Tick x={40} y={26} textAnchor="end">{fmt(L.ys[1])}</Tick>
+        <Tick x={40} y={H - 44} textAnchor="end">{fmt(L.ys[0])}</Tick>
+        <Tick x={44} y={H - 28}>{fmt(L.xs[0])}</Tick>
+        <Tick x={W - 22} y={H - 28} textAnchor="end">{fmt(L.xs[1])}{v.x ? ` ${v.x}` : ""}</Tick>
+        {v.y && <Tick x={48} y={14}>{v.y}</Tick>}
         {L.marks.map((m, k) => (
           <g key={`m${k}`}>
             <line x1={m.px} x2={m.px} y1={22} y2={H - 44} strokeDasharray="3 3" className="stroke-amber-400/70" />
             {/* a mark near the right edge labels to its left, so the label stays inside the chart */}
-            <text x={m.px > W - 90 ? m.px - 3 : m.px + 3} y={32 + (k % 3) * 11} textAnchor={m.px > W - 90 ? "end" : "start"} className="fill-amber-400 text-[10px]">
-              {m.label}
-            </text>
+            <text x={m.px > W - 90 ? m.px - 3 : m.px + 3} y={32 + (k % 3) * 11} textAnchor={m.px > W - 90 ? "end" : "start"} className="fill-amber-400 text-[10px]">{m.label}</text>
           </g>
         ))}
-        {L.series.map((s) => (
-          <path key={s.name} data-series d={s.d} fill="none" stroke={color(s.name)} strokeWidth={2} strokeLinejoin="round" />
-        ))}
+        {L.series.map((s) => <path key={s.name} data-series d={s.d} fill="none" stroke={color(s.name)} strokeWidth={2} strokeLinejoin="round" />)}
         {/* a series with a link: every point opens (its x fills {x} — the step the owner picked); else only its end */}
         {v.series.map((s) => {
           if (!onOpen || !s.open) return null
@@ -516,6 +438,8 @@ function LineBody({ v, onPoint, onOpen, compact }) {
   )
 }
 
+const Tick = (props) => <text className="fill-muted-foreground text-[10px]" {...props} />
+
 function Legend({ names, color }) {
   if (names.length < 2) return null
   return (
@@ -539,12 +463,9 @@ function BarsBody({ v, onPoint, onOpen }) {
   const labels = React.useMemo(() => [...new Set(v.frames.flatMap((f) => f.bars.map((b) => b.label)))], [v])
   const ref = React.useRef(null)
   const frame = v.frames[clock.i]
-  React.useEffect(() => {
-    const bars = ref.current?.querySelectorAll("[data-bar]")
-    if (!bars?.length) return
+  usePlay(ref, "[data-bar]", () => {
     const byLabel = new Map(frame.bars.map((b) => [b.label, b.value ?? 0]))
-    const a = play(bars, { width: (el) => `${(100 * Math.abs(byLabel.get(el.dataset.bar) ?? 0)) / max}%`, duration: ms(500), delay: stagger(25), ease: "outCubic" })
-    return () => a.pause()
+    return { width: (el) => `${(100 * Math.abs(byLabel.get(el.dataset.bar) ?? 0)) / max}%`, duration: ms(500), delay: stagger(25), ease: "outCubic" }
   }, [frame, max])
   return (
     <div className="flex flex-col gap-2">
@@ -558,10 +479,7 @@ function BarsBody({ v, onPoint, onOpen }) {
               <span className="h-3 overflow-hidden rounded bg-muted/40">
                 <span data-bar={label} className={cn("block h-full rounded", (b?.value ?? 0) < 0 ? "bg-sky-500" : "bg-fuchsia-500")} style={{ width: 0 }} />
               </span>
-              <span className="text-right tabular-nums text-muted-foreground">
-                {fmt(b?.value)}
-                {v.unit ?? ""}
-              </span>
+              <span className="text-right tabular-nums text-muted-foreground">{fmt(b?.value)}{v.unit ?? ""}</span>
               {link ? <ChevronRightIcon className="size-4 text-fuchsia-400" aria-hidden /> : <span />}
             </button>
           )
@@ -582,18 +500,8 @@ function TokensBody({ v, onPoint, onOpen }) {
   const ref = React.useRef(null)
   const shown = picked != null && picked <= clock.i ? picked : clock.i
   const t = v.tokens[shown]
-  React.useEffect(() => {
-    const el = ref.current?.querySelector(`[data-token="${clock.i}"]`)
-    if (!el) return
-    const a = play(el, { opacity: [0, 1], translateY: [6, 0], duration: ms(300), ease: "outQuad" })
-    return () => a.pause()
-  }, [clock.i])
-  React.useEffect(() => {
-    const bars = ref.current?.querySelectorAll("[data-top]")
-    if (!bars?.length) return
-    const a = play(bars, { width: (el) => `${100 * Number(el.dataset.top)}%`, duration: ms(400), delay: stagger(30), ease: "outCubic" })
-    return () => a.pause()
-  }, [shown])
+  usePlay(ref, `[data-token="${clock.i}"]`, () => ({ opacity: [0, 1], translateY: [6, 0], duration: ms(300), ease: "outQuad" }), [clock.i])
+  usePlay(ref, "[data-top]", () => ({ width: (el) => `${100 * Number(el.dataset.top)}%`, duration: ms(400), delay: stagger(30), ease: "outCubic" }), [shown])
   return (
     <div ref={ref} className="flex flex-col gap-3">
       <p className="whitespace-pre-wrap break-words text-base leading-relaxed">
@@ -623,10 +531,7 @@ function TokensBody({ v, onPoint, onOpen }) {
           <span>{color === "p" ? "likely" : "expected"}</span>
           <span className="h-2 w-28 rounded" style={{ background: `linear-gradient(90deg, ${[0, 0.25, 0.5, 0.75, 1].map((x) => tokenHeat({ v: x }, "v", [0, 1]).bg).join(",")})` }} />
           <span>{color === "p" ? "unlikely" : "surprising"}</span>
-          <span className="tabular-nums">
-            {color} {fmt(range[0])}–{fmt(range[1])}
-            {color === "p" ? "" : " bits"}
-          </span>
+          <span className="tabular-nums">{color} {fmt(range[0])}–{fmt(range[1])}{color === "p" ? "" : " bits"}</span>
         </div>
       )}
       {t && (t.top?.length > 0 || t.surprisal != null || t.target != null || t.open) && (
@@ -674,18 +579,9 @@ function ScatterBody({ v, onPoint, onOpen, compact }) {
   const ref = React.useRef(null)
   const frame = v.frames[clock.i]
   const first = v.frames[0].points
-  React.useEffect(() => {
-    const dots = ref.current?.querySelectorAll("[data-pt]")
-    const labels = ref.current?.querySelectorAll("[data-lb]")
-    if (!dots?.length) return
-    const at = (k) => frame.points[k] ?? frame.points.at(-1)
-    const a = play(dots, { cx: (_, k) => sx(at(k)?.x ?? 0), cy: (_, k) => sy(at(k)?.y ?? 0), duration: ms(650), ease: "inOutCubic" })
-    const b = labels?.length ? play(labels, { x: (el) => sx(at(Number(el.dataset.lb))?.x ?? 0) + 6, y: (el) => sy(at(Number(el.dataset.lb))?.y ?? 0) - 6, duration: ms(650), ease: "inOutCubic" }) : null
-    return () => {
-      a.pause()
-      b?.pause()
-    }
-  }, [frame, sx, sy])
+  const at = (k) => frame.points[k] ?? frame.points.at(-1)
+  usePlay(ref, "[data-pt]", () => ({ cx: (_, k) => sx(at(k)?.x ?? 0), cy: (_, k) => sy(at(k)?.y ?? 0), duration: ms(650), ease: "inOutCubic" }), [frame, sx, sy])
+  usePlay(ref, "[data-lb]", () => ({ x: (el) => sx(at(Number(el.dataset.lb))?.x ?? 0) + 6, y: (el) => sy(at(Number(el.dataset.lb))?.y ?? 0) - 6, duration: ms(650), ease: "inOutCubic" }), [frame, sx, sy])
   return (
     <div ref={box} className="flex flex-col gap-2">
       <svg ref={ref} viewBox={`0 0 ${W} ${H}`} className="h-auto w-full" role="img" aria-label={v.title || "scatter"}>
@@ -718,16 +614,10 @@ function ScatterBody({ v, onPoint, onOpen, compact }) {
         {first.length <= 60 &&
           first.map((p, k) =>
             p.label ? (
-              <text key={`l${k}`} data-lb={k} x={sx(p.x ?? 0) + 6} y={sy(p.y ?? 0) - 6} className="pointer-events-none fill-foreground text-[11px]">
-                {frame.points[k]?.label ?? p.label}
-              </text>
+              <text key={`l${k}`} data-lb={k} x={sx(p.x ?? 0) + 6} y={sy(p.y ?? 0) - 6} className="pointer-events-none fill-foreground text-[11px]">{frame.points[k]?.label ?? p.label}</text>
             ) : null,
           )}
-        {(v.x || v.y) && (
-          <text x={8} y={H - 8} className="fill-muted-foreground text-[10px]">
-            {[v.x, v.y].filter(Boolean).join(" × ")}
-          </text>
-        )}
+        {(v.x || v.y) && <Tick x={8} y={H - 8}>{[v.x, v.y].filter(Boolean).join(" × ")}</Tick>}
       </svg>
       <ClockBar clock={clock} label={frame.label} />
     </div>

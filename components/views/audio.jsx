@@ -1,10 +1,10 @@
 "use client"
 
 import * as React from "react"
-import { AudioLinesIcon, FileTextIcon, SendIcon, SquareIcon, Trash2Icon } from "lucide-react"
+import { AudioLinesIcon, FileTextIcon, SendIcon, SquareIcon } from "lucide-react"
 
 import { audioCall, audioUrl, chapterUrl, heardOf, lengthText, partsShare, ttsModel } from "@/backend/live/audio"
-import { Button } from "@/components/ui/button"
+import { CallNote, ConfirmDelete, Options, SmButton, field, useOwnerCall } from "@/components/views/kit"
 import { cn } from "@/lib/utils"
 
 // Audio (kernel builtin/audio.js; 2026-10-24 owner: "an audio generation pipeline such that, even the lead is able to use
@@ -15,32 +15,15 @@ import { cn } from "@/lib/utils"
 // "something that can be long as well … a change in narrative style") shows its chapters, each playable as soon as it is
 // made, the parts made so far, and the voice styles with their writing guides and the changes made from feedback.
 
-const field = "w-full rounded-md border bg-background px-2 py-1.5 text-base md:text-sm"
+const useCall = (id) => useOwnerCall(audioCall, id, (r) => (r?.deleted ? `deleted ${r.deleted.join(", ")}` : String(r?.result ?? "done").split("\n")[0]))
 
-function useCall(id) {
-  const [busy, setBusy] = React.useState(false)
-  const [note, setNote] = React.useState(null)
-  const call = async (method, extra, done) => {
-    setBusy(true)
-    setNote(null)
-    try {
-      const r = await audioCall(id, method, extra)
-      setNote({ ok: true, text: r?.deleted ? `deleted ${r.deleted.join(", ")}` : String(r?.result ?? "done").split("\n")[0] })
-      done?.()
-      return true
-    } catch (error) {
-      setNote({ ok: false, text: error.message })
-      return false
-    } finally {
-      setBusy(false)
-    }
-  }
-  return { busy, note, call }
-}
+const Player = ({ src, label, className }) => (
+  // eslint-disable-next-line jsx-a11y/media-has-caption
+  <audio controls preload="none" src={src} className={cn("h-9 w-full", className)} aria-label={label} />
+)
 
 function Job({ id, state, job }) {
   const { busy, note, call } = useCall(id)
-  const [asking, setAsking] = React.useState(false)
   const url = audioUrl(job)
   const heard = heardOf(state, job.id)
   const live = ["queued", "running"].includes(job.status)
@@ -73,18 +56,14 @@ function Job({ id, state, job }) {
                   {c.sent?.length ? " · sent" : ""}
                 </span>
               </span>
-              {chapterUrl(job, c) && (
-                // eslint-disable-next-line jsx-a11y/media-has-caption
-                <audio controls preload="none" src={chapterUrl(job, c)} className="h-9 w-full" aria-label={`Play chapter ${c.n}`} />
-              )}
+              {chapterUrl(job, c) && <Player src={chapterUrl(job, c)} label={`Play chapter ${c.n}`} />}
               {c.error && <span className="text-[11px] text-destructive">{c.error}</span>}
             </li>
           ))}
         </ol>
       )}
       {url ? (
-        // eslint-disable-next-line jsx-a11y/media-has-caption
-        <audio controls preload="none" src={url} className="h-10 w-full" aria-label={`Play ${job.title}`} />
+        <Player src={url} label={`Play ${job.title}`} className="h-10" />
       ) : (
         <p className={cn("text-xs", ["failed", "interrupted", "stopped"].includes(job.status) ? "text-destructive" : "text-muted-foreground")}>
           {live ? (job.status === "running" ? "being made…" : "waiting its turn…") : job.status}
@@ -101,35 +80,16 @@ function Job({ id, state, job }) {
       <div className="flex flex-wrap items-center gap-1">
         {job.status === "done" && (
           <>
-            <Button size="sm" variant="outline" className="pointer-coarse:h-10" disabled={busy} onClick={() => call("send", { audio: job.id })}>
-              <SendIcon /> {job.sent?.length ? "Send again" : "Send to Telegram"}
-            </Button>
-            <Button size="sm" variant="ghost" className="pointer-coarse:h-10" disabled={busy} onClick={() => call("transcribe", { audio: job.id })} title="Read it back with the speech-to-text model and compare it with its script">
+            <SmButton variant="outline" disabled={busy} onClick={() => call("send", { audio: job.id })}><SendIcon /> {job.sent?.length ? "Send again" : "Send to Telegram"}</SmButton>
+            <SmButton variant="ghost" disabled={busy} onClick={() => call("transcribe", { audio: job.id })} title="Read it back with the speech-to-text model and compare it with its script">
               <FileTextIcon /> Transcribe
-            </Button>
+            </SmButton>
           </>
         )}
-        {live && (
-          <Button size="sm" variant="ghost" className="text-destructive pointer-coarse:h-10" disabled={busy} onClick={() => call("stop", { audio: job.id })}>
-            <SquareIcon /> Stop
-          </Button>
-        )}
-        {asking ? (
-          <>
-            <Button size="sm" variant="destructive" className="pointer-coarse:h-10" disabled={busy} onClick={() => call("delete", { audio: job.id }, () => setAsking(false))}>
-              <Trash2Icon /> Delete for good?
-            </Button>
-            <Button size="sm" variant="ghost" className="pointer-coarse:h-10" disabled={busy} onClick={() => setAsking(false)}>
-              Cancel
-            </Button>
-          </>
-        ) : (
-          <Button size="sm" variant="ghost" className="text-destructive pointer-coarse:h-10" disabled={busy} onClick={() => setAsking(true)}>
-            <Trash2Icon /> Delete
-          </Button>
-        )}
+        {live && <SmButton variant="ghost" className="text-destructive" disabled={busy} onClick={() => call("stop", { audio: job.id })}><SquareIcon /> Stop</SmButton>}
+        <ConfirmDelete busy={busy} onConfirm={() => call("delete", { audio: job.id })} />
       </div>
-      {note && <p className={cn("text-xs", note.ok ? "text-muted-foreground" : "text-destructive")}>{note.text}</p>}
+      <CallNote note={note} />
     </li>
   )
 }
@@ -151,22 +111,16 @@ function MakeNow({ id, state }) {
         {tts?.voices?.length > 0 && (
           <select value={voice} onChange={(e) => setVoice(e.target.value)} aria-label="Voice" className={cn(field, "h-10")}>
             <option value="">voice: its default</option>
-            {tts.voices.map((v) => (
-              <option key={v} value={v}>
-                {v}
-              </option>
-            ))}
+            <Options items={tts.voices.map((v) => ({ value: v, label: v }))} />
           </select>
         )}
         <div className="flex items-center gap-2">
-          <Button size="sm" className="pointer-coarse:h-10" disabled={busy || !text.trim()} onClick={() => call("make", { text, title: title.trim() || undefined, voice: voice || undefined }, () => (setText(""), setTitle("")))}>
+          <SmButton disabled={busy || !text.trim()} onClick={() => call("make", { text, title: title.trim() || undefined, voice: voice || undefined }, () => (setText(""), setTitle("")))}>
             <AudioLinesIcon /> Make
-          </Button>
-          <span className="text-[11px] text-muted-foreground">
-            {count} words ≈ {lengthText((count / 150) * 60)}
-          </span>
+          </SmButton>
+          <span className="text-[11px] text-muted-foreground">{count} words ≈ {lengthText((count / 150) * 60)}</span>
         </div>
-        {note && <p className={cn("text-xs", note.ok ? "text-muted-foreground" : "text-destructive")}>{note.text}</p>}
+        <CallNote note={note} />
       </div>
     </details>
   )
@@ -194,13 +148,7 @@ function Styles({ state }) {
             <details>
               <summary className="cursor-pointer text-[11px] text-muted-foreground">writing guide{st.changes?.length ? ` · ${st.changes.length} change${st.changes.length === 1 ? "" : "s"}` : ""}</summary>
               <p className="whitespace-pre-wrap text-[11px]">{st.writing}</p>
-              {st.changes?.length > 0 && (
-                <ul className="mt-1 text-[11px] text-muted-foreground">
-                  {st.changes.map((c) => (
-                    <li key={c}>{c}</li>
-                  ))}
-                </ul>
-              )}
+              {st.changes?.length > 0 && <ul className="mt-1 text-[11px] text-muted-foreground">{st.changes.map((c) => <li key={c}>{c}</li>)}</ul>}
             </details>
           </li>
         ))}
@@ -220,16 +168,13 @@ export function AudioView({ id, state, expanded }) {
           <>
             <span className="truncate">{newest.title}</span>
             {url ? (
-              // eslint-disable-next-line jsx-a11y/media-has-caption
-              <audio controls preload="none" src={url} className="h-9 w-full" aria-label={`Play ${newest.title}`} />
+              <Player src={url} label={`Play ${newest.title}`} />
             ) : (
               <span className="text-muted-foreground">{newest.status}…</span>
             )}
           </>
         ) : (
-          <span className="text-muted-foreground">
-            No audio yet — tts {state?.tts ?? "?"}, stt {state?.stt ?? "?"}
-          </span>
+          <span className="text-muted-foreground">No audio yet — tts {state?.tts ?? "?"}, stt {state?.stt ?? "?"}</span>
         )}
       </div>
     )
@@ -240,11 +185,7 @@ export function AudioView({ id, state, expanded }) {
         Text to speech: {ttsModel(state)?.title ?? state?.tts ?? "?"} · speech to text: {state?.stt ?? "?"} · a file goes to your Telegram chat when sent
       </p>
       {jobs.length ? (
-        <ul className="flex flex-col gap-2">
-          {jobs.map((j) => (
-            <Job key={j.id} id={id} state={state} job={j} />
-          ))}
-        </ul>
+        <ul className="flex flex-col gap-2">{jobs.map((j) => <Job key={j.id} id={id} state={state} job={j} />)}</ul>
       ) : (
         <p className="text-sm text-muted-foreground">No audio yet. Ask the lead for a story, a talk, a class, an explanation or a narrative — or make one below.</p>
       )}

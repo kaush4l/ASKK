@@ -67,32 +67,26 @@ function AfterCall({ event, events, artifacts, changes }) {
   )
 }
 
-function GatePanel({ event }) {
+// A row that is no call (a refused answer, a compaction, the owner's guidance): its label, who and when, what it means, its text.
+function NotePanel({ event, label, title, who, note }) {
   return (
-    <section aria-label="Refused answer" className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto">
+    <section aria-label={label} className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto">
       <header className="flex flex-wrap items-center gap-2 text-sm">
-        <span className={toneOf(callLook({ kind: event.kind === "compact" ? "compact" : "gate" })).text}>{asText(event.name)}</span>
+        {title}
         <span className="text-xs text-muted-foreground">
-          {asText(event.agent)} · {time(event.at)}
+          {who} · {time(event.at)}
         </span>
       </header>
-      <p className="text-xs text-muted-foreground">{event.kind === "compact" ? "The prompt reached 90% of its budget: the run's older steps were folded into one summary; the request went on verbatim." : "The kernel did not take this answer; the agent went on working."}</p>
+      <p className="text-xs text-muted-foreground">{note}</p>
       <pre className={block}>{asText(event.output)}</pre>
     </section>
   )
 }
 
-function GuidancePanel({ event }) {
-  return (
-    <section aria-label="Guidance" className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto">
-      <header className="flex flex-wrap items-center gap-2 text-sm">
-        <span>Guidance to {asText(event.agent)}</span>
-        <span className="text-xs text-muted-foreground">
-          from {asText(event.from ?? "owner")} · {time(event.at)}
-        </span>
-      </header>
-      <p className="text-xs text-muted-foreground">A note for the run in progress: {asText(event.agent)}'s next step reads it once, without a new run.</p>
-      <pre className={block}>{asText(event.output)}</pre>
-    </section>
-  )
-}
+const GatePanel = ({ event }) => (
+  <NotePanel event={event} label="Refused answer" title={<span className={toneOf(callLook({ kind: event.kind === "compact" ? "compact" : "gate" })).text}>{asText(event.name)}</span>} who={asText(event.agent)} note={event.kind === "compact" ? "The prompt reached 90% of its budget: the run's older steps were folded into one summary; the request went on verbatim." : "The kernel did not take this answer; the agent went on working."} />
+)
+
+const GuidancePanel = ({ event }) => (
+  <NotePanel event={event} label="Guidance" title={<span>Guidance to {asText(event.agent)}</span>} who={`from ${asText(event.from ?? "owner")}`} note={`A note for the run in progress: ${asText(event.agent)}'s next step reads it once, without a new run.`} />
+)

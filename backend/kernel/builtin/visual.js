@@ -142,6 +142,13 @@ function labels(v, n, what) {
   return v.map((x) => str(x, 24))
 }
 
+// A visual's frames: s.frames [{label?, <key>}] ≤ 60 (check(list, what, true) each), else one frame from s[key].
+function framed(s, key, check) {
+  const frames = s.frames != null ? cap(arr(s.frames, "frames"), 60, "frames").map((f, i) => opt({ label: str(f?.label), [key]: check(f?.[key], `frames[${i}].${key}`, true) })) : [{ [key]: check(s[key], key, false) }]
+  if (!frames.length) throw new Error("frames: at least one")
+  return frames
+}
+
 const CHECK = {
   flow(s) {
     const nodes = cap(arr(s.nodes, "nodes"), 120, "nodes").map((n, i) => {
@@ -193,9 +200,7 @@ const CHECK = {
   },
   bars(s) {
     const bars = (list, what) => cap(arr(list, what), 60, what).map((b, i) => opt({ label: str(b?.label ?? b?.[0]), value: num(b?.value ?? b?.[1]), note: str(b?.note, TEXT), open: Array.isArray(b) ? null : link(b?.open, `${what}[${i}].open`) }))
-    const frames = s.frames != null ? cap(arr(s.frames, "frames"), 60, "frames").map((f, i) => opt({ label: str(f?.label), bars: bars(f?.bars, `frames[${i}].bars`) })) : [{ bars: bars(s.bars, "bars") }]
-    if (!frames.length) throw new Error("frames: at least one")
-    return opt({ frames, unit: str(s.unit, 20) })
+    return opt({ frames: framed(s, "bars", bars), unit: str(s.unit, 20) })
   },
   tokens(s) {
     const tokens = cap(arr(s.tokens, "tokens"), 300, "tokens").map((t, i) => {
@@ -218,9 +223,7 @@ const CHECK = {
   },
   scatter(s) {
     const pts = (list, n, what) => cap(arr(list, what), n, what).map((p, i) => opt({ x: num(p?.x ?? p?.[0]), y: num(p?.y ?? p?.[1]), label: str(p?.label, 30), group: p?.group == null ? null : str(p.group, 30), open: Array.isArray(p) ? null : link(p?.open, `${what}[${i}].open`) }))
-    const frames = s.frames != null ? cap(arr(s.frames, "frames"), 60, "frames").map((f, i) => opt({ label: str(f?.label), points: pts(f?.points, 500, `frames[${i}].points`) })) : [{ points: pts(s.points, 2000, "points") }]
-    if (!frames.length) throw new Error("frames: at least one")
-    return opt({ frames, x: str(s.x, 30), y: str(s.y, 30), trails: s.trails ? true : null })
+    return opt({ frames: framed(s, "points", (list, what, inFrame) => pts(list, inFrame ? 500 : 2000, what)), x: str(s.x, 30), y: str(s.y, 30), trails: s.trails ? true : null })
   },
   compare(s) {
     const sides = arr(s.sides, "sides")
@@ -262,30 +265,18 @@ export function checkVisual(raw, { maxChars = 24000 } = {}) {
 }
 
 // Every drill-down link a visual carries (a compare: its sides').
-export function linksOf(v) {
-  if (!v?.kind) return []
-  const each = (list) => (list ?? []).map((x) => x?.open).filter(Boolean)
-  switch (v.kind) {
-    case "flow":
-      return each(v.nodes)
-    case "steps":
-      return each(v.steps)
-    case "matrix":
-      return [...(v.open_rows ?? []), ...(v.open_cols ?? [])].filter(Boolean)
-    case "line":
-      return each(v.series)
-    case "bars":
-      return v.frames.flatMap((f) => each(f.bars))
-    case "tokens":
-      return each(v.tokens)
-    case "scatter":
-      return v.frames.flatMap((f) => each(f.points))
-    case "compare":
-      return v.sides.flatMap((s) => linksOf(s.visual))
-    default:
-      return []
-  }
+const each = (list) => (list ?? []).map((x) => x?.open).filter(Boolean)
+const LINKED = {
+  flow: (v) => each(v.nodes),
+  steps: (v) => each(v.steps),
+  matrix: (v) => [...(v.open_rows ?? []), ...(v.open_cols ?? [])].filter(Boolean),
+  line: (v) => each(v.series),
+  bars: (v) => v.frames.flatMap((f) => each(f.bars)),
+  tokens: (v) => each(v.tokens),
+  scatter: (v) => v.frames.flatMap((f) => each(f.points)),
+  compare: (v) => v.sides.flatMap((s) => linksOf(s.visual)),
 }
+export const linksOf = (v) => (v?.kind && Object.hasOwn(LINKED, v.kind) ? LINKED[v.kind](v) : [])
 
 // "meta config r04-base, n_layer 6": a visual's meta in one line ("" when none).
 export const metaLine = (m) =>
@@ -303,29 +294,17 @@ export function visualBrief(v) {
   return `${kindBrief(v)}${more}`
 }
 
-function kindBrief(v) {
-  const frames = v.frames?.length > 1 ? `, ${v.frames.length} frames` : ""
-  switch (v.kind) {
-    case "flow":
-      return `flow ${v.nodes.length} nodes, ${v.edges?.length ?? 0} edges`
-    case "steps":
-      return `steps ${v.steps.length}`
-    case "matrix":
-      return `matrix ${v.frames[0].values.length}×${v.frames[0].values[0].length}${frames}`
-    case "line":
-      return `line ${v.series.length} series, ${v.series.reduce((n, s) => n + s.points.length, 0)} points`
-    case "bars":
-      return `bars ${v.frames[0].bars.length}${frames}`
-    case "tokens":
-      return `tokens ${v.tokens.length}`
-    case "scatter":
-      return `scatter ${v.frames[0].points.length} points${frames}`
-    case "compare":
-      return `compare ${v.sides.map((s) => `${s.title} (${visualBrief(s.visual)})`).join(" vs ")}`
-    default:
-      return v.kind
-  }
+const BRIEF = {
+  flow: (v) => `flow ${v.nodes.length} nodes, ${v.edges?.length ?? 0} edges`,
+  steps: (v) => `steps ${v.steps.length}`,
+  matrix: (v, frames) => `matrix ${v.frames[0].values.length}×${v.frames[0].values[0].length}${frames}`,
+  line: (v) => `line ${v.series.length} series, ${v.series.reduce((n, s) => n + s.points.length, 0)} points`,
+  bars: (v, frames) => `bars ${v.frames[0].bars.length}${frames}`,
+  tokens: (v) => `tokens ${v.tokens.length}`,
+  scatter: (v, frames) => `scatter ${v.frames[0].points.length} points${frames}`,
+  compare: (v) => `compare ${v.sides.map((s) => `${s.title} (${visualBrief(s.visual)})`).join(" vs ")}`,
 }
+const kindBrief = (v) => (Object.hasOwn(BRIEF, v.kind) ? BRIEF[v.kind](v, v.frames?.length > 1 ? `, ${v.frames.length} frames` : "") : v.kind)
 
 // 2026-10-18 (the dev desk's lead: two refused preview.show calls for one answer): a spec written as indented
 // "key: value" text (kind: bars / bars: / - label: …) is read with util/yamlish.js; a list whose first item holds the

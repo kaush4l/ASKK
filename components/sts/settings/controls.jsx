@@ -33,6 +33,15 @@ export function Field({ label, hint, children }) {
   )
 }
 
+// A slider under its label: `range` [min, max, step]; onChange gets the number.
+export function Slider({ label, range: [min, max, step], value, onChange, "aria-label": aria }) {
+  return (
+    <Field label={label}>
+      <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(Number(e.target.value))} className="accent-foreground" aria-label={aria} />
+    </Field>
+  )
+}
+
 export function Toggle({ label, hint, checked, onChange }) {
   return (
     <label className="flex items-center justify-between gap-3 text-sm">

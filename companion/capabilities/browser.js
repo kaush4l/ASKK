@@ -16,6 +16,8 @@
 //   POST browser/shot { id }                          { shot, page }   a fresh screenshot
 //   POST browser/console { id }                       { lines: [{ level, text, at }] }   console calls and page errors
 //   POST browser/close { id }                         { page }
+//   POST browser/record { id, on }                    { page }   on: its screenshots are kept (≤ keepRecorded) for a
+//                                                     recording (the preview's preview.record), off: pruned again
 //   GET  browser/list                                 { pages } newest first (closed ones too, a few)
 //   GET  browser/shot?id=&n=                          the PNG (image/png; n given: cached for good; none: the latest)
 //   GET  browser/image?id=&n=&max=                    { id, n, media_type, width, height, bytes, data } — the same shot
@@ -31,26 +33,56 @@
 // Screenshots go to <desk state>/browser/<id>/<n>.png (the last keepShots per page, the newest keepPages pages), served
 // by id and number only. At most perDesk open pages per desk and perProcess in this process; close() closes the desk's.
 //
-//   const browser = createBrowser({ state, blockedPorts, log })   blockedPorts() → the desk server's ports
+//   const browser = createBrowser({ state, blockedPorts, appPorts, log })   blockedPorts() → the desk server's ports
+//
+// The app itself (2026-10-25 owner: "As the application is already live running, it will look at the localhost 1111.
+// The lead should be able to open the webpage, record, navigate and perform actions"): a desk whose main.js says
+// `browser: {app: true}` gets appPorts() = the desk server's own port, which its pages may then show — as an AGENT'S
+// VIEW. A page same-origin with the host API acts as the owner (every owner call, an accept, a model choice), so such a
+// page is first sent through GET /__askk/view/enter?t=<token>&to=<path>, which sets an HttpOnly cookie naming the page
+// (enterView); every request carrying a live token is the agent's (agentView), and the server refuses it anything but a
+// read (companion/server/desks.js handleApi: GET and HEAD only). The page reads, navigates, clicks and types — the
+// app's own script sends the cookie with every same-origin request — and eval is refused on it (a fetch with
+// credentials: "omit" would go unmarked). A page that reaches the app's port any other way (a link from another app, a
+// host it did not enter by) is closed.
 
 import { mkdirSync, readdirSync, rmSync, statSync } from "node:fs"
 import { join } from "node:path"
 import { API_PREFIX, HOST_LIMITS } from "../shared/config.js"
-import { httpError } from "../shared/http.js"
+import { forward, httpError } from "../shared/http.js"
+import { attempt } from "../shared/safe.js"
 
 const B = HOST_LIMITS.browser
 const LOOPBACK = new Set(["localhost", "127.0.0.1", "[::1]"])
 const PAGE_ID = /^page-[a-z0-9]+-\d+$/
 const everyPage = new Set() // every open page in this process, of every desk (perProcess)
+const VIEW_COOKIE = "askk_view"
+const views = new Map() // token → page id: the agents' views of this app, in this process (every desk's)
+
+// Whether a request comes from an agent's view of this app (its cookie names a page still open).
+export function agentView(request) {
+  const cookie = request.headers.get("cookie") ?? ""
+  for (const part of cookie.split(";")) {
+    const [k, ...v] = part.trim().split("=")
+    if (k === VIEW_COOKIE && views.has(v.join("="))) return true
+  }
+  return false
+}
+
+// GET view/enter?t=&to=: the agent's page gets its mark (HttpOnly: the page's script never reads or clears it), then
+// goes where it was sent (a path on this app only).
+export function enterView(url) {
+  const token = url.searchParams.get("t") ?? ""
+  const to = url.searchParams.get("to") ?? "/"
+  if (!views.has(token)) return Response.json({ error: "Not an agent's view." }, { status: 403 })
+  const path = to.startsWith("/") && !to.startsWith("//") && !to.startsWith("/\\") ? to : "/"
+  return new Response(null, { status: 302, headers: { location: path, "set-cookie": `${VIEW_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Strict`, "cache-control": "no-store" } })
+}
 
 // A URL a preview page may show: { ok, url } or { ok: false, reason }.
 export function allowedUrl(raw, blockedPorts = []) {
-  let u
-  try {
-    u = new URL(String(raw ?? "").trim())
-  } catch {
-    return { ok: false, reason: "not a URL" }
-  }
+  const u = attempt(() => new URL(String(raw ?? "").trim()))
+  if (!u) return { ok: false, reason: "not a URL" }
   if (u.hostname === "0.0.0.0") u.hostname = "127.0.0.1" // what dev servers print for "every address"
   if (u.protocol !== "http:" && u.protocol !== "https:") return { ok: false, reason: "only http(s) pages" }
   if (!LOOPBACK.has(u.hostname)) return { ok: false, reason: "only pages on this computer (localhost, 127.0.0.1, [::1])" }
@@ -140,32 +172,40 @@ const sizeOf = (v, fallback) => {
 }
 const textOf = (v) => {
   if (typeof v === "string") return v
-  try {
-    return JSON.stringify(v) ?? String(v)
-  } catch {
-    return String(v)
-  }
+  return attempt(() => JSON.stringify(v) ?? String(v), String(v))
 }
 
 // state: the desk's state folder (screenshots); blockedPorts() → the ports no page may show (the desk server's).
 // "hash": the same document at another #fragment; "reload": the very same URL; null: a real navigation.
 export function sameDocument(current, target) {
-  try {
+  return attempt(() => {
     const a = new URL(current)
     const b = new URL(target)
     if (a.origin !== b.origin || a.pathname !== b.pathname || a.search !== b.search) return null
     return a.hash === b.hash ? "reload" : b.hash ? "hash" : null
-  } catch {
-    return null
-  }
+  })
 }
 
-export function createBrowser({ state, blockedPorts = () => [], log = () => {} }) {
+export function createBrowser({ state, blockedPorts = () => [], appPorts = () => [], log = () => {} }) {
   const shotsDir = join(state, "browser")
   const pages = new Map() // id -> page
   let count = 0
   let closed = false
-  const blocked = () => (typeof blockedPorts === "function" ? blockedPorts() : blockedPorts) ?? []
+  const apps = () => ((typeof appPorts === "function" ? appPorts() : appPorts) ?? []).map(Number)
+  const blocked = () => ((typeof blockedPorts === "function" ? blockedPorts() : blockedPorts) ?? []).map(Number).filter((n) => !apps().includes(n))
+  const portOf = (url) => attempt(() => { const u = new URL(url); return Number(u.port || (u.protocol === "https:" ? 443 : 80)) })
+  const isApp = (url) => apps().includes(portOf(url))
+  // An address on the app's port goes through view/enter first: the page's token, made once, names it.
+  const viaEnter = (p, target) => {
+    if (!isApp(target)) return target
+    const u = new URL(target)
+    if (!p.token) {
+      p.token = crypto.randomUUID().replace(/-/g, "")
+      p.viewHost = u.host
+      views.set(p.token, p.id)
+    } else if (u.host !== p.viewHost) throw httpError(403, `${target}: this agent's view entered the app at ${p.viewHost}; stay on it.`)
+    return `${u.origin}${API_PREFIX}view/enter?t=${p.token}&to=${encodeURIComponent(`${u.pathname}${u.search}${u.hash}`)}`
+  }
   const check = (url) => {
     const ok = allowedUrl(url, blocked())
     if (!ok.ok) throw httpError(403, `${url}: ${ok.reason}. A preview shows apps on this computer: http://localhost:<port>/ (not the desk server's port).`)
@@ -194,6 +234,8 @@ export function createBrowser({ state, blockedPorts = () => [], log = () => {} }
     shot: p.shot ? { ...p.shot, url: `${API_PREFIX}browser/shot?id=${p.id}&n=${p.shot.n}` } : null,
     console: p.console.slice(-B.consoleShown),
     errors: p.errors,
+    ...(p.token ? { app: true } : {}),
+    ...(p.recording ? { recording: true } : {}),
   })
 
   function note(p, level, text) {
@@ -207,9 +249,8 @@ export function createBrowser({ state, blockedPorts = () => [], log = () => {} }
     p.status = "closed"
     p.reason = reason
     everyPage.delete(p)
-    try {
-      p.view.close()
-    } catch {}
+    if (p.token) views.delete(p.token)
+    attempt(() => p.view.close())
     const done = [...pages.values()].filter((x) => x.status !== "open")
     for (const old of done.slice(0, Math.max(0, done.length - B.keepClosed))) pages.delete(old.id)
   }
@@ -223,6 +264,14 @@ export function createBrowser({ state, blockedPorts = () => [], log = () => {} }
       p.refused = true
       shut(p, `left the allowed pages: ${url} (${ok.reason})`)
       log(`browser: ${p.id} closed: it went to ${url}`)
+      return
+    }
+    // the app's port only as the view it entered by (its mark set, on the same host): any other way there is closed
+    const entering = url.includes(`${API_PREFIX}view/enter?`)
+    if (isApp(url) && !entering && (!p.token || attempt(() => new URL(url).host) !== p.viewHost)) {
+      p.refused = true
+      shut(p, `reached this app (${url}) without entering as an agent's view`)
+      log(`browser: ${p.id} closed: it reached the app at ${url} unmarked`)
       return
     }
     p.url = url
@@ -252,7 +301,8 @@ export function createBrowser({ state, blockedPorts = () => [], log = () => {} }
     const n = ++p.n
     mkdirSync(p.dir, { recursive: true })
     await Bun.write(join(p.dir, `${n}.png`), bytes)
-    if (n > B.keepShots) rmSync(join(p.dir, `${n - B.keepShots}.png`), { force: true })
+    if (n > B.keepShots && !p.recording) rmSync(join(p.dir, `${n - B.keepShots}.png`), { force: true })
+    if (p.recording && n > B.keepRecorded) rmSync(join(p.dir, `${n - B.keepRecorded}.png`), { force: true })
     p.shot = { n, at: new Date().toISOString(), width: png ? dims.getUint32(16) : null, height: png ? dims.getUint32(20) : null }
   }
 
@@ -293,16 +343,15 @@ export function createBrowser({ state, blockedPorts = () => [], log = () => {} }
   }
 
   // The newest keepPages page folders stay on disk (an open page's always).
-  function pruneShots() {
-    try {
+  const pruneShots = () =>
+    attempt(() => {
       const open = new Set(openPages().map((p) => p.id))
       const dirs = readdirSync(shotsDir)
         .filter((d) => PAGE_ID.test(d) && !open.has(d))
         .map((d) => ({ d, at: statSync(join(shotsDir, d)).mtimeMs }))
         .sort((a, b) => b.at - a.at)
       for (const { d } of dirs.slice(Math.max(0, B.keepPages - open.size))) rmSync(join(shotsDir, d), { recursive: true, force: true })
-    } catch {}
-  }
+    })
 
   async function open({ url, width, height, by } = {}) {
     if (closed) throw httpError(410, "The browser is closed (its desk stopped).")
@@ -327,6 +376,9 @@ export function createBrowser({ state, blockedPorts = () => [], log = () => {} }
       errors: 0,
       queue: Promise.resolve(),
       busy: false,
+      token: null, // an agent's view of this app: its mark (viaEnter)
+      viewHost: null,
+      recording: false,
       dir: join(shotsDir, id),
       view: null,
     }
@@ -342,12 +394,13 @@ export function createBrowser({ state, blockedPorts = () => [], log = () => {} }
     mkdirSync(p.dir, { recursive: true })
     pruneShots()
     try {
-      await act(p, () => timed(p.view.navigate(target), B.navTimeoutMs, `${target} did not load in ${B.navTimeoutMs / 1000} s`))
+      const go = viaEnter(p, target)
+      await act(p, () => timed(p.view.navigate(go), B.navTimeoutMs, `${target} did not load in ${B.navTimeoutMs / 1000} s`))
     } catch (error) {
       shut(p, `did not open: ${error.message}`)
       throw httpError(error.status === 403 ? 403 : 502, `${target}: ${error.message}`)
     }
-    log(`browser: ${id} opened ${target}${p.by ? ` for ${p.by}` : ""}`)
+    log(`browser: ${id} opened ${target}${p.by ? ` for ${p.by}` : ""}${p.token ? " (an agent's view of this app: reads only)" : ""}`)
     return { page: summary(p) }
   }
 
@@ -369,7 +422,8 @@ export function createBrowser({ state, blockedPorts = () => [], log = () => {} }
       return act(p, move).then(done(p))
     }
     if (same === "reload") return act(p, () => timed(p.view.evaluate("location.reload()"), B.actionTimeoutMs, "the page did not answer")).then(done(p))
-    return act(p, () => timed(p.view.navigate(target), B.navTimeoutMs, `${target} did not load in ${B.navTimeoutMs / 1000} s`)).then(done(p))
+    const go = viaEnter(p, target)
+    return act(p, () => timed(p.view.navigate(go), B.navTimeoutMs, `${target} did not load in ${B.navTimeoutMs / 1000} s`)).then(done(p))
   }
   async function click({ id, selector, x, y } = {}) {
     const p = page(id)
@@ -397,12 +451,20 @@ export function createBrowser({ state, blockedPorts = () => [], log = () => {} }
   }
   async function evaluate({ id, expression } = {}) {
     const p = page(id)
+    if (p.token) throw httpError(403, `${p.id} is an agent's view of this app: no eval on it (its script would act unmarked, as the owner) — read it with text, act with click, type and press.`)
     if (typeof expression !== "string" || !expression.trim() || expression.length > B.inputChars) throw httpError(400, `expression: a JavaScript expression of at most ${B.inputChars} characters.`)
     return act(p, async () => {
       const value = await timed(p.view.evaluate(expression), B.actionTimeoutMs, "the expression did not finish")
       const text = textOf(value)
       return text !== undefined && text.length > B.evalChars ? { value: `${text.slice(0, B.evalChars)}…`, truncated: true } : { value }
     }).then(done(p))
+  }
+  // A recording keeps the page's screenshots (≤ keepRecorded) while it is on.
+  function record({ id, on } = {}) {
+    const p = page(id)
+    live(p)
+    p.recording = on === true || on === "true"
+    return { page: summary(p) }
   }
   async function text({ id } = {}) {
     const p = page(id)
@@ -451,7 +513,7 @@ export function createBrowser({ state, blockedPorts = () => [], log = () => {} }
     for (const p of openPages()) shut(p, "the desk stopped")
   }
 
-  return { open, navigate, click, type, press, scroll, evaluate, text, shot, console: consoleLines, close, list, image, modelImage, closeAll }
+  return { open, navigate, click, type, press, scroll, evaluate, text, shot, console: consoleLines, close, record, list, image, modelImage, closeAll }
 }
 
 export const browserRoutes = (browser) => ({
@@ -460,17 +522,5 @@ export const browserRoutes = (browser) => ({
     "browser/shot": (params) => browser.image(params.get("id"), params.get("n")),
     "browser/image": (params) => browser.modelImage(params.get("id"), params.get("n"), params.get("max")),
   },
-  POST: {
-    "browser/open": (body) => browser.open(body),
-    "browser/navigate": (body) => browser.navigate(body),
-    "browser/click": (body) => browser.click(body),
-    "browser/type": (body) => browser.type(body),
-    "browser/press": (body) => browser.press(body),
-    "browser/scroll": (body) => browser.scroll(body),
-    "browser/eval": (body) => browser.evaluate(body),
-    "browser/text": (body) => browser.text(body),
-    "browser/shot": (body) => browser.shot(body),
-    "browser/console": (body) => browser.console(body),
-    "browser/close": (body) => browser.close(body),
-  },
+  POST: forward("browser", browser, { open: "open", navigate: "navigate", click: "click", type: "type", press: "press", scroll: "scroll", eval: "evaluate", text: "text", shot: "shot", console: "console", close: "close", record: "record" }),
 })

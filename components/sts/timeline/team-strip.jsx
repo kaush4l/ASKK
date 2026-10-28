@@ -4,6 +4,9 @@ import { describeActivity } from "@/backend/live/activity"
 import { useEngineStates, useEngines } from "@/hooks/use-engines"
 import { cn } from "@/lib/utils"
 
+// An agent's dot: working, waiting on someone, failed, else quiet.
+const DOT = { busy: "animate-pulse bg-amber-500", waiting: "bg-sky-500", error: "bg-destructive", idle: "bg-muted-foreground/40" }
+
 export function TeamStrip() {
   const { engines } = useEngines()
   const states = useEngineStates(engines)
@@ -23,18 +26,7 @@ export function TeamStrip() {
               busy ? "border-amber-500/60 text-foreground" : "text-muted-foreground",
             )}
           >
-            <span
-              className={cn(
-                "size-1.5 rounded-full",
-                busy
-                  ? "animate-pulse bg-amber-500"
-                  : waiting
-                    ? "bg-sky-500"
-                    : s?.status === "error"
-                      ? "bg-destructive"
-                      : "bg-muted-foreground/40",
-              )}
-            />
+            <span className={cn("size-1.5 rounded-full", DOT[busy ? "busy" : waiting ? "waiting" : s?.status === "error" ? "error" : "idle"])} />
             {engine.name}
           </span>
         )

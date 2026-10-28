@@ -22,6 +22,13 @@ export function talkTimeline(talk, leadMessages = [], { limit = 30 } = {}) {
   return [...desk, ...chats].sort((a, b) => String(a.at).localeCompare(String(b.at))).slice(-limit)
 }
 
+// The dashboard's one chat: the owner's requests, the lead's answers and chats (focus.js conversation) and what the desk
+// tells and asks ({id: "t:<id>", kind: "desk", at, message}), oldest first, the newest `limit`.
+export function deskChat(conversation = [], talk = null, { limit = 60 } = {}) {
+  const desk = (talk?.state?.messages ?? []).map((m) => ({ id: `t:${m.id}`, kind: "desk", at: m.at ?? "", message: m }))
+  return [...conversation, ...desk].sort((a, b) => String(a.at ?? "").localeCompare(String(b.at ?? ""))).slice(-limit)
+}
+
 export const openQuestions = (talk) => (talk?.state?.messages ?? []).filter((m) => m.kind === "ask" && m.status === "open")
 
 // The desk's messages (says and asks, not the owner's replies) after `seen`; with no `seen`, all of them.

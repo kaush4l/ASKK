@@ -101,7 +101,7 @@ test("the owner: make without an agent, send, delete; an unknown method refused"
   expect((await audio.ownerCall("send", [{ id: "audio", audio: "aud-t-1" }])).result).toContain("sent")
   expect(await audio.ownerCall("delete", [{ id: "audio", audio: "aud-t-1" }])).toEqual({ deleted: ["aud-t-1"] })
   expect(audio.state.jobs).toEqual([])
-  await expect(audio.ownerCall("dance", [{}])).rejects.toThrow("not dance")
+  expect(() => audio.ownerCall("dance", [{}])).toThrow("not dance")
 })
 
 test("styles: listed with their writing guides; samples make one chapter per style, sent; a style set carries the owner's why", async () => {

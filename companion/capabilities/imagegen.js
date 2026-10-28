@@ -34,10 +34,12 @@
 //
 //   const images = await createImagegen({ state, log })   null when no image model is installed
 
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync } from "node:fs"
 import { join } from "node:path"
 import { API_PREFIX } from "../shared/config.js"
-import { httpError } from "../shared/http.js"
+import { forward, httpError } from "../shared/http.js"
+import { loadJobIndex, saveJobIndex } from "../shared/job-index.js"
+import { attempt } from "../shared/safe.js"
 import { sharedModels } from "../models/index.js"
 import { applyPreset, buildArgv, dirOf, effective, findProgram } from "../models/registry.js"
 
@@ -73,20 +75,7 @@ export async function createImagegen({ state, log = () => {}, models = sharedMod
   const dir = join(state, "images")
   mkdirSync(dir, { recursive: true })
   const index = join(dir, "index.json")
-  let jobs = []
-  try {
-    jobs = existsSync(index) ? JSON.parse(readFileSync(index, "utf8")) : []
-    if (!Array.isArray(jobs)) throw new Error("not a list")
-  } catch (error) {
-    const aside = `${index}.unreadable-${Date.now()}`
-    renameSync(index, aside)
-    log(`images: ${index} unreadable (${error.message}) — moved to ${aside}`)
-    jobs = []
-  }
-  // a job the server stopped under: interrupted, never "running" forever
-  let woke = 0
-  jobs = jobs.map((j) => (["running", "queued"].includes(j.status) ? (woke++, { ...j, status: "interrupted", error: "the desk server stopped while it waited or ran" }) : j))
-  if (woke) log(`images: ${woke} job${woke === 1 ? "" : "s"} interrupted by the last stop`)
+  let jobs = loadJobIndex(index, "images", log)
   let seq = jobs.length
   const boot = Date.now().toString(36)
   let proc = null
@@ -99,14 +88,7 @@ export async function createImagegen({ state, log = () => {}, models = sharedMod
     for (const j of list.slice(KEEP)) Bun.file(join(dir, `${j.id}.png`)).delete().catch(() => {})
     return list.slice(0, KEEP)
   }
-  const save = () => {
-    try {
-      writeFileSync(`${index}.tmp`, JSON.stringify(jobs.slice(0, KEEP)))
-      renameSync(`${index}.tmp`, index)
-    } catch (error) {
-      log(`images: index not saved: ${error.message}`)
-    }
-  }
+  const save = () => saveJobIndex(index, jobs.slice(0, KEEP), "images", log)
   const view = (j) => ({ ...j, url: j.status === "done" ? `${API_PREFIX}image/file?id=${j.id}` : null })
   const find = (id) => {
     const j = jobs.find((x) => x.id === id)
@@ -339,9 +321,7 @@ export async function createImagegen({ state, log = () => {}, models = sharedMod
     }
     const sent = { to: "owner", at: new Date().toISOString(), by: String(by).slice(0, 60) }
     patch(j.id, { sent: [...(j.sent ?? []), sent] })
-    try {
-      onSent({ message: result?.message, kind: "image", text: `${j.id}: ${text}`, ref: { image: j.id } })
-    } catch {}
+    attempt(() => onSent({ message: result?.message, kind: "image", text: `${j.id}: ${text}`, ref: { image: j.id } }))
     log(`images: ${j.id} sent to Telegram by ${sent.by}`)
     return { sent }
   }
@@ -402,11 +382,5 @@ export const imageRoutes = (images) => ({
     "image/file": (params) => images.file(params.get("id")),
     "image/model": (params) => images.modelImage(params.get("id"), params.get("max")),
   },
-  POST: {
-    "image/generate": (body) => images.generate(body),
-    "image/upload": (body) => images.upload(body),
-    "image/send": (body) => images.send(body),
-    "image/stop": (body) => images.stop(body),
-    "image/delete": (body) => images.remove(body),
-  },
+  POST: forward("image", images, { generate: "generate", upload: "upload", send: "send", stop: "stop", delete: "remove" }),
 })

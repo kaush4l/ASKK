@@ -26,6 +26,8 @@ import { homedir, tmpdir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 import { HttpError, httpError, json } from "../shared/http.js"
 import { HOST_LIMITS } from "../shared/config.js"
+import { streamLines } from "../shared/lines.js"
+import { attempt } from "../shared/safe.js"
 
 const TIMEOUT = HOST_LIMITS.localModels.timeoutMs // ms per completion
 const ONLY_TEXT =
@@ -91,7 +93,7 @@ const CLIS = {
   "gemini-cli": {
     binary: "gemini",
     context: 1_000_000,
-    models: ["default"],
+    models: ["default", "argon"],
     // -p is appended to stdin: the instruction rides after the prompt. The
     // empty temporary folder is trusted for the session; plan mode is read-only.
     argv: (bin, model) => [
@@ -122,12 +124,7 @@ const withImages = (argv) => {
 function streamAnswer(stdout) {
   let result = null
   for (const line of stdout.split("\n")) {
-    let event
-    try {
-      event = JSON.parse(line)
-    } catch {
-      continue
-    }
+    const event = attempt(() => JSON.parse(line))
     if (event?.type === "result") result = event
   }
   if (!result) throw new LocalModelError("claude finished without a result event.")
@@ -167,18 +164,12 @@ async function* runApple({ prompt, signal }) {
   proc.stdin.write(JSON.stringify({ prompt }))
   proc.stdin.end()
   const stderr = new Response(proc.stderr).text()
-  let buffer = ""
   let done = false
-  for await (const chunk of proc.stdout.pipeThrough(new TextDecoderStream())) {
-    buffer += chunk
-    let line
-    while ((line = buffer.indexOf("\n")) >= 0) {
-      const message = JSON.parse(buffer.slice(0, line))
-      buffer = buffer.slice(line + 1)
-      if (message.error) throw new LocalModelError(`Apple on-device model: ${message.error}`)
-      if (message.delta) yield message.delta
-      if (message.done) done = true
-    }
+  for await (const line of streamLines(proc.stdout)) {
+    const message = JSON.parse(line)
+    if (message.error) throw new LocalModelError(`Apple on-device model: ${message.error}`)
+    if (message.delta) yield message.delta
+    if (message.done) done = true
   }
   const code = await proc.exited
   if (signal?.aborted) return

@@ -11,25 +11,19 @@ import { Button } from "@/components/ui/button"
 import { LIMITS } from "@/lib/config"
 import { cn } from "@/lib/utils"
 
-const PHASE_LABEL = {
-  idle: "Tap the mic to talk",
-  listening: "Listening",
-  hearing: "Hearing you",
-  armed: "Go ahead",
-  transcribing: "Writing it down",
-  working: "Working",
-  speaking: "Speaking",
+// Each phase: what the stage says under the orb, and its colour.
+const PHASE = {
+  idle: ["Tap the mic to talk", "text-muted-foreground"],
+  listening: ["Listening", "text-sky-600 dark:text-sky-300"],
+  hearing: ["Hearing you", "text-cyan-600 dark:text-cyan-300"],
+  armed: ["Go ahead", "text-fuchsia-600 dark:text-fuchsia-300"],
+  transcribing: ["Writing it down", "text-violet-600 dark:text-violet-300"],
+  working: ["Working", "text-amber-600 dark:text-amber-300"],
+  speaking: ["Speaking", "text-emerald-600 dark:text-emerald-300"],
 }
 
-const PHASE_TEXT = {
-  idle: "text-muted-foreground",
-  listening: "text-sky-600 dark:text-sky-300",
-  hearing: "text-cyan-600 dark:text-cyan-300",
-  armed: "text-fuchsia-600 dark:text-fuchsia-300",
-  transcribing: "text-violet-600 dark:text-violet-300",
-  working: "text-amber-600 dark:text-amber-300",
-  speaking: "text-emerald-600 dark:text-emerald-300",
-}
+// A round button beside the mic.
+const RoundButton = (props) => <Button variant="outline" size="icon-lg" className="size-12 rounded-full" {...props} />
 
 // The stage: orb, live caption, controls.
 export function Stage({ state, model, offered, onSettings }) {
@@ -71,7 +65,7 @@ export function Stage({ state, model, offered, onSettings }) {
       <div className="relative w-full">
         <VoiceOrb model={model} phase={phase} className="mx-auto block h-[32svh] w-full max-w-xl sm:h-[38svh] lg:h-[42svh]" />
         <div className="pointer-events-none absolute inset-x-0 bottom-1 text-center">
-          <span className={cn("text-lg tracking-wide transition-colors duration-500", PHASE_TEXT[phase])}>{PHASE_LABEL[phase]}</span>
+          <span className={cn("text-lg tracking-wide transition-colors duration-500", PHASE[phase]?.[1])}>{PHASE[phase]?.[0]}</span>
         </div>
       </div>
 
@@ -99,27 +93,13 @@ export function Stage({ state, model, offered, onSettings }) {
       ) : null}
 
       <div className="flex items-center gap-4">
-        <Button
-          variant="outline"
-          size="icon-lg"
-          className="size-12 rounded-full"
-          onClick={() => model.interrupt()}
-          disabled={!speaking}
-          aria-label="Stop speaking"
-        >
+        <RoundButton onClick={() => model.interrupt()} disabled={!speaking} aria-label="Stop speaking">
           <VolumeXIcon />
-        </Button>
+        </RoundButton>
         <MicButton state={state} model={model} />
-        <Button
-          variant="outline"
-          size="icon-lg"
-          className="size-12 rounded-full"
-          onClick={() => model.recall()}
-          disabled={phase !== "working"}
-          aria-label="Call the lead's work back"
-        >
+        <RoundButton onClick={() => model.recall()} disabled={phase !== "working"} aria-label="Call the lead's work back">
           <UndoIcon />
-        </Button>
+        </RoundButton>
       </div>
       <p className="-mt-2 text-center text-xs text-muted-foreground">
         {settings.listen === "wake"

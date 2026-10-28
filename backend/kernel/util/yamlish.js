@@ -8,21 +8,27 @@
 
 const KEY = /^([A-Za-z_][\w.-]*)\s*:(?:\s+(.*))?$/
 
-function scalar(raw) {
-  const v = String(raw ?? "").trim()
-  if (v === "") return ""
-  if (/^-?\d+(\.\d+)?([eE][-+]?\d+)?$/.test(v)) return Number(v)
-  if (v === "true" || v === "false") return v === "true"
-  if (v === "null" || v === "~") return null
-  if ((v.startsWith("{") && v.endsWith("}")) || (v.startsWith("[") && v.endsWith("]"))) {
-    try {
-      return JSON.parse(v)
-    } catch {}
-    if (v.startsWith("[")) return v.slice(1, -1).split(",").map((x) => scalar(x.trim().replace(/^["']|["']$/g, ""))).filter((x) => x !== "")
+// A value as the reply format reads it (agent/reply.js shares this): `number` says what counts as one, `nulls` the words
+// for null; true/false, inline JSON, a [a, b] list of bare words and quoted text are the same for both.
+export function scalarReader(number, nulls) {
+  const scalar = (raw) => {
+    const v = String(raw ?? "").trim()
+    if (v === "") return ""
+    if (number.test(v)) return Number(v)
+    if (v === "true" || v === "false") return v === "true"
+    if (nulls.includes(v)) return null
+    if ((v.startsWith("{") && v.endsWith("}")) || (v.startsWith("[") && v.endsWith("]"))) {
+      try {
+        return JSON.parse(v)
+      } catch {}
+      if (v.startsWith("[")) return v.slice(1, -1).split(",").map((x) => scalar(x.trim().replace(/^["']|["']$/g, ""))).filter((x) => x !== "")
+    }
+    if (v.length >= 2 && v[0] === v.at(-1) && (v[0] === '"' || v[0] === "'")) return v.slice(1, -1)
+    return v
   }
-  if (v.length >= 2 && v[0] === v.at(-1) && (v[0] === '"' || v[0] === "'")) return v.slice(1, -1)
-  return v
+  return scalar
 }
+const scalar = scalarReader(/^-?\d+(\.\d+)?([eE][-+]?\d+)?$/, ["null", "~"])
 
 export function parseYamlish(text) {
   const lines = String(text ?? "")

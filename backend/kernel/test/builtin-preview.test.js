@@ -14,7 +14,7 @@ function holder(name, preview, host, hold = {}, config = {}) {
   const run = (cmd, input = {}) => agent.tools.get(`${preview.id}.${cmd}`).run(input, { ...agent.context, agent })
   return { agent, run }
 }
-const block = (agent) => agent.render({ text: "x", from: "owner" }, []).split("# preview — preview — the pane the owner watches\n")[1].split("\n\n# REQUEST")[0]
+const block = (agent) => agent.render({ text: "x", from: "owner" }, []).split("# preview — the pane the owner watches\n")[1].split("\n\n# REQUEST")[0]
 const flow = { kind: "flow", nodes: [{ id: "embed" }, { id: "attend" }, { id: "predict" }], edges: [{ from: "embed", to: "attend" }, { from: "attend", to: "predict" }] }
 const loss = (n) => ({ kind: "line", series: [{ name: "r2", points: Array.from({ length: n }, (_, i) => [i * 10, 8 - i]) }] })
 
@@ -35,6 +35,17 @@ describe("preview: pages", () => {
     // Only pages on this computer: the host refuses the rest, its reason passed on.
     await expect(coder.run("open", { url: "https://example.org" })).rejects.toThrow("browser/open: HTTP 403: only pages on this computer")
     await expect(coder.run("open", { url: " " })).rejects.toThrow("url: the app's page on this computer")
+  })
+
+  test("open: width and height go in the browser/open body only when given (narrow-check: a 375px phone page)", async () => {
+    const host = fakeHost()
+    const preview = new Preview({ clock })
+    const coder = holder("coder", preview, host)
+    await coder.run("open", { url: "http://localhost:8001/", width: 375, height: "812" })
+    const opens = () => host.calls.filter((c) => c.path === "browser/open")
+    expect(opens()[0].body).toEqual({ url: "http://localhost:8001/", by: "coder", width: 375, height: 812 })
+    await coder.run("open", { url: "http://localhost:8001/" })
+    expect(opens()[1].body).toEqual({ url: "http://localhost:8001/", by: "coder" })
   })
 
   test("the page is the newest open one unless id; click, type, press, scroll, goto act on it and shoot", async () => {
@@ -74,7 +85,7 @@ describe("preview: pages", () => {
     await preview.refresh(coder.agent)
     const lines = block(coder.agent).split("\n")
     expect(lines[0]).toBe(
-      "the one pane the owner watches with you: the app's pages (apps on this computer — you read their text, and after you act on a page its new screenshot is attached to your next step; the owner watches the same page) and the visuals you draw; the owner asks about what is in it: preview.open, preview.goto, preview.click, preview.type, preview.press, preview.scroll, preview.text, preview.eval, preview.console, preview.shot, preview.close, preview.show, preview.focus, preview.answer, preview.drop",
+      "the one pane the owner watches with you: the app's pages (apps on this computer — you read their text, and after you act on a page its new screenshot is attached to your next step; the owner watches the same page) and the visuals you draw; the owner asks about what is in it: preview.open, preview.goto, preview.click, preview.type, preview.press, preview.scroll, preview.text, preview.eval, preview.console, preview.shot, preview.close, preview.record, preview.cut, preview.show, preview.focus, preview.answer, preview.drop",
     )
     expect(lines[1]).toMatch(/^▶ page-x-\d+ http:\/\/localhost:8001\/ — "Dashboard" \(opened by coder\) · shot 1 · 1 console error$/)
     expect(lines[2]).toBe("  console errors (1, the last 1):")
@@ -101,7 +112,7 @@ describe("preview: pages", () => {
     preview.pulled = 0
     await preview.refresh(coder.agent)
     const s = preview.twin().state
-    expect(Object.keys(s)).toEqual(["pages", "visuals", "current", "trail", "asks", "revision"])
+    expect(Object.keys(s)).toEqual(["pages", "visuals", "current", "trail", "asks", "recordings", "revision"])
     expect(Object.keys(s.pages[0])).toEqual(["id", "url", "title", "status", "by", "at", "shot", "console", "errors"])
     expect(Object.keys(s.pages[0].shot)).toEqual(["n", "at", "width", "height", "url"])
     expect(s.pages[0].shot.url).toBe(`/__askk/browser/shot?id=${s.pages[0].id}&n=1`)
@@ -364,7 +375,7 @@ describe("preview: the owner's questions", () => {
     await lead.run("answer", { ask: "q2", text: "0.6755 at r2", show: "loss" })
     expect(block(lead.agent)).toBe(
       [
-        "the one pane the owner watches with you: the app's pages (apps on this computer — you read their text, and after you act on a page its new screenshot is attached to your next step; the owner watches the same page) and the visuals you draw; the owner asks about what is in it: preview.open, preview.goto, preview.click, preview.type, preview.press, preview.scroll, preview.text, preview.eval, preview.console, preview.shot, preview.close, preview.show, preview.focus, preview.answer, preview.drop",
+        "the one pane the owner watches with you: the app's pages (apps on this computer — you read their text, and after you act on a page its new screenshot is attached to your next step; the owner watches the same page) and the visuals you draw; the owner asks about what is in it: preview.open, preview.goto, preview.click, preview.type, preview.press, preview.scroll, preview.text, preview.eval, preview.console, preview.shot, preview.close, preview.record, preview.cut, preview.show, preview.focus, preview.answer, preview.drop",
         `▶ ${page} http://localhost:8001/ — "Dashboard" (opened by lead) · shot 1`,
         "  text (read 14:00:00):",
         "    # Dashboard",
@@ -486,7 +497,7 @@ describe("preview: save", () => {
     await lead.run("show", { id: "pipeline", title: "The line", visual: flow })
     preview.ownerCall("ask", [{ text: "why?", context: { node: "attend" } }])
     const saved = preview.snapshot()
-    expect(Object.keys(saved)).toEqual(["visuals", "current", "trail", "asks", "revision"])
+    expect(Object.keys(saved)).toEqual(["visuals", "current", "trail", "asks", "recordings", "revision"])
     const copy = new Preview({ clock })
     copy.restore({ ...saved, visuals: [...saved.visuals, { id: "bad id!", visual: flow }, { id: "pie", visual: { kind: "pie" } }, { id: "pipeline", visual: flow }] })
     expect(copy.state.visuals.map((v) => v.id)).toEqual(["pipeline"])
@@ -875,5 +886,33 @@ describe("preview.show: a spec written as text", () => {
     const preview = new Preview({ clock })
     const lead = holder("lead", preview, fakeHost())
     await expect(lead.run("show", { id: "x", title: "x", visual: "kind: bars\nthis line is prose" })).rejects.toThrow('write it as JSON on one line (visual: {"kind": "bars"')
+  })
+})
+
+// 2026-10-25 owner: "open the webpage, record, navigate and perform actions" — a recording is the page's frames.
+describe("recordings", () => {
+  test("record → every action a frame (shot n, action, what, url) → cut; one at a time; prompt and snapshot keep it", async () => {
+    const host = fakeHost()
+    const preview = new Preview({ clock })
+    const lead = holder("lead", preview, host)
+    await lead.run("open", { url: "http://localhost:1111/" })
+    await expect(lead.run("cut")).rejects.toThrow(/recording nothing/)
+    expect(await lead.run("record", { title: "the goal card" })).toMatch(/recording r1 of page-x-1/)
+    await expect(lead.run("record", { title: "again" })).rejects.toThrow(/being recorded already/)
+    await lead.run("click", { selector: "#goal" })
+    await lead.run("type", { text: "hello", selector: "textarea" })
+    await lead.run("goto", { url: "http://localhost:1111/live" })
+    const rec = preview.state.recordings[0]
+    expect(rec.frames.map((f) => [f.action, f.what])).toEqual([["start", "http://localhost:1111/"], ["click", "#goal"], ["type", "textarea"], ["navigate", "http://localhost:1111/live"]])
+    expect(new Set(rec.frames.map((f) => f.n)).size).toBe(4)
+    expect(host.pages[0].recording).toBe(true)
+    expect(block(lead.agent)).toMatch(/RECORDING r1 "the goal card" of page-x-1 by lead: 4 frames — running/)
+    expect(preview.brief()).toMatch(/● recording/)
+    expect(await lead.run("cut", { note: "it opens" })).toMatch(/r1 ended: 4 frames/)
+    expect(host.pages[0].recording).toBe(false)
+    expect(preview.state.recordings[0]).toMatchObject({ status: "done", note: "it opens" })
+    const copy = new Preview({ clock })
+    copy.restore(JSON.parse(JSON.stringify(preview.snapshot())))
+    expect(copy.state.recordings[0].frames).toHaveLength(4)
   })
 })

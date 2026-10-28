@@ -5,11 +5,9 @@ import { FIND_CHARS, narrowText, READ_CHARS } from "../util/text.js"
 // lists them (2026-10-17: ported from the research desk's tools/web-search.js when that desk was archived — its
 // 429/5xx fallback and its 2-minute advice kept, its tests in backend/kernel/test/builtin-web.test.js).
 //
-//   web.search {q | query, limit?, source?: web | wikipedia | arxiv | hn}   numbered results; a rate-limited (429) or
-//              failing (5xx) wikipedia / arxiv / hn call is retried once on web, and the result says so (note); when
-//              that fails too, the error names the sources to leave alone for 2 minutes
-//   web.read   {url, find?, max_chars?}   a public page: title, url and its text — with find, only the passages around
-//              those terms (narrowText, here: the host returns the page whole), at most max_chars
+// web.search: a rate-limited (429) or failing (5xx) wikipedia / arxiv / hn call is retried once on web, and the result says
+// so (note); when that fails too, the error names the sources to leave alone for 2 minutes. web.read: with find, only the
+// passages around those terms (narrowText, here: the host returns the page whole).
 //
 // Both are data tools (type function, view web): the same call twice in one run answers from the first.
 

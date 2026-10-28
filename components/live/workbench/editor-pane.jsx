@@ -5,7 +5,8 @@ import { AppWindowIcon, FileTextIcon, XIcon } from "lucide-react"
 
 import { changedLines, diffCut, diffRows, fileLines } from "@/backend/live/workbench"
 import { workspace } from "@/backend/live/workspace"
-import { clock, Empty } from "@/components/live/workbench/pane"
+import { clock, Empty, ShowSwitch } from "@/components/live/workbench/pane"
+import { useStripScroll } from "@/hooks/use-strip-scroll"
 import { LIMITS } from "@/lib/config"
 import { cn } from "@/lib/utils"
 
@@ -27,18 +28,8 @@ export function EditorPane({ tabs, tab, onPick, onClose, live, empty, preview = 
 
 // One row of tabs; it scrolls sideways inside itself, never the page. A modified file has a dot; the Preview tab counts
 // the owner's open questions.
-export function TabStrip({ tabs, active, onPick, onClose }) {
-  const stripRef = React.useRef(null)
-  const activeRef = React.useRef(null)
-  // The active tab scrolled into the strip by hand: scrollIntoView would scroll the page too (and returns a Promise in
-  // newer browsers, which an effect must not return).
-  React.useEffect(() => {
-    const strip = stripRef.current
-    const el = activeRef.current
-    if (!strip || !el) return
-    if (el.offsetLeft < strip.scrollLeft) strip.scrollLeft = el.offsetLeft
-    else if (el.offsetLeft + el.offsetWidth > strip.scrollLeft + strip.clientWidth) strip.scrollLeft = el.offsetLeft + el.offsetWidth - strip.clientWidth
-  }, [active])
+function TabStrip({ tabs, active, onPick, onClose }) {
+  const [stripRef, activeRef] = useStripScroll(active)
   if (!tabs.length) return null
   return (
     <div ref={stripRef} role="tablist" aria-label="Open files and the preview" className="relative flex min-w-0 shrink-0 overflow-x-auto border-b [scrollbar-width:thin]">
@@ -136,27 +127,14 @@ function FileView({ tab, live }) {
             <span className="text-red-600 dark:text-red-400">-{change.removed ?? 0}</span> · {clock(change.at)}
           </span>
         )}
+        {change?.why && <span className="basis-full break-words text-foreground/80">note: {change.why}</span>}
         {!change && tab.open && (
           <span className="shrink-0">
             opened by {tab.open.by} · {clock(tab.open.at)}
           </span>
         )}
         {file.loading && <span className="shrink-0">reading…</span>}
-        {change && (
-          <div role="group" aria-label="Show" className="ml-auto flex shrink-0 gap-1">
-            {["full", "diff"].map((m) => (
-              <button
-                key={m}
-                type="button"
-                aria-pressed={shown === m}
-                onClick={() => setMode(m)}
-                className={cn("rounded-md border px-2 leading-6 pointer-coarse:leading-10", shown === m ? "border-primary text-foreground" : "border-transparent hover:text-foreground")}
-              >
-                {m}
-              </button>
-            ))}
-          </div>
-        )}
+        {change && <ShowSwitch options={["full", "diff"]} value={shown} onPick={setMode} className="ml-auto" />}
       </div>
       {shown === "diff" ? (
         <DiffBody change={change} text={text} onFull={() => setMode("full")} />

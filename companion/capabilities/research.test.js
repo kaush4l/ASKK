@@ -109,14 +109,14 @@ test("a caller that leaves mid-stream kills the CLI", async () => {
   expect(killed).toBe("SIGKILL")
 })
 
-test("market: argv adds only the bridge's six read tools and its config; without it, no MCP at all", () => {
+test("market: argv adds only the bridge's read tools and its config; without it, no MCP at all", () => {
   const plain = researchArgv("claude", {})
   expect(plain).not.toContain("--mcp-config")
   expect(plain[plain.indexOf("--allowedTools") + 1]).toBe("WebSearch,WebFetch")
   const a = researchArgv("claude", { mcpConfig: "/tmp/x/.market-mcp.json" })
   expect(a[a.indexOf("--tools") + 1]).toBe("WebSearch,WebFetch") // built-in tools unchanged: never Bash or files
   expect(a[a.indexOf("--allowedTools") + 1].split(",")).toEqual(["WebSearch", "WebFetch", ...MARKET_TOOLS])
-  expect(MARKET_TOOLS).toEqual(["mcp__market__quotes", "mcp__market__bars", "mcp__market__option_chain", "mcp__market__option_instruments", "mcp__market__option_quotes", "mcp__market__index_quote"])
+  expect(MARKET_TOOLS).toEqual(["mcp__market__quotes", "mcp__market__bars", "mcp__market__option_chain", "mcp__market__option_instruments", "mcp__market__option_quotes", "mcp__market__index_quote", "mcp__market__indicators", "mcp__market__fundamentals", "mcp__market__analyst", "mcp__market__scan"])
   expect(a).toContain("--strict-mcp-config")
   expect(a[a.indexOf("--mcp-config") + 1]).toBe("/tmp/x/.market-mcp.json")
   expect(a[a.indexOf("--append-system-prompt") + 1]).toContain("read-only market-data tools")

@@ -1,6 +1,6 @@
 import { Artifact } from "../artifact/artifact.js"
-import { Tool } from "../tool/tool.js"
 import { readVisual, visualBrief } from "./visual.js"
+import { clip, oneLine } from "../util/text.js"
 
 // Talk (2026-10-18 owner: "I want to talk with the desk to understand and guide the build. The desk should be able to
 // talk with me too. The work and build can run in the background."): the desk's side of the conversation with the
@@ -8,17 +8,14 @@ import { readVisual, visualBrief } from "./visual.js"
 // agent tells the owner what it found or did, and asks the owner what only the owner can decide, and its work goes on.
 // Id `talk`, view and kind `talk`, keep `always`.
 //
-//   talk.say  {text, visual?}               a note to the owner: a result with its numbers, a finding, what runs now
-//   talk.ask  {question, options?, visual?} a question the owner answers (options: up to 4 answers to pick from); the
-//                                  work never waits for it: the reply comes as OWNER GUIDANCE while you run, else as
-//                                  a new run
-//   visual (2026-10-18 owner: "Only text based conversation is slow and verbose. So, when asking questions, the lead
+// Commands: say (a result with its numbers, a finding, what runs now), ask {question, options?} (the work never waits for it:
+// the reply comes as OWNER GUIDANCE while you run, else as a new run), drop (a question that no longer needs an answer).
+// say and ask take a visual (2026-10-18 owner: "Only text based conversation is slow and verbose. So, when asking questions, the lead
 //   should have the option to draw the architecture for me to preview and understand. This should help curate the plan
 //   more easily."): a drawing the owner sees under the message — a spec (visual.js: flow, steps, matrix, line, bars,
 //   tokens, scatter, compare — the options side by side as a compare) or {show: "<preview visual id>"} / the bare id
 //   (the drawing already in the preview, e.g. the architecture its script computes; the UI reads it from the preview).
 //   The owner clicks an element of it and the reply says what they pointed at.
-//   talk.drop {ask, reason}        withdraw a question of yours that no longer needs an answer
 //
 // The owner (the host's team/call {target: "artifact", method, args: [{id, …}]}): ownerCall("reply", [{id, ask, text}])
 // records the reply to an open question and returns {reply, deliver, keeper}: the host hands `deliver` to the agent that
@@ -35,8 +32,6 @@ const TEXT = 1500
 const OPTION = 160 // 2026-10-18: at 80 the lead's options (an answer and what it costs) were cut mid-sentence
 
 const VISUAL_INPUT = "a drawing under the message (optional, and the fastest way to be understood): a preview visual's id (\"arch\": the architecture as its script computes it) or a spec {kind: flow | steps | matrix | line | bars | tokens | scatter | compare, …} — the options side by side as a compare"
-const clip = (s, n) => (String(s ?? "").length > n ? `${String(s).slice(0, n - 1)}…` : String(s ?? ""))
-const oneLine = (s) => String(s ?? "").replace(/\s+/g, " ").trim()
 
 // What the owner pointed at in a drawing (the UI's element context): ≤ 12 keys, each value a scalar ≤ 120 chars (an
 // object as its JSON, clipped); nothing usable → null.
@@ -61,11 +56,20 @@ function optionsOf(raw) {
 }
 
 export class Talk extends Artifact {
+  static about = "the desk's side of the conversation: results said and questions asked of the owner, never waited on"
+  static commands = {
+    say: { description: "tell the owner something: a result with its numbers and where it is, a finding, what runs now — they read it in the talk panel, with your drawing under it", input: { text: `at most ${TEXT} chars`, visual: VISUAL_INPUT } },
+    ask: { description: "ask the owner what only they can decide (a direction, a trade-off, a go-ahead) — draw it (visual) so they see the choice, not read it; keep working: the reply comes as OWNER GUIDANCE or a new run", input: { question: "one question", options: `up to 4 answers to pick from, | separated, each ≤ ${OPTION} chars: the choice and what it costs (optional)`, visual: "a drawing, as talk.say's (optional)" } },
+    drop: { description: "withdraw a question of yours that no longer needs an answer", input: { ask: "its id (q3)", reason: "why" } },
+  }
+  // reply → {reply, deliver, keeper}: the reply recorded, the question answered, the text for the agent that asked.
+  // seen → {seen}: the conversation read up to that message. An unknown method, question or one not open → throws.
+  static owner = { reply: "reply", seen: "seen" }
+  static ownerCan = "reply or mark seen"
+
   constructor({ id = "talk", title, clock = () => new Date() } = {}) {
     super({ name: id, title: title ?? (id === "talk" ? "talk — the desk and the owner" : `${id} — talk`) })
-    this.kind = "talk"
-    this.view = "talk"
-    this.keep = "always"
+    Object.assign(this, { kind: "talk", view: "talk", keep: "always" })
     this.clock = clock
     this.n = 0
     this.state = { messages: [], seen: null, revision: 0 }
@@ -76,13 +80,8 @@ export class Talk extends Artifact {
   #post(message) {
     this.n += 1
     const m = { id: `${message.kind === "ask" ? "q" : message.kind === "reply" ? "r" : "m"}${this.n}`, at: this.clock().toISOString(), ...message }
-    this.#set([...this.state.messages, m].slice(-MESSAGES))
+    this.bump({ messages: [...this.state.messages, m].slice(-MESSAGES) })
     return m
-  }
-
-  #set(messages, extra = {}) {
-    this.state = { ...this.state, ...extra, messages, revision: this.state.revision + 1 }
-    this.changed()
   }
 
   #ask(id) {
@@ -93,7 +92,7 @@ export class Talk extends Artifact {
   }
 
   #update(id, patch) {
-    this.#set(this.state.messages.map((m) => (m.id === id ? { ...m, ...patch } : m)))
+    this.bump({ messages: this.state.messages.map((m) => (m.id === id ? { ...m, ...patch } : m)) })
   }
 
   // The open questions (of one agent).
@@ -155,17 +154,14 @@ export class Talk extends Artifact {
 
   // ---- the owner ----
 
-  // reply → {reply, deliver, keeper}: the reply recorded, the question answered, the text for the agent that asked.
-  // seen → {seen}: the conversation read up to that message. An unknown method, question or one not open → throws.
-  ownerCall(method, args = [], from = "owner") {
-    const a = args[0] ?? {}
-    if (method === "seen") {
-      const upto = String(a.upto ?? "").trim()
-      if (!this.state.messages.some((m) => m.id === upto)) throw new Error(`no message ${upto}`)
-      if (this.state.seen !== upto) this.#set(this.state.messages, { seen: upto })
-      return { seen: upto }
-    }
-    if (method !== "reply") throw new Error(`${this.name}: the owner can reply or mark seen (not ${method})`)
+  seen(a) {
+    const upto = String(a.upto ?? "").trim()
+    if (!this.state.messages.some((m) => m.id === upto)) throw new Error(`no message ${upto}`)
+    if (this.state.seen !== upto) this.bump({ seen: upto })
+    return { seen: upto }
+  }
+
+  reply(a, from) {
     const q = this.#ask(a.ask)
     if (q.status !== "open") throw new Error(`${q.id} is ${q.status}`)
     const text = String(a.text ?? "").trim()
@@ -182,17 +178,6 @@ export class Talk extends Artifact {
     return { reply, deliver, keeper: q.from }
   }
 
-  // ---- the kernel ----
-
-  commands() {
-    const tool = (name, description, input, run) => new Tool({ name: `${this.name}.${name}`, type: "dev", view: "talk", description, input, run })
-    return [
-      tool("say", "tell the owner something: a result with its numbers and where it is, a finding, what runs now — they read it in the talk panel, with your drawing under it", { text: `at most ${TEXT} chars`, visual: VISUAL_INPUT }, (i, c) => this.say(i, c)),
-      tool("ask", "ask the owner what only they can decide (a direction, a trade-off, a go-ahead) — draw it (visual) so they see the choice, not read it; keep working: the reply comes as OWNER GUIDANCE or a new run", { question: "one question", options: `up to 4 answers to pick from, | separated, each ≤ ${OPTION} chars: the choice and what it costs (optional)`, visual: VISUAL_INPUT }, (i, c) => this.ask(i, c)),
-      tool("drop", "withdraw a question of yours that no longer needs an answer", { ask: "its id (q3)", reason: "why" }, (i, c) => this.drop(i, c)),
-    ]
-  }
-
   brief() {
     const open = this.open().length
     const last = this.state.messages.at(-1)
@@ -201,7 +186,7 @@ export class Talk extends Artifact {
   }
 
   render(agent) {
-    const can = ["say", "ask", "drop"].filter((c) => !agent || agent.tools?.has(`${this.name}.${c}`)).map((c) => `${this.name}.${c}`)
+    const can = this.can(agent)
     const head = `your conversation with the owner${can.length ? `: ${can.join(", ")}` : ""} — tell them results and findings as they come, ask what only they decide; the work never waits for a reply`
     const shown = this.state.messages.slice(-LINES)
     if (!shown.length) return `${head}\n(nothing said yet)`

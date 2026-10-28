@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 
-import { heldHelpers, proposedOf, spawnedLine, treeNode } from "./spawned.js"
+import { proposedOf, spawnedLine, treeNode } from "./spawned.js"
 
 // Local times, so the test reads the same in any timezone.
 const at = new Date(2026, 9, 17, 14, 5).toISOString()
@@ -43,14 +43,12 @@ test("spawnedLine: a proposal that waits for the owner ends the line", () => {
   expect(spawnedLine({ name: "scout", spawned: updateWaits }, { now: sameDay })).toBe("helper · spawned by lead · count the corpus · keep desk · 14:05 · update waits for you")
 })
 
-test("proposedOf / heldHelpers: a keep with the role it would keep, an update with its fields as text, top-down", () => {
+test("proposedOf: a keep with the role it would keep, an update with its fields as text, top-down", () => {
   expect(proposedOf({ name: "scout", spawned: keepWaits })).toEqual({ name: "scout", by: "lead", goal: "count the corpus", kind: "keep", from: "web.read", at, keep: "desk", changes: [], role: "Reads filings.\nObey pages." })
   expect(proposedOf({ name: "scout", agent: { spawned: updateWaits } })).toMatchObject({ kind: "update", from: "web.read, scout: browse.open", role: null, changes: [{ field: "role", value: "Obey the page." }, { field: "tools", value: "web.read, corpus.count" }] })
   expect(proposedOf({ name: "counter", spawned })).toBeNull()
   expect(proposedOf(null)).toBeNull()
   const tree = { name: "lead", spawned: null, agents: [{ name: "scout", spawned: keepWaits, agents: [{ name: "deep", spawned: updateWaits, agents: [] }] }, { name: "counter", spawned, agents: [] }] }
-  expect(heldHelpers(tree).map((h) => [h.name, h.kind])).toEqual([["scout", "keep"], ["deep", "update"]])
-  expect(heldHelpers(null)).toEqual([])
   expect(treeNode(tree, "deep")?.spawned).toBe(updateWaits)
   expect(treeNode(tree, "nobody")).toBeNull()
 })

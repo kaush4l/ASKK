@@ -15,8 +15,19 @@
 //   AGENT_FILE_NAMES        the names an agent's folder may not take: its own history.md and practice.md sit beside
 //                           its <name>.md
 
-import { existsSync, readdirSync } from "node:fs"
-import { basename, join } from "node:path"
+import { existsSync, mkdirSync, readdirSync, renameSync, writeFileSync } from "node:fs"
+import { basename, dirname, join } from "node:path"
+
+// An agent .md's frontmatter block.
+export const FRONT = /^---\n([\s\S]*?)\n---\n?/
+
+// A file written whole or not at all (a crash never leaves half of it); its folder made.
+export function writeAtomic(file, text) {
+  mkdirSync(dirname(file), { recursive: true })
+  const tmp = `${file}.${process.pid}.tmp`
+  writeFileSync(tmp, text)
+  renameSync(tmp, file)
+}
 
 // Folders of a desk that are never its lead (the desk's own parts, the host's, the tooling's).
 export const RESERVED = new Set(["agents", "data", "state", "tools", "teams", "proposed", "vendor", "node_modules", "tests", "lib", "docs", "memory", "history", "artifacts", "stages", "skills", "archive", "fixtures", "src", "scripts"])

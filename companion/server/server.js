@@ -9,6 +9,7 @@
 // The UI stays a static export (out/); this serves it and hosts the desks (companion/server/desks.js). Listens on
 // 127.0.0.1 only.
 
+import { existsSync } from "node:fs"
 import { extname, resolve, sep } from "node:path"
 import { parseArgs } from "node:util"
 
@@ -87,8 +88,15 @@ async function serveApp(pathname) {
 
 const allowedHosts = new Set([`127.0.0.1:${port}`, `localhost:${port}`])
 
+// Inside a container the loopback is the container's own, so ASKK_BIND=0.0.0.0 lets a published port reach it
+// (`docker run -p 127.0.0.1:7717:7717`: the Host header stays localhost:<port>, so the guard below still holds).
+// Outside a container the server stays on 127.0.0.1 whatever ASKK_BIND says: never on the network.
+const contained = existsSync("/.dockerenv") || existsSync("/run/.containerenv")
+const hostname = contained && process.env.ASKK_BIND ? process.env.ASKK_BIND : "127.0.0.1"
+if (process.env.ASKK_BIND && !contained) console.warn("ASKK_BIND ignored: not inside a container, listening on 127.0.0.1.")
+
 Bun.serve({
-  hostname: "127.0.0.1",
+  hostname,
   port,
   idleTimeout: 0, // a team call and team/stream last as long as the run
   async fetch(request) {

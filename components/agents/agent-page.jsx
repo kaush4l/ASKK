@@ -4,14 +4,21 @@ import * as React from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { CopyIcon, SquareIcon, Trash2Icon } from "lucide-react"
 
+import { lastError } from "@/backend/live/agent"
 import { artifactsHeldBy } from "@/backend/live/desk"
 import { registry } from "@/backend/live/registry"
 import { spawnedLine, treeNode } from "@/backend/live/spawned"
+import { hm } from "@/backend/live/time"
 import { callLook } from "@/backend/live/visual"
 import Link from "next/link"
 
+import { detailLayout } from "@/components/agents/detail-layout"
+import { Field } from "@/components/agents/stat-field"
 import { ActivityLine, Thread } from "@/components/agents/thread"
+import { ContractLine, ReportRows } from "@/components/kernel/contract-line"
+import { PromptMeter } from "@/components/kernel/prompt-meter"
 import { ProposedHelper } from "@/components/kernel/proposed-helper"
+import { TabRow } from "@/components/shell/tab-row"
 import { ArtifactsView } from "@/components/live/artifacts-view"
 import { Button } from "@/components/ui/button"
 import { CallIcon, toneOf } from "@/components/views/call-look"
@@ -30,6 +37,7 @@ import { cn } from "@/lib/utils"
 const TABS = [
   { id: "runs", label: "Turns" },
   { id: "role", label: "Role" },
+  { id: "soul", label: "Soul" },
   { id: "tools", label: "Tools" },
   { id: "artifacts", label: "Artifacts" },
   { id: "prompt", label: "Prompt" },
@@ -61,15 +69,10 @@ export function AgentPage() {
 
 // Every agent of the desk, grouped by team: a select on phones, a list beside the page on wider screens.
 function AgentPicker({ engines, states, current, onOpen }) {
-  const groups = React.useMemo(() => {
-    const byTeam = new Map()
-    engines.forEach((e, i) => {
-      const team = e.team?.split("/").at(-1) ?? "desk"
-      if (!byTeam.has(team)) byTeam.set(team, [])
-      byTeam.get(team).push({ engine: e, state: states[i] })
-    })
-    return [...byTeam]
-  }, [engines, states])
+  const groups = React.useMemo(
+    () => [...Map.groupBy(engines.map((engine, i) => ({ engine, state: states[i] })), ({ engine }) => engine.team?.split("/").at(-1) ?? "desk")],
+    [engines, states]
+  )
   return (
     <>
       <div className="border-b p-3 md:hidden">
@@ -127,9 +130,10 @@ function AgentDetail({ engine }) {
   const held = React.useMemo(() => Object.fromEntries(artifactsHeldBy(desk?.artifacts, engine.name).map((a) => [a.id, a])), [desk?.artifacts, engine.name])
   const active = new Set(state?.activity?.names ?? (state?.activity?.name ? [state.activity.name] : []))
   const spawned = spawnedLine(engine) // a helper made at run time: by whom, for what, how long it stays (null: a desk agent)
+  const error = tone.tone === "error" ? lastError(state) : null // why it is in error, and when (null: not in error)
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+    <div className={detailLayout().root}>
       <header className="flex flex-col gap-2 border-b p-3 md:p-4">
         <div className="flex flex-wrap items-center gap-2">
           <span aria-hidden className={cn("size-2.5 rounded-full", tone.dot)} />
@@ -141,6 +145,13 @@ function AgentDetail({ engine }) {
             </Button>
           )}
         </div>
+        {/* 2026-10-26 agent-error-reason: the full error line and its time, wrapped, never cut */}
+        {error && (
+          <p data-agent-error className="break-words text-xs text-destructive">
+            {error.text}
+            {error.at != null && ` · ${hm(error.at)}`}
+          </p>
+        )}
         {engine.description && <p className="text-sm text-muted-foreground">{engine.description}</p>}
         {spawned && (
           <p data-spawned className="break-words text-xs text-muted-foreground">
@@ -150,28 +161,19 @@ function AgentDetail({ engine }) {
         <ProposedHelper node={treeNode(desk?.tree, engine.name) ?? engine} expanded />
         <dl className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
           {engine.team && <Field label="team">{engine.team}</Field>}
-          <Field label="model">{engine.model ?? "desk default"}</Field>
+          <Field label="model">{engine.model ?? (desk?.defaultModel ? `desk default (${desk.defaultModel})` : "desk default")}</Field>
           {engine.folder && <Field label="folder"><code className="font-mono">{engine.folder}</code></Field>}
           <Field label="model calls">{stats ? `${stats.calls} · last ${seconds(stats.lastMs)} · avg ${seconds(stats.avgMs)} · total ${seconds(stats.totalMs)} · prompt ${stats.promptChars?.toLocaleString()} → reply ${stats.replyChars?.toLocaleString() ?? "?"} chars` : "none since the desk started"}</Field>
           {/* 2026-10-23: when the last call came back (a fallback to another model is a desk log line: model: …) */}
           {stats?.at && <Field label="last call">{new Date(stats.at).toLocaleTimeString()}</Field>}
         </dl>
-        <div role="tablist" aria-label={`${engine.name} views`} className="flex flex-wrap gap-1">
-          {TABS.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              role="tab"
-              aria-selected={tab === t.id}
-              onClick={() => setTab(t.id)}
-              className={cn("rounded-md border px-2.5 py-1 text-xs pointer-coarse:py-2.5", tab === t.id ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground")}
-            >
-              {t.label}
-              {t.id === "tools" && <span className="ml-1 text-muted-foreground">{engine.tools.length}</span>}
-              {t.id === "artifacts" && <span className="ml-1 text-muted-foreground">{Object.keys(held).length}</span>}
-            </button>
-          ))}
-        </div>
+        {/* 2026-10-26 context meter: the newest prompt by element (kernel Agent #measure → stats.promptParts) */}
+        {stats?.promptParts && <PromptMeter parts={stats.promptParts} className="max-w-md" />}
+        {/* 2026-10-26 response contract: the newest answer's report fields, missed ones in amber (stats.contract) */}
+        {stats?.contract && <ContractLine contract={stats.contract} className="max-w-md" />}
+        {/* 2026-10-26 report object: the newest answer's fields, one row each (stats.report) */}
+        {stats?.report && <ReportRows report={stats.report} className="max-w-md" />}
+        <TabRow label={`${engine.name} views`} tabs={TABS.map((t) => ({ ...t, count: { tools: engine.tools.length, artifacts: Object.keys(held).length }[t.id] }))} value={tab} onPick={setTab} />
       </header>
 
       {tab === "runs" && (
@@ -182,7 +184,7 @@ function AgentDetail({ engine }) {
           </div>
           <div className="min-h-0 flex-1 overflow-auto">
             <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 p-4">
-              <Thread engine={engine} messages={state?.messages ?? []} empty={`No turns yet. ${engine.name} runs when you send work from the dashboard or another agent hands it a quest.`} />
+              <Thread engine={engine} messages={state?.messages ?? []} skipped={state?.messagesSkipped ?? 0} empty={`No turns yet. ${engine.name} runs when you send work from the dashboard or another agent hands it a quest.`} />
             </div>
           </div>
           <p className="mx-auto w-full max-w-3xl px-4 pb-3 text-xs text-muted-foreground">
@@ -199,9 +201,26 @@ function AgentDetail({ engine }) {
           <pre className="mx-auto max-w-3xl whitespace-pre-wrap break-words font-sans text-sm">{engine.role || "(no role text)"}</pre>
         </div>
       )}
+      {tab === "soul" && (
+        <div className="min-h-0 flex-1 overflow-auto p-4">
+          <div className="mx-auto max-w-3xl">
+            <p className="mb-3 text-xs text-muted-foreground">
+              {engine.soulFile ? (
+                <>
+                  Who {engine.name} is in every role — the opening of each prompt, from <code>{engine.soulFile}</code> (a desk&apos;s own
+                  soul.md, else desks/soul.md).
+                </>
+              ) : (
+                "No soul: the prompt opens at # YOU ARE. Write desks/soul.md, or soul.md in the desk's folder."
+              )}
+            </p>
+            <pre className="whitespace-pre-wrap break-words font-sans text-sm">{engine.soul || "(no soul text)"}</pre>
+          </div>
+        </div>
+      )}
       {tab === "tools" && <ToolList tools={engine.tools} active={active} />}
       {tab === "artifacts" && (
-        <div className="flex min-h-0 flex-1 flex-col p-4">
+        <div className={detailLayout().artifacts}>
           <ArtifactsView artifacts={held} empty={`${engine.name} holds no artifacts.`} />
         </div>
       )}
@@ -210,24 +229,14 @@ function AgentDetail({ engine }) {
   )
 }
 
-const Field = ({ label, children }) => (
-  <div className="flex min-w-0 gap-1">
-    <dt>{label}</dt>
-    <dd className="min-w-0 break-all text-foreground/80">{children}</dd>
-  </div>
-)
+
 
 // Every tool, by type: its sub-agents (quests), the artifacts' commands, its functions and MCP tools, each with its
 // call kind's look (callLook, as its calls show in the thread and the Live feed). A tool in use right now is marked.
 const TYPE_LABEL = { agent: "Sub-agents (quests)", artifact: "Artifact commands", function: "Functions", mcp: "MCP tools" }
 function ToolList({ tools, active }) {
   const groups = React.useMemo(() => {
-    const byType = new Map()
-    for (const t of tools) {
-      const type = TYPE_LABEL[t.type] ? t.type : "function"
-      if (!byType.has(type)) byType.set(type, [])
-      byType.get(type).push(t)
-    }
+    const byType = Map.groupBy(tools, (t) => (TYPE_LABEL[t.type] ? t.type : "function"))
     return Object.keys(TYPE_LABEL).filter((t) => byType.has(t)).map((t) => [t, byType.get(t)])
   }, [tools])
   if (!tools.length) return <p className="p-4 text-sm text-muted-foreground">No tools.</p>

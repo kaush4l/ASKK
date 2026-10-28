@@ -1,14 +1,12 @@
 import { Checklist } from "../artifact/checklist.js"
-import { Tool } from "../tool/tool.js"
 
 // Plan: the desk's checklist, written at run time (2026-10-17 owner: the planner writes the desk's checklist — no
 // hard-coded checklist in any agent.md). One instance per desk (id "plan"), held by every agent that lists it; kept
 // always (a restart keeps it) and never reset when a run starts — it outlives runs, the desk works it down.
 //
-//   plan.write {goal, items}   items: "id: text" lines (a "!" before the id: required) or {id, text, required};
-//                              replaces the open items, keeps a ticked or skipped item whose id is still listed,
-//                              bumps the revision, records who wrote it
-//   plan.tick  {id, evidence}  plan.skip {id, reason} (a required item cannot be skipped)
+// plan.write {goal, items}: items are "id: text" lines (a "!" before the id: required) or {id, text, required}; it replaces
+// the open items, keeps a ticked or skipped item whose id is still listed, bumps the revision, records who wrote it.
+// plan.tick / plan.skip (a required item cannot be skipped).
 //
 // gate(): refuses an answer only for a holder attached with {gate: true} (agent.addArtifact(plan, {gate: true}),
 // an agent.md artifact {type: plan, gate: true}) while an item is open, or while there is no plan yet.
@@ -44,11 +42,22 @@ function parseItems(items) {
 }
 
 export class Plan extends Checklist {
+  static about = "the desk's plan written at run time: a goal and items ticked with evidence; gates the holders attached with gate"
+  static commands = {
+    write: {
+      description: "write the desk's plan: the goal and the items that mean it is done, each observable; replaces the open items (closed ones still listed stay closed)",
+      input: { goal: "the goal the plan serves", items: `"id: text" lines, one per item ("!id: …" = required, cannot be skipped)` },
+      run(input, { agent } = {}) {
+        return this.write(input ?? {}, agent?.name ?? null)
+      },
+    },
+    tick: { description: "tick a plan item done", input: { id: "item id", evidence: "what shows it is done" }, run({ id, evidence } = {}, { agent } = {}) { return this.#close(id, "ticked", evidence, agent?.name ?? null) } },
+    skip: { description: "skip a plan item that cannot be done", input: { id: "item id", reason: "why" }, run({ id, reason } = {}, { agent } = {}) { return this.#close(id, "skipped", reason, agent?.name ?? null) } },
+  }
+
   constructor({ id = "plan", title = "plan — the desk's checklist", owner = null, requiredWhen = null, clock = () => new Date() } = {}) {
     super({ id, title, items: [], owner, requiredWhen })
-    this.kind = "plan"
-    this.view = "checklist"
-    this.keep = "always"
+    Object.assign(this, { kind: "plan", view: "checklist", keep: "always" })
     this.clock = clock
     this.gated = new Set() // the holders whose answer waits on the plan (attached with gate: true)
   }
@@ -149,18 +158,5 @@ export class Plan extends Checklist {
     this.changed()
     const left = this.open().length
     return `${item.id} ${status}; ${left ? `${left} open` : "all done"}`
-  }
-
-  commands() {
-    return [
-      new Tool({
-        name: `${this.name}.write`,
-        description: "write the desk's plan: the goal and the items that mean it is done, each observable; replaces the open items (closed ones still listed stay closed)",
-        input: { goal: "the goal the plan serves", items: `"id: text" lines, one per item ("!id: …" = required, cannot be skipped)` },
-        run: (input, { agent } = {}) => this.write(input ?? {}, agent?.name ?? null),
-      }),
-      new Tool({ name: `${this.name}.tick`, description: "tick a plan item done", input: { id: "item id", evidence: "what shows it is done" }, run: ({ id, evidence } = {}, { agent } = {}) => this.#close(id, "ticked", evidence, agent?.name ?? null) }),
-      new Tool({ name: `${this.name}.skip`, description: "skip a plan item that cannot be done", input: { id: "item id", reason: "why" }, run: ({ id, reason } = {}, { agent } = {}) => this.#close(id, "skipped", reason, agent?.name ?? null) }),
-    ]
   }
 }

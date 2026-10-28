@@ -11,8 +11,12 @@ import { spawnedLine } from "@/backend/live/spawned"
 import { agentStatus } from "@/backend/live/team-tree"
 import { VISUAL_STATES } from "@/backend/live/visual"
 import { CallChip, CallRow, StepRow } from "@/components/canvas/call-chip"
+import { agentBoxClasses } from "@/components/canvas/tap"
+import { Face, bubbleFoot } from "@/components/kernel/agent-face"
+import { ContractLine } from "@/components/kernel/contract-line"
+import { PromptMeter } from "@/components/kernel/prompt-meter"
 import { TONE } from "@/components/views/agent-tone"
-import { initials } from "@/lib/engine-tone"
+import { useEngineState } from "@/hooks/use-engines"
 import { agentHref } from "@/lib/nav"
 import { cn } from "@/lib/utils"
 
@@ -28,42 +32,10 @@ const ROWS = 5 // rows of the run a near card shows: the calls in flight (up to 
 const CALL_ROWS = 3
 const MID_CHIPS = 2 // chips a mid card shows; the bubble names every call, "+N" says how many more
 
-function ago(iso) {
-  const minutes = Math.round((Date.now() - Date.parse(iso)) / 60000)
-  if (!(minutes >= 1)) return "just now"
-  if (minutes < 60) return `${minutes} min ago`
-  const hours = Math.round(minutes / 60)
-  return hours < 24 ? `${hours} h ago` : `${Math.round(hours / 24)} d ago`
-}
-
-function Face({ name, status, size }) {
-  const tone = TONE[status.tone] ?? TONE.idle
-  const far = size === "far"
-  return (
-    <span className={cn("relative grid shrink-0 place-items-center", far ? "size-24" : "size-10")}>
-      {tone.live && <span aria-hidden className={cn("absolute rounded-full opacity-50 motion-safe:animate-pulse", far ? "-inset-3 border-4" : "-inset-1 border-2", tone.line)} />}
-      <span
-        className={cn(
-          "grid size-full place-items-center rounded-full bg-background transition-colors duration-500",
-          far ? "border-[6px] text-4xl" : "border-2 text-sm",
-          tone.line,
-          tone.dashed && "border-dashed"
-        )}
-      >
-        {initials(name)}
-      </span>
-    </span>
-  )
-}
-
 // What it says: the status message, then when it reported, that it failed, or its last tool while it thinks.
 function Bubble({ status, lines = 3 }) {
   const tone = TONE[status.tone] ?? TONE.idle
-  const foot =
-    status.tone === "done" ? { text: `reported ${status.at ? ago(status.at) : ""}`.trim(), className: tone.text }
-    : status.tone === "error" ? { text: "error", className: tone.text }
-    : status.detail ? { text: status.detail, className: "text-muted-foreground" }
-    : null
+  const foot = bubbleFoot(status)
   return (
     <p data-bubble className={cn("relative rounded-lg border bg-card px-2 py-1 text-xs leading-snug transition-colors duration-500", tone.line)}>
       <span aria-hidden className={cn("absolute -top-[5px] left-4 size-2 rotate-45 border-t border-l bg-card", tone.line)} />
@@ -132,7 +104,8 @@ function Run({ engine, state, calls, holds, onFocusArtifact }) {
   )
 }
 
-export const AgentNode = React.memo(function AgentNode({ node, engine, state, level, focused, deskTitle, holds, onFocus, onFocusArtifact }) {
+export const AgentNode = React.memo(function AgentNode({ node, engine, level, focused, deskTitle, holds, onFocus, onFocusArtifact }) {
+  const state = useEngineState(engine) // its own subscription: another agent's step never redraws this card
   const name = node.id
   const status = agentStatus(state, engine?.agent)
   const tone = TONE[status.tone] ?? TONE.idle
@@ -141,13 +114,14 @@ export const AgentNode = React.memo(function AgentNode({ node, engine, state, le
   const label = `${name}: ${LABEL[status.tone] ?? status.tone}, ${status.message}`
   const spawned = level === "near" ? spawnedLine(engine) : null // a helper: by whom, for what, how long it stays
   const focus = () => onFocus(name)
+  const hit = agentBoxClasses() // the box lets taps through to the artifacts lifted under it; only the card takes them
 
   return (
     <div
       data-agent={name}
       data-tone={status.tone}
       data-focused={focused || undefined}
-      className="absolute"
+      className={hit.box}
       style={{ left: node.x, top: node.y, width: node.w, height: node.h }}
     >
       {level === "far" ? (
@@ -156,9 +130,9 @@ export const AgentNode = React.memo(function AgentNode({ node, engine, state, le
           onClick={focus}
           aria-label={`${label}. Focus it.`}
           style={{ height: CARD_H.far }}
-          className="flex w-full flex-col items-center overflow-hidden pt-4 outline-none focus-visible:[&>span:first-child]:ring-8 focus-visible:[&>span:first-child]:ring-ring/50"
+          className={cn(hit.card, "flex w-full flex-col items-center overflow-hidden pt-4 outline-none focus-visible:[&>span:first-child]:ring-8 focus-visible:[&>span:first-child]:ring-ring/50")}
         >
-          <Face name={name} status={status} size="far" />
+          <Face name={name} status={status} size="size-24" ring="-inset-3 border-4" inner="border-[6px] text-4xl" />
           <span className={cn("mt-4 max-w-full truncate rounded-lg bg-background px-2 text-4xl", focused && "underline decoration-4 underline-offset-8")}>{name}</span>
           {tag && <span className="mt-1 max-w-full truncate rounded bg-background px-2 text-xl tracking-wide text-muted-foreground uppercase">{tag}</span>}
         </button>
@@ -167,6 +141,7 @@ export const AgentNode = React.memo(function AgentNode({ node, engine, state, le
           onClick={focus}
           style={{ height: CARD_H[level] }}
           className={cn(
+            hit.card,
             "flex min-h-0 flex-col gap-2 overflow-hidden rounded-2xl border-2 bg-card p-3 transition-colors duration-500",
             tone.line,
             tone.dashed && "border-dashed",
@@ -183,7 +158,7 @@ export const AgentNode = React.memo(function AgentNode({ node, engine, state, le
               aria-label={`${label}. Focus it.`}
               className="flex min-w-0 flex-1 items-center gap-2 rounded-lg text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
             >
-              <Face name={name} status={status} size="card" />
+              <Face name={name} status={status} size="size-10" ring="-inset-1 border-2" inner="border-2 text-sm" />
               <span className="flex min-w-0 flex-col">
                 <span className={cn("truncate leading-tight", level === "near" ? "text-sm" : "text-base")}>{name}</span>
                 {level === "near" ? (
@@ -210,6 +185,8 @@ export const AgentNode = React.memo(function AgentNode({ node, engine, state, le
               {spawned}
             </p>
           )}
+          {state?.stats?.promptParts && <PromptMeter parts={state.stats.promptParts} className="shrink-0" />}
+          {state?.stats?.contract && <ContractLine contract={state.stats.contract} className="shrink-0" />}
           {level === "mid" && <Bubble status={status} lines={2} />}
           {level === "mid" && calls.length > 0 && (
             <ul aria-label="Calls in flight" className="flex min-w-0 flex-wrap gap-1">

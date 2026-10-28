@@ -21,7 +21,9 @@
 //       port: 1112,                        // its own port when it runs alone (and its .next-desks/<name> build)
 //       mcp: "./mcp.json",                 // its tool servers (mcpServers format), beside .mcp.json
 //       integrations: ["telegram"],        // integrations/ it runs (one Telegram listener per bot)
+//       listen: false,                     // their tools only: another desk takes the inbound messages
 //       telegram: false,                   // no live status of its runs on Telegram (default: every desk posts it)
+//       sanitize: false,                   // the owner's words go as they are (default: rewritten on-device first)
 //       terminal: { toolchains: ["python"], programs: ["make"], timeoutSeconds, backgroundMinutes },
 //                                          // its terminal sessions (host term/*: companion/capabilities/terminal.js)
 //       mounts: { desks: { root, allow: (name) => bool } },   // desks/<name>/… in its workspace = <root>/<name>/…
@@ -29,6 +31,7 @@
 //       projects: true | { name: path },   // projects outside ASKK it works on, as projects/<name>/ in its workspace:
 //                                          // these at start (paths relative to the desk folder), and true or not, the
 //                                          // owner's loads (host projects/load; capabilities/projects.js)
+//       browser: { app: true },            // its preview pages may show this app itself (an agent's view: no writes)
 //       start: async ({ port, live, log, memory }) => ({ desk, ready?, run? }),   // builds the agents
 //                                          // (backend/kernel buildDesk); the host serves them as the team
 //                                          // (companion/team/kernel-team.js); run({wake, busy, log}) → stop
@@ -142,10 +145,17 @@ export async function loadDesk(dir, env = process.env) {
           description: config.description ?? "",
           port: Number(config.port) || null,
           integrations: Array.isArray(config.integrations) ? config.integrations : null,
+          // 2026-10-24: false — the integrations' tools only, never their inbound messages (another desk listens)
+          listen: config.listen !== false,
           // 2026-10-23: false keeps its runs' live status off Telegram (every desk posts it, in its own topic)
           telegram: config.telegram !== false,
+          // 2026-10-24: false leaves the owner's words as they are (no on-device rewrite, capabilities/sanitize.js)
+          sanitize: config.sanitize !== false,
           // 2026-10-17: what its host API's terminal runs and which outside folders its workspace mounts.
           terminal: config.terminal && typeof config.terminal === "object" ? config.terminal : null,
+          // 2026-10-25: {app: true} — its preview pages may show this app (the desk server's own port) as an agent's view:
+          // it reads and clicks, every write from it refused (capabilities/browser.js)
+          browser: config.browser?.app === true ? { app: true } : null,
           mounts: config.mounts?.desks?.root ? { desks: { root: resolve(folder, config.mounts.desks.root), allow: config.mounts.desks.allow } } : null,
           // Projects outside ASKK (true: the owner loads them; {name: path}: these too, at start).
           projects: config.projects === true || (config.projects && typeof config.projects === "object") ? config.projects : null,

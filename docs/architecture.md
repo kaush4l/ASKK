@@ -2,6 +2,8 @@
 
 A frozen read of the code as it stands (working tree incl. the uncommitted workflow changes). Nothing here changes
 behaviour; it is the slice of view to read before any change. Line numbers drift — the file names stay.
+The classes themselves — each base and artifact class, its variables, its instances and how to change it — are
+`docs/composition.md`, written from the code (`bun scripts/composition.js`); `/compose` draws them live.
 
 ## 1. The layers
 

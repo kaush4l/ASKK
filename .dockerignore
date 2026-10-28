@@ -1,0 +1,18 @@
+# Never into the image: secrets, the owner's desks and memory, local models, build output, vendor clones.
+.env*
+!.env.example
+.mcp.json
+custom/
+memory/
+models/
+vendor/
+integrations/
+node_modules/
+.next/
+.next-desks/
+out/
+dist/
+spikes/
+.git/
+.claude/
+*.log

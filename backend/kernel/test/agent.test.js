@@ -187,3 +187,19 @@ describe("watchers and timings", () => {
     expect(seen).toEqual([["tape", false, "host down"], ["tape", true, null]])
   })
 })
+
+test("the inbox: a request asked while a run is accepted waits there with who sent it, and leaves when its turn comes", async () => {
+  let release
+  const gate = new Promise((r) => (release = r))
+  let n = 0
+  const agent = new Agent({ name: "a", report: false }, { infer: async () => (n++ ? JSON.stringify({ thought: "", calls: [], answer: "2" }) : (await gate, JSON.stringify({ thought: "", calls: [], answer: "1" }))) })
+  const seen = []
+  agent.on("inbox", (e) => seen.push(e.inbox.map((m) => `${m.from}: ${m.text}`)))
+  const one = agent.ask("first")
+  const two = agent.ask("second", { from: "telegram" })
+  expect(agent.inbox).toMatchObject([{ id: "in1", text: "second", from: "telegram" }])
+  release()
+  expect(await Promise.all([one, two])).toEqual(["1", "2"])
+  expect(seen).toEqual([["telegram: second"], []])
+  expect(agent.inbox).toEqual([])
+})

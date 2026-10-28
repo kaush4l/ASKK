@@ -22,9 +22,10 @@
 import { realpathSync, statSync, readdirSync, watch as watchFs } from "node:fs"
 import { lstat, mkdir, readdir, realpath, rename, rm } from "node:fs/promises"
 import { basename, dirname, join, relative, resolve, sep } from "node:path"
-import { HttpError } from "../shared/http.js"
+import { HttpError, sseResponse } from "../shared/http.js"
+import { attempt } from "../shared/safe.js"
 import { within } from "../shared/paths.js"
-import { HOST_LIMITS, SSE_PING_MS } from "../shared/config.js"
+import { HOST_LIMITS } from "../shared/config.js"
 
 const MAX_READ = HOST_LIMITS.files.readBytes // bytes returned by fs/read
 const MAX_TREE = HOST_LIMITS.files.treeEntries // entries returned by fs/tree
@@ -42,52 +43,32 @@ const DESK_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/
 const revisionOf = (bytes) => new Bun.CryptoHasher("sha256").update(bytes).digest("hex").slice(0, 16)
 
 const readBytes = (path) => Bun.file(path).bytes()
-const isDir = (path) => {
-  try {
-    return statSync(path).isDirectory()
-  } catch {
-    return false
-  }
-}
+const isDir = (path) => attempt(() => statSync(path).isDirectory(), false)
+// What an lstat says an entry is (a link is not followed).
+const entryType = (info) => (info.isSymbolicLink() ? "link" : info.isDirectory() ? "dir" : info.isFile() ? "file" : "other")
 const stat = (path) => Bun.file(path).stat()
+
+// [{ name, real }] of the names whose folder(name) is a real one.
+const realFolders = (names, folder) =>
+  names.flatMap((name) => {
+    const real = folder(name)
+    return real ? [{ name, real }] : []
+  })
 
 // A desk's mounts (main.js `mounts.desks`), or null: folder(name) → the real folder of desks/<name> (null when not
 // allowed, missing, not a folder, or a link); list() → [{ name, real }] every mounted desk now.
 export function deskMounts(mounts) {
   const spec = mounts?.desks
   if (!spec?.root) return null
-  let base
-  try {
-    base = realpathSync(resolve(spec.root))
-  } catch {
-    return null
-  }
-  const allow = (name) => {
-    try {
-      return typeof spec.allow === "function" ? !!spec.allow(name) : false
-    } catch {
-      return false
-    }
-  }
+  const base = attempt(() => realpathSync(resolve(spec.root)))
+  if (!base) return null
+  const allow = (name) => attempt(() => typeof spec.allow === "function" && !!spec.allow(name), false)
   const folder = (name) => {
     if (typeof name !== "string" || !DESK_NAME.test(name) || !allow(name)) return null
     const path = join(base, name)
-    try {
-      return realpathSync(path) === path && statSync(path).isDirectory() ? path : null
-    } catch {
-      return null
-    }
+    return attempt(() => (realpathSync(path) === path && statSync(path).isDirectory() ? path : null))
   }
-  const list = () => {
-    let names = []
-    try {
-      names = readdirSync(base).sort()
-    } catch {}
-    return names.flatMap((name) => {
-      const real = folder(name)
-      return real ? [{ name, real }] : []
-    })
-  }
+  const list = () => realFolders(attempt(() => readdirSync(base).sort(), []), folder)
   return { base, folder, list }
 }
 
@@ -102,23 +83,8 @@ export function workspaceMounts(mounts) {
   if (desks) points.push({ prefix: MOUNT, overlay: false, what: "mounted desk", base: desks.base, folder: desks.folder, list: desks.list })
   const loaded = mounts?.projects
   if (loaded && typeof loaded.folder === "function" && typeof loaded.list === "function") {
-    const folder = (name) => {
-      try {
-        return loaded.folder(name) ?? null
-      } catch {
-        return null
-      }
-    }
-    const list = () => {
-      try {
-        return loaded.list().flatMap(({ name }) => {
-          const real = folder(name)
-          return real ? [{ name, real }] : []
-        })
-      } catch {
-        return []
-      }
-    }
+    const folder = (name) => attempt(() => loaded.folder(name) ?? null)
+    const list = () => attempt(() => realFolders(loaded.list().map((d) => d.name), folder), [])
     points.push({ prefix: PROJECTS, overlay: true, what: "loaded project", folder, list })
   }
   if (!points.length) return null
@@ -180,12 +146,9 @@ export function createFiles({ root, readOnly = false, mounts = null }) {
   async function inRoot(rel = "") {
     const { virtual, base, target, point } = locate(rel)
     if (virtual) return { virtual: true, point }
-    let real
-    try {
-      real = await realpath(target)
-    } catch {
+    const real = await realpath(target).catch(() => {
       throw new HttpError(404, `Not found: ${rel || "."}`)
-    }
+    })
     if (!within(base, real)) throw refused()
     return { real, base, point }
   }
@@ -254,13 +217,8 @@ export function createFiles({ root, readOnly = false, mounts = null }) {
     const names = await readdir(dir)
     const entries = await Promise.all(
       names.map(async (entry) => {
-        try {
-          const info = await lstat(join(dir, entry))
-          const type = info.isSymbolicLink() ? "link" : info.isDirectory() ? "dir" : info.isFile() ? "file" : "other"
-          return { name: entry, type, size: info.size, mtime: info.mtimeMs }
-        } catch {
-          return null // vanished or unreadable
-        }
+        const info = await lstat(join(dir, entry)).catch(() => null) // vanished or unreadable
+        return info && { name: entry, type: entryType(info), size: info.size, mtime: info.mtimeMs }
       })
     )
     let found = entries.filter(Boolean)
@@ -295,13 +253,9 @@ export function createFiles({ root, readOnly = false, mounts = null }) {
         if (mount && dir === root && mount.points.some((p) => !p.overlay && p.prefix === entry)) continue // the mounted desks stand in for it (below)
         if (overlayAt(dir)?.folder(entry)) continue // a loaded project stands in for it (below)
         budget--
-        let info
-        try {
-          info = await lstat(join(dir, entry))
-        } catch {
-          continue
-        }
-        const type = info.isSymbolicLink() ? "link" : info.isDirectory() ? "dir" : info.isFile() ? "file" : "other"
+        const info = await lstat(join(dir, entry)).catch(() => null)
+        if (!info) continue
+        const type = entryType(info)
         if (type !== "dir") entries.push({ name: entry, type })
         else if (TREE_SKIP.has(entry)) entries.push({ name: entry, type, skipped: true })
         else entries.push({ name: entry, type, children: await walk(join(dir, entry)) })
@@ -347,29 +301,13 @@ export function createFiles({ root, readOnly = false, mounts = null }) {
       const first = new Uint8Array(await file.slice(0, Math.min(info.size, 64 * 1024)).arrayBuffer())
       const end = first.indexOf(10)
       const decode = (b) => new TextDecoder().decode(b)
-      return {
-        path: relPath(path),
-        size: info.size,
-        binary: false,
-        truncated: true,
-        tail: true,
-        from,
-        head: decode(first.subarray(0, end < 0 ? first.length : end)).replace(/\r$/, ""),
-        text: decode(nl < 0 ? bytes.subarray(1) : bytes.subarray(nl + 1)),
-        revision: null,
-      }
+      const head = decode(first.subarray(0, end < 0 ? first.length : end)).replace(/\r$/, "")
+      return { path: relPath(path), size: info.size, binary: false, truncated: true, tail: true, from, head, text: decode(nl < 0 ? bytes.subarray(1) : bytes.subarray(nl + 1)), revision: null }
     }
     const all = await readBytes(path)
     const bytes = all.subarray(0, MAX_READ)
     const binary = bytes.subarray(0, HOST_LIMITS.files.binarySniffBytes).includes(0)
-    return {
-      path: relPath(path),
-      size: info.size,
-      binary,
-      truncated: info.size > MAX_READ,
-      text: binary ? null : new TextDecoder().decode(bytes),
-      revision: revisionOf(all),
-    }
+    return { path: relPath(path), size: info.size, binary, truncated: info.size > MAX_READ, text: binary ? null : new TextDecoder().decode(bytes), revision: revisionOf(all) }
   }
 
   async function write({ path: rel, text, revision }) {
@@ -406,13 +344,10 @@ export function createFiles({ root, readOnly = false, mounts = null }) {
     const parent = await existing(parts.slice(0, -1).join("/"))
     const target = join(parent, parts.at(-1))
     if (PROTECTED(parts.at(-1))) throw new HttpError(403, `${parts.at(-1)} is ASKK's configuration; only the owner edits it.`)
-    let info
-    try {
-      info = await lstat(target)
-    } catch {
+    const info = await lstat(target).catch(() => {
       throw new HttpError(404, `Not found: ${parts.join("/")}`)
-    }
-    const type = info.isSymbolicLink() ? "link" : info.isDirectory() ? "dir" : info.isFile() ? "file" : "other"
+    })
+    const type = entryType(info)
     if (type === "dir" && !recursive && (await readdir(target)).length) {
       throw new HttpError(400, `${relPath(target)} is not empty; pass recursive: true to delete it with its contents.`)
     }
@@ -439,67 +374,40 @@ export function createFiles({ root, readOnly = false, mounts = null }) {
       ? at.point.list().map((d) => d.real)
       : [at.real, ...(mount && at.real === root ? mount.all().map((d) => d.real) : []), ...(overlayAt(at.real)?.list().map((d) => d.real) ?? [])]
     const shown = at.virtual ? at.point.prefix : relPath(at.real)
-    const encoder = new TextEncoder()
-    let controller = null
-    let timer = null
-    let ping = null
-    const pending = new Set()
-    const watchers = []
-    const send = (event) => {
-      try {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`))
-      } catch {
-        end()
+    return sseResponse(request, (send, end) => {
+      const pending = new Set()
+      const watchers = []
+      let timer = null
+      const flush = () => {
+        timer = null
+        if (!pending.size) return
+        const paths = [...pending].sort()
+        pending.clear()
+        const max = HOST_LIMITS.files.watchPaths
+        send({ type: "change", paths: paths.slice(0, max), ...(paths.length > max ? { more: paths.length - max } : {}) })
       }
-    }
-    const flush = () => {
-      timer = null
-      if (!pending.size) return
-      const paths = [...pending].sort()
-      pending.clear()
-      const max = HOST_LIMITS.files.watchPaths
-      send({ type: "change", paths: paths.slice(0, max), ...(paths.length > max ? { more: paths.length - max } : {}) })
-    }
-    const entry = { end }
-    function end() {
-      if (!streams.delete(entry)) return
-      clearTimeout(timer)
-      clearInterval(ping)
-      for (const w of watchers) w.close()
-      try {
-        controller?.close()
-      } catch {}
-    }
-    for (const folder of folders) {
-      try {
-        const w = watchFs(folder, { recursive: true }, (_event, name) => {
-          if (!name) return
-          const parts = String(name).split(sep)
-          if (parts.some((p) => WATCH_SKIP.has(p))) return
-          pending.add(relPath(join(folder, String(name))))
-          timer ??= setTimeout(flush, HOST_LIMITS.files.watchDebounceMs)
-        })
-        w.on?.("error", () => {})
-        watchers.push(w)
-      } catch {} // a folder that vanished: the others are still watched
-    }
-    streams.add(entry)
-    const body = new ReadableStream({
-      start(c) {
-        controller = c
-        send({ type: "ready", path: shown })
-        ping = setInterval(() => {
-          try {
-            c.enqueue(encoder.encode(": ping\n\n"))
-          } catch {
-            end()
-          }
-        }, SSE_PING_MS)
-        request?.signal?.addEventListener("abort", end, { once: true })
-      },
-      cancel: end,
+      for (const folder of folders) {
+        try {
+          const w = watchFs(folder, { recursive: true }, (_event, name) => {
+            if (!name) return
+            const parts = String(name).split(sep)
+            if (parts.some((p) => WATCH_SKIP.has(p))) return
+            pending.add(relPath(join(folder, String(name))))
+            timer ??= setTimeout(flush, HOST_LIMITS.files.watchDebounceMs)
+          })
+          w.on?.("error", () => {})
+          watchers.push(w)
+        } catch {} // a folder that vanished: the others are still watched
+      }
+      const entry = { end }
+      streams.add(entry)
+      send({ type: "ready", path: shown })
+      return () => {
+        streams.delete(entry)
+        clearTimeout(timer)
+        for (const w of watchers) w.close()
+      }
     })
-    return new Response(body, { headers: { "content-type": "text/event-stream", "cache-control": "no-store", connection: "keep-alive" } })
   }
   const close = () => {
     for (const s of [...streams]) s.end()

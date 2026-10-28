@@ -15,6 +15,12 @@ import { LIMITS } from "@/lib/config"
 
 const API = withBase("/__askk/")
 
+async function answered(response) {
+  const data = await response.json().catch(() => null)
+  if (!response.ok || !data) throw new Error(data?.error ?? `Host request failed (${response.status}).`)
+  return data
+}
+
 export async function hostPost(endpoint, body, signal) {
   let response
   try {
@@ -28,16 +34,11 @@ export async function hostPost(endpoint, body, signal) {
     if (error.name === "AbortError") throw error
     throw new Error("The ASKK host is not reachable.")
   }
-  const data = await response.json().catch(() => null)
-  if (!response.ok || !data) throw new Error(data?.error ?? `Host request failed (${response.status}).`)
-  return data
+  return answered(response)
 }
 
 export async function hostGet(endpoint) {
-  const response = await fetch(`${API}${endpoint}`, { cache: "no-store" })
-  const data = await response.json().catch(() => null)
-  if (!response.ok || !data) throw new Error(data?.error ?? `Host request failed (${response.status}).`)
-  return data
+  return answered(await fetch(`${API}${endpoint}`, { cache: "no-store" }))
 }
 
 // The Mac's recognizer. Partials never queue: one asked for while another

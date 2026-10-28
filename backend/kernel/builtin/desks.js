@@ -7,15 +7,9 @@ import { outsideFrom } from "./spawn.js"
 // agent makes, checks, loads and gives work to desks, over the host's desks/* (companion/server/desks.js →
 // companion/team/scaffold.js). Plain JS over ctx.host, type "desk", view "desk".
 //
-//   desk.list                         the hosted desks: name, what each is for, what it runs now
-//   desk.create {name, spec, update?} writes custom/<name>/ from a spec (agents, practice seeds, teams, init folders),
-//                                     composed before it is put in place; config only — never code
-//   desk.check {name}                 does it compose: its tree and every agent's tools
-//   desk.load {name}                  hosts it in the running server (or reloads it: refused while it works)
-//   desk.ask {name, text, wait?}      work for a hosted desk's lead; wait: true → its answer (one whole run, polled)
-//   desk.read {name, path}            a hosted desk's workspace file, or a folder's listing (read only)
-//   desk.propose {name, file, code, why}  tool code the desk lacks → custom/<name>/proposed/tools/<file>.js, for the
-//                                     owner to accept (moved into tools/); never loaded by an agent
+// Tools: list, create {name, spec, update?} (writes custom/<name>/ from a spec, composed before it is put in place; config
+// only — never code), check, load, ask {name, text, wait?} (one whole run, polled), read (a hosted desk's workspace, read
+// only), propose {name, file, code, why} (tool code → custom/<name>/proposed/tools/<file>.js, never loaded by an agent).
 //
 // Provenance (2026-10-20, practice.js's and spawn.js's hold extended to desks): a desk's agents' roles, practice seeds
 // and main.js are prompts at every start of it — a lasting prompt injection when a run that read outside wrote them
@@ -59,12 +53,11 @@ AGENT: {name, description (one line), role (what it is for and how it works: SPE
  artifacts: [practice, plan, dispatch, files, terminal, browse, preview, talk, report, or {type, id?, commands?, gate?}],
  practice: {checklist: ["!id: what done means, observable"], quality: ["the bar"], instructions: ["how"]}, members?: [AGENT]}`
 
+const tool = (name, spec) => [name, new Tool({ name, type: "desk", view: "desk", ...spec })]
+
 export function deskTools() {
-  return {
-    "desk.list": new Tool({
-      name: "desk.list",
-      type: "desk",
-      view: "desk",
+  return Object.fromEntries([
+    tool("desk.list", {
       description: "the desks hosted in this server: name, what each is for, what it runs now",
       input: {},
       run: async (_input = {}, ctx = {}) => {
@@ -72,12 +65,9 @@ export function deskTools() {
         return desks.map((d) => `- ${d.name}: ${d.description ?? ""}${d.work?.length ? ` — running: ${d.work.map((w) => `${w.agent} (${w.step ?? w.run})`).join("; ")}` : " — idle"}`).join("\n") || "no desks hosted"
       },
     }),
-    "desk.create": new Tool({
-      name: "desk.create",
-      type: "desk",
-      view: "desk",
-      description: `write a new desk custom/<name>/ from a spec — its lead (goal, role, checklist and quality bar as practice, the tools and artifacts it needs: start with one capable lead that spawns helpers; add fixed members only for a workflow that never changes), team templates, init folders — checked before it is put in place (a spec that does not compose writes nothing and says why); then desk.load it and desk.ask it. update: true rewrites a desk desk.create made (its data, memory and kept helpers stay). From a run that read outside (the web, another desk, an MCP tool) it is checked but held for the owner's accept, not written. Spec: ${SPEC}`,
-      input: { name: "the desk's folder name: lowercase-words (e.g. research-desk)", spec: "the spec object (above), or its JSON", update: "true to rewrite a desk desk.create made; optional" },
+    tool("desk.create", {
+      description: `write a new desk custom/<name>/ from a spec — its lead (goal, role, checklist and quality bar as practice, the tools and artifacts it needs: start with one capable lead that spawns helpers; add fixed members only for a workflow that never changes), team templates, init folders — checked before it is put in place (a spec that does not compose writes nothing and says why); then desk.load it and desk.ask it. From a run that read outside (the web, another desk, an MCP tool) it is checked but held for the owner's accept, not written. Spec: ${SPEC}`,
+      input: { name: "the desk's folder name: lowercase-words (e.g. research-desk)", spec: "the spec object (above), or its JSON", update: "true to rewrite a desk desk.create made (its data, memory and kept helpers stay); optional" },
       run: async (input = {}, ctx = {}) => {
         const spec = jsonish(input.spec)
         const update = input.update === true || input.update === "true"
@@ -93,18 +83,12 @@ export function deskTools() {
         return [`${update ? "updated" : "created"} ${made.folder}/: ${made.written.join(", ")}`, "composes:", checkText(made.check), made.hosted ? `hosted already: desk.load {name: "${made.name}"} reloads it` : `next: desk.load {name: "${made.name}"}, then desk.ask it`].join("\n")
       },
     }),
-    "desk.check": new Tool({
-      name: "desk.check",
-      type: "desk",
-      view: "desk",
+    tool("desk.check", {
       description: "does a desk compose: its agents' tree and every agent's tools (nothing runs)",
       input: { name: "the desk's folder name" },
       run: async ({ name } = {}, ctx = {}) => checkText(await need(ctx, "desk.check").post("desks/check", { name: String(name ?? "").trim() })),
     }),
-    "desk.load": new Tool({
-      name: "desk.load",
-      type: "desk",
-      view: "desk",
+    tool("desk.load", {
       description: "host a desk in the running server, or reload it with its files as they are now (refused while it works)",
       input: { name: "the desk's folder name" },
       run: async ({ name } = {}, ctx = {}) => {
@@ -112,10 +96,7 @@ export function deskTools() {
         return `${r.reloaded ? "reloaded" : "loaded"} ${r.name}: ${r.agents} agents${r.proposed ? ` — as it is on disk; an update proposed by ${r.proposed.by} waits for the owner (not in force)` : ""}`
       },
     }),
-    "desk.ask": new Tool({
-      name: "desk.ask",
-      type: "desk",
-      view: "desk",
+    tool("desk.ask", {
       description: "give a hosted desk work for its lead (or one of its agents): wait: true returns its answer when its run ends (minutes; polled, never timed out short of max_minutes); without, it is queued and you go on",
       input: { name: "the desk", text: "the work, as the owner would say it: what, why, what done means", agent: "one of its agents; optional (its lead)", wait: "true to wait for the answer; optional", max_minutes: `how long to wait, default ${ASK_MINUTES}; optional` },
       run: async ({ name, text, agent, wait, max_minutes } = {}, ctx = {}) => {
@@ -139,10 +120,7 @@ export function deskTools() {
         return `${desk} is still working (ask ${r.id}): desk.list shows it; desk.read its workspace for what it wrote so far`
       },
     }),
-    "desk.read": new Tool({
-      name: "desk.read",
-      type: "desk",
-      view: "desk",
+    tool("desk.read", {
       description: "read a file in a hosted desk's workspace (what it wrote: a report, a preview), or list a folder of it — read only",
       input: { name: "the desk", path: "a path in its workspace (data/), e.g. reports/summary.md or reports/" },
       run: async ({ name, path } = {}, ctx = {}) => {
@@ -158,10 +136,7 @@ export function deskTools() {
         return `${name}: ${r.path}${r.truncated ? " (cut)" : ""}\n${r.text ?? ""}`
       },
     }),
-    "desk.propose": new Tool({
-      name: "desk.propose",
-      type: "desk",
-      view: "desk",
+    tool("desk.propose", {
       description: "propose tool code a desk lacks (export default defineTool({name, description, input, run}) — docs/standard.md): kept in custom/<name>/proposed/tools/<file>.js for the owner, who moves it into tools/ to accept it; tell the owner (talk.ask) what it unlocks",
       input: { name: "the desk", file: "the file's name (e.g. notes)", code: "the whole file", why: "what the desk cannot do without it" },
       run: async (input = {}, ctx = {}) => {
@@ -170,5 +145,5 @@ export function deskTools() {
         return `proposed ${r.path} — not loaded until the owner accepts it (the home page's proposals, or moved into tools/)${r.from ? `; marked: from a run that read outside (${r.from}) — the owner reads every line before accepting it` : ""}`
       },
     }),
-  }
+  ])
 }

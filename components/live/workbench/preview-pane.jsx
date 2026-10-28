@@ -1,17 +1,21 @@
 "use client"
 
 import * as React from "react"
-import { AppWindowIcon, ChevronLeftIcon, ExternalLinkIcon, Maximize2Icon, PauseIcon, RadioIcon, RotateCwIcon, ShapesIcon, TerminalIcon, XIcon } from "lucide-react"
+import { AppWindowIcon, ChevronLeftIcon, ExternalLinkIcon, Maximize2Icon, RotateCwIcon, ShapesIcon, TerminalIcon, XIcon } from "lucide-react"
 
-import { backPreview, bindLine, bridgeMessage, currentRef, enlargeOf, frameCheck, frameSrc, frameStep, itemKey, openAsks, openPreview, pageMode, pageView, paramsText, previewItems, rerunPreview, sessionOf, shownItem, trailOf, viewMessage, visualSource } from "@/backend/live/preview"
+import { backPreview, bindLine, bridgeMessage, currentRef, enlargeOf, frameCheck, frameSrc, frameStep, itemKey, openAsks, openPreview, pageMode, pageView, paramsText, previewItems, recFromQuery, recordingsOf, rerunPreview, sessionOf, shownItem, trailOf, viewMessage, visualSource } from "@/backend/live/preview"
 import { consoleErrors, shotSrc } from "@/backend/live/workbench"
-import { clock, Empty, StatusDot } from "@/components/live/workbench/pane"
+import { clock, Empty, FollowToggle, ShowSwitch, StatusDot } from "@/components/live/workbench/pane"
 import { SessionView } from "@/components/live/workbench/terminal-pane"
 import { PreviewAsk, PreviewQuestions } from "@/components/preview/ask"
+import { PreviewRecordings } from "@/components/preview/recordings"
 import { PreviewVisual } from "@/components/preview/visual"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
+import { useBusy } from "@/components/views/kit"
 import { useDesk } from "@/hooks/use-engines"
+import { useNow } from "@/hooks/use-now"
+import { useStripScroll } from "@/hooks/use-strip-scroll"
 import { cn } from "@/lib/utils"
 
 // The one preview pane (2026-10-17 owner: "There will be need for only one preview pane because the goal is for the
@@ -65,7 +69,7 @@ export function PreviewPane({ artifact, artifacts = null, follow = null, classNa
   const current = itemKey(currentRef(state))
   const [pointed, setPointed] = React.useState(null) // {context, text}: the ask box's chip
   const [pageAt, setPageAt] = React.useState(null) // {view, views} the framed page last said it shows
-  const [nav, setNav] = React.useState(null) // {busy, error}: an open / back / rerun on its way
+  const nav = useBusy() // {busy, error}: an open / back / rerun on its way
   React.useEffect(() => {
     setPointed(null)
     setPageAt(null)
@@ -74,15 +78,11 @@ export function PreviewPane({ artifact, artifacts = null, follow = null, classNa
   // The owner's own call: the pane shows where it lands (a paused follow too); its error stays one line under the trail.
   const act = async (call, to = null) => {
     if (!artifact?.id) return
-    setNav({ busy: true, error: null })
-    try {
+    await nav.run(async () => {
       const r = await call()
       const at = to ?? (r?.current ? itemKey(r.current) : null)
       if (at) f.pick(at)
-      setNav(null)
-    } catch (e) {
-      setNav({ busy: false, error: String(e?.message ?? e) })
-    }
+    })
   }
   const onOpen = (link) => act(() => openPreview(artifact.id, link), itemKey({ kind: "visual", id: link.id }))
   const back = (steps = 1) =>
@@ -95,7 +95,7 @@ export function PreviewPane({ artifact, artifacts = null, follow = null, classNa
 
   return (
     <section aria-label="Preview" className={cn("@container flex min-h-0 min-w-0 flex-1 flex-col", className)}>
-      <ItemStrip items={items} shown={item?.key} current={current} onPick={f.pick} pageAt={pageAt} open={openAsks(state)} follow={follow ? null : own} />
+      <ItemStrip items={items} shown={item?.key} current={current} onPick={f.pick} pageAt={pageAt} open={openAsks(state)} follow={follow ? null : own} state={state} />
       <div className="flex min-h-0 flex-1 flex-col @3xl:grid @3xl:grid-cols-[minmax(0,1fr)_minmax(16rem,22rem)]">
         <div className="flex min-h-64 min-w-0 flex-1 flex-col @3xl:min-h-0">
           <Trail crumbs={crumbs} nav={nav} onBack={back} />
@@ -104,6 +104,7 @@ export function PreviewPane({ artifact, artifacts = null, follow = null, classNa
         <aside aria-label="What it shows, and your questions" className="flex max-h-[45%] min-h-0 min-w-0 shrink-0 flex-col gap-3 overflow-auto border-t p-2 @3xl:max-h-none @3xl:border-t-0 @3xl:border-l">
           <Says item={item} onRerun={artifact?.id ? rerun : null} busy={!!nav?.busy} />
           <PreviewQuestions state={state} onShow={f.pick} />
+          <PreviewRecordings state={state} />
           <PreviewAsk artifact={artifact} item={item} pointed={pointed} onClearPoint={() => setPointed(null)} />
         </aside>
       </div>
@@ -112,17 +113,22 @@ export function PreviewPane({ artifact, artifacts = null, follow = null, classNa
 }
 
 // The preview's items as chips: ▶ the one the agents put in the pane; a tap shows another (and pauses the follow).
-function ItemStrip({ items, shown, current, onPick, pageAt, open, follow }) {
-  const stripRef = React.useRef(null)
-  const activeRef = React.useRef(null)
-  // The shown chip scrolled into the strip by hand (scrollIntoView would scroll the page too).
+function ItemStrip({ items, shown, current, onPick, pageAt, open, follow, state = null }) {
+  const [stripRef, activeRef] = useStripScroll(shown)
+  const [recOpen, setRecOpen] = React.useState(false)
+  const [recInitial, setRecInitial] = React.useState(null)
+  const recs = state ? recordingsOf(state).length : 0
+  // /live?rec=<id> opens the dialog on that recording: once, when the recordings first arrive
+  const recAsked = React.useRef(false)
   React.useEffect(() => {
-    const strip = stripRef.current
-    const el = activeRef.current
-    if (!strip || !el) return
-    if (el.offsetLeft < strip.scrollLeft) strip.scrollLeft = el.offsetLeft
-    else if (el.offsetLeft + el.offsetWidth > strip.scrollLeft + strip.clientWidth) strip.scrollLeft = el.offsetLeft + el.offsetWidth - strip.clientWidth
-  }, [shown])
+    if (recAsked.current || !recs) return
+    recAsked.current = true
+    const hit = recFromQuery(window.location.search, recordingsOf(state))
+    if (hit) {
+      setRecInitial(hit.id)
+      setRecOpen(true)
+    }
+  }, [recs, state])
   return (
     <div className="flex min-h-9 min-w-0 shrink-0 items-center gap-1 border-b px-1">
       <nav ref={stripRef} aria-label="Preview items" className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto py-1 [scrollbar-width:thin]">
@@ -162,11 +168,20 @@ function ItemStrip({ items, shown, current, onPick, pageAt, open, follow }) {
           {open} open
         </span>
       )}
-      {follow && (
-        <Button variant={follow.following ? "secondary" : "outline"} size="sm" className="h-7 shrink-0 pointer-coarse:h-10" onClick={follow.toggle} aria-pressed={follow.following}>
-          {follow.following ? <RadioIcon className="text-emerald-500" /> : <PauseIcon />}
-          {follow.following ? "Following" : "Follow"}
-        </Button>
+      {follow && <FollowToggle following={follow.following} className="h-7 shrink-0 pointer-coarse:h-10" onClick={follow.toggle} />}
+      {recs > 0 && (
+        <>
+          <Button size="sm" variant="outline" className="h-7 shrink-0 px-2 text-xs pointer-coarse:h-10" aria-haspopup="dialog" onClick={() => setRecOpen(true)}>
+            Recordings <span className="tabular-nums">{recs}</span>
+          </Button>
+          <Dialog open={recOpen} onOpenChange={setRecOpen}>
+            <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-3xl">
+              <DialogTitle className="text-sm">Recordings</DialogTitle>
+              <DialogDescription className="sr-only">The preview&apos;s recordings: pick one and step through its frames.</DialogDescription>
+              <PreviewRecordings state={state} initial={recInitial} label={false} />
+            </DialogContent>
+          </Dialog>
+        </>
       )}
     </div>
   )
@@ -219,12 +234,7 @@ function Says({ item, onRerun = null, busy = false }) {
 // "bound: python -B arch.py … ← llm/architecture/** · ran 12:03 exit 0 (2.1 s)" and Re-run.
 const TONE = { running: "text-sky-700 dark:text-sky-300", waiting: "text-amber-700 dark:text-amber-300", failed: "text-destructive", ok: "text-muted-foreground", idle: "text-muted-foreground" }
 function Bound({ id, bind, onRerun, busy }) {
-  const [now, setNow] = React.useState(() => Date.now())
-  React.useEffect(() => {
-    if (!bind?.running) return
-    const t = setInterval(() => setNow(Date.now()), 1000)
-    return () => clearInterval(t)
-  }, [bind?.running])
+  const now = useNow(1000, !!bind?.running)
   const line = bindLine(bind, now)
   if (!line) return null
   return (
@@ -288,7 +298,7 @@ function Trail({ crumbs, nav, onBack }) {
 // is the default where the page can be framed (pageMode). A tab on another device gets the shot and says why. Enlarge
 // (2026-10-18 owner: "preview can enlarge to a web page"): the page over the whole viewport (EnlargedPage); the pane
 // keeps no second frame of it meanwhile.
-export function PreviewView({ page, view = null, onAt = () => {}, onPoint = () => {}, artifact = null, onShow = null }) {
+function PreviewView({ page, view = null, onAt = () => {}, onPoint = () => {}, artifact = null, onShow = null }) {
   const [here, setHere] = React.useState(null)
   React.useEffect(() => setHere(window.location.href), [])
   const check = here && page.url ? frameCheck(page.url, here) : null
@@ -313,21 +323,13 @@ export function PreviewView({ page, view = null, onAt = () => {}, onPoint = () =
           </a>
         )}
         {page.url && <EnlargeButton onClick={() => setEnlarged(true)} />}
-        <div role="group" aria-label="Show" className="flex shrink-0 gap-1">
-          {["shot", "live"].map((m) => (
-            <button
-              key={m}
-              type="button"
-              aria-pressed={live === (m === "live")}
-              disabled={m === "live" && !frameable}
-              title={m === "live" && !frameable ? (check?.reason ? `Not framed: ${check.reason}` : "Only an open page on the desk's computer can be framed") : undefined}
-              onClick={() => setMode(m)}
-              className={cn("rounded-md border px-2 leading-6 disabled:opacity-40 pointer-coarse:leading-10", live === (m === "live") ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground")}
-            >
-              {m}
-            </button>
-          ))}
-        </div>
+        <ShowSwitch
+          options={["shot", "live"]}
+          value={live ? "live" : "shot"}
+          onPick={setMode}
+          disabled={(m) => m === "live" && !frameable}
+          title={(m) => (m === "live" && !frameable ? (check?.reason ? `Not framed: ${check.reason}` : "Only an open page on the desk's computer can be framed") : undefined)}
+        />
       </div>
       <div className="flex shrink-0 flex-wrap gap-x-2 px-2 py-1 text-[11px] text-muted-foreground">
         {page.title && <span className="min-w-0 truncate text-foreground/80">{page.title}</span>}

@@ -6,6 +6,7 @@ import { BrushIcon, CheckIcon, ExternalLinkIcon, ImageIcon, MaximizeIcon, SendIc
 import { uploadImage } from "@/backend/live/models"
 import { bestImage, bigEnough, boxFrom, canEdit, imageUrl, lastCritique, lineage, marksText, nextZoom, placeOf, presetOptions, progress, studioCall } from "@/backend/live/studio"
 import { ModelPanel } from "@/components/models/model-panel"
+import { CallNote, ConfirmDelete, Options, SmButton, field, submitted, useOwnerCall } from "@/components/views/kit"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
@@ -27,49 +28,10 @@ import { cn } from "@/lib/utils"
 // it there comes back to this desk.
 
 const VERDICT = { done: "text-emerald-600 dark:text-emerald-400", revise: "text-amber-600 dark:text-amber-400", discard: "text-destructive" }
-const field = "w-full rounded-md border bg-background px-2 py-1.5 text-base md:text-sm"
-
-function useCall(id) {
-  const [busy, setBusy] = React.useState(false)
-  const [note, setNote] = React.useState(null) // {ok, text}: what the call did, or why it was refused
-  const call = async (method, extra, done) => {
-    setBusy(true)
-    setNote(null)
-    try {
-      const r = await studioCall(id, method, extra)
-      setNote({ ok: true, text: r?.deleted ? `deleted ${r.deleted.join(", ")}` : r?.delivered ? `sent to ${r.keeper} (${r.delivered === "guided" ? "added to its run" : "a new run"})` : r?.workflow ? `the ${r.workflow} workflow started: expand → preset → generate → critique → refine` : (r?.result ?? "done") })
-      done?.()
-      return true
-    } catch (error) {
-      setNote({ ok: false, text: error.message })
-      return false
-    } finally {
-      setBusy(false)
-    }
-  }
-  return { busy, note, call }
-}
-
-// A delete that asks once more: Delete → "Delete for good?" / Cancel.
-function DeleteButton({ label = "Delete", confirm = "Delete for good?", busy, onConfirm, className }) {
-  const [asking, setAsking] = React.useState(false)
-  if (!asking)
-    return (
-      <Button size="sm" variant="ghost" className={cn("text-destructive pointer-coarse:h-10", className)} disabled={busy} onClick={() => setAsking(true)}>
-        <Trash2Icon /> {label}
-      </Button>
-    )
-  return (
-    <span className={cn("flex items-center gap-1", className)}>
-      <Button size="sm" variant="destructive" className="pointer-coarse:h-10" disabled={busy} onClick={async () => (await onConfirm()) !== false && setAsking(false)}>
-        <Trash2Icon /> {confirm}
-      </Button>
-      <Button size="sm" variant="ghost" className="pointer-coarse:h-10" disabled={busy} onClick={() => setAsking(false)}>
-        Cancel
-      </Button>
-    </span>
-  )
-}
+const mini = "h-9 rounded-md border bg-background px-1 text-base md:text-xs"
+const saidOf = (r) => (r?.deleted ? `deleted ${r.deleted.join(", ")}` : r?.delivered ? `sent to ${r.keeper} (${r.delivered === "guided" ? "added to its run" : "a new run"})` : r?.workflow ? `the ${r.workflow} workflow started: expand → preset → generate → critique → refine` : (r?.result ?? "done"))
+const useCall = (id) => useOwnerCall(studioCall, id, saidOf)
+const IconBtn = ({ label, icon: Icon, ...props }) => <Button size="icon" variant="ghost" className="size-9 pointer-coarse:size-10" aria-label={label} {...props}><Icon /></Button>
 
 function Thumb({ image, selected, onSelect, best, picking, picked }) {
   const url = imageUrl(image)
@@ -213,6 +175,7 @@ function Detail({ id, state, image }) {
   const url = imageUrl(image)
   const chain = lineage(state, image.id)
   const live = ["queued", "running"].includes(image.status)
+  const done = image.status === "done"
   const maskable = canEdit(state, "mask")
   const maker = image.by === "owner" ? "the studio's agent" : image.by
   const text = () => feedback.trim() || (marks.length ? `Change the marked areas: ${marksText(marks)}` : "")
@@ -240,24 +203,14 @@ function Detail({ id, state, image }) {
         <>
           <ImageStage image={image} url={url} marks={marks} setMarks={setMarks} marking={marking} zoom={zoom} setZoom={setZoom} />
           <div className="flex flex-wrap items-center gap-1 text-xs">
-            <Button size="icon" variant="ghost" className="size-9 pointer-coarse:size-10" onClick={() => setZoom((z) => nextZoom(z, -1))} disabled={zoom <= 1} aria-label="Zoom out">
-              <ZoomOutIcon />
-            </Button>
+            <IconBtn label="Zoom out" icon={ZoomOutIcon} onClick={() => setZoom((z) => nextZoom(z, -1))} disabled={zoom <= 1} />
             <span className="w-10 text-center tabular-nums text-muted-foreground">{Math.round(zoom * 100)}%</span>
-            <Button size="icon" variant="ghost" className="size-9 pointer-coarse:size-10" onClick={() => setZoom((z) => nextZoom(z, 1))} disabled={zoom >= 4} aria-label="Zoom in">
-              <ZoomInIcon />
-            </Button>
-            <Button size="icon" variant="ghost" className="size-9 pointer-coarse:size-10" onClick={() => setZoom(1)} disabled={zoom === 1} aria-label="Fit">
-              <MaximizeIcon />
-            </Button>
-            <Button size="sm" variant={marking ? "secondary" : "outline"} className={cn("pointer-coarse:h-10", marking && "border-rose-500 text-rose-600 dark:text-rose-400")} onClick={() => setMarking((m) => !m)} aria-pressed={marking}>
+            <IconBtn label="Zoom in" icon={ZoomInIcon} onClick={() => setZoom((z) => nextZoom(z, 1))} disabled={zoom >= 4} />
+            <IconBtn label="Fit" icon={MaximizeIcon} onClick={() => setZoom(1)} disabled={zoom === 1} />
+            <SmButton variant={marking ? "secondary" : "outline"} className={marking && "border-rose-500 text-rose-600 dark:text-rose-400"} onClick={() => setMarking((m) => !m)} aria-pressed={marking}>
               <BrushIcon /> {marking ? "Marking: drag boxes" : "Mark"}
-            </Button>
-            {marks.length > 0 && (
-              <Button size="sm" variant="ghost" className="pointer-coarse:h-10" onClick={() => setMarks([])}>
-                <Trash2Icon /> Clear {marks.length}
-              </Button>
-            )}
+            </SmButton>
+            {marks.length > 0 && <SmButton variant="ghost" onClick={() => setMarks([])}><Trash2Icon /> Clear {marks.length}</SmButton>}
             <a href={url} target="_blank" rel="noreferrer" className="ml-auto inline-flex items-center gap-1 text-muted-foreground hover:text-foreground">
               <ExternalLinkIcon className="size-3.5" /> full size
             </a>
@@ -307,19 +260,12 @@ function Detail({ id, state, image }) {
       {image.negative && <p className="text-xs text-muted-foreground">without: {image.negative}</p>}
       {image.critiques?.map((c, i) => (
         <div key={i} className="flex flex-col gap-1 rounded-md border px-2 py-1.5 text-xs">
-          <p className="flex flex-wrap items-center gap-x-2">
-            <span>{c.by}</span>
-            <span className={cn("tabular-nums", VERDICT[c.verdict])}>
-              {c.score}/10 · {c.verdict}
-            </span>
-          </p>
+          <p className="flex flex-wrap items-center gap-x-2"><span>{c.by}</span><span className={cn("tabular-nums", VERDICT[c.verdict])}>{c.score}/10 · {c.verdict}</span></p>
           <div className="flex flex-wrap gap-x-3 gap-y-0.5">
             {Object.entries(c.scores ?? {}).map(([k, v]) => (
               <span key={k} className="flex items-center gap-1">
                 <span className="text-muted-foreground">{k}</span>
-                <span className="inline-block h-1 w-10 overflow-hidden rounded bg-muted">
-                  <span className="block h-full bg-foreground/60" style={{ width: `${v * 10}%` }} />
-                </span>
+                <span className="inline-block h-1 w-10 overflow-hidden rounded bg-muted"><span className="block h-full bg-foreground/60" style={{ width: `${v * 10}%` }} /></span>
                 <span className="tabular-nums">{v}</span>
               </span>
             ))}
@@ -335,37 +281,31 @@ function Detail({ id, state, image }) {
         </label>
         <textarea id={`fb-${image.id}`} value={feedback} onChange={(e) => setFeedback(e.target.value)} rows={2} className={field} placeholder={marks.length ? "say what to do there, e.g. Add a small red bird standing on the snow · Replace the moon with a crescent" : "e.g. the sky is too busy; warmer window light"} />
         <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" className="pointer-coarse:h-10" disabled={busy || sending === "uploading the marks…" || !text()} onClick={() => withMarks((extra) => call("feedback", { image: image.id, text: text(), ...extra }, () => setFeedback("")))}>
+          <SmButton disabled={busy || sending === "uploading the marks…" || !text()} onClick={() => withMarks((extra) => call("feedback", { image: image.id, text: text(), ...extra }, () => setFeedback("")))}>
             Request change
-          </Button>
+          </SmButton>
           {maskable && marks.length > 0 && (
-            <Button size="sm" variant="outline" className="pointer-coarse:h-10" disabled={busy || !feedback.trim() || image.status !== "done"} onClick={() => withMarks((extra) => call("generate", { prompt: feedback.trim(), from: image.id, mask: extra.mask }, () => setFeedback("")))} title="Repaint only the marked areas now, no agent (the model's edit mode under a mask)">
+            <SmButton variant="outline" disabled={busy || !feedback.trim() || !done} onClick={() => withMarks((extra) => call("generate", { prompt: feedback.trim(), from: image.id, mask: extra.mask }, () => setFeedback("")))} title="Repaint only the marked areas now, no agent (the model's edit mode under a mask)">
               <BrushIcon /> Edit marked areas
-            </Button>
+            </SmButton>
           )}
-          <Button size="sm" variant="outline" className="pointer-coarse:h-10" disabled={busy || image.status !== "done"} onClick={() => call("generate", { prompt: feedback.trim() ? `${image.prompt}. ${feedback.trim()}` : image.prompt, from: image.id, strength })}>
+          <SmButton variant="outline" disabled={busy || !done} onClick={() => call("generate", { prompt: feedback.trim() ? `${image.prompt}. ${feedback.trim()}` : image.prompt, from: image.id, strength })}>
             <WandSparklesIcon /> Refine from it
-          </Button>
+          </SmButton>
           <label className="flex items-center gap-1 text-xs text-muted-foreground">
             strength
             <input type="range" min={0.1} max={0.9} step={0.1} value={strength} onChange={(e) => setStrength(Number(e.target.value))} aria-label="Refine strength" className="w-20 accent-foreground" />
             <span className="tabular-nums">{strength}</span>
           </label>
-          <Button size="sm" variant="ghost" className="pointer-coarse:h-10" disabled={busy || image.status !== "done"} onClick={() => call("pick", { image: image.id })}>
-            <StarIcon /> Pick
-          </Button>
-          <Button size="sm" variant="ghost" className="pointer-coarse:h-10" disabled={busy || image.status !== "done"} onClick={() => call("send", { image: image.id })} title="Send it to your Telegram chat; a reply there comes back to the desk">
+          <SmButton variant="ghost" disabled={busy || !done} onClick={() => call("pick", { image: image.id })}><StarIcon /> Pick</SmButton>
+          <SmButton variant="ghost" disabled={busy || !done} onClick={() => call("send", { image: image.id })} title="Send it to your Telegram chat; a reply there comes back to the desk">
             <SendIcon /> {image.sent ? "Send again" : "Send to Telegram"}
-          </Button>
-          {live && (
-            <Button size="sm" variant="ghost" className="text-destructive pointer-coarse:h-10" disabled={busy} onClick={() => call("stop", { image: image.id })}>
-              <SquareIcon /> Stop
-            </Button>
-          )}
-          <DeleteButton busy={busy} confirm={live ? "Stop and delete?" : "Delete for good?"} onConfirm={() => call("delete", { image: image.id })} />
+          </SmButton>
+          {live && <SmButton variant="ghost" className="text-destructive" disabled={busy} onClick={() => call("stop", { image: image.id })}><SquareIcon /> Stop</SmButton>}
+          <ConfirmDelete busy={busy} confirm={live ? "Stop and delete?" : "Delete for good?"} onConfirm={() => call("delete", { image: image.id })} />
         </div>
         {sending && <p className={cn("text-xs", sending.startsWith("marks not") ? "text-destructive" : "text-muted-foreground")}>{sending}</p>}
-        {note && <p className={cn("text-xs", note.ok ? "text-muted-foreground" : "text-destructive")}>{note.text}</p>}
+        <CallNote note={note} />
       </div>
     </section>
   )
@@ -380,10 +320,7 @@ function GoalForm({ id, state }) {
   return (
     <form
       className="flex flex-col gap-1.5"
-      onSubmit={(e) => {
-        e.preventDefault()
-        call("goal", { goal, criteria, preset }, () => (setGoal(""), setCriteria("")))
-      }}
+      onSubmit={submitted(() => call("goal", { goal, criteria, preset }, () => (setGoal(""), setCriteria(""))))}
     >
       <label className="text-xs text-muted-foreground" htmlFor={`${id}-goal`}>
         {state?.goal ? "A new goal (the agent optimises the prompt, settles the preset, generates, critiques and refines until it is met)" : "What should the image be? (the agent expands it, settles the preset, generates, critiques and refines)"}
@@ -391,21 +328,17 @@ function GoalForm({ id, state }) {
       <textarea id={`${id}-goal`} value={goal} onChange={(e) => setGoal(e.target.value)} rows={2} className={field} placeholder="e.g. a book cover: a lighthouse on a basalt cliff at dusk, room for the title at the top" />
       <textarea value={criteria} onChange={(e) => setCriteria(e.target.value)} rows={2} className={field} aria-label="What done means" placeholder={"What done means, one per line (optional)\ne.g. warm window light\nclear sky in the top third"} />
       <div className="flex flex-wrap items-center gap-2">
-        <select value={preset} onChange={(e) => setPreset(e.target.value)} aria-label="Preset" className="h-9 max-w-full rounded-md border bg-background px-1 text-base md:text-xs" title={options.find((o) => o.value === preset)?.hint ?? "the workflow settles it: yours, or the one that looks better on quick drafts"}>
-          {options.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
+        <select value={preset} onChange={(e) => setPreset(e.target.value)} aria-label="Preset" className={cn(mini, "max-w-full")} title={options.find((o) => o.value === preset)?.hint ?? "the workflow settles it: yours, or the one that looks better on quick drafts"}>
+          <Options items={options} />
         </select>
-        <Button type="submit" size="sm" className="pointer-coarse:h-10" disabled={busy || !goal.trim()}>
-          Start
-        </Button>
-        {note && <span className={cn("text-xs", note.ok ? "text-muted-foreground" : "text-destructive")}>{note.text}</span>}
+        <SmButton type="submit" disabled={busy || !goal.trim()}>Start</SmButton>
+        <CallNote note={note} />
       </div>
     </form>
   )
 }
+
+const SIZES = ["768x768", "1024x1024", "1344x768", "768x1344", "1536x1024"].map((s) => ({ value: s, label: s.replace("x", "×") }))
 
 function QuickGenerate({ id, state }) {
   const { busy, note, call } = useCall(id)
@@ -419,42 +352,23 @@ function QuickGenerate({ id, state }) {
   return (
     <form
       className="flex flex-col gap-1.5"
-      onSubmit={(e) => {
-        e.preventDefault()
-        call("generate", { prompt, preset, ...(shaped ? {} : { width: w, height: h, steps }), seed: seed === "" ? null : Number(seed) })
-      }}
+      onSubmit={submitted(() => call("generate", { prompt, preset, ...(shaped ? {} : { width: w, height: h, steps }), seed: seed === "" ? null : Number(seed) }))}
     >
-      <label className="text-xs text-muted-foreground" htmlFor={`${id}-prompt`}>
-        Generate now, no agent (your prompt as written, with the preset if you choose one)
-      </label>
+      <label className="text-xs text-muted-foreground" htmlFor={`${id}-prompt`}>Generate now, no agent (your prompt as written, with the preset if you choose one)</label>
       <textarea id={`${id}-prompt`} value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={2} className={field} placeholder="a prompt for the image model" />
       <div className="flex flex-wrap items-center gap-2 text-xs">
-        <select value={preset} onChange={(e) => setPreset(e.target.value)} aria-label="Preset" className="h-9 max-w-full rounded-md border bg-background px-1 text-base md:text-xs">
-          {presetOptions(state).map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-        <select value={size} onChange={(e) => setSize(e.target.value)} disabled={shaped} aria-label="Size" className="h-9 rounded-md border bg-background px-1 text-base disabled:opacity-50 md:text-xs">
-          {["768x768", "1024x1024", "1344x768", "768x1344", "1536x1024"].map((s) => (
-            <option key={s} value={s}>
-              {s.replace("x", "×")}
-            </option>
-          ))}
-        </select>
+        <select value={preset} onChange={(e) => setPreset(e.target.value)} aria-label="Preset" className={cn(mini, "max-w-full")}><Options items={presetOptions(state)} /></select>
+        <select value={size} onChange={(e) => setSize(e.target.value)} disabled={shaped} aria-label="Size" className={cn(mini, "disabled:opacity-50")}><Options items={SIZES} /></select>
         <label className="flex items-center gap-1 text-muted-foreground">
           steps
-          <input type="number" min={1} max={80} value={steps} disabled={shaped} onChange={(e) => setSteps(Number(e.target.value))} className="h-9 w-16 rounded-md border bg-background px-1 text-base disabled:opacity-50 md:text-xs" />
+          <input type="number" min={1} max={80} value={steps} disabled={shaped} onChange={(e) => setSteps(Number(e.target.value))} className={cn(mini, "w-16 disabled:opacity-50")} />
         </label>
         <label className="flex items-center gap-1 text-muted-foreground">
           seed
-          <input value={seed} onChange={(e) => setSeed(e.target.value.replace(/\D/g, ""))} placeholder="random" className="h-9 w-24 rounded-md border bg-background px-1 text-base md:text-xs" />
+          <input value={seed} onChange={(e) => setSeed(e.target.value.replace(/\D/g, ""))} placeholder="random" className={cn(mini, "w-24")} />
         </label>
-        <Button type="submit" size="sm" className="pointer-coarse:h-10" disabled={busy || !prompt.trim()}>
-          Generate
-        </Button>
-        {note && <span className={cn(note.ok ? "text-muted-foreground" : "text-destructive")}>{note.text}</span>}
+        <SmButton type="submit" disabled={busy || !prompt.trim()}>Generate</SmButton>
+        <CallNote note={note} />
       </div>
     </form>
   )
@@ -479,17 +393,11 @@ export function StudioView({ id, state, expanded }) {
           // eslint-disable-next-line @next/next/no-img-element
           <img src={url} alt={best.prompt?.slice(0, 80)} className="size-16 rounded object-cover" />
         ) : (
-          <span className="grid size-16 place-items-center rounded border text-muted-foreground">
-            <ImageIcon className="size-4" />
-          </span>
+          <span className="grid size-16 place-items-center rounded border text-muted-foreground"><ImageIcon className="size-4" /></span>
         )}
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="line-clamp-2 break-words">{state?.goal?.text ?? "No goal yet: open it to start one."}</span>
-          {c && (
-            <span className={cn("tabular-nums", VERDICT[c.verdict])}>
-              {c.score}/10 {c.verdict}
-            </span>
-          )}
+          {c && <span className={cn("tabular-nums", VERDICT[c.verdict])}>{c.score}/10 {c.verdict}</span>}
         </span>
       </div>
     )
@@ -501,13 +409,7 @@ export function StudioView({ id, state, expanded }) {
           <>
             <p className="text-sm">{state.goal.text}</p>
             {state.criteria?.length > 0 && (
-              <ul className="flex flex-wrap gap-1.5 text-[11px] text-muted-foreground">
-                {state.criteria.map((c) => (
-                  <li key={c} className="rounded border px-1.5 py-0.5">
-                    {c}
-                  </li>
-                ))}
-              </ul>
+              <ul className="flex flex-wrap gap-1.5 text-[11px] text-muted-foreground">{state.criteria.map((c) => <li key={c} className="rounded border px-1.5 py-0.5">{c}</li>)}</ul>
             )}
             <p className="text-[11px] text-muted-foreground">
               preset: {state.preset ? `${state.preset.name} — ${state.preset.why}` : state.goal.preset && state.goal.preset !== "auto" ? `${state.goal.preset} asked` : "not settled yet (the agent compares and picks)"}
@@ -522,9 +424,7 @@ export function StudioView({ id, state, expanded }) {
           <ol className="mt-1 flex flex-col gap-1.5">
             {[...state.prompts].reverse().map((p) => (
               <li key={p.v} className="rounded-md border px-2 py-1.5">
-                <p className="text-muted-foreground">
-                  v{p.v} · {p.by} · {p.why}
-                </p>
+                <p className="text-muted-foreground">v{p.v} · {p.by} · {p.why}</p>
                 <p className="whitespace-pre-wrap break-words">{p.text}</p>
                 {p.negative && <p className="text-muted-foreground">without: {p.negative}</p>}
               </li>
@@ -540,18 +440,14 @@ export function StudioView({ id, state, expanded }) {
               {picking ? (
                 <>
                   <span className="text-muted-foreground">{chosen.length} selected</span>
-                  <Button size="sm" variant="ghost" className="pointer-coarse:h-10" onClick={() => setChosen(chosen.length === images.length ? [] : images.map((i) => i.id))}>
+                  <SmButton variant="ghost" onClick={() => setChosen(chosen.length === images.length ? [] : images.map((i) => i.id))}>
                     {chosen.length === images.length ? "None" : "All"}
-                  </Button>
-                  {chosen.length > 0 && <DeleteButton busy={bulk.busy} label={`Delete ${chosen.length}`} confirm={`Delete ${chosen.length} for good?`} onConfirm={() => bulk.call("delete", { images: chosen }, endPicking)} />}
-                  <Button size="sm" variant="ghost" className="pointer-coarse:h-10" onClick={endPicking}>
-                    Done
-                  </Button>
+                  </SmButton>
+                  {chosen.length > 0 && <ConfirmDelete busy={bulk.busy} label={`Delete ${chosen.length}`} confirm={`Delete ${chosen.length} for good?`} onConfirm={() => bulk.call("delete", { images: chosen }, endPicking)} />}
+                  <SmButton variant="ghost" onClick={endPicking}>Done</SmButton>
                 </>
               ) : (
-                <Button size="sm" variant="ghost" className="pointer-coarse:h-10" onClick={() => setPicking(true)}>
-                  <CheckIcon /> Select
-                </Button>
+                <SmButton variant="ghost" onClick={() => setPicking(true)}><CheckIcon /> Select</SmButton>
               )}
             </div>
             <div className="grid grid-cols-3 content-start gap-1.5 sm:grid-cols-4 lg:grid-cols-3">
@@ -559,7 +455,7 @@ export function StudioView({ id, state, expanded }) {
                 <Thumb key={i.id} image={i} selected={i.id === shown?.id} onSelect={picking ? toggle : setSelected} best={state?.picked?.image === i.id} picking={picking} picked={chosen.includes(i.id)} />
               ))}
             </div>
-            {bulk.note && <p className={cn("text-xs", bulk.note.ok ? "text-muted-foreground" : "text-destructive")}>{bulk.note.text}</p>}
+            <CallNote note={bulk.note} />
           </div>
         )}
       </div>
@@ -587,17 +483,10 @@ export function StudioView({ id, state, expanded }) {
           {state?.model?.accepts?.length ? ` — takes ${state.model.accepts.filter((a) => a !== "prompt").join(", ")}` : ""}
           {state?.preset ? ` · preset in use: ${state.preset.name}` : ""}
         </summary>
-        <div className="mt-2">
-          <ModelPanel kind="image" />
-        </div>
+        <div className="mt-2"><ModelPanel kind="image" /></div>
         {state?.presets?.length > 0 && (
           <ul className="mt-2 flex flex-col gap-0.5 text-[11px] text-muted-foreground">
-            {state.presets.map((p) => (
-              <li key={p.name}>
-                <span className="text-foreground/80">{p.title}</span>
-                {p.size ? ` · ${p.size}` : ""} — {p.when}
-              </li>
-            ))}
+            {state.presets.map((p) => <li key={p.name}><span className="text-foreground/80">{p.title}</span>{p.size ? ` · ${p.size}` : ""} — {p.when}</li>)}
           </ul>
         )}
       </details>

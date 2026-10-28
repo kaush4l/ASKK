@@ -28,6 +28,26 @@ export function checkReport(text) {
   return missing
 }
 
+// 2026-10-26 response contract: which of the fields an answer holds — a field is held when a line starts with
+// `field:` (case-insensitive, `**field**:` or a list mark allowed, as the workflow's phase report accepts). → {fields, missed}
+const held = (f) => new RegExp(`^\\s*[-*]?\\s*\\**${f.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\**\\s*:`, "im")
+export function contractOf(answer, fields) {
+  const all = [...new Set((fields ?? []).map(String).filter(Boolean))]
+  const text = String(answer ?? "")
+  return { fields: all, missed: all.filter((f) => !held(f).test(text)) }
+}
+// 2026-10-26 report object: each held field's value, the text after its colon trimmed (the first line that holds it);
+// a missing field is left out. CONFIDENCE stays a string, the UI parses the number. → {field: value}
+const valueOf = (f) => new RegExp(`^\\s*[-*]?\\s*\\**${f.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\**\\s*:(.*)$`, "im")
+export function reportOf(answer, fields) {
+  const text = String(answer ?? "")
+  const out = {}
+  for (const f of new Set((fields ?? []).map(String).filter(Boolean))) {
+    const m = text.match(valueOf(f))
+    if (m) out[f] = m[1].replace(/^\s*\*+/, "").trim()
+  }
+  return out
+}
 // Quality, scored in code, 0–5: format complete · ≥2 numbers in EVIDENCE · a source/time in
 // parentheses · confidence 0..1 · a falsifier that names a level, number or event.
 export function scoreReport(text) {

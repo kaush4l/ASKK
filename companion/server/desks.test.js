@@ -7,7 +7,7 @@ import { tmpdir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 
 import { CORE_DESKS, hostedDeskFolders } from "../team/desk.js"
-import { hostDesks } from "./desks.js"
+import { hostDesks, viewMayCall } from "./desks.js"
 
 const KERNEL = resolve(import.meta.dir, "../../backend/kernel/index.js")
 const COMPOSE = resolve(import.meta.dir, "../team/compose.js")
@@ -390,4 +390,32 @@ describe("the default mode: the core desk alone", () => {
       if (existsSync(made) && !readdirSync(made).length) rmSync(made, { recursive: true })
     }
   })
+})
+
+// 2026-10-24 owner ("Bring back the trade card desk", the studio keeps the bot): a desk with listen: false uses the
+// integration's tools only and does not stand in the way of the desk that listens.
+test("listensFor: one listener per integration; listen: false never listens and never blocks", async () => {
+  const { listensFor } = await import("./desks.js")
+  const studio = { name: "studio", integrations: ["telegram"] }
+  const card = { name: "trade-card", integrations: ["telegram"] }
+  const agent = { name: "agent", integrations: null }
+  expect(listensFor(studio, [studio, card, agent])).toBe(false) // two name it: neither
+  const quiet = { ...card, listen: false }
+  expect(listensFor(studio, [studio, quiet, agent])).toBe(true)
+  expect(listensFor(quiet, [studio, quiet, agent])).toBe(false)
+  expect(listensFor(agent, [studio, quiet, agent])).toBe(false)
+})
+// 2026-10-27 ask-seen: an agent's view may make one call, Ask 'what' on a view-"ask" artifact; every other stays 403.
+test("viewMayCall lets an agent's view ask Ask 'what' only", () => {
+  const viewOf = (id) => ({ ask: "ask", talk: "talk" })[id] ?? null
+  const what = { target: "artifact", method: "what", args: [{ id: "ask", question: "what is this?", element: "agent.practice" }] }
+  expect(viewMayCall("team/call", what, viewOf)).toBe(true)
+  expect(viewMayCall("team/send", what, viewOf)).toBe(false)
+  expect(viewMayCall("team/call", { ...what, method: "clear" }, viewOf)).toBe(false)
+  expect(viewMayCall("team/call", { ...what, target: "agent" }, viewOf)).toBe(false)
+  expect(viewMayCall("team/call", { ...what, args: [{ id: "talk" }] }, viewOf)).toBe(false) // another view
+  expect(viewMayCall("team/call", { ...what, args: [{ id: "ghost" }] }, viewOf)).toBe(false) // not held
+  expect(viewMayCall("team/call", { ...what, args: [] }, viewOf)).toBe(false)
+  expect(viewMayCall("team/call", null, viewOf)).toBe(false)
+  expect(desks.hosted.get("alpha").team.viewOf("ask")).toBe(null) // the stub desk holds no Ask
 })

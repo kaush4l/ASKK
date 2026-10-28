@@ -3,6 +3,7 @@
 import * as React from "react"
 
 import { GLIDE_MS, glide, panBy, zoomAt } from "@/backend/live/camera"
+import { slopFor } from "@/components/canvas/tap"
 
 // The canvas's camera on the screen: the viewport's size, the camera {x, y, z} (backend/live/camera.js does the
 // math), and the owner's hands on it — wheel pans (a trackpad's two-finger scroll), ctrl/⌘ + wheel and a trackpad
@@ -11,7 +12,6 @@ import { GLIDE_MS, glide, panBy, zoomAt } from "@/backend/live/camera"
 
 const KEY_STEP = 1.25 // + / − zoom factor
 const PAN_STEP = 80 // arrow keys, screen px
-const DRAG_SLOP = 5 // px a press moves before it is a drag (else a click)
 
 const reducedMotion = () => typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
 
@@ -172,7 +172,7 @@ export function useCamera({ onManual, onKey } = {}) {
       }
       if (!drag) return
       if (!drag.moved) {
-        if (Math.hypot(p.x - drag.start.x, p.y - drag.start.y) < DRAG_SLOP) return
+        if (Math.hypot(p.x - drag.start.x, p.y - drag.start.y) < slopFor(e.pointerType)) return
         drag.moved = true
         swallowClick = true
         capture(el, e.pointerId)
@@ -200,23 +200,19 @@ export function useCamera({ onManual, onKey } = {}) {
       e.preventDefault()
     }
 
-    el.addEventListener("wheel", onWheel, { passive: false })
-    el.addEventListener("gesturestart", onGestureStart)
-    el.addEventListener("gesturechange", onGestureChange)
-    el.addEventListener("pointerdown", onDown)
-    el.addEventListener("pointermove", onMove)
-    el.addEventListener("pointerup", onUp)
-    el.addEventListener("pointercancel", onUp)
-    el.addEventListener("click", onClickCapture, true)
+    const listeners = [
+      ["wheel", onWheel, { passive: false }],
+      ["gesturestart", onGestureStart],
+      ["gesturechange", onGestureChange],
+      ["pointerdown", onDown],
+      ["pointermove", onMove],
+      ["pointerup", onUp],
+      ["pointercancel", onUp],
+      ["click", onClickCapture, true],
+    ]
+    for (const [type, fn, options] of listeners) el.addEventListener(type, fn, options)
     return () => {
-      el.removeEventListener("wheel", onWheel)
-      el.removeEventListener("gesturestart", onGestureStart)
-      el.removeEventListener("gesturechange", onGestureChange)
-      el.removeEventListener("pointerdown", onDown)
-      el.removeEventListener("pointermove", onMove)
-      el.removeEventListener("pointerup", onUp)
-      el.removeEventListener("pointercancel", onUp)
-      el.removeEventListener("click", onClickCapture, true)
+      for (const [type, fn, options] of listeners) el.removeEventListener(type, fn, options)
     }
   }, [manual])
 

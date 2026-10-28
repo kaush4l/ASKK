@@ -3,8 +3,7 @@
 The first version (config). The agent's own copy lives in memory/agent/practice/agent.md once it has run; it improves that one after every run (agent.practice.edit) and this file is read only while that one does not exist.
 
 ## Checklist
-- !intent: the request restated in one line with what done means, observable
-- !route: the route chosen — myself, helpers, an existing desk (desk.list), or a new desk — and why it is the least that does the job
+- !frame: goal.frame recorded the request as an outcome, what done means (observable) and the route — direct, helpers, workflow, goal or desk — with why it is the least that does the job
 - work: the work done to the quality bar (a new desk: composed, loaded, and its first real answer checked against its bar)
 - helpers: every helper's report checked against the bar before it was used; each dismissed, or kept with the reason
 - !deliver: the answer says what was done, where it is, how to run it and what is open

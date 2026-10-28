@@ -13,14 +13,24 @@
 //   option_instruments {symbol, expiry YYYY-MM-DD, type: call | put, strike?}  → get_option_instruments (active)
 //   option_quotes {ids: [≤ 20 instrument ids]}             → get_option_quotes
 //   index_quote {symbol: VIX | SPX | NDX | RUT | DJX}       → get_indexes + get_index_quotes
+//   indicators {symbols, type, interval, days?, output?, period? …}   → get_equity_technical_indicators (2026-10-25)
+//   fundamentals {symbols} · analyst {symbols}             → get_equity_fundamentals · get_equity_analyst_ratings
+//   scan {filters, columns?}                               → preview_scan (a live screen; nothing saved)
 // An answer is the server's text, clipped to 20 000 characters.
+
+import { streamLines } from "../shared/lines.js"
+import { attempt } from "../shared/safe.js"
 
 const TICKER = /^[A-Z][A-Z0-9.^-]{0,9}$/
 const ID = /^[A-Za-z0-9-]{8,64}$/
 const INTERVALS = ["5minute", "10minute", "hour", "day", "week"]
 const INDEXES = ["VIX", "SPX", "NDX", "RUT", "DJX"]
 const CLIP = 20000
+const IND_TYPES = ["ema", "sma", "rsi", "momentum", "roc", "cci", "williams_r", "atr", "mfi", "adx", "donchian_channels", "bollinger_bands", "macd", "keltner_channels", "supertrend", "vwap", "obv", "pivot_points"]
+const IND_INTERVALS = ["minute", "5minute", "10minute", "30minute", "hour", "4hour", "day", "week", "month"]
+const IND_PARAMS = ["period", "num_std", "fast_period", "slow_period", "signal_period", "multiplier"]
 
+const clipped = (text) => (text.length > CLIP ? `${text.slice(0, CLIP)}\n… (clipped at ${CLIP} characters)` : text)
 const bad = (msg) => {
   throw Object.assign(new Error(msg), { bad: true })
 }
@@ -37,6 +47,11 @@ export const BRIDGE_TOOLS = [
   { name: "option_instruments", description: "Active option contracts of a ticker for one expiry (YYYY-MM-DD) and type (call | put), optionally one strike: their instrument ids.", inputSchema: { type: "object", properties: { symbol: { type: "string" }, expiry: { type: "string" }, type: { type: "string", enum: ["call", "put"] }, strike: { type: "number" } }, required: ["symbol", "expiry", "type"] } },
   { name: "option_quotes", description: "Quotes for up to 20 option instrument ids: bid/ask, mark, IV, greeks, prior close.", inputSchema: { type: "object", properties: { ids: { type: "array", items: { type: "string" }, maxItems: 20 } }, required: ["ids"] } },
   { name: "index_quote", description: "The value of an index: VIX | SPX | NDX | RUT | DJX.", inputSchema: { type: "object", properties: { symbol: { type: "string", enum: INDEXES } }, required: ["symbol"] } },
+  // 2026-10-25 owner ("Robinhood even offers custom indicators"): Robinhood computes them on its own bars
+  { name: "indicators", description: `A technical indicator computed by Robinhood over its bars for up to 10 tickers: type ${IND_TYPES.join(" | ")}; interval ${IND_INTERVALS.join(" | ")}; over the last \`days\` days (1–365, enough for the warm-up); output latest (default) | last:N | series; the indicator's own parameters to override its default (period; num_std for bollinger_bands; fast_period, slow_period, signal_period for macd; multiplier for keltner_channels and supertrend).`, inputSchema: { type: "object", properties: { symbols: { type: "array", items: { type: "string" }, maxItems: 10 }, type: { type: "string", enum: IND_TYPES }, interval: { type: "string", enum: IND_INTERVALS }, days: { type: "number" }, output: { type: "string" }, period: { type: "number" }, num_std: { type: "number" }, fast_period: { type: "number" }, slow_period: { type: "number" }, signal_period: { type: "number" }, multiplier: { type: "number" } }, required: ["symbols", "type", "interval"] } },
+  { name: "fundamentals", description: "Today's fundamentals for up to 10 tickers: PE, P/B, market cap, float, today's OHLCV, average volumes, 52-week range, dividends, profile.", inputSchema: { type: "object", properties: { symbols: { type: "array", items: { type: "string" }, maxItems: 10 } }, required: ["symbols"] } },
+  { name: "analyst", description: "Analyst price targets (high, low, average) and the buy/hold/sell counts for up to 10 tickers.", inputSchema: { type: "object", properties: { symbols: { type: "array", items: { type: "string" }, maxItems: 10 } }, required: ["symbols"] } },
+  { name: "scan", description: "A live market screen that saves nothing (Robinhood's preview_scan): filters [{filter_type: FILTER_TYPE_…, predicate: PREDICATE_…, values: [..], interval?, length?} | {expression, predicate, values}] (1–12), columns? [{display_name, expression?}]; the matching names with their columns.", inputSchema: { type: "object", properties: { filters: { type: "array", items: { type: "object" }, maxItems: 12 }, columns: { type: "array", items: { type: "object" }, maxItems: 12 } }, required: ["filters"] } },
 ]
 export const BRIDGE_NAMES = BRIDGE_TOOLS.map((t) => t.name)
 
@@ -88,14 +103,42 @@ export function plan(name, args = {}, now = new Date(), { account = null } = {})
     return [
       { tool: "get_indexes", arguments: { symbols: a.symbol } },
       (prev) => {
-        let id = null
-        try {
-          id = (JSON.parse(prev).data?.indexes ?? [])[0]?.id ?? null
-        } catch {}
+        const id = attempt(() => (JSON.parse(prev).data?.indexes ?? [])[0]?.id ?? null)
         if (!id) bad(`no index ${a.symbol}`)
         return { tool: "get_index_quotes", arguments: { instrument_ids: [id] } }
       },
     ]
+  }
+  const symbols = (what = "symbols") => {
+    if (!Array.isArray(a.symbols) || !a.symbols.length || a.symbols.length > 10) bad(`${what}: 1–10 tickers`)
+    return [...new Set(a.symbols.map((x) => ticker(x, `${what}[]`)))]
+  }
+  if (name === "indicators") {
+    if (!IND_TYPES.includes(a.type)) bad(`type: ${IND_TYPES.join(" | ")}`)
+    if (!IND_INTERVALS.includes(a.interval)) bad(`interval: ${IND_INTERVALS.join(" | ")}`)
+    const days = a.days == null ? (["day", "week", "month"].includes(a.interval) ? 120 : 3) : Number(a.days)
+    if (!Number.isInteger(days) || days < 1 || days > 365) bad("days: a whole number 1–365")
+    const output = a.output == null ? "latest" : String(a.output)
+    if (!/^(latest|series|last:\d{1,3})$/.test(output)) bad("output: latest | last:N | series")
+    const out = { symbols: symbols(), type: a.type, interval: a.interval, bounds: "regular", start_time: new Date(now - days * 864e5).toISOString(), end_time: now.toISOString(), output }
+    if (a.type === "pivot_points") out.method = "classic"
+    for (const k of IND_PARAMS) if (a[k] != null) {
+      if (!(Number(a[k]) > 0)) bad(`${k}: a positive number`)
+      out[k] = Number(a[k])
+    }
+    return [{ tool: "get_equity_technical_indicators", arguments: out }]
+  }
+  if (name === "fundamentals") return [{ tool: "get_equity_fundamentals", arguments: { symbols: symbols() } }]
+  if (name === "analyst") return [{ tool: "get_equity_analyst_ratings", arguments: { symbols: symbols() } }]
+  if (name === "scan") {
+    const list = (v, what) => {
+      if (v == null) return undefined
+      if (!Array.isArray(v) || v.length > 12 || v.some((x) => !x || typeof x !== "object" || Array.isArray(x))) bad(`${what}: a list of ≤ 12 objects`)
+      return v
+    }
+    const filters = list(a.filters, "filters")
+    if (!filters?.length) bad("filters: 1–12 filters")
+    return [{ tool: "preview_scan", arguments: { filters, ...(a.columns ? { columns: list(a.columns, "columns") } : {}) } }]
   }
   if (ORDER_NAMES.includes(name)) {
     if (!account) bad("orders are off on this call (no order account)")
@@ -173,7 +216,7 @@ export async function dataCall(name, args, { list, call }) {
     if (!known.includes(name)) bad(`unknown tool ${name} (tools: ${known.join(", ") || "none"})`)
     const at = name.indexOf(DATA_SEP)
     const text = await call({ server: name.slice(0, at), tool: name.slice(at + DATA_SEP.length), arguments: args && typeof args === "object" ? args : {} })
-    return { content: [{ type: "text", text: text.length > CLIP ? `${text.slice(0, CLIP)}\n… (clipped at ${CLIP} characters)` : text }] }
+    return { content: [{ type: "text", text: clipped(text) }] }
   } catch (error) {
     return { content: [{ type: "text", text: `${name}: ${error.message}` }], isError: true }
   }
@@ -184,8 +227,7 @@ export async function bridgeCall(name, args, { call, now = new Date(), account =
   try {
     let prev = null
     for (const step of plan(name, args, now, { account })) prev = await call(typeof step === "function" ? step(prev) : step)
-    const text = prev.length > CLIP ? `${prev.slice(0, CLIP)}\n… (clipped at ${CLIP} characters)` : prev
-    return { content: [{ type: "text", text }] }
+    return { content: [{ type: "text", text: clipped(prev) }] }
   } catch (error) {
     return { content: [{ type: "text", text: `${name}: ${error.message}` }], isError: true }
   }
@@ -204,23 +246,17 @@ export async function serve({ call, account = null, data = null, input = Bun.std
     send({ id: m.id, error: { code: -32601, message: `no method ${m.method}` } })
   }
   const pending = []
-  let buffer = ""
-  for await (const chunk of input.pipeThrough(new TextDecoderStream())) {
-    buffer += chunk
-    let at
-    while ((at = buffer.indexOf("\n")) >= 0) {
-      const line = buffer.slice(0, at).trim()
-      buffer = buffer.slice(at + 1)
-      if (!line) continue
-      let m
-      try {
-        m = JSON.parse(line)
-      } catch {
-        send({ id: null, error: { code: -32700, message: "parse error" } })
-        continue
-      }
-      pending.push(handle(m).catch((error) => send({ id: m.id ?? null, error: { code: -32603, message: error.message } })))
+  for await (const raw of streamLines(input)) {
+    const line = raw.trim()
+    if (!line) continue
+    let m
+    try {
+      m = JSON.parse(line)
+    } catch {
+      send({ id: null, error: { code: -32700, message: "parse error" } })
+      continue
     }
+    pending.push(handle(m).catch((error) => send({ id: m.id ?? null, error: { code: -32603, message: error.message } })))
   }
   await Promise.all(pending)
 }

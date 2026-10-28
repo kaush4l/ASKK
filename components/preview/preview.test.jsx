@@ -6,6 +6,7 @@ import * as React from "react"
 import { renderToString } from "react-dom/server"
 import { PreviewPane } from "@/components/live/workbench/preview-pane"
 import { PreviewCard } from "@/components/preview/card"
+import { PreviewRecordings } from "@/components/preview/recordings"
 import { ArtifactBody, ArtifactBlock } from "@/components/views/artifact"
 
 const flow = { kind: "flow", title: "The line", nodes: [{ id: "a", label: "data" }, { id: "b", label: "model" }], edges: [{ from: "a", to: "b" }] }
@@ -93,3 +94,35 @@ test("a page in the pane and on the closed card has Enlarge; a visual has none",
   expect(card).toContain("Enlarge")
 })
 
+// recordings-dialog: in the toolbar dialog (label={false}) the inner "Recordings" line is gone, since the title says it;
+// inline (the default) it stays; the section keeps its aria-label either way.
+test("PreviewRecordings: the inner Recordings label only when label is on", () => {
+  const recs = { recordings: [{ id: "r1", page: "p1", title: "walk", status: "done", frames: [{ n: 1, action: "open", what: "http://127.0.0.1:8077/", at: "2026-10-17T10:00:00Z" }] }] }
+  const inline = renderToString(<PreviewRecordings state={recs} />)
+  expect(inline).toContain(">Recordings</p>")
+  const dialog = renderToString(<PreviewRecordings state={recs} label={false} />)
+  expect(dialog).not.toContain(">Recordings</p>")
+  expect(dialog).toContain('aria-label="Recordings"')
+  expect(dialog).toContain("walk")
+})
+// recordings-dialog-fit: in the dialog (label={false}) chip titles get max-w-72 and the frame max-h-[55svh]; inline keeps
+// the small aside caps max-w-40 and max-h-56.
+test("PreviewRecordings: wider chips and a taller frame in the dialog only", () => {
+  const recs = { recordings: [{ id: "r1", page: "p1", title: "walk", status: "done", frames: [{ n: 1, action: "open", what: "http://127.0.0.1:8077/", at: "2026-10-17T10:00:00Z" }] }] }
+  const inline = renderToString(<PreviewRecordings state={recs} />)
+  expect(inline).toContain("max-w-40")
+  expect(inline).toContain("max-h-56")
+  expect(inline).not.toContain("max-w-72")
+  expect(inline).not.toContain("max-h-[55svh]")
+  const dialog = renderToString(<PreviewRecordings state={recs} label={false} />)
+  expect(dialog).toContain("max-w-72")
+  expect(dialog).toContain("max-h-[55svh]")
+  expect(dialog).not.toContain("max-w-40")
+  expect(dialog).not.toContain("max-h-56")
+})
+// chip-title-hover: a chip's cut title (max-w-40 inline, max-w-72 in the dialog) holds its full title for hover.
+test("PreviewRecordings: a chip holds its full title on hover", () => {
+  const recs = { recordings: [{ id: "r1", page: "p1", title: "walk", status: "done", frames: [{ n: 1, action: "open", what: "http://127.0.0.1:8077/", at: "2026-10-17T10:00:00Z" }] }] }
+  expect(renderToString(<PreviewRecordings state={recs} />)).toContain('title="walk"')
+  expect(renderToString(<PreviewRecordings state={recs} label={false} />)).toContain('title="walk"')
+})

@@ -3,11 +3,12 @@ import { LocateFixedIcon, ScanIcon, ZoomInIcon, ZoomOutIcon } from "lucide-react
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
-// The canvas's controls, floating over it: zoom out, the zoom (click: 100%), zoom in, Fit the desk, Follow the work.
+// The canvas's controls, floating over it: zoom out, the zoom (click: 100%), zoom in, Fit the desk, Follow the work
+// (only where the board has work to follow: onFollow).
 export function Toolbar({ zoom, follow, onZoomOut, onZoomIn, onReset, onFit, onFollow, className }) {
   const icon = "size-8 pointer-coarse:size-10"
   return (
-    <div role="toolbar" aria-label="Canvas controls" className={cn("flex items-center gap-0.5 rounded-xl border bg-background/90 p-1 backdrop-blur", className)}>
+    <div role="toolbar" aria-label="Canvas controls" className={cn("flex items-center gap-0.5 glass rounded-xl border p-1", className)}>
       <Button variant="ghost" size="icon" className={icon} onClick={onZoomOut} aria-label="Zoom out" title="Zoom out (−)">
         <ZoomOutIcon />
       </Button>
@@ -22,17 +23,19 @@ export function Toolbar({ zoom, follow, onZoomOut, onZoomIn, onReset, onFit, onF
         <ScanIcon />
         <span className="hidden sm:inline">Fit</span>
       </Button>
-      <Button
-        variant={follow ? "secondary" : "ghost"}
-        className="h-8 gap-1.5 px-2 pointer-coarse:h-10 pointer-coarse:min-w-10"
-        onClick={onFollow}
-        aria-pressed={follow}
-        aria-label="Follow the work"
-        title="Follow the work (f)"
-      >
-        <LocateFixedIcon className={cn(follow && "text-blue-600 dark:text-blue-400")} />
-        <span className="hidden sm:inline">Follow</span>
-      </Button>
+      {onFollow && (
+        <Button
+          variant={follow ? "secondary" : "ghost"}
+          className="h-8 gap-1.5 px-2 pointer-coarse:h-10 pointer-coarse:min-w-10"
+          onClick={onFollow}
+          aria-pressed={follow}
+          aria-label="Follow the work"
+          title="Follow the work (f)"
+        >
+          <LocateFixedIcon className={cn(follow && "text-blue-600 dark:text-blue-400")} />
+          <span className="hidden sm:inline">Follow</span>
+        </Button>
+      )}
     </div>
   )
 }

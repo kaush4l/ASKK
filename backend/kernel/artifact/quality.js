@@ -5,6 +5,7 @@ import { scoreReport } from "../agent/report.js"
 // lands (report.js scoreReport: format, numbers, sources, confidence, falsifier — 0..5). No LLM
 // call; the lead sees who to re-quest. Kept for the day (not reset per run).
 export class QualityMatrix extends Artifact {
+  static about = "a quality bar scored per criterion"
   constructor({ id, title, owner = null }) {
     super({ name: id, title: title ?? id })
     this.kind = "quality"

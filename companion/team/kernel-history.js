@@ -99,6 +99,7 @@ function section(row) {
     return `- ${i + 1}. ${oneLine(s?.thought, 160) || "(no thought)"}${tools ? ` → ${oneLine(tools, 200)}` : ""}${gate}`
   })
   const body = [head, "", "**Request:**", ...quote(row.request, 1200), ""]
+  if (row.original) body.push("**In the owner's words** (rewritten on-device):", ...quote(row.original, 1200), "")
   if (answered || row.answer != null) body.push("**Answer:**", ...quote(row.answer, 2000), "")
   if (row.error) body.push("**Error:**", ...quote(row.error, 600), "")
   if (steps.length) body.push(...steps, "")
@@ -165,6 +166,21 @@ export function createHistory({ enabled = true, maxBytes = 512 * 1024, keep = 6,
     return [...md, ...jsonl].filter((f) => existsSync(f.path))
   }
 
+  // One section at the end of the agent's history.md (the file and its header made first), then rotation; a failure is a
+  // desk log line, never the run's.
+  function append(agent, row) {
+    const file = fileOf(agent)
+    if (!file) return
+    try {
+      mkdirSync(agent.config.folder, { recursive: true })
+      if (!existsSync(file)) appendFileSync(file, headOf(agent.name))
+      appendFileSync(file, section(row))
+      rotate(agent)
+    } catch (error) {
+      log?.(`desk: ${agent.name}'s history.md not written (${error.message}) — this run will not come back after a restart`)
+    }
+  }
+
   return {
     // The newest `n` answered runs, oldest first: every step's results an array with outputs clipped (a row from before
     // steps were kept has steps: []). Read newest row first until n answered runs are found, however many failed runs
@@ -209,16 +225,7 @@ export function createHistory({ enabled = true, maxBytes = 512 * 1024, keep = 6,
 
     // A row outside any run (kernel-team.js note while the agent is idle): a note section, restored where it fell.
     recordNote(agent, row) {
-      const file = fileOf(agent)
-      if (!file) return
-      try {
-        mkdirSync(agent.config.folder, { recursive: true })
-        if (!existsSync(file)) appendFileSync(file, headOf(agent.name))
-        appendFileSync(file, section({ at: row.at ?? new Date().toISOString(), note: true, from: null, request: null, steps: [], answer: null, notes: [{ pos: 0, row: { ...row, content: clip(row.content, textChars) } }] }))
-        rotate(agent)
-      } catch (error) {
-        log?.(`desk: ${agent.name}'s history.md not written (${error.message}) — this run will not come back after a restart`)
-      }
+      append(agent, { at: row.at ?? new Date().toISOString(), note: true, from: null, request: null, steps: [], answer: null, notes: [{ pos: 0, row: { ...row, content: clip(row.content, textChars) } }] })
     },
 
     // One finished run (the kernel's answer event) or a failed one (its error event); trail: what the live thread
@@ -252,6 +259,7 @@ export function createHistory({ enabled = true, maxBytes = 512 * 1024, keep = 6,
         at: new Date(e.at ?? Date.now()).toISOString(),
         from: req?.from ?? null,
         request: clip(req?.text ?? "", textChars),
+        ...(req?.original ? { original: clip(req.original, textChars), rewrite: req.rewrite ?? null } : {}),
         steps,
         answer: e.answer ?? null,
         flags: e.flags ?? [],
@@ -260,14 +268,7 @@ export function createHistory({ enabled = true, maxBytes = 512 * 1024, keep = 6,
         ...(Array.isArray(trail?.times) ? { times: trail.times } : {}),
         ...(e.error ? { error: e.error } : {}),
       }
-      try {
-        mkdirSync(agent.config.folder, { recursive: true })
-        if (!existsSync(file)) appendFileSync(file, headOf(agent.name))
-        appendFileSync(file, section(row))
-        rotate(agent)
-      } catch (error) {
-        log?.(`desk: ${agent.name}'s history.md not written (${error.message}) — this run will not come back after a restart`)
-      }
+      append(agent, row)
     },
   }
 }

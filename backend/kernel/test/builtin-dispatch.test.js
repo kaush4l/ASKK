@@ -197,8 +197,8 @@ describe("dispatch", () => {
     expect(await lead.ask("find a shard")).toBe("stopped as asked")
     expect(prompts[2]).toContain("# OWNER GUIDANCE")
     expect(prompts[2]).toContain("> owner: drop the shard search")
-    expect(prompts[2]).toMatch(/dispatch\.wait → still running:\n {2}j1 → data · 0s · data: thinking\n\nowner guidance arrived — read # OWNER GUIDANCE in your next step/)
-    expect(prompts[3]).toContain("dispatch.stop → j1 → data stopped: its run ends at its next step")
+    expect(prompts[2]).toMatch(/dispatch\.wait \{seconds: 1800\} → still running:\n {2}j1 → data · 0s · data: thinking\n\nowner guidance arrived — read # OWNER GUIDANCE in your next step/)
+    expect(prompts[3]).toContain("dispatch.stop {id: j1} → j1 → data stopped: its run ends at its next step")
     // a note that arrived before the wait: it returns at once
     const { run, lead: other } = team([blocked("eval")], { dispatch: new Dispatch() })
     await run("start", { to: "eval", ...quest("bpb?") })
@@ -257,7 +257,7 @@ describe("dispatch", () => {
     await other("start", { to: "probe", ...quest("rms?") })
     now.t += 3 * 60_000
     expect(lead.gates("x")).toEqual(["2 jobs still running: j1 → data (12m), j2 → eval (3m): dispatch.wait for their reports or dispatch.stop them"])
-    const block = () => lead.render({ text: "x", from: "owner" }, []).split("# dispatch — dispatch — work that runs while you work\n")[1].split("\n\n# REQUEST")[0].split("\n")
+    const block = () => lead.render({ text: "x", from: "owner" }, []).split("# dispatch — work that runs while you work\n")[1].split("\n\n# REQUEST")[0].split("\n")
     expect(block()[0]).toBe("the desk's dispatch: hand a brief to one of your agents and keep working while it runs: dispatch.start, dispatch.wait, dispatch.read, dispatch.stop, dispatch.list — your answer waits until none of your jobs runs")
     expect(block().slice(1)).toEqual(["RUNNING", `  j1 → data · 12m · ${longAsk.trim().replace(/\s+/g, " ").slice(0, 120)}… · data: thinking`, "  j2 → eval · 3m · bpb? · eval: thinking"])
     now.t += 4_000

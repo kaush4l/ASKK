@@ -2,17 +2,26 @@
 
 import * as React from "react"
 
+import { detectHost, hasCapability } from "@/backend/live/host"
+import { HostDictation, pickRecognizer } from "@/backend/live/listen"
 import { Dictation } from "@/lib/speech/dictation"
 import { speechSupport } from "@/lib/speech/recognition"
 
-// Live dictation into a text field, auto-punctuated (lib/dictation.js).
+// Live dictation into a text field.
 //   const speech = useSpeechInput({ onText })
-//   speech.support     null while probing, then speechSupport() (lib/speech.js)
+//   speech.support     null while probing, then pickRecognizer() (backend/live/listen.js): { kind, supported, reason }
 //   speech.listening   · speech.correcting · speech.error · speech.correctionError
-//   speech.toggle()    start, or stop (the final correction still lands)
+//   speech.toggle()    start, or stop (the final text still lands)
 //   speech.release()   stop and ignore anything later (after send, or typing)
 // onText(text) receives the dictated text so far on every change; the caller
 // decides where it goes.
+// voice-in (2026-10-27): a host with capability "speech" (macOS) transcribes the page's mic in any browser (HostDictation);
+// without it Safari's dictation (lib/speech/dictation.js); elsewhere the mic is off with the reason.
+const probe = () =>
+  Promise.all([detectHost().then((h) => hasCapability(h, "speech"), () => false), speechSupport()]).then(([hostSpeech, browser]) =>
+    pickRecognizer({ hostSpeech, browser }),
+  )
+
 export function useSpeechInput({ onText }) {
   const [support, setSupport] = React.useState(null)
   const [listening, setListening] = React.useState(false)
@@ -21,14 +30,16 @@ export function useSpeechInput({ onText }) {
   const [correctionError, setCorrectionError] = React.useState(null)
   const dictation = React.useRef(null)
   const onTextRef = React.useRef(onText)
+  const supportRef = React.useRef(null)
 
   React.useEffect(() => {
     onTextRef.current = onText
+    supportRef.current = support
   })
 
   React.useEffect(() => {
     let live = true
-    speechSupport().then((found) => live && setSupport(found))
+    probe().then((found) => live && setSupport(found))
     return () => {
       live = false
       dictation.current?.release()
@@ -46,7 +57,8 @@ export function useSpeechInput({ onText }) {
     if (dictation.current) return
     setError(null)
     setCorrectionError(null)
-    const d = new Dictation({
+    const Kind = supportRef.current?.kind === "host" ? HostDictation : Dictation
+    const d = new Kind({
       onChange: (text) => onTextRef.current?.(text),
       onStatus: ({ correcting, error }) => {
         setCorrecting(correcting)
@@ -58,7 +70,7 @@ export function useSpeechInput({ onText }) {
         setCorrecting(false)
         if (error) setError(error)
         // A denied prompt changes what the browser can do; probe again.
-        speechSupport().then(setSupport)
+        probe().then(setSupport)
       },
     })
     dictation.current = d
@@ -77,7 +89,7 @@ export function useSpeechInput({ onText }) {
       setListening(false)
       return
     }
-    release() // a final correction still running is dropped
+    release() // a final text still on its way is dropped
     start()
   }, [release, start])
 

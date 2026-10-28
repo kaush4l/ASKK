@@ -40,8 +40,8 @@ describe("refresh(agent) before each step's render", () => {
     const agent = new Agent({ name: "coder", report: false }, { infer, tools: [look], artifacts: [tail] })
     expect(await agent.ask("train")).toBe("trained")
     expect(tail.refreshes).toBe(2) // once per step
-    expect(prompts[0]).toContain("# terminal — terminal\nepoch 1 loss 3.00")
-    expect(prompts[1]).toContain("# terminal — terminal\nepoch 2 loss 1.50")
+    expect(prompts[0]).toContain("# terminal\nepoch 1 loss 3.00")
+    expect(prompts[1]).toContain("# terminal\nepoch 2 loss 1.50")
     expect(prompts[1]).not.toContain("epoch 1")
   })
 
@@ -72,7 +72,7 @@ describe("refresh(agent) before each step's render", () => {
     const plain = Object.assign(new Artifact({ name: "notes" }), { state: { a: 1 } })
     const { infer, prompts } = scripted([])
     await new Agent({ name: "a", report: false }, { infer, artifacts: [plain] }).ask("go")
-    expect(prompts[0]).toContain('# notes — notes\n{\n  "a": 1\n}')
+    expect(prompts[0]).toContain('# notes\n{\n  "a": 1\n}')
   })
 })
 

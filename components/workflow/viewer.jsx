@@ -3,14 +3,14 @@
 import * as React from "react"
 import { PencilLineIcon, PlayIcon, SquareIcon } from "lucide-react"
 
-import { followStage, pipelineView, runWorkflow } from "@/backend/live/pipeline"
-import { nowLine, phaseCards, progressOf } from "@/backend/live/workflow-view"
+import { followStage, runWorkflow } from "@/backend/live/pipeline"
 import { Button } from "@/components/ui/button"
-import { LiveLog, Outcome, useCalls, useNow } from "@/components/views/pipeline"
+import { MiniButton, Small, submitted, useBusy } from "@/components/views/kit"
+import { LiveLog, Outcome, useCalls } from "@/components/views/pipeline"
 import { cn } from "@/lib/utils"
 
 import { WorkflowEditor } from "./editor"
-import { FlowColumn, NowStrip, ProgressBar, StatusDot, tone } from "./flow"
+import { FlowColumn, NowStrip, ProgressBar, StatusDot, tone, useWorkflow } from "./flow"
 import { PhaseDetail } from "./phase"
 
 // The workflow viewer (2026-10-22 owner: "a specific workflow viewer where the phase can see and the prompt and variables
@@ -27,18 +27,12 @@ import { PhaseDetail } from "./phase"
 
 export function WorkflowViewer({ id, artifact, embedded = false, initial = null, onRoute = () => {} }) {
   const state = artifact?.state ?? {}
-  const running = state.status === "running"
-  const now = useNow(running)
-  const v = pipelineView(state, { now })
-  const cfg = state.config ?? null
-  const cards = phaseCards(cfg, v.stages)
-  const progress = progressOf(cards)
-  const live = nowLine(cards, { status: v.status })
+  const { running, v, cfg, cards, progress, live } = useWorkflow(state)
   const [calls, call] = useCalls(id)
   const [following, setFollowing] = React.useState(!initial)
   const [picked, setPicked] = React.useState(initial)
   const [editing, setEditing] = React.useState(null) // {focus: phase id | null} while the file is open
-  const [start, setStart] = React.useState({ busy: false, error: null })
+  const start = useBusy()
   const follow = followStage(
     cards.map((c) => ({ id: c.id, status: c.status, startedAt: c.row?.startedAt ?? null })),
     running,
@@ -50,16 +44,7 @@ export function WorkflowViewer({ id, artifact, embedded = false, initial = null,
     setPicked(sid)
     onRoute(sid)
   }
-  const go = async (o) => {
-    setStart({ busy: true, error: null })
-    try {
-      await runWorkflow(id, o)
-      setStart({ busy: false, error: null })
-      setFollowing(true)
-    } catch (error) {
-      setStart({ busy: false, error: error?.message ?? String(error) })
-    }
-  }
+  const go = (o) => start.run(async () => (await runWorkflow(id, o), setFollowing(true)))
   const title = cfg?.title ?? artifact?.title ?? id
 
   // Embedded (the dashboard card opened big, 2026-10-22 owner: "The trade card scroll is too much. Limit the size to a view
@@ -85,19 +70,17 @@ export function WorkflowViewer({ id, artifact, embedded = false, initial = null,
             </>
           )}
           <span className="ml-auto flex shrink-0 items-center gap-1">
-            <Button type="button" size="xs" variant={following ? "outline" : "ghost"} aria-pressed={following} className="h-7 px-2 text-[11px] pointer-coarse:h-10" onClick={() => setFollowing((f) => !f)} title={following ? "The viewer moves to the phase that runs; click to stay on this one" : "Follow the run: show the phase that runs"}>
+            <MiniButton variant={following ? "outline" : "ghost"} aria-pressed={following} className="h-7" onClick={() => setFollowing((f) => !f)} title={following ? "The viewer moves to the phase that runs; click to stay on this one" : "Follow the run: show the phase that runs"}>
               <span className={cn("mr-1 inline-block size-1.5 rounded-full", following ? "bg-emerald-500" : "bg-muted-foreground/40", following && running && "motion-safe:animate-pulse")} aria-hidden />
               {following ? "Following" : "Follow live"}
-            </Button>
+            </MiniButton>
             {cfg?.editable && !editing && (
-              <Button type="button" size="xs" variant="outline" className="h-7 gap-1 px-2 text-[11px] pointer-coarse:h-10" onClick={() => setEditing({ focus: null })}>
-                <PencilLineIcon aria-hidden className="size-3" /> Edit workflow
-              </Button>
+              <MiniButton variant="outline" className="h-7 gap-1" onClick={() => setEditing({ focus: null })}><PencilLineIcon aria-hidden className="size-3" /> Edit workflow</MiniButton>
             )}
           </span>
         </div>
         {cfg?.description && <Description text={cfg.description} />}
-        {v.config?.error && <p className="text-xs break-words text-red-700 dark:text-red-400">The workflow does not load: {v.config.error}{cfg?.editable === false ? "" : " — Edit workflow to fix it."}</p>}
+        {v.config?.error && <Small tone="error" className="text-xs">The workflow does not load: {v.config.error}{cfg?.editable === false ? "" : " — Edit workflow to fix it."}</Small>}
         {/* 2026-10-23 audit: the configuration as it runs (configView) — the run-wide settings, a desk's own from code included,
             and each step's how / waits / reads / contract */}
         {v.config && !v.config.error && (v.config.settings?.length > 0 || v.config.steps?.length > 0) && (
@@ -188,9 +171,9 @@ function RunPanel({ v, cfg, running, progress, live, selected, onPick, onRun, st
         {v.accepted > 0 && <span className="rounded border px-1.5 text-muted-foreground">{v.accepted} learnings in force</span>}
         {v.prompts && <span className="rounded border px-1.5 text-muted-foreground">prompts: {v.prompts}</span>}
         {running && (
-          <Button type="button" variant="destructive" size="xs" className="ml-auto h-7 gap-1 px-2 text-[11px] pointer-coarse:h-10" disabled={calls.stop?.busy} onClick={() => call("stop", "stop")}>
+          <MiniButton variant="destructive" className="ml-auto h-7 gap-1" disabled={calls.stop?.busy} onClick={() => call("stop", "stop")}>
             <SquareIcon aria-hidden className="size-3" /> {calls.stop?.busy ? "Stopping…" : "Stop"}
-          </Button>
+          </MiniButton>
         )}
       </div>
       {v.run?.request && (
@@ -207,14 +190,11 @@ function RunPanel({ v, cfg, running, progress, live, selected, onPick, onRun, st
       )}
       <ProgressBar progress={progress} onPick={onPick} selected={selected} />
       <NowStrip items={live} onPick={onPick} />
-      {calls.stop?.error && <p className="text-[11px] text-red-700 dark:text-red-400">Not stopped: {calls.stop.error}</p>}
+      {calls.stop?.error && <Small tone="error">Not stopped: {calls.stop.error}</Small>}
       {!running && (
         <form
           className="flex min-w-0 flex-col gap-1.5 border-t pt-2"
-          onSubmit={(e) => {
-            e.preventDefault()
-            onRun({ request: request.trim(), vars })
-          }}
+          onSubmit={submitted(() => onRun({ request: request.trim(), vars }))}
         >
           <div className="flex min-w-0 items-center gap-2">
             <input value={request} onChange={(e) => setRequest(e.target.value)} placeholder={usesRequest ? "What this run is for ({{request}})" : "Note for this run (optional)"} aria-label="Request for this run" className="h-8 min-w-0 flex-1 rounded border bg-transparent px-2 text-base sm:text-xs pointer-coarse:h-10" />
@@ -226,15 +206,13 @@ function RunPanel({ v, cfg, running, progress, live, selected, onPick, onRun, st
             <div className="grid min-w-0 gap-1.5 sm:grid-cols-2">
               {Object.keys(declared).map((k) => (
                 <label key={k} className="flex min-w-0 items-center gap-2 text-[11px] text-muted-foreground">
-                  <span className="w-20 shrink-0 truncate font-mono" title={`{{${k}}}`}>
-                    {k}
-                  </span>
+                  <span className="w-20 shrink-0 truncate font-mono" title={`{{${k}}}`}>{k}</span>
                   <input value={vars[k] ?? ""} onChange={(e) => setVars((x) => ({ ...x, [k]: e.target.value }))} aria-label={`Run variable ${k}`} className="h-8 min-w-0 flex-1 rounded border bg-transparent px-2 text-base text-foreground sm:text-xs pointer-coarse:h-10" />
                 </label>
               ))}
             </div>
           )}
-          {start.error && <p className="text-[11px] break-words text-red-700 dark:text-red-400">{start.error}</p>}
+          {start.error && <Small tone="error">{start.error}</Small>}
         </form>
       )}
     </section>

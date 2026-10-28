@@ -25,8 +25,13 @@
 //   page → UI    {askk: "at", view, views?}                          the page shows `view` now (its views listed)
 //                {askk: "ask", context, text?}                       the owner pointed at something to ask about
 // Only messages from the frame's own window and origin count, and an "ask" only fills the ask box: the owner sends it.
+//
+// 2026-10-25 (preview.record / preview.cut): recordings [{id, title, page, by, at, ended_at, status: recording | done,
+// note, frames: [{n, at, action, what, url}]}] — recordingsOf lists them newest first, each frame with its screenshot's
+// address (the host keeps a recording page's shots), for the player.
 
 import { teamCall } from "@/backend/live/stream"
+import { hm } from "./time.js"
 
 const LOOPBACK = new Set(["localhost", "127.0.0.1", "[::1]"])
 const WORD = /^[a-z0-9][a-z0-9_-]{0,31}$/i
@@ -315,10 +320,7 @@ export function trailOf(state) {
 //   → {tone, text, command, watch} | null (no bind)
 export function bindLine(bind, now = Date.now()) {
   if (!bind || typeof bind !== "object" || !bind.command) return null
-  const at = (iso) => {
-    const t = Date.parse(iso ?? "")
-    return Number.isFinite(t) ? new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : ""
-  }
+  const at = hm
   const secs = (ms) => (ms == null ? "" : ` (${(ms / 1000).toFixed(1)} s)`)
   const watch = Array.isArray(bind.watch) ? bind.watch : []
   let tone = "idle"
@@ -345,3 +347,44 @@ export const openPreview = (id, link) => teamCall("artifact", "open", [{ id, vis
 export const backPreview = (id) => teamCall("artifact", "back", [{ id }])
 export const rerunPreview = (id, visual) => teamCall("artifact", "rerun", [{ id, visual }])
 
+// The recordings, newest first, each frame with its screenshot address and a caption (the player's).
+export function recordingsOf(state) {
+  return [...(state?.recordings ?? [])]
+    .filter((r) => r?.id && Array.isArray(r.frames))
+    .reverse()
+    .map((r) => ({
+      ...r,
+      frames: r.frames.map((f, i) => {
+        const caption = `${i + 1}/${r.frames.length} · ${f.action}${f.what ? ` ${f.what}` : ""}${f.at ? ` · ${hm(f.at)}` : ""}`
+        // the frame's url after the caption only when the caption does not hold it already (a navigate / open frame's what does)
+        return { ...f, src: `/__askk/browser/shot?id=${encodeURIComponent(r.page)}&n=${f.n}`, caption, place: f.url && !caption.includes(f.url) ? String(f.url) : "" }
+      }),
+      span: spanOf(r.frames),
+    }))
+}
+
+// How long a recording spans, its first frame to its last: "42 s" under a minute, "3 min" (rounded) under an hour,
+// "1 h 5 min" from there; "" for 0 or 1 frame, or a first / last frame without a valid `at` (the chip shows nothing).
+export function spanOf(frames) {
+  if (!Array.isArray(frames) || frames.length < 2) return ""
+  const from = Date.parse(frames[0]?.at ?? "")
+  const to = Date.parse(frames[frames.length - 1]?.at ?? "")
+  if (!Number.isFinite(from) || !Number.isFinite(to) || to < from) return ""
+  const s = Math.round((to - from) / 1000)
+  if (s < 60) return `${s} s`
+  const min = Math.round(s / 60)
+  return min < 60 ? `${min} min` : `${Math.floor(min / 60)} h ${min % 60} min`
+}
+// A shared recording link (/live?rec=<id>): the recording ?rec names, from recordingsOf's list; null when the search
+// has no rec or names none of them.
+export function recFromQuery(search, recordings) {
+  const id = new URLSearchParams(search ?? "").get("rec")
+  return id ? ((recordings ?? []).find((r) => r?.id === id) ?? null) : null
+}
+
+// The search a recording's chip links to: rec set to its id, everything else (?desk) kept. → "?desk=dev&rec=r2"
+export function recHref(search, id) {
+  const params = new URLSearchParams(search ?? "")
+  params.set("rec", String(id))
+  return `?${params}`
+}

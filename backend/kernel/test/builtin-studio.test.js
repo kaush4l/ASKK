@@ -87,7 +87,7 @@ test("the owner: goal to the keeper, feedback to the image's maker, generate wit
   const fb = await studio.ownerCall("feedback", [{ id: "studio", image: "img-t-2", text: "warmer light" }])
   expect(fb).toMatchObject({ keeper: "artist", feedback: { id: "f1", image: "img-t-2" }, deliver: expect.stringContaining('from: "img-t-2"') })
   expect((await studio.ownerCall("feedback", [{ id: "studio", image: "img-t-1", text: "ok" }])).keeper).toBe("lead") // the owner's own image
-  await expect(studio.ownerCall("dance", [{}])).rejects.toThrow("not dance")
+  expect(() => studio.ownerCall("dance", [{}])).toThrow("not dance")
   await studio.generate({ prompt: "again" }, { agent: artist })
   const down = { ...host, get: async () => Promise.reject(new Error("host down")) }
   await studio.refresh(agentOf("artist", down))

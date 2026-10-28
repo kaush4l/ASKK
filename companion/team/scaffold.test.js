@@ -83,7 +83,7 @@ describe("scaffoldDesk", () => {
     await bad("x-desk", { ...SPEC, lead: { ...SPEC.lead, members: [{ ...SPEC.lead.members[0], name: "lead" }] } }, "agent name lead twice", 400)
     await bad("x-desk", { ...SPEC, lead: { ...SPEC.lead, tools: ["web.serch"] } }, "the desk does not compose — nothing written: lead: unknown tool web.serch", 422)
     await bad("x-desk", { ...SPEC, lead: { ...SPEC.lead, artifacts: ["ledger"] } }, "unknown artifact ledger", 422)
-    await bad("x-desk", { ...SPEC, model: "gpt" }, "model gpt: one of opus, sonnet, haiku", 400)
+    await bad("x-desk", { ...SPEC, model: "gpt" }, "model gpt: one of default, omlx, argon, opus, sonnet, haiku", 400)
     await bad("x-desk", { ...SPEC, folders: ["../up"] }, "folders:", 400)
     await bad("x-desk", { ...SPEC, max_steps: "lots" }, "max_steps", 400)
     await bad("x-desk", { ...SPEC, lead: { ...SPEC.lead, max_steps: 900 } }, "max_steps 900", 400)

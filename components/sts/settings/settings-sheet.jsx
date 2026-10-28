@@ -4,10 +4,11 @@ import { Volume2Icon } from "lucide-react"
 
 import { NARRATION } from "@/backend/hardware/speech/pipeline"
 import { ModelPanel } from "@/components/models/model-panel"
-import { Choice, Field, Toggle } from "@/components/sts/settings/controls"
+import { Choice, Field, Slider, Toggle } from "@/components/sts/settings/controls"
 import { useVoiceNames } from "@/components/sts/settings/use-voice-names"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Options } from "@/components/views/kit"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { LIMITS } from "@/lib/config"
 
@@ -78,18 +79,13 @@ export function SettingsSheet({ open, onOpenChange, state, model }) {
                   aria-label="Wake word"
                 />
               </Field>}
-              <Field label={`Send the command after ${(settings.commandPauseMs / 1000).toFixed(1)} s of silence (a shorter pause: still speaking)`}>
-                <input
-                  type="range"
-                  min={LIMITS.ui.sts.commandPauseMinMs}
-                  max={LIMITS.ui.sts.commandPauseMaxMs}
-                  step={LIMITS.ui.sts.commandPauseStepMs}
-                  value={settings.commandPauseMs}
-                  onChange={(e) => set({ commandPauseMs: Number(e.target.value) })}
-                  className="accent-foreground"
-                  aria-label="Command pause"
-                />
-              </Field>
+              <Slider
+                label={`Send the command after ${(settings.commandPauseMs / 1000).toFixed(1)} s of silence (a shorter pause: still speaking)`}
+                range={[LIMITS.ui.sts.commandPauseMinMs, LIMITS.ui.sts.commandPauseMaxMs, LIMITS.ui.sts.commandPauseStepMs]}
+                value={settings.commandPauseMs}
+                onChange={(commandPauseMs) => set({ commandPauseMs })}
+                aria-label="Command pause"
+              />
             </>
           ) : null}
           {settings.listen === "direct" ? (
@@ -108,18 +104,13 @@ export function SettingsSheet({ open, onOpenChange, state, model }) {
                   ]}
                 />
               </Field>
-              <Field label={`End of speech after ${(settings.endSilenceMs / 1000).toFixed(1)} s of silence`}>
-                <input
-                  type="range"
-                  min={LIMITS.ui.sts.endSilenceMinMs}
-                  max={LIMITS.ui.sts.endSilenceMaxMs}
-                  step={LIMITS.ui.sts.endSilenceStepMs}
-                  value={settings.endSilenceMs}
-                  onChange={(e) => set({ endSilenceMs: Number(e.target.value) })}
-                  className="accent-foreground"
-                  aria-label="End of speech pause"
-                />
-              </Field>
+              <Slider
+                label={`End of speech after ${(settings.endSilenceMs / 1000).toFixed(1)} s of silence`}
+                range={[LIMITS.ui.sts.endSilenceMinMs, LIMITS.ui.sts.endSilenceMaxMs, LIMITS.ui.sts.endSilenceStepMs]}
+                value={settings.endSilenceMs}
+                onChange={(endSilenceMs) => set({ endSilenceMs })}
+                aria-label="End of speech pause"
+              />
               <Toggle
                 label="Interrupt by speaking"
                 hint="Louder speech stops the voice (headphones help)."
@@ -172,25 +163,16 @@ export function SettingsSheet({ open, onOpenChange, state, model }) {
               aria-label="Voice"
             >
               <option value="">System default</option>
-              {voices.map((name) => (
-                <option key={name} value={name}>
-                  {name}
-                </option>
-              ))}
+              <Options items={voices.map((name) => ({ value: name, label: name }))} />
             </select>
           </Field>
-          <Field label={`Speed ${settings.rate.toFixed(2)}×`}>
-            <input
-              type="range"
-              min={LIMITS.ui.sts.voiceRateMin}
-              max={LIMITS.ui.sts.voiceRateMax}
-              step={LIMITS.ui.sts.voiceRateStep}
-              value={settings.rate}
-              onChange={(e) => set({ rate: Number(e.target.value) })}
-              className="accent-foreground"
-              aria-label="Speed"
-            />
-          </Field>
+          <Slider
+            label={`Speed ${settings.rate.toFixed(2)}×`}
+            range={[LIMITS.ui.sts.voiceRateMin, LIMITS.ui.sts.voiceRateMax, LIMITS.ui.sts.voiceRateStep]}
+            value={settings.rate}
+            onChange={(rate) => set({ rate })}
+            aria-label="Speed"
+          />
           </>
           )}
           <Button

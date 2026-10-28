@@ -118,6 +118,7 @@ export const HOST_LIMITS = {
     actionTimeoutMs: 10000,
     settleMs: 250,
     keepShots: 20,
+    keepRecorded: 240, // a page's screenshots kept while a recording runs (preview.record)
     keepPages: 20,
     keepClosed: 10,
     evalChars: 20000,

@@ -26,10 +26,18 @@ const linked = (messages) =>
   })
 
 // The stream's snapshot: every agent's state as a tab that connects now reads it.
+// The snapshot as a tab ends up with it: each thread's tail (snapshot-thread-tail) plus the rows before it, read with
+// the agent call `older` the way the agent page does, and a result row's output read back from its content where the
+// snapshot sent the text once (snapshot-states-lean).
 async function snapshot(team) {
   const reader = team.stream({ signal: new AbortController().signal }).body.getReader()
   const first = JSON.parse(new TextDecoder().decode((await reader.read()).value).replace(/^data: /, ""))
   await reader.cancel()
+  for (const [id, s] of Object.entries(first.states ?? {})) {
+    const older = s.messagesSkipped ? ((await team.call({ target: id, method: "older", args: [s.messagesSkipped] })).value?.items ?? []) : []
+    const rows = s.messages.map((m) => (m.role === "tool" && m.output === undefined ? { ...m, output: m.content } : m))
+    first.states[id] = { ...s, messages: [...older, ...rows], messagesSkipped: 0 }
+  }
   return first
 }
 

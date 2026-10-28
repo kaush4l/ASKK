@@ -124,6 +124,12 @@ const openaiContent = (prompt, images) =>
   images.length ? [{ type: "text", text: prompt }, ...images.flatMap((i) => [{ type: "text", text: `(${i.caption || "screenshot"})` }, { type: "image_url", image_url: { url: `data:${i.media_type};base64,${i.data}` } }])] : prompt
 const anthropicImages = (images) => images.flatMap((i) => [{ type: "text", text: `(${i.caption || "screenshot"})` }, { type: "image", source: { type: "base64", media_type: i.media_type, data: i.data } }])
 
+// A server's model list: [{id, contextLength}] from its /models answer (entries: where the list is, idOf: a model's name).
+async function listAt(url, headers, signal, entries, idOf) {
+  const listed = await (await request(url, { headers, signal })).json()
+  return entries(listed).map((m) => ({ id: idOf(m), contextLength: CONTEXT_KEYS.map((key) => m[key]).find(Boolean) ?? null }))
+}
+
 const PROTOCOLS = {
   openai: {
     async stream(model, prompt, { images = [], signal, emit }) {
@@ -159,14 +165,7 @@ const PROTOCOLS = {
       return usage
     },
 
-    async models(model, { signal } = {}) {
-      const response = await request(`${openaiBase(model)}/models`, { headers: openaiHeaders(model), signal })
-      const listed = await response.json()
-      return (listed.data ?? listed.models ?? []).map((m) => ({
-        id: m.id ?? m.name,
-        contextLength: CONTEXT_KEYS.map((key) => m[key]).find(Boolean) ?? null,
-      }))
-    },
+    models: (model, { signal } = {}) => listAt(`${openaiBase(model)}/models`, openaiHeaders(model), signal, (l) => l.data ?? l.models ?? [], (m) => m.id ?? m.name),
   },
 
   anthropic: {
@@ -206,14 +205,7 @@ const PROTOCOLS = {
       return usage
     },
 
-    async models(model, { signal } = {}) {
-      const response = await request(`${anthropicBase(model)}/models`, { headers: anthropicHeaders(model), signal })
-      const listed = await response.json()
-      return (listed.data ?? []).map((m) => ({
-        id: m.id,
-        contextLength: CONTEXT_KEYS.map((key) => m[key]).find(Boolean) ?? null,
-      }))
-    },
+    models: (model, { signal } = {}) => listAt(`${anthropicBase(model)}/models`, anthropicHeaders(model), signal, (l) => l.data ?? [], (m) => m.id),
   },
 }
 

@@ -9,41 +9,35 @@ import { ChatPair } from "@/components/agents/thread"
 import { TalkVisual } from "@/components/talk/talk-visual"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
+import { submitted, useBusy } from "@/components/views/kit"
 import { cn } from "@/lib/utils"
+import { hm } from "@/backend/live/time"
 
 // The talk with the desk (kernel builtin/talk.js, backend/live/talk.js; 2026-10-18 owner: "I want to talk with the desk
 // to understand and guide the build. The desk should be able to talk with me too. The work and build can run in the
 // background."): one timeline — what the agents tell you (talk.say) and ask you (talk.ask: pick an option or write a
 // reply; it reaches the agent that asked as guidance while it runs, else as a run), and your questions to the lead with
 // its answers (Ask in the box above: answered now, the run goes on). Newest at the bottom; read once shown (the
-// artifact's `seen`, so every device agrees). Used by the home page under the lead's box and by the talk artifact's view.
+// artifact's `seen`, so every device agrees). The talk artifact's view; the dashboard's chat draws its messages with
+// DeskMessage in its own timeline (components/home/talk-panel.jsx).
 //   talk: the talk artifact twin; engine: the lead (its chat answers, Queue it); leadMessages: the lead's state.messages
-
-const time = (at) => {
-  const d = new Date(at)
-  return Number.isNaN(d.getTime()) ? "" : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-}
 
 function Reply({ talk, q, pointed = null, onClearPoint = () => {} }) {
   const [text, setText] = React.useState("")
-  const [busy, setBusy] = React.useState(false)
-  const [note, setNote] = React.useState(null)
+  const [sent, setSent] = React.useState(null)
+  const { busy, error, run } = useBusy()
+  const note = error ? `Not sent: ${error}` : sent
   const id = React.useId()
   async function send(answer) {
     const content = String(answer ?? "").trim()
     if (!content || busy) return
-    setBusy(true)
-    setNote(null)
-    try {
+    setSent(null)
+    await run(async () => {
       const r = await replyTalk(talk.id, q.id, content, pointed?.context ?? null)
       setText("")
       onClearPoint()
-      setNote(r?.delivered === "guided" ? `→ ${r?.keeper ?? q.from} reads it at its next step` : `→ ${r?.keeper ?? q.from} starts on it`)
-    } catch (error) {
-      setNote(`Not sent: ${error.message}`)
-    } finally {
-      setBusy(false)
-    }
+      setSent(r?.delivered === "guided" ? `→ ${r?.keeper ?? q.from} reads it at its next step` : `→ ${r?.keeper ?? q.from} starts on it`)
+    })
   }
   return (
     <div className="flex flex-col gap-1.5 pt-1">
@@ -66,10 +60,7 @@ function Reply({ talk, q, pointed = null, onClearPoint = () => {} }) {
       )}
       <form
         className="flex items-end gap-2"
-        onSubmit={(e) => {
-          e.preventDefault()
-          send(text)
-        }}
+        onSubmit={submitted(() => send(text))}
       >
         <label htmlFor={id} className="sr-only">
           Reply to {q.from}
@@ -101,14 +92,14 @@ function Reply({ talk, q, pointed = null, onClearPoint = () => {} }) {
   )
 }
 
-function DeskMessage({ talk, message: m, askedBy }) {
+export function DeskMessage({ talk, message: m, askedBy }) {
   const [pointed, setPointed] = React.useState(null) // what the owner clicked in the question's drawing
   if (m.kind === "reply") {
     return (
       <div className="flex justify-end">
         <div className="max-w-[85%] min-w-0 rounded-2xl bg-primary px-3 py-2 text-sm text-primary-foreground">
           <p className="text-[11px] opacity-80">
-            You → {askedBy(m.re)} · re {m.re} · {time(m.at)}
+            You → {askedBy(m.re)} · re {m.re} · {hm(m.at)}
           </p>
           <p className="whitespace-pre-wrap break-words">{m.text}</p>
           {m.context && <p className="text-[11px] opacity-80">pointing at {contextLine(m.context)}</p>}
@@ -123,7 +114,7 @@ function DeskMessage({ talk, message: m, askedBy }) {
       <p className="flex flex-wrap items-center gap-x-2 text-[11px] text-muted-foreground">
         <span className="text-foreground/80">{m.from}</span>
         {ask && <span className={open ? "text-primary" : ""}>{open ? `asks you · ${m.id}` : `asked · ${m.id} · ${m.status}`}</span>}
-        <span className="tabular-nums">{time(m.at)}</span>
+        <span className="tabular-nums">{hm(m.at)}</span>
       </p>
       <p className="whitespace-pre-wrap break-words">{m.text}</p>
       {m.visual && <TalkVisual visual={m.visual} onPoint={open ? (p) => setPointed(p?.context ? p : null) : null} />}
@@ -134,11 +125,21 @@ function DeskMessage({ talk, message: m, askedBy }) {
   )
 }
 
+// Shown is read: the desk's messages up to the newest, once on screen a moment (the artifact's `seen`, every device).
+export function useSeen(talk) {
+  const latest = latestId(talk)
+  const unread = unreadCount(talk)
+  React.useEffect(() => {
+    if (!talk?.id || !latest || !unread) return
+    const t = setTimeout(() => seenTalk(talk.id, latest).catch(() => {}), 1500)
+    return () => clearTimeout(t)
+  }, [talk?.id, latest, unread])
+}
+
 export function DeskTalk({ talk, engine = null, leadMessages = [], className }) {
   const items = React.useMemo(() => talkTimeline(talk, leadMessages), [talk, leadMessages])
   const open = openQuestions(talk).length
   const unread = unreadCount(talk)
-  const latest = latestId(talk)
   const list = React.useRef(null)
   const askedBy = (id) => talk?.state?.messages?.find((x) => x.id === id)?.from ?? "the desk"
 
@@ -148,12 +149,7 @@ export function DeskTalk({ talk, engine = null, leadMessages = [], className }) 
     if (el) el.scrollTop = el.scrollHeight
   }, [items.length])
 
-  // Shown is read: the desk's messages up to the newest, once on screen a moment.
-  React.useEffect(() => {
-    if (!talk?.id || !latest || !unread) return
-    const t = setTimeout(() => seenTalk(talk.id, latest).catch(() => {}), 1500)
-    return () => clearTimeout(t)
-  }, [talk?.id, latest, unread])
+  useSeen(talk)
 
   if (!talk) return null
   return (

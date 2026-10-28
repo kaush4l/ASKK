@@ -241,7 +241,9 @@ test("runs handed over and never started before the tab closed are a row in thei
   const team = await createBrowserTeam({ desk: buildBrowserDesk({ store, infer }).desk, store })
   const seen = []
   team.subscribe((e) => seen.push(e))
-  expect(seen[0].states.agent.messages.at(-1)).toMatchObject({ action: "lifecycle", kind: "queued", content: expect.stringContaining("the second job") })
+  const row = seen[0].states.agent.messages.at(-1)
+  expect([row.action, row.kind]).toEqual(["lifecycle", "queued"])
+  expect(row.content).toContain("the second job")
   expect(store.get("queued")).toEqual([])
   team.terminate()
 })

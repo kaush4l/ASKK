@@ -95,9 +95,9 @@ what is saved where), the twin contract.
   an answer; the agent goes on. An artifact's `gate()` returns a reason (text) or `{reason, hard: true}` (2026-10-17
   critic): a hard one refuses however often the answer comes and never counts toward `gateRetries` (the others do:
   after `gateRetries` refusals the answer goes through flagged); the run still ends at `maxSteps`. `guide(text, from)` (running only, else false): a note the next step's prompt shows
-  under `# OWNER GUIDANCE` right after the request, once. The prompt's order (2026-10-17 owner): soul → `# YOU ARE` +
-  role → artifacts → `# REQUEST` (+ `# OWNER GUIDANCE`) → `# EARLIER RUNS` → `# WORK DONE ON THIS REQUEST` →
-  `# TOOLS` → `# RESPONSE` (map: `backend/kernel/README.md` (d)). Compaction (2026-10-22 owner: "if it is 90%, we autocompress and send the
+  under `# OWNER GUIDANCE` right after the request, once. The prompt's order (2026-10-17 owner; 2026-10-25 owner: "Tools first, RESPONSE last" — the stable start a provider
+  caches): soul → `# YOU ARE` + role → `# TOOLS` → artifacts → `# REQUEST` (+ `# OWNER GUIDANCE`) → `# EARLIER RUNS` →
+  `# WORK DONE ON THIS REQUEST` → `# RESPONSE` (map: `backend/kernel/README.md` (d)). Compaction (2026-10-22 owner: "if it is 90%, we autocompress and send the
   compressed + goal"): before each step's model call, a prompt at `COMPACT_AT` (0.9) of `agent.budget`
   (`config.contextChars`, else `contextBudget(config.model)`: apple 12k, small local 100k, else 400k chars) folds the
   run's steps but the newest two and its `# EARLIER RUNS` into one summary step (tool `compact`; one model call, else
@@ -131,6 +131,9 @@ what is saved where), the twin contract.
   host ever starts a run from a chat, the owner does with one click; every other line stays in the answer. Each chat
   its own `AbortController` (`chatting`: the ones in flight); kept in `chats` (≤ 12, never in a run's prompt); event
   `chat`; a throwing infer rejects without it. `current` → `{request, steps}` of the run in progress (null idle).
+  `inbox` (2026-10-25 owner: "every agent will have their inbox"): the requests waiting behind the accepted run
+  `[{id, text, from, at}]`, event `inbox {inbox}` → agent state `inbox` (team-core) → the dashboard's Inbox under the Goal
+  card and "N waiting" on agent rows.
   `stop(reason)`: every run of the agent — in progress or queued, whoever started it (the host, a quest, a dispatch:
   each run its own `AbortController` linked to `ask`'s signal) — ends "stopped" at its next step boundary, and every
   chat in flight rejects "stopped" at once (its GUIDE never delivered) → how many runs and chats; `busy`: a run
@@ -149,7 +152,11 @@ what is saved where), the twin contract.
   true); a tool built `outside: false` never counts (a desk wrapping a closed-world tool, e.g. annotations
   `openWorldHint: false`), `outside: true` always (a desk's own tool that fetches a page); `spec()` carries `outside:
   true` when it counts (the agent page's tool list marks it "outside").
-- `artifact/artifact.js` `Artifact` (latest state in every prompt, `commands()`, `gate()`, `live()` → `{view, data}`,
+- `artifact/artifact.js` `Artifact` (2026-10-25: commands and owner calls are declared — `static commands = {name:
+  {description, input, run?, type?, view?, outside?, usage?}}` (run: a method name, default the command's, or a function
+  bound to the artifact), `static commandType` ("dev", or "artifact" for checklist-style), `static owner = {method: name |
+  fn(a, from, args)}` + `ownerCan` (the refusal prose; `ownerCall` exists only when declared), `bump(patch)`, `can(agent)`;
+  `util/text.js` `clip` / `clipAfter` / `oneLine`) (latest state in every prompt, `commands()`, `gate()`, `live()` → `{view, data}`,
   `snapshot()`/`restore()`, `keep`: day | always | run | file; optional `refresh(agent)`, `attach(agent, options)`,
   `detach(agent)`; a refreshed artifact calls `changed()` only when its twin state differs; optional `poll` (ms,
   2026-10-17 critic: a live view froze while every holder waited): the host calls `refresh(<a holder>)` that often while
@@ -158,7 +165,9 @@ what is saved where), the twin contract.
   `artifact/quality.js` (`QualityMatrix`), `artifact/schedule.js` (the desk's next run).
 - `builtin/index.js` the inbuilt kit, attached by name (2026-10-17): `BUILTIN = {tools: {name: (deskOptions) =>
   Tool}, artifacts: {type: (deskOptions) => (agent, spec) => Artifact}}` — tools `web.search`, `web.read`,
-  `agent.spawn`, `agent.dismiss`, `agent.catalog`, `agent.update`, `desk.list|create|check|load|ask|read|propose` (2026-10-20);
+  `agent.spawn`, `agent.dismiss`, `agent.catalog`, `agent.update`, `desk.list|create|check|load|ask|read|propose` (2026-10-20),
+`speech.say` (2026-10-27: `builtin/speech.js` — `sayThrough`/`transcribeThrough` go through `ctx.host` to the host's POST
+speech/say and speech/transcribe; a 404/501 becomes `SpeechUnavailable`, "501 no speech on this host");
   artifacts `files`, `terminal`, `preview`, `plan`, `dispatch`, `browse`, `talk`, `practice` (2026-10-20), `studio` (2026-10-23) (2026-10-17:
   no `stage` — folded into the preview; 2026-10-18 owner: no `charts` — a live dashboard is a page in the preview) — and `builtinKit(deskOptions)` (the catalogue bound to one desk: one
   instance per desk and id, id = the type; `{type, id}` another, `{type, commands}` a subset, `{type: plan, gate:
@@ -198,7 +207,9 @@ what is saved where), the twin contract.
   owner and the agents both watch, the stage folded in; id `preview`, view and kind `preview`, keep `always`, `poll`
   3 s). Two uses: LIVE — pages over host browser/* (`preview.open|goto|click|type|press|scroll|text|eval|console|shot|
   close`, the page = the newest open one unless `id`; each action answers with the page's text outline; `open` also
-  puts the page in the pane, a `#view` in its URL its view): the running app, a training dashboard, a build; EXPLAIN —
+  puts the page in the pane, a `#view` in its URL its view; 2026-10-25 `preview.record {title}` … `preview.cut {note?}`:
+  each action on the page a frame `{n, at, action, what, url}` in `recordings ≤ 8` (frames ≤ 200; a restart ends a running
+  one), played back by `components/preview/recordings.jsx` in the pane (`recordingsOf`)): the running app, a training dashboard, a build; EXPLAIN —
   visuals: `preview.show {id, title, says?, visual}` draws or redraws (same id) and puts it in the pane; `visual` = a
   `builtin/visual.js` `checkVisual` spec (flow, steps, matrix, line, bars, tokens, scatter, compare; inline ≤ 24 KB, a
   bad one refused with its kind's shape), `{file: "<workspace>.json"}` (re-read ≤ every 3 s, coalesced, the last good
@@ -295,7 +306,7 @@ what is saved where), the twin contract.
   `accept | drop`, args `[{helper, reason?}]` (`ownerHelperCall`; kernel-team and the tab's team; drop: a run helper still
   goes at its run's end, a kept one stays as kept). UI: `components/kernel/proposed-helper.jsx` `ProposedHelper` — the
   dashed "proposed · not in force" block with what it would keep or change, where its words came from, Accept / Drop
-  (`helperCall`, `backend/live/desk.js`; `proposedOf`, `heldHelpers`, `treeNode` in `backend/live/spawned.js`; the
+  (`helperCall`, `backend/live/desk.js`; `proposedOf`, `treeNode` in `backend/live/spawned.js`; the
   `spawnedLine` ends "keep desk / update waits for you") — under the helper's card and row on the home page and on its
   agent page. `builtin/desks.js` `deskTools()`:
   `desk.create {name, spec, update?}` → host `desks/create` (`companion/team/scaffold.js`: config only — main.js from one
@@ -369,7 +380,19 @@ what is saved where), the twin contract.
   (3 failed checks in a row) | stopped, `checks`, `checked_at`, `next_at`, `last {value, against, cond, waiting, note,
   prox {gap, pace, eta}}`, `fires`; commands `<id>.pause {id, reason}`, `.resume`, `.check`; owner pause | resume | now |
   stop | remove `[{id, runner}]`; the prompt one line per runner. UI: the runners view (`checkLine`, Check now). Tests
-  `builtin-runners.test.js`.
+  `builtin-runners.test.js`. A/B (2026-10-25 owner, `docs/portable-workflows.md`): a step's `shadow: {kind: research | agent, tools?, model?,
+  max_turns?, seconds?, max_steps?, min_calls?}` runs the same step beside it as the other kind (`runShadow`: its own prompt
+  rendered for its tools, a step-agent shadow named `<step agent>-b`, checked by the step's contract, saved as
+  `NN-<id>.shadow.md|json|prompt.md`) — never waited on, retried or read downstream; twin: the row's `shadow` {kind,
+  status, ms, turns, tools, cost_usd, gate, file, agent, error, same, differs (```data fields that disagree)}, config
+  `steps[].shadow`; UI `ShadowLine` (`components/views/pipeline.jsx`, pure `shadowView` in `backend/live/pipeline.js`) on the
+  phase card and its Work section; tests `workflow-shadow.test.js`. Market kernel tools (same day):
+  `companion/capabilities/market-tools.js` `marketTools()` — the research bridge's read tools (`market.quotes | bars |
+  option_chain | option_instruments | option_quotes | index_quote`, and — later the same day, owner: "Robinhood even offers custom
+  indicators" — `indicators` (Robinhood's get_equity_technical_indicators), `fundamentals`, `analyst`, `scan` (preview_scan,
+  nothing saved); the bridge's `mcp__market__*` has the same ten) built from `BRIDGE_TOOLS` + `plan`, each broker call
+  through `ctx.host` mcp/call (the desk's guard decides), no order tool; trade-card registers them, and its 05-pattern runs
+  as a step agent with a research shadow (`tools: [market, data]`).
 - 2026-10-23 owner ("build something like the comfy UI … generate image … critiqued and improved based on either users'
   requirement, feedback, or even another LLM"): `builtin/studio.js` `Studio` (id `studio`, view and kind `studio`, keep
   `always`, poll 2 s): images on this Mac's open model through the host (`image/*`, below) — `studio.goal {goal,
@@ -394,6 +417,21 @@ what is saved where), the twin contract.
   shown and Select on the thumbnails, each confirmed once. Desk `custom/studio` (local):
   lead `artist` (optimise → generate seeds → critic → refine one change a round → pick, talk.say v1→vN) + member
   `critic` (model sonnet: a different model judging, `studio.look` + `critique` only). Tests `builtin-studio.test.js`.
+- 2026-10-26 owner ("an LLM surgeon live artifact … pause it at steps to understand … like the intellij debug … when I ask
+  for an inner feature view, the lead should be able to write the view"): `builtin/surgeon.js` `Surgeon` (id `surgeon`, view
+  and kind `surgeon`, keep `always`, poll 1.5 s; main.js `builtin.surgeon {folder}`, default `surgeon/`): a model run under a
+  debugger in the holder's terminal long session (lease gpu) — `surgeon.start {script, args, why}` (`uv run --frozen
+  --no-sync python -B <script> <args> --debug --folder <folder>`; args plain words only), `.continue`, `.step` (into the next
+  debug point), `.next` (over: the next step / token), `.pause`, `.stop`, `.break {at: point | step | *, step?, every?, nan?}`,
+  `.clear`, `.inspect {target: out | in | attn | <param> | grad:<param>, view: auto | attn | lens | matrix | hist | topk | pca
+  | bars, script?: a workspace .py defining view(tensor, ctx)}`, `.patch {at, kind: ablate | scale, units, factor}`,
+  `.unpatch`, `.compare {a, b, note}`; each command waits for the runtime's answer (where it stopped). Protocol: commands
+  appended to `<folder>/cmd.json` ({cmds: [{n, do, …}]}), the runtime rewrites `state.json` (status, ack, heartbeat, frame
+  with tensor stats, flow, points, breakpoints, patches, metrics, views, log) and `views/<id>.json` (checkVisual'd, the newest
+  8 inline); no heartbeat 15 s → `stale`. Owner calls the same (no start). The runtime is a desk's (custom/lab
+  `lab/askklab/surgeon.py`, tiny-gpt). UI `components/views/surgeon.jsx` `SurgeonView` (pure `backend/live/surgeon.js`):
+  controls, the flow strip (click = breakpoint), the frame's tensors with Inspect, the input, views with a two-up compare,
+  metrics. Tests `builtin-surgeon.test.js`.
 - 2026-10-24 owner ("an audio generation pipeline such that, even the lead is able to use TTS model to create audio
   files. So the audio transcription can be a tool as well … the model input format should be hinted … the desk should be
   capable of downloading the model … The telegram personal chat will be the default channel"): `builtin/audio.js` `Audio`
@@ -419,6 +457,88 @@ what is saved where), the twin contract.
   origins, tales and readings researched side by side (`after: []`) into `work/saga/<date>/*.md` → outline in styles →
   write the marked script into a file → factcheck → correct → produce (streamed, each chapter checked). `heardShare` counts
   a number however written ("eighteen fifty-seven" = "1857") as one token. Tests `builtin-audio.test.js`.
+- 2026-10-24 owner ("to target a long running goal, the desk will set a goal and will keep working towards the goal … all
+  actions with feedback is to gain towards the goal"): `builtin/goal.js` `Goal` (id `goal`, view and kind `goal`, keep
+  `always`): the desk's standing goal — `goal.set {text, measure, target?, cadence_minutes? (10–10080, 60), why}`,
+  `.progress {did, result, value?, toward: closer | same | further | unrelated, next, next_in_minutes?}` (every run of a
+  holder while active: a soft gate until it is recorded), `.met {evidence}`, `.pause {reason}`; the prompt shows the goal,
+  measure, target, the values' trend, the last 6 steps, the owner's feedback not acted on, what is next. The host
+  (kernel-team, every 30 s, `goalTickMs`) starts the keeper's run (the setter, else the lead) from "goal" with
+  `resumeText()` when `next_at` is due and it is idle with nothing queued (`takeDue`, once); a run without progress books
+  the cadence; 3 failed runs in a row pause it — never a model's usage limit (2026-10-26, trade-card paused on three Claude CLI
+  "session limit" errors: `model/limits.js` `usageLimit`/`limitWait`: a session limit, 429 or 529 counts no failure, the next run
+  books after its "resets <time> (<zone>)" + 2 min, else 15 min; a workflow stage stops its retries on one; a failed wake's
+  retry waits for the reset). Owner calls `set | pause | resume | drop | now | cadence {minutes} |
+  feedback {text} | request {text}` (feedback → the keeper: guidance or a run; marked acted on by its next progress;
+  request (2026-10-27, request-to-loop) → one open milestone beside the others, its id from the text, -2/-3 on a clash; 2026-10-27 request-mark: it stores `requested: true` with check null, so the prompt's milestone line and the card's Milestones line read "check: to plan · requested by owner" until a check is written, while a planned item with no check shows neither). UI
+  `components/views/goal.jsx` `GoalView` (pure `backend/live/goal.js`: `standingGoal`, `goalSeries`, `goalLine`,
+  `goalCall`): the goal, a trend line, progress newest first, the controls; the dashboard's Goal and phase card shows it
+  first; call look `goal` (emerald, target). Held by the core lead (`desks/agent`) and the studio's artist. Tests
+  `builtin-goal.test.js`, `companion/team/kernel-goal.test.js`. 2026-10-25 owner ("the lead … translate every user request into a goal using sub agent and workflows
+  based on the task complexity"): `goal.frame {intent, done, route: direct | helpers | workflow | goal | desk, why}` (`ROUTES`)
+  — every run of a holder (not a resume from "goal", not a managed step agent) frames its request first (soft gate), the
+  frame is rendered in every step as `THIS REQUEST AS A GOAL` and kept in state `frames` ≤ 12 (status working | answered |
+  failed | interrupted); the core lead's role lists the routes; UI: the dashboard's Goal card leads with the frame's intent,
+  done-when and route (`requestFrame`, `ROUTE` in `backend/live/goal.js`), the goal view's "Requests as goals". Later the same day (owner: "the goal artifact will
+  contain the elements for a long running process. Since the auto compaction happens to the conversation history, the
+  goal can be live artifact … configurable workflows"; `docs/goal.md`: the experiments — Cursor's planner/worker/judge,
+  Anthropic's C-compiler lock files and long-running harness, Magentic-One's ledgers — and which element came from
+  which): rendered every step and never compacted, it also holds `constraints` (set), a ledger (`goal.note {kind: fact
+  (evidence required) | guess | decision | dead_end, text, evidence?}`, `.forget {id, why}`, ≤ 60), milestones
+  (`goal.plan {items: "id: text | check"}`, `.claim {id}` — refused while another holds it, released when its holder's
+  run ends, never restored — `.done {id, evidence}` by its claimer only), a stall counter (3 progress not closer → the
+  resume and the vars say REPLAN FIRST; a plan or a closer clears it) and `workflow`: the host's resume runs that
+  workflow artifact (`flow.run` with `vars()`: goal, measure, target, constraints, ledger, milestones, last, next,
+  feedback, mode) instead of the keeper, `flowStarted`/`flowEnded` (the last stage's report fields → progress when no
+  step recorded one; a failed flow counts toward the pause). The gate holds only holders with `goal.progress` that are
+  not managed step agents. Default flow `desks/agent/phases/goal-cycle.md` (plan → work → judge, each a step agent
+  holding the goal). Owner calls also `workflow {workflow | none}`, `note`, `forget {note, why}`, `release
+  {milestone}`; the view adds the constraints, stalled, the workflow menu, Milestones (claims, Release) and the Ledger
+  (Note, Retire); `goalPlan`, `goalLedger`, `goalWorkflows`.
+- 2026-10-25 owner ("a goal based live dev artifact … the goal, a UI preview if present, a terminal status to control,
+  ability to make changes … the artifact will initialize the current project"): `builtin/dev.js` `Dev` (id `dev`, view and
+  kind `dev`, keep `always`; main.js `builtin.dev {project, checks: {name: command}, preview: {command, url}}`): the project a
+  dev desk changes — `dev.init` (host `POST projects/init`: a main.js worktree project made with `git worktree add` on its
+  branch, its `setup` argv run once, both host-side from main.js's own words — `capabilities/projects.js` `init`), `dev.check
+  {name?}` (each check run in the holder's terminal main session, in the project, recorded pass | fail with its tail;
+  `passed_at`), `dev.status` (git status); soft gate while a project file changed since every check passed; its prompt
+  block and view (`components/views/dev.jsx`) compose the holder's goal, files, terminal and preview (found by kind,
+  `links` ids for the view). Files' open files (same day): `files.open {paths}` keeps each file's current text in its
+  holder's prompt (`OPEN FILES`, re-read every refresh and after each change) until `files.close {paths | all}` — ≤ 25 per
+  holder, 12K chars each, 60K all; `files.read` is a one-off look (no longer opens). Local desk `custom/dev` (2026-10-25
+  owner: "Configure dev desk with live goal artifact on the same project folder … the lead should be able to open the
+  webpage, record, navigate and perform actions … planner, coding agent, critique … this will go to the planner again"):
+  lead `dev` (goal.frame → `goal.set {workflow: dev-cycle, start_in_minutes: 1}`; looks at the app) + members `planner`
+  (goal.set/plan: the statement and the features), `coder` (files with `why` notes, dev.check), `critic` (dev.check, the
+  app on :1111 recorded, `goal.note "proposed: …"`, `goal.progress next_in_minutes: 1` → the planner again);
+  `phases/dev-cycle.md` plan → build → judge as `agent:` phases; project `powerhouse` = ASKK itself (main.js `projects:
+  {powerhouse: {path: "../..", self: true}}` — `projects.js` `checkSelf`: ASKK's root exactly, main.js only; dev's
+  PROJECT line says the live server runs it), checks `bun test` in backend/ and in components/ (a check may be `{command,
+  cwd}`: at ASKK's root bun test lists custom/, which the sandbox never reads; companion's tests need what the sandbox
+  refuses — the owner runs them). The same day:
+  `files.write|edit|append {why}` → `modified[].why` + `notes ≤ 6` (shown beside the diff); `goal.set start_in_minutes`
+  and `goal.progress next_in_minutes` down to 1 (the cadence stays ≥ 10); the goal view shows the desk's preview as its
+  live view (`goalPreview`) and what is claimed now. Later the same day (owner: "we need a new restart command … If any changes break the application,
+  we should be able to roll back, capture this evidence and start from that point … keep building, critiquing, planning"):
+  `companion/capabilities/checkpoints.js` (a checkpoint = a copy of every file differing from HEAD, deleted ones named;
+  restore puts the tree back exactly, HEAD/index untouched, the tree before kept as a `before-rollback` checkpoint; 409
+  when HEAD moved; `memory/<desk>/checkpoints/<project>/c<n>/`, 30 kept — bunfig ignores `memory/**`) and
+  `capabilities/restart.js` (`checkHealth`: /__askk/desks lists every desk without an error, /, /live, /compose answer
+  200; `superviseRestart`: kickstart → wait healthy (180 s) → ok, else evidence {problems, pages, server.log tail} →
+  restore the good checkpoint → kickstart → rolled_back | failed; `restartBook` `memory/<desk>/restarts/r<n>.json`;
+  `projectSafetyRoutes`: GET `projects/checkpoints|restarts`, POST `projects/checkpoint|rollback|health|restart` — restart
+  only for a `self` project, under launchd (`XPC_SERVICE_NAME`), 409 while another desk works (`serverWork` from
+  desks.js); `scripts/restart.js` the supervisor, spawned detached (setsid) so launchd's kill misses it). Dev commands
+  `dev.checkpoint|rollback|health|restart`; every check passing + healthy keeps a `good` checkpoint; `refresh` reads the
+  restarts back and notes each outcome once in the goal's ledger (ok → fact, broke → dead_end with the evidence);
+  restart → `goal.soon(2)` (Goal `soon(min)`). Desk: the critic owns the standards, the scorecard (shipped · tests · page
+  ms · look · ease) and the restart (last, only for kernel/companion/scripts changes); the coder checkpoints first and
+  rolls back what it cannot pass; the planner keeps `notes/roadmap.md`, researches the web and favours toolkit ELEMENTS
+  (latest state only, compact, a UI twin). Live-tested: a healthy restart (ok, 21 s) and a syntax error in a kernel file
+  (server down → rolled back → healthy). 2026-10-27 (self-update): `dev.restart` posts the last `dev.health` as
+  `before`; the route keeps it through `sanitizeHealth` (ok, ms, at, ≤ 6 problems); `superviseRestart` keeps `after`
+  on ok as on a rollback; `#slim` keeps both as `{ok, ms}`; the Safety row draws `restartHealthLine` (dev-warm.js:
+  "health before ok → after ok · 1840 ms").
 - `builtin/plan.js` `Plan` (extends `Checklist`): the desk's checklist written at run time (the planner's): id
   `plan`, view `checklist`, keep `always`, no reset on run start; `plan.write {goal, items}` ("id: text" lines, "!" =
   required; replaces the open items, keeps a ticked/skipped item still listed, bumps `revision`, records `by`),
@@ -467,6 +587,18 @@ what is saved where), the twin contract.
   owner, title, keep, brief, state; a board's `{goal, entries}`; a list's `items`), `Agent` (definition, tool twins,
   agents, artifacts, desk, spawned, status), `Desk` (lead, tree, agents, artifacts with holders).
   `companion/team/kernel-team.js` streams agent definitions and artifact views from them.
+- `classes.js` `kernelClasses()` (2026-10-26 owner: "the composition can contain the abstract classes, the variables, the
+  instances, and how to make changes such that it aligns to a standard … the dev desk makes changes to itself from within
+  and updates the documentation for long term"): the kernel described by itself — `bases` (Desk, Agent, Tool, AgentTool,
+  Artifact, Checklist: variables with where each is set and its frontmatter key, hooks, How to change, tests, docs; written
+  in classes.js), `kinds` (every artifact class read from its statics and a bare instance: kind, view, keep, poll, commands,
+  owner calls, hooks, state keys, `problems` against `STANDARD`), the kit's `tools`. Every artifact class declares `static
+  about` (one line) and `static options` when main.js `builtin.<type>` configures it. Streamed as `kernel.classes`
+  (team-core snapshot) → /compose's Classes region (bases → classes → the standard, every live agent and artifact joined
+  to its class with where a change to it goes). `bun scripts/composition.js` writes `docs/composition.md` from it (never
+  by hand); `--check` fails when it is stale or a class is off the standard (its view drawn in artifact.jsx VIEWS, a kit
+  type's test, its README entry) — the dev desk's `composition` check. Tests `classes.test.js` (every kit type listed,
+  every `config.<key>` agent.js reads listed under Agent), `backend/live/composition.test.js`, `scripts/composition.test.js`.
 - `model/llm.js` (`complete`: OpenAI-compatible or Anthropic wire; local providers through the host's
   `/__askk/llm/<provider>/v1`, `model.host` says where), `util/text.js` (`narrowText`: passages around `find` terms), `util/yamlish.js` (2026-10-18: `parseYamlish`, an indentation-aware YAML subset — maps, lists of maps, nesting, the reply format's scalars; null when a line does not fit — for a structure an agent wrote as text: preview.show reads a `visual` written as indented `key: value` lines with it, and folds the reply format's list reading of one back into the spec).
   Tests in `test/`: `agent.test.js`, `kernel.test.js`, `prompt.test.js`, `text.test.js`, `twin.test.js`,
@@ -515,7 +647,13 @@ Code more than one desk may use lives in `custom/shared/`. `custom/` is git-igno
   `team` refused; named after its folder), never built at start, and handed to `buildDesk` as `env.templates`
   (`{<team>: spawn input {name, role, goal, tools, artifacts, writes, reads, model, max_steps, board, members}}`, what
   `agent.spawn {template}` builds) with `env.models` (the model names). Also
-  `readAgentFolder`, `loadTools`, `MODELS`, `llmInfer` (`custom/shared/kernel-desk.js` re-exports two).
+  `readAgentFolder`, `loadTools`, `MODELS`, `llmInfer` (`custom/shared/kernel-desk.js` re-exports two). The soul
+  (2026-10-27 owner: "a repo-wide default soul plus a desk-level <desk>/soul.md override"; `docs/soul-and-role.md`):
+  `readSoul(folder)` → `<desk>/soul.md`, else the desks root's `soul.md` (`custom/soul.md`: every local desk, 2026-10-27), else `desks/soul.md` (tracked; the old engine's soul restored), body only →
+  every agent spec's `soul` + `soulFile` (a mounted desk: its own; a spawned helper: its caller's) → the prompt's
+  opening; twin `soul`, `soul_file` → the agent page's Soul tab. `envModel()` (2026-10-26): `ASKK_LLM_PROVIDER |
+  ID | BASE_URL | API_KEY | CONTEXT` answers every model key of every convention desk (the container, `Dockerfile`;
+  `docs/portability.md` §7).
   `bun scripts/tool.js check|run <file>`, `bun scripts/desk.js check <desk folder>` (`layout`, the tree, tools and
   `templates`); fixtures and tests in `companion/team/fixtures/` (`kit-desk/`: the kit by name, `teams/probe` a template;
   `mini-desk/`: the legacy layout),
@@ -524,7 +662,7 @@ Code more than one desk may use lives in `custom/shared/`. `custom/` is git-igno
 ## The desk server (`companion/`)
 
 - `server/desks.js` `hostDesks({folders, port, defaultDesk, readOnly, root?})`: per desk its team, host API and
-  integrations (one Telegram listener per bot: a desk listens for the integrations no other hosted desk names);
+  integrations (one Telegram listener per bot: a desk listens for the integrations no other hosted desk names; 2026-10-24 main.js `listen: false`: the integrations' tools only, never their inbound, and never in the way of the desk that listens — `listensFor`);
   `handleApi` (`desks`, `desks/select`, `desks/load`; 2026-10-20 `desks/create`, `desks/check`, `desks/propose`,
   `desks/ask` (+ GET `desks/ask?id=`), `desks/read` — the kit's desk.* tools; `--read-only`: no create, propose or
   check — a check runs the desk's code; the body's `outside` holds a desk for the owner (scaffold.js), the asking desk's
@@ -534,7 +672,10 @@ Code more than one desk may use lives in `custom/shared/`. `custom/` is git-igno
   `startTelegram`, `load(name)` (root: the hosted folders' parent; a reload ends the old team's streams so tabs
   reconnect, `forgetDesk` + `require.cache` under the folder; tested in `desks.test.js`). Used by `scripts/dev.js`
   and `server/server.js`. `findDeskServer(desk)` (desk.js) finds a running one.
-- `team/kernel-team.js` `createKernelTeam({desk, port, log})`: the desk served as the team. `GET team/stream`
+- `team/kernel-team.js` `createKernelTeam({desk, port, log})`: the desk served as the team (2026-10-25: the protocol —
+  channel, registry, threads, artifact hub, run-event rows, desk-event lines, owner artifact calls — is
+  `backend/live/team-core.js` `createChannel` / `createTeamCore`, shared with the tab's `backend/browser/team.js`; each host
+  keeps persistence and its extras as `persist` / `hooks`). `GET team/stream`
   (SSE: `snapshot {registry, states, kernel, log}`, then `state {id, patch}`, `kernel {artifact, boards?}`,
   `registry {registry, states}` and `kernel {tree, removed?}` when an agent is spawned or dismissed, `log {at,
   source, text}`), `POST team/call {target, method, args}` (`send`, `ask` [text, {from}], `stop` → `{stopped}`
@@ -600,6 +741,22 @@ Code more than one desk may use lives in `custom/shared/`. `custom/` is git-igno
   `kernel-status.js` `isRunRequest(m)` = role user and kind neither guidance nor chat (the tab's `backend/live/agent.js`
   twin), used by `followLead`, `leadRun`, `agentNow` and kernel-live's `lastRun` / `due` (its `slim()` keeps `kind`);
   `isRunWork(w)`: an owner chat in `work()` is no run the lead is busy with (a message meanwhile is new work).
+- Sanitize (2026-10-24 owner: "a sanitize method for the input … an on-device model … The first user input can always go
+  through sanitize … the input and the voice transcribe … the voice input can be corrected and even general input can be
+  enhanced"): `capabilities/sanitize.js` `createSanitizer({local})` — one call to Apple's on-device model (~0.6–1.3 s)
+  rewrites the owner's words as a clear request (typos and misheard words fixed, every fact, number, name and link kept,
+  nothing invented); never in the way — short, `/command`, code, long, timeout (12 s), an error or a reply that fails a
+  guard (empty, an answer, an echo of the prompt, too long, a number or link dropped) → the words as they were. No desk or
+  goal text in its prompt (the small model wove it in). Applied by kernel-team to the owner's new work with a `via`
+  (team call `send`/`ask` `[text, {via: typed | voice, suffix?}]`, team/send `via`): the dashboard's composer and the Live
+  GuideBox (typed), the voice pipeline (voice; its read-aloud note as `suffix`, after the rewrite); a spoken chat or
+  guidance is corrected only (via guidance); the Telegram bridge rewrites the owner's own words before the context prefix
+  (`team.sanitize`) and passes `original`/`rewrite` through `team.send`; schedules, wakes, quests and scripts are left as
+  they are. Kernel `Agent.ask(text, {original, rewrite})`: the request keeps both, `# REQUEST` adds "(Rewritten from the
+  owner's own words: "…" — where the two differ, the owner's words decide.)"; the request row carries `original`,
+  `rewrite {via, model, ms}` (team-rows), history.md "In the owner's words"; UI `components/input/rewritten.jsx`
+  `Rewritten` under the request in the thread and the dashboard's bubbles. Host `POST input/sanitize {text, via}`;
+  capability `sanitize`; main.js `sanitize: false` turns it off. Tests `sanitize.test.js`, `kernel-sanitize.test.js`.
 - `server/host-api.js` `createHostApi({root, desk, team, port, readOnly, listen, hostPorts})`: `whoami`, `wakes`,
   `fs.read`/`fs.write` (`fs/list`, `fs/read`, `fs/tree`, `POST fs/write` revision-checked and atomic,
   `POST fs/delete`: links unlinked, never followed; non-empty folders need `recursive`; `fs/watch` SSE `change
@@ -631,7 +788,11 @@ Code more than one desk may use lives in `custom/shared/`. `custom/` is git-igno
   the page's own URL at another #hash moves the hash, the same URL reloads — never a load wait that cannot end, `sameDocument`),
   `browser/list`, `GET browser/shot?id&n` → the PNG; `GET browser/image?id&n&max` → the same shot for a model (2026-10-18:
   `Bun.Image` JPEG ≤ max px wide, default 1280, 320–1568; base64 JSON); a screenshot after every change in `state/browser/<id>/<n>.png`;
-  3 pages per desk, 6 per process), `web`
+  3 pages per desk, 6 per process; 2026-10-25 `POST browser/record {id, on}` keeps a page's shots ≤ `keepRecorded` 240 for a
+  recording; main.js `browser: {app: true}` → `appPorts` = this server's port: the desk's pages may show the app itself
+  as an AGENT'S VIEW — opened through `GET view/enter?t=&to=` (HttpOnly cookie `askk_view`, `enterView`), every request
+  carrying a live token (`agentView`) refused anything but GET/HEAD (and `desks/select`; 2026-10-27 ask-seen: and POST `team/call` Ask 'what' on an artifact of view "ask" on the desk it looks at, `viewMayCall` through `viewCall`, team `viewOf`) in `desks.js` `handleApi`, eval
+  refused on it, a page reaching the port any other way closed), `web`
   (`web/search?q=&limit=&source=` → `{engine, query, results: [{title, url, snippet, source}], note?}`: `source` web
   (default: SearXNG when `ASKK_SEARXNG_URL`, else DuckDuckGo; failed, rate-limited or empty → fallback wikipedia +
   arxiv + hn round-robin, engine `fallback`, `note` says why) | wikipedia | arxiv | hn (official keyless APIs only);
@@ -765,7 +926,8 @@ host's mcp/call as the desk (`dataTools`, `dataCall`), approved as `mcp__data`; 
   on the offline home and in the header's dialog, `BrowserAgentBar` — model, Change, Stop), the header menu's "Run an
   agent in this browser…" / "Back to the desk server", the status bar's "This browser". Tests: `backend/browser/
   browser.test.js`.
-- `backend/live/`: `stream.js` (`connectTeam`, `teamCall`; 2026-10-20 `setLocalTeam`: a tab's own desk instead of the server), `registry.js` (the one subscriber: opens the stream
+- `backend/live/`: `signal.js` (2026-10-25: `signal`, `computed`, `useValue(sig, select, eq)` over useSyncExternalStore —
+  the stores hold signals; rows, nodes and tiles subscribe for themselves: `useAgent(name)`, `useArtifact(id)`), `stream.js` (`connectTeam`, `teamCall`; 2026-10-20 `setLocalTeam`: a tab's own desk instead of the server), `registry.js` (the one subscriber: opens the stream
   once per tab and feeds every store; `{status: connecting | ready | offline | error, agents, engines,
   requiredId, activeId}`, `select`), `agent.js` (`AgentView`: definition + immutable state replaced by patches;
   `send`, `ask`, `stop`, `preview`, `clearMemory`, `chat` (2026-10-17: team call `chat` → `{answer, guided,
@@ -794,18 +956,26 @@ host's mcp/call as the desk (`dataTools`, `dataCall`), approved as `mcp__data`; 
   desk frames, edges), `camera.js` (`{x, y, z}`, `zoomLevel` far | mid | near, `fit`, `focus`, `glide`),
   `follow-target.js` (`followTarget`: the deepest agent at work, for follow; `questsOut`).
   `hooks/use-engines.js`: `useEngines`, `useEngineState(s)`, `useDesk`, `useDeskLog`.
-- Pages: `/` home — the place to interact (2026-10-23 owner: "make the landing dashboard page the way to interact"):
-  `components/home/talk-panel.jsx` `TalkPanel` — Goal and phase (pure `backend/live/focus.js`: `deskGoal`, `deskPhase` — a
-  workflow's stages, else the plan), a rolling window of what the owner and the lead said (`conversation`: requests and
-  answers, asks and replies; never quests, tools or guidance), the message box, the voice bar (the speech pipeline:
-  Continuous = wake word, Single = listen `once`, the pause that sends 1.5 / 2 s, the settings sheet; the lead is
-  narrated only after the mic was used here); then At work now, the desk's talk, proposals, constellation,
-  `components/kernel/desk-levels.jsx` team cards, activity, workspace; `/agents?name=` the agent's debug page (2026-10-23 owner: "it can become a debug page"; nav
+- Pages: `/` home — the place to interact (2026-10-23 owner: "make the landing dashboard page the way to interact";
+  2026-10-25 owner: "Make the chat window short and to the side and focus on the agent flow live dashboard at the center
+  with the text box"): from lg, the centre is the agent flow — `LeadGoal` (the request's frame: route and intent, its
+  workflow or plan as segments (pure `backend/live/focus.js`: `deskGoal`, `deskPhase`), an active standing goal), the
+  state colours' key (`StateLegend`, one `TONE` in `components/views/agent-tone.js`), `components/kernel/desk-levels.jsx`
+  team cards with live artifact tiles (container queries), proposals, the workspace — over `MessageBox` (Send · Ask · Guide
+  · Queue, the voice bar on demand: the speech pipeline, Continuous = wake word, Single = listen `once`, the pause that
+  sends 1.5 / 2 s, the settings sheet); at the side a 22rem (26rem from 2xl) `ChatRail`: one scrolling timeline
+  (`backend/live/talk.js` `deskChat`: requests and answers (`conversation`), asks and their replies, what the desk tells
+  and asks you (`DeskMessage`, its options as buttons), the run's live status with Stop, what waits in the inbox). On a
+  phone, Flow and Chat are a tab each, the message box under both (all in `components/home/talk-panel.jsx`,
+  `components/home/dashboard.jsx`); `/agents?name=` the agent's debug page (2026-10-23 owner: "it can become a debug page"; nav
   "Debug", `components/agents/agent-page.jsx`: Turns — each run step by step — role, tools by type and view, artifacts
   held, next prompt, model calls; Stop and Clear memory, no message box: the owner talks from the dashboard; `/chat`
   redirects here), `/canvas`
   (`components/canvas/`: the free-form canvas of the desk — agents, their calls and artifacts, nested desk frames,
-  follow), `/live` (`components/live/`: feed by tool view, Artifacts, Desk log, Schedule; `?tab=`), `/files` (`?path=`
+  follow), `/compose` (2026-10-25 owner: "show me visually the construction of the object … design for composition";
+  `components/compose/compose-page.jsx`, pure `backend/live/composition.js` `compositionBoard`: the build path, every agent's
+  slots — model, response and the gates its artifacts set, artifacts, members, tools by type — every artifact's commands and
+  holders, every workflow's steps, from the live twins; a card subscribes to its own agent or artifact), `/live` (`components/live/`: feed by tool view, Artifacts, Desk log, Schedule; `?tab=`), `/files` (`?path=`
   opens a folder), `/projects` (`components/projects/`, `backend/live/projects.js`: load a folder outside ASKK, the
   loaded ones set up or not, set up again, unload), `/sts`.
   2026-10-17 owner ("remove the stage view"): no `/stage` — its visuals and the owner's questions are the preview's.
@@ -895,5 +1065,8 @@ off (audio goes to Google), Firefox has none. `lib/speech/recognition.js` — `s
 
 - Dark mode is OLED black: surfaces (`--background`, `--card`, `--popover`, `--sidebar`) are pure
   `oklch(0 0 0)`. Separate areas with borders, not grey fills. Avoid large `bg-muted` areas in dark mode.
+- Glass (2026-10-25 owner: Apple's Liquid Glass): the `glass` utility (`app/globals.css`) is the material of chrome that
+  floats over content — canvas/compose toolbars, the compose inspector, legends, floating buttons; never on content.
+  Opaque under `prefers-reduced-transparency`.
 - Font is Amarante (one weight, 400). Faux bold is disabled (`font-synthesis-weight: none`), so build hierarchy
   with size, not weight.

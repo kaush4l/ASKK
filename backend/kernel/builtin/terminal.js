@@ -1,6 +1,6 @@
 import { Artifact } from "../artifact/artifact.js"
-import { Tool } from "../tool/tool.js"
-import { hostError } from "./files.js"
+import { hostError, hostTry } from "./files.js"
+import { clipAfter as clip } from "../util/text.js"
 
 // Terminal: the desk's terminal sessions as an artifact (2026-10-17 owner: start a command and keep it running; the
 // last 50 lines of each live session go into the holder's prompt). The sessions live in the host (term/*:
@@ -16,14 +16,9 @@ import { hostError } from "./files.js"
 // its `$` line; a run while the main session still runs an earlier command (one that outlasted its timeout) is
 // refused with what to do.
 //
-//   terminal.run   {command, cwd?, timeout?, lease?}  in the main session, to its end (timeout s, default 120, ≤ 600)
-//   terminal.start {command, cwd?, name?, lease?}     in the long session, kept running (replacing what ran there)
-//   terminal.wait  {id, seconds, until?}          until it exits, a new line holds `until` (literal text, or a list:
-//                                                 any one), or seconds pass
-//   terminal.read  {id, lines?}                   its scrollback's last lines
-//   terminal.send  {id, text}                     a line to its stdin
-//   terminal.stop  {id}                           stop it
-//   terminal.list                                 every session, one line each, and the desk's programs
+// Commands: run (the main session, to its end; timeout s, default 120, ≤ 600), start (the long session, kept running,
+// replacing what ran there), wait (until it exits, a new line holds `until` — literal text or a list, any one — or seconds
+// pass), read, send (a line to its stdin), stop, list (every session, one line each, and the desk's programs).
 // (id: a session id or name, "main" / "long" (the holder's own), "<agent>:main" / "<agent>:long" (another agent's);
 //  none = this holder's newest running session)
 //
@@ -31,11 +26,9 @@ import { hostError } from "./files.js"
 // (409, its reason passed on) a second running session of the desk with the same lease.
 // A command runs with the holder's name and its writes: lane (agent.md `writes:`; none = [] — it writes nothing in
 // the workspace: the sandbox refuses). Commands are type dev: never answered from the run's data cache.
-// refresh(agent) pulls term/list (coalesced, at most every REFRESH_MS); changed() only when the twin state differs.
-// Twin state: {sessions: [{id, name, command, cwd, agent, slot: main | long | null, lease: "gpu" | null, runs,
-//   status: running | exited | stopped | failed, exit, startedAt, endedAt, urls, tail ≤ 50 lines}] ≤ 12, newest first}
-//   — a slot session's fields are its current (or last) command's, `runs` the commands it ran, `tail` that command's lines.
-// Prompt: every running session's header ([gpu] when it holds a lease) and last 50 lines; a finished one in one line.
+// Twin state: {sessions: [...twinOf] ≤ 12, newest first} — a slot session's fields are its current (or last) command's,
+// `runs` the commands it ran, `tail` that command's lines. Prompt: every running session's header and last 50 lines; a
+// finished one in one line.
 
 const SESSIONS_MAX = 12
 const TAIL = 50 // lines per session: the twin's tail and the prompt's
@@ -51,8 +44,6 @@ const SLOT_ID = /^(?:(.+):)?(main|long)$/ // "main", "long", "<agent>:main"
 const LEASE = /^[a-z][a-z0-9-]{0,19}$/ // "gpu"
 
 const list = (v) => (v == null || v === "" ? [] : Array.isArray(v) ? v : String(v).split(",")).map((x) => String(x).trim()).filter(Boolean)
-const clip = (s, n) => (String(s).length > n ? `${String(s).slice(0, n)}…` : String(s))
-const ctxOf = (agent) => ({ ...(agent?.context ?? {}), agent })
 const hostOf = (ctx) => {
   if (!ctx?.host?.get) throw new Error("no host here (ctx.host): the desk server runs the terminal")
   return ctx.host
@@ -64,20 +55,11 @@ const ms = (s) => {
 }
 const took = (t) => (t == null ? "" : t < 60_000 ? `${(t / 1000).toFixed(1)} s` : `${Math.floor(t / 60_000)}m${String(Math.round((t % 60_000) / 1000)).padStart(2, "0")}s`)
 
-// A host session as the twin keeps it: the spec's fields, its tail clipped.
+// A host session as the twin keeps it: the spec's fields (TWIN_FIELDS' defaults), its tail clipped.
+const TWIN_FIELDS = { name: null, command: "", cwd: ".", agent: null, slot: null, lease: null, runs: 1, status: "running", exit: null, startedAt: null, endedAt: null }
 const twinOf = (s, tail) => ({
   id: s.id,
-  name: s.name ?? null,
-  command: s.command ?? "",
-  cwd: s.cwd ?? ".",
-  agent: s.agent ?? null,
-  slot: s.slot ?? null,
-  lease: s.lease ?? null,
-  runs: s.runs ?? 1,
-  status: s.status ?? "running",
-  exit: s.exit ?? null,
-  startedAt: s.startedAt ?? null,
-  endedAt: s.endedAt ?? null,
+  ...Object.fromEntries(Object.entries(TWIN_FIELDS).map(([k, fallback]) => [k, s[k] ?? fallback])),
   urls: [...(s.urls ?? [])],
   // why it ended (stopped by whom, the server killed, replaced by …): the prompt said it, the twin now too (2026-10-23)
   ...(s.reason ? { reason: clip(s.reason, 200) } : {}),
@@ -105,13 +87,24 @@ const leaseOf = (v) => {
 }
 const result = (text) => (text.length > RESULT_CHARS ? `${text.slice(0, 200)}\n… ${text.length - RESULT_CHARS} chars cut …\n${text.slice(-(RESULT_CHARS - 200))}` : text)
 
+const SESSION_INPUT = 'a session id or name, "main" or "long" (yours), "<agent>:main" (another agent\'s); default: your newest running one'
+const LEASE_INPUT = 'gpu for anything on the GPU: one running session of the desk holds a lease at a time, a second is refused (optional)'
+
 export class Terminal extends Artifact {
+  static about = "the holder's terminal sessions on the host (main: one command at a time; long: kept running), sandboxed to its lane"
+  static commands = {
+    run: { description: "run a command to its end in your main session (no shell: one program, or several joined by &&; cd moves inside the workspace; one at a time — one that keeps running belongs in start): its exit and last lines", input: { command: "e.g. uv run train.py --steps 100", cwd: "a workspace folder (optional)", timeout: `seconds to wait (default ${RUN_WAIT}, at most ${WAIT_MAX})`, lease: LEASE_INPUT }, run(i, c) { return this.#run(i, c) } },
+    start: { description: "start a command in your long session and keep it running between your steps while you run commands in the main one (a dev server, a training run, a watcher; it replaces what ran there): its id, the URLs it prints", input: { command: "e.g. bun run dev", cwd: "a workspace folder (optional)", name: "a short name for it (optional)", lease: LEASE_INPUT }, run(i, c) { return this.#start(i, c) } },
+    wait: { description: "wait on a running session: until it exits, a new line holds the until text, or seconds pass", input: { id: SESSION_INPUT, seconds: `at most ${WAIT_MAX} (default 30)`, until: 'literal text, a piece of a line it prints, e.g. val_bpb: (not a pattern); a list like ["ready on", "Error"] waits for any one (optional)' }, run(i, c) { return this.#wait(i, c) } },
+    read: { description: "a session's last lines (its scrollback: each command under its $ line)", input: { id: SESSION_INPUT, lines: `how many (default ${TAIL})` }, run(i, c) { return this.#read(i, c) } },
+    send: { description: "send a line to a running session's stdin", input: { id: SESSION_INPUT, text: "the line" }, run(i, c) { return this.#send(i, c) } },
+    stop: { description: "stop a running session", input: { id: SESSION_INPUT }, run(i, c) { return this.#stop(i, c) } },
+    list: { description: "every session in one line each, and the programs this desk runs", input: {}, run(i, c) { return this.#list(i, c) } },
+  }
   // separate: another instance of the desk's terminal — it lists only the sessions it started.
   constructor({ id = "terminal", title, separate = false } = {}) {
     super({ name: id, title: title ?? (id === "terminal" ? "terminal — the desk's sessions" : `${id} — terminal`) })
-    this.kind = "terminal"
-    this.view = "terminal"
-    this.keep = "file" // sessions end with the server: never restored
+    Object.assign(this, { kind: "terminal", view: "terminal", keep: "file" }) // sessions end with the server: never restored
     this.state = { sessions: [] }
     this.full = new Map() // id -> the host's last summary (reason, error: the prompt shows them)
     this.mine = separate ? new Set() : null
@@ -153,17 +146,12 @@ export class Terminal extends Artifact {
   async refresh(agent) {
     if (this.pulling) return this.pulling
     if (Date.now() - this.pulled < REFRESH_MS) return
-    this.pulling = this.#pull(ctxOf(agent)).finally(() => (this.pulling = null))
+    this.pulling = this.#pull({ ...(agent?.context ?? {}), agent }).finally(() => (this.pulling = null))
     return this.pulling
   }
 
   async #pull(ctx) {
-    let r
-    try {
-      r = await hostOf(ctx).get(`term/list?tail=${TAIL}`, { signal: ctx.signal })
-    } catch (e) {
-      throw new Error(`term/list: ${hostError(e)}`)
-    }
+    const r = await hostTry("term/list", () => hostOf(ctx).get(`term/list?tail=${TAIL}`, { signal: ctx.signal }))
     this.pulled = Date.now()
     this.#take(r?.sessions)
   }
@@ -320,21 +308,6 @@ export class Terminal extends Artifact {
     return [lines.length ? lines.join("\n") : "no sessions", programs].filter(Boolean).join("\n")
   }
 
-  commands() {
-    const tool = (name, description, input, run) => new Tool({ name: `${this.name}.${name}`, type: "dev", view: "terminal", description, input, run })
-    const id = 'a session id or name, "main" or "long" (yours), "<agent>:main" (another agent\'s); default: your newest running one'
-    const lease = 'gpu for anything on the GPU: one running session of the desk holds a lease at a time, a second is refused (optional)'
-    return [
-      tool("run", "run a command to its end in your main session (no shell: one program, or several joined by &&; cd moves inside the workspace; one at a time — one that keeps running belongs in start): its exit and last lines", { command: "e.g. uv run train.py --steps 100", cwd: "a workspace folder (optional)", timeout: `seconds to wait (default ${RUN_WAIT}, at most ${WAIT_MAX})`, lease }, (i, c) => this.#run(i, c)),
-      tool("start", "start a command in your long session and keep it running between your steps while you run commands in the main one (a dev server, a training run, a watcher; it replaces what ran there): its id, the URLs it prints", { command: "e.g. bun run dev", cwd: "a workspace folder (optional)", name: "a short name for it (optional)", lease }, (i, c) => this.#start(i, c)),
-      tool("wait", "wait on a running session: until it exits, a new line holds the until text, or seconds pass", { id, seconds: `at most ${WAIT_MAX} (default 30)`, until: 'literal text, a piece of a line it prints, e.g. val_bpb: (not a pattern); a list like ["ready on", "Error"] waits for any one (optional)' }, (i, c) => this.#wait(i, c)),
-      tool("read", "a session's last lines (its scrollback: each command under its $ line)", { id, lines: `how many (default ${TAIL})` }, (i, c) => this.#read(i, c)),
-      tool("send", "send a line to a running session's stdin", { id, text: "the line" }, (i, c) => this.#send(i, c)),
-      tool("stop", "stop a running session", { id }, (i, c) => this.#stop(i, c)),
-      tool("list", "every session in one line each, and the programs this desk runs", {}, (i, c) => this.#list(i, c)),
-    ]
-  }
-
   // ---- views ----
 
   brief() {
@@ -344,8 +317,8 @@ export class Terminal extends Artifact {
   }
 
   render(agent) {
-    const own = (c) => !agent || agent.tools?.has(`${this.name}.${c}`)
-    const can = ["run", "start", "wait", "read", "send", "stop", "list"].filter(own).map((c) => `${this.name}.${c}`)
+    const can = this.can(agent)
+    const own = (c) => can.includes(`${this.name}.${c}`)
     const writes = list(agent?.config?.writes)
     const starts = own("run") || own("start")
     const slots = [

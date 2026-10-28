@@ -27,17 +27,17 @@
 // start, handed to buildDesk as env.templates (spawn inputs: agent.spawn {template}) with env.models (the model names a
 // spawn may ask for).
 
-import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from "node:fs"
-import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path"
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs"
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path"
 
 import { Artifact, buildDesk, builtinKit, Checklist, complete, defineTool, parseWorkflowFiles, parseWorkflowMarkdown, SPAWN_NAME, Tool } from "../../backend/kernel/index.js"
 import { API_PREFIX, DESK_HEADER } from "../shared/config.js"
-import { AGENT_FILE_NAMES, agentFile, deskLead } from "./layout.js"
+import { AGENT_FILE_NAMES, agentFile, deskLead, FRONT, writeAtomic } from "./layout.js"
 
-const FRONT = /^---\n([\s\S]*?)\n---\n?/
 const list = (v) => (v == null ? [] : [].concat(v))
 const names = (v) => list(v).flatMap((x) => String(x).split(",")).map((x) => x.trim()).filter(Boolean) // "a, b" or [a, b]
 export const DESK_NAME = /^[a-z][a-z0-9-]*$/ // a desk's folder name (mounts, desks/load)
+export const ASK_ROOT = "projects/powerhouse" // the ASKK repo in the host's tree: where the kit's ask reads its code
 
 // ---- agents ------------------------------------------------------------------------------------
 
@@ -77,6 +77,27 @@ export function readAgentFolder(folder, vars = {}) {
   const bad = def.desks.filter((d) => typeof d !== "string" || !DESK_NAME.test(d))
   if (bad.length) throw new Error(`${file}: desks: ${bad.map((d) => JSON.stringify(d)).join(", ")} — each is a desk folder name (${DESK_NAME})`)
   return def
+}
+
+// Write or clear (model: null) an agent's custom model override in its <agent>/<agent>.md (or agent.md) frontmatter.
+export function setAgentModel(folder, model = null) {
+  const file = folder ? agentFile(folder) : null
+  if (!file) throw new Error(`no agent file in ${folder}`)
+  const text = readFileSync(file, "utf8")
+  const m = text.match(FRONT)
+  if (!m) throw new Error(`${file}: no frontmatter`)
+  const lines = m[1].split("\n")
+  const next = model ? String(model).trim() : null
+  const idx = lines.findIndex((l) => /^model\s*:/.test(l))
+  if (next) {
+    if (idx >= 0) lines[idx] = `model: ${next}`
+    else {
+      const after = lines.findIndex((l) => /^(goal|title|description|name)\s*:/.test(l))
+      lines.splice(after >= 0 ? after + 1 : 0, 0, `model: ${next}`)
+    }
+  } else if (idx >= 0) lines.splice(idx, 1)
+  writeAtomic(file, `---\n${lines.join("\n")}\n---\n${text.slice(m[0].length)}`)
+  return next
 }
 
 // ---- tools -------------------------------------------------------------------------------------
@@ -155,10 +176,15 @@ export async function loadTools(dir, from = {}) {
 // them). JSON answers parsed, else text; a non-2xx answer throws with its status and its first 200 chars.
 export function hostClient({ port, desk = null, fetch: fetcher = globalThis.fetch } = {}) {
   const base = `http://localhost:${port}`
+  const send = (method, path, body, signal) =>
+    fetcher(`${base}${API_PREFIX}${String(path).replace(/^\/+/, "")}`, {
+      method,
+      headers: { ...(desk ? { [DESK_HEADER]: desk } : {}), ...(method === "POST" ? { Origin: base, "Content-Type": "application/json" } : {}) },
+      signal,
+      ...(method === "POST" ? { body: JSON.stringify(body ?? {}) } : {}),
+    })
   async function request(method, path, body, { signal } = {}) {
-    const headers = desk ? { [DESK_HEADER]: desk } : {}
-    if (method === "POST") Object.assign(headers, { Origin: base, "Content-Type": "application/json" })
-    const res = await fetcher(`${base}${API_PREFIX}${String(path).replace(/^\/+/, "")}`, { method, headers, signal, ...(method === "POST" ? { body: JSON.stringify(body ?? {}) } : {}) })
+    const res = await send(method, path, body, signal)
     const text = await res.text()
     if (!res.ok) throw Object.assign(new Error(`${method} ${path}: HTTP ${res.status} ${text.slice(0, 200)}`), { status: res.status })
     try {
@@ -170,7 +196,7 @@ export function hostClient({ port, desk = null, fetch: fetcher = globalThis.fetc
   // stream(path, body, {signal, onEvent}): a POST whose answer is NDJSON (llm/research) — each event to onEvent as it
   // comes; resolves with the last event.
   async function stream(path, body, { signal, onEvent = () => {} } = {}) {
-    const res = await fetcher(`${base}${API_PREFIX}${String(path).replace(/^\/+/, "")}`, { method: "POST", headers: { ...(desk ? { [DESK_HEADER]: desk } : {}), Origin: base, "Content-Type": "application/json" }, signal, body: JSON.stringify(body ?? {}) })
+    const res = await send("POST", path, body, signal)
     if (!res.ok) throw Object.assign(new Error(`POST ${path}: HTTP ${res.status} ${(await res.text()).slice(0, 200)}`), { status: res.status })
     let last = null
     let buffer = ""
@@ -202,15 +228,52 @@ export function hostClient({ port, desk = null, fetch: fetcher = globalThis.fetc
 
 // ---- models ------------------------------------------------------------------------------------
 
-// The default model catalogue (the shape of a desk's CONFIG.models): the Claude CLI through the host's local models.
+// The default model catalogue (the shape of a desk's CONFIG.models): default Claude CLI, local oMLX, and Argon (Gemini).
 export const MODELS = {
+  default: { key: "default", label: "Default (Claude CLI)", provider: "claude-cli", id: "default" },
+  omlx: {
+    key: "omlx",
+    label: "Qwen3.8 27B (oMLX, local)",
+    provider: "openai",
+    base_url: "http://127.0.0.1:8873/v1",
+    id: "Qwen3.8-27B-Uncensored-oQ4e-fp16-mtp",
+    context_length: 131072,
+  },
+  argon: { key: "argon", label: "Argon (Gemini)", provider: "gemini-cli", id: "argon" },
   opus: { key: "opus", label: "Opus 5.5", provider: "claude-cli", id: "claude-opus-5-5" },
   sonnet: { key: "sonnet", label: "Sonnet 5.5", provider: "claude-cli", id: "claude-sonnet-5-5" },
   haiku: { key: "haiku", label: "Haiku 5.5", provider: "claude-cli", id: "claude-haiku-5-5" },
 }
 
+export const SELECTOR_MODELS = [MODELS.default, MODELS.omlx, MODELS.argon]
+
 // Local CLI providers run through the desk server's host API (same-origin POST); others through complete().
 const LOCAL = new Set(["claude-cli", "codex-cli", "gemini-cli", "apple"])
+
+// The model a server is told to use (2026-10-26 owner: "container for portability"; a container or a phone has no
+// Claude CLI): ASKK_LLM_PROVIDER openai | anthropic, ASKK_LLM_ID, ASKK_LLM_BASE_URL (openai: required — llama.cpp,
+// Ollama, vLLM, a phone's on-device server), the key from ASKK_LLM_API_KEY, else ANTHROPIC_API_KEY / OPENAI_API_KEY.
+// Set, it answers for every model key of every convention desk (an agent's `model: sonnet` included: the names stay
+// valid, the wire is this one) and the fallbacks are dropped. Unset or incomplete → null (a bad one throws: never a
+// silent fall back to a CLI that is not there).
+export function envModel(env = process.env) {
+  const provider = String(env.ASKK_LLM_PROVIDER ?? "").trim().toLowerCase()
+  if (!provider) return null
+  if (provider !== "openai" && provider !== "anthropic") throw new Error(`ASKK_LLM_PROVIDER=${provider}: openai or anthropic.`)
+  const id = String(env.ASKK_LLM_ID ?? "").trim()
+  const base_url = String(env.ASKK_LLM_BASE_URL ?? "").trim()
+  if (!id) throw new Error("ASKK_LLM_PROVIDER is set without ASKK_LLM_ID.")
+  if (provider === "openai" && !base_url) throw new Error("ASKK_LLM_PROVIDER=openai needs ASKK_LLM_BASE_URL (an OpenAI-compatible server).")
+  const api_key = env.ASKK_LLM_API_KEY || (provider === "anthropic" ? env.ANTHROPIC_API_KEY : env.OPENAI_API_KEY) || undefined
+  const context_length = Number(env.ASKK_LLM_CONTEXT) || undefined
+  return defined({ key: "env", label: `${id} (${provider}, from env)`, provider, id, base_url: base_url || undefined, api_key, context_length })
+}
+
+// Every key of a desk's catalogue (and `default`, `env`) answered by the forced model, each keeping its own key.
+export function forcedModels(models, forced) {
+  const keys = new Set([...Object.keys(models ?? {}), "default", "env"])
+  return Object.fromEntries([...keys].map((key) => [key, { ...forced, key }]))
+}
 
 // infer(prompt, agent): the agent's model from its own catalogue (a mounted desk's agents carry theirs as
 // config.models), else `models`, else `fallback`. Local providers go through the host (hostClient: the one path).
@@ -219,7 +282,7 @@ export function llmInfer({ models, fallback, port, desk, onUsage, log = null }) 
   // options.images (2026-10-18: the preview's screenshots, Agent.collectImages): on the local wire as OpenAI image_url
   // parts (data: URLs only), else to the kernel's complete.
   return async (prompt, agent, { images = [] } = {}) => {
-    const key = agent.config.model
+    const key = agent.config.model ?? agent.config.defaultModel ?? agent.home?.defaultModel ?? fallback
     const model = agent.config.models?.[key] ?? models?.[key] ?? models?.[fallback]
     if (!model) throw new Error(`${agent.name}: no model`)
     const t0 = Date.now()
@@ -246,7 +309,8 @@ export function llmInfer({ models, fallback, port, desk, onUsage, log = null }) 
 // sees which model answered.
 function withFallbacks(infer, { defaultModel, fallbacks, log }) {
   return async (prompt, agent, options) => {
-    const keys = [agent.config.model ?? defaultModel, ...(agent.config.fallbacks ?? fallbacks)].filter((k, i, all) => k && all.indexOf(k) === i)
+    const activeDefault = agent.config.defaultModel ?? agent.home?.defaultModel ?? defaultModel
+    const keys = [agent.config.model ?? activeDefault, ...(agent.config.fallbacks ?? fallbacks)].filter((k, i, all) => k && all.indexOf(k) === i)
     let last
     for (const [i, key] of keys.entries()) {
       try {
@@ -270,6 +334,8 @@ const REPORT_PROMPT = 2000 // a report's text in a prompt; whole in the twin and
 // Report: an agent's latest written report, {title, text, at}. `<agent>.report.write` replaces it and, with the
 // desk's memory folder, saves it as memory/reports/<YYYY-MM-DD>-<slug of title>.md (kept: one file per title a day).
 export class Report extends Artifact {
+  static commandType = "artifact"
+  static commands = { write: { description: "write your report (replaces the last one)", input: { title: "a short title", text: "the report, markdown" } } }
   constructor({ id, owner = null, memory = null, clock = () => new Date() }) {
     super({ name: id, title: `${id.replace(/\.report$/, "")} report` })
     this.kind = "report"
@@ -311,10 +377,6 @@ export class Report extends Artifact {
     writeFileSync(join(dir, name), `# ${this.state.title}\n\n_${this.owner ?? ""} · ${this.name} · ${this.state.at}_\n\n${body}\n`)
     return `report "${this.state.title}" saved: reports/${name}`
   }
-
-  commands() {
-    return [new Tool({ name: `${this.name}.write`, description: "write your report (replaces the last one)", input: { title: "a short title", text: "the report, markdown" }, run: (input) => this.write(input) })]
-  }
 }
 
 // practice's store (the kernel's Practice, 2026-10-20): the agent's standing orders in memory/<desk>/practice/<agent>.md,
@@ -333,11 +395,7 @@ export function practiceStore(agent, memoryOf) {
     },
     write: (text) => {
       const file = fileOf()
-      if (!file) return
-      mkdirSync(dirname(file), { recursive: true })
-      const tmp = `${file}.${process.pid}.tmp`
-      writeFileSync(tmp, text)
-      renameSync(tmp, file)
+      if (file) writeAtomic(file, text)
     },
     seed: () => {
       const file = agent.config?.folder ? join(agent.config.folder, "practice.md") : null
@@ -368,6 +426,13 @@ export const ARTIFACT_TYPES = {
 // The kit's workflow artifact for a desk (2026-10-22): its steps are <desk folder>/<id>/NN-<step>.md (read fresh at each
 // run: an edit applies to the next one), its run files memory/<desk>/<id>/runs/… (none: kept in memory). plugins: the
 // desk's own code steps, schemas, derive, checks (main.js `builtin.workflowPlugins(id)`), checked against the files.
+const readOrNull = (file) => {
+  try {
+    return file ? readFileSync(file, "utf8") : null
+  } catch {
+    return null
+  }
+}
 export function workflowSource(root, memoryOf, plugins = () => ({})) {
   return (id) => {
     const dir = join(root, id)
@@ -396,14 +461,7 @@ export function workflowSource(root, memoryOf, plugins = () => ({})) {
         writeFileSync(f, text)
         return f
       },
-      read(where) {
-        if (mem.has(where)) return mem.get(where)
-        try {
-          return readFileSync(where, "utf8")
-        } catch {
-          return null
-        }
-      },
+      read: (where) => (mem.has(where) ? mem.get(where) : readOrNull(where)),
     }
     // the owner's edits from the viewer (Workflow.editStep): only this flow's own files — its phases file, or an
     // NN-<step>.md in its folder; never another path
@@ -414,14 +472,7 @@ export function workflowSource(root, memoryOf, plugins = () => ({})) {
         if (!fileOf(name)) throw new Error(`${name}: not a file of the ${id} workflow`)
         return load({ [name]: text })
       },
-      read(name) {
-        const f = fileOf(name)
-        try {
-          return f ? readFileSync(f, "utf8") : null
-        } catch {
-          return null
-        }
-      },
+      read: (name) => readOrNull(fileOf(name)),
       write(name, text) {
         const f = fileOf(name)
         if (!f || !existsSync(f)) throw new Error(`${name}: not a file of the ${id} workflow`)
@@ -436,8 +487,28 @@ export function workflowSource(root, memoryOf, plugins = () => ({})) {
 // the agent's files lanes (globs; reads: set = it reads only there — the critic's "outputs only"); board: false keeps
 // it off its team's board (2026-10-17).
 const KEYS = new Set(["name", "description", "title", "goal", "team", "model", "max_steps", "context_chars", "min_calls", "writes", "reads", "board", "tools", "agents", "desks", "checklist", "artifacts", "after", "role", "folder"])
+const checkKeys = (def, where, refused = {}) => {
+  const unknown = Object.keys(def).filter((k) => !KEYS.has(k))
+  if (unknown.length) throw new Error(`${where}: unknown key ${unknown.join(", ")} (keys: ${[...KEYS].filter((k) => k !== "role" && k !== "folder" && !(k in refused)).join(", ")})`)
+}
 // The keys an agent.md artifacts: entry for a kit type takes (a desk's own type may take more: its spec is handed over).
 const KIT_KEYS = new Set(["type", "id", "commands", "gate", "reflect"]) // reflect: false — a practice without the run's retro item
+
+// A kit artifact entry: only the keys the kit takes, gate a boolean.
+function checkKitSpec(spec, where) {
+  const bad = Object.keys(spec).filter((k) => !KIT_KEYS.has(k))
+  if (bad.length) throw new Error(`${where}: artifacts: ${spec.type} takes ${[...KIT_KEYS].join(", ")} (not ${bad.join(", ")})`)
+  if (spec.gate != null && typeof spec.gate !== "boolean") throw new Error(`${where}: artifacts: ${spec.type} gate is true or false`)
+}
+
+// writes / reads are globs, board a boolean: refused with the shape, never coerced.
+function checkLanes(def, where) {
+  for (const k of ["writes", "reads"]) {
+    const v = def[k]
+    if (v != null && !(typeof v === "string" || (Array.isArray(v) && v.every((g) => typeof g === "string")))) throw new Error(`${where}: ${k}: globs (a list of workspace paths, e.g. ["projects/**"])`)
+  }
+  if (def.board != null && typeof def.board !== "boolean") throw new Error(`${where}: board: false keeps it off its team's board (true or false)`)
+}
 
 // The one lead of a desk (layout.js deskLead): <desk>/<lead>/<lead>.md, or agents/<lead>/agent.md (legacy).
 const leadFolder = (folder) => deskLead(folder).folder
@@ -482,13 +553,28 @@ async function deskSpec(folder, o, mounts) {
   o.owns?.set(resolve(folder), own) // composeDesk hands the outermost desk's catalogue to buildDesk (agent.spawn)
   const deskName = basename(folder)
   const lead = readAgentFolder(leadFolder(folder), o.vars)
-  return specOf(lead, { ...o, own, deskName, mounts }, true)
+  const soul = readSoul(folder) // a mounted desk's agents: that desk's own soul (each desk is someone)
+  return specOf(lead, { ...o, own, deskName, mounts, soul }, true)
+}
+
+// The soul (docs/soul-and-role.md; 2026-10-27 owner: "a repo-wide default soul plus a desk-level <desk>/soul.md
+// override"): who every agent of a desk is, whatever its role — the prompt's opening, before # YOU ARE. The desk's own
+// <desk>/soul.md, else its desks root's (custom/soul.md: every local desk; 2026-10-27 owner: "one soul file as default
+// in the custom root folder"), else the repo's desks/soul.md, else none. Frontmatter (name, description) is the file's, not the
+// prompt's: only the body goes in. → {text, file} (file relative to the repo root) | null when the body is empty.
+export const DEFAULT_SOUL = resolve(import.meta.dir, "../../desks/soul.md")
+export function readSoul(folder, fallback = DEFAULT_SOUL) {
+  for (const file of [join(folder, "soul.md"), join(dirname(resolve(folder)), "soul.md"), fallback]) {
+    if (!file || !existsSync(file)) continue
+    const text = readFileSync(file, "utf8").replace(FRONT, "").trim()
+    return text ? { text, file: relative(resolve(import.meta.dir, "../.."), file) } : null
+  }
+  return null
 }
 
 async function specOf(def, o, lead = false) {
   const where = def[FILE] ?? `${def.folder}/agent.md`
-  const unknown = Object.keys(def).filter((k) => !KEYS.has(k))
-  if (unknown.length) throw new Error(`${where}: unknown key ${unknown.join(", ")} (keys: ${[...KEYS].filter((k) => k !== "role" && k !== "folder").join(", ")})`)
+  checkKeys(def, where)
   const model = def.model ?? o.defaultModel
   if (o.models && model != null && !Object.hasOwn(o.models, model)) throw new Error(`${def.name}: unknown model ${model}; models: ${Object.keys(o.models).join(", ")}`)
   o.owners.set(def.name, o.deskName)
@@ -536,32 +622,34 @@ async function specOf(def, o, lead = false) {
   }
 
   const specs = [...(def.checklist ? [{ type: "checklist", items: def.checklist }] : []), ...list(def.artifacts).map((a) => (typeof a === "string" ? { type: a } : a))]
+  // ask (2026-10-27): the desk's lead holds the kit's `ask` (once: not again when its .md lists it), so the Ask panel
+  // shows on every desk; a mounted desk's lead shares the outer desk's (one per desk process).
+  if (lead && !o.mounted && o.kit?.ask && o.artifacts.ask === o.kit.ask && !specs.some((a) => a?.type === "ask")) specs.push({ type: "ask" })
   for (const a of specs) if (!a?.type || !o.artifacts[a.type]) throw new Error(`${def.name}: unknown artifact ${a?.type ?? JSON.stringify(a)}; types: ${Object.keys(o.artifacts).sort().join(", ")}`)
   for (const a of specs) {
-    const bad = o.artifacts[a.type] === o.kit?.[a.type] ? Object.keys(a).filter((k) => !KIT_KEYS.has(k)) : []
-    if (bad.length) throw new Error(`${where}: artifacts: ${a.type} takes ${[...KIT_KEYS].join(", ")} (not ${bad.join(", ")})`)
-    if (a.gate != null && typeof a.gate !== "boolean") throw new Error(`${where}: artifacts: ${a.type} gate is true or false`)
+    if (o.artifacts[a.type] === o.kit?.[a.type]) checkKitSpec(a, where)
+    else if (a.gate != null && typeof a.gate !== "boolean") throw new Error(`${where}: artifacts: ${a.type} gate is true or false`)
   }
   // Bound to this desk's catalogue (a mounted desk's types are its own), handed to the kernel as factories with how the
   // agent holds each: a commands subset ("read, wait" or [read, wait]), gated (the plan).
   const artifacts = specs.map((a) => ({ artifact: (agent) => o.artifacts[a.type](agent, a), commands: a.commands == null ? null : names(a.commands), gate: a.gate === true }))
-  for (const k of ["writes", "reads"]) {
-    const v = def[k]
-    if (v != null && !(typeof v === "string" || (Array.isArray(v) && v.every((g) => typeof g === "string")))) throw new Error(`${where}: ${k}: globs (a list of workspace paths, e.g. ["projects/**"])`)
-  }
-  if (def.board != null && typeof def.board !== "boolean") throw new Error(`${where}: board: false keeps it off its team's board (true or false)`)
+  checkLanes(def, where)
 
   return defined({
     name: def.name,
+    soul: o.soul?.text, // the desk's soul (readSoul): every agent of this desk opens with it
+    soulFile: o.soul?.file,
     role: def.role,
     description: def.description,
     title: def.title,
     goal: def.goal,
     team: def.team ?? (lead ? o.deskName : undefined), // a desk's lead leads the team named after the desk
-    model: model ?? undefined,
+    model: def.model ?? undefined, // only an explicit custom override from the agent's .md metadata
+    defaultModel: o.mounted ? o.defaultModel : undefined, // a mounted desk's own default model
     models: o.mounted ? o.models : undefined, // llmInfer reads a mounted desk's catalogue here
     fallbacks: o.mounted ? o.fallbacks : undefined, // and the conventionDesk infer its fallbacks
     maxSteps: def.max_steps ?? o.maxSteps,
+    router: o.router?.(def.name) ?? undefined, // 2026-10-27 step router (docs/jepa-router.md): main.js router(name)
     contextChars: def.context_chars, // 2026-10-22: the prompt budget in chars (compaction at 90%), else by the model
     minCalls: def.min_calls,
     writes: def.writes == null ? undefined : names(def.writes),
@@ -595,8 +683,7 @@ const MAX_STEPS = 300 // agent.spawn's bound (backend/kernel/builtin/spawn.js)
 function templateOf(def, o, prefix = null, seen = new Set()) {
   const where = def[FILE] ?? `${def.folder}/agent.md`
   if (def[TOOLS]) throw new Error(`${def[TOOLS]}: a team template takes its tools from the desk's catalogue (tools/, by name in tools:), not a tools.js`)
-  const unknown = Object.keys(def).filter((k) => !KEYS.has(k))
-  if (unknown.length) throw new Error(`${where}: unknown key ${unknown.join(", ")} (keys: ${[...KEYS].filter((k) => k !== "role" && k !== "folder" && !(k in NOT_IN_TEMPLATE)).join(", ")})`)
+  checkKeys(def, where, NOT_IN_TEMPLATE)
   for (const [k, why] of Object.entries(NOT_IN_TEMPLATE)) if (def[k] != null && !(Array.isArray(def[k]) && !def[k].length)) throw new Error(`${where}: ${k} is not for a team template (${why})`)
   const name = prefix ? `${prefix}-${def.name}` : String(def.name)
   if (!SPAWN_NAME.test(name)) throw new Error(`${where}: name ${name}${prefix ? ` (${prefix}-<its name>, as agent.spawn names a member)` : ""}: lowercase letters, digits and -, 2–31 chars, starting with a letter`)
@@ -606,11 +693,7 @@ function templateOf(def, o, prefix = null, seen = new Set()) {
   if (prefix && def.goal != null) throw new Error(`${where}: goal is the team's (its lead's .md); a member works toward it`)
   if (o.models && def.model != null && !Object.hasOwn(o.models, def.model)) throw new Error(`${where}: unknown model ${def.model}; models: ${Object.keys(o.models).join(", ")}`)
   if (def.max_steps != null && !(Number.isInteger(def.max_steps) && def.max_steps >= 1 && def.max_steps <= MAX_STEPS)) throw new Error(`${where}: max_steps: a whole number from 1 to ${MAX_STEPS}`)
-  for (const k of ["writes", "reads"]) {
-    const v = def[k]
-    if (v != null && !(typeof v === "string" || (Array.isArray(v) && v.every((g) => typeof g === "string")))) throw new Error(`${where}: ${k}: globs (a list of workspace paths, e.g. ["projects/**"])`)
-  }
-  if (def.board != null && typeof def.board !== "boolean") throw new Error(`${where}: board: false keeps it off its team's board (true or false)`)
+  checkLanes(def, where)
 
   const available = () => [...new Set([...Object.keys(o.own), ...Object.keys(o.tools)])].sort().join(", ") || "none"
   const tools = list(def.tools).map((t) => {
@@ -623,9 +706,7 @@ function templateOf(def, o, prefix = null, seen = new Set()) {
     const spec = typeof a === "string" ? { type: a } : a
     if (!spec?.type || !o.artifacts[spec.type]) throw new Error(`${where}: unknown artifact ${spec?.type ?? JSON.stringify(a)}; types: ${Object.keys(o.artifacts).sort().join(", ")}`)
     if (o.artifacts[spec.type] !== o.kit?.[spec.type]) continue // a desk's own type: its spec is handed over, checked when spawned
-    const bad = Object.keys(spec).filter((k) => !KIT_KEYS.has(k))
-    if (bad.length) throw new Error(`${where}: artifacts: ${spec.type} takes ${[...KIT_KEYS].join(", ")} (not ${bad.join(", ")})`)
-    if (spec.gate != null && typeof spec.gate !== "boolean") throw new Error(`${where}: artifacts: ${spec.type} gate is true or false`)
+    checkKitSpec(spec, where)
     if (spec.commands == null) continue
     // The kit's instance (one per desk and id: the one a spawn will hold) names its commands.
     let x
@@ -681,7 +762,7 @@ function readTemplates(folder, o) {
 // Every tool call gets ctx {host, desk, memory, log, ...context, agent, signal}. A mounted desk composes with its own
 // main.js options; its agents' ctx says desk: <its name>, memory: <memory root>/<its name>, and keeps the parent's
 // host and log (it runs in the parent's process and workspace). Its teams/ templates: desk.ctx.env.templates.
-export async function composeDesk({ folder, deskRoot, name, port, infer, context = {}, tools = {}, artifacts = {}, vars = {}, models, defaultModel, maxSteps, builtin = {} } = {}) {
+export async function composeDesk({ folder, deskRoot, name, port, infer, context = {}, tools = {}, artifacts = {}, vars = {}, models, defaultModel, maxSteps, builtin = {}, router } = {}) {
   if (!folder) throw new Error("composeDesk: folder is required")
   const root = resolve(folder)
   deskLead(root) // the lead's folder, or an Error that says what it found
@@ -691,10 +772,10 @@ export async function composeDesk({ folder, deskRoot, name, port, infer, context
   const memories = new Map() // mounted desk name → its memory folder
   // The kit, bound once for this composed desk (its shared files / terminal / preview / plan), under the desk's own.
   // practice: each agent's standing orders in its own desk's memory folder (a mounted desk's agents: that desk's).
-  const kit = builtinKit({ memory: ctx.memory, practiceStore: (agent) => practiceStore(agent, () => memories.get(owners.get(agent.name)) ?? ctx.memory), workflowSource: workflowSource(root, () => ctx.memory, builtin.workflowPlugins), ...builtin })
+  const kit = builtinKit({ memory: ctx.memory, practiceStore: (agent) => practiceStore(agent, () => memories.get(owners.get(agent.name)) ?? ctx.memory), workflowSource: workflowSource(root, () => ctx.memory, builtin.workflowPlugins), ask: { root: ASK_ROOT }, ...builtin })
   const owns = new Map() // desk folder → its tools/ catalogue
   const toolFiles = new Map() // tool name → the file that defines it (desks' tools/, agents' tools.js): one each
-  const o = { deskRoot: resolve(deskRoot ?? dirname(root)), tools: { ...kit.tools, ...tools }, kitTools: kit.tools, kit: kit.artifacts, artifacts: artifactTypes(ctx.memory, artifacts, kit.artifacts), vars, models, defaultModel, maxSteps, owners, memories, owns, toolFiles, memoryRoot: ctx.memory ? dirname(ctx.memory) : null }
+  const o = { deskRoot: resolve(deskRoot ?? dirname(root)), tools: { ...kit.tools, ...tools }, kitTools: kit.tools, kit: kit.artifacts, artifacts: artifactTypes(ctx.memory, artifacts, kit.artifacts), vars, models, defaultModel, maxSteps, router, owners, memories, owns, toolFiles, memoryRoot: ctx.memory ? dirname(ctx.memory) : null }
   const spec = await deskSpec(root, o, [basename(root)])
   // The outermost desk's teams/ (checked against its catalogue, as its lead's agents are): what agent.spawn {template}
   // builds at run time.
@@ -703,6 +784,8 @@ export async function composeDesk({ folder, deskRoot, name, port, infer, context
   // tools/, the host's, the kit; its artifact types, the kit's shared instances among them); env.templates its teams;
   // env.models the model names a spawn may ask for (none given: any).
   const desk = buildDesk(spec, { infer, context: ctx, tools: { ...o.tools, ...(owns.get(root) ?? {}) }, artifacts: o.artifacts, templates, models: models ? Object.keys(models) : undefined })
+  desk.defaultModel = defaultModel ?? null
+  desk.models = models ?? null
   for (const agent of desk.list) {
     const own = owners.get(agent.name)
     if (memories.has(own)) agent.context = { ...ctx, desk: own, memory: memories.get(own) }
@@ -720,7 +803,10 @@ export async function composeDesk({ folder, deskRoot, name, port, infer, context
 // help us initialize any of the dependencies or write in a script and then return a desk object which will be run by
 // the framework"): async ({dir, memory, log, host, port}) → awaited at every start before the agents are built — make
 // folders, write a script into data/, check a dependency; a throw fails the start (desks/load keeps the old version).
-export function conventionDesk({ name, title, description = "", port, models = MODELS, defaultModel = "opus", fallbacks = ["sonnet"], maxSteps, artifacts = {}, tools = {}, builtin, init, telegram, integrations } = {}) {
+export function conventionDesk({ name, title, description = "", port, models: ownModels = MODELS, defaultModel = "opus", fallbacks: ownFallbacks = ["sonnet"], maxSteps, artifacts = {}, tools = {}, builtin, router, init, telegram, integrations, projects, terminal, browser } = {}) {
+  const forced = envModel()
+  const models = forced ? forcedModels(ownModels, forced) : ownModels
+  const fallbacks = forced ? [] : ownFallbacks
   return ({ dir }) => {
     const deskName = name ?? basename(dir)
     return defined({
@@ -730,12 +816,15 @@ export function conventionDesk({ name, title, description = "", port, models = M
       port,
       telegram, // false: no live status of its runs on Telegram
       integrations, // ["telegram"]: this desk takes the bot's messages (one desk per bot; companion/team/desk.js)
+      projects, // {name: path | {path, worktree, branch, setup}}: folders outside ASKK as projects/<name>/ (capabilities/projects.js)
+      terminal, // {toolchains, programs, timeoutSeconds, backgroundMinutes}: what its terminal runs (capabilities/toolchains.js)
+      browser, // {app: true}: its preview pages may show this app itself, as an agent's view (capabilities/browser.js)
       // Its compose options: a desk that mounts this one composes its subtree with them (and scripts/desk.js check).
       compose: defined({ models, defaultModel, fallbacks, maxSteps, artifacts, tools, builtin }),
       start: async ({ port: at = port, log = () => {}, memory = null, infer } = {}) => {
         if (typeof init === "function") await init({ dir, memory, log, host: at ? hostClient({ port: at, desk: deskName }) : null, port: at })
         infer ??= withFallbacks(llmInfer({ models, fallback: defaultModel, port: at, desk: deskName, log }), { defaultModel, fallbacks, log })
-        const desk = await composeDesk({ folder: dir, name: deskName, port: at, infer, models, defaultModel, maxSteps, artifacts, tools, builtin, context: { host: hostClient({ port: at, desk: deskName }), memory, log } })
+        const desk = await composeDesk({ folder: dir, name: deskName, port: at, infer, models, defaultModel, maxSteps, artifacts, tools, builtin, router, context: { host: hostClient({ port: at, desk: deskName }), memory, log } })
         return { desk }
       },
     })

@@ -24,6 +24,8 @@ import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { BRIDGE_NAMES, DATA_SEP, ORDER_NAMES } from "./market-bridge.js"
 import { HOST_LIMITS } from "../shared/config.js"
+import { streamLines } from "../shared/lines.js"
+import { attempt } from "../shared/safe.js"
 import { httpError, json } from "../shared/http.js"
 
 const L = HOST_LIMITS.research
@@ -33,7 +35,9 @@ export const ORDER_TOOLS = ORDER_NAMES.map((n) => `mcp__market__${n}`)
 const BRIDGE = join(import.meta.dir, "market-bridge.js")
 const MARKET_NOTE =
   "You also have read-only market-data tools (mcp__market__quotes, bars, option_chain, option_instruments, option_quotes, " +
-  "index_quote): live broker data. Use them for prices, bars, option contracts and the VIX instead of the web, and cite " +
+  "index_quote, indicators, fundamentals, analyst, scan): live broker data — prices, bars, option contracts, the VIX, " +
+  "indicators the broker computes (RSI, MACD, Bollinger, ADX, supertrend, pivots …), fundamentals, analyst targets and a " +
+  "live screen. Use them instead of the web for any of these, and cite " +
   "them as robinhood (tool) with the time in the answer."
 const DATA_NOTE =
   "You also have the desk's data tools (mcp__data__<server>__<tool>, e.g. macro series, calendars, fundamentals, " +
@@ -89,12 +93,7 @@ export function researchEnv(env = process.env, bin = "") {
 
 // One stream-json line → the events a caller sees (none for lines it does not need).
 export function researchEvents(line, { maxTurns } = {}) {
-  let e
-  try {
-    e = JSON.parse(line)
-  } catch {
-    return []
-  }
+  const e = attempt(() => JSON.parse(line))
   if (e?.type === "assistant") {
     const out = []
     for (const c of e.message?.content ?? []) {
@@ -157,16 +156,7 @@ export function createResearch({ bin, spawn = Bun.spawn, env = process.env } = {
             else yield event
           }
         }
-        let buffer = ""
-        for await (const chunk of proc.stdout.pipeThrough(new TextDecoderStream())) {
-          buffer += chunk
-          let at
-          while ((at = buffer.indexOf("\n")) >= 0) {
-            yield* take(buffer.slice(0, at))
-            buffer = buffer.slice(at + 1)
-          }
-        }
-        yield* take(buffer)
+        for await (const line of streamLines(proc.stdout, { rest: true })) yield* take(line)
         const code = await proc.exited
         if (signal?.aborted) return yield { type: "error", message: "stopped", sources }
         if (proc.signalCode && !last) return yield { type: "error", message: `did not finish within ${ms / 1000} s`, sources }
@@ -205,9 +195,7 @@ export function researchRoute(research, { market = null } = {}) {
     const stream = new ReadableStream({
       async start(controller) {
         const send = (event) => {
-          try {
-            controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`))
-          } catch {} // the caller went away: the signal stops the call
+          attempt(() => controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`))) // the caller went away: the signal stops the call
         }
         const ping = setInterval(() => send({ type: "ping" }), L.pingMs)
         try {
@@ -218,9 +206,7 @@ export function researchRoute(research, { market = null } = {}) {
         } finally {
           clearInterval(ping)
         }
-        try {
-          controller.close()
-        } catch {}
+        attempt(() => controller.close())
       },
       cancel() {
         events.return?.()

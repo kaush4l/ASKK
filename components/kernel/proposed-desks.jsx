@@ -4,6 +4,7 @@ import * as React from "react"
 
 import { detectHost } from "@/backend/live/host"
 import { acceptNote, agentRows, fromLine, loadProposals, proposalCall, proposalTitle } from "@/backend/live/proposals"
+import { Decide, DECIDE_BTN as BTN, useDecision } from "@/components/kernel/decide"
 import { Button } from "@/components/ui/button"
 import { LIMITS } from "@/lib/config"
 import { cn } from "@/lib/utils"
@@ -20,40 +21,6 @@ const clock = (at) => {
   const ms = Date.parse(at ?? "")
   return Number.isFinite(ms) ? new Date(ms).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : ""
 }
-const BTN = "h-6 px-2 text-[11px] pointer-coarse:h-10 pointer-coarse:min-w-10"
-
-// accept / drop with its busy state, its error and what it did.
-function useDecision(onDone) {
-  const [call, setCall] = React.useState({ busy: null, error: null })
-  const act = async (method, target) => {
-    setCall({ busy: method, error: null })
-    try {
-      const r = await proposalCall(method, target)
-      setCall({ busy: null, error: null })
-      onDone(method === "accept" ? acceptNote(r) : `Dropped ${target.tool ? `${target.tool}.js` : target.name}.`)
-    } catch (error) {
-      setCall({ busy: null, error: error?.message ?? String(error) })
-    }
-  }
-  return [call, act]
-}
-
-function Decide({ call, act, target, what }) {
-  return (
-    <>
-      <div className="mt-1 flex gap-1.5">
-        <Button type="button" variant="outline" size="xs" className={BTN} disabled={!!call.busy} onClick={() => act("accept", target)} aria-label={`Accept ${what}`} title={target.tool ? "Move it into tools/; its desk is loaded again so it runs" : "Write the desk as desk.create would now (every check again) and load it"}>
-          {call.busy === "accept" ? "Accepting…" : "Accept"}
-        </Button>
-        <Button type="button" variant="ghost" size="xs" className={BTN} disabled={!!call.busy} onClick={() => act("drop", target)} aria-label={`Drop ${what}`} title="Delete the proposal: nothing is written">
-          {call.busy === "drop" ? "Dropping…" : "Drop"}
-        </Button>
-      </div>
-      {call.error && <p className="w-full break-words text-[11px] text-red-700 dark:text-red-400">Not done: {call.error}</p>}
-    </>
-  )
-}
-
 const Lines = ({ label, items }) =>
   items?.length ? (
     <div className="min-w-0">
@@ -102,7 +69,10 @@ function AgentRow({ a, expanded }) {
 
 function DeskProposal({ p, onDone }) {
   const [expanded, setExpanded] = React.useState(false)
-  const [call, act] = useDecision(onDone)
+  const [call, act] = useDecision(async (method) => {
+    const r = await proposalCall(method, { name: p.name })
+    onDone(method === "accept" ? acceptNote(r) : `Dropped ${p.name}.`)
+  })
   const rows = [...agentRows(p.lead), ...(p.teams ?? []).flatMap((t) => agentRows(t).map((a, k) => ({ ...a, template: k === 0 })))]
   return (
     <div data-proposed-desk={p.name} className="min-w-0 rounded border border-dashed border-amber-500/60 px-2 py-1.5 text-xs">
@@ -124,7 +94,7 @@ function DeskProposal({ p, onDone }) {
       {expanded && p.written?.length > 0 && <p className="break-all font-mono text-[10px] text-muted-foreground">would write: {p.written.join(", ")}</p>}
       <p className="break-words text-[11px] text-amber-700 dark:text-amber-400">{fromLine(p.from)}</p>
       <div className="flex flex-wrap items-center gap-1.5">
-        <Decide call={call} act={act} target={{ name: p.name }} what={`the ${p.update ? "update of" : "new"} desk ${p.name}`} />
+        <Decide call={call} act={act} what={`the ${p.update ? "update of" : "new"} desk ${p.name}`} acceptTitle="Write the desk as desk.create would now (every check again) and load it" dropTitle="Delete the proposal: nothing is written" />
         <Button type="button" variant="link" size="xs" className={cn(BTN, "mt-1")} onClick={() => setExpanded((x) => !x)} aria-expanded={expanded}>
           {expanded ? "Show less" : "Show all"}
         </Button>
@@ -135,7 +105,10 @@ function DeskProposal({ p, onDone }) {
 
 function ToolProposal({ t, onDone }) {
   const [expanded, setExpanded] = React.useState(false)
-  const [call, act] = useDecision(onDone)
+  const [call, act] = useDecision(async (method) => {
+    const r = await proposalCall(method, { name: t.desk, tool: t.file })
+    onDone(method === "accept" ? acceptNote(r) : `Dropped ${t.file}.js.`)
+  })
   return (
     <div data-proposed-tool={`${t.desk}/${t.file}`} className="min-w-0 rounded border border-dashed border-amber-500/60 px-2 py-1.5 text-xs">
       <p className="text-[11px] text-amber-700 dark:text-amber-400">proposed tool · not loaded · waits for you</p>
@@ -150,7 +123,7 @@ function ToolProposal({ t, onDone }) {
       {t.truncated && <p className="text-[11px] text-muted-foreground">(the first 20000 characters: the whole file is {t.path})</p>}
       {t.from && <p className="break-words text-[11px] text-amber-700 dark:text-amber-400">{fromLine(t.from)} — read every line before you accept it</p>}
       <div className="flex flex-wrap items-center gap-1.5">
-        <Decide call={call} act={act} target={{ name: t.desk, tool: t.file }} what={`tool ${t.file}.js for ${t.desk}`} />
+        <Decide call={call} act={act} what={`tool ${t.file}.js for ${t.desk}`} acceptTitle="Move it into tools/; its desk is loaded again so it runs" dropTitle="Delete the proposal: nothing is written" />
         <Button type="button" variant="link" size="xs" className={cn(BTN, "mt-1")} onClick={() => setExpanded((x) => !x)} aria-expanded={expanded}>
           {expanded ? "Show less" : "Show all"}
         </Button>

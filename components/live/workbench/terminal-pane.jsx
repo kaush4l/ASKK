@@ -8,22 +8,15 @@ import { stopSession, TermView } from "@/backend/live/term-stream"
 import { sessionLabel } from "@/backend/live/workbench"
 import { clock, Empty, PaneHeader, StatusDot } from "@/components/live/workbench/pane"
 import { LeaseBadge } from "@/components/views/artifact"
+import { useBusy } from "@/components/views/kit"
+import { useLiveStore } from "@/hooks/use-live-store"
 import { LIMITS } from "@/lib/config"
 import { cn } from "@/lib/utils"
 
 const SLACK = LIMITS.ui.workbench.bottomSlackPx
-const noSubscribe = () => () => {}
-const noSnapshot = () => null
 
 // The session's live text (term/stream through TermView); null without a session.
-function useTerm(id) {
-  const view = React.useMemo(() => (id != null ? new TermView(id) : null), [id])
-  React.useEffect(() => {
-    view?.start()
-    return () => view?.close()
-  }, [view])
-  return React.useSyncExternalStore(view?.subscribe ?? noSubscribe, view?.getSnapshot ?? noSnapshot, noSnapshot)
-}
+const useTerm = (id) => useLiveStore(() => (id != null ? new TermView(id) : null), [id])
 
 // Terminal: a tab per session — at most two per agent, its main session (the commands it runs, one after another) and
 // its long one (the run it keeps going; backend/live/workbench.js sessionTabs) — the shown one's live output: its
@@ -76,7 +69,7 @@ export function SessionView({ session: listed }) {
   const lines = React.useMemo(() => (term?.session || term?.lines?.length ? term.lines : (session.tail ?? []).map((l) => stripAnsi(l))), [term?.session, term?.lines, session.tail])
   const boxRef = React.useRef(null)
   const [stick, setStick] = React.useState(true)
-  const [stopping, setStopping] = React.useState(null)
+  const stopping = useBusy() // a refusal stays under the header and keeps Stop disabled
 
   React.useLayoutEffect(() => {
     const box = boxRef.current
@@ -88,15 +81,7 @@ export function SessionView({ session: listed }) {
     if (box) setStick(box.scrollHeight - box.scrollTop - box.clientHeight <= SLACK)
   }
 
-  const stop = async () => {
-    setStopping("stopping…")
-    try {
-      await stopSession(session.id)
-      setStopping(null)
-    } catch (e) {
-      setStopping(e.message)
-    }
-  }
+  const stop = () => stopping.run(() => stopSession(session.id))
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
@@ -114,12 +99,12 @@ export function SessionView({ session: listed }) {
           </span>
           {term?.live && status === "running" && <span className="text-emerald-600 dark:text-emerald-400">live</span>}
           {status === "running" && (
-            <button type="button" onClick={stop} disabled={!!stopping} aria-label="Stop this session" className="flex h-6 items-center gap-1 rounded-md border px-1.5 hover:text-foreground disabled:opacity-50 pointer-coarse:h-10">
+            <button type="button" onClick={stop} disabled={stopping.busy || !!stopping.error} aria-label="Stop this session" className="flex h-6 items-center gap-1 rounded-md border px-1.5 hover:text-foreground disabled:opacity-50 pointer-coarse:h-10">
               <SquareIcon className="size-3" /> Stop
             </button>
           )}
         </span>
-        {stopping && stopping !== "stopping…" && <span className="w-full text-red-700 dark:text-red-400">{stopping}</span>}
+        {stopping.error && <span className="w-full text-red-700 dark:text-red-400">{stopping.error}</span>}
       </div>
       {(session.urls ?? []).length > 0 && (
         <div className="flex shrink-0 flex-wrap gap-2 border-b px-2 py-0.5 text-[11px]">
@@ -139,7 +124,7 @@ export function SessionView({ session: listed }) {
         <button
           type="button"
           onClick={() => setStick(true)}
-          className="absolute right-3 bottom-3 flex h-8 items-center gap-1 rounded-md border bg-background px-2 text-xs shadow-sm hover:text-foreground pointer-coarse:h-10"
+          className="absolute right-3 bottom-3 flex h-8 items-center gap-1 glass rounded-md border px-2 text-xs hover:text-foreground pointer-coarse:h-10"
         >
           <ArrowDownToLineIcon className="size-3.5" /> Follow output
         </button>

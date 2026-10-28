@@ -1,6 +1,5 @@
 import { Artifact } from "../artifact/artifact.js"
-import { Tool } from "../tool/tool.js"
-import { narrowText } from "../util/text.js"
+import { narrowText, clip } from "../util/text.js"
 
 // Browse (2026-10-18 owner: "The desk needs a websearch tool. Not just get but also be able to navigate the web."): the
 // desk's web browser — text, on the host. web.search finds and web.read gets one page; browse keeps a tab per holder
@@ -9,16 +8,8 @@ import { narrowText } from "../util/text.js"
 // re-checked, no script on any page ever runs) and GET web/search. Id `browse`, view and kind `browse`, keep `day`
 // (the tabs' addresses and histories; a page's text is in memory only, fetched again when it is needed after a restart).
 //
-//   browse.open   {url}                 a public http(s) page: its text in parts of PART chars, each link "text [n]",
-//                                       each form "[form Fn: …]"; the page you were on goes on your back list
-//   browse.search {q, source?, limit?}  a results page (host web/search): each result a link to follow
-//   browse.click  {link}                follow a link of the page you are on: its number (7, "[7]") or words of its text
-//   browse.back   {}                    the page before (from memory when it is still there)
-//   browse.more   {part?}               the next part of the page (or that part)
-//   browse.find   {text}                the passages of the whole page around those words (comma-separated), links kept
-//   browse.links  {filter?}             the page's links (n, text, address), filtered by words
-//   browse.submit {form, fields?}       a GET form of the page (a search box) with your fields: opens the answer. A POST
-//                                       form is never sent (it would change something on another site)
+// Commands (the table below has their inputs): open, search, click (a link by number or words), back, more, find, links,
+// submit (a GET form only — a POST form is never sent: it would change something on another site).
 //
 // Commands are type `dev` (never answered from the data cache: the same browse.more twice is two parts). Prompt: the
 // holder's own tab — where it is, the part, the back list. State {tabs: [{agent, url, title, part, parts, links, forms,
@@ -32,7 +23,6 @@ const LINKS_SHOWN = 60
 const TITLE = 160
 const SOURCES = ["web", "wikipedia", "arxiv", "hn"]
 
-const clip = (s, n) => (String(s ?? "").length > n ? `${String(s).slice(0, n - 1)}…` : String(s ?? ""))
 const words = (v) => String(v ?? "").toLowerCase().split(/[\s,]+/).filter(Boolean)
 const parts = (page) => Math.max(1, Math.ceil(String(page.text ?? "").length / PART))
 const hostName = (url) => {
@@ -49,11 +39,20 @@ const hostOf = (ctx, name) => {
 }
 
 export class Browse extends Artifact {
+  static about = "a text web browser on the host, a tab per holder: open, search, click links, back, GET forms"
+  static commands = {
+    open: { description: "open a public web page in your tab: its text in parts, each link marked [n], each form [form Fn: …]", input: { url: "https://…" } },
+    search: { description: "search the web into your tab: a results page whose results you follow with click", input: { q: "the search terms", source: "web (default) | wikipedia | arxiv | hn", limit: "results (default 10)" } },
+    click: { description: "follow a link of the page you are on", input: { link: "its number (7) or words of its text" } },
+    back: { description: "go back to the page before", input: {} },
+    more: { description: `read on: the next ${PART}-char part of the page`, input: { part: "a part number (default: the next)" } },
+    find: { description: "the passages of the whole page around words (links kept)", input: { text: "words, comma-separated" } },
+    links: { description: "the page's links: number, text, address", input: { filter: "words the link's text or address has (optional)" } },
+    submit: { description: "submit a GET form of the page (a search box) with your fields; a POST form is never sent", input: { form: "F1", fields: "{name: value}" } },
+  }
   constructor({ id = "browse", title, clock = () => new Date() } = {}) {
     super({ name: id, title: title ?? (id === "browse" ? "browse — the desk's web browser (text)" : `${id} — browser`) })
-    this.kind = "browse"
-    this.view = "browse"
-    this.keep = "day"
+    Object.assign(this, { kind: "browse", view: "browse", keep: "day" })
     this.clock = clock
     this.state = { tabs: [], visits: [] }
     this.tabs = new Map() // agent -> {page, history: [{url, title, at}], cache: Map(url -> page)}
@@ -270,20 +269,6 @@ export class Browse extends Artifact {
     return this.#go(ctx, `submit ${id}`, () => this.#fetch(url.href, ctx))
   }
 
-  commands() {
-    const tool = (name, description, input, run) => new Tool({ name: `${this.name}.${name}`, type: "dev", view: "browse", description, input, run })
-    return [
-      tool("open", "open a public web page in your tab: its text in parts, each link marked [n], each form [form Fn: …]", { url: "https://…" }, (i, c) => this.open(i, c)),
-      tool("search", "search the web into your tab: a results page whose results you follow with click", { q: "the search terms", source: "web (default) | wikipedia | arxiv | hn", limit: "results (default 10)" }, (i, c) => this.search(i, c)),
-      tool("click", "follow a link of the page you are on", { link: "its number (7) or words of its text" }, (i, c) => this.click(i, c)),
-      tool("back", "go back to the page before", {}, (i, c) => this.back(i, c)),
-      tool("more", `read on: the next ${PART}-char part of the page`, { part: "a part number (default: the next)" }, (i, c) => this.more(i, c)),
-      tool("find", "the passages of the whole page around words (links kept)", { text: "words, comma-separated" }, (i, c) => this.find(i, c)),
-      tool("links", "the page's links: number, text, address", { filter: "words the link's text or address has (optional)" }, (i, c) => this.links(i, c)),
-      tool("submit", "submit a GET form of the page (a search box) with your fields; a POST form is never sent", { form: "F1", fields: "{name: value}" }, (i, c) => this.submit(i, c)),
-    ]
-  }
-
   brief() {
     const tabs = this.state.tabs
     if (!tabs.length) return "no pages open"
@@ -292,7 +277,7 @@ export class Browse extends Artifact {
   }
 
   render(agent) {
-    const can = ["open", "search", "click", "back", "more", "find", "links", "submit"].filter((c) => !agent || agent.tools?.has(`${this.name}.${c}`)).map((c) => `${this.name}.${c}`)
+    const can = this.can(agent)
     const head = `your web browser (text; public pages only, no script runs, POST forms never sent)${can.length ? `: ${can.join(", ")}` : ""}`
     const tab = agent ? this.tabs.get(agent.name) : null
     if (!tab?.page) return `${head}\n(no page open)`

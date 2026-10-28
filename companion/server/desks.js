@@ -18,6 +18,7 @@ import { realpath } from "node:fs/promises"
 import { dirname, join, resolve } from "node:path"
 
 import { API_PREFIX, createHostApi } from "./host-api.js"
+import { agentView, enterView } from "../capabilities/browser.js"
 import { DESK_NAME, forgetModules } from "../team/compose.js"
 import { CORE_DESKS, findDeskServer, forgetDesk, loadDesk } from "../team/desk.js"
 import { acceptDesk, acceptTool, checkDesk, dropDesk, dropTool, listProposals, proposalCount, proposeTool, readProposal, scaffoldDesk } from "../team/scaffold.js"
@@ -26,32 +27,45 @@ import { runReport, startKernelTelegram } from "../team/kernel-telegram.js"
 import { ownerIdFrom } from "../shared/telegram-owner.js"
 import { DESK_COOKIE, DESK_HEADER } from "../shared/config.js"
 import { httpError } from "../shared/http.js"
+import { attempt } from "../shared/safe.js"
 
 // root: the local desks' folder (desks/load and desks/create work there; default custom/ beside the repo's desks/, else
 // the first hosted folder's parent); core: the core desks' folder (desks/), where desks/load also finds a desk.
+// Whether `desk` listens for its integrations beside the hosted desks `all`: it names some, takes inbound (main.js listen
+// is not false), and no other desk that takes inbound names one of them.
+const takes = (d) => d.listen !== false
+export const listensFor = (desk, all) => takes(desk) && !!desk.integrations?.length && desk.integrations.every((name) => !all.some((d) => d !== desk && takes(d) && d.integrations?.includes(name)))
+// 2026-10-27 ask-seen: the one call an agent's view may make — the owner's Ask 'what' (team/call {target: "artifact",
+// method: "what", args: [{id, …}]}) on an artifact of view "ask" on the desk it looks at (viewOf: id → its view). It reads
+// through ctx.host fs/read and keeps only Ask's own latest answer; every other non-GET stays refused.
+export const viewMayCall = (path, body, viewOf) => path === "team/call" && body?.target === "artifact" && body?.method === "what" && typeof body?.args?.[0]?.id === "string" && viewOf(body.args[0].id) === "ask"
+
 export async function hostDesks({ folders, port, defaultDesk = null, readOnly = false, root = null, core = CORE_DESKS, log = (line) => console.error(line) }) {
   const localFolder = folders.find((f) => resolve(dirname(resolve(f))) !== resolve(core))
   const deskRoot = resolve(root ?? (localFolder ? dirname(resolve(localFolder)) : join(dirname(resolve(core)), "custom")))
   mkdirSync(deskRoot, { recursive: true }) // desks/create writes here even before the first local desk
   const desks = await Promise.all(folders.map((folder) => loadDesk(folder)))
   // Integration listeners (Telegram, …): a desk listens for the integrations it names that no other hosted desk names
-  // too — one listener per bot (a second poller gets 409s).
-  const listens = (desk, all) => !!desk.integrations?.length && desk.integrations.every((name) => !all.some((d) => d !== desk && d.integrations?.includes(name)))
+  // too — one listener per bot (a second poller gets 409s). main.js listen: false (2026-10-24) — the desk uses the
+  // integrations' tools but never takes their inbound messages, and does not stand in another desk's way.
+  const listens = listensFor
   const hosted = new Map() // desk name -> { desk, team, api, telegram? }
 
   // One desk served here: its team (agents, schedule, wakes, background work) and its host API on its workspace.
   async function host(desk, listen) {
     const deskLog = (line) => log(`${desk.name}: ${line}`)
-    if (desk.integrations?.length && !listen) deskLog(`integrations ${desk.integrations.join(", ")}: not listened here, another desk names them too`)
+    const why = desk.listen === false ? "their tools only (main.js listen: false)" : "not listened here, another desk names them too"
+    if (desk.integrations?.length && !listen) deskLog(`integrations ${desk.integrations.join(", ")}: ${why}`)
     const team = await createKernelTeam({ desk, port, log: deskLog })
     // said in the desk's own log too, not the server's alone (2026-10-23 audit)
-    if (desk.integrations?.length && !listen) team.log(`desk: integrations ${desk.integrations.join(", ")}: not listened here, another desk names them too`)
+    if (desk.integrations?.length && !listen) team.log(`desk: integrations ${desk.integrations.join(", ")}: ${why}`)
     try {
       mkdirSync(desk.workspace, { recursive: true }) // a desk an agent just wrote may have no data/ yet
       // hostPorts: every hosted desk's own port too (it runs alone there), never reached by a desk's terminal programs
       // or preview pages (2026-10-17, companion/capabilities/terminal.js and browser.js).
       const hostPorts = () => [...hosted.values()].map((e) => e.desk.port)
-      const api = await createHostApi({ root: await realpath(desk.workspace), desk, team, port, readOnly, listen, hostPorts })
+      const serverWork = () => [...hosted.values()].map((e) => ({ desk: e.desk.name, work: e.team.work() }))
+      const api = await createHostApi({ root: await realpath(desk.workspace), desk, team, port, readOnly, listen, hostPorts, serverWork })
       return { desk, team, api }
     } catch (error) {
       team.terminate()
@@ -108,13 +122,7 @@ export async function hostDesks({ folders, port, defaultDesk = null, readOnly = 
   // The desks hosted beside `entry`, plus `desk` (who listens for an integration).
   const beside = (entry, desk) => [...[...hosted.values()].filter((e) => e !== entry).map((e) => e.desk), desk]
 
-  const realOf = (path) => {
-    try {
-      return realpathSync(path)
-    } catch {
-      return null
-    }
-  }
+  const realOf = (path) => attempt(() => realpathSync(path))
   // The desk's real folder: <root>/<name> itself, never a link — a link would load code from (and make data/ in) any
   // folder on the machine, and clear that folder's modules. Checked before anything is read or created.
   function deskFolderOf(name) {
@@ -202,7 +210,18 @@ export async function hostDesks({ folders, port, defaultDesk = null, readOnly = 
   // desks/select { name }: sets the askk_desk cookie; POST desks/load { name }: hosts or reloads <root>/<name>/
   // → { name, agents, reloaded } (409 while it works). POSTs: same-origin JSON only, like the host API.
   async function desksEndpoint(request, path) {
-    if (!allowedHosts().has(request.headers.get("host"))) return Response.json({ error: "Host capabilities answer on localhost only." }, { status: 421 })
+    const fail = (error, status) => Response.json({ error }, { status })
+    // a read-only server's refusal of what writes or runs a desk's code, or null
+    const readOnlyRefusal = (what) => (readOnly ? fail(`This server is read-only (--read-only): it ${what}.`, 403) : null)
+    // the answer of fn, or its error with its status
+    const answer = async (fn) => {
+      try {
+        return Response.json(await fn())
+      } catch (error) {
+        return fail(error.message, error.status ?? 500)
+      }
+    }
+    if (!allowedHosts().has(request.headers.get("host"))) return fail("Host capabilities answer on localhost only.", 421)
     const list = () => [...hosted.values()].map(({ desk, team }) => ({ name: desk.name, description: desk.description, work: team.work() }))
     if (path === "desks" && request.method === "GET") return Response.json({ current: pick(request), default: fallback(), desks: list(), proposals: proposalCount(deskRoot) })
     // desks/proposed: what waits for the owner (scaffold.js listProposals) — desks a run that read outside made, and every
@@ -211,29 +230,24 @@ export async function hostDesks({ folders, port, defaultDesk = null, readOnly = 
     // desks/ask?id=: a waited ask's state (desk.ask polls it: a run can outlast any one request).
     if (path === "desks/ask" && request.method === "GET") {
       const run = asks.get(new URL(request.url).searchParams.get("id") ?? "")
-      return run ? Response.json(run) : Response.json({ error: "No such ask (asks are kept while the server runs, the newest 50)." }, { status: 404 })
+      return run ? Response.json(run) : fail("No such ask (asks are kept while the server runs, the newest 50).", 404)
     }
-    if (request.method !== "POST") return Response.json({ error: "Not found." }, { status: 404 })
-    if (!sameOriginJson(request)) return Response.json({ error: path === "desks/load" ? "Desk loads need a same-origin JSON request." : path === "desks/select" ? "Desk switches need a same-origin JSON request." : "Desk requests need a same-origin JSON request." }, { status: 403 })
+    if (request.method !== "POST") return fail("Not found.", 404)
+    if (!sameOriginJson(request)) return fail(`${{ "desks/load": "Desk loads", "desks/select": "Desk switches" }[path] ?? "Desk requests"} need a same-origin JSON request.`, 403)
     let body
     try {
       body = JSON.parse((await request.text()) || "{}")
     } catch {
-      return Response.json({ error: "Invalid JSON body." }, { status: 400 })
+      return fail("Invalid JSON body.", 400)
     }
     if (path === "desks/select") {
       const name = body?.name
-      if (!hosted.has(name)) return Response.json({ error: `No desk "${name}".` }, { status: 404 })
+      if (!hosted.has(name)) return fail(`No desk "${name}".`, 404)
       const cookie = new Bun.Cookie(DESK_COOKIE, name, { path: "/", sameSite: "strict", maxAge: 31536000 })
       return Response.json({ current: name }, { headers: { "set-cookie": cookie.serialize() } })
     }
     if (path === "desks/load") {
-      if (readOnly) return Response.json({ error: "This server is read-only (--read-only): it loads no desks." }, { status: 403 })
-      try {
-        return Response.json(await load(body?.name))
-      } catch (error) {
-        return Response.json({ error: error.message }, { status: error.status ?? 500 })
-      }
+      return readOnlyRefusal("loads no desks") ?? answer(() => load(body?.name))
     }
     // 2026-10-20 owner ("for any kind of desk setup, it should be simple enough to request it and the agent figuring out
     // the good ways of creating the desk"): the kit's desk.* tools (backend/kernel/builtin/desks.js). desks/create
@@ -244,13 +258,6 @@ export async function hostDesks({ folders, port, defaultDesk = null, readOnly = 
     // (2026-10-20: one request held for a whole run timed out); desks/read {name, path} reads a hosted desk's workspace
     // file, or lists a folder (its own host API's fs/read, fs/list: the same containment). by: the asking desk.
     const by = request.headers.get(DESK_HEADER) ?? "owner"
-    const answer = async (fn) => {
-      try {
-        return Response.json(await fn())
-      } catch (error) {
-        return Response.json({ error: error.message }, { status: error.status ?? 500 })
-      }
-    }
     // outside (2026-10-20, the kit's desk.create / desk.propose): the asking run's outside reads ("web.read, scout:
     // browse.open"). A desk from such a run is held (scaffold.js): checked, nothing in place, kept for the owner — the
     // asking desk's log says so; tool code from one says so in its header.
@@ -260,7 +267,8 @@ export async function hostDesks({ folders, port, defaultDesk = null, readOnly = 
       if (by !== "owner") hosted.get(by)?.team.log(line)
     }
     if (path === "desks/create" || path === "desks/propose") {
-      if (readOnly) return Response.json({ error: "This server is read-only (--read-only): it writes no desks." }, { status: 403 })
+      const refused = readOnlyRefusal("writes no desks")
+      if (refused) return refused
       if (path === "desks/propose")
         return answer(() => {
           const r = proposeTool({ root: deskRoot, name: body?.name, file: body?.file, code: body?.code, why: body?.why, by, from: outside })
@@ -279,8 +287,8 @@ export async function hostDesks({ folders, port, defaultDesk = null, readOnly = 
     // accept {name, tool} moves proposed tool code into tools/ (a hosted desk is loaded again, so it runs); drop {name,
     // tool?} deletes the proposal. Only from the page: a desk (the x-askk-desk header: its tools, its scripts) never.
     if (path === "desks/accept" || path === "desks/drop") {
-      if (readOnly) return Response.json({ error: "This server is read-only (--read-only): it writes no desks." }, { status: 403 })
-      if (by !== "owner") return Response.json({ error: "Only the owner accepts or drops a proposal (from the page), never a desk." }, { status: 403 })
+      if (readOnly) return readOnlyRefusal("writes no desks")
+      if (by !== "owner") return fail("Only the owner accepts or drops a proposal (from the page), never a desk.", 403)
       const name = body?.name
       const tool = body?.tool ? String(body.tool) : null
       const reason = String(body?.reason ?? "").trim().slice(0, 300)
@@ -316,8 +324,7 @@ export async function hostDesks({ folders, port, defaultDesk = null, readOnly = 
     }
     if (path === "desks/check") {
       // Composing imports the desk's main.js and tools: code runs, so a read-only server checks none.
-      if (readOnly) return Response.json({ error: "This server is read-only (--read-only): it checks no desks (a check runs their code)." }, { status: 403 })
-      return answer(() => checkDesk(deskFolderOf(body?.name), { name: body?.name }))
+      return readOnlyRefusal("checks no desks (a check runs their code)") ?? answer(() => checkDesk(deskFolderOf(body?.name), { name: body?.name }))
     }
     if (path === "desks/ask") {
       return answer(async () => {
@@ -363,11 +370,27 @@ export async function hostDesks({ folders, port, defaultDesk = null, readOnly = 
         return out
       })
     }
-    return Response.json({ error: "Not found." }, { status: 404 })
+    return fail("Not found.", 404)
+  }
+
+  // 2026-10-27 ask-seen: an agent's view's non-GET passes only as the Ask 'what' (viewMayCall) on the desk it looks at;
+  // the body is read from a clone, so the host API reads it again. Every other is refused.
+  const VIEW_REFUSED = "This is an agent's view of the app: it reads, it never acts — only the owner's own page writes."
+  async function viewCall(request, path) {
+    const entry = hosted.get(pick(request))
+    const body = request.method === "POST" ? await request.clone().json().catch(() => null) : null
+    if (entry?.team.viewOf && viewMayCall(path, body, entry.team.viewOf)) return entry.api.handle(request)
+    return Response.json({ error: VIEW_REFUSED }, { status: 403 })
   }
 
   function handleApi(request) {
-    const path = new URL(request.url).pathname.slice(API_PREFIX.length)
+    const url = new URL(request.url)
+    const path = url.pathname.slice(API_PREFIX.length)
+    // 2026-10-25: an agent's view of this app (a desk's preview page on this port, capabilities/browser.js) reads only —
+    // it sees what the owner sees, and nothing it clicks writes, calls a team or accepts anything (it may switch the desk
+    // it looks at: desks/select only sets its own cookie)
+    if (path === "view/enter" && request.method === "GET") return enterView(url)
+    if (agentView(request) && request.method !== "GET" && request.method !== "HEAD" && path !== "desks/select") return viewCall(request, path)
     if (path === "desks" || path.startsWith("desks/")) return desksEndpoint(request, path)
     const name = pick(request)
     if (reloading.has(name) || !hosted.has(name)) return Response.json({ error: `Desk "${name}" is ${reloading.has(name) ? "reloading" : "not hosted"}; try again in a moment.` }, { status: 503 })

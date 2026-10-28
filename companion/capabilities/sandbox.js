@@ -13,11 +13,12 @@
 //                                     crashed server left running (terminal.js: <desk state>/terminal.running.json)
 //   processInfo(pids)                 Map pid → { pgid, started } of the live ones (ps; started = its lstart)
 
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs"
 import { homedir, tmpdir } from "node:os"
 import { dirname, isAbsolute, join, resolve } from "node:path"
 import { httpError } from "../shared/http.js"
 import { memoryRoot } from "../shared/paths.js"
+import { attempt } from "../shared/safe.js"
 
 const HOME = homedir()
 export const APP = resolve(import.meta.dir, "../..") // the repo root (its custom/ holds every desk's code and state)
@@ -130,12 +131,7 @@ const removeLeftTmp = () => {
   madeTmp.clear()
 }
 export function privateTmp(base = tmpdir()) {
-  let real
-  try {
-    real = realpathSync(base)
-  } catch {
-    real = resolve(base)
-  }
+  const real = attempt(() => realpathSync(base)) ?? resolve(base)
   if (!SHARED_TMP.has(real.replace(/\/+$/, ""))) return real // the user's own temp folder: never made, never removed
   const made = realpathSync(mkdtempSync(join(real, "askk-sandbox-")))
   if (!madeTmp.size) process.on("exit", removeLeftTmp)
@@ -186,6 +182,31 @@ export const GIT_NEVER_WRITE = [
 // server's: its host API would write any desk's files whatever the lane — a Host or Origin header is easy to forge);
 // allowWrites / denyWrites: more write rules as regexes on real paths (a lane's globs on a mounted desk, laneRegex).
 // ASKK's own configuration (.env*, .mcp.json) is never written, and never read (.env.example excepted).
+// 2026-10-26 owner (portability, docs/portability.md): the OS sandbox terminal programs run under, detected once per
+// host. `sandbox-exec` on macOS (the profile above enforces the lane); `container` only when ASKK_SANDBOX=container AND
+// this process runs inside a container (/.dockerenv, /run/.containerenv) — the container is the sandbox, so the lane is
+// not enforced on what a program writes (the desk's files artifact still keeps it); else null with the reason, and the
+// host leaves out capability `term` (term/* answer 501 with it). ASKK_SANDBOX=off turns the terminal off anywhere.
+//   sandboxRunner() → { kind: "sandbox-exec" | "container", wrap(profile, argv) → argv } | { kind: null, reason }
+export const SANDBOX_EXEC = "/usr/bin/sandbox-exec"
+const CONTAINER_MARKS = ["/.dockerenv", "/run/.containerenv"]
+export function sandboxRunner({ env = process.env, platform = process.platform, exists = existsSync } = {}) {
+  const want = String(env.ASKK_SANDBOX ?? "").trim().toLowerCase()
+  const macos = platform === "darwin" && exists(SANDBOX_EXEC)
+  const contained = CONTAINER_MARKS.some((p) => exists(p))
+  if (want === "off") return { kind: null, reason: "the terminal is off on this server (ASKK_SANDBOX=off)." }
+  if (want === "container") {
+    if (contained) return { kind: "container", wrap: (_profile, argv) => argv }
+    return { kind: null, reason: "ASKK_SANDBOX=container, but this server does not run inside a container (no /.dockerenv or /run/.containerenv): terminal programs would run unsandboxed on the host." }
+  }
+  if (want && want !== "sandbox-exec") return { kind: null, reason: `ASKK_SANDBOX=${want} is not a sandbox: sandbox-exec (macOS), container (inside one) or off.` }
+  if (macos) return { kind: "sandbox-exec", wrap: (profile, argv) => [SANDBOX_EXEC, "-p", profile, ...argv] }
+  return {
+    kind: null,
+    reason: `no sandbox for terminal programs on ${platform}: macOS sandbox-exec${contained ? ", or ASKK_SANDBOX=container (this server runs in a container)" : ", or run ASKK in a container with ASKK_SANDBOX=container"}.`,
+  }
+}
+
 let defaultTmp = null
 export function sandboxProfile(root, extra = [], lane = null, { readable = [], listable = [], never = [], hidden = [], tmp = (defaultTmp ??= privateTmp()), blockPorts = [], allowWrites = [], denyWrites = [] } = {}) {
   const laned = Array.isArray(lane)
@@ -238,10 +259,7 @@ export const killGroup = (pid, signal, { groupOnly = false } = {}) => {
   try {
     process.kill(-pid, signal) // its process group (spawned detached)
   } catch {
-    if (groupOnly) return
-    try {
-      process.kill(pid, signal)
-    } catch {}
+    if (!groupOnly) attempt(() => process.kill(pid, signal))
   }
 }
 
@@ -275,12 +293,8 @@ export function processInfo(pids) {
   const list = [...new Set(pids.map(Number))].filter((n) => Number.isInteger(n) && n > 0)
   const found = new Map()
   if (!list.length) return found
-  let text = ""
-  try {
-    text = Bun.spawnSync(["/bin/ps", "-o", "pid=,pgid=,lstart=", "-p", list.join(",")], { env: PS_ENV, stderr: "ignore" }).stdout.toString()
-  } catch {
-    return found
-  }
+  const text = attempt(() => Bun.spawnSync(["/bin/ps", "-o", "pid=,pgid=,lstart=", "-p", list.join(",")], { env: PS_ENV, stderr: "ignore" }).stdout.toString())
+  if (text === null) return found
   for (const line of text.split("\n")) {
     const [pid, pgid, ...start] = line.trim().split(/\s+/)
     if (start.length >= 5) found.set(Number(pid), { pgid: Number(pgid), started: start.join(" ") })
@@ -307,9 +321,7 @@ export function groupBook(path, log = () => {}) {
     } catch (error) {
       if (error.code !== "ENOENT") {
         const to = `${path}.unreadable-${Date.now()}`
-        try {
-          renameSync(path, to)
-        } catch {}
+        attempt(() => renameSync(path, to))
         log(`term: the book of running process groups did not read (${error.message}) — kept as ${to}; groups booked before a crash are not reaped, look there`)
       }
       return []
@@ -356,11 +368,7 @@ export function groupBook(path, log = () => {}) {
         const now = live.get(r.pid)
         if (!now || r.pid === process.pid || now.started !== r.started || now.pgid !== r.pgid) continue // gone, or another program's pid now
         if (r.pgid === r.pid) killGroup(r.pid, "SIGKILL")
-        else {
-          try {
-            process.kill(r.pid, "SIGKILL") // not its group's leader: the process alone, never a group it joined
-          } catch {}
-        }
+        else attempt(() => process.kill(r.pid, "SIGKILL")) // not its group's leader: the process alone, never a group it joined
         killed.push(r)
       }
       write(kept)

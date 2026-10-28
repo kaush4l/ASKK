@@ -5,7 +5,13 @@ import { ChevronDownIcon } from "lucide-react"
 
 import { ArtifactBig } from "@/components/kernel/desk-levels"
 import { ArtifactBlock } from "@/components/views/artifact"
+import { getSnapshot as askPoint, subscribe as onAskPoint } from "@/lib/ask-point"
 import { cn } from "@/lib/utils"
+
+// 2026-10-27 ask-point: the desk's Ask artifact (view "ask") a card's "Ask about this" opens big, or null when it has none
+export function askTarget(artifacts) {
+  return Object.values(artifacts ?? {}).find((a) => a?.view === "ask")?.id ?? null
+}
 
 // Every artifact of the desk, grouped by owner (the team or agent that keeps it), each drawn by its view. Closed it
 // shows its brief and a compact body; a click opens it whole. Used by the Live page and the agent page.
@@ -15,6 +21,16 @@ export function ArtifactsView({ artifacts, empty = "No artifacts yet." }) {
   // prompts, contracts and wiring; the chevron keeps the inline expand
   const [big, setBig] = React.useState(null)
   const [bigOpen, setBigOpen] = React.useState(false)
+  // 2026-10-27 ask-point: each new point (lib/ask-point.js `at`, not the one seen at mount) opens the desk's Ask card
+  // big (the sheet below sm), its artifact field filled from the store
+  const pointed = React.useSyncExternalStore(onAskPoint, askPoint, askPoint)
+  const seen = React.useRef(pointed.at)
+  const askId = askTarget(artifacts)
+  React.useEffect(() => {
+    if (pointed.at === seen.current) return
+    seen.current = pointed.at
+    if (askId) (setBig(askId), setBigOpen(true))
+  }, [pointed.at, askId])
   const groups = React.useMemo(() => {
     const byOwner = new Map()
     for (const a of Object.values(artifacts ?? {}).sort((x, y) => x.id.localeCompare(y.id))) {

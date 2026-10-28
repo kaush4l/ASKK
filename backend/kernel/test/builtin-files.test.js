@@ -93,6 +93,8 @@ describe("lanes", () => {
     expect(await critic.run("search", { text: "math" })).toStartWith('no line holds "math"')
     expect(await critic.run("search", { text: "BPB" })).toContain("projects/x/out/result.txt:1: val_bpb 1.42")
     await expect(critic.run("focus", { path: "projects/x/node_modules" })).rejects.toThrow("outside its lane")
+    expect(await critic.run("open", { paths: "projects/x/out/result.txt" })).toStartWith("open (1 of 25): projects/x/out/result.txt — 1 lines")
+    await expect(critic.run("open", { paths: "projects/x/train.py" })).rejects.toThrow("outside its lane")
     await files.refresh(critic.agent)
     const prompt = critic.agent.render({ text: "judge", from: "lead" }, [])
     expect(prompt).toContain("you read only: shared/*/goal.md, projects/*/out/**")
@@ -143,16 +145,20 @@ describe("the tree, open and modified", () => {
     expect(lists).toBe(1)
   })
 
-  test("read marks open (≤ 12, one per path); a write, edit and append are modified with a diff (one per path, ≤ 30)", async () => {
+  test("read is a one-off look; a write, edit and append are modified with a diff (one per path, ≤ 30)", async () => {
     const host = fakeHost({ files: WORKSPACE })
     const files = new Files({ clock })
     const coder = holder("coder", files, { writes: ["projects/**"] }, host)
     expect(await coder.run("read", { path: "projects/x/train.py", from: 3, lines: 2 })).toBe("projects/x/train.py — 4 lines, lines 3–4\n3\tdef train():\n4\t    return math.pi")
-    expect(files.state.open).toEqual([{ path: "projects/x/train.py", by: "coder", at: "2026-10-17T14:00:00.000Z" }])
+    expect(files.state.open).toEqual([])
     expect(await coder.run("edit", { path: "projects/x/train.py", old: "math.pi", new: "math.e" })).toBe("edited projects/x/train.py: 1 replacement (+1 -1)")
     expect(host.fs.get("projects/x/train.py")).toContain("return math.e")
     const m = files.state.modified[0]
-    expect(m).toEqual({ path: "projects/x/train.py", by: "coder", at: "2026-10-17T14:00:00.000Z", op: "edit", added: 1, removed: 1, diff: "@@ -1,4 +1,4 @@\n import math\n \n def train():\n-    return math.pi\n+    return math.e" })
+    expect(m).toEqual({ path: "projects/x/train.py", by: "coder", at: "2026-10-17T14:00:00.000Z", op: "edit", added: 1, removed: 1, diff: "@@ -1,4 +1,4 @@\n import math\n \n def train():\n-    return math.pi\n+    return math.e", why: null, notes: [] })
+    // a change's note (why) sits beside its diff, the path's notes kept across its changes
+    await coder.run("edit", { path: "projects/x/train.py", old: "math.e", new: "math.tau", why: "tau: the full turn the test expects" })
+    await coder.run("edit", { path: "projects/x/train.py", old: "math.tau", new: "math.e", why: "back to e:  the  check failed" })
+    expect(files.state.modified[0]).toMatchObject({ why: "back to e: the check failed", notes: [{ op: "edit", by: "coder", why: "tau: the full turn the test expects" }, { why: "back to e: the check failed" }] })
     await expect(coder.run("edit", { path: "projects/x/train.py", old: "nothing like it", new: "x" })).rejects.toThrow("old matches nothing")
     await coder.run("write", { path: "projects/x/twice.py", content: "a = 1\na = 1\n" })
     await expect(coder.run("edit", { path: "projects/x/twice.py", old: "a = 1", new: "b" })).rejects.toThrow("old matches 2 times — make it unique (more lines around it) or pass all: true")
@@ -164,9 +170,34 @@ describe("the tree, open and modified", () => {
     for (let i = 0; i < 40; i++) await coder.run("write", { path: `projects/x/f${i}.py`, content: `x = ${i}` })
     expect(files.state.modified).toHaveLength(30)
     expect(files.state.modified.at(-1).path).toBe("projects/x/f39.py")
-    for (let i = 0; i < 15; i++) await coder.run("read", { path: `projects/x/f${i}.py` })
-    expect(files.state.open).toHaveLength(12)
-    expect(files.state.open.at(-1).path).toBe("projects/x/f14.py")
+  })
+
+  test("open keeps a file's current text in its holder's prompt until close; at most 25 per holder", async () => {
+    const host = fakeHost({ files: { ...WORKSPACE, ...Object.fromEntries(Array.from({ length: 30 }, (_, i) => [`projects/x/f${i}.py`, `x = ${i}\n`])) } })
+    const files = new Files({ clock })
+    const coder = holder("coder", files, { writes: ["projects/**"] }, host)
+    const critic = holder("critic", files, {}, host)
+    expect(await coder.run("open", { paths: "projects/x/train.py, projects/x/f0.py" })).toBe("open (2 of 25): projects/x/train.py — 4 lines, projects/x/f0.py — 1 lines; their text is in your prompt under OPEN FILES from your next step")
+    await critic.run("open", { paths: "projects/x/f1.py" })
+    expect(files.state.open.map((o) => [o.path, o.by, o.lines])).toEqual([["projects/x/train.py", "coder", 4], ["projects/x/f0.py", "coder", 1], ["projects/x/f1.py", "critic", 1]])
+    // an edit is in the open copy at once; a change from outside at the next refresh
+    await coder.run("edit", { path: "projects/x/train.py", old: "math.pi", new: "math.tau" })
+    host.fs.set("projects/x/f0.py", "x = 100\ny = 1\n")
+    await files.refresh(coder.agent)
+    const block = () => coder.agent.render({ text: "x", from: "owner" }, []).split("OPEN FILES")[1] ?? ""
+    expect(block()).toStartWith(" (2 of 25, as they are now — files.close what you are done with)\n── projects/x/train.py (4 lines)\n1\timport math")
+    expect(block()).toContain("4\t    return math.tau")
+    expect(block()).toContain("── projects/x/f0.py (2 lines)\n1\tx = 100\n2\ty = 1")
+    expect(block()).not.toContain("f1.py")
+    expect(coder.agent.render({ text: "x", from: "owner" }, [])).toContain("OPEN BY OTHERS projects/x/f1.py (critic)")
+    // the limit is per holder; close frees room
+    for (let i = 2; i < 25; i++) await coder.run("open", { paths: `projects/x/f${i}.py` })
+    await expect(coder.run("open", { paths: "projects/x/f25.py" })).rejects.toThrow("25 of 25 files open: files.close what you are done with first")
+    expect(await coder.run("close", { paths: "projects/x/f2.py, projects/x/f3.py" })).toBe("closed projects/x/f2.py, projects/x/f3.py — 23 of 25 open")
+    await coder.run("open", { paths: "projects/x/f25.py" })
+    expect(await coder.run("close", { paths: "all" })).toStartWith("closed projects/x/train.py, projects/x/f0.py")
+    expect(files.state.open.map((o) => o.by)).toEqual(["critic"])
+    expect(block()).toBe("")
   })
 
   test("a diff is at most 80 lines, its last one says how many more; a file changed meanwhile is a 409, said plainly", async () => {
@@ -199,14 +230,14 @@ describe("the tree, open and modified", () => {
     await expect(lead.run("focus", { path: "nope" })).rejects.toThrow("nope/: HTTP 404: Not found: nope")
   })
 
-  test("the prompt: commands it holds, its lanes, the tree (≤ 60 lines), open, the last 8 modified", async () => {
+  test("the prompt: commands it holds, its lanes, the tree (≤ 60 lines), the last 8 modified", async () => {
     const host = fakeHost({ files: { ...WORKSPACE, ...Object.fromEntries(Array.from({ length: 80 }, (_, i) => [`projects/x/m${String(i).padStart(2, "0")}.py`, "x"])) } })
     const files = new Files({ clock })
     const coder = new Agent({ name: "coder", report: false, writes: ["projects/**"] }, { infer: async () => "", context: { host } }).addArtifact(files, { commands: ["read", "write"] })
     for (let i = 0; i < 10; i++) await coder.tools.get("files.write").run({ path: `projects/x/m${String(i).padStart(2, "0")}.py`, content: `v${i}` }, { host, agent: coder })
     await coder.tools.get("files.read").run({ path: "shared/x/goal.md" }, { host, agent: coder })
     await files.refresh(coder)
-    const block = coder.render({ text: "x", from: "owner" }, []).split("# files — files — the workspace\n")[1].split("\n\n# REQUEST")[0]
+    const block = coder.render({ text: "x", from: "owner" }, []).split("# files — the workspace\n")[1].split("\n\n# REQUEST")[0]
     const lines = block.split("\n")
     expect(lines[0]).toBe("the desk's files (workspace paths, shared by the agents that hold them): files.read, files.write")
     expect(lines[1]).toBe("you write only: projects/**")
@@ -215,7 +246,6 @@ describe("the tree, open and modified", () => {
     const tree = lines.slice(lines.findIndex((l) => l.startsWith("ROOT ")) + 1, lines.findIndex((l) => l.startsWith("… ")))
     expect(tree).toHaveLength(60)
     expect(tree.slice(0, 4)).toEqual(["projects/", "  x/", "    node_modules/ …", "    out/"])
-    expect(block).toContain("OPEN shared/x/goal.md (coder)")
     const modified = block.split("MODIFIED (newest last)\n")[1].split("\n")
     expect(modified).toHaveLength(8)
     expect(modified.at(-1)).toBe("  projects/x/m09.py write by coder +1 -1")

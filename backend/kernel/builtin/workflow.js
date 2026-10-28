@@ -48,8 +48,9 @@
 // "phases/brief.md"; absent: not editable).
 
 import { Artifact } from "../artifact/artifact.js"
-import { Tool } from "../tool/tool.js"
 import { parseYamlish } from "../util/yamlish.js"
+import { clip } from "../util/text.js"
+import { usageLimit } from "../model/limits.js"
 
 const HEAD = 1200
 const READ = 20000
@@ -61,15 +62,43 @@ const FILE = /^(\d{2})-([a-z][a-z0-9-]*)\.md$/
 const FRONT = /^---\n([\s\S]*?)\n---\n?/
 const KINDS = ["code", "research", "agent", "phase"]
 const SETTLED = new Set(["done", "reused", "failed", "skipped", "stopped"])
-const STEP_KEYS = new Set(["id", "title", "from", "after", "inputs", "max_turns", "seconds", "model", "status", "check", "schema", "derive", "kind", "code", "tools", "agent", "report", "artifacts", "max_steps", "min_calls", "board", "barrier"])
+const STEP_KEYS = new Set(["id", "title", "from", "after", "inputs", "max_turns", "seconds", "model", "status", "check", "schema", "derive", "kind", "code", "tools", "agent", "report", "artifacts", "max_steps", "min_calls", "board", "barrier", "shadow"])
 // concurrency (2026-10-23): at most this many steps running at once (research calls, step agents, phases); 0 = no cap
 export const WORKFLOW_DEFAULTS = { deadline_minutes: 60, retries: 1, critical: [], past_deadline: [], concurrency: 0 }
 
-const clip = (s, n) => (String(s ?? "").length > n ? `${String(s).slice(0, n - 1)}…` : String(s ?? ""))
 const list = (v) => (v == null ? [] : Array.isArray(v) ? v.map(String) : String(v).split(",")).map((x) => x.trim()).filter(Boolean)
 const mins = (ms) => `${Math.max(0, Math.round(ms / 60000))}m`
 const esc = (s) => String(s ?? "").replaceAll("</", "<\\/")
 const json = (x) => esc(JSON.stringify(x))
+const cut31 = (t) => t.slice(0, 31).replace(/-+$/, "")
+const stepAgentName = (flow, id) => cut31(`${flow}-${id}`)
+const fieldLine = (f, flags) => new RegExp(`^\\s*[-*]?\\s*\\**${f.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\**\\s*:`, flags)
+const researchOf = (x) => (x.kind === "research" ? { model: x.model, max_turns: x.max_turns, seconds: x.seconds } : { model: null, max_turns: null, seconds: null })
+// A step's shadow (2026-10-25 owner: "an A/B run" — docs/portable-workflows.md): the same step run a second time as the
+// other kind, beside it, for comparison only. `shadow: {kind: research | agent, tools?, model?, max_turns?, seconds?,
+// max_steps?, min_calls?, artifacts?}` → the normalized shadow, or null.
+const SHADOW_KEYS = new Set(["kind", "tools", "model", "max_turns", "seconds", "max_steps", "min_calls", "artifacts"])
+export function shadowOf(v, file = "step.md") {
+  if (v == null) return null
+  if (typeof v !== "object" || Array.isArray(v)) throw new Error(`${file}: shadow is a map {kind: research | agent, tools?, model?, …}`)
+  const unknown = Object.keys(v).filter((k) => !SHADOW_KEYS.has(k))
+  if (unknown.length) throw new Error(`${file}: shadow keys ${unknown.join(", ")} (known: ${[...SHADOW_KEYS].join(", ")})`)
+  const kind = String(v.kind ?? "")
+  if (!["research", "agent"].includes(kind)) throw new Error(`${file}: shadow kind research | agent`)
+  const num = (x) => (x == null ? null : Number(x))
+  return { kind, own: kind === "agent", tools: list(v.tools), model: String(v.model ?? "default"), max_turns: num(v.max_turns) ?? 8, seconds: num(v.seconds) ?? 300, max_steps: num(v.max_steps), min_calls: num(v.min_calls), artifacts: list(v.artifacts) }
+}
+const answerText = (a) => (typeof a === "string" ? a : String(a?.answer ?? a?.text ?? JSON.stringify(a ?? "")))
+const agentNamed = (base, name) => {
+  const all = base.agent?.home?.agents?.() ?? []
+  return (Array.isArray(all) ? all : [...(all.values?.() ?? Object.values(all))]).find((a) => a.name === name)
+}
+const addSource = (r, src) => {
+  r.tools++
+  r.sources = [...r.sources, src].slice(-SOURCES)
+}
+// the ids whose whole documents a step's prompt shows: `inputs` (all: every earlier step)
+const fullIds = (step, earlier, all = false) => new Set(all || step.inputs.includes("all") ? earlier.map((s) => s.id) : step.inputs)
 // {{name}} a run variable (request, date, now, the workflow's vars:); {{phase.field}} one field of an earlier phase's
 // report; {{phase}} its whole report (a code step: its data)
 const VAR = /\{\{([A-Za-z_][\w-]*(?:\.[A-Za-z_]\w*)?)\}\}/g
@@ -121,6 +150,7 @@ export function parseStep(text, file = "step.md", { parseYaml = defaultYaml } = 
     max_steps: meta.max_steps == null ? null : Number(meta.max_steps),
     min_calls: meta.min_calls == null ? null : Number(meta.min_calls),
     board: meta.board == null ? null : meta.board !== false && String(meta.board) !== "false",
+    shadow: shadowOf(meta.shadow, file),
     body,
     file,
   }
@@ -161,6 +191,16 @@ export function checkSteps(steps, known = {}) {
       if (s.kind === "research" && !(s.seconds >= 30 && s.seconds <= 900)) throw new Error(`${s.file}: seconds 30..900`)
       for (const [key, reg] of [["schema", known.schemas], ["derive", known.derive], ["check", known.checks]]) if (reg && s[key] != null && !(s[key] in reg)) throw new Error(`${s.file}: ${key} ${s[key]} — known: ${Object.keys(reg).join(", ") || "none"}`)
       if (known.tools && s.kind !== "phase" && !s.own) for (const t of s.tools) if (!known.tools.includes(t)) throw new Error(`${s.file}: tools ${t} — known: ${known.tools.join(", ") || "none"}`)
+      if (s.shadow) {
+        const b = s.shadow
+        if (s.kind === "phase" || (s.kind === "agent" && !s.own)) throw new Error(`${s.file}: shadow is for kind research or a step agent (kind agent, no agent:)`)
+        if (s.check) throw new Error(`${s.file}: shadow is not for a check step (${s.check})`)
+        if (b.kind === "research" && !(b.max_turns >= 1 && b.max_turns <= 24)) throw new Error(`${s.file}: shadow max_turns 1..24`)
+        if (b.kind === "research" && !(b.seconds >= 30 && b.seconds <= 900)) throw new Error(`${s.file}: shadow seconds 30..900`)
+        if (b.own && b.max_steps != null && !(b.max_steps >= 1 && b.max_steps <= 60)) throw new Error(`${s.file}: shadow max_steps 1..60`)
+        if (b.own && b.min_calls != null && !(b.min_calls >= 0 && b.min_calls <= 20)) throw new Error(`${s.file}: shadow min_calls 0..20`)
+        if (known.tools && !b.own) for (const t of b.tools) if (!known.tools.includes(t)) throw new Error(`${s.file}: shadow tools ${t} — known: ${known.tools.join(", ") || "none"}`)
+      }
       s.n ??= ++n
     }
     seen.add(s.id)
@@ -207,7 +247,6 @@ const HEADING = /^([a-z][a-z0-9-]*)(?:\s+[—–-]+\s+(.+?))?\s*$/
 const OUTPUT_HEAD = /^###[ \t]+(?:output|report)\b[^\n]*$/im
 const FIELD_LINE = /^\s*[-*]?\s*\**([A-Za-z_]\w*)\**\s*:/
 
-// Every step `id` waits on, directly or through others (its `after`, transitively).
 // What step i waits on before it starts, as the scheduler waits (2026-10-23 architecture map): its `after`, the earlier
 // steps it reads — its `inputs` (`all`: every earlier step) and the `{{step}}` / `{{step.field}}` its text names — and
 // every code step above it marked `barrier: true`. A code step blocks only the steps that read it (and theirs, through
@@ -348,7 +387,7 @@ export function reportFields(step, text) {
   const lines = String(text ?? "").split("\n")
   const hits = []
   for (const f of fields) {
-    const re = new RegExp(`^\\s*[-*]?\\s*\\**${f.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\**\\s*:\\s?(.*)$`, "i")
+    const re = new RegExp(`${fieldLine(f, "").source}\\s?(.*)$`, "i")
     for (let i = lines.length - 1; i >= 0; i--) {
       const m = lines[i].match(re)
       if (m) {
@@ -399,7 +438,7 @@ export function renderPhase(step, ctx) {
 
 // The report fields a phase's answer is missing (each field a line `<field>: …`).
 export function missingReport(step, text) {
-  return (step.report ?? []).filter((f) => !new RegExp(`^\\s*[-*]?\\s*\\**${f.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\**\\s*:`, "im").test(String(text ?? "")))
+  return (step.report ?? []).filter((f) => !fieldLine(f, "im").test(String(text ?? "")))
 }
 
 // Every step that depends on `id` (itself included): a re-run from it runs these again.
@@ -429,7 +468,7 @@ export function fencedJson(text, lang = "data") {
 export function renderStep(step, ctx) {
   const { steps, outputs = new Map(), schemas = {} } = ctx
   const earlier = settledBefore(steps, step.id)
-  const full = new Set(step.inputs.includes("all") ? earlier.map((s) => s.id) : step.inputs)
+  const full = fullIds(step, earlier)
   const parts = [`<stage n="${step.n}" id="${step.id}" title="${step.title}">`, fill(step.body, ctx.vars ?? {}), `</stage>`, ""]
   if (ctx.rules) parts.push(`<owner_rules note="the owner's standing rules: binding">`, esc(ctx.rules), `</owner_rules>`, "")
   if (ctx.lessons?.length) parts.push(`<owner_accepted_rules note="learnings the owner accepted: binding">`, ...ctx.lessons.map((l) => `- ${esc(l)}`), `</owner_accepted_rules>`, "")
@@ -465,7 +504,7 @@ export function renderStep(step, ctx) {
 export function flowStep(step, ctx) {
   const { steps, outputs = new Map() } = ctx
   const earlier = settledBefore(steps, step.id)
-  const full = new Set(step.inputs.includes("all") ? earlier.map((s) => s.id) : step.inputs)
+  const full = fullIds(step, earlier)
   const len = (x) => (x == null ? 0 : typeof x === "string" ? x.length : JSON.stringify(x).length)
   const rows = []
   if (ctx.rules) rows.push({ kind: "rules", from: "rules", chars: len(ctx.rules) })
@@ -497,7 +536,7 @@ export function stepVariables(step, ctx, { phased = false } = {}) {
   const vars = ctx.vars ?? {}
   const earlier = settledBefore(steps, step.id)
   const board = phased && (step.board ?? ctx.board) !== false
-  const full = new Set(board || step.inputs.includes("all") ? earlier.map((s) => s.id) : step.inputs)
+  const full = fullIds(step, earlier, board)
   const rows = []
   const used = new Set(step.uses ?? varsUsed(`${step.body ?? ""}\n${step.output ?? ""}`))
   const ids = new Set(steps.map((s) => s.id))
@@ -563,6 +602,7 @@ export function etNow(d) {
 // fails code's check is refused with the problems, so the agent fixes it inside its own loop (soft: after the agent's
 // gateRetries it goes through flagged and the problems flow on, as a research step's do). Keep file: never saved.
 export class StepContract extends Artifact {
+  static about = "a step agent's contract: code checks its document before the answer is taken"
   constructor({ name, step, check }) {
     super({ name, title: `${step.id} — the step's contract` })
     this.kind = "contract"
@@ -595,6 +635,46 @@ export class StepContract extends Artifact {
 }
 
 export class Workflow extends Artifact {
+  static about = "a workflow file run step by step (code, an agent's run, step agents), each step's report on the board"
+  static commands = {
+    run: {
+      outside: true,
+      description: "run the workflow (every step in order) and return its result; blocks until done — or re-run from a step",
+      input: { from: "a step id to re-run from (it and what depends on it; the rest reused from today); empty: all", request: "what the flow is for this run (phases: {{request}}; optional)", note: "the owner's correction for every step of this run (optional)" },
+      run(i, c) {
+        return this.run(i, { ...c, request: i.request ? String(i.request) : null })
+      },
+    },
+    read: { outside: true, description: "today's whole document of a step", input: { stage: "a step id" } },
+  }
+  // The owner's calls; the desk's own (`ownerCalls`) come after these (ownerCall below).
+  static owner = {
+    stop() {
+      if (!this.active) throw new Error("no workflow run is going")
+      if (this.active.current) this.stopped.add(this.active.current)
+      this.active.controller.abort(new Error("stopped by the owner"))
+      return { stopped: this.active.id }
+    },
+    stage(a) {
+      return this.stageDetail(a.stage, { last: !!a.last })
+    },
+    step(a) {
+      return this.stepFile(a.step)
+    },
+    edit: "editStep",
+    source: "sourceFile",
+    check: "checkDraft",
+    version: "versionText",
+    // The owner's Run (2026-10-22, phases): the flow with a request, as its first holder would start it — awaited by
+    // nobody (the twin shows it); a run already going → refused.
+    run(a) {
+      if (this.active) throw new Error(`${this.name}: a run is going (${this.active.id})`)
+      const holder = this.holders[0] ?? null
+      this.run({ from: a.from || undefined, note: a.note || undefined }, { agent: holder, owner: true, request: a.request ? String(a.request) : null, vars: a.vars && typeof a.vars === "object" ? a.vars : null, host: holder?.context?.host ?? null }).catch((error) => this.log(`${this.name}: owner run failed: ${clip(error.message, 200)}`))
+      return { started: true }
+    },
+  }
+
   // id/title: the artifact's; load(): {settings, steps} read fresh at every run (a bad file fails the run naming it), or
   // steps: a fixed list; folder: what the twin calls the steps' home; host: hostClient (research steps: host.stream
   // llm/research); store: run files; clock; log: the desk log; time(d): the day (default ET); settings: overrides.
@@ -635,6 +715,7 @@ export class Workflow extends Artifact {
     const p = this.plug
     return { code: p.code, schemas: p.schemas, derive: p.derive, checks: p.checks, ...(p.tools ? { tools: p.tools } : {}) }
   }
+  // a method, so a desk's subclass (one that reads its own folder) overrides it
   load() {
     return this.loadSteps()
   }
@@ -670,7 +751,7 @@ export class Workflow extends Artifact {
       settings,
       vars,
       revision: revisionOf(wf.steps.map(stepRevision).join("")),
-      steps: wf.steps.map((x) => ({ file: x.file ?? null, id: x.id, n: x.n, kind: x.kind, title: x.title, after: x.after ?? [], inputs: x.inputs ?? [], schema: x.schema ?? null, derive: x.derive ?? null, code: x.code ?? null, agent: x.agent ?? null, check: x.check ?? null, model: x.kind === "research" ? x.model : null, max_turns: x.kind === "research" ? x.max_turns : null, seconds: x.kind === "research" ? x.seconds : null, status: x.status ?? null, uses: x.uses ?? varsUsed(x.body), report: x.report ?? [], output: x.output ? clip(x.output, 1500) : null, board: x.board ?? null, barrier: x.kind === "code" ? x.barrier === true : null, rev: stepRevision(x), ...(x.kind === "phase" || x.own ? { tools: x.tools ?? [], artifacts: x.artifacts ?? [], max_steps: x.max_steps ?? null } : {}), ...(x.own ? { own: true, min_calls: x.min_calls ?? null, step_agent: `${this.name}-${x.id}`.slice(0, 31).replace(/-+$/, "") } : {}) })),
+      steps: wf.steps.map((x) => ({ file: x.file ?? null, id: x.id, n: x.n, kind: x.kind, title: x.title, after: x.after ?? [], inputs: x.inputs ?? [], schema: x.schema ?? null, derive: x.derive ?? null, code: x.code ?? null, agent: x.agent ?? null, check: x.check ?? null, ...researchOf(x), status: x.status ?? null, uses: x.uses ?? varsUsed(x.body), report: x.report ?? [], output: x.output ? clip(x.output, 1500) : null, board: x.board ?? null, barrier: x.kind === "code" ? x.barrier === true : null, rev: stepRevision(x), ...(x.kind === "phase" || x.own ? { tools: x.tools ?? [], artifacts: x.artifacts ?? [], max_steps: x.max_steps ?? null } : {}), ...(x.own ? { own: true, min_calls: x.min_calls ?? null, step_agent: stepAgentName(this.name, x.id) } : {}), shadow: x.shadow ? { kind: x.shadow.kind, tools: x.shadow.tools, model: x.shadow.model } : null })),
       editable: !!this.plug.files,
       error: null,
     }
@@ -703,25 +784,16 @@ export class Workflow extends Artifact {
     this.state.log = { date: today, lines: [...prev, { at: this.clock().toISOString(), text: line.startsWith(`${this.name}: `) ? line.slice(this.name.length + 2) : line, kind: k }].slice(-LOG) }
     this.touch()
   }
-  log(text) {
-    this.trace(text)
-  }
+  log(text) { this.trace(text) }
 
   // what waits on the 1 s debounce, out now (the host's flushSaves at a stop — 2026-10-23 audit)
-  flush() {
-    if (this.timer) this.touch(true)
-  }
+  flush() { if (this.timer) this.touch(true) }
 
   touch(now = false) {
-    if (now) {
-      clearTimeout(this.timer)
-      this.timer = null
-      return this.changed()
-    }
-    this.timer ??= setTimeout(() => {
-      this.timer = null
-      this.changed()
-    }, 1000)
+    if (!now) return void (this.timer ??= setTimeout(() => this.touch(true), 1000))
+    clearTimeout(this.timer)
+    this.timer = null
+    this.changed()
   }
 
   // the edit history kept beside the texts (2026-10-23 audit: "Earlier versions" came back empty on a new day)
@@ -776,21 +848,8 @@ export class Workflow extends Artifact {
     return lines.join("\n")
   }
 
-  attach(agent) {
-    if (!this.holders.includes(agent)) this.holders.push(agent)
-  }
-
-  detach(agent) {
-    this.holders = this.holders.filter((a) => a !== agent)
-  }
-
-  commands() {
-    const tool = (name, description, input, run) => new Tool({ name: `${this.name}.${name}`, type: "dev", view: "pipeline", outside: true, description, input, run })
-    return [
-      tool("run", "run the workflow (every step in order) and return its result; blocks until done — or re-run from a step", { from: "a step id to re-run from (it and what depends on it; the rest reused from today); empty: all", request: "what the flow is for this run (phases: {{request}}; optional)", note: "the owner's correction for every step of this run (optional)" }, (i, c) => this.run(i, { ...c, request: i.request ? String(i.request) : null })),
-      tool("read", "today's whole document of a step", { stage: "a step id" }, (i) => this.read(i)),
-    ]
-  }
+  attach(agent) { if (!this.holders.includes(agent)) this.holders.push(agent) }
+  detach(agent) { this.holders = this.holders.filter((a) => a !== agent) }
 
   // Today's last output of a judged step (a re-run reuses it).
   today(id) {
@@ -809,8 +868,7 @@ export class Workflow extends Artifact {
 
   read({ stage } = {}) {
     const o = this.today(String(stage ?? "").trim())
-    if (!o) return `no document of ${stage} today (stages: ${this.state.stages.map((s) => s.id).join(", ") || "none yet"})`
-    return clip(o.text, READ)
+    return o ? clip(o.text, READ) : `no document of ${stage} today (stages: ${this.state.stages.map((s) => s.id).join(", ") || "none yet"})`
   }
 
   // One stage of the last run, whole: its document, data, code results, problems, the prompt it was sent and the
@@ -840,13 +898,11 @@ export class Workflow extends Artifact {
     const vars = json(varsFile, null)
     const text = read(file, 40000)
     // the report fields it ran with (a row from before they were kept: the step's fields now)
-    let fields = r.report ?? null
-    if (!fields?.length) {
+    let fields = r.report ?? []
+    if (!fields.length) {
       try {
         fields = this.load().steps.find((x) => x.id === id)?.report ?? []
-      } catch {
-        fields = []
-      }
+      } catch {}
     }
     return { ...(unread.length ? { unread } : {}), stage: id, kind: r.kind, ...from, text, report: fields.length && text ? reportFields({ report: fields }, text) : null, fields, data: extra.data ?? null, code: extra.code ?? null, problems: extra.problems ?? (last ? [] : (r.gate?.problems ?? [])), prompt: read(promptFile, 60000), vars: Array.isArray(vars) ? vars.map(varOut) : null, flow: last ? null : (r.flow ?? null), file: file ?? null, last: !!last }
   }
@@ -863,7 +919,7 @@ export class Workflow extends Artifact {
     const name = sourceName(s.file)
     const text = this.plug.files && name ? this.plug.files.read(name) : null
     const source = text == null ? null : { name, text: clip(text, 60000), revision: revisionOf(text), shared: name !== s.file }
-    return { step: id, source, vars: s.uses ?? varsUsed(s.body), report: s.report ?? [], output: s.output ?? null, file: s.file ?? null, n: s.n, kind: s.kind, title: s.title, after: s.after ?? [], inputs: s.inputs ?? [], tools: s.tools ?? [], code: pick("code"), agent: pick("agent"), schema: s.kind === "code" ? null : pick("schema"), derive: s.kind === "code" ? null : pick("derive"), check: pick("check"), model: s.kind === "research" ? s.model : null, max_turns: s.kind === "research" ? s.max_turns : null, seconds: s.kind === "research" ? s.seconds : null, status: pick("status"), ...(s.own ? { own: true, artifacts: s.artifacts ?? [], max_steps: s.max_steps ?? null, min_calls: s.min_calls ?? null, step_agent: `${this.name}-${s.id}`.slice(0, 31).replace(/-+$/, "") } : {}), from: s.from ?? [], body: s.body ?? "", example: s.kind === "code" ? null : this.stepExample(s) }
+    return { step: id, source, vars: s.uses ?? varsUsed(s.body), report: s.report ?? [], output: s.output ?? null, file: s.file ?? null, n: s.n, kind: s.kind, title: s.title, after: s.after ?? [], inputs: s.inputs ?? [], tools: s.tools ?? [], code: pick("code"), agent: pick("agent"), schema: s.kind === "code" ? null : pick("schema"), derive: s.kind === "code" ? null : pick("derive"), check: pick("check"), ...researchOf(s), status: pick("status"), ...(s.own ? { own: true, artifacts: s.artifacts ?? [], max_steps: s.max_steps ?? null, min_calls: s.min_calls ?? null, step_agent: stepAgentName(this.name, s.id) } : {}), from: s.from ?? [], body: s.body ?? "", example: s.kind === "code" ? null : this.stepExample(s) }
   }
   // The workflow's files the owner edits ([names]: a phases file, or each NN-<id>.md of a folder) — read even when the
   // workflow does not load, so a broken file is fixed from the viewer.
@@ -958,35 +1014,15 @@ export class Workflow extends Artifact {
 
   gate(agent) {
     const cur = agent?.current
-    if (!this.plug.wake || !cur || this.ran.has(cur) || this.stopped.has(cur)) return null
-    if (!this.plug.wake.test(String(cur.request?.from ?? ""))) return null
+    if (!this.plug.wake || !cur || this.ran.has(cur) || this.stopped.has(cur) || !this.plug.wake.test(String(cur.request?.from ?? ""))) return null
     return { reason: `the desk woke you to run the workflow: call ${this.name}.run as the wake says, then answer with its result`, hard: true }
   }
 
-  ownerCall(method, args = []) {
-    const a = args[0] ?? {}
-    if (method === "stop") {
-      if (!this.active) throw new Error("no workflow run is going")
-      if (this.active.current) this.stopped.add(this.active.current)
-      this.active.controller.abort(new Error("stopped by the owner"))
-      return { stopped: this.active.id }
-    }
-    if (method === "stage") return this.stageDetail(a.stage, { last: !!a.last })
-    if (method === "edit") return this.editStep(a)
-    if (method === "source") return this.sourceFile(a)
-    if (method === "check") return this.checkDraft(a)
-    if (method === "version") return this.versionText(a)
-    // The owner's Run (2026-10-22, phases): the flow with a request, as its first holder would start it — awaited by
-    // nobody (the twin shows it); a run already going → refused.
-    if (method === "run") {
-      if (this.active) throw new Error(`${this.name}: a run is going (${this.active.id})`)
-      const holder = this.holders[0] ?? null
-      this.run({ from: a.from || undefined, note: a.note || undefined }, { agent: holder, owner: true, request: a.request ? String(a.request) : null, vars: a.vars && typeof a.vars === "object" ? a.vars : null, host: holder?.context?.host ?? null }).catch((error) => this.log(`${this.name}: owner run failed: ${clip(error.message, 200)}`))
-      return { started: true }
-    }
-    if (method === "step") return this.stepFile(a.step)
-    if (Object.hasOwn(this.plug.ownerCalls, method)) return this.plug.ownerCalls[method](args, this)
-    const more = Object.keys(this.plug.ownerCalls)
+  ownerCall(method, args = [], from) {
+    if (Object.hasOwn(Workflow.owner, method)) return super.ownerCall(method, args, from)
+    const own = this.plug.ownerCalls
+    if (Object.hasOwn(own, method)) return own[method](args, this)
+    const more = Object.keys(own)
     throw new Error(`${this.name}: the owner can run, stop, read a stage or a step, or read, check and edit its files${more.length ? `, or ${more.join(", ")}` : ""} (not ${method})`)
   }
 
@@ -1023,7 +1059,7 @@ export class Workflow extends Artifact {
       this.log(`${this.name}: the workflow does not load: ${clip(error.message, 300)}`)
       return `the workflow does not load: ${error.message}`
     }
-    const steps = wf.steps
+    const { steps } = wf
     this.cfg = this.settings(wf)
     from = String(from ?? "").trim() || null
     const judged = steps.filter((s) => s.kind !== "code")
@@ -1060,7 +1096,7 @@ export class Workflow extends Artifact {
     // each step's output before this run (its last done or reused one, else the one it carried): the viewer's "last output"
     const prevRun = this.state.run?.id ?? null
     const prev = new Map((this.state.stages ?? []).map((x) => [x.id, x.file && (x.status === "done" || x.status === "reused") ? { run: x.run ?? prevRun, file: x.file, status: x.status, ms: x.ms ?? null, at: x.started ?? null, head: clip(x.head, 400), rev: x.rev ?? null } : (x.last ?? null)]))
-    const row = (s) => ({ id: s.id, n: s.n, title: s.title, after: s.after, kind: s.kind, report: s.report ?? [], rev: stepRevision(s), status: outputs.has(s.id) ? "reused" : "waiting", started: null, ms: null, turns: null, cost_usd: null, tools: 0, sources: [], head: outputs.has(s.id) ? clip(outputs.get(s.id).text, HEAD) : "", error: null, file: outputs.get(s.id)?.file ?? null, run: outputs.has(s.id) ? (prev.get(s.id)?.run ?? null) : null, last: prev.get(s.id) ?? null, agent: null, refused: 0, gate: outputs.get(s.id)?.problems?.length ? { ok: false, problems: outputs.get(s.id).problems, retried: true } : null })
+    const row = (s) => ({ id: s.id, n: s.n, title: s.title, after: s.after, kind: s.kind, report: s.report ?? [], rev: stepRevision(s), status: outputs.has(s.id) ? "reused" : "waiting", started: null, ms: null, turns: null, cost_usd: null, tools: 0, sources: [], head: outputs.has(s.id) ? clip(outputs.get(s.id).text, HEAD) : "", error: null, file: outputs.get(s.id)?.file ?? null, run: outputs.has(s.id) ? (prev.get(s.id)?.run ?? null) : null, last: prev.get(s.id) ?? null, agent: null, refused: 0, shadow: null, gate: outputs.get(s.id)?.problems?.length ? { ok: false, problems: outputs.get(s.id).problems, retried: true } : null })
     this.state = { ...this.state, status: "running", run: { id, by: source, from, note: note ? clip(note, 600) : null, request: clip(ctx.request ?? current?.request?.text ?? note ?? "", 2000), vars: this.runVars(wf, ctx.vars), revision: revisionOf(steps.map(stepRevision).join("")), started: t0.toISOString(), ended: null, deadline: new Date(+t0 + this.cfg.deadline_minutes * 60000).toISOString() }, stages: steps.map(row), config: this.configTwin(), ...this.extraTwin() }
     const base = { steps, outputs, inputs: {}, now: t.label, date: t.date, t, extra: note ? String(note) : null, runDir, from, agent: ctx.agent ?? null, caller: ctx.owner ? null : (ctx.agent ?? null), signal }
     let after = {}
@@ -1068,7 +1104,7 @@ export class Workflow extends Artifact {
       this.log(`${this.name}: run ${id} by ${source}${from ? ` from ${from}` : ""} — ${judged.filter((s) => rerun.has(s.id)).length} judged step(s)`)
       base.rules = this.plug.rules?.(this) ?? null
       base.lessons = this.plug.lessons?.(this) ?? []
-      if (this.plug.begin) await this.plug.begin(base, this)
+      await this.plug.begin?.(base, this)
       this.touch(true)
       const rowOf = (sid) => this.state.stages.find((r) => r.id === sid)
       const running = new Map()
@@ -1159,7 +1195,7 @@ export class Workflow extends Artifact {
       base.outputs.set(s.id, { kind: s.kind, status: "failed", error: "skipped: the run's deadline passed" })
       return this.touch()
     }
-    Object.assign(r, { status: "running", started: new Date().toISOString(), error: null, tools: 0, sources: [], gate: null })
+    Object.assign(r, { status: "running", started: new Date().toISOString(), error: null, tools: 0, sources: [], gate: null, shadow: null })
     this.log(`${this.name}: stage ${s.n} ${s.id} started`)
     this.touch(true)
     const expect = s.check && this.plug.decide ? this.plug.decide(this.contextOf(base), s) : null
@@ -1192,6 +1228,8 @@ export class Workflow extends Artifact {
       this.log(`${this.name}: ${s.id} variables not recorded: ${clip(error.message, 160)}`)
     }
     r.flow = { in: this.plug.flow ? this.plug.flow(s, pctx, this) : flowStep(s, pctx), prompt_chars: first.length, prompt: promptFile, vars: varsFile }
+    // the A/B (shadow:): the other kind runs beside this step, never waited on
+    if (s.shadow) this.runShadow(s, pctx, r, base)
     let prompt = first
     let last = null
     let checked = null
@@ -1207,6 +1245,8 @@ export class Workflow extends Artifact {
       if (last.type === "error") {
         if (signal.aborted) break
         this.log(`${this.name}: stage ${s.id} attempt ${attempt + 1} failed: ${clip(last.message, 200)}`)
+        // a model's usage limit fails every attempt the same way until it resets: no more attempts now
+        if (usageLimit(last.message)) break
         continue
       }
       checked = this.checkStep(s, last.text, base, expect)
@@ -1237,8 +1277,60 @@ export class Workflow extends Artifact {
     Object.assign(r, { status: "done", head: clip(last.text, HEAD), file, run: this.state.run?.id ?? null, gate: { ok: !problems.length, problems: problems.slice(0, 8), retried } })
     r.flow = { ...(r.flow ?? {}), out: { text_chars: last.text.length, data: out.data ? Object.keys(out.data).slice(0, 16) : [], code: out.code ? Object.keys(out.code).slice(0, 16) : [] } }
     if (s.check) this.onChecked(s, out, checked, expect, base)
+    this.compareShadow(s, base)
     this.log(`${this.name}: stage ${s.n} ${s.id} done in ${Math.round(r.ms / 1000)}s · ${r.tools} web reads${this.stepNote(s, checked)}${problems.length ? ` · gate: ${clip(problems.join("; "), 200)}` : ""}`)
     this.touch(true)
+  }
+
+  // A step's shadow (the A/B): the step again as `shadow.kind` with the shadow's tools and model — its own prompt rendered
+  // for those tools, its own call (a step agent named <step agent>-b), checked by the step's contract — saved beside the
+  // step as NN-<id>.shadow.md / .json / .prompt.md. Never retried, never waited on, never read downstream; the run's stop
+  // ends it. Twin: the row's `shadow` {kind, status, started, ms, turns, tools, sources, cost_usd, gate, file, agent,
+  // error, same, differs (the ```data fields where it and the step disagree)}.
+  async runShadow(s, pctx, r, base) {
+    const sb = { ...s, ...s.shadow, shadow: null, agent: null, agent_name: cut31(`${stepAgentName(this.name, s.id)}-b`) }
+    const row = { kind: sb.kind, status: "running", started: new Date().toISOString(), ms: null, turns: 0, tools: 0, sources: [], cost_usd: 0, gate: null, file: null, agent: null, error: null, same: null, differs: null }
+    const pair = { row, data: null }
+    r.shadow = row
+    ;(base.shadows ??= new Map()).set(s.id, pair)
+    const nn = String(s.n).padStart(2, "0")
+    const t0 = Date.now()
+    this.touch(true)
+    try {
+      const prompt = this.plug.render ? this.plug.render(sb, pctx, this) : renderStep(sb, pctx)
+      this.store.write(`${base.runDir}/${nn}-${s.id}.shadow.prompt.md`, prompt)
+      const last = await this.call(sb, prompt, row, base).catch((error) => ({ type: "error", message: base.signal.aborted ? "stopped" : error.message }))
+      row.ms = Date.now() - t0
+      if (last?.type !== "result") {
+        Object.assign(row, { status: base.signal.aborted ? "stopped" : "failed", error: clip(last?.message ?? "no result", 400) })
+        return this.log(`${this.name}: stage ${s.n} ${s.id} shadow (${sb.kind}) ${row.status}: ${clip(row.error, 200)}`)
+      }
+      row.turns = (row.turns ?? 0) + (last.turns ?? 0)
+      row.cost_usd = Math.round(((row.cost_usd ?? 0) + (last.cost_usd ?? 0)) * 1000) / 1000
+      const checked = this.checkStep(sb, last.text, base, null)
+      const problems = checked.problems ?? []
+      row.file = this.store.write(`${base.runDir}/${nn}-${s.id}.shadow.md`, `${last.text.trim()}\n`)
+      this.store.write(row.file.replace(/\.md$/, ".json"), `${JSON.stringify({ data: checked.data ?? null, code: checked.code ?? null, problems }, null, 1)}\n`)
+      pair.data = checked.data ?? null
+      Object.assign(row, { status: "done", gate: { ok: !problems.length, problems: problems.slice(0, 8) } })
+      this.compareShadow(s, base)
+      this.log(`${this.name}: stage ${s.n} ${s.id} shadow (${sb.kind}) done in ${Math.round(row.ms / 1000)}s · ${row.tools} reads${problems.length ? ` · gate: ${clip(problems.join("; "), 200)}` : " · gate ok"}${row.differs ? ` · ${row.differs.length} of ${row.differs.length + row.same} data fields differ` : ""}`)
+    } catch (error) {
+      Object.assign(row, { status: "failed", error: clip(error.message, 400), ms: Date.now() - t0 })
+      this.log(`${this.name}: stage ${s.n} ${s.id} shadow failed: ${clip(error.message, 200)}`)
+    } finally {
+      this.touch(true)
+    }
+  }
+
+  // Once both the step and its shadow have ```data: the top-level fields where they differ, and how many agree.
+  compareShadow(s, base) {
+    const pair = base.shadows?.get(s.id)
+    const main = base.outputs.get(s.id)
+    if (!pair?.data || main?.status !== "done" || !main.data || typeof main.data !== "object" || typeof pair.data !== "object") return
+    const keys = [...new Set([...Object.keys(main.data), ...Object.keys(pair.data)])]
+    const differs = keys.filter((k) => JSON.stringify(main.data[k] ?? null) !== JSON.stringify(pair.data[k] ?? null))
+    Object.assign(pair.row, { differs: differs.slice(0, 24), same: keys.length - differs.length })
   }
 
   // A run on a new day (a desk clears its day's own twin fields here).
@@ -1248,8 +1340,7 @@ export class Workflow extends Artifact {
   // agent already holds stays as it was). Grants resolve through `grant(name, agent)` (the desk's catalogue), else the
   // agent's desk's build env (env.tools / env.artifacts).
   async callPhase(s, prompt, base, r = null) {
-    const agents = base.agent?.home?.agents?.() ?? []
-    const target = (Array.isArray(agents) ? agents : [...(agents.values?.() ?? Object.values(agents))]).find((a) => a.name === s.agent)
+    const target = agentNamed(base, s.agent)
     if (!target) return { type: "error", message: `no agent ${s.agent} in this desk` }
     if (target === base.caller) return { type: "error", message: `phase ${s.id}: ${s.agent} runs this flow — a phase's agent cannot be the one waiting on it (start the flow from the owner's Run, or name another agent)` }
     const env = target.home?.ctx?.env ?? {}
@@ -1278,8 +1369,8 @@ export class Workflow extends Artifact {
       if (r) r.agent = target.name
       const offs = r ? this.watchAgent(target, r) : []
       try {
-        const answer = await target.ask(prompt, { from: `${this.name}:${s.id}`, signal: base.signal, outside: base.agent?.current?.outside ?? null })
-        return { type: "result", text: typeof answer === "string" ? answer : String(answer?.answer ?? answer?.text ?? JSON.stringify(answer ?? "")) }
+        const answer = await target.ask(prompt, { from: `${this.name}:${s.id}`, signal: base.signal, outside: base.agent?.current?.outside ?? null, ...(s.report?.length ? { contract: s.report } : {}) })
+        return { type: "result", text: answerText(answer) }
       } finally {
         for (const off of offs) off()
         if (s.max_steps && target.config) target.config.maxSteps = steps
@@ -1297,7 +1388,7 @@ export class Workflow extends Artifact {
     const caller = base.agent
     const home = caller?.home
     if (!home?.spawn) return { type: "error", message: `step ${s.id}: no desk to spawn its agent in (the workflow has no holder)` }
-    const name = `${this.name}-${s.id}`.slice(0, 31).replace(/-+$/, "")
+    const name = s.agent_name ?? stepAgentName(this.name, s.id)
     this.dropStepAgents(name)
     const contract = new StepContract({ name: `${name}.contract`, step: s, check: (text) => this.checkStep(s, text, base, base.expects?.[s.id] ?? null) })
     const role = `You are step ${s.n} of the ${this.name} workflow (${s.id}: ${s.title}): an agent of your own for this step of this run. Work the request with your tools; ${s.report?.length && !s.check && !s.schema ? `answer with the phase report (${s.report.join(", ")})` : "answer with the step's whole document, ending in its \`\`\`data block"} — the desk's code checks it (${name}.contract) before your answer is taken, and the next steps read it.`
@@ -1323,7 +1414,7 @@ export class Workflow extends Artifact {
     const left = Date.parse(this.state.run?.deadline ?? "") - this.clock().getTime()
     const signal = Number.isFinite(left) && !s.check && !this.cfg.past_deadline.includes(s.id) ? AbortSignal.any([base.signal, AbortSignal.timeout(Math.max(60000, left))]) : base.signal
     try {
-      const answer = await sub.ask(prompt, { from: `${this.name}:${s.id}`, signal, outside: caller?.current?.outside ?? null })
+      const answer = await sub.ask(prompt, { from: `${this.name}:${s.id}`, signal, outside: caller?.current?.outside ?? null, ...(s.report?.length ? { contract: s.report } : {}) })
       return { type: "result", text: String(answer ?? ""), turns: 0 }
     } catch (error) {
       return { type: "error", message: base.signal.aborted ? "stopped" : signal.aborted ? "the run's deadline passed" : error.message }
@@ -1344,9 +1435,9 @@ export class Workflow extends Artifact {
         this.touch()
       }),
       agent.on("call", (e) => {
-        r.tools++
         const i = e.input ?? {}
-        if (/^(web|browse)\./.test(e.tool) || i.url || i.q || i.query) r.sources = [...r.sources, { name: e.tool, ...(i.q || i.query ? { query: String(i.q ?? i.query) } : {}), ...(i.url ? { url: String(i.url) } : {}) }].slice(-SOURCES)
+        if (/^(web|browse)\./.test(e.tool) || i.url || i.q || i.query) addSource(r, { name: e.tool, ...(i.q || i.query ? { query: String(i.q ?? i.query) } : {}), ...(i.url ? { url: String(i.url) } : {}) })
+        else r.tools++
         this.touch()
       }),
     ]
@@ -1366,9 +1457,7 @@ export class Workflow extends Artifact {
   }
 
   // A word on the done line after the reads (trade-card: the card's DECISION). Default none.
-  stepNote() {
-    return ""
-  }
+  stepNote() { return "" }
 
   // A check step's result (a desk may override: trade-card keeps its card).
   onChecked(s, out, checked, expect) {
@@ -1381,19 +1470,17 @@ export class Workflow extends Artifact {
     if (s.kind === "phase") return this.callPhase(s, prompt, base, r)
     if (s.own) return this.callStepAgent(s, prompt, r, base)
     if (s.kind === "agent") {
-      const agents = base.agent?.home?.agents?.() ?? []
-      const target = (Array.isArray(agents) ? agents : [...(agents.values?.() ?? Object.values(agents))]).find((a) => a.name === s.agent)
+      const target = agentNamed(base, s.agent)
       if (!target) return { type: "error", message: `no agent ${s.agent} in this desk` }
       const answer = await target.ask(prompt, { from: `${this.name}:${s.id}`, signal, outside: base.agent?.current?.outside ?? null })
-      return { type: "result", text: typeof answer === "string" ? answer : String(answer?.answer ?? answer?.text ?? JSON.stringify(answer ?? "")) }
+      return { type: "result", text: answerText(answer) }
     }
     if (!this.host?.stream) return { type: "error", message: "no host research (llm/research) for a research step" }
     return this.host.stream("llm/research", { prompt, model: s.model, max_turns: s.max_turns, seconds: s.seconds, ...(s.tools?.length ? { tools: s.tools } : {}) }, {
       signal,
       onEvent: (e) => {
         if (e.type !== "tool") return
-        r.tools++
-        r.sources = [...r.sources, { name: e.name, ...(e.query ? { query: e.query } : {}), ...(e.url ? { url: e.url } : {}) }].slice(-SOURCES)
+        addSource(r, { name: e.name, ...(e.query ? { query: e.query } : {}), ...(e.url ? { url: e.url } : {}) })
         this.touch()
       },
     })
@@ -1426,7 +1513,7 @@ export class Workflow extends Artifact {
   }
 }
 
-const slugOf = (t) => String(t ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 31).replace(/-+$/, "") || null
+const slugOf = (t) => cut31(String(t ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")) || null
 
 // A workflow from one markdown file (parseWorkflowMarkdown's format) → a Workflow artifact (2026-10-22 owner: "a utility
 // which read an md file and creates the workflow object"). `source`: the text, or {read() → text, write?(text)} — read

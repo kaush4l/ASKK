@@ -19,6 +19,7 @@
 import { existsSync, mkdirSync, readdirSync } from "node:fs"
 import { homedir, platform } from "node:os"
 import { dirname, join } from "node:path"
+import { attempt } from "../shared/safe.js"
 
 const HOME = homedir()
 const h = (...parts) => join(HOME, ...parts)
@@ -32,11 +33,7 @@ const SYSTEM_BINS = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", 
 
 function nvmBins() {
   const dir = h(".nvm/versions/node")
-  try {
-    return readdirSync(dir).sort().reverse().map((v) => join(dir, v, "bin"))
-  } catch {
-    return []
-  }
+  return attempt(() => readdirSync(dir).sort().reverse().map((v) => join(dir, v, "bin")), [])
 }
 
 // The JDK: JAVA_HOME, else macOS java_home, else the java on PATH.
@@ -124,10 +121,6 @@ export function detectToolchains(ids = [], { cache = join(CACHES, "default") } =
     const version = `${out.stdout}${out.stderr}`.trim().split("\n")[0] || null
     found.push({ id, version, programs: have })
   }
-  for (const dir of writable) {
-    try {
-      mkdirSync(dir, { recursive: true })
-    } catch {}
-  }
+  for (const dir of writable) attempt(() => mkdirSync(dir, { recursive: true }))
   return { programs: [...programs], path, writable: [...writable], never: [...never], env, cache, found, missing }
 }

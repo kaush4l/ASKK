@@ -1,7 +1,8 @@
-import { checkReport, REPORT_FORMAT } from "./report.js"
+import { checkReport, contractOf, REPORT_FIELDS, REPORT_FORMAT, reportOf } from "./report.js"
 import { parseReply, RESPONSE_FORMAT } from "./reply.js"
 import { AgentTool, OUTSIDE_DESKS, QUEST_INPUT, readsOutside } from "../tool/tool.js"
 import { readVisual } from "../builtin/visual.js"
+import { clipAfter as clip, oneLine } from "../util/text.js"
 
 // Agent: one configurable ReAct loop.
 //
@@ -9,9 +10,10 @@ import { readVisual } from "../builtin/visual.js"
 //   in parallel) → results join the run's steps } → report
 //
 // Everything the agent knows renders into the prompt every step, in the owner's reading order (2026-10-17 owner:
-// "soul, agent instructions, context, quest, history, tools and response format"): soul → # YOU ARE <name> + role →
-// every artifact it holds (latest state, its artifact order) → # REQUEST, then # OWNER GUIDANCE when a note waits
-// (it amends the quest) → # EARLIER RUNS → # WORK DONE ON THIS REQUEST → # TOOLS → # RESPONSE (response + report
+// "soul, agent instructions, context, quest, history, tools and response format"; 2026-10-25 owner: "Tools first, RESPONSE
+// last" — the stable start cached): soul → # YOU ARE <name> + role → # TOOLS → every artifact it holds (latest state, its
+// artifact order) → # REQUEST, then # OWNER GUIDANCE when a note waits (it amends the quest) → # EARLIER RUNS →
+// # WORK DONE ON THIS REQUEST → # RESPONSE (response + report
 // formats), or # SYSTEM when config.system replaces it. Each part carries its own instructions (a tool its
 // description, an artifact its head line, the run's state its header), so a role says only what the agent is for
 // and how it works (2026-10-15 owner: spec + runbook, nothing repeated).
@@ -59,18 +61,37 @@ export function contextBudget(model) {
   if (/ollama|llama|qwen|mistral|phi|gemma|lmstudio|local/.test(m)) return 100_000
   return 400_000
 }
+// A step as the prompt reads it — its thought, then each result (output: how much of it) — and a past run as two lines.
+// A result shows the input that made it (s.calls[k] made s.results[k]; two web.read calls in one step were told apart by
+// nothing), each field on one line and clipped: the call's own words, never a second copy of a file it wrote.
+const CLIP_INPUT = 120
+const inputLine = (input) => {
+  const fields = Object.entries(input ?? {}).map(([k, v]) => `${k}: ${clip(oneLine(typeof v === "string" ? v : JSON.stringify(v)), CLIP_INPUT)}`)
+  return fields.length ? ` {${fields.join(", ")}}` : ""
+}
+const stepLine = (s, i, output = (r) => r.output) => `step ${i + 1}: ${s.thought ?? ""}\n${(s.results ?? []).map((r, k) => `  ${r.tool}${inputLine(s.calls?.[k]?.input)} → ${r.ok ? "" : "ERROR "}${output(r)}`).join("\n")}`
+// Tools that describe alike (every workflow's run and read) share one line: "- a.run | b.run {…} — …".
+const toolLines = (tools) => {
+  const groups = new Map() // the line after the name → the names that share it
+  for (const t of tools) {
+    const rest = t.describe().slice(`- ${t.name}`.length)
+    groups.set(rest, [...(groups.get(rest) ?? []), t.name])
+  }
+  return [...groups].map(([rest, names]) => `- ${names.join(" | ")}${rest}`).join("\n")
+}
+const pastLine = (h) => `> ${h.from}: ${clip(h.request, CLIP_HISTORY)}\n< ${clip(h.answer, CLIP_HISTORY)}`
 // The code-side summary: each folded step's thought and its results' heads (a compaction whose model call failed).
 const foldText = (steps, past) =>
   [
     ...past.map((h) => `earlier run (${h.from}): ${clip(h.request, 200)} → ${clip(h.answer, 300)}`),
-    ...steps.map((s, i) => `step ${i + 1}: ${clip(s.thought ?? "", 300)}\n${(s.results ?? []).map((r) => `  ${r.tool} → ${r.ok ? "" : "ERROR "}${clipOld(r.output, CLIP_FOLD)}`).join("\n")}`),
+    ...steps.map((s, i) => stepLine({ ...s, thought: clip(s.thought ?? "", 300) }, i, (r) => clipOld(r.output, CLIP_FOLD))),
   ].join("\n")
 const COMPACT_PROMPT =
   "Compress the work below into a summary the agent can keep acting from: every finding with its numbers, paths, ids and names; what was tried and failed; what is left to do. No preamble, plain text, at most 1500 words."
 
 // Guidance that arrived while the model wrote its answer: the answer waits one step so the note is read.
 const HELD = "answer held: the owner's guidance arrived while you wrote it — read # OWNER GUIDANCE, then answer"
-const clip = (s, n) => (String(s).length > n ? `${String(s).slice(0, n)}…` : String(s))
+const HELD_GATE = { reasons: ["owner guidance arrived while it answered"], held: true }
 // An old result keeps its head and its tail: series arrive oldest first, so a head-only cut dropped the
 // newest bars and the agent fetched them again (2026-10-15, waves).
 const clipEnds = (s, n) => {
@@ -97,8 +118,14 @@ export const clipOld = (s, n) => {
 }
 
 // The owner's chat (Agent.chat): how to answer, last in its prompt where # RESPONSE is in a step's.
-export const CHAT_FORMAT =
-  "The owner is talking with you; your run (if any) goes on without this reply. Answer in plain prose from what you see above — what is built, what runs now, what the numbers are, what is next, what to check, with paths and numbers. No calls: tools do not run here. Draw rather than describe (2026-10-18 owner: \"Only text based conversation is slow and verbose\"): to show an architecture, a flow, two options side by side or numbers, add ONE block fenced ```visual … ``` holding a visual spec as JSON ({\"kind\": \"flow\" | \"steps\" | \"matrix\" | \"line\" | \"bars\" | \"tokens\" | \"scatter\" | \"compare\", …}) or {\"show\": \"<the id of a visual in the preview>\"} (e.g. \"arch\": the architecture as its script computes it) — the owner sees it drawn under your answer; keep the prose short beside it. If the owner asks you to do, change or check something, make your reply's last line, on its own (not quoted, not in a list or a code block), GUIDE: <the note for your run in progress> when you are running, or QUEUE: <the request for a new run, for the owner to start> when idle; otherwise no such line."
+// Draw rather than describe: 2026-10-18 owner, "Only text based conversation is slow and verbose".
+export const CHAT_FORMAT = `The owner is talking with you; your run (if any) goes on without this reply. No calls: tools do not run here.
+Answer in plain prose from what you see above: what is built, what runs now, what is next, what to check — with paths and numbers.
+Draw rather than describe: for an architecture, a flow, options side by side or numbers, add ONE block fenced \`\`\`visual … \`\`\` holding a visual spec as JSON ({"kind": "flow" | "steps" | "matrix" | "line" | "bars" | "tokens" | "scatter" | "compare", …}) or {"show": "<a preview visual's id>"} (e.g. "arch": the architecture as its script computes it); the owner sees it drawn under your answer — keep the prose short beside it.
+When the owner asks you to do, change or check something, end with one line on its own (not quoted, not in a list or code block):
+while running — GUIDE: <the note for your run in progress>
+when idle — QUEUE: <the request for a new run, for the owner to start>
+Otherwise no such line.`
 const CHAT_KEEP = 12 // exchanges kept in agent.chats
 
 // What a run read from outside (tool/tool.js readsOutside: web.*, browse, desk.read / desk.ask, an MCP tool, a tool built
@@ -191,6 +218,8 @@ const toolTwin = (t) =>
 
 export class Agent {
   #runs = new Set() // the AbortController of every run accepted and not ended (in progress or queued): stop() aborts them
+  #inbox = [] // the requests waiting behind the run in progress, oldest first: {id, text, from, at}
+  #received = 0
   #chats = new Map() // the AbortController of every chat in flight -> {from, text, at}: stop() aborts them too
 
   constructor(config, { infer, tools = [], artifacts = [], context = {} } = {}) {
@@ -261,24 +290,7 @@ export class Agent {
   // tree) is read here so render() stays synchronous. A refresh that throws or passes REFRESH_MS is noted in that
   // artifact's prompt block (refreshFailed) and the step goes on with its last state.
   async refreshArtifacts() {
-    await Promise.all(
-      this.artifacts.map(async (a) => {
-        if (typeof a.refresh !== "function") return
-        let timer = null
-        try {
-          const ms = this.config.refreshMs ?? REFRESH_MS
-          await Promise.race([a.refresh(this), new Promise((_, no) => (timer = setTimeout(() => no(new Error(`no answer in ${ms / 1000} s`)), ms)))])
-          // back after failing: said once (2026-10-23 architecture map: a failed refresh was only in the prompt)
-          if (this.refreshFailed.delete(a.id)) this.emit("refresh", { artifact: a.id, ok: true })
-        } catch (error) {
-          const why = String(error?.message ?? error).split("\n")[0].slice(0, 200)
-          if (this.refreshFailed.get(a.id) !== why) this.emit("refresh", { artifact: a.id, ok: false, error: why })
-          this.refreshFailed.set(a.id, why)
-        } finally {
-          clearTimeout(timer)
-        }
-      }),
-    )
+    await Promise.all(this.artifacts.filter((a) => typeof a.refresh === "function").map((a) => this.#hostRead(a.id, () => a.refresh(this))))
   }
 
   // The images this step's model call carries (2026-10-18 owner: "the screenshot will be included along with the next
@@ -287,31 +299,31 @@ export class Agent {
   // at most IMAGES_MAX, each ≤ IMAGE_BYTES; a failure or a hang past refreshMs drops that artifact's images, never
   // the step. Each {media_type, data (base64), caption, ref}: the model gets the data, the step event only the ref.
   async collectImages() {
-    const found = await Promise.all(
-      this.artifacts.map(async (a) => {
-        if (typeof a.images !== "function") return []
-        let timer = null
-        try {
-          const ms = this.config.refreshMs ?? REFRESH_MS
-          const got = await Promise.race([a.images(this), new Promise((_, no) => (timer = setTimeout(() => no(new Error("timeout")), ms)))])
-          if (this.refreshFailed.delete(`${a.id} screenshots`)) this.emit("refresh", { artifact: `${a.id} screenshots`, ok: true })
-          return Array.isArray(got) ? got : []
-        } catch (error) {
-          // the step goes without them, and says so once (a refresh row — 2026-10-23 audit: it went silently)
-          const key = `${a.id} screenshots`
-          const why = String(error?.message ?? error).split("\n")[0].slice(0, 200)
-          if (this.refreshFailed.get(key) !== why) this.emit("refresh", { artifact: key, ok: false, error: why })
-          this.refreshFailed.set(key, why)
-          return []
-        } finally {
-          clearTimeout(timer)
-        }
-      }),
-    )
+    const found = await Promise.all(this.artifacts.filter((a) => typeof a.images === "function").map((a) => this.#hostRead(`${a.id} screenshots`, () => a.images(this), [])))
     return found
-      .flat()
+      .flatMap((got) => (Array.isArray(got) ? got : []))
       .filter((i) => i && typeof i.data === "string" && /^image\/(png|jpeg|webp|gif)$/.test(i.media_type ?? "") && i.data.length * 0.75 <= IMAGE_BYTES)
       .slice(0, IMAGES_MAX)
+  }
+
+  // An artifact's read of the host raced with config.refreshMs: a failure or a hang is said once (a refresh event — a
+  // row in the thread; 2026-10-23 audit: it went silently) and the step goes on → fallback; back after failing, said
+  // once more.
+  async #hostRead(key, read, fallback) {
+    const ms = this.config.refreshMs ?? REFRESH_MS
+    let timer = null
+    try {
+      const got = await Promise.race([read(), new Promise((_, no) => (timer = setTimeout(() => no(new Error(`no answer in ${ms / 1000} s`)), ms)))])
+      if (this.refreshFailed.delete(key)) this.emit("refresh", { artifact: key, ok: true })
+      return got
+    } catch (error) {
+      const why = String(error?.message ?? error).split("\n")[0].slice(0, 200)
+      if (this.refreshFailed.get(key) !== why) this.emit("refresh", { artifact: key, ok: false, error: why })
+      this.refreshFailed.set(key, why)
+      return fallback
+    } finally {
+      clearTimeout(timer)
+    }
   }
 
   // ---- twin -----------------------------------------------------------------------------------
@@ -327,6 +339,8 @@ export class Agent {
       name: this.name,
       description: this.config.description ?? roleLine(this.config.role),
       role: String(this.config.role ?? ""),
+      soul: String(this.config.soul ?? ""), // who it is in every role (the prompt's opening); soulFile: where it was read
+      soul_file: this.config.soulFile ?? null,
       model: this.config.model ?? null,
       team: this.teamPath ?? "",
       folder: this.config.folder ?? null,
@@ -357,7 +371,6 @@ export class Agent {
         fn(payload)
       } catch (error) {
         this.listenerErrors = (this.listenerErrors ?? 0) + 1
-        // the first one reaches the desk's log (its twin: the Live desk log), else the console
         // the 1st, 10th, 100th … reach the desk log (its twin: the Live desk log), else the console — counted, never silent
         const n = this.listenerErrors
         if (Number.isInteger(Math.log10(n))) (this.context?.log ?? console.error)(`${this.name}: a ${event} listener threw (${n} so far; the run goes on): ${error?.message ?? error}`)
@@ -367,8 +380,8 @@ export class Agent {
 
   // ---- prompt ---------------------------------------------------------------------------------
 
-  // Sections 1–7 in the owner's reading order (the header comment): who it is, what it is for, what it holds,
-  // what is asked, what was done, what it can call, how to reply.
+  // Sections 1–7 in the owner's reading order (the header comment): who it is, what it is for, what it can call, what it
+  // holds, what is asked, what was done, how to reply.
   // options.chat ({from, text}: Agent.chat): the same sections for the owner's chat — request null when idle — but 7 is
   // # OWNER CHAT (the last exchanges, then the owner's words) and # RESPONSE the chat's format. Without options the
   // prompt is a step's, unchanged.
@@ -378,25 +391,27 @@ export class Agent {
     // 1 soul: desk-wide, no header — the prompt opens on the identity itself.
     if (this.config.soul) parts.push(this.config.soul)
     // 2 agent instructions
-    parts.push(`# YOU ARE ${this.name}\n${this.config.role ?? ""}`)
-    // 3 context: every artifact it holds, in its artifact order (buildAgent: least-changing first, the board last)
-    // A refresh that failed (refreshArtifacts) is one line under its block: the state shown is the last one read.
-    for (const a of this.artifacts) parts.push(`# ${a.id} — ${a.title}\n${a.render(this)}${this.refreshFailed.has(a.id) ? `\n(refresh failed: ${this.refreshFailed.get(a.id)} — this is its last state)` : ""}`)
-    // 4 quest: the request, and the owner's note right under it while one waits (guidance amends the quest)
-    parts.push(request ? `# REQUEST (from ${request.from})\n${request.text}` : "# REQUEST\n(idle: no run in progress)")
-    if (this.guidance.length) parts.push(`# OWNER GUIDANCE\nArrived during this run. Act on it now; it shows once, so say in your thought what you change.\n${this.guidance.map((g) => `> ${g.from}: ${g.text}`).join("\n")}`)
-    // 5 history: earlier runs, then this run's steps (newest last)
-    const past = this.current?.historyFolded && !chat ? [] : this.history.slice(-this.config.historyKeep) // folded into the run's summary step
-    if (past.length) parts.push(`# EARLIER RUNS\nYour last answers: their numbers are from then — confirm them with this run's tools before you use them.\n${past.map((h) => `> ${h.from}: ${clip(h.request, CLIP_HISTORY)}\n< ${clip(h.answer, CLIP_HISTORY)}`).join("\n")}`)
-    if (steps.length) {
-      const last = steps.length - 2
-      const done = steps.map((s, i) => `step ${i + 1}: ${s.thought}\n${s.results.map((r) => `  ${r.tool} → ${r.ok ? "" : "ERROR "}${i < last && this.tools.get(r.tool)?.type !== "agent" ? clipOld(r.output, CLIP_OLD_STEP) : r.output}`).join("\n")}`)
-      parts.push(`# WORK DONE ON THIS REQUEST\nYour steps so far and their results (newest last): read them before you call again.\n${done.join("\n")}`)
-    }
-    // 6 tools
+    parts.push(`# YOU ARE ${this.name}${this.config.role ? `\n${this.config.role}` : ""}`)
+    // 3 tools, right after who it is: they change only when a helper comes or goes, so with the soul and the role they
+    // are the prompt's stable start, which a provider caches across steps (2026-10-25 owner: "Tools first, RESPONSE last")
     if (this.tools.size) {
       const brief = [...this.tools.values()].some((t) => t.type === "agent") ? `Agents take a brief: ${Object.entries(QUEST_INPUT).map(([k, v]) => `${k} = ${v}`).join("; ")}.\n` : ""
-      parts.push(`# TOOLS\n${brief}${[...this.tools.values()].map((t) => t.describe()).join("\n")}`)
+      parts.push(`# TOOLS\n${brief}${toolLines(this.tools.values())}`)
+    }
+    // 4 context: every artifact it holds, in its artifact order (buildAgent: least-changing first, the board last)
+    // A refresh that failed (refreshArtifacts) is one line under its block: the state shown is the last one read.
+    // its header names it once: a title that starts with the id ("dispatch — work that runs …", or the id alone) is the header
+    for (const a of this.artifacts) parts.push(`# ${String(a.title ?? "").startsWith(a.id) ? a.title : `${a.id} — ${a.title}`}\n${a.render(this)}${this.refreshFailed.has(a.id) ? `\n(refresh failed: ${this.refreshFailed.get(a.id)} — this is its last state)` : ""}`)
+    // 5 quest: the request, and the owner's note right under it while one waits (guidance amends the quest)
+    parts.push(request ? `# REQUEST (from ${request.from})\n${request.text}${request.original ? `\n(Rewritten from the owner's own words${request.rewrite?.via === "voice" ? ", spoken and transcribed" : ""}: "${request.original}" — where the two differ, the owner's words decide.)` : ""}` : "# REQUEST\n(idle: no run in progress)")
+    if (this.guidance.length) parts.push(`# OWNER GUIDANCE\nArrived during this run. Act on it now; it shows once, so say in your thought what you change.\n${this.guidance.map((g) => `> ${g.from}: ${g.text}`).join("\n")}`)
+    // 6 history: earlier runs, then this run's steps (newest last)
+    const past = this.current?.historyFolded && !chat ? [] : this.history.slice(-this.config.historyKeep) // folded into the run's summary step
+    if (past.length) parts.push(`# EARLIER RUNS\nYour last answers: their numbers are from then — confirm them with this run's tools before you use them.\n${past.map(pastLine).join("\n")}`)
+    if (steps.length) {
+      const last = steps.length - 2
+      const done = steps.map((s, i) => stepLine(s, i, (r) => (i < last && this.tools.get(r.tool)?.type !== "agent" ? clipOld(r.output, CLIP_OLD_STEP) : r.output)))
+      parts.push(`# WORK DONE ON THIS REQUEST\nYour steps so far and their results (newest last): read them before you call again.\n${done.join("\n")}`)
     }
     // 7 the owner's chat (Agent.chat): the earlier exchanges, the owner's words, the chat's format — never a run's
     if (chat) {
@@ -404,10 +419,26 @@ export class Agent {
       const now = typeof chat === "object" && chat.text ? [`> ${chat.from ?? "owner"}: ${chat.text}`] : []
       parts.push(`# OWNER CHAT\nThe owner talks with you outside your runs (newest last): answer the last message.\n${[...past, ...now].join("\n")}`)
       parts.push(`# RESPONSE\n${CHAT_FORMAT}`)
-      return parts.join("\n\n")
+      return this.#measure(parts)
     }
     // 7 response format, last: config.system replaces it whole
     parts.push(this.config.system ? `# SYSTEM\n${this.config.system}` : `# RESPONSE\n${RESPONSE_FORMAT}${this.config.report ? `\n${REPORT_FORMAT}` : ""}`)
+    return this.#measure(parts)
+  }
+
+  // The context meter (2026-10-26 owner: prompt length is the limit): each part's element — soul, you, tools, an
+  // artifact's id, request, guidance, earlier runs, work done, chat, response — and its chars (its text plus the "\n\n"
+  // that joins it to the next), so the parts sum to the prompt's length. Only the newest render's measure is kept.
+  #measure(parts) {
+    const named = { "YOU ARE": "you", TOOLS: "tools", REQUEST: "request", "OWNER GUIDANCE": "guidance", "EARLIER RUNS": "earlier runs", "WORK DONE": "work done", "OWNER CHAT": "chat", RESPONSE: "response", SYSTEM: "response" }
+    const artifacts = [...this.artifacts]
+    this.promptParts = parts.map((p, i) => {
+      const head = p.split("\n", 1)[0]
+      const known = i === 0 && this.config.soul && p === this.config.soul ? null : Object.keys(named).find((k) => head.startsWith(`# ${k}`))
+      const artifact = known ? null : artifacts.find((a) => head === `# ${a.id}` || head.startsWith(`# ${a.id} `)) // the exact id: "# dev" is not "# dev.board"
+      const label = i === 0 && this.config.soul && p === this.config.soul ? "soul" : known ? named[known] : artifact ? artifact.id : "other"
+      return { label, chars: p.length + (i < parts.length - 1 ? 2 : 0) }
+    })
     return parts.join("\n\n")
   }
 
@@ -526,23 +557,41 @@ export class Agent {
     return this.#runs.size > 0
   }
 
+  // The agent's inbox (2026-10-25 owner: "every agent will have their inbox"): what waits behind the run in progress,
+  // each with who sent it; event `inbox {inbox}` whenever it changes.
+  get inbox() {
+    return this.#inbox.map((m) => ({ ...m }))
+  }
+
+  #post(change) {
+    change()
+    this.emit("inbox", { inbox: this.inbox })
+  }
+
   // ---- the loop -------------------------------------------------------------------------------
 
   // outside: the caller's run's outside reads (a quest's, a dispatched job's): this run starts tainted with them and
-  // hands its own back when it ends (readsOutside above).
-  async ask(text, { from = "owner", signal, outside = null } = {}) {
+  // hands its own back when it ends (readsOutside above). original (2026-10-24 owner: "a sanitize method for the
+  // input"): the owner's own words when the host rewrote them into `text` (companion/capabilities/sanitize.js) — kept
+  // on the request beside `rewrite` ({via, model, ms}), and shown under # REQUEST, so the agent reads both.
+  async ask(text, { from = "owner", signal, outside = null, original = null, rewrite = null, contract = null } = {}) {
     // Each run its own controller, linked to the signal it was asked with (the host's, the caller's run): either
     // aborts it, and stop() reaches every run however it was started.
     const controller = new AbortController()
     const link = () => controller.abort(signal.reason)
     if (signal?.aborted) controller.abort(signal.reason)
     else signal?.addEventListener?.("abort", link, { once: true })
+    // One run at a time per agent: a request that arrives while one is accepted waits in the inbox for its turn.
+    const waiting = this.#runs.size ? { id: `in${++this.#received}`, text: clip(String(text), 300), from, at: new Date().toISOString() } : null
     this.#runs.add(controller)
-    // One run at a time per agent: later quests queue behind the current one.
+    if (waiting) this.#post(() => this.#inbox.push(waiting))
     const prev = this.queue ?? Promise.resolve()
     const run = prev
       .catch(() => {})
-      .then(() => this.#run({ text, from }, controller.signal, outside))
+      .then(() => {
+        if (waiting) this.#post(() => this.#inbox.splice(this.#inbox.indexOf(waiting), 1))
+        return this.#run({ text, from, ...(original && original !== text ? { original: String(original), ...(rewrite ? { rewrite } : {}) } : {}) }, controller.signal, outside, contract)
+      })
       .finally(() => {
         this.#runs.delete(controller)
         signal?.removeEventListener?.("abort", link)
@@ -595,9 +644,9 @@ export class Agent {
     let raw = ""
     try {
       // the summary call itself stays under the budget: the folded work clipped to 60% of it
-      const whole = old.map((s, i) => `step ${i + 1}: ${s.thought ?? ""}\n${(s.results ?? []).map((r) => `  ${r.tool} → ${r.ok ? "" : "ERROR "}${r.output}`).join("\n")}`).join("\n")
+      const whole = old.map((s, i) => stepLine(s, i)).join("\n")
       const work = clipEnds(whole.length < this.budget * 0.6 ? whole : foldText(old, []), Math.floor(this.budget * 0.6))
-      const runs = past.map((h) => `> ${h.from}: ${clip(h.request, CLIP_HISTORY)}\n< ${clip(h.answer, CLIP_HISTORY)}`).join("\n")
+      const runs = past.map(pastLine).join("\n")
       ask = `# COMPACT\n${COMPACT_PROMPT}\n\n# REQUEST (from ${request.from})\n${request.text}${runs ? `\n\n# EARLIER RUNS\n${runs}` : ""}\n\n# WORK TO COMPRESS\n${work}`
       raw = String((await this.#infer(ask, signal)) ?? "")
       summary = raw.trim() || null
@@ -618,8 +667,11 @@ export class Agent {
     return after
   }
 
-  async #run(request, signal, caller = null) {
+  async #run(request, signal, caller = null, contract = null) {
     this.status = "running"
+    // 2026-10-26 response contract: the fields this run's final answer is checked against — REPORT_FIELDS when
+    // config.report is set, plus the phase report fields a workflow hands it (ask's `contract`); none: no check.
+    const fields = [...new Set([...(this.config.report ? REPORT_FIELDS : []), ...(contract ?? []).map(String)])]
     // A run stopped while it waited (queued behind another) still shows as a run that ended "stopped" — start, then
     // error, no model call — but never resets its artifacts (a checklist's run start).
     if (!signal?.aborted) for (const a of this.artifacts) a.onRunStart?.(this, request)
@@ -643,34 +695,49 @@ export class Agent {
         if (signal?.aborted) throw new Error("stopped")
         this.emit("think", { n })
         const t0 = Date.now()
-        const raw = await this.#infer(prompt, signal, images)
+        // 2026-10-27 step router (docs/jepa-router.md): config.router.decide predicts this step's calls before the
+        // model call; shadow by default (recorded on the step event as `route`), it replaces the model call only
+        // when router.act and its mode is "script" (calls with fixed arguments, nothing for a model to write).
+        const route = this.config.router ? await Promise.resolve(this.config.router.decide({ request, steps, agent: this })).catch(() => null) : null
+        const scripted = route?.mode === "script" && this.config.router.act && route.calls?.length
+        const raw = scripted ? "" : await this.#infer(prompt, signal, images)
         this.guidance.splice(0, shown)
-        const reply = parseReply(raw)
+        const reply = scripted ? { thought: `(script route) ${route.why ?? ""}`.trim(), calls: route.calls, answer: null } : parseReply(raw)
+        // shadow local fill (never awaited, never run): the router's small model writes each call's input from the
+        // thought and tool alone; router.shadowFill compares it with the big model's and keeps the tally
+        if (this.config.router?.shadowFill && reply.calls.length && !scripted) for (const c of reply.calls) this.config.router.shadowFill({ request, thought: reply.thought, call: c, agent: this }).catch(() => {})
+        const routed = route ? { route: { mode: route.mode ?? "big", acted: !!scripted, p: route.p ?? null, predicted: (route.calls ?? []).map((c) => c.tool), agree: !!route.calls?.length && route.calls.map((c) => c.tool).join() === reply.calls.map((c) => c.tool).join() } } : {}
+        // a reply the run does not take: a step that says why, and the event the thread draws
+        const refuse = (thought, tool, output, event, data) => (steps.push({ thought: reply.thought || thought, results: [{ tool, ok: false, output }] }), this.emit(event, data))
         // ms, prompt_chars, reply_chars: the model call behind this step (the UI's stats per agent); images: what the
         // model saw with it (refs only — the UI shows each screenshot; never the data).
         const looked = images.length ? { images: images.map((i) => ({ caption: i.caption ?? "", ...(i.ref ?? {}) })) } : {}
         const ms = Date.now() - t0
-        this.emit("step", { n, thought: reply.thought, calls: reply.calls, answer: reply.answer, ms, prompt_chars: prompt.length, reply_chars: String(raw ?? "").length, ...looked })
+        // 2026-10-26 response contract: a final answer's check against the run's fields, newest only (agent.answerContract)
+        const final = fields.length && reply.answer != null && !reply.calls.length
+        if (final) {
+          this.answerContract = contractOf(String(reply.answer), fields)
+          // 2026-10-26 report object: the same answer's fields as {field: value}, newest only (agent.answerReport)
+          this.answerReport = reportOf(String(reply.answer), fields)
+        }
+        this.emit("step", { n, thought: reply.thought, calls: reply.calls, answer: reply.answer, ms, prompt_chars: prompt.length, reply_chars: String(raw ?? "").length, ...(this.promptParts ? { promptParts: this.promptParts } : {}), ...(final ? { contract: this.answerContract, report: this.answerReport } : {}), ...looked, ...routed })
         if (reply.answer != null && !reply.calls.length) {
           const answer = String(reply.answer)
           if (this.#guided(n)) {
-            steps.push({ thought: reply.thought || "answer", results: [{ tool: "guide", ok: false, output: HELD }] })
-            this.emit("gate", { reasons: ["owner guidance arrived while it answered"], held: true })
+            refuse("answer", "guide", HELD, "gate", HELD_GATE)
             continue
           }
           const { reasons, hard } = this.#gates(answer, steps)
           if (!reasons.length) return this.#finish(request, answer, [], steps)
           // A hard reason refuses without spending a retry (the run still ends at maxSteps); the rest count.
           if (hard || refused++ < this.config.gateRetries) {
-            this.emit("gate", { reasons, ...(hard ? { hard: true } : {}) })
-            steps.push({ thought: reply.thought || "answer", results: [{ tool: "gate", ok: false, output: `answer refused: ${reasons.join("; ")}` }] })
+            refuse("answer", "gate", `answer refused: ${reasons.join("; ")}`, "gate", { reasons, ...(hard ? { hard: true } : {}) })
             continue
           }
           return this.#finish(request, answer, reasons, steps)
         }
         if (!reply.calls.length) {
-          steps.push({ thought: reply.thought || "(no calls, no answer)", results: [{ tool: "format", ok: false, output: "give calls or an answer" }] })
-          this.emit("format", { note: "no calls and no answer" })
+          refuse("(no calls, no answer)", "format", "give calls or an answer", "format", { note: "no calls and no answer" })
           continue
         }
         const results = await Promise.all(reply.calls.map((c, index) => this.#call(c, signal, seen, n, index, outside)))
@@ -685,16 +752,13 @@ export class Agent {
           const held = commandsOnly && !reasons.length && this.#guided(n)
           if (commandsOnly && !reasons.length && !held) return this.#finish(request, answer, [], steps)
           results.push({ tool: "format", ok: false, output: held ? HELD : commandsOnly ? `answer refused: ${reasons.join("; ")}` : "answer not taken: it came with calls whose results you had not read — read them above, then answer alone (no calls)" })
-          if (held) this.emit("gate", { reasons: ["owner guidance arrived while it answered"], held: true })
+          if (held) this.emit("gate", HELD_GATE)
           else this.emit(commandsOnly ? "gate" : "format", commandsOnly ? { reasons } : { note: "answer beside data or agent calls" })
         }
       }
       return this.#finish(request, `(stopped after ${this.config.maxSteps} steps without an answer)`, [], steps)
     } catch (error) {
-      const record = this.#record(steps)
-      this.status = "error"
-      this.current = null
-      this.guidance = [] // a note for a run that failed or was stopped goes with it
+      const record = this.#end(steps, "error") // a note for a run that failed or was stopped goes with it
       // the request and the steps it took, as an answer carries them: a failed or stopped run is kept and restored too
       this.emit("error", { error: error.message, request, steps: record })
       throw error
@@ -767,13 +831,17 @@ export class Agent {
   // flags: gate reasons still open when the answer went through anyway; steps: the run's work, for
   // transcripts (each {thought, calls, results}).
   #finish(request, answer, flags = [], steps = []) {
-    const record = this.#record(steps)
+    const record = this.#end(steps, "idle") // guidance is left only when the run ran out of steps
     this.history.push({ from: request.from, request: request.text, answer })
-    this.status = "idle"
-    this.current = null
-    this.guidance = [] // left only when the run ran out of steps
     this.emit("answer", { request, answer, flags, steps: record })
     return answer
+  }
+
+  // The run is over: its record, the agent idle (or in error), no run, no guidance left for it.
+  #end(steps, status) {
+    const record = this.#record(steps)
+    Object.assign(this, { status, current: null, guidance: [] })
+    return record
   }
 
   // The run in progress as its record would read now (the host keeps it on disk while it runs: a kill loses nothing).

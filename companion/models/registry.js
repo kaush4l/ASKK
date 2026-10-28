@@ -43,10 +43,11 @@
 //                                            add(kind, name), presets(), ready(model), styles(), style(name),
 //                                            setStyle(name, patch, why)
 
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from "node:fs"
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from "node:fs"
 import { dirname, join, resolve } from "node:path"
 import { APP_ROOT } from "../shared/paths.js"
 import { httpError } from "../shared/http.js"
+import { attempt } from "../shared/safe.js"
 
 export const KINDS = ["stt", "tts", "image"]
 export const ENGINES = { stt: ["apple", "command", "openai"], tts: ["say", "command", "openai"], image: ["command"] }
@@ -143,9 +144,7 @@ export function readModel(kind, name, dir) {
     const values = {}
     for (const [k, v] of Object.entries(meta.values ?? {})) {
       if (!options[k]) continue // an option since removed: dropped on the next save
-      try {
-        values[k] = checkValue(options[k], v, k)
-      } catch {}
+      attempt(() => (values[k] = checkValue(options[k], v, k)))
     }
     const modes = meta.modes ?? (meta.bin ? { run: { bin: meta.bin, args: meta.args ?? [], inputs: meta.inputs ?? {} } } : {})
     for (const [m, spec] of Object.entries(modes)) {
@@ -200,7 +199,7 @@ export function loadModels({ root = modelsRoot(), catalog = CATALOG, log = () =>
   const presetDir = join(root, "image", "presets")
   if (!existsSync(presetDir)) {
     mkdirSync(presetDir, { recursive: true })
-    for (const f of listMd(join(catalog, "image", "presets"))) writeFileSync(join(presetDir, f), readFileSync(join(catalog, "image", "presets", f)))
+    for (const f of listMd(join(catalog, "image", "presets"))) copyFileSync(join(catalog, "image", "presets", f), join(presetDir, f))
     seeded.push("image/presets")
   }
   // voice styles: the catalogue's, each one not here yet (an owner's edited file is never replaced)
@@ -208,7 +207,7 @@ export function loadModels({ root = modelsRoot(), catalog = CATALOG, log = () =>
   mkdirSync(styleDir, { recursive: true })
   for (const f of listMd(join(catalog, "tts", "styles")))
     if (!existsSync(join(styleDir, f))) {
-      writeFileSync(join(styleDir, f), readFileSync(join(catalog, "tts", "styles", f)))
+      copyFileSync(join(catalog, "tts", "styles", f), join(styleDir, f))
       seeded.push(`tts/styles/${f.replace(/\.md$/, "")}`)
     }
   if (seeded.length) log(`models: seeded ${seeded.join(", ")} into ${root}`)
@@ -283,14 +282,7 @@ export function loadModels({ root = modelsRoot(), catalog = CATALOG, log = () =>
       return get(kind, name)
     },
     catalog: (kind) =>
-      catalogList(catalog, kindOf(kind)).map((c) => ({
-        name: c.name,
-        title: c.meta.title ?? c.name,
-        about: c.meta.about ?? "",
-        engine: c.meta.engine ?? null,
-        install: c.meta.install ?? null,
-        added: existsSync(join(root, kind, c.name, "model.md")),
-      })),
+      catalogList(catalog, kindOf(kind)).map((c) => ({ name: c.name, title: c.meta.title ?? c.name, about: c.meta.about ?? "", engine: c.meta.engine ?? null, install: c.meta.install ?? null, added: existsSync(join(root, kind, c.name, "model.md")) })),
     add(kind, name) {
       if (!catalogList(catalog, kindOf(kind)).some((c) => c.name === name)) throw httpError(404, `no ${kind} model ${name} in the catalogue`)
       if (existsSync(join(root, kind, name, "model.md"))) throw httpError(409, `${kind}/${name} is already in ${root}`)
@@ -465,16 +457,12 @@ const listMd = (dir) => (existsSync(dir) ? readdirSync(dir).filter((f) => f.ends
 function catalogList(catalog, kind) {
   return listMd(join(catalog, kind)).map((f) => {
     const name = f.replace(/\.md$/, "")
-    try {
-      return { name, meta: splitMd(readFileSync(join(catalog, kind, f), "utf8")).meta }
-    } catch {
-      return { name, meta: {} }
-    }
+    return { name, meta: attempt(() => splitMd(readFileSync(join(catalog, kind, f), "utf8")).meta, {}) }
   })
 }
 function copyIn(catalog, root, kind, name) {
   mkdirSync(join(root, kind, name), { recursive: true })
-  writeFileSync(join(root, kind, name, "model.md"), readFileSync(join(catalog, kind, `${name}.md`)))
+  copyFileSync(join(catalog, kind, `${name}.md`), join(root, kind, name, "model.md"))
 }
 function atomic(file, text) {
   writeFileSync(`${file}.tmp`, text)

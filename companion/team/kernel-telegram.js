@@ -46,11 +46,12 @@
 // in @BotFather (getMe has_topics_enabled). Then the desk gets one topic, created once and named after
 // the desk, where notify() posts; otherwise everything goes to the plain chat.
 
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs"
+import { mkdirSync, readFileSync, renameSync } from "node:fs"
 import { join } from "node:path"
 
 import { whyNotOwnerEvent } from "../shared/telegram-owner.js"
-import { startLiveStatus } from "./kernel-live.js"
+import { readStream, redact, startLiveStatus } from "./kernel-live.js"
+import { writeAtomic } from "./layout.js"
 import { deskBriefs, isRunRequest, isRunWork } from "./kernel-status.js"
 
 const INTEGRATION = "telegram"
@@ -112,8 +113,6 @@ const oneLine = (text, n) => {
   const s = String(text ?? "").replace(/\s+/g, " ").trim()
   return s.length > n ? `${s.slice(0, n - 1)}…` : s
 }
-// Telegram's errors may quote a chat id; the log never shows one.
-const redact = (text) => String(text).replace(/-?\d{6,}/g, "<id>")
 
 function stateFile(file, log = () => {}) {
   const state = { seen: {}, pending: [], thread: null, announced: [], sent: [], talk: [], asks: {} }
@@ -132,8 +131,7 @@ function stateFile(file, log = () => {}) {
   return {
     state,
     save() {
-      writeFileSync(`${file}.tmp`, JSON.stringify(state, null, 1))
-      renameSync(`${file}.tmp`, file) // atomic: a crash never leaves half a cursor
+      writeAtomic(file, JSON.stringify(state, null, 1)) // atomic: a crash never leaves half a cursor
     },
   }
 }
@@ -179,30 +177,14 @@ function followLead(team, signal, log = () => {}, onArtifact = () => {}) {
     }
   }
 
-  ;(async () => {
-    const reader = team.stream({ signal }).body.getReader()
-    signal.addEventListener("abort", () => reader.cancel().catch(() => {}))
-    const decoder = new TextDecoder()
-    let buffer = ""
-    for (;;) {
-      const { value, done } = await reader.read()
-      if (done) break
-      buffer += decoder.decode(value, { stream: true })
-      for (let cut; (cut = buffer.indexOf("\n\n")) >= 0; ) {
-        const block = buffer.slice(0, cut)
-        buffer = buffer.slice(cut + 2)
-        for (const line of block.split("\n")) {
-          if (!line.startsWith("data: ")) continue
-          try {
-            onEvent(JSON.parse(line.slice(6)))
-          } catch (error) {
-            if (!eventWarned) log(`telegram: an event from the desk could not be followed (${error.message})`)
-            eventWarned = true
-          }
-        }
-      }
+  readStream(team, signal, (data) => {
+    try {
+      onEvent(JSON.parse(data))
+    } catch (error) {
+      if (!eventWarned) log(`telegram: an event from the desk could not be followed (${error.message})`)
+      eventWarned = true
     }
-  })()
+  })
     .catch((error) => {
       // the desk's stream ended under it: what waits on an answer hears so now, not at its timeout (2026-10-23 audit)
       if (!signal.aborted) log(`telegram: the desk's stream ended (${error?.message ?? error}) — the owner's waiting messages get no answer`)
@@ -261,6 +243,15 @@ export async function startKernelTelegram({
   })
   const lead = await follow.lead()
   if (!lead) throw new Error("the team has no lead")
+  // A failed side effect: one log line naming it, never thrown.
+  const failed = (what) => (error) => log(`telegram: ${what} failed: ${redact(error.message)}`)
+  // A team call whose refusal ({ok: false}) throws; the answer's value otherwise.
+  async function teamCall(call, refused) {
+    const result = await team.call(call)
+    if (result && result.ok === false) throw new Error(result.error?.message ?? refused)
+    return result
+  }
+  const inThread = (id) => (id ? { thread_id: id } : {})
 
   // The desk's topic when the bot's threaded mode is on; else the plain chat.
   let thread = null
@@ -287,7 +278,7 @@ export async function startKernelTelegram({
   function record({ message, kind, text, ref = null }) {
     if (!message) return
     state.sent = [...state.sent.filter((x) => x.id !== Number(message)), { id: Number(message), kind, text: oneLine(text, 300), ...(ref ? { ref } : {}), at: new Date().toISOString() }].slice(-SENT_KEEP)
-    if (!["status", "greeting", "note"].includes(kind)) remember("desk", kind === "audio" ? `[audio sent: ${text}]` : kind === "image" ? `[image sent: ${text}]` : text)
+    if (!["status", "greeting", "note"].includes(kind)) remember("desk", kind === "audio" || kind === "image" ? `[${kind} sent: ${text}]` : text)
     save()
   }
   function remember(who, text) {
@@ -316,10 +307,10 @@ export async function startKernelTelegram({
   async function notify(text, kind = "report") {
     if (typeof text !== "string" || !text.trim()) return false
     try {
-      await post({ text, ...(thread ? { thread_id: thread } : {}) }, kind) // no chat_id: the owner's chat
+      await post({ text, ...inThread(thread) }, kind) // no chat_id: the owner's chat
       return true
     } catch (error) {
-      log(`telegram: notify failed: ${redact(error.message)}`)
+      failed("notify")(error)
       return false
     }
   }
@@ -338,7 +329,7 @@ export async function startKernelTelegram({
           desk,
           log,
           transport: {
-            send: (text) => telegram.live.send({ text, ...(thread ? { thread_id: thread } : {}) }),
+            send: (text) => telegram.live.send({ text, ...inThread(thread) }),
             edit: (id, text) => telegram.live.edit(id, { text }),
           },
           ...liveOptions,
@@ -386,7 +377,7 @@ export async function startKernelTelegram({
     let raw = String(event.text ?? "").trim()
     if (event.image) raw = `${raw}${raw ? "\n" : ""}${await keepImage(event)}`
     if (!raw) return
-    const reply = (body, kind = "answer") => post({ chat_id: event.chat, reply_to: id, ...(event.thread ? { thread_id: event.thread } : {}), text: body }, kind)
+    const reply = replier(event, id)
     const command = /^\/(status|stop)(?:@\w+)?\s*$/i.exec(raw)?.[1]?.toLowerCase()
     state.seen[key] = id
     if (command) {
@@ -398,7 +389,7 @@ export async function startKernelTelegram({
     const text = queue ? (queue[1] ?? "").trim() : raw
     if (!text) {
       save()
-      return void (await reply(`/queue needs the work after it: /queue <what the ${lead} should do after its run>.`).catch((error) => log(`telegram: /queue note failed: ${redact(error.message)}`)))
+      return void (await reply(`/queue needs the work after it: /queue <what the ${lead} should do after its run>.`).catch(failed("/queue note")))
     }
     const from = `telegram:${event.from || "owner"}`
     // A reply to one of this desk's questions answers it (the talk's reply, as on the dashboard).
@@ -408,23 +399,27 @@ export async function startKernelTelegram({
       if (await answerAsk(asked, text, reply)) return
     }
     // new work carries the conversation before it; guidance joins a run that has it already (only what it replies to)
-    const work = withContext(text, event)
-    const note = withContext(text, event, { conversation: false })
+    const talk = [...state.talk] // the conversation before this message (remembered next)
     remember("owner", text)
     const busy = leadRunning()
     if (busy && !queue) {
       save()
-      if (await guide(note, from, busy, reply, id)) return
+      if (await guide(withContext(text, event, { conversation: false }), from, busy, reply, id)) return
       // The run ended before the note landed: new work, as when the lead is idle.
     }
-    return ask(work, from, key, id, reply)
+    // new work: the owner's own words rewritten on-device first (team.sanitize, companion/capabilities/sanitize.js), the
+    // context around them as it is; the run keeps the owner's words beside the rewrite
+    const clean = (await team.sanitize?.(text, "telegram").catch(() => null)) ?? { text }
+    return ask(withContext(clean.text, event, { talk }), from, key, id, reply, clean.original ? { original: clean.original, rewrite: clean.rewrite } : {})
   }
 
+  const replier = (event, to) => (body, kind = "answer") => post({ chat_id: event.chat, reply_to: to, ...inThread(event.thread), text: body }, kind)
+
   // The owner's words with the conversation before them and what they reply to, for the lead.
-  function withContext(text, event, { conversation = true } = {}) {
+  function withContext(text, event, { conversation = true, talk = state.talk } = {}) {
     const re = event.reply_to ? sentOf(event.reply_to) : null
     const replied = re ? `${re.kind === "audio" ? "the audio " : re.kind === "image" ? "the image " : ""}"${re.text}"` : event.reply_text ? `"${oneLine(event.reply_text, 300)}"` : null
-    const before = conversation ? talkText(state.talk, desk) : ""
+    const before = conversation ? talkText(talk, desk) : ""
     if (!before && !replied) return text
     return [
       before ? `[Telegram — the conversation before this message, oldest first (the last ${TALK_TURNS} exchanges):\n${before}]` : null,
@@ -455,15 +450,14 @@ export async function startKernelTelegram({
     const option = /^t:(\d+)$/.exec(event.data)?.[1]
     const text = asked?.kind === "ask" && option != null ? asked.ref?.options?.[Number(option)] : null
     if (!text) return log("telegram: a tap on a message that is no open question here")
-    await answerAsk(asked, text, (body) => post({ chat_id: event.chat, reply_to: event.message, ...(event.thread ? { thread_id: event.thread } : {}), text: body }, "answer"))
+    await answerAsk(asked, text, replier(event, event.message))
   }
   async function answerAsk(asked, text, reply) {
     const { artifact, ask: q } = asked.ref ?? {}
     remember("owner", `(to ${q}) ${text}`)
     const conversation = talkText(state.talk.slice(0, -1), desk)
     try {
-      const result = await team.call({ target: "artifact", method: "reply", args: [{ id: artifact, ask: q, text, via: "Telegram", conversation }] })
-      if (result && result.ok === false) throw new Error(result.error?.message ?? "reply refused")
+      const result = await teamCall({ target: "artifact", method: "reply", args: [{ id: artifact, ask: q, text, via: "Telegram", conversation }] }, "reply refused")
       log(`telegram: the owner answered ${artifact} ${q} → ${result?.value?.keeper ?? "its asker"} (${result?.value?.delivered ?? "?"})`)
       save()
       await closeAsk(asked, `✓ ${text}`)
@@ -493,7 +487,7 @@ export async function startKernelTelegram({
         const options = (Array.isArray(q.options) ? q.options : String(q.options ?? "").split("|")).map((o) => String(o).trim()).filter(Boolean).slice(0, 4)
         const full = `❓ ${desk} · ${q.from} asks:\n${q.text}${options.length ? "\n\nTap an answer, or reply to this message in your own words." : "\n\nReply to this message to answer."}`
         try {
-          const ids = await post({ text: full, ...(thread ? { thread_id: thread } : {}), buttons: options.map((o, i) => [{ text: o, data: `t:${i}` }]) }, "ask", { artifact: twin.id, ask: q.id, key, options, full })
+          const ids = await post({ text: full, ...inThread(thread), buttons: options.map((o, i) => [{ text: o, data: `t:${i}` }]) }, "ask", { artifact: twin.id, ask: q.id, key, options, full })
           state.asks[key].message = ids.at(-1) ?? null
           save()
           log(`telegram: ${q.from}'s question ${q.id} sent${options.length ? ` with ${options.length} buttons` : ""}`)
@@ -519,8 +513,7 @@ export async function startKernelTelegram({
   async function guide(text, from, busy, reply, id) {
     let delivered = false
     try {
-      const result = await team.call({ target: lead, method: "guide", args: [text, { from }] })
-      if (result && result.ok === false) throw new Error(result.error?.message ?? "guide refused")
+      const result = await teamCall({ target: lead, method: "guide", args: [text, { from }] }, "guide refused")
       delivered = result?.value?.delivered === true
     } catch (error) {
       log(`telegram: guidance #${id} failed, sent as new work: ${redact(error.message)}`)
@@ -528,12 +521,12 @@ export async function startKernelTelegram({
     }
     if (!delivered) return false
     log(`telegram: message #${id} → ${lead} (guidance)`)
-    await reply(`Guidance for the ${lead}'s run "${oneLine(busy.run, 60)}": it reads this at its next step. To run it as new work after this run instead, send /queue <text>.`, "note").catch((error) => log(`telegram: guidance note failed: ${redact(error.message)}`))
+    await reply(`Guidance for the ${lead}'s run "${oneLine(busy.run, 60)}": it reads this at its next step. To run it as new work after this run instead, send /queue <text>.`, "note").catch(failed("guidance note"))
     return true
   }
 
   // New work for the lead (a new run, queued behind the current one): its answer back as a reply.
-  async function ask(text, from, key, id, reply) {
+  async function ask(text, from, key, id, reply, rewritten = {}) {
     const entry = { key, id, text: oneLine(text, PREVIEW_CHARS), at: new Date().toISOString() }
     state.pending.push(entry)
     save()
@@ -542,10 +535,10 @@ export async function startKernelTelegram({
     let timer
     let body
     try {
-      const sent = team.send({ agent: lead, text, from })
+      const sent = team.send({ agent: lead, text, from, ...rewritten })
       if (!sent?.ok) throw new Error(sent?.error?.message ?? `the ${lead} did not take it`)
       log(`telegram: message #${id} → ${lead}${busy ? " (queued)" : ""}`)
-      if (busy) reply(`Queued: the ${lead} is working on "${oneLine(busy.run, 60)}". The answer comes here when it is done.`, "note").catch((error) => log(`telegram: queued note failed: ${redact(error.message)}`))
+      if (busy) reply(`Queued: the ${lead} is working on "${oneLine(busy.run, 60)}". The answer comes here when it is done.`, "note").catch(failed("queued note"))
       const timeout = new Promise((resolve) => (timer = setTimeout(resolve, answerTimeoutMs, null)))
       const result = await Promise.race([waiter.answer, timeout])
       body = !result
@@ -559,12 +552,7 @@ export async function startKernelTelegram({
       clearTimeout(timer)
       waiter.cancel()
     }
-    try {
-      await reply(body)
-      log(`telegram: answered #${id}`)
-    } catch (error) {
-      log(`telegram: reply to #${id} failed: ${redact(error.message)}`)
-    }
+    await reply(body).then(() => log(`telegram: answered #${id}`), failed(`reply to #${id}`))
     state.pending = state.pending.filter((p) => p !== entry && !(p.key === key && p.id === id))
     save()
   }
@@ -579,8 +567,7 @@ export async function startKernelTelegram({
       } else if (command === "stop") {
         const busy = team.work?.().find((w) => w.agent === lead)
         if (!busy) return void (await reply(`Nothing to stop: the ${lead} is idle.`))
-        const result = await team.call({ target: lead, method: "stop" })
-        if (result && result.ok === false) throw new Error(result.error?.message ?? "stop refused")
+        await teamCall({ target: lead, method: "stop" }, "stop refused")
         log(`telegram: /stop #${id}`)
         await reply(`Stopping the ${lead}'s run: "${oneLine(busy.run, 80)}".`)
       }
@@ -616,7 +603,7 @@ export async function startKernelTelegram({
         for (const event of events) {
           if (!["message", "choice"].includes(event.kind) || event.integration !== INTEGRATION || controller.signal.aborted) continue
           if (!fromOwner(event)) continue
-          handle(event).catch((error) => log(`telegram: message failed: ${redact(error.message)}`))
+          handle(event).catch(failed("message"))
         }
       } catch (error) {
         failures++
@@ -640,7 +627,7 @@ export async function startKernelTelegram({
     record,
     sentOf,
     // An owner event the listening desk hands over (a reply to, or a tap under, this desk's message).
-    take: (event) => (fromOwner(event) ? handle(event, true).catch((error) => log(`telegram: message failed: ${redact(error.message)}`)) : undefined),
+    take: (event) => (fromOwner(event) ? handle(event, true).catch(failed("message")) : undefined),
     stop() {
       controller.abort()
       live?.stop()

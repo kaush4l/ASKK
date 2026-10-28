@@ -69,19 +69,19 @@
 import { closeSync, existsSync, mkdirSync, renameSync, openSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs"
 import { homedir } from "node:os"
 import { basename, dirname, isAbsolute, join, posix, relative, resolve, sep } from "node:path"
-import { HOST_LIMITS, SSE_PING_MS } from "../shared/config.js"
-import { httpError } from "../shared/http.js"
+import { HOST_LIMITS } from "../shared/config.js"
+import { httpError, sseResponse } from "../shared/http.js"
 import { appendJsonl } from "../shared/jsonl.js"
 import { within } from "../shared/paths.js"
+import { attempt } from "../shared/safe.js"
 import { workspaceMounts } from "./files.js"
-import { groupBook, killGroup, laneRegex, privateTmp, refuseDestructive, removeTmp, sandboxProfile, splitCommand, trackGroup, untrackGroup } from "./sandbox.js"
+import { groupBook, killGroup, laneRegex, privateTmp, refuseDestructive, removeTmp, sandboxProfile, sandboxRunner, splitCommand, trackGroup, untrackGroup } from "./sandbox.js"
 import { CACHES, detectToolchains } from "./toolchains.js"
 
 const T = HOST_LIMITS.term
 const HOME = homedir()
 export const URL_RE = /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1?\])(?::\d+)?[^\s"'<>)\]]*/g
 export const LEASE = /^[a-z][a-z0-9-]{0,19}$/ // a lease's name ("gpu"): the kernel's terminal checks the same
-const SSE_HEADERS = { "content-type": "text/event-stream", "cache-control": "no-store", connection: "keep-alive" }
 
 // The text a terminal shows, line by line: `\r` returns to the start of the line (what follows overwrites it), `\b`
 // steps back, a tab moves to the next stop, erase-in-line (ESC [ K) and the cursor's column moves (ESC [ G/C/D) apply,
@@ -221,7 +221,8 @@ const segment =(glob) => new RegExp(`^${String(glob).replace(/[.+^${}()|[\]\\]/g
 
 // root: the workspace; state: the desk's state folder (logs); policy: the desk's main.js `terminal` ({ toolchains,
 // programs, timeoutSeconds, backgroundMinutes }); mounts: main.js `mounts`; hostPorts() → the desk server's ports.
-export function createTerm({ root, state, policy = null, mounts = null, hostPorts = () => [], log = () => {}, desk = null, caches = CACHES }) {
+export function createTerm({ root, state, policy = null, mounts = null, hostPorts = () => [], log = () => {}, desk = null, caches = CACHES, runner = sandboxRunner() }) {
+  if (!runner?.kind) throw new Error(runner?.reason ?? "no sandbox for terminal programs")
   const realRoot = realpathSync(root)
   const mount = workspaceMounts(mounts) // desks/<name> (mounted desks) and projects/<name> (loaded projects)
   const cfg = policy ?? {}
@@ -263,15 +264,13 @@ export function createTerm({ root, state, policy = null, mounts = null, hostPort
     }
   } catch (error) {
     const to = `${runningPath}.unreadable-${Date.now()}`
-    try {
-      renameSync(runningPath, to)
-    } catch {}
+    attempt(() => renameSync(runningPath, to))
     log(`term: the sessions running at the last stop did not read (${error.message}) — kept as ${to}`)
   }
   let runningSaveWarned = false
   const saveRunning = () => {
     try {
-      const now = [...sessions.values()].filter((s) => s.status === "running" && !s.earlier).map((s) => ({ at: s.startedAt, id: s.id, agent: s.agent, cwd: s.cwd, command: s.command, ms: 0, tail: runTail(s, T.tailLines).join("\n").slice(-T.rowTailChars) }))
+      const now = [...sessions.values()].filter((s) => s.status === "running" && !s.earlier).map((s) => ({ at: s.startedAt, id: s.id, agent: s.agent, cwd: s.cwd, command: s.command, ms: 0, tail: rowTail(s) }))
       if (now.length) writeFileSync(runningPath, JSON.stringify(now))
       else rmSync(runningPath, { force: true })
     } catch (error) {
@@ -305,7 +304,7 @@ export function createTerm({ root, state, policy = null, mounts = null, hostPort
     for (const s of sessions.values()) {
       if (s.status !== "running" || s.earlier) continue
       try {
-        record({ at: new Date().toISOString(), id: s.id, agent: s.agent, ...(s.slot ? { slot: s.slot, run: s.runs } : {}), ...(s.lease ? { lease: s.lease } : {}), cwd: s.cwd, command: s.command, status: "stopped", exit: null, reason: "the server stopped", ms: Date.now() - Date.parse(s.startedAt), tail: runTail(s, T.tailLines).join("\n").slice(-T.rowTailChars) })
+        record(rowOf(s, new Date().toISOString(), { status: "stopped", exit: null, reason: "the server stopped" }))
       } catch (error) {
         log(`term: ${s.id}'s row at the stop was not written (${error.message}) — it will not be listed after the restart`)
       }
@@ -351,12 +350,8 @@ export function createTerm({ root, state, policy = null, mounts = null, hostPort
       if (!base) throw httpError(403, `${point.prefix}/${parts[1]} is not a ${point.what} (${mount.names(point)}).`)
       abs = join(base, ...parts.slice(2))
     }
-    let real
-    try {
-      real = realpathSync(abs)
-    } catch {
-      throw httpError(400, `No folder ${named} in the workspace.`)
-    }
+    const real = attempt(() => realpathSync(abs))
+    if (!real) throw httpError(400, `No folder ${named} in the workspace.`)
     if (!within(base, real)) throw httpError(403, `${named} is outside the workspace.`)
     if (!statSync(real).isDirectory()) throw httpError(400, `${named} is not a folder.`)
     return real
@@ -413,10 +408,7 @@ export function createTerm({ root, state, policy = null, mounts = null, hostPort
     if (!t.programs.has(program)) throw httpError(403, `"${program}" is not one of this desk's programs: ${[...t.programs].sort().join(", ")}.`)
     if (program.startsWith("./")) {
       const abs = resolve(cwd, program)
-      let real = null
-      try {
-        real = realpathSync(abs)
-      } catch {}
+      const real = attempt(() => realpathSync(abs))
       if (!real || show(real) === null) throw httpError(400, `No ${program} in ${show(cwd)}.`)
       return abs
     }
@@ -462,9 +454,7 @@ export function createTerm({ root, state, policy = null, mounts = null, hostPort
   }
   function closeLog(s) {
     if (s.log?.fd == null) return
-    try {
-      closeSync(s.log.fd)
-    } catch {}
+    attempt(() => closeSync(s.log.fd))
     s.log.fd = null
   }
 
@@ -497,6 +487,10 @@ export function createTerm({ root, state, policy = null, mounts = null, hostPort
     return (s.view.line ? [...fresh, s.view.line] : fresh).slice(-n)
   }
 
+  // A session's row in terminal.jsonl: finished (or stopped) at `at`, with its last lines.
+  const rowTail = (s) => runTail(s, T.tailLines).join("\n").slice(-T.rowTailChars)
+  const rowOf = (s, at, outcome) => ({ at, id: s.id, agent: s.agent, ...(s.slot ? { slot: s.slot, run: s.runs } : {}), ...(s.lease ? { lease: s.lease } : {}), cwd: s.cwd, command: s.command, ...outcome, ms: Date.parse(at) - Date.parse(s.startedAt), tail: rowTail(s) })
+
   const summary = (s, n = T.tailLines) => ({
     id: s.id,
     name: s.name,
@@ -527,7 +521,7 @@ export function createTerm({ root, state, policy = null, mounts = null, hostPort
     let proc
     try {
       // Its own session and process group (detached): stop reaches what it spawned (uv run → python).
-      proc = Bun.spawn(["/usr/bin/sandbox-exec", "-p", profile, ...argv], { cwd, env, terminal: tty, detached: true })
+      proc = Bun.spawn(runner.wrap(profile, argv), { cwd, env, terminal: tty, detached: true })
     } catch (error) {
       tty.close()
       throw error
@@ -544,9 +538,7 @@ export function createTerm({ root, state, policy = null, mounts = null, hostPort
     book.remove(proc.pid)
     await Bun.sleep(30) // the PTY's last output reaches the view
     s.tty = null
-    try {
-      tty.close()
-    } catch {}
+    attempt(() => tty.close())
     output(s, decoder.decode())
     s.signal = proc.signalCode ?? null
     return proc.exitCode ?? null
@@ -581,7 +573,7 @@ export function createTerm({ root, state, policy = null, mounts = null, hostPort
     s.endedAt = new Date().toISOString()
     closeLog(s)
     queueMicrotask(saveRunning)
-    record({ at: s.endedAt, id: s.id, agent: s.agent, ...(s.slot ? { slot: s.slot, run: s.runs } : {}), ...(s.lease ? { lease: s.lease } : {}), cwd: s.cwd, command: s.command, status: s.status, exit: s.exit, ms: Date.parse(s.endedAt) - Date.parse(s.startedAt), tail: runTail(s, T.tailLines).join("\n").slice(-T.rowTailChars) })
+    record(rowOf(s, s.endedAt, { status: s.status, exit: s.exit }))
     for (const w of [...s.waiters]) w.check()
     broadcast({ type: "exit", id: s.id, exit: s.exit, status: s.status, ...(s.signal ? { signal: s.signal } : {}) }, s.id)
     forget()
@@ -607,18 +599,11 @@ export function createTerm({ root, state, policy = null, mounts = null, hostPort
 
   const waitSeconds = (x) => Math.min(waitMax, Math.max(0, Number(x) || 0))
 
-  // term/start's `slot`: null (a new session) or a short name.
-  function slotOf(slot) {
-    if (slot === undefined || slot === null || slot === "") return null
-    if (typeof slot !== "string" || !/^[A-Za-z0-9._:-]{1,40}$/.test(slot)) throw httpError(400, 'slot: a short name for the session to run it in, e.g. "main" or "long".')
-    return slot
-  }
-
-  // term/start's `lease`: null (none) or a short name.
-  function leaseOf(lease) {
-    if (lease === undefined || lease === null || lease === "") return null
-    if (typeof lease !== "string" || !LEASE.test(lease)) throw httpError(400, 'lease: a short name — lowercase letters, digits and -, up to 20 chars, starting with a letter (e.g. "gpu").')
-    return lease
+  // term/start's `slot` (null: a new session) and `lease` (null: none): a short name matching `re`, else 400 `message`.
+  function shortName(value, re, message) {
+    if (value === undefined || value === null || value === "") return null
+    if (typeof value !== "string" || !re.test(value)) throw httpError(400, message)
+    return value
   }
   // The running session holding `lease`, if one does (the caller's own slot session is stopped before this is asked).
   const holderOf = (lease) => (lease ? running().find((x) => x.lease === lease) : null)
@@ -635,8 +620,8 @@ export function createTerm({ root, state, policy = null, mounts = null, hostPort
       throw httpError(400, error.message)
     }
     const lane = laneOf(writes)
-    const key = slotOf(slot)
-    const leased = leaseOf(lease)
+    const key = shortName(slot, /^[A-Za-z0-9._:-]{1,40}$/, 'slot: a short name for the session to run it in, e.g. "main" or "long".')
+    const leased = shortName(lease, LEASE, 'lease: a short name — lowercase letters, digits and -, up to 20 chars, starting with a letter (e.g. "gpu").')
     const t = toolchains()
     for (const argv of steps) {
       if (argv[0] === "cd") {
@@ -796,42 +781,12 @@ export function createTerm({ root, state, policy = null, mounts = null, hostPort
   // out / exit for each). Open until the tab goes or the desk stops.
   function stream(request, id = null) {
     const one = id ? get(id) : null
-    const encoder = new TextEncoder()
-    let ping = null
-    const viewer = { id: one?.id ?? null, send: () => {}, close: () => {} }
-    const end = () => {
-      viewers.delete(viewer)
-      clearInterval(ping)
-    }
-    const body = new ReadableStream({
-      start(c) {
-        viewer.send = (event) => {
-          try {
-            c.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`))
-          } catch {
-            end()
-          }
-        }
-        viewer.close = () => {
-          end()
-          try {
-            c.close()
-          } catch {}
-        }
-        viewer.send(one ? { type: "snapshot", session: summary(one, 0), lines: one.view.tail(T.keepLines), raw: one.raw.slice(-T.keepChars) } : { type: "snapshot", sessions: [...sessions.values()].reverse().map((s) => summary(s)) })
-        viewers.add(viewer)
-        ping = setInterval(() => {
-          try {
-            c.enqueue(encoder.encode(": ping\n\n"))
-          } catch {
-            end()
-          }
-        }, SSE_PING_MS)
-        request?.signal?.addEventListener("abort", viewer.close, { once: true })
-      },
-      cancel: end,
+    return sseResponse(request, (send, close) => {
+      const viewer = { id: one?.id ?? null, send, close }
+      send(one ? { type: "snapshot", session: summary(one, 0), lines: one.view.tail(T.keepLines), raw: one.raw.slice(-T.keepChars) } : { type: "snapshot", sessions: [...sessions.values()].reverse().map((s) => summary(s)) })
+      viewers.add(viewer)
+      return () => viewers.delete(viewer)
     })
-    return new Response(body, { headers: SSE_HEADERS })
   }
 
   // The desk stops (a reload, the server exits): streams end, every session is stopped, the temp folder goes.
@@ -860,4 +815,3 @@ export const termRoutes = (term) => ({
     "term/stop": (body) => term.stop({ id: body.id }),
   },
 })
-

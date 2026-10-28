@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import {
   askable,
+  recordingsOf,
   askThread,
   bridgeMessage,
   contextLine,
@@ -22,8 +23,11 @@ import {
   previewActivity,
   previewItems,
   previewOf,
+  recFromQuery,
+  recHref,
   sessionOf,
   shownItem,
+  spanOf,
   trailOf,
   viewMessage,
   visualSource,
@@ -255,3 +259,66 @@ describe("drill-down and bound scripts (2026-10-17)", () => {
   })
 })
 
+
+describe("recordingsOf", () => {
+  test("newest first; each frame its shot address and a caption", () => {
+    const state = { recordings: [{ id: "r1", title: "a", page: "page-a-1", status: "done", frames: [{ n: 3, action: "start", what: null }] }, { id: "r2", title: "b", page: "page-b-2", status: "recording", frames: [{ n: 7, action: "click", what: "#goal" }, { n: 8, action: "type", what: "textarea" }] }] }
+    const [r2, r1] = recordingsOf(state)
+    expect([r2.id, r1.id]).toEqual(["r2", "r1"])
+    expect(r2.frames[0]).toMatchObject({ src: "/__askk/browser/shot?id=page-b-2&n=7", caption: "1/2 · click #goal" })
+    expect([r2.span, r1.span]).toEqual(["", ""]) // no frame times: no span
+    const timed = recordingsOf({ recordings: [{ id: "r3", title: "c", page: "p", status: "done", frames: [{ n: 1, action: "start", at: "2026-10-25T10:00:00Z" }, { n: 2, action: "click", at: "2026-10-25T10:00:42Z" }] }] })
+    expect(timed[0].span).toBe("42 s")
+    expect(recordingsOf({})).toEqual([])
+  })
+
+  test("place: a frame's url after its caption only when the caption does not already hold it (a navigate frame reads it once)", () => {
+    const url = "http://localhost:1111/live"
+    const [rec] = recordingsOf({ recordings: [{ id: "r4", title: "d", page: "p", status: "done", frames: [{ n: 1, action: "navigate", what: url, url }, { n: 2, action: "click", what: "#goal", url }, { n: 3, action: "start" }] }] })
+    const [nav, click, bare] = rec.frames
+    expect(nav.place).toBe("")
+    expect(`${nav.caption}${nav.place ? ` · ${nav.place}` : ""}`.split(url).length - 1).toBe(1)
+    expect(click.place).toBe(url)
+    expect(click.caption).not.toContain(url)
+    expect(bare.place).toBe("") // no url: nothing appended
+  })
+
+  test("spanOf: first to last frame — s under a minute, rounded min, h and min from an hour; empty for 0/1 frame or a bad at", () => {
+    const at = (s) => ({ at: new Date(Date.parse("2026-10-25T10:00:00Z") + s * 1000).toISOString() })
+    expect(spanOf([at(0), at(10), at(42)])).toBe("42 s")
+    expect(spanOf([at(0), at(0)])).toBe("0 s")
+    expect(spanOf([at(0), at(59.4)])).toBe("59 s")
+    expect(spanOf([at(0), at(60)])).toBe("1 min")
+    expect(spanOf([at(0), at(89)])).toBe("1 min")
+    expect(spanOf([at(0), at(90)])).toBe("2 min")
+    expect(spanOf([at(0), at(180)])).toBe("3 min")
+    expect(spanOf([at(0), at(59 * 60 + 29)])).toBe("59 min")
+    expect(spanOf([at(0), at(59 * 60 + 30)])).toBe("1 h 0 min")
+    expect(spanOf([at(0), at(65 * 60)])).toBe("1 h 5 min")
+    expect(spanOf([])).toBe("")
+    expect(spanOf([at(0)])).toBe("")
+    expect(spanOf(null)).toBe("")
+    expect(spanOf([at(0), { at: "nope" }])).toBe("")
+    expect(spanOf([{}, at(30)])).toBe("")
+    expect(spanOf([at(30), at(0)])).toBe("") // out of order: no span
+  })
+})
+describe("recording links (chip-open)", () => {
+  const recs = recordingsOf({ recordings: [{ id: "r1", title: "a", page: "p", status: "done", frames: [] }, { id: "r2", title: "b", page: "p", status: "done", frames: [] }] })
+
+  test("recFromQuery: the recording ?rec names, else null", () => {
+    expect(recFromQuery("?desk=dev&rec=r2", recs).id).toBe("r2")
+    expect(recFromQuery("rec=r1", recs).id).toBe("r1")
+    expect(recFromQuery("?rec=gone", recs)).toBeNull()
+    expect(recFromQuery("?desk=dev", recs)).toBeNull()
+    expect(recFromQuery("", recs)).toBeNull()
+    expect(recFromQuery(null, null)).toBeNull()
+  })
+
+  test("recHref: rec set to the id, ?desk kept, an old rec replaced", () => {
+    expect(recHref("?desk=dev", "r2")).toBe("?desk=dev&rec=r2")
+    expect(recHref("?desk=dev&rec=r1", "r2")).toBe("?desk=dev&rec=r2")
+    expect(recHref("", "r1")).toBe("?rec=r1")
+    expect(recHref(null, "r1")).toBe("?rec=r1")
+  })
+})
