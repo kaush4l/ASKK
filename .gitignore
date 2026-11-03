@@ -19,8 +19,6 @@
 
 # production
 /build
-/dist/
-/companion/server/assets.gen.js
 
 # misc
 .DS_Store
@@ -34,10 +32,6 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
-!.env.example
-
-# MCP servers (may hold tokens); see mcp.example.json
-.mcp.json
 
 # vercel
 .vercel
@@ -45,43 +39,3 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-.gstack/
-
-# Vendor applications, integrations and custom agent teams: local only, never pushed
-/vendor/
-/integrations/
-/custom/
-# Every desk's memory and reports (memory/<desk>/, its loaded projects in projects.json): local only, never pushed
-/memory/
-# The agents' files in a project they work on (.agents/ ignores itself there too)
-.agents/
-
-# Local editor settings (.vscode/settings.json hides custom/'s own git repo from Source Control)
-/.vscode/
-
-# The team shared space (agents' shared/ folder in the workspace): local only, never pushed
-/shared/
-.claude/settings.local.json
-/docs/teams-plan.md
-/.next-desks/
-
-# Local Claude Code loop state
-.claude/*.local.md
-
-# the core desks (desks/): what they write at run time stays local
-/desks/*/data/
-/desks/*/state/
-/desks/*/proposed/
-# each agent's runs (history.md beside its .md, rotated into history/; transcript.jsonl before 2026-10-21): local
-/desks/**/history.md
-/desks/**/history/
-/desks/**/transcript.jsonl
-# a core desk's kept helpers (<lead>/<helper>/<helper>.md: keep: desk, written at run time) are local too
-/desks/agent/agent/*/
-/desks/agent/agents/
-
-# local models (models/<kind>/<name>/model.md + their state): companion/models, never committed
-/models/
-
-# scripts/model.js test output
-/.model-test/
