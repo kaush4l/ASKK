@@ -17,7 +17,7 @@
 //   id in personal/model.json); if no inference has that id, it falls
 //   back to matching by model string. When absent, the engine uses
 //   the desk default — the first entry in personal/model.json — and
-//   the desk script wires that in (see personal/desk.js).
+//   the desk script wires that in (see src/core/desk.js).
 //
 // Initialization from a location:
 //
@@ -44,7 +44,7 @@
 import { readFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 
-export function createEngine({ instructions, metadata = {}, model }) {
+export function createEngine({ instructions, metadata = {}, model, tools }) {
   if (typeof instructions !== "string" || instructions.trim() === "") {
     throw new Error("engine needs string instructions");
   }
@@ -61,6 +61,20 @@ export function createEngine({ instructions, metadata = {}, model }) {
   const engine = { instructions, metadata };
   if (typeof model === "string" && model.trim() !== "") {
     engine.model = model;
+  }
+  // Tools loaded by default (see src/core/core-tools.js and the
+  // desk): the engine holds them, but the single-turn chat does
+  // NOT invoke them yet — tool-calling by the LLM is a later
+  // feature. Loaded, listed, and shown in the UI; not yet called.
+  if (tools !== undefined) {
+    if (!Array.isArray(tools)) {
+      throw new Error("engine tools, when given, must be a list");
+    }
+    engine.tools = tools;
+    engine.listTools = () =>
+      tools.map((tool) =>
+        typeof tool.spec === "function" ? tool.spec() : tool,
+      );
   }
   // The engine's live twin: plain data for the UI, nothing else.
   // It reads the engine's current model, so a desk that wires in

@@ -23,9 +23,13 @@
 // "no working", llm is shown while a /api/chat request is in
 // flight, error on failure, connecting while the live object loads,
 // no-model when the desk has no default. Tool, tools and waiting
-// are defined but never fire here — this skeleton has no tools yet.
+// are defined but never fire here — the chat does not invoke tools
+// yet. The Tools panel below (src/components/tools-panel.jsx,
+// GET /api/tools) shows the core tools the desk loads by default
+// (files.* + terminal.*, no web tools), expandable for details.
 import { useCallback, useEffect, useState } from "react";
 import EngineLive from "@/components/engine-live";
+import ToolsPanel from "@/components/tools-panel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { describeActivity, engineTone } from "@/core/activity.js";
@@ -132,6 +136,8 @@ export default function Home() {
           activity={activity}
           stats={stats}
         />
+
+        <ToolsPanel />
 
         {!liveLoading && live && !live.hasDefault && (
           <p className="text-sm font-medium">

@@ -39,6 +39,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
+import { createCoreTools } from "./core-tools.js";
 import { createEngine } from "./engine.js";
 import { createInference } from "./inference.js";
 
@@ -275,7 +276,26 @@ export function createDesk(
     engine.model = defaultInference.id;
     engine.inference = defaultInference;
   }
-  return { engine, inferences, defaultInference, location: dir };
+  // Default agent loads ALL core tools: files.* + terminal.*,
+  // no web tools (ignored for now). The files tool loads the
+  // project root into logical space; the terminal tool is scoped
+  // to the same root. The single-turn chat does NOT invoke tools
+  // yet — they are loaded, listed, and shown in the UI, and
+  // tool-calling by the LLM is a later feature.
+  const core = createCoreTools({ filesLocation: process.cwd() });
+  engine.tools = core.tools;
+  engine.listTools = () => core.listTools();
+  const tools = core.tools;
+  const listTools = () => core.listTools();
+  return {
+    engine,
+    inferences,
+    defaultInference,
+    location: dir,
+    tools,
+    listTools,
+    coreTools: core,
+  };
 }
 
 // Alias: loadDesk() reads the same state and gives back the same desk.
