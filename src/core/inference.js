@@ -21,7 +21,7 @@
 // (local servers often need none) and is only sent as a Bearer header
 // when given. API keys never live in model.json — an entry there
 // references its key only by apiKeyEnv name, and the desk script
-// resolves that name from personal/.env (see personal/desk.js).
+// resolves that name from personal/.env (see src/core/desk.js).
 //
 // The standalone listModels() / infer() exports are thin wrappers kept
 // for callers that do not have an inference object yet.

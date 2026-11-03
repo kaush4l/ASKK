@@ -14,7 +14,7 @@ import {
   parseEnvText,
   publicDesk,
   upsertEnvText,
-} from "../../personal/desk.js";
+} from "./desk.js";
 import { chat } from "./engine.js";
 
 function jsonResponse(body) {
@@ -184,6 +184,89 @@ describe("apiKeyEnv resolution", () => {
   test("defaultApiKeyEnv derives a name from the provider", () => {
     expect(defaultApiKeyEnv("ollama")).toBe("OLLAMA_API_KEY");
     expect(defaultApiKeyEnv("my provider")).toBe("MY_PROVIDER_API_KEY");
+  });
+});
+
+describe("personal / public fallback", () => {
+  function makeDir(files) {
+    const dir = mkdtempSync(join(tmpdir(), "askk-fallback-"));
+    for (const [name, content] of Object.entries(files)) {
+      writeFileSync(join(dir, name), content);
+    }
+    return dir;
+  }
+
+  test("personal present wins over public defaults, per file", () => {
+    const personal = makeDir({
+      "instructions.md": "Personal instructions.\n",
+    });
+    const defaults = makeDir({
+      "instructions.md": "Default instructions.\n",
+      "model.json": JSON.stringify([
+        {
+          id: "def",
+          provider: "ollama",
+          endpoint: "http://localhost:11434/v1",
+          model: "default-model",
+        },
+      ]),
+    });
+    try {
+      const desk = createDesk(personal, { defaultsDir: defaults });
+      // Instructions from personal, model list from defaults.
+      expect(desk.engine.instructions).toBe("Personal instructions.");
+      expect(desk.defaultInference.id).toBe("def");
+      expect(desk.engine.metadata.source).toBe("personal");
+    } finally {
+      rmSync(personal, { recursive: true, force: true });
+      rmSync(defaults, { recursive: true, force: true });
+    }
+  });
+
+  test("personal absent entirely loads public defaults", () => {
+    const defaults = makeDir({
+      "instructions.md": "Default instructions.\n",
+      "model.json": "[]",
+    });
+    const missing = join(tmpdir(), "askk-no-personal-xyz");
+    try {
+      const desk = createDesk(missing, { defaultsDir: defaults });
+      expect(desk.engine.instructions).toBe("Default instructions.");
+      expect(desk.inferences).toEqual([]);
+      expect(desk.defaultInference).toBeUndefined();
+      expect(desk.engine.metadata.source).toBe("public");
+    } finally {
+      rmSync(defaults, { recursive: true, force: true });
+    }
+  });
+
+  test("personal model.json absent falls back to defaults model list, .env stays personal-only", () => {
+    const personal = makeDir({
+      "instructions.md": "Personal instructions.\n",
+      ".env": "OLLAMA_API_KEY=sk-personal\n",
+    });
+    const defaults = makeDir({
+      "instructions.md": "Default instructions.\n",
+      "model.json": JSON.stringify([
+        {
+          id: "def",
+          provider: "ollama",
+          endpoint: "http://localhost:11434/v1",
+          model: "default-model",
+          apiKeyEnv: "OLLAMA_API_KEY",
+        },
+      ]),
+      // Even if a public .env existed, it must NOT be read.
+      ".env": "OLLAMA_API_KEY=sk-public-must-not-win\n",
+    });
+    try {
+      const desk = createDesk(personal, { defaultsDir: defaults });
+      expect(desk.defaultInference.id).toBe("def");
+      expect(desk.inferences[0].apiKey).toBe("sk-personal");
+    } finally {
+      rmSync(personal, { recursive: true, force: true });
+      rmSync(defaults, { recursive: true, force: true });
+    }
   });
 });
 

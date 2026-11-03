@@ -1,11 +1,11 @@
 // GET /api/engine — the live engine object for the UI.
-// Builds the desk via personal/desk.js createDesk() and returns
+// Builds the desk via src/core/desk.js createDesk() and returns
 // { engine: engine.twin(), defaultInference, hasDefault,
 // inferenceCount }. The twin carries model id, metadata, and a
 // short instructions preview only. No key is ever returned, and
 // apiKeyEnv is omitted entirely — even a key name is not needed
 // by the UI, and omitting it avoids leaking anything secret-adjacent.
-import { createDesk, publicDesk } from "../../../../personal/desk.js";
+import { createDesk, publicDesk } from "@/core/desk.js";
 
 export async function GET() {
   try {

@@ -16,12 +16,20 @@
 // /api/engine: engine model id, provider, endpoint, instructions
 // preview, desk default status, inference count, and the session
 // message count. No keys, no secrets. Instructions always come from
-// personal/instructions.md on the server; the client never sends
-// them.
+// the desk on the server (personal/ first, public/defaults/ as
+// fallback); the client never sends them.
+//
+// Live activity (src/core/activity.js, like the old UI): idle is
+// "no working", llm is shown while a /api/chat request is in
+// flight, error on failure, connecting while the live object loads,
+// no-model when the desk has no default. Tool, tools and waiting
+// are defined but never fire here — this skeleton has no tools yet.
 import { useCallback, useEffect, useState } from "react";
 import EngineLive from "@/components/engine-live";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { describeActivity, engineTone } from "@/core/activity.js";
+import { cn } from "@/lib/utils";
 
 export default function Home() {
   const [live, setLive] = useState(null);
@@ -30,8 +38,10 @@ export default function Home() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [activity, setActivity] = useState({ phase: "connecting" });
+  const [stats, setStats] = useState({ calls: 0, lastMs: null });
 
-  const loadLive = useCallback(async () => {
+  const loadLive = useCallback(async (keepActivity = false) => {
     try {
       const response = await fetch("/api/engine");
       const body = await response.json();
@@ -39,8 +49,16 @@ export default function Home() {
         throw new Error(body.error ?? "engine request failed");
       }
       setLive(body);
+      if (!keepActivity) {
+        setActivity(
+          body.hasDefault ? { phase: "idle" } : { phase: "no-model" },
+        );
+      }
     } catch (err) {
       setError(err.message);
+      if (!keepActivity) {
+        setActivity({ phase: "error", error: err.message });
+      }
     } finally {
       setLiveLoading(false);
     }
@@ -63,6 +81,8 @@ export default function Home() {
     setMessages(nextMessages);
     setInput("");
     setLoading(true);
+    setActivity({ phase: "llm" });
+    const started = Date.now();
     try {
       const response = await fetch("/api/chat", {
         method: "POST",
@@ -77,11 +97,17 @@ export default function Home() {
         ...nextMessages,
         { id: crypto.randomUUID(), role: "assistant", content: body.reply },
       ]);
+      setActivity({ phase: "idle" });
     } catch (err) {
       setError(err.message);
+      setActivity({ phase: "error", error: err.message });
     } finally {
+      setStats((prev) => ({
+        calls: prev.calls + 1,
+        lastMs: Date.now() - started,
+      }));
       setLoading(false);
-      await loadLive();
+      await loadLive(true);
     }
   }
 
@@ -100,7 +126,12 @@ export default function Home() {
           </a>
         </div>
 
-        <EngineLive live={live} messageCount={messages.length} />
+        <EngineLive
+          live={live}
+          messageCount={messages.length}
+          activity={activity}
+          stats={stats}
+        />
 
         {!liveLoading && live && !live.hasDefault && (
           <p className="text-sm font-medium">
@@ -152,6 +183,23 @@ export default function Home() {
           >
             Send
           </Button>
+        </div>
+
+        {/* Thin status strip, like the old status bar but skeleton
+            simple: activity dot + text, model, and call stats. */}
+        <div className="flex items-center gap-2 border-t border-zinc-200 py-2 text-xs text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">
+          <span
+            aria-hidden
+            className={cn(
+              "size-2 shrink-0 rounded-full",
+              engineTone(activity).dot,
+            )}
+          />
+          <span aria-live="polite">{describeActivity(activity)}</span>
+          <span className="ml-auto">
+            {live?.defaultInference?.model ?? live?.engine?.model ?? "—"}
+            {stats.calls > 0 && ` · ${stats.calls}× · last ${stats.lastMs} ms`}
+          </span>
         </div>
       </main>
     </div>

@@ -1,17 +1,30 @@
 // Desk — the script that initializes state and gives back a desk.
 //
-// All agent runtime state lives in the personal folder:
+// Folder check (the personal / public fallback rule):
+//   - If the personal folder is present, load personal.
+//   - If not, give a default from the public folder.
 //
-//   personal/instructions.md — the engine's instructions (system message)
-//   personal/model.json      — a LIST of user-added inferences, one
-//                              entry per provider/model pair. The
-//                              FIRST entry is the desk default. An
-//                              empty list means no default.
-//   personal/.env            — API keys only, as KEY=VALUE lines.
-//                              model.json never holds a key: an entry
-//                              references its key by apiKeyEnv name.
+// This is checked PER FILE, not per folder as a whole: for each of
+// instructions.md and model.json, the personal file wins if it
+// exists, otherwise the public/defaults/ file is used. That way a
+// user who only customises instructions still gets the default
+// model list, and vice versa. personal/.env is different: keys are
+// NEVER read from a public folder — .env is personal only, and a
+// fresh checkout without one simply has no keys (falling back to
+// process.env for the named variable, as before).
 //
-//   const desk = createDesk(); // defaults to "personal"
+//   personal/instructions.md  else public/defaults/instructions.md
+//   personal/model.json       else public/defaults/model.json (or [])
+//   personal/.env             only (never public)
+//
+// personal/ is gitignored (see .gitignore). The public defaults are
+// read-only fallback: user-added saves write to personal/ (creating
+// it if needed), never to public/defaults/. The old personal/desk.js
+// is gone — this file is the desk loader now, so a fresh checkout
+// works from public/defaults/ alone, and creating personal/ locally
+// customises it without touching the repo.
+//
+//   const desk = createDesk(); // defaults: personal + public/defaults
 //   desk.engine            // createEngine({ instructions, model })
 //   desk.inferences        // createInference() objects, keys resolved
 //   desk.defaultInference  // inferences[0], or undefined
@@ -23,20 +36,24 @@
 // server-side call only — API routes must strip them before responding
 // (see src/app/api/desk/route.js, which returns only id/provider/
 // endpoint/model).
-//
-// WARNING: personal/ is included in the repo until a stable state, and
-// gitignore comes later. A real personal/.env must not be committed:
-// fill it locally from personal/.env.example, and keep real keys out
-// of any branch, PR, or snapshot push.
 
 import { existsSync, readFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
-import { loadEngineFromLocation } from "../src/core/engine.js";
-import { createInference } from "../src/core/inference.js";
+import { createEngine } from "./engine.js";
+import { createInference } from "./inference.js";
 
 export function resolvePersonalDir(location = "personal") {
   if (typeof location !== "string" || location.trim() === "") {
     throw new Error("desk needs a personal folder location");
+  }
+  return isAbsolute(location)
+    ? location
+    : join(/* turbopackIgnore: true */ process.cwd(), location);
+}
+
+export function resolveDefaultsDir(location = "public/defaults") {
+  if (typeof location !== "string" || location.trim() === "") {
+    throw new Error("desk needs a defaults folder location");
   }
   return isAbsolute(location)
     ? location
@@ -87,7 +104,7 @@ export function defaultApiKeyEnv(provider) {
   return slug === "" ? "API_KEY" : `${slug}_API_KEY`;
 }
 
-// Read personal/model.json. It IS a list. Absent file -> empty list.
+// Read model.json from one directory. Absent file -> empty list.
 // A non-list file is an error, not silently treated as one entry.
 export function readModelList(dir) {
   const file = join(dir, "model.json");
@@ -104,6 +121,38 @@ export function readModelList(dir) {
     throw new Error(`desk expects model.json at ${file} to be a list`);
   }
   return parsed;
+}
+
+// Per-file fallback: personal file wins if it exists, otherwise the
+// public defaults file, otherwise (for model.json) an empty list.
+export function readInstructionsWithFallback(personalDir, defaultsDir) {
+  const personalFile = join(personalDir, "instructions.md");
+  if (existsSync(personalFile)) {
+    return {
+      instructions: readFileSync(personalFile, "utf8").trim(),
+      source: "personal",
+    };
+  }
+  const defaultsFile = join(defaultsDir, "instructions.md");
+  if (existsSync(defaultsFile)) {
+    return {
+      instructions: readFileSync(defaultsFile, "utf8").trim(),
+      source: "public",
+    };
+  }
+  throw new Error(
+    `desk could not read instructions.md at ${personalFile} or ${defaultsFile}`,
+  );
+}
+
+export function readModelListWithFallback(personalDir, defaultsDir) {
+  if (existsSync(join(personalDir, "model.json"))) {
+    return { list: readModelList(personalDir), source: "personal" };
+  }
+  if (existsSync(join(defaultsDir, "model.json"))) {
+    return { list: readModelList(defaultsDir), source: "public" };
+  }
+  return { list: [], source: "none" };
 }
 
 // Pure helper used by the Save route and by tests: append an entry to
@@ -169,8 +218,6 @@ export function moveInferenceToFront(list, id) {
 // KEY=VALUE line in .env text, preserving the other lines.
 export function upsertEnvText(text, name, value) {
   const lines = String(text ?? "").split(/\r?\n/);
-  // Drop a trailing empty line produced by a final newline, so the
-  // rebuilt text does not gain a blank line on every save.
   if (lines.length > 0 && lines[lines.length - 1] === "") {
     lines.pop();
   }
@@ -199,11 +246,20 @@ function resolveApiKey(entry, envValues) {
   return undefined;
 }
 
-export function createDesk(location = "personal", { fetchImpl } = {}) {
+export function createDesk(
+  location = "personal",
+  { defaultsDir, fetchImpl } = {},
+) {
   const dir = resolvePersonalDir(location);
-  const engine = loadEngineFromLocation(dir);
-  const modelList = readModelList(dir);
+  const defaults = resolveDefaultsDir(defaultsDir ?? "public/defaults");
+  const { instructions, source } = readInstructionsWithFallback(dir, defaults);
+  const { list: modelList } = readModelListWithFallback(dir, defaults);
+  // .env is personal only — never read from public/defaults.
   const envValues = readEnvFile(dir);
+  const engine = createEngine({
+    instructions,
+    metadata: { location: dir, source },
+  });
   const inferences = modelList.map((entry) =>
     createInference({
       id: entry.id,
@@ -215,11 +271,6 @@ export function createDesk(location = "personal", { fetchImpl } = {}) {
     }),
   );
   const defaultInference = inferences[0];
-  // Wire the desk default into the engine: engine.model is the
-  // default inference's id, so chat() resolves it without the caller
-  // having to pass an inference. An explicit engine model (see
-  // createEngine) would override this, but createDesk always starts
-  // from the desk default, per the workflow.
   if (defaultInference) {
     engine.model = defaultInference.id;
     engine.inference = defaultInference;

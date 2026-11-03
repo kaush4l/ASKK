@@ -8,9 +8,10 @@
 // entry in personal/model.json). If no model is configured at all,
 // chat() throws a clear "no model configured" error instead of
 // inventing one. Returns { reply }.
+
+import { createDesk } from "@/core/desk.js";
 import { chat } from "@/core/engine.js";
 import { createInference } from "@/core/inference.js";
-import { createDesk } from "../../../../personal/desk.js";
 
 export async function POST(request) {
   let body;

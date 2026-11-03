@@ -5,9 +5,11 @@
 // apiKey was supplied, it is written/updated in personal/.env under
 // apiKeyEnv (default: derived from the provider, e.g. OLLAMA_API_KEY).
 // Returns { inference } as { id, provider, endpoint, model } —
-// never the key. personal/.env itself is never committed: see
-// personal/.env.example and the desk README warning.
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+// never the key. personal/.env itself is never committed (personal/
+// is gitignored): see public/defaults/.env.example and the desk
+// README warning. Saves always write to personal/ (creating it if
+// needed), never to public/defaults/ — those are read-only fallback.
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   appendInference,
@@ -15,7 +17,7 @@ import {
   readModelList,
   resolvePersonalDir,
   upsertEnvText,
-} from "../../../../personal/desk.js";
+} from "@/core/desk.js";
 
 export async function POST(request) {
   let body;
@@ -42,6 +44,7 @@ export async function POST(request) {
   }
   try {
     const dir = resolvePersonalDir("personal");
+    mkdirSync(dir, { recursive: true });
     const nextList = appendInference(readModelList(dir), {
       provider: body.provider,
       endpoint: body.endpoint,
