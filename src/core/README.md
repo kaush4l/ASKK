@@ -178,8 +178,87 @@ apiKeyEnv resolution from a temp .env file, Save-style append without
 a key in model.json, and default reordering. Fetch is mocked; no real
 model is called.
 
+## Core tools — the default shipped with every desk
+
+`src/core/tool.js` is the abstract Tool contract, like the old
+`backend/kernel/tool/tool.js` simplified for the skeleton:
+
+- `new Tool({ name, description, input, run, type, view, outside,
+  expectation })` — expectation is one of `immediate | done |
+  stream | live-state`: immediate answer, done-notification,
+  event-stream notification, or live state. By definition,
+  everything the agent invokes is a tool; the distinction is the
+  expectation of the answer, not a different kind of code.
+- `tool.spec()` — plain data for the UI (`name, type, view,
+  description, input, expectation`). `tool.describe()` — one line:
+  `- name {fields} — description`. `tool.run(input, ctx)` throws a
+  clear error if the tool has no run function.
+- `createToolRegistry(tools)` / `listTools(tools)` — flat list,
+  lookup by name (duplicate names refused), specs, describe-all.
+
+`src/core/core-tools.js` is the default set, shipped with every
+desk. Web is IGNORED for now — no web tools in code, in the
+registry, or in the UI:
+
+- **Files** (`src/core/files.js`, `createFilesTool(location, id)`):
+  `files.list`, `files.read` (with `from`/`lines` slices),
+  `files.write` (creates folders, only inside the root),
+  `files.edit` (one exact passage, old must match once, else fail
+  — never silently overwrite a changed file), `files.append`,
+  `files.search` (case-insensitive, under a folder/file),
+  `files.open` (live-state, at most 25, text re-read on open),
+  `files.close`, `files.focus` (live-state). A files tool is
+  initialized by a location and loads that folder into logical
+  space: paths are workspace-relative, no leading `/` or `./`, no
+  `..` escape, or the call is refused. State:
+  `{ location, root, tree, open, focus, modified }`.
+  Per-location singleton by default (documented for Kaushal's
+  correction): the same resolved location + id returns the cached
+  instance, so two pointers at the same location share state; a
+  different id gives a separate view over the same disk, with
+  re-read on open. Safety from the old tool: `.env*` (except
+  `.env.example`) and `.git` code/config/hooks, plus `.mcp.json`,
+  are never read or written through files tools.
+- **Focus, the section tool for when a file is too big:**
+  `files.focus({ path, from, lines })` returns only that slice of
+  the file and records `state.focus = { path, from, lines, by, at }`.
+  `files.focus({ path })` with a folder instead makes that folder
+  the tree's root for every holder of the instance; `""` resets to
+  the location. A file without a slice is read whole and recorded
+  as the focus, without changing the root.
+- **Terminal** (`src/core/terminal.js`, `createTerminalTool(root)`):
+  `terminal.run` (done: to completion, exit + last lines, timeout,
+  no shell — one program, or several joined by `&&`, cwd inside
+  the workspace), `terminal.start` (stream: a long session, id +
+  printed lines/URLs), `terminal.wait` (stream: until exit, until
+  text appears, or seconds pass), `terminal.read` (stream: last
+  lines), `terminal.send` (stream: a line to stdin),
+  `terminal.stop` (stream), `terminal.list` (immediate: every
+  session). Sessions are in-memory per workspace root (cached, so
+  they survive across API requests in the same server process) and
+  cover both script (run → done) and watcher (start/wait → stream)
+  expectations. Pipes and redirects are refused (no shell).
+
+The default agent loads ALL core tools: `createDesk()` in
+`src/core/desk.js` calls `createCoreTools()` (files root = project
+root, terminal root = project root) and the returned desk has
+`tools` (flat Tool list), `listTools()` (specs), and `coreTools`
+(the groups + registry); the engine gets the same `tools` and
+`listTools()`. The current single-turn chat does NOT invoke tools
+yet (no loop) — tools are loaded, listed, and shown, and
+tool-calling by the LLM is a later feature.
+
+The UI shows them: `src/components/tools-panel.jsx` on the main
+page fetches `GET /api/tools` (specs + live state, no secrets, no
+physical paths, no web tools) on load, lists every tool by name
+with its expectation badge, and expands (shadcn collapsible) each
+tool to show its full description, its input fields, and its
+current state where applicable (files: root, open files, focus;
+terminal: sessions).
+
 ## What is NOT here yet
 
 Everything else is for Kaushal to direct: how metadata expands, what
 other files live in the personal folder, streaming, persistence of
-chats, and any loop or tools — none of those are in this skeleton.
+chats, and any loop or tool-calling by the LLM — none of those are
+in this skeleton. Web tools are also deliberately absent for now.
