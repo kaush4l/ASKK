@@ -37,8 +37,14 @@
 // .env.example) and anything under a .git folder (config, hooks,
 // or a .git file itself) are never read or written through these
 // tools, whatever the path. .mcp.json is likewise refused.
+//
+// Gitignore (see gitignore.js and the README section "Gitignore:
+// filtered views vs explicit reads"): tree/list/search views
+// exclude paths matched by the root .gitignore (re-read on each
+// list/tree/search); an explicit open/read/edit by a named path
+// is not gitignore-filtered, only safety-refused.
 
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import {
   appendFile,
   mkdir,
@@ -48,6 +54,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
+import { emptyGitignore, isIgnored, parseGitignore } from "./gitignore.js";
 import { Tool } from "./tool.js";
 
 export const OPEN_MAX = 25;
@@ -132,7 +139,38 @@ export class FilesGroup {
       focus: null,
       modified: [],
     };
+    this.gitignore = emptyGitignore();
+    this.#loadGitignore();
     this.tools = this.#buildTools();
+  }
+
+  // (Re)read <root>/.gitignore, synchronously and best-effort.
+  // Absent .gitignore = empty matcher, never an error. Re-read on
+  // each list/tree/search so an edited .gitignore takes effect
+  // without recreating the tool. Nested .gitignore files are NOT
+  // parsed (root only, v1 — see gitignore.js).
+  #loadGitignore() {
+    try {
+      const file = join(this.location, ".gitignore");
+      if (existsSync(file)) {
+        this.gitignore = parseGitignore(readFileSync(file, "utf8"));
+        return;
+      }
+    } catch {
+      // A broken .gitignore must not break the files tool.
+    }
+    this.gitignore = emptyGitignore();
+  }
+
+  // True if a tree/list/search view must hide this path. The root
+  // .gitignore file itself is never filtered (it must stay visible).
+  // Explicit open/read/edit by a named path do NOT use this — see
+  // the README section "Gitignore: filtered views vs explicit reads".
+  #isFiltered(logical, isDir) {
+    if (logical === ".gitignore") {
+      return false;
+    }
+    return isIgnored(this.gitignore, logical, isDir);
   }
 
   // The plain-data view for the UI: logical paths only, never the
@@ -142,6 +180,7 @@ export class FilesGroup {
     return {
       root: state.root,
       treeCount: state.tree.length,
+      gitignorePatterns: this.gitignore?.patterns?.length ?? 0,
       open: state.open.map((entry) => entry.path),
       focus: state.focus,
       modified: state.modified.map((entry) => ({
@@ -202,12 +241,15 @@ export class FilesGroup {
       }
       const logical = dirLogical ? `${dirLogical}/${entry.name}` : entry.name;
       if (entry.isDirectory()) {
-        if (SKIP_DIRS.has(entry.name)) {
+        if (SKIP_DIRS.has(entry.name) || this.#isFiltered(logical, true)) {
           continue;
         }
         out.push({ path: logical, size: 0, dir: true });
         await this.#walk(logical, depth + 1, out);
       } else if (entry.isFile()) {
+        if (this.#isFiltered(logical, false)) {
+          continue;
+        }
         let size = 0;
         try {
           size = (await stat(join(physical, entry.name))).size;
@@ -220,6 +262,7 @@ export class FilesGroup {
   }
 
   async #refreshTree() {
+    this.#loadGitignore();
     const tree = [];
     await this.#walk(this.state.root, 0, tree);
     this.state.tree = tree;
@@ -238,10 +281,18 @@ export class FilesGroup {
 
   async #list(input) {
     const path = cleanPath(input?.path ?? this.state.root);
+    this.#loadGitignore();
     const { physical } = this.#physical(path);
     const entries = await readdir(physical, { withFileTypes: true });
     const out = [];
     for (const entry of entries) {
+      const logical = path ? `${path}/${entry.name}` : entry.name;
+      if (
+        this.#isFiltered(logical, entry.isDirectory()) ||
+        (entry.isDirectory() && SKIP_DIRS.has(entry.name))
+      ) {
+        continue;
+      }
       let size = 0;
       if (entry.isFile()) {
         try {
@@ -350,6 +401,7 @@ export class FilesGroup {
       throw new Error("files.search needs text to look for");
     }
     const root = cleanPath(input?.path ?? this.state.root);
+    this.#loadGitignore();
     const needle = text.toLowerCase();
     const hits = [];
     const files = [];
@@ -370,10 +422,13 @@ export class FilesGroup {
         }
         const logical = dirLogical ? `${dirLogical}/${entry.name}` : entry.name;
         if (entry.isDirectory()) {
-          if (!SKIP_DIRS.has(entry.name)) {
+          if (!SKIP_DIRS.has(entry.name) && !this.#isFiltered(logical, true)) {
             await collect(logical);
           }
         } else if (entry.isFile()) {
+          if (this.#isFiltered(logical, false)) {
+            continue;
+          }
           files.push(logical);
         }
       }

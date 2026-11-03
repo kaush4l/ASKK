@@ -256,6 +256,36 @@ tool to show its full description, its input fields, and its
 current state where applicable (files: root, open files, focus;
 terminal: sessions).
 
+## Gitignore: filtered views vs explicit reads
+
+`src/core/gitignore.js` parses the project's ROOT `.gitignore`
+only (`parseGitignore(text)` / `isIgnored(matcher, path)`; no new
+dependency). When the live artifact loads the filesystem, the
+files tool applies it, so tree/list/search/expand exclude every
+path matched by that `.gitignore` — `personal/`, `node_modules/`,
+`.next/`, `*.log`, and any other pattern there — and ignored
+directories are not descended into, so a huge `node_modules/`
+costs nothing to walk. The root `.gitignore` file itself is never
+filtered (it must stay visible). The live artifact inherits this
+filter through the files tool (no second filter): its `expand()`
+tree and `/api/artifact` output exclude gitignored files too, and
+state.md/history.md never gain ignored paths automatically — they
+only list files the agent actually opened.
+
+Distinction, plainly: tree/list/search/expand are
+gitignore-filtered views of the filesystem. An explicit
+open/read/edit of a path the agent names directly is NOT filtered
+by gitignore — it is still allowed unless an existing safety
+refusal applies (`.env*` except `.env.example`, `.git`, `.mcp.json`,
+path traversal). Supported patterns: `#` comments, trailing `/`
+directories, leading `/` and mid-slash root anchoring, `*`, `?`,
+`**`, and `!` negation with git's parent rule (a file under an
+ignored directory cannot be re-included by a `!file` pattern
+alone; re-include the directory too). NOT supported in v1:
+character classes, nested `.gitignore` files, `.git/info/exclude`,
+and the global gitignore — see `gitignore.js` header. Absent
+`.gitignore` means no filtering and no error.
+
 ## Live artifacts — the basic agent artifacts
 
 `src/core/artifact.js` is the first artifact, borrowed in shape from
