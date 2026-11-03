@@ -5,7 +5,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { chat, createEngine, loadEngineFromLocation } from "./engine.js";
+import { chat, createEngine, loadEngineFromLocation, twin } from "./engine.js";
 import { createInference, listModels } from "./inference.js";
 
 const originalFetch = globalThis.fetch;
@@ -43,6 +43,39 @@ describe("createEngine", () => {
 
   test("rejects missing instructions", () => {
     expect(() => createEngine({})).toThrow("string instructions");
+  });
+});
+
+describe("engine twin", () => {
+  test("returns plain data: model, metadata, instructions preview", () => {
+    const engine = createEngine({
+      instructions: "You are ASKK, a helpful assistant.\nSecond line.",
+      metadata: { location: "personal" },
+      model: "local-llama",
+    });
+    const data = engine.twin();
+    expect(data).toEqual({
+      element: "engine",
+      model: "local-llama",
+      metadata: { location: "personal" },
+      instructionsPreview: "You are ASKK, a helpful assistant.",
+    });
+    expect(JSON.stringify(data)).not.toContain("apiKey");
+    expect(data).toEqual(twin(engine));
+  });
+
+  test("truncates a long first line and reports no model as null", () => {
+    const engine = createEngine({ instructions: `${"x".repeat(200)}` });
+    expect(engine.twin().model).toBeNull();
+    expect(engine.twin().instructionsPreview).toHaveLength(118);
+    expect(engine.twin().instructionsPreview.endsWith("…")).toBe(true);
+  });
+
+  test("reflects a model wired in after creation", () => {
+    const engine = createEngine({ instructions: "Hi." });
+    expect(engine.twin().model).toBeNull();
+    engine.model = "desk-default";
+    expect(engine.twin().model).toBe("desk-default");
   });
 });
 
