@@ -39,6 +39,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
+import { loadLiveArtifact } from "./artifact.js";
 import { createCoreTools } from "./core-tools.js";
 import { createEngine } from "./engine.js";
 import { createInference } from "./inference.js";
@@ -287,6 +288,19 @@ export function createDesk(
   engine.listTools = () => core.listTools();
   const tools = core.tools;
   const listTools = () => core.listTools();
+  // Default live artifact: the filesystem instance for the project
+  // root, loaded from personal/memory/agent/ if saved state exists,
+  // otherwise empty — and, crucially, loadLiveArtifact writes
+  // nothing on load, so building a desk on every API request does
+  // not create files or history entries. The artifact is loaded,
+  // listed, and shown; the single-turn chat does not invoke it yet.
+  const liveArtifact = loadLiveArtifact({
+    id: "default",
+    location: process.cwd(),
+    filesTool: core.files,
+    personalBase: dir,
+  });
+  const artifacts = [liveArtifact];
   return {
     engine,
     inferences,
@@ -295,6 +309,9 @@ export function createDesk(
     tools,
     listTools,
     coreTools: core,
+    liveArtifact,
+    artifacts,
+    listArtifacts: () => artifacts.map((artifact) => artifact.twin()),
   };
 }
 

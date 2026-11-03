@@ -27,8 +27,13 @@
 // yet. The Tools panel below (src/components/tools-panel.jsx,
 // GET /api/tools) shows the core tools the desk loads by default
 // (files.* + terminal.*, no web tools), expandable for details.
+// The Live artifact panel (src/components/live-artifact-panel.jsx,
+// GET /api/artifact) shows the default live artifact the desk
+// loads — its open files, focus, modified files, and history —
+// expandable per open file (preview) and per history entry.
 import { useCallback, useEffect, useState } from "react";
 import EngineLive from "@/components/engine-live";
+import LiveArtifactPanel from "@/components/live-artifact-panel";
 import ToolsPanel from "@/components/tools-panel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -138,6 +143,8 @@ export default function Home() {
         />
 
         <ToolsPanel />
+
+        <LiveArtifactPanel />
 
         {!liveLoading && live && !live.hasDefault && (
           <p className="text-sm font-medium">

@@ -256,6 +256,100 @@ tool to show its full description, its input fields, and its
 current state where applicable (files: root, open files, focus;
 terminal: sessions).
 
+## Live artifacts — the basic agent artifacts
+
+`src/core/artifact.js` is the first artifact, borrowed in shape from
+the old `backend/kernel/artifact/artifact.js` and files artifact,
+not copied from the old backend:
+
+- An artifact is state an agent keeps beside its conversation,
+  rendered as its latest state only. Several agents may hold the
+  same artifact and see each other's writes at the next step. Its
+  commands are the tools that change it.
+- A live artifact IS a filesystem instance: `createLiveArtifact({
+  id = "default", location, filesTool, personalBase })` wraps the
+  files tool instance for that location (the per-location singleton
+  — no second independent files state for the same location). Its
+  live state is the files state: `{ id, root, tree, open, focus,
+  modified }`. It stays in sync with the instance it depends on
+  because open files are re-read on open, and `expand()` re-reads
+  them again — so an external file change shows up on the next
+  expand. Expectation: `live-state`, not immediate.
+- `state()` — current live state, plain data (logical paths only,
+  no physical location, no contents, no keys). `twin()` — plain
+  data for the UI (`element: "artifact"`, `kind: "live-artifact"`,
+  id, root, treeCount, open paths, focus, modified).
+- `expand()` — the call the agent makes: returns `{ id, location
+  (logical root label), root, tree, openFiles: [{ path, lines,
+  preview, truncated, totalLines }], focus, modified }`, with
+  previews bounded at 120 lines / 8000 chars, stating truncation
+  plainly. It records `artifact.expand` in history and saves
+  state. `openPreviews()` is the read-only equivalent for the UI
+  route: same bounded previews, no history, no state write.
+- Delegated files calls: `open`, `close`, `focus`, `list`, `read`,
+  `write`, `edit`, `append` — all through the wrapped files tool,
+  so path-traversal and `.env*`/`.git` refusals are inherited.
+  State-changing calls (open, close, focus, write, edit, append,
+  expand) record history and rewrite state.md; plain reads/lists
+  do not (noise).
+- Old `gate()` / `minCalls` are NOT implemented: in the old system
+  gate could refuse a final answer and minCalls was the minimum
+  artifact-command count before a final answer was allowed. This
+  skeleton has no loop and no final-answer gate, so there is
+  nothing to gate yet — a later step, not a pretence here.
+
+Persistence — agent state in `personal/memory/agent/`:
+
+- `<personalBase>/memory/agent/<id>/state.md` — current live
+  state, rewritten on every state-changing call: title, root,
+  focus line, `## Open files`, `## Modified files`, and
+  `## Open file previews` (bounded). `stateToMarkdown(state,
+  previews)` / `parseStateMarkdown(text)` round-trip it; previews
+  are not parsed back (contents live on disk, re-read on load).
+- `<personalBase>/memory/agent/<id>/history.md` — append-only,
+  one STANDARD ENTRY per agent action, exactly:
+  ```
+  ## 2026-11-03T22:15:00.000Z · files.open
+  - agent: default
+  - path: src/core/tool.js
+  - detail: opened, 120 lines
+  ```
+  `appendHistoryEntry(dir-or-artifact, entry)` /
+  `parseHistoryEntries(text)` round-trip it. Actions: artifact
+  .create, artifact.expand, files.open, files.close, files.focus,
+  files.write, files.edit, files.append. History and state carry
+  logical paths only — never an absolute path, never a key, never
+  .env content. There is NO state.json in this feature, so tools
+  can read the state back with the files tools themselves, and
+  nothing is ever written to `public/defaults/`.
+- `loadLiveArtifact({ id, location, personalBase })` reads
+  state.md/history.md back if present (parsed, not raw) and
+  restores open/focus/modified into a fresh files instance; if
+  absent, it starts empty and creates the folder only on the first
+  state-changing call. `createLiveArtifact` is the same, except it
+  writes the initial state.md and records `artifact.create` on
+  first creation only — repeated loads write no duplicate create
+  entry. Tests cover the save → fresh-load round-trip in temp
+  folders, never in the real `personal/` folder.
+
+Desk wiring: `createDesk()` also creates (loads, if saved) a
+default live artifact for the project root, exposed as
+`desk.liveArtifact` and `desk.artifacts = [liveArtifact]` (a list,
+so later artifacts can be added), with `desk.listArtifacts()`
+returning twins. Chat still does NOT invoke tools or artifacts
+(no loop) — the artifact is loaded, listed, and shown, and agent
+invocation of expand is a method call for later loop work.
+
+UI: `src/components/live-artifact-panel.jsx` on the main page,
+below the Tools panel, fetches `GET /api/artifact` on load and
+shows artifact id, root, open files, focus, and modified files,
+expanding (shadcn collapsible) each open file to its preview and
+each history entry to its details. `GET /api/artifact` returns
+`{ artifact: twin, openFiles: previews, history: parsedEntries }`
+and is read-only in effect: it creates no history entry, writes
+no state, and exposes no keys, absolute paths, or .env content.
+No POST route in this feature.
+
 ## What is NOT here yet
 
 Everything else is for Kaushal to direct: how metadata expands, what
