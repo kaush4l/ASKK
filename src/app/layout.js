@@ -1,15 +1,16 @@
-import { Geist, Geist_Mono } from "next/font/google";
+import { Amarante } from "next/font/google";
 import { ThemeProvider } from "@/components/shell/theme-provider";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+// Amarante ships only weight 400 — there is no bold/italic variant to
+// load, so bold text renders without synthetic bold (see globals.css:
+// font-synthesis-weight: none on html). This is the site's only font:
+// --font-sans, --font-heading, and --font-mono all point at it, so no
+// element falls back to Geist or the system sans by default.
+const amarante = Amarante({
+  variable: "--font-amarante",
   subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
+  weight: "400",
 });
 
 export const metadata = {
@@ -21,10 +22,10 @@ export default function RootLayout({ children }) {
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${amarante.variable} h-full antialiased`}
       suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col">
+      <body className="min-h-full flex flex-col font-sans">
         <ThemeProvider
           attribute="class"
           defaultTheme="system"
