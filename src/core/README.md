@@ -1,77 +1,81 @@
-# core — the engine, skeleton first
+# core — a single chat engine, skeleton first
 
-## What an agent is, as understood from the old system
+This replaces the earlier loop engine. There is no loop, no tool calls,
+no gates, no inbox here — that engine was a first sketch of what an
+agent was in the old system, and it has been superseded. The skeleton
+now is deliberately the smallest thing that can chat:
 
-In the old ASKK (main, `backend/kernel/agent/agent.js`), an agent is not a
-model and not a chatbot wrapper. It is **one configurable ReAct loop** with
-a name, a role, a soul (who it is in every role), tools, and artifacts it
-holds:
+1. **User query in.** The main screen (`src/app/page.js`) takes the
+   user's input and the session's message history.
+2. **One infer call.** `chat()` prepends the engine's instructions as
+   the system message and calls the model once, via
+   `src/core/inference.js`.
+3. **Reply out.** The reply string is shown in the chat. No streaming,
+   no second turn inside the engine — the next user message starts a
+   new single call with the full history.
 
-1. **Render a prompt, in a fixed order.** Soul, then `# YOU ARE <name>`
-   with the role, then `# TOOLS`, then each artifact's latest state, then
-   `# REQUEST`, then `# OWNER GUIDANCE` (a note from the owner, shown
-   once), then `# EARLIER RUNS`, then `# WORK DONE ON THIS REQUEST`,
-   then `# RESPONSE` — the reply format, last, so it is read right
-   before the model writes.
-2. **Infer.** The model is injected as `infer(prompt, agent, { signal })`.
-   No model is bundled, and no agent library is used. The core desk in
-   the old system ran this loop with `maxSteps: 120`; the kernel default
-   was 12.
-3. **Parse.** A reply is a thought plus tool calls, or a final answer
-   alone. The old reply format was field-style (`thought:`, `call:` with
-   input fields, `answer: <<< ... >>>`), with a JSON-object reply as a
-   fallback.
-4. **Call, in parallel.** One step's calls run together; their results
-   join the run's steps and are shown in the next prompt. A call to an
-   unknown tool, or a tool that throws, becomes an error result — the
-   run goes on, it does not crash.
-5. **Gate the answer.** Before a final answer is taken, artifacts may
-   refuse it (an open checklist, for example), and an agent configured
-   with `minCalls` refuses to answer before its tools have run. A
-   refused answer costs a retry; a hard refusal never counts toward
-   retries. After `gateRetries` soft refusals, the answer goes through
-   flagged.
-6. **Stop, or run out of steps.** One run at a time per agent; a request
-   arriving mid-run waits in the inbox. `stop()` ends the run at the
-   next step boundary. A run that reaches `maxSteps` without an answer
-   ends with "(stopped after N steps without an answer)" as its answer.
+## The engine
 
-**Tools** are one list, one contract: a function, another agent, or an
-artifact's command. Another agent is called as a **quest** — a brief
-with `requirement`, `ask`, and `outcome`, never a bare goal — and its
-result is its report.
+`src/core/engine.js`:
 
-**Artifacts** are state beside the conversation, rendered into every
-prompt as their latest state only. Their commands are tools that change
-them; their `gate()` can refuse a final answer; their `refresh()` is
-awaited before each step so host-backed state (a terminal tail, a file
-tree) is fresh in the prompt.
+- `createEngine({ instructions, metadata })` — an engine is an object
+  created with string instructions. `metadata` is an optional plain
+  object, stored on the engine and unused for now; it is the expansion
+  point for name, role, model defaults, or anything else, without
+  changing the engine's shape.
+- `loadEngineFromLocation(location)` — server-side (Node `fs`). Reads
+  `instructions.md` from that location and returns
+  `createEngine({ instructions, metadata: { location } })`. The
+  personal folder is the location for now: `personal/instructions.md`
+  at the project root, a short template Kaushal edits.
+- `chat(engine, { endpoint, apiKey, model, messages })` — prepends
+  `{ role: "system", content: engine.instructions }` and calls
+  `infer()` exactly once.
 
-**A desk** (old `backend/kernel/desk/desk.js`) was configuration in,
-live agents out: specs build agents, agents holding agents lead teams,
-and a team shares a board so the goal flows down and findings stay
-where the team works. A desk is not built here yet.
+The chat API route re-reads `personal/instructions.md` on every
+request, so editing that file takes effect without a restart. The
+client never sends instructions: the server is the only source of
+them.
 
-## What this skeleton does
+## Inference
 
-- `agent.js`: `Agent`, `Tool`, `AgentTool` (quest), `parseReply`, and
-  the loop above — render, infer, parse, parallel calls, gates,
-  inbox queue, `guide()`, `stop()`, `twin()` (the agent as plain data
-  for its UI twin).
-- `engine.js`: a thin factory, `createAgent(config, options)` and
-  `runAgent(config, options, request)`. The "engine" is the loop
-  itself; there is no separate engine machine, as in the old system.
-- `agent.test.js`: the loop driven by a fake infer — one tool call,
-  then an answer — plus an unknown-tool result and a gate refusal.
+`src/core/inference.js` is abstract and OpenAI-standard, with no agent
+library and no bundled model:
 
-## What it does not do yet — correct me here first
+- `listModels({ endpoint, apiKey })` — `GET {endpoint}/models`,
+  returns the `data[].id` strings, in the server's order. No model
+  name is invented here.
+- `infer({ endpoint, apiKey, model, messages })` —
+  `POST {endpoint}/chat/completions` with `{ model, messages }`,
+  returns `choices[0].message.content`.
 
-- Full TOON reply parsing (lists, nested items, one-line joins).
-- Prompt compaction / budgeting, image carrying, step router.
-- Report-format checking on final answers.
-- `chat()` — answering the owner without starting or changing a run.
-- Letters as a structured inbox type (inbox entries are plain requests).
-- Supervision digests (a run's supervision summary).
-- A desk builder, a host (files, web, MCP, models), and any UI twin
-  beyond `twin()` data. The old kernel, backend, companion, desks, and
-  shell were deliberately not copied.
+Endpoints are normalized (trailing slashes trimmed). Non-OK responses
+throw a clear error carrying the status and the server's message.
+`apiKey` is optional and, when given, is sent only as a Bearer header.
+
+## The UI and API routes
+
+- `src/app/page.js` (`/`) — the main screen is the chat. A model
+  picker section (endpoint input, optional API key input, "Fetch
+  models", a model dropdown, "Save") sits above a simple messages
+  list and a Send input. Saved endpoint, model, and key persist in
+  browser localStorage only — they are never written to the repo.
+- `src/app/api/models/route.js` — server proxy: `POST { endpoint, apiKey }`
+  → `listModels`. The browser never calls the model server directly,
+  so local servers with no CORS headers still work.
+- `src/app/api/chat/route.js` — server proxy: `POST { endpoint, apiKey,
+  model, messages }` → loads the engine from `personal`, then `chat()`,
+  and returns `{ reply }`.
+
+## Tests
+
+`src/core/engine.test.js` — `bun test src/core/engine.test.js`.
+Engine creation, location loading (temp directory), the single
+infer call with the system message prepended, and the models list
+shape. Fetch is mocked; no real model is called.
+
+## What is NOT here yet
+
+Everything else is for Kaushal to direct: how metadata expands, what
+other files live in the personal folder, streaming, persistence of
+chats, and any loop or tools — none of those are in this skeleton.
