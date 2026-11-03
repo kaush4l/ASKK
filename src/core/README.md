@@ -63,7 +63,8 @@ throw a clear error carrying the status and the server's message.
 
 ## The desk and the personal folder
 
-All agent runtime state lives in `personal/`. `personal/desk.js` is
+All agent runtime state lives in `personal/` when present, else in
+the public defaults (see below). `src/core/desk.js` is
 the script that initializes state and gives back a desk:
 
 - `createDesk(location)` (alias `loadDesk`) reads
@@ -79,10 +80,53 @@ the script that initializes state and gives back a desk:
   with no new dependency, falling back to process.env). model.json
   never holds a key: an entry references its key only by `apiKeyEnv`
   name (default derived from the provider, e.g. OLLAMA_API_KEY).
-- `personal/.env.example` ships placeholder names only. Ship no real
-  `personal/.env`: personal/ is included in the repo until a stable
-  state, and gitignore comes later, so a real .env must not be
-  committed in any branch or PR.
+- `public/defaults/.env.example` ships placeholder names only.
+
+## Folder check and gitignore (personal vs public defaults)
+
+personal/ is gitignored (see .gitignore). The rule, per file:
+
+- If the personal folder is present, load personal.
+- If not, give a default from the public folder.
+
+Concretely, `createDesk()` in `src/core/desk.js` reads, per file,
+personal/ first if that file exists, else public/defaults/:
+personal/instructions.md else public/defaults/instructions.md,
+personal/model.json else public/defaults/model.json (or [] if
+neither exists). personal/.env is personal only — never a public
+.env, and never returned to the browser.
+
+Fresh checkout works from public/defaults/ alone: instructions
+template ("You are ASKK, a helpful assistant. Answer plainly."),
+model.json [], and .env.example placeholders. To customise,
+create personal/ locally (instructions.md, model.json, .env) —
+user-added saves (POST /api/inferences) write to personal/,
+creating it if needed, never to public/defaults/, which are
+read-only fallback. The old personal/desk.js is gone; all server
+routes now import src/core/desk.js.
+
+## Live activity
+
+`src/core/activity.js` is the live state, like the old UI
+(backend/live/activity.js, lib/engine-tone.js):
+
+- Phases: idle | llm | tool | tools | waiting, plus
+  connecting | no-model | error as UI states.
+- describeActivity(): idle = "Idle" (shown as no working),
+  llm = "Calling LLM…" (with step number if given),
+  tool = "Calling tool {name}…",
+  tools = "Running {n} calls in parallel: {names}…",
+  waiting = "Waiting for {names}".
+- engineTone(): idle grey dot, running emerald pulse dot,
+  waiting amber dot, error red dot, starting grey dot.
+
+Activity is real: the chat client sets llm while a /api/chat
+request is in flight, idle when nothing is working, error on
+failure, connecting while the live object loads, no-model when
+the desk has no default. Tool, tools and waiting are defined
+but never fire yet — this skeleton has no tools, and inventing
+a tool call would be fake activity. They are placeholders for
+the tools feature.
 
 ## The UI and API routes
 
@@ -96,7 +140,9 @@ the script that initializes state and gives back a desk:
   personal/model.json" and Send stays disabled; models are managed
   in the file for now. The live engine panel
   (`src/components/engine-live.jsx`) loads on page load and
-  refreshes after every chat reply.
+  refreshes after every chat reply, and now also shows live activity
+(idle / LLM call / error / connecting / no-model) and a thin
+status strip with the activity dot + text, model, and call stats.
 - `src/app/api/engine/route.js` — GET → `{ engine:
   engine.twin(), defaultInference, hasDefault, inferenceCount }`.
   No key is returned, and apiKeyEnv is omitted entirely.

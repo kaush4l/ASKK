@@ -10,7 +10,7 @@ import {
   moveInferenceToFront,
   readModelList,
   resolvePersonalDir,
-} from "../../../../../personal/desk.js";
+} from "@/core/desk.js";
 
 export async function POST(request) {
   let body;

@@ -36,6 +36,13 @@ yarn-error.log*
 # vercel
 .vercel
 
+# personal agent runtime — gitignored, with a public fallback.
+# If personal/ is present, the desk loads it; if not, it loads
+# public/defaults/ instead. See src/core/README.md. User-added
+# saves write to personal/ (creating it if needed), never to
+# public/defaults/.
+personal/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

@@ -5,7 +5,7 @@
 // publicDesk() strips them before responding.
 // If no model is present, hasDefault is false and the UI asks for
 // a default first; if any is present, the first entry is the default.
-import { createDesk, publicDesk } from "../../../../personal/desk.js";
+import { createDesk, publicDesk } from "@/core/desk.js";
 
 export async function GET() {
   try {

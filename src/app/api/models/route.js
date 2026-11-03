@@ -7,12 +7,13 @@
 // the key is resolved server-side from personal/.env (or process.env)
 // under that name, or under the provider-derived name
 // (e.g. OLLAMA_API_KEY). Keys are never returned to the browser.
-import { createInference } from "@/core/inference.js";
+
 import {
   defaultApiKeyEnv,
   readEnvFile,
   resolvePersonalDir,
-} from "../../../../personal/desk.js";
+} from "@/core/desk.js";
+import { createInference } from "@/core/inference.js";
 
 export async function POST(request) {
   let body;
