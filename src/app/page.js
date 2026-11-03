@@ -3,50 +3,83 @@
 // Home — the main screen is the chat. Skeleton only: one user query in,
 // one LLM reply out, no loop, no streaming.
 //
-// Model picker: enter an OpenAI-compatible endpoint, optionally an API
-// key, fetch the models list from that server, pick a model, save.
-// Saved endpoint, model, and key live in browser localStorage only —
-// they are never written to the repo. Instructions always come from
-// personal/instructions.md on the server; the client never sends them.
-import { useEffect, useState } from "react";
+// Desk state is the source of truth and lives on the server in
+// personal/ (instructions.md, model.json, .env). On load the client
+// asks GET /api/desk: if a default inference is present, the chat
+// loads with it already selected and the user can talk immediately.
+// If NO model is present, the screen asks for a default first: enter
+// a provider and endpoint, fetch models, pick one, save — and Save
+// persists between restarts, because it writes personal/model.json
+// on the server (and, when a key is given, personal/.env), not just
+// browser storage. The picker stays available after a default
+// exists, to add another provider or make another entry the default
+// (making default = moving that entry to the front of model.json).
+// Keys are never returned by any API route and never shown back.
+// Instructions always come from personal/instructions.md on the
+// server; the client never sends them. The only browser storage left
+// is the currently-selected inference id for this session.
+import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-const STORAGE_KEYS = {
-  endpoint: "askk:endpoint",
-  apiKey: "askk:apiKey",
-  model: "askk:model",
-};
+const SELECTED_KEY = "askk:selectedInference";
 
 export default function Home() {
+  const [desk, setDesk] = useState(null);
+  const [deskLoading, setDeskLoading] = useState(true);
+  const [provider, setProvider] = useState("");
   const [endpoint, setEndpoint] = useState("");
   const [apiKey, setApiKey] = useState("");
-  const [model, setModel] = useState("");
   const [models, setModels] = useState([]);
-  const [saved, setSaved] = useState(false);
+  const [model, setModel] = useState("");
+  const [selectedId, setSelectedId] = useState("");
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+
+  const loadDesk = useCallback(async () => {
+    setDeskLoading(true);
+    try {
+      const response = await fetch("/api/desk");
+      const body = await response.json();
+      if (!response.ok) {
+        throw new Error(body.error ?? "desk request failed");
+      }
+      setDesk(body);
+      const savedSelected = localStorage.getItem(SELECTED_KEY) ?? "";
+      const nextSelected = body.inferences.some(
+        (entry) => entry.id === savedSelected,
+      )
+        ? savedSelected
+        : (body.defaultInference?.id ?? "");
+      setSelectedId(nextSelected);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setDeskLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    const savedEndpoint = localStorage.getItem(STORAGE_KEYS.endpoint) ?? "";
-    const savedKey = localStorage.getItem(STORAGE_KEYS.apiKey) ?? "";
-    const savedModel = localStorage.getItem(STORAGE_KEYS.model) ?? "";
-    setEndpoint(savedEndpoint);
-    setApiKey(savedKey);
-    setModel(savedModel);
-    setSaved(Boolean(savedEndpoint && savedModel));
-  }, []);
+    loadDesk();
+  }, [loadDesk]);
+
+  function selectInference(id) {
+    setSelectedId(id);
+    localStorage.setItem(SELECTED_KEY, id);
+  }
 
   async function fetchModels() {
     setError("");
+    setNotice("");
     setLoading(true);
     try {
       const response = await fetch("/api/models", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ endpoint, apiKey }),
+        body: JSON.stringify({ endpoint, apiKey, provider }),
       });
       const body = await response.json();
       if (!response.ok) {
@@ -56,7 +89,6 @@ export default function Home() {
       if (body.models.length > 0 && !body.models.includes(model)) {
         setModel(body.models[0]);
       }
-      setSaved(false);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -64,12 +96,54 @@ export default function Home() {
     }
   }
 
-  function saveSettings() {
-    localStorage.setItem(STORAGE_KEYS.endpoint, endpoint);
-    localStorage.setItem(STORAGE_KEYS.apiKey, apiKey);
-    localStorage.setItem(STORAGE_KEYS.model, model);
-    setSaved(true);
+  async function saveInference() {
     setError("");
+    setNotice("");
+    setLoading(true);
+    try {
+      const response = await fetch("/api/inferences", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider, endpoint, model, apiKey }),
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        throw new Error(body.error ?? "save failed");
+      }
+      setNotice(
+        `Saved ${body.inference.provider} / ${body.inference.model} to personal/model.json. It survives restarts.`,
+      );
+      setApiKey("");
+      await loadDesk();
+      selectInference(body.inference.id);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function makeDefault(id) {
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch("/api/inferences/default", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        throw new Error(body.error ?? "make default failed");
+      }
+      setNotice(
+        `Default is now ${body.defaultInference.provider} / ${body.defaultInference.model}.`,
+      );
+      await loadDesk();
+      selectInference(id);
+    } catch (err) {
+      setError(err.message);
+    }
   }
 
   async function send() {
@@ -77,8 +151,8 @@ export default function Home() {
     if (!text || loading) {
       return;
     }
-    if (!endpoint || !model) {
-      setError("Pick a model and save it first.");
+    if (!selectedId) {
+      setError("Add a default model first, below.");
       return;
     }
     setError("");
@@ -94,9 +168,7 @@ export default function Home() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          endpoint,
-          apiKey,
-          model,
+          inferenceId: selectedId,
           messages: nextMessages,
         }),
       });
@@ -106,7 +178,7 @@ export default function Home() {
       }
       setMessages([
         ...nextMessages,
-        { role: "assistant", content: body.reply },
+        { id: crypto.randomUUID(), role: "assistant", content: body.reply },
       ]);
     } catch (err) {
       setError(err.message);
@@ -114,6 +186,8 @@ export default function Home() {
       setLoading(false);
     }
   }
+
+  const selected = desk?.inferences.find((entry) => entry.id === selectedId);
 
   return (
     <div className="flex flex-col flex-1 items-center bg-zinc-50 font-sans dark:bg-black">
@@ -131,7 +205,66 @@ export default function Home() {
         </div>
 
         <section className="flex flex-col gap-3 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
-          <h2 className="text-sm font-semibold">Model</h2>
+          <h2 className="text-sm font-semibold">Models</h2>
+          {deskLoading && (
+            <p className="text-sm text-zinc-600 dark:text-zinc-400">
+              Loading desk…
+            </p>
+          )}
+          {!deskLoading && desk && !desk.hasDefault && (
+            <p className="text-sm font-medium">
+              No model yet — add a default below, then you can talk.
+            </p>
+          )}
+          {!deskLoading && desk?.hasDefault && (
+            <p className="text-sm text-zinc-600 dark:text-zinc-400">
+              Default: {desk.defaultInference.provider} /{" "}
+              {desk.defaultInference.model}
+              {selected
+                ? ` — chatting with ${selected.provider} / ${selected.model}`
+                : ""}
+            </p>
+          )}
+          {!deskLoading && desk?.inferences.length > 0 && (
+            <ul className="flex flex-col gap-2">
+              {desk.inferences.map((entry) => (
+                <li
+                  key={entry.id}
+                  className="flex flex-wrap items-center gap-2 text-sm"
+                >
+                  <span className="flex-1">
+                    {entry.provider} / {entry.model}
+                    <span className="text-zinc-500"> — {entry.endpoint}</span>
+                  </span>
+                  <Button
+                    variant="outline"
+                    onClick={() => selectInference(entry.id)}
+                    disabled={selectedId === entry.id}
+                  >
+                    {selectedId === entry.id ? "Selected" : "Select"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => makeDefault(entry.id)}
+                    disabled={desk.defaultInference?.id === entry.id}
+                  >
+                    Make default
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <h3 className="text-sm font-semibold">Add an inference</h3>
+          <label htmlFor="provider" className="flex flex-col gap-1 text-sm">
+            Provider
+            <Input
+              id="provider"
+              value={provider}
+              onChange={(event) => setProvider(event.target.value)}
+              placeholder="ollama"
+            />
+          </label>
           <label htmlFor="endpoint" className="flex flex-col gap-1 text-sm">
             Endpoint
             <Input
@@ -142,7 +275,7 @@ export default function Home() {
             />
           </label>
           <label htmlFor="api-key" className="flex flex-col gap-1 text-sm">
-            API key (optional)
+            API key (optional — saved to personal/.env, never to model.json)
             <Input
               id="api-key"
               type="password"
@@ -175,14 +308,15 @@ export default function Home() {
                 ))
               )}
             </select>
-            <Button onClick={saveSettings} disabled={!endpoint || !model}>
+            <Button
+              onClick={saveInference}
+              disabled={!provider || !endpoint || !model || loading}
+            >
               Save
             </Button>
           </div>
-          {saved && (
-            <p className="text-sm text-zinc-600 dark:text-zinc-400">
-              Saved in this browser. Now you can talk to the model.
-            </p>
+          {notice && (
+            <p className="text-sm text-zinc-600 dark:text-zinc-400">{notice}</p>
           )}
         </section>
 

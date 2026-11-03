@@ -1,10 +1,16 @@
 // POST /api/chat — server proxy for one chat turn.
-// Body: { endpoint, apiKey?, model, messages }.
-// Instructions are NOT accepted from the client. The engine is always
-// loaded from personal/instructions.md on the server, re-read on every
-// request, so editing that file takes effect without a restart.
-// Returns { reply }.
-import { chat, loadEngineFromLocation } from "@/core/engine.js";
+// Body: { inferenceId?, endpoint?, apiKey?, model?, messages }.
+// Instructions are NOT accepted from the client. The desk is always
+// loaded from personal/ on the server (instructions.md + model.json
+// + .env, re-read on every request, so editing them takes effect
+// without a restart). Resolution: an explicit inferenceId, else an
+// explicit endpoint+model one-off, else the desk default (the first
+// entry in personal/model.json). If no model is configured at all,
+// chat() throws a clear "no model configured" error instead of
+// inventing one. Returns { reply }.
+import { chat } from "@/core/engine.js";
+import { createInference } from "@/core/inference.js";
+import { createDesk } from "../../../../personal/desk.js";
 
 export async function POST(request) {
   let body;
@@ -16,12 +22,6 @@ export async function POST(request) {
       { status: 400 },
     );
   }
-  if (typeof body?.endpoint !== "string" || body.endpoint.trim() === "") {
-    return Response.json({ error: "endpoint is required" }, { status: 400 });
-  }
-  if (typeof body?.model !== "string" || body.model.trim() === "") {
-    return Response.json({ error: "model is required" }, { status: 400 });
-  }
   if (!Array.isArray(body?.messages)) {
     return Response.json(
       { error: "messages must be an array" },
@@ -29,11 +29,33 @@ export async function POST(request) {
     );
   }
   try {
-    const engine = loadEngineFromLocation("personal");
-    const reply = await chat(engine, {
-      endpoint: body.endpoint,
-      apiKey: body.apiKey,
-      model: body.model,
+    const desk = createDesk("personal");
+    let inference = desk.defaultInference;
+    if (typeof body?.inferenceId === "string" && body.inferenceId !== "") {
+      inference = desk.inferences.find(
+        (entry) => entry.id === body.inferenceId,
+      );
+      if (!inference) {
+        return Response.json(
+          { error: `no inference with id ${body.inferenceId}` },
+          { status: 400 },
+        );
+      }
+    } else if (
+      typeof body?.endpoint === "string" &&
+      body.endpoint.trim() !== "" &&
+      typeof body?.model === "string" &&
+      body.model.trim() !== ""
+    ) {
+      inference = createInference({
+        endpoint: body.endpoint,
+        apiKey: body.apiKey,
+        model: body.model,
+      });
+    }
+    const reply = await chat(desk.engine, {
+      inference,
+      inferences: desk.inferences,
       messages: body.messages,
     });
     return Response.json({ reply });
