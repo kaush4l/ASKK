@@ -34,6 +34,11 @@ now is deliberately the smallest thing that can chat:
   `{ role: "system", content: engine.instructions }`, and calls that
   inference's `infer()` exactly once. If nothing resolves, it throws
   "no model configured" instead of inventing a model.
+- `engine.twin()` / `twin(engine)` — the engine's live twin as plain
+  data for the UI: `{ element: "engine", model, metadata,
+  instructionsPreview }` (first line of the instructions, truncated
+  at 120 characters). It never includes an inference object, a key,
+  or any secret.
 
 The chat API route re-reads the personal folder on every request, so
 editing it takes effect without a restart. The client never sends
@@ -81,29 +86,37 @@ the script that initializes state and gives back a desk:
 
 ## The UI and API routes
 
-- `src/app/page.js` (`/`) — the main screen is the chat. On load it
-  asks GET /api/desk: if a default is present, the chat loads with
-  it already selected and the user can talk immediately; if no model
-  is present, the screen asks for a default first (provider, endpoint,
-  "Fetch models", model dropdown, "Save"). The picker stays available
-  afterwards to add another provider, select one, or make one the
-  default. Only the currently-selected inference id stays in browser
-  localStorage; the source of truth is personal/model.json.
+- `src/app/page.js` (`/`) — the main screen is the chat. The model
+  picker has been REMOVED from this screen: no provider/endpoint
+  input, no "Fetch models", no model dropdown, no Save, and no
+  client calls to /api/inferences or /api/models. The models store
+  (personal/model.json, via the desk) is the source of truth, and
+  the picker will be re-added improved later. If no model is
+  present, the screen says "No model configured — add an entry to
+  personal/model.json" and Send stays disabled; models are managed
+  in the file for now. The live engine panel
+  (`src/components/engine-live.jsx`) loads on page load and
+  refreshes after every chat reply.
+- `src/app/api/engine/route.js` — GET → `{ engine:
+  engine.twin(), defaultInference, hasDefault, inferenceCount }`.
+  No key is returned, and apiKeyEnv is omitted entirely.
 - `src/app/api/desk/route.js` — GET → `{ hasDefault,
   defaultInference, inferences }` with id/provider/endpoint/model
-  only. Keys are never returned.
-- `src/app/api/models/route.js` — server proxy: `POST { endpoint,
+  only. Keys are never returned. Still used by the server; the
+  main UI now prefers /api/engine for its live panel.
+- `src/app/api/models/route.js` — server proxy, KEPT but unused by
+  the UI for now (for the improved picker later): `POST { endpoint,
   apiKey?, provider?, apiKeyEnv? }` → `listModels`. An explicit key
   wins; otherwise the key is resolved server-side from personal/.env
   under apiKeyEnv or the provider-derived name.
-- `src/app/api/inferences/route.js` — POST `{ provider, endpoint,
-  model, apiKey?, apiKeyEnv? }` appends (or updates, by id) an entry
-  in personal/model.json WITHOUT any key, and writes/updates the key
-  in personal/.env when one was supplied. Returns the saved inference
-  without the key.
-- `src/app/api/inferences/default/route.js` — POST `{ id }` moves
-  that entry to the front of personal/model.json, making it the
-  default.
+- `src/app/api/inferences/route.js` — KEPT but unused by the UI for
+  now: POST `{ provider, endpoint, model, apiKey?, apiKeyEnv? }`
+  appends (or updates, by id) an entry in personal/model.json
+  WITHOUT any key, and writes/updates the key in personal/.env when
+  one was supplied. Returns the saved inference without the key.
+- `src/app/api/inferences/default/route.js` — KEPT but unused by the
+  UI for now: POST `{ id }` moves that entry to the front of
+  personal/model.json, making it the default.
 - `src/app/api/chat/route.js` — server proxy: `POST { inferenceId?,
   endpoint?, apiKey?, model?, messages }` → loads the desk, resolves
   the inference (explicit id, else one-off endpoint+model, else desk
@@ -112,7 +125,7 @@ the script that initializes state and gives back a desk:
 ## Tests
 
 `bun test src/core/` — engine creation and model parameter, location
-loading, the single infer call with the system message prepended,
+loading, engine.twin() plain data (no keys), the single infer call with the system message prepended,
 inference resolution by id then by model string, the no-model error,
 desk list parsing, first-entry default, engine model override,
 apiKeyEnv resolution from a temp .env file, Save-style append without

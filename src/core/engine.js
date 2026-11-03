@@ -62,7 +62,30 @@ export function createEngine({ instructions, metadata = {}, model }) {
   if (typeof model === "string" && model.trim() !== "") {
     engine.model = model;
   }
+  // The engine's live twin: plain data for the UI, nothing else.
+  // It reads the engine's current model, so a desk that wires in
+  // its default after creation still shows up correctly. It never
+  // includes an inference object, a key, or any secret.
+  engine.twin = () => twin(engine);
   return engine;
+}
+
+// Plain-data twin of an engine for the UI (the live engine object).
+// instructionsPreview is the first line of the instructions,
+// truncated — the full file is not sent to the browser.
+export function twin(engine) {
+  if (!engine || typeof engine.instructions !== "string") {
+    throw new Error("twin needs an engine created with string instructions");
+  }
+  const firstLine = engine.instructions.split(/\r?\n/)[0].trim();
+  const instructionsPreview =
+    firstLine.length > 120 ? `${firstLine.slice(0, 117)}…` : firstLine;
+  return {
+    element: "engine",
+    model: typeof engine.model === "string" ? engine.model : null,
+    metadata: engine.metadata ?? {},
+    instructionsPreview,
+  };
 }
 
 export function loadEngineFromLocation(location) {
