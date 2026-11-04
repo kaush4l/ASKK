@@ -22,6 +22,8 @@
 // No new dependencies, no agent libraries. Pure core (no Node imports),
 // so the same elements can be used server-side and in tests.
 
+import { createTemplate } from "./template-order.js";
+
 function stableString(value) {
   if (value === undefined) return "undefined";
   if (value === null) return "null";
@@ -224,6 +226,55 @@ export function responseElement(format) {
   });
 }
 
+// A plain-text element for a template segment that carries no
+// structured data of its own: the owner request, owner guidance,
+// earlier runs, and work done. Each keeps its own id so the
+// template order (template-order.js) can place it, and its own
+// kind so a snapshot can tell it apart from other text.
+export function textElement(id, kind, text) {
+  const data = { text: typeof text === "string" ? text : "" };
+  return createElement({
+    id,
+    kind,
+    data,
+    render: (d) => d.text,
+  });
+}
+
+export function requestElement(text) {
+  return textElement("request", "request", text);
+}
+
+export function ownerGuidanceElement(text) {
+  return textElement("owner-guidance", "owner-guidance", text);
+}
+
+export function earlierRunsElement(entries) {
+  const data = { entries: Array.isArray(entries) ? entries : [] };
+  return createElement({
+    id: "earlier-runs",
+    kind: "earlier-runs",
+    data,
+    render: (d) =>
+      d.entries.length === 0
+        ? "Earlier runs: none."
+        : d.entries.map((e) => `- ${e}`).join("\n"),
+  });
+}
+
+export function workDoneElement(entries) {
+  const data = { entries: Array.isArray(entries) ? entries : [] };
+  return createElement({
+    id: "work-done",
+    kind: "work-done",
+    data,
+    render: (d) =>
+      d.entries.length === 0
+        ? "Work done: none."
+        : d.entries.map((e) => `- ${e}`).join("\n"),
+  });
+}
+
 export function historyElement(entries) {
   const data = { entries: Array.isArray(entries) ? entries : [] };
   return createElement({
@@ -237,13 +288,18 @@ export function historyElement(entries) {
   });
 }
 
-// Render a prompt from elements, in order. Static elements first,
-// dynamic elements last — the same static-top / dynamic-bottom order
-// as the old prompt: soul, YOU ARE (instructions), tools, artifact,
-// watchers, scripts, models, history, response last.
+// Render a prompt from elements, in insertion order. The order
+// is the order of the list given here — renderPrompt() builds an
+// ordered template (template-order.js) and inserts each element
+// in turn, so the renderer itself holds no hardcoded segment
+// sequence. Reordering the input list reorders the prompt.
 export function renderPrompt(elements) {
   const list = Array.isArray(elements) ? elements : [];
-  return list.map((el) => el.toString()).join("\n\n");
+  const template = createTemplate();
+  for (const el of list) {
+    template.insert(el);
+  }
+  return template.render();
 }
 
 export function elementsToSnapshot(elements) {

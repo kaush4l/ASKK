@@ -1,22 +1,17 @@
 // GET /api/desk-snapshot — desk reader + abstract elements, as a twin.
-// Returns the snapshot-version desk: agent, soul/instructions sources,
+// Uses the SINGLE engine object (getEngineObject): the element
+// strings come from engine.elementStrings() — the same ordered
+// elements the chat prompt renders — not a second, per-request
+// desk. Returns the snapshot-version desk: agent, soul/instructions sources,
 // element strings (toString() as they are NOW), tools, artifact,
 // watchers running (from the desk reader's watcher names, none running
 // by default in this template), scripts (shared + agent, agent wins),
 // models (template only, no real calls, no built-ins, no silent default),
 // and default tools. No keys, no apiKeyEnv, no absolute paths.
-import { createDesk, publicDesk } from "@/core/desk.js";
+// Response shape unchanged from before the engine-object change.
+import { publicDesk } from "@/core/desk.js";
 import { deskSnapshotTwin, readDeskSnapshot } from "@/core/desk-reader.js";
-import {
-  artifactElement,
-  historyElement,
-  instructionsElement,
-  modelsElement,
-  scriptsElement,
-  soulElement,
-  toolsElement,
-  watchersElement,
-} from "@/core/elements.js";
+import { getEngineObject } from "@/core/engine-object.js";
 import { mergePlacement } from "@/core/placement.js";
 import { listProviders } from "@/core/providers.js";
 
@@ -24,29 +19,14 @@ export async function GET(request) {
   try {
     const url = new URL(request.url);
     const agent = url.searchParams.get("agent") ?? "developer";
-    const desk = createDesk("personal");
+    const engine = getEngineObject("personal");
+    const desk = engine.desk;
     const snap = readDeskSnapshot({
       personalDir: desk.location,
       defaultsDir: `${process.cwd()}/public/defaults`,
       agent,
     });
-    const elements = [
-      soulElement(snap.soul),
-      instructionsElement(snap.instructions),
-      toolsElement(desk.listTools()),
-      artifactElement(desk.artifacts?.[0] ? desk.artifacts[0].state() : null),
-      watchersElement([]),
-      scriptsElement(
-        mergePlacement(
-          snap.scriptsShared.map((n) => ({ name: n, kind: "shortcut" })),
-          snap.scriptsAgent.map((n) => ({ name: n, kind: "shortcut" })),
-        ),
-      ),
-      modelsElement(listProviders(snap.models).providers),
-      historyElement([]),
-    ];
-    const elementStrings = {};
-    for (const el of elements) elementStrings[el.id] = el.toString();
+    const elementStrings = engine.elementStrings();
     return Response.json({
       twin: deskSnapshotTwin(snap),
       elementStrings,

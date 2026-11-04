@@ -181,3 +181,120 @@ export function canvasData(snapshot) {
   }
   return { nodes, edges };
 }
+
+// Live status — the typing-icon status data for the live-agent
+// section, derived from the SAME live snapshot the card and the
+// canvas render (ui-data rule: a field appears only if it is in
+// the snapshot). No hardcoded steps, agents, or tool names: the
+// current step is the running call's name, else the working
+// agent's current phase, else null. Running calls, partial
+// results, and failed calls stay visible in `steps` with their
+// stable ids and parallel groups.
+export function liveStatusData(snapshot) {
+  if (!snapshot || typeof snapshot !== "object") {
+    return {
+      running: false,
+      glyph: "○",
+      word: "idle",
+      currentStep: null,
+      activity: "idle",
+      steps: [],
+    };
+  }
+  const calls = asList(snapshot.calls);
+  const steps = calls.map((call) => ({
+    id: call?.id ?? "",
+    name: call?.name ?? "",
+    status: call?.status ?? "running",
+    partial: Boolean(call?.partial),
+    parallelGroup: call?.parallelGroup ?? null,
+  }));
+  const runningCall = calls.find((call) => call?.status === "running");
+  const agents = asList(snapshot.agents);
+  const workingAgent = agents.find((agent) =>
+    ["running", "working"].includes(agent?.status),
+  );
+  const activity = snapshot.activity ?? "idle";
+  let running = true;
+  let word = "working";
+  let currentStep = null;
+  if (runningCall) {
+    word = "tool call";
+    currentStep = runningCall.name ?? runningCall.id ?? null;
+  } else if (activity === "llm") {
+    word = "thinking";
+    currentStep = workingAgent?.currentPhase
+      ? `phase: ${workingAgent.currentPhase}`
+      : null;
+  } else if (workingAgent) {
+    word = "working";
+    currentStep = workingAgent.currentPhase
+      ? `phase: ${workingAgent.currentPhase}`
+      : (workingAgent.name ?? null);
+  } else {
+    running = false;
+    word = activity === "done" ? "done" : "idle";
+  }
+  return {
+    running,
+    glyph: running ? "●" : "○",
+    word,
+    currentStep,
+    activity,
+    steps,
+  };
+}
+
+// Lifecycle twins — the UI view of EVERY element lifecycle
+// type, from the one engine object. A state change with no twin
+// here is a failure: the lifecycle-twins test iterates the
+// lifecycle registry (lifecycles.js) and asserts every type has
+// a key in this object. Twins are data-level (the JSX stays
+// simple); what matters is that no element state exists only
+// in the backend. engine is the engine object
+// (engine-object.js): state from engine.snapshot(), element
+// strings from engine.elementStrings(), goal snapshots from
+// the goal artifact itself (goal.snapshot() deliberately
+// excludes snapshots, so the twin reads the artifact).
+export function lifecycleTwins(engine) {
+  if (!engine || typeof engine.snapshot !== "function") {
+    throw new Error("lifecycleTwins needs an engine object");
+  }
+  const state = engine.snapshot();
+  const strings =
+    typeof engine.elementStrings === "function" ? engine.elementStrings() : {};
+  const goalArtifact = engine.goal ?? null;
+  const llmEvents = (state.events ?? []).filter((event) =>
+    String(event?.type ?? "").startsWith("llm:"),
+  );
+  return {
+    function: { calls: state.calls ?? [] },
+    "live-artifact": {
+      artifact: state.artifact ?? null,
+      artifactElement: strings.artifact ?? null,
+    },
+    soul: { text: strings.soul ?? null },
+    instructions: { text: strings.instructions ?? null },
+    history: { entries: state.history ?? [] },
+    goal: {
+      goals: state.goals ?? {},
+      current: goalArtifact ? goalArtifact.snapshot() : null,
+    },
+    subagent: { agents: state.agents ?? {} },
+    watcher: { watchers: state.watchers ?? [] },
+    script: { scripts: state.scripts ?? [] },
+    "skill-phase": {
+      phases: state.phases ?? [],
+      skillPhases: state.skillPhases ?? [],
+    },
+    "model-call": {
+      events: llmEvents,
+      modelCalls: state.modelCalls ?? [],
+      activity: state.activity ?? "idle",
+    },
+    snapshot: {
+      count: goalArtifact?.snapshots?.length ?? 0,
+      latest: goalArtifact?.snapshots?.at(-1)?.why ?? null,
+    },
+  };
+}

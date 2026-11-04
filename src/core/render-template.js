@@ -1,4 +1,13 @@
 // Render template data shaping — desk -> DeskTemplate props.
+// The prompt render order itself lives in template-order.js
+// (insertion order, default = old order); re-exported here so
+// callers of this module get the ordered template from one place.
+export {
+  createTemplate,
+  DEFAULT_TEMPLATE_ORDER,
+  defaultTemplate,
+} from "./template-order.js";
+
 //
 //   templateData(desk, messages)
 //     -> { soul, agent, history, tools, liveArtifacts, skills, messages }

@@ -5,11 +5,12 @@
 // publicDesk() strips them before responding.
 // If no model is present, hasDefault is false and the UI asks for
 // a default first; if any is present, the first entry is the default.
-import { createDesk, publicDesk } from "@/core/desk.js";
+import { publicDesk } from "@/core/desk.js";
+import { getEngineObject } from "@/core/engine-object.js";
 
 export async function GET() {
   try {
-    const desk = createDesk("personal");
+    const desk = getEngineObject("personal").desk;
     return Response.json(publicDesk(desk));
   } catch (error) {
     return Response.json({ error: error.message }, { status: 502 });
