@@ -641,3 +641,133 @@ NOT in this PR, by design: the developer workflow
 tool, developer-desk loading for feature work, real model calls,
 the full replay feature, and a restart implementation. Those are
 tomorrow's work, on top of this structure — not inside it.
+
+## Harness, loop, goal artifact — CORRECTION (2026-11-04)
+
+Goal = statement only. This supersedes any earlier reading in which
+a goal carried a phases statement:
+
+- `goal.create` takes a statement only (plus id/name for addressing).
+  It REFUSES phases, a plan, a pre-filled tool list, allowedTools,
+  or steps (see src/core/goal-artifact.js: createGoal). A refusal is
+  an error, never a silent ignore.
+- The harness (src/core/harness.js) translates an owner request into
+  exactly one goal.create call and passes the goal to the right
+  executing agent. The harness does NOT plan, does NOT write phases
+  into the goal, and does NOT choose the executing agent's tools
+  beyond spawn lanes.
+- The executing agent owns its loop internally: plan -> execute ->
+  critique, looping back to plan/execute on critique failure, until
+  done. Developer-internal phases live on the developer agent record
+  (agent.internalPhases, agent.currentPhase) and in its history —
+  never in the goal artifact. There is no goal.set-phase and no
+  goal.next-phase tool; goal tools are goal.set-statement,
+  goal.set-status, goal.add-step, goal.complete-step, goal.add-evidence.
+- The goal artifact keeps: statement, status, live folder
+  {root, tree, open, focus, modified} (gitignore-filtered views via
+  the files tool; explicit open of a named path is the documented
+  exception), steps added during execution, evidence, decisions,
+  openQuestions, history, and snapshots (deep copies on status change).
+  Goal files on disk are markdown (goalFileText / loadGoalArtifactFile),
+  so restart restores goals from memory files.
+
+## New modules in this PR
+
+- `src/core/toon.js` — default response format. parseReply(text) ->
+  {thought, calls, answer} for TOON thought:/call: lines, JSON
+  fallback on parse failure, plain answer otherwise. A malformed
+  call line never invents a call. formatReply() renders TOON.
+- `src/core/live-state.js` — ONE single live object per location+id
+  (singleton, extending the files/terminal pattern). Mutations through
+  it; snapshot() returns the exact object shape as a deep copy. Events:
+  llm:start/end, tool:start/end, goal:phase, agent:spawn/report/dismiss,
+  compaction, and the live-events vocabulary. Dashboard card and canvas
+  both render from snapshot() of this object (src/core/ui-data.js).
+- `src/core/loop.js` — runLoop(): TOON by default, one stage of calls
+  in parallel via Promise.all, sequential ONLY where a call depends on
+  a previous result (a "$result.<name>" reference to another call in
+  the same stage defers that call to the next stage, with substitution).
+  stop() via createStopSignal() at the next step boundary, maxSteps 12.
+  Compaction at >=90% of model ctx: older steps fold into one summary
+  step (summariser if given, else a clipped fallback labelled clipped,
+  never invented), last 2 steps kept, compaction recorded in history.
+  Checks gate: if requireChecks and files were modified with no passing
+  test/build terminal.run in the run, the final answer is refused.
+  runPhase() narrows a registry to a phase's allowedTools (plus goal.*
+  tools, which always belong to the goal's agent) before the loop runs.
+  engine.js single-turn chat is untouched.
+- `src/core/context.js` — selectContext(state, {phase, goal}) returns
+  only current elements (soul always, current-phase instructions/tools,
+  goal artifact, goal-clipped history); everything else is returned as
+  leftOut [{id, reason, chars}], never silently included. renderContext()
+  returns {prompt, meter} where meter segments sum EXACTLY to
+  prompt.length (separators are their own segment). Response =
+  f(state, context elements, request): no hidden inputs.
+- `src/core/parallel.js` — renderElementsParallel() via Promise.all;
+  each element {id, kind, version, data, render(), toString(), cacheKey}
+  is skipped when its cacheKey matches, only changed elements re-render.
+- `src/core/skills.js` — a skill IS a phase object {id, duty, inputs,
+  outputs, allowedTools, entryGate, exitGate, handoff, agent, onFail,
+  onSuccess}. loadSkillPhase() reads markdown with frontmatter-like
+  fields from memory/skills/shared then <agent> (agent wins), personal
+  first, then public defaults templates. Example:
+  public/defaults/memory/skills/shared/review.skill.md (read-only skill).
+- `src/core/spawn.js` — createAgent() (explicit tools subset, refused
+  if absent or wider than caller lanes; soul immutable), children
+  registry, dismiss() (run agents removed, desk-kept persist as
+  <name>.agent.md), report(channel: report/ask — ask is exactly one
+  concrete structured question), loadAgent() for restart.
+  DEVELOPER_INTERNAL_PHASES: plan -> execute -> critique -> done.
+- `src/core/agent-tools.js` — agent-created tools live in memory
+  folders only (function: memory/agent/<agent>/<name>.tool.md; script:
+  memory/scripts/<agent>/<name>.script.md; watcher:
+  memory/watchers/<agent>/<name>.watcher.md; "shared" replaces <agent>
+  for shared tools). Shared first, agent-specific wins, no duplicates;
+  agent-specific tools are visible/runnable only by that agent. Writes
+  go to the personal desk folder only, never public/defaults/. Desk
+  tools remain src/core/core-tools.js only.
+- `src/core/harness.js` — createHarness(desk) -> {desk, tools (kernel),
+  spawnDeveloper, runDeveloper, ask}. ask() composes a goal statement
+  from the owner request plus the default goal template
+  (public/defaults/memory/goal-default.md, from the DeepSeek
+  super-agent philosophy; a short fallback labelled "default" only if
+  the template is missing), makes one goal.create call, passes the goal
+  to the developer, and returns the developer's report. discoverDesk()
+  implements personal/ else public/defaults/ else an honest empty
+  state. createHarnessFromDeskFolder() is the cold-start path.
+- `src/core/restart.js` — restartState() (kept desk agents respawn,
+  run-only recorded-not-restarted, phase + artifact open/focus
+  recorded), checkpoint() before merge/restart (files differing from a
+  base snapshot, bounded at 200 files, newest 5 kept), healthCheck(),
+  rollback(checkpointId), restoreFromMarkdown() (loadAgent +
+  loadGoalArtifactFile). SUPERVISOR INTERFACE: the supervisor is a
+  SEPARATE process that owns worker lifecycle — it starts the worker,
+  watches healthCheck(), and on unhealthy restores a checkpoint and
+  restarts it. The worker never restarts itself, and no registry tool
+  restarts the process.
+- `src/core/checks.js` — runChecks() runs `bun test src/core` and
+  `next build` (workspace-scoped, via a supplied runner — mocked in
+  tests) and records {name, command, status, exit, tail}.
+- `src/core/ui-data.js` + `src/components/agent-card.jsx` +
+  `src/components/live-canvas.jsx` — card and canvas data functions
+  over one live snapshot; sections/nodes/edges appear only when the
+  snapshot carries them (no hardcoded panels). Wired into
+  src/app/page.js below the existing chat/snapshot sections, which
+  are untouched. The card shows working/thinking/tool calls with stable
+  call IDs, parallel grouping, partial first-class, failed visible.
+- `src/core/providers.js` (extended, kinds/tests untouched) —
+  getModelDetails(provider) returns {ctx, timings, counts} from the
+  entry's own data (absent stays null); defaultsFor(model) returns
+  explicit LABELLED defaults (ctx 128000 labelled "default", not a
+  model fact). setDefaultProvider / updateProvider / removeProvider /
+  applyProviderAction are the pure Models-page actions; Test stays
+  mocked (mockTestProvider, no real call, no CLI). The /api/models
+  route applies them: Use sets the default in the snapshot object and
+  persists to personal/memory/model.json only when a personal desk
+  folder exists, otherwise in-memory for the server process with a
+  plain "not persisted" note. The Models page buttons now call it.
+- Gitignore, restated: tree/list/search/expand views exclude
+  gitignored paths (files.js, gitignore.js). An explicit open/read/
+  edit of a named path is NOT gitignore-filtered, only safety-refused
+  (.env, .git, .mcp.json). Gitignored files are never loaded into the
+  file artifact through a view.
