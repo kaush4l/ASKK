@@ -276,8 +276,8 @@ describe("observations: template-level vs run-specific", () => {
     });
     expect(next.version).toBe(template.version + 1);
     expect(next.improvesOn).toBe("tools v1 (hardcoded list)");
-    expect(next.observations).toHaveLength(1);
-    expect(next.observations[0].agentId).toBe("subagent-1");
+    expect(next.observations).toHaveLength(template.observations.length + 1);
+    expect(next.observations.at(-1).agentId).toBe("subagent-1");
     const rendered = renderAgentInstructions(next, fakeDesk(TOOLS_A), []);
     const obs = rendered.sections.find((s) => s.id === "observations");
     expect(obs.cached).toBe(false);

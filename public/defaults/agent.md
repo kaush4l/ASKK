@@ -5,7 +5,7 @@ Version: 2
 This file is a RENDER TEMPLATE, not an inventory. It does not list
 tools, models, files, or skills literally — it names the elements
 the template composes, and each element says which live variable
-it is filled from at runtime. The renderer (src/core/render-template.js)
+it is filled from at runtime. The renderer (src/core/agent-md.js)
 takes this template + the current desk object and produces the
 instructions string at that moment. Changing the desk (a tool added
 to the registry, a file opened in the live artifact, a new session
@@ -84,6 +84,11 @@ an optional following improvesOn line naming the previous
 version or element it changes. (The shape is described here
 in prose on purpose, so this description itself is never
 parsed as an observation entry.)
+
+- 2026-11-03 · agent-template-correction · Tools hardcoded in agent.md drifted stale on registry change. · Render Tools from desk.tools at runtime with per-element cache.
+improvesOn: tools v1 (hardcoded 16-tool list in agent.md)
+- 2026-11-03 · agent-template-correction · Soul folded into Instructions conflated who the agent is with how it answers. · Keep soul.md and instructions.md as separate elements, rendered separately, never merged.
+improvesOn: soul v2 (instructions.md rendered as the Soul section)
 
 Run-specific observations (what happened in one run, file
 paths, results) do NOT go here — they go to
