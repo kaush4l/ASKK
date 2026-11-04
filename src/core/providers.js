@@ -83,6 +83,112 @@ export function listProviders(entries, defaultId = null) {
   };
 }
 
+// Model details, from provider/model data only — never invented.
+// ctx comes from the entry's ctx / contextLength / context field;
+// timings and counts come from the entry's own fields. Absent
+// fields stay null here: defaultsFor() is the labelled-default
+// path, and it must never be mistaken for a model fact.
+export function getModelDetails(entry) {
+  if (!entry || typeof entry !== "object") {
+    throw new Error("model details need a provider entry");
+  }
+  const ctx =
+    entry.ctx ?? entry.contextLength ?? entry.context ?? entry.tokens ?? null;
+  return {
+    id: entry.id ?? null,
+    model: entry.model ?? "",
+    ctx: ctx ?? null,
+    ctxSource: ctx === null ? null : "model",
+    timings: entry.timings ?? null,
+    counts: entry.counts ?? null,
+  };
+}
+
+// Explicit, LABELLED defaults for when model data is absent.
+// ctx 128000 is a default, not a claim about any model — every
+// value here carries label "default" so the UI can say so.
+export function defaultsFor(model) {
+  return {
+    model: model ?? "",
+    ctx: { value: 128000, label: "default" },
+    timings: { value: null, label: "default" },
+    counts: { value: null, label: "default" },
+  };
+}
+
+// Pure provider actions, for the Models page and its route.
+// use: set the default by id (throws when the id is absent).
+// edit: merge a patch (id immutable), re-validated when the
+// merged entry carries a kind. delete: remove by id (throws when
+// absent). test: the mocked test (no real call, no CLI).
+export function setDefaultProvider(entries, id) {
+  const list = Array.isArray(entries) ? entries : [];
+  if (!list.some((entry) => entry?.id === id)) {
+    throw new Error(`no provider with id ${id}`);
+  }
+  return list.map((entry) => ({ ...entry, isDefault: entry.id === id }));
+}
+
+export function updateProvider(entries, id, patch = {}) {
+  const list = Array.isArray(entries) ? entries : [];
+  const at = list.findIndex((entry) => entry?.id === id);
+  if (at < 0) {
+    throw new Error(`no provider with id ${id}`);
+  }
+  const merged = { ...list[at], ...patch, id };
+  if (merged.kind) {
+    normalizeProvider(merged);
+  }
+  const next = [...list];
+  next[at] = merged;
+  return next;
+}
+
+export function removeProvider(entries, id) {
+  const list = Array.isArray(entries) ? entries : [];
+  if (!list.some((entry) => entry?.id === id)) {
+    throw new Error(`no provider with id ${id}`);
+  }
+  return list.filter((entry) => entry.id !== id);
+}
+
+export function applyProviderAction(state, action) {
+  const entries = state?.providers ?? [];
+  const defaultId = state?.defaultId ?? null;
+  if (action?.action === "use") {
+    const next = setDefaultProvider(entries, action.id);
+    return {
+      state: { providers: next, defaultId: action.id },
+      result: { ok: true, action: "use", id: action.id },
+    };
+  }
+  if (action?.action === "delete") {
+    const next = removeProvider(entries, action.id);
+    return {
+      state: {
+        providers: next,
+        defaultId: defaultId === action.id ? null : defaultId,
+      },
+      result: { ok: true, action: "delete", id: action.id },
+    };
+  }
+  if (action?.action === "edit") {
+    const next = updateProvider(entries, action.id, action.patch ?? {});
+    return {
+      state: { providers: next, defaultId },
+      result: { ok: true, action: "edit", id: action.id },
+    };
+  }
+  if (action?.action === "test") {
+    const entry = entries.find((item) => item?.id === action.id);
+    if (!entry) {
+      throw new Error(`no provider with id ${action.id}`);
+    }
+    return { state: { providers: entries, defaultId }, result: mockTestProvider(entry) };
+  }
+  throw new Error(`unknown provider action ${JSON.stringify(action?.action)}`);
+}
+
 export function mockTestProvider(provider) {
   const p = normalizeProvider(provider);
   // Mocked, standard test: no network, no CLI spawn, no key use.

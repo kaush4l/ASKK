@@ -32,6 +32,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import AgentCard from "@/components/agent-card";
+import LiveCanvas from "@/components/live-canvas";
 import CombinedView from "@/components/combined-view";
 import { emitLiveEvent } from "@/lib/live-events.js";
 
@@ -180,6 +182,50 @@ export default function Home() {
           error={error}
           liveLoading={liveLoading}
         />
+
+        {/* Live agent section (new): the card and the canvas below
+          render from the SAME snapshot object built from the data
+          already fetched above — no new fetch, no hardcoded panels.
+          The existing chat and snapshot sections above are untouched. */}
+        {!liveLoading && (agentData || toolsData || artifactData) && (
+          <div className="flex flex-col gap-6">
+            <p className="text-sm text-zinc-600 dark:text-zinc-400">
+              Live agent — card and canvas from one snapshot.
+            </p>
+            <AgentCard
+              snapshot={{
+                id: "dashboard",
+                activity: loading ? "llm" : "idle",
+                agents: agentData?.agent
+                  ? [
+                      {
+                        name: agentData.agent.name ?? agentData.agent.id ?? "agent",
+                        status: loading ? "working" : "idle",
+                      },
+                    ]
+                  : [],
+                tools: (toolsData?.tools ?? []).map((t) => t.name ?? t),
+                artifact: artifactData?.artifact ?? null,
+              }}
+            />
+            <LiveCanvas
+              snapshot={{
+                id: "dashboard",
+                activity: loading ? "llm" : "idle",
+                agents: agentData?.agent
+                  ? [
+                      {
+                        name: agentData.agent.name ?? agentData.agent.id ?? "agent",
+                        status: loading ? "working" : "idle",
+                      },
+                    ]
+                  : [],
+                tools: (toolsData?.tools ?? []).map((t) => t.name ?? t),
+                artifact: artifactData?.artifact ?? null,
+              }}
+            />
+          </div>
+        )}
       </main>
     </div>
   );
