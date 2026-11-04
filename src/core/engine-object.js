@@ -68,8 +68,11 @@ import {
   ownerGuidanceElement,
   requestElement,
   responseElement,
+  scriptsElement,
+  skillsElement,
   soulElement,
   toolsElement,
+  watchersElement,
   workDoneElement,
 } from "./elements.js";
 import {
@@ -91,8 +94,54 @@ import {
   DEFAULT_TEMPLATE_ORDER,
   defaultTemplate,
 } from "./template-order.js";
+import { createToolRegistry, toToolInstance } from "./tool.js";
 
 const engineCache = new Map();
+
+// Engine prompt order (Milestone 4): the default template order,
+// plus the scanned objects as their own prompt segments, after
+// the artifact and before the request — so a scanned script,
+// watcher, or skill is never only in engine.scanned and nowhere
+// else. template-order.js DEFAULT_TEMPLATE_ORDER is unchanged
+// (its tests assert it exactly); this is the ENGINE's order,
+// built from the same elements, not a second template system.
+export const ENGINE_TEMPLATE_ORDER = Object.freeze([
+  "soul",
+  "instructions",
+  "tools",
+  "artifact",
+  "scripts",
+  "watchers",
+  "skills",
+  "request",
+  "owner-guidance",
+  "earlier-runs",
+  "work-done",
+  "response",
+]);
+
+// Build a registry from tool instances/specs, deduplicating by
+// name. A duplicate name is NOT silently merged and NOT a
+// crash: the first instance wins, later duplicates are recorded
+// in `duplicates` so the caller can see the conflict.
+export function buildToolsRegistry(tools = []) {
+  const byName = new Map();
+  const duplicates = [];
+  for (const entry of Array.isArray(tools) ? tools : []) {
+    if (!entry || typeof entry.name !== "string") {
+      continue;
+    }
+    if (byName.has(entry.name)) {
+      duplicates.push(entry.name);
+      continue;
+    }
+    byName.set(entry.name, toToolInstance(entry));
+  }
+  return {
+    registry: createToolRegistry([...byName.values()]),
+    duplicates,
+  };
+}
 
 export function resetEngineObjects() {
   engineCache.clear();
@@ -158,6 +207,12 @@ export function createEngineObject(desk, opts = {}) {
   const overrides = new Map();
   const lifecycleTrace = [];
 
+  // Declared here, before buildMap(), because buildMap() reads
+  // engineRef.scanned for the scripts/watchers/skills segments
+  // and is called during the initial template build below.
+  // It is filled after the engine literal; before that it is
+  // null, so the initial segments render as "none".
+  let engineRef = null;
   const soulOf = () =>
     typeof desk.soul === "string" && desk.soul !== ""
       ? desk.soul
@@ -167,15 +222,37 @@ export function createEngineObject(desk, opts = {}) {
       ? desk.engine.instructions
       : soulOf();
 
+  // THE local registry (Milestone 4): one object holding the
+  // actual Tool instances for this engine, built once from the
+  // desk's tools and replaced (never duplicated) by startup when
+  // scanned agent tools arrive. Every other place — the tools
+  // element, /api/tools, the harness, the loop's phase registries
+  // (which are views derived from this registry + goal tools,
+  // never independent lists) — reads from this object.
+  let toolsRegistryState = buildToolsRegistry(
+    Array.isArray(desk.tools) && desk.tools.length > 0
+      ? desk.tools
+      : toolSpecsOf(desk),
+  );
+  let agentRegistries = {};
+
   const buildMap = () => ({
     soul: soulElement(soulOf()),
     instructions: instructionsElement(instructionsOf()),
-    tools: toolsElement(toolSpecsOf(desk)),
+    tools: toolsElement(toolsRegistryState.registry.specs()),
     // The artifact element reads the LIVE artifact state first:
     // a live-artifact call updates live.artifact, and the next
     // prompt render must show that new state, not the desk's
     // load-time artifact. Desk artifact is the fallback only.
     artifact: artifactElement(live.artifact ?? artifactStateOf(desk)),
+    // Scanned objects ARE prompt segments (Milestone 4, G6):
+    // scripts, watchers, and skills from engine.scanned (set by
+    // startup.initializeDeskObjects) render here, in insert
+    // order, so they are never only in engine.scanned. Before
+    // any scan they render as "none", never as invented objects.
+    scripts: scriptsElement(engineRef?.scanned?.scripts ?? []),
+    watchers: watchersElement(engineRef?.scanned?.watchers ?? []),
+    skills: skillsElement(engineRef?.scanned?.skills ?? []),
     request: requestElement(request),
     "owner-guidance": ownerGuidanceElement(guidance.peek() ?? ""),
     "earlier-runs": earlierRunsElement(live.history.slice(-20).map(asText)),
@@ -192,9 +269,9 @@ export function createEngineObject(desk, opts = {}) {
     equals: (a, b) => JSON.stringify(a) === JSON.stringify(b),
   });
   const syncSignal = () => signal.set(live.snapshot());
-  // engineRef is filled after the engine literal below; the
-  // subscriptions above only fire later, once it exists.
-  let engineRef = null;
+  // engineRef (declared above, before buildMap) is filled after
+  // the engine literal below; the subscriptions below only fire
+  // later, once it exists.
   // In-process signal chain: every live event refreshes the
   // signal, so loop progress (llm:/tool: events) reaches
   // subscribers without a refetch. JSON equality collapses the
@@ -245,7 +322,14 @@ export function createEngineObject(desk, opts = {}) {
       const rebuilt = createTemplate(next);
       template = rebuilt;
     } else {
-      template = defaultTemplate(map);
+      // Engine order (see ENGINE_TEMPLATE_ORDER): default order
+      // plus scripts/watchers/skills after the artifact. This
+      // replaces defaultTemplate(map) here, which would drop
+      // those three segments because they are not in
+      // DEFAULT_TEMPLATE_ORDER.
+      template = createTemplate(
+        ENGINE_TEMPLATE_ORDER.map((id) => map[id]).filter(Boolean),
+      );
     }
     return template;
   };
@@ -264,8 +348,32 @@ export function createEngineObject(desk, opts = {}) {
     skills: desk.skills ?? [],
     guidance,
     signal,
+    // The ONE local registry (Milestone 4, G3). Read tools from
+    // here, never from a second list: engine.tools (specs),
+    // engine.toolsRegistry (instances, describeAll, run),
+    // engine.agentRegistries[agent] (kernel + shared + that
+    // agent's tools only — agent-specific tools are never in
+    // another agent's registry).
+    get toolsRegistry() {
+      return toolsRegistryState.registry;
+    },
+    get registryDuplicates() {
+      return [...toolsRegistryState.duplicates];
+    },
+    get agentRegistries() {
+      return agentRegistries;
+    },
+    setToolsRegistry: (tools, { agent = null } = {}) => {
+      const built = buildToolsRegistry(tools);
+      if (agent) {
+        agentRegistries = { ...agentRegistries, [agent]: built.registry };
+      } else {
+        toolsRegistryState = built;
+      }
+      return built.registry;
+    },
     get tools() {
-      return toolSpecsOf(desk);
+      return toolsRegistryState.registry.specs();
     },
     elementsList: () => {
       refreshElements();
@@ -387,7 +495,7 @@ export function createEngineObject(desk, opts = {}) {
       agent: engine.agent?.name ?? engine.agent?.id ?? null,
       state: live.snapshot(),
       elementStrings: engine.elementStrings(),
-      tools: toolSpecsOf(desk).map((t) => t?.name ?? t),
+      tools: toolsRegistryState.registry.specs().map((t) => t?.name ?? t),
       goal: goal ? goal.snapshot() : null,
     }),
     // Lifecycles, run by the engine from configuration

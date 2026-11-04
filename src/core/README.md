@@ -821,7 +821,53 @@ next route call returns the same engine object's current state.
 | model call | infer → record-timings → update-meter | infer called; timings/counts recorded; meter refreshed | `model call/timings recorded` in history; llm events in event log | activity word (thinking/tool call/working/idle), llm events | prompt meter segments summing exactly to prompt length |
 | snapshot | deep-copy → store | transition (status/phase change); copy stored, never mutated after | `snapshot stored` in history; snapshot file (restart) | snapshot count + latest reason (goal snapshots) | snapshots are history, not prompt text |
 
-## Startup — scan and initialize, never hardcode (Milestone 3)
+## Startup — scan and initialize, never hardcode (Milestone 3, updated Milestone 4)
+
+Milestone 4 update — one reader, one registry, one entry:
+- ONE reader: `tool.js describeTool()` converts a Tool (or a
+  spec) to its string, reading name, args, and documentation
+  FROM the Tool object itself. `elements.js toolSpecToString`
+  is deleted; the tools element renders via `describeTool`.
+- ONE registry: `engine-object.js buildToolsRegistry` holds
+  the actual Tool instances (kernel + shared agent tools) by
+  name, duplicates recorded; per-agent registries hold
+  kernel + shared + that agent's own tools. `engine.tools`,
+  `engine.twin()`, `/api/tools`, and the prompt's tools
+  element all read from that registry, never a second list.
+- ONE entry: `startup.js getStartedEngine()` is THE startup
+  entry — every API route calls it, except
+  `/api/engine-object`, which does `getEngineObject` +
+  `initializeDeskObjects` directly so a scan failure becomes
+  `engine.scannedError` (request continues with the last
+  scan) instead of a 502. No route calls `createDesk`
+  directly. `initializeEngine` calls `getStartedEngine`
+  itself, so it is not a second entry.
+- Desk origin, stated plainly (reader vs assembler, NOT a
+  literal redirect — Kaushal may correct this):
+  desk-reader is canonical for memory-tree files; desk.js is
+  canonical for desk ASSEMBLY and delegates memory-tree
+  reading to desk-reader, overriding legacy values when the
+  snapshot soul/instructions are non-empty, with legacy
+  files as the fallback when absent. A memory-tree read
+  failure never breaks desk creation.
+
+Origin table — object → source file → deterministic location
+→ reader:
+
+| object | source file | location | reader |
+|---|---|---|---|
+| kernel tools | `src/core/core-tools.js` (Tool methods) | `src/core` | `describeTool` (tool.js) |
+| agent tools | `<name>.tool.md` / `.script.md` / `.watcher.md` | `<desk>/memory/agent/<agent>/`, `scripts/<shared or agent>/`, `watchers/<shared or agent>/` | `agent-tools.js loadAgentTools` (args from the .md file; function tools run only via a JS method binding) |
+| agent definition | `<name>.agent.md` (tool NAMES only) | `<desk>/memory/` (personal else public/defaults) | `harness.js loadAgentDefinition` via `startup.js initializeAgent` |
+| soul | `soul.md` | `<desk>/memory/` | `desk-reader.js readDeskSnapshot` via `desk.js` |
+| instructions | `<name>.instructions.md` (generic `instructions.md` is fallback) | `<desk>/memory/` | `desk-reader.js readDeskSnapshot` via `desk.js` |
+| artifact (live) | `<desk>/memory/agent/<agent>/state.md`, `history.md` | `<desk>/memory/agent/<agent>/` | `artifact.js createLiveArtifact` |
+| goal | `<name>.goal.md` + state/history alongside | `<desk>/memory/goals/` (when present) | `goal-artifact.js` |
+| skills (as phases) | `*.skill.md` | `<desk>/memory/skills/<shared or agent>/` | `skills.js parseSkill` |
+| scripts | `*.script.md` (definition, not code) | `<desk>/memory/scripts/<shared or agent>/` | `startup.js parseDefinitionFile` + `scanScripts` |
+| watchers | `*.notify.script.md` (definition, not code) | `<desk>/memory/watchers/<shared or agent>/` | `startup.js parseDefinitionFile` + `scanWatchers` |
+| models | `model.json` | `<desk>/memory/` (per-file fallback) | `engine-models.js` on the engine object |
+| engine object | — (assembled, not a file) | server process, one per location | `engine-object.js createEngineObject` + `startup.js getStartedEngine` |
 
 `src/core/startup.js` is the startup module. On startup, all
 objects are loaded and initialized by SCANNING deterministic
@@ -920,3 +966,25 @@ folder and re-running `initializeDeskObjects`
 (`engine.refreshScanned`) makes it appear in the engine object;
 removing it makes it disappear — with NO code change. The
 scanner caches nothing, so a removed file cannot linger.
+
+Milestone 4 sequence (the list above, with the single-entry
+and single-registry steps made explicit — this is the order
+`startupSequence()` asserts, and the order PR.md Milestone 4
+documents): 0. `getStartedEngine()` — the single entry;
+1. desk discovery; 2. createDesk; 3. getEngineObject
+singleton (inside `getStartedEngine`, not a separate entry);
+4. scan deterministic locations; 5. read every tool method
+via `describeTool`; 6. build ONE local registry (+
+per-agent registries); 7. read agent.md metadata names only
+and look them up in the registry; 8. initialize every other
+object the same way, each with its own toString reader;
+9. build the ONE engine object, template in insert order
+(`ENGINE_TEMPLATE_ORDER`: default order plus scripts,
+watchers-running, skills after artifact, before request);
+10. UI subscribes to that engine object, prompt rendered from
+it via the toString readers; 11. owner request via
+`/api/harness` → one goal.create → developer
+plan/execute/critique → report back, with no step bypassing
+the registry or the engine object. Scanned scripts/watchers/
+skills ARE prompt segments in this order (G6 choice), not
+properties only.

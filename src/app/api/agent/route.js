@@ -6,11 +6,11 @@
 // live artifact (id/location/state/history as logical strings),
 // and the initialization steps. No keys, no absolute paths, no
 // .env content — the agent.md loader drops any key value it finds.
-import { getEngineObject } from "@/core/engine-object.js";
+import { getStartedEngine } from "@/core/startup.js";
 
 export async function GET() {
   try {
-    const desk = getEngineObject("personal").desk;
+    const desk = getStartedEngine("personal").desk;
     return Response.json({ agent: desk.agent });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 502 });

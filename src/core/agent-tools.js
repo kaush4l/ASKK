@@ -14,12 +14,33 @@
 // only — never to public/defaults/ (a missing personalDir is an
 // error, not a fallback to public).
 //
-// Standards (separate, not one blurred object):
-//   function: needs a description; run returns the definition.
-//   shortcut script: needs a non-empty commands list; run returns
-//     the commands (execution is the terminal tool's job).
-//   watcher/notify script: needs a watch/event trigger and a notify
-//     target; run returns { watch, notify }.
+// Standards (separate, not one blurred object) — Milestone 4:
+//   function: needs a description AND an args schema (see below);
+//     its run() is a REAL method binding, never a fake return of
+//     the definition. A function tool with no JS implementation
+//     bound has a run() that THROWS honestly ("no JS
+//     implementation bound"), so the loop can never call it and
+//     get a fake success. Bind an implementation by passing
+//     { implementations: { "<name>": async (input) => ... } }
+//     to loadAgentTools(), or by creating the tool as a JS
+//     method in a deterministic location and passing it in —
+//     the .md file alone is a definition, not a method.
+//   shortcut script: needs a non-empty commands list; its run()
+//     returns the commands when no terminal runner is supplied
+//     (definition tool: execution is terminal.run's job), and
+//     EXECUTES them via the supplied terminal runner when one
+//     is supplied to loadAgentTools() ({ terminalRun }).
+//   watcher/notify script: needs a watch/event trigger and a
+//     notify target; its run() returns the subscription record
+//     (watch, event, notify, started: false) — it is NOT a
+//     stream executor, so its expectation is "immediate", not
+//     "stream" (a true stream watcher is future work, not claimed).
+//   args schema (all kinds, from the .md file itself): a
+//     "- args: path: the file, query: what to search" line,
+//     parsed into input { path: "the file", query: ... } —
+//     so the single reader (tool.js describeTool) produces a
+//     real "- name {arg: doc, ...} — description" string from
+//     the definition's own args and documentation, never {}.
 // Lanes: a tool's lanes must be narrowed to the caller's lanes;
 // anything wider is refused.
 
@@ -71,6 +92,13 @@ export function agentToolFileText(def) {
     `- scope: ${def.shared ? "shared" : "agent"}`,
     `- agent: ${def.agent}`,
     ...(def.description ? [`- description: ${def.description}`] : []),
+    ...(def.args && Object.keys(def.args).length > 0
+      ? [
+          `- args: ${Object.entries(def.args)
+            .map(([k, v]) => `${k}: ${v}`)
+            .join(", ")}`,
+        ]
+      : []),
     ...(def.commands ? [`- commands: ${def.commands.join(" | ")}`] : []),
     ...(def.watch ? [`- watch: ${def.watch}`] : []),
     ...(def.event ? [`- event: ${def.event}`] : []),
@@ -92,6 +120,25 @@ export function parseAgentToolFile(text) {
     }
   }
   return meta;
+}
+
+// Parse an "- args: path: the file, query: what to search" value
+// into an input schema { path: "the file", query: ... }. Splitting
+// is on ", " followed by a "key:" — so a description containing a
+// comma does not split it, and a description containing a colon
+// after the first one is kept whole.
+export function parseArgsValue(value) {
+  const out = {};
+  if (typeof value !== "string" || value.trim() === "") {
+    return out;
+  }
+  for (const part of value.split(/,\s+(?=[a-zA-Z_][a-zA-Z0-9_-]*:\s)/)) {
+    const at = part.indexOf(":");
+    if (at > 0) {
+      out[part.slice(0, at).trim()] = part.slice(at + 1).trim();
+    }
+  }
+  return out;
 }
 
 export function createAgentTool(input = {}) {
@@ -140,6 +187,7 @@ export function createAgentTool(input = {}) {
     agent,
     shared,
     description: input.description ?? "",
+    args: input.args ?? null,
     commands: input.commands ?? null,
     watch: input.watch ?? null,
     event: input.event ?? null,
@@ -175,6 +223,8 @@ function definitionFromFile(path, scope) {
     kind: meta.kind ?? "function",
     scope,
     description: meta.description ?? "",
+    args: meta.args ? parseArgsValue(meta.args) : {},
+    implementation: meta.implementation ?? null,
     commands: meta.commands
       ? meta.commands
           .split("|")
@@ -229,7 +279,32 @@ export function listAgentToolDefinitions({ personalDir, defaultsDir }, agent) {
   return mergePlacement(shared, agentSpecific);
 }
 
-export function loadAgentTools(desk = {}, agent) {
+// Bind a JS method to a function-tool definition. The .md file
+// is the definition (name, args, documentation); this is the
+// method itself. Callers that want a runnable function tool pass
+// implementations into loadAgentTools(); without one, the tool's
+// run() throws honestly instead of returning a fake value.
+export function bindFunctionTool(def, run) {
+  if (typeof run !== "function") {
+    throw new Error(
+      `agent function tool ${def.name} has no JS implementation bound — define it as a JS method and pass it in implementations to loadAgentTools(), do not call the .md definition as if it were a method`,
+    );
+  }
+  return new Tool({
+    name: def.name,
+    description: def.description || `agent tool ${def.name}`,
+    input: def.args ?? {},
+    type: "function",
+    expectation: "immediate",
+    run,
+  });
+}
+
+export function loadAgentTools(
+  desk = {},
+  agent,
+  { implementations = {}, terminalRun = null } = {},
+) {
   const personalDir =
     desk.personalDir ??
     (typeof desk.location === "string" ? desk.location : null);
@@ -240,34 +315,62 @@ export function loadAgentTools(desk = {}, agent) {
       return new Tool({
         name: def.name,
         description: def.description || `agent script ${def.name}`,
-        input: {},
+        input: def.args ?? {},
         type: "script",
         expectation: "done",
-        run: async () => ({ commands: def.commands ?? [], scope: def.scope }),
+        run: async (input) => {
+          const commands = def.commands ?? [];
+          if (!terminalRun) {
+            // Definition tool: supply the commands for the caller
+            // (terminal.run) to execute. This is not a claim that
+            // the script executed itself.
+            return { commands, scope: def.scope, executed: false };
+          }
+          const outputs = [];
+          for (const command of commands) {
+            const result =
+              typeof terminalRun === "function"
+                ? await terminalRun(command)
+                : await terminalRun.run({ command, ...(input ?? {}) });
+            outputs.push({ command, result });
+          }
+          return { commands, scope: def.scope, executed: true, outputs };
+        },
       });
     }
     if (def.kind === "watcher") {
       return new Tool({
         name: def.name,
         description: def.description || `agent watcher ${def.name}`,
-        input: {},
+        input: def.args ?? {},
         type: "watcher",
-        expectation: "stream",
+        expectation: "immediate",
         run: async () => ({
           watch: def.watch,
           event: def.event,
           notify: def.notify,
           scope: def.scope,
+          started: false,
         }),
       });
+    }
+    const implementation =
+      implementations[def.name] ??
+      (def.implementation ? implementations[def.implementation] : null);
+    if (implementation) {
+      return bindFunctionTool(def, implementation);
     }
     return new Tool({
       name: def.name,
       description: def.description || `agent tool ${def.name}`,
-      input: {},
+      input: def.args ?? {},
       type: "function",
       expectation: "immediate",
-      run: async () => ({ definition: def.name, scope: def.scope }),
+      run: async () => {
+        throw new Error(
+          `agent function tool ${def.name} has no JS implementation bound — define it as a JS method and pass it in implementations to loadAgentTools(), do not call the .md definition as if it were a method`,
+        );
+      },
     });
   });
 }

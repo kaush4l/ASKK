@@ -34,13 +34,13 @@ import {
   applyEngineModelsAction,
   getEngineModels,
 } from "@/core/engine-models.js";
-import { getEngineObject } from "@/core/engine-object.js";
 import { createInference } from "@/core/inference.js";
 import { listProviders } from "@/core/providers.js";
+import { getStartedEngine } from "@/core/startup.js";
 
 export async function GET() {
   try {
-    const engine = getEngineObject("personal");
+    const engine = getStartedEngine("personal");
     const store = getEngineModels(engine);
     const listed = listProviders(store.providers, store.defaultId);
     return Response.json({
@@ -67,7 +67,7 @@ export async function POST(request) {
     ["use", "test", "edit", "delete"].includes(body.action)
   ) {
     try {
-      const engine = getEngineObject("personal");
+      const engine = getStartedEngine("personal");
       const result = applyEngineModelsAction(engine, body);
       return Response.json(result);
     } catch (error) {

@@ -6,7 +6,7 @@
   addendum diff (Milestones 1–2) is measured against 9709a1c,
   verified by diffing the workdir against a fresh clone of
   askk-skeleton @ 9709a1c (excluding .git/node_modules/.next).
-- Status: Milestone 3 — checkpoint, refining continues (assistant never merges; Kaushal merges himself when perfect)
+- Status: Milestone 4 — checkpoint, refining continues (assistant never merges; Kaushal merges himself when perfect)
 - Kind: Feature
 
 ## GOVERNING ARCHITECTURE — PLANNED ARCHITECTURE AND IDEOLOGY — LIVE OBJECT (correction 2026-11-04, wins on conflict)
@@ -586,6 +586,339 @@ at all. No other existing test was changed.
    unchanged (20) because no new route was added; the scanned
    summary is a field on the existing engine-object route.
 
+## Milestone 4 — fix the tool reader + startup sequence (this checkpoint)
+
+Milestone 4 state: core tests 210 pass, 0 fail (1125 expects,
+37 files — the file count is unchanged because
+`render-template.test.js` was deleted and
+`milestone4.test.js` was added), up from 203 in Milestone 3;
+`next build` 19 routes (was 20: `/api/chat` was deleted, see
+G7 — no other route was added or removed). Biome clean on
+all Milestone 4 new/changed files; the two pre-existing diffs
+(`public/defaults/model.json` trailing newline,
+`src/app/models/page.js` paragraph Milestone 2 did not touch)
+are untouched, as before. Three existing tests were changed,
+and the changes are stated here, not hidden:
+`src/core/milestone2.test.js` (the harness route now contains
+`getStartedEngine`, not `getEngineObject`, and the chat route
+file must NOT exist — it was deleted, so the old `LEGACY`
+content assertion is replaced with an absence assertion);
+`src/core/agent-tools.test.js` (a function tool with no JS
+implementation bound now throws honestly instead of returning
+a fake `{ definition, scope }` value — see G2); and
+`src/core/elements.test.js` (the old tools-element string
+carried a `[expectation]` suffix from the deleted second
+reader; the single reader's exact string has no suffix —
+expectation lives in the tool spec, not in the string).
+`src/core/startup.test.js` was also updated for the new step
+0 (the single startup entry) — the documented order is
+otherwise unchanged. No other existing test was changed.
+
+Kaushal's correction 2026-11-04 10:12 EST, applied exactly:
+if a file is not used, it does not add confusion — it is
+REMOVED, not marked legacy in a comment while it still ships.
+There is ONE reader that converts tools to string, reading
+the method, its args, and its documentation FROM THE METHOD
+ITSELF. All tools are read into ONE local object. And the
+startup sequence is one sequence, with a clean answer for
+where every object comes from. Each gap below is fixed, with
+the proof named.
+
+G1. ONE TOOL-TO-STRING READER — DONE. `src/core/tool.js`
+now holds the single reader, `describeTool(tool)`: a Tool
+instance → its own `describe()`; a plain spec → the same
+fields formatted with the same optional-field rule, so the
+strings are identical for the same tool. `src/core/elements.js`
+`toolSpecToString()` is DELETED; `toolsElement` renders via
+`describeTool`. The old second reader also appended
+` [expectation]` to its output, so the two readers did NOT
+even produce identical strings before — that second format
+is gone, not aliased. Proof: `milestone4.test.js` asserts,
+for every kernel tool,
+`describeTool(instance) == describeTool(spec) ==
+instance.describe() == toolsElement([spec]).toString()`, and
+that `toolSpecToString` is no longer a function or a call
+anywhere in `src/core` (comments may mention its deletion).
+
+G2. AGENT TOOLS ARE METHODS — DONE, WITH THE OPTION STATED
+PLAINLY. Milestone 3 left `loadAgentTools` creating tools
+with `input: {}` and a fake run returning the definition.
+That is gone. The choice is option (a) for script and watcher
+tools, and a hybrid for function tools, and PR.md says so
+instead of claiming all agent tools are real methods:
+- Script: the .md definition MUST carry its args
+  (`- args: <name>: <description>, …`, parsed by
+  `parseArgsValue`, which splits on `, ` followed by `key:`
+  so descriptions containing commas/colons after the first
+  colon are kept whole), and its run is real: with a terminal
+  runner supplied, it executes each command sequentially and
+  returns `{ commands, scope, executed: true, outputs }`;
+  without one it returns `{ commands, scope, executed:
+  false }` — it does NOT claim the script executed.
+  Execution is the terminal tool's job; the definition tool
+  never pretends to have run the commands itself.
+- Watcher: args from the .md definition, expectation
+  corrected from `stream` to `immediate` — a watcher
+  definition is not a stream executor, and claiming `stream`
+  was the same fake-run problem in another form. Its run
+  returns its subscription record `{ watch, event, notify,
+  scope, started: false }`. A true stream watcher is future
+  work, not claimed.
+- Function: args schema from the .md definition, but runnable
+  ONLY via a JS method binding passed to `loadAgentTools`
+  as `implementations[name]` (or `implementations[def.
+  implementation]`); `bindFunctionTool` throws if no run
+  function is supplied. An unbound function tool's `run()`
+  throws honestly ("agent function tool <name> has no JS
+  implementation bound — define it as a JS method and pass
+  it in implementations to loadAgentTools(), do not call the
+  .md definition as if it were a method"). A .md file alone
+  is a definition, never a method, and no `input: {}` tool
+  remains in any registry claiming to be a method.
+Proof: `milestone4.test.js` asserts the reader string matches
+the parsed args exactly, the script executes with a runner
+and reports `executed: false` without one, the watcher is
+`immediate` with its subscription record, and the unbound
+function throws while the bound one returns its method's
+result. `src/core/agent-tools.js` header standards were
+rewritten for this milestone to say all of this.
+
+G3. ONE LOCAL REGISTRY OBJECT — DONE. At startup,
+`initializeDeskObjects` builds ONE registry via
+`engine-object.js buildToolsRegistry`: kernel Tool instances
+(from the desk's core tools) + shared agent Tool instances
+(from `scanRegistry`'s new `agentToolInstances`, with
+definition `scope` attached as registry metadata — a Tool
+has no scope field of its own). Duplicates are refused by
+recording, not by silent merge and not by crash: first
+instance wins, later duplicates are listed in
+`duplicates`. The engine exposes it as
+`engine.toolsRegistry` (main registry) and
+`engine.agentRegistries` (per-agent: kernel + shared + that
+agent's own tools, so an agent-specific tool is never in
+another agent's registry). `engine.tools` and `engine.twin()`
+tools now come from the registry specs, not from a second
+`toolSpecsOf(desk)` list. `/api/tools` reads the same
+registry (`engine.toolsRegistry.specs()`,
+`engine.toolsRegistry.describeAll()`), and the prompt's
+tools element is the same string again (see G1).
+Proof: `milestone4.test.js` asserts
+`registry.describeAll() == tools element string ==
+engine.tools` (names, descriptions, inputs, in order), that
+every registry entry is a Tool instance with a real `run()`,
+and that duplicates are recorded. The one boundary, stated
+plainly as in Milestone 2: bun tests cannot execute Next
+route handlers, so the `/api/tools`-reads-the-registry proof
+is function-level (the route file imports and calls the
+registry) plus the live HTTP check below, not a bun test
+executing the handler.
+
+G4. ONE DESK ORIGIN — DONE, WITH THE SPLIT STATED PLAINLY
+(NOT A LITERAL REDIRECT — KAUSHAL MAY CORRECT THIS). The
+task said: choose desk-reader as canonical, make desk.js a
+thin redirect to it, or delete desk.js. A literal redirect
+was NOT done, because desk-reader returns a plain snapshot
+(no inferences, no Tool instances, no live artifact) and
+cannot assemble a desk on its own. The split as built is:
+desk-reader (`src/core/desk-reader.js`) is CANONICAL for
+memory-tree files (soul, agent.md, agent instructions,
+model.json, scripts, watchers, skills, goals — read by
+`readDeskSnapshot`); desk.js (`src/core/desk.js`) is
+CANONICAL for desk ASSEMBLY, and it DELEGATES memory-tree
+reading to desk-reader — after its legacy per-file fallback,
+it calls `readDeskSnapshot` and, when the snapshot soul or
+instructions are non-empty, they override the legacy values.
+A memory-tree read failure never breaks desk creation: the
+legacy files are the fallback. No object comes from two
+places with two different answers: memory-tree wins when
+present, legacy is the fallback when absent, and the desk
+also exposes `memorySnapshot` so callers can see which
+source won. The origin table is in `src/core/README.md`
+(startup section). If Kaushal wants a literal single reader
+file instead of this reader-vs-assembler split, that is a
+correction to make in the next milestone, not a fact to
+hide. Proof: `milestone4.test.js` creates a temp desk with
+memory-tree soul + `default.instructions.md` and a legacy
+root `instructions.md`, and asserts the desk carries the
+memory-tree values (agent-specific instructions live in
+`<name>.instructions.md`; a generic `instructions.md` in
+memory is only the fallback when no agent-specific file
+exists).
+
+G5. ONE STARTUP ENTRY — DONE, WITH ONE QUALIFICATION
+STATED PLAINLY. The task statement said other routes used
+`createDesk` directly. That was NOT what the code did:
+routes already went through `getEngineObject` (module
+cache), and `createDesk` is called only inside
+`getEngineObject`, once per location, cached. The real gap
+was narrower: `initializeEngine` was a separate function
+not called by most routes, and only the engine-object and
+harness routes refreshed scanned objects. The fix is
+`src/core/startup.js getStartedEngine()` — THE single
+startup entry: it returns the ONE engine object for a
+location, with scanned objects initialized on it, and
+calling it twice for the same location returns the SAME
+engine, re-scanned, not a second engine/desk/registry.
+Every API route except engine-object now imports
+`getStartedEngine` (agent, artifact, desk, desk-snapshot,
+engine, harness, models, snapshots, snapshots/[id], soul,
+tools); `initializeEngine` now calls `getStartedEngine`
+itself, so it is not a second entry. The ONE exception,
+stated plainly: `src/app/api/engine-object/route.js` still
+does `getEngineObject` + `initializeDeskObjects` directly,
+because it needs scannedError tolerance — a scan failure is
+recorded as `engine.scannedError` and the request continues
+with the last scan, instead of turning into a 502. That
+route's header now says so explicitly. No route calls
+`createDesk` directly. Proof: `milestone4.test.js` asserts
+`getStartedEngine` twice returns the same engine, and that
+every route file (except engine-object, for the stated
+reason) imports `getStartedEngine` and does not call
+`createDesk(`. The exact sequence as built is:
+1. Server start / first route: `getStartedEngine(location)`
+   — the single entry, never `getEngineObject()` alone,
+   never `createDesk()` directly.
+2. Scan deterministic locations: `src/core` (kernel tools,
+   as Tool methods), desk folder (personal else
+   public/defaults, per-file fallback), memory tree (soul.md,
+   `<name>.agent.md`, `<name>.instructions.md`, model.json,
+   skills/, scripts/, watchers/, goals/).
+3. Read every tool method: for each Tool instance, name,
+   args (input keys + descriptions), documentation
+   (description) FROM the Tool object itself, via the single
+   reader `describeTool()` (tool.js).
+4. Make ONE local registry: `buildToolsRegistry` (kernel +
+   shared agent Tool instances, by name, duplicates
+   recorded), plus per-agent registries (kernel + shared +
+   own); set on the engine via `setToolsRegistry`.
+5. Read agent.md files: metadata tool NAMES only, look each
+   name up in the registry, initialize the agent object with
+   exactly those Tool instances (strict subset, all-tools
+   refused, missing names recorded as errors, never
+   invented) — `initializeAgent` returns the agent's
+   memory-folder Tool instances as `toolInstances` for the
+   per-agent registry builder.
+6. Initialize every other object the same way, from its
+   deterministic location, each with its own toString
+   reader: soul, instructions, artifact (live), goal, skills
+   (as phases), scripts (definitions → objects, on-demand),
+   watchers (definitions → objects, initialized not
+   auto-started).
+7. Build the ONE engine object: `createEngineObject` holds
+   all initialized objects, template in insert order
+   (`ENGINE_TEMPLATE_ORDER` — default order plus scripts,
+   watchers-running, skills after artifact, before request),
+   signal over its snapshot.
+8. UI subscribes to that engine object; prompt is rendered
+   from that engine object via the toString readers (tools
+   string == registry string, artifact string == live
+   artifact state, etc.).
+9. Owner request: `/api/harness` → one goal.create →
+   spawn developer with rules from its agent.md metadata →
+   developer plan/execute/critique → report back. No step
+   bypasses the local registry or the engine object.
+`startup.js startupSequence()` lists this order, and
+`startup.test.js` asserts it in order (step 0 is now the
+single entry, step 1 is desk-discovery).
+
+G6. SCANNED OBJECTS ARE PROMPT SEGMENTS — CHOSEN, NOT
+PROPERTIES-ONLY. Scanned scripts, watchers, and skills ARE
+now prompt segments in the engine prompt, after artifact
+and before request, via their toString readers (scripts,
+watchers-running, skills — the watchers element's
+long-standing id is "watchers-running", and its segment
+header is "Watchers running:"). Before any scan they render
+as "none", never as invented objects. This was chosen over
+the alternative (properties only, with a plain statement in
+PR.md) because a scanned object that exists only in
+`engine.scanned` and nowhere else was exactly the gap. The
+cost, stated plainly: the engine prompt grows by three short
+segments even when empty. The UI data comes from the same
+engine object (`engine.elementStrings()`), not from a second
+fetch. Note: `template-order.js DEFAULT_TEMPLATE_ORDER`
+is UNCHANGED (its test asserts it exactly) — the engine's
+order is the separate `ENGINE_TEMPLATE_ORDER` in
+`engine-object.js`, not a second template system.
+Proof: `milestone4.test.js` adds a script definition file,
+runs `initializeDeskObjects`, and asserts the prompt
+contains the Scripts segment with that script, and
+`elementStrings()` contains scripts, watchers-running, and
+skills keys.
+
+G7. UNUSED / CONFUSING FILES REMOVED — DONE, WITH THE
+AUDIT STATED PLAINLY. Removed in this milestone (workdir
+deletion + `delete_file` commits after the snapshot push,
+as Milestone 3 did for tools.md, because snapshot-push
+cannot delete):
+- `src/app/api/chat/route.js` — DELETED. The dashboard
+  does not call it (no `fetch("/api/chat"` anywhere in
+  `src/app/page.js`, only comments, which now say "deleted
+  in Milestone 4"); it was kept only as a legacy comment,
+  which is exactly what Kaushal said to remove. Route count
+  falls 20 → 19 because of this deletion, and only this
+  deletion.
+- `src/components/desk-template.jsx` +
+  `src/core/render-template.js` +
+  `src/core/render-template.test.js` — DELETED. Finding
+  during this milestone (qualifying the task statement):
+  `render-template.js` is NOT a duplicate template
+  implementation — it re-exports `template-order.js`
+  (`createTemplate`, `DEFAULT_TEMPLATE_ORDER`,
+  `defaultTemplate`) and provides `templateData(desk,
+  messages)` shaping for DeskTemplate. `template-order.js`
+  IS the canonical template. But DeskTemplate itself is not
+  imported by `src/app/page.js`, and its sections are
+  described in page comments as superseded by the combined
+  view, so the component and its shaping module and test
+  are unused and were removed; the canonical template
+  (`template-order.js`) stays.
+Audited and LEFT, with reasons (not silently kept):
+- `src/lib/live-events.js` — NOT deleted, because it is
+  NOT legacy-only: `src/app/page.js` uses it for
+  `llm:start/end/error` and for `goal:phase`,
+  `agent:spawn`, `agent:report` (each triggering a reload
+  into the engine signal), and `combined-view.jsx` uses
+  `subscribeAllLiveEvents`. The canonical split is: the
+  engine signal (`src/core/signals.js`, re-exported by
+  `src/lib/signals.js`) carries STATE; the client
+  live-events bus carries EVENT notifications that trigger a
+  refetch into the engine signal. They are not duplicates to
+  delete blindly; deleting live-events would mean rewriting
+  page/combined-view event handling.
+- Other legacy panels (`skills-panel.jsx`,
+  `engine-live.jsx`, `live-artifact-panel.jsx`,
+  `snapshot-replay.jsx`, `tools-panel.jsx`) — NOT deleted:
+  no file under `src/app/` imports them, but the task
+  listed only tools.md, legacy chat, render-template, and
+  live-events vs signals for deletion, and Kaushal has not
+  directed deleting these panels. They are audited, left in
+  place, and listed here so they are not mistaken for
+  forgotten files.
+- No `<name>.tools.md` remains in the tree (verified by
+  workdir grep — `git ls-files | grep "tools.md"` empty,
+  and `milestone4.test.js` asserts the two former default
+  locations do not exist).
+
+LIVE CHECK (dev server, then stopped, no `personal/`
+created in the clone): `/` 200, `/api/engine-object` 200
+with scanned summary agents 2 (default goal.create,
+developer 8 tools, both missingTools []), scripts 3
+on-demand started false, watchers 1 on-event started false,
+skills 1, goals 0, `scannedError: null`, and
+`toolsRegistry` count 16 — matching `/api/tools`
+toolNames exactly (16 kernel tools, same order, same
+descriptions/inputs via `describeAll`); template order
+now `soul, instructions, tools, artifact, scripts,
+watchers-running, skills, request, owner-guidance,
+earlier-runs, work-done, response`; `/models` 200,
+`/api/models` 200 (empty list — defaults ship empty, no
+built-ins); `/api/harness` POST with no model configured
+→ honest 502 "no model configured", as before. In-process
+proof, in addition: `elementStrings().tools ===
+toolsRegistry.describeAll()` is true, and the rendered
+prompt contains Scripts, Watchers running, and Skills
+segments.
+
 ## Known gaps, remaining after Milestone 2 (not yet perfect)
 
 - No live-browser clicks: page wiring is verified by build +
@@ -906,6 +1239,117 @@ leave the GitHub copies in place, so deletion is explicit):
 - `public/defaults/memory/developer.tools.md` — prose contract,
   duplicating developer.agent.md's tool names; registry specs
   are the source now
+
+### Milestone 4 — fix the tool reader + startup sequence (this checkpoint)
+
+New:
+
+- `src/core/milestone4.test.js` — 12 tests, one per gap:
+  single reader equality for every kernel tool +
+  `toolSpecToString` no longer a function/call; agent args
+  schema → reader string match; script with/without terminal
+  runner; watcher `immediate` + subscription record; unbound
+  function throws, bound function returns method result;
+  registry `describeAll() == tools element string ==
+  engine.tools`, instances with `run()`, duplicates recorded;
+  desk memory-tree override vs legacy fallback; `getStartedEngine`
+  twice = same engine, re-scanned, route files use it;
+  per-agent registries; prompt contains scripts/watchers/
+  skills segments; deleted files do not exist, no tools.md
+
+Modified:
+
+- `src/core/tool.js` — single reader `describeTool()` +
+  `toToolInstance()` (spec → instance; spec-only `run()`
+  throws honestly instead of returning a fake value)
+- `src/core/elements.js` — `toolSpecToString` DELETED;
+  `toolsElement` renders via `describeTool`; added
+  `skillsElement`
+- `src/core/agent-tools.js` — header standards rewritten;
+  `agentToolFileText` writes `- args:` when present;
+  `parseArgsValue`; `createAgentTool` stores `def.args`;
+  `definitionFromFile` returns `args` + `implementation`;
+  `bindFunctionTool` (throws without a run function);
+  `loadAgentTools` rewritten (script: real execution via
+  supplied terminal runner, else `executed: false`;
+  watcher: expectation `immediate`, subscription record;
+  function: bound implementation or honest throw)
+- `src/core/engine-object.js` — `ENGINE_TEMPLATE_ORDER`
+  (default order + scripts, watchers-running, skills after
+  artifact); `buildToolsRegistry` (dedupe, first wins,
+  duplicates recorded); `toolsRegistry`,
+  `agentRegistries`, `setToolsRegistry`, `tools` from
+  registry specs, `twin()` tools from registry; buildMap
+  adds scripts/watchers/skills elements from
+  `engineRef.scanned` (null before scan → "none", never
+  invented); `engineRef` declared before `buildMap` (fixes
+  a temporal-dead-zone bug found by the test run)
+- `src/core/desk.js` — delegates memory-tree soul/
+  instructions reading to desk-reader, overrides legacy
+  values when present, exposes `soul` + `memorySnapshot`;
+  memory-tree failure never breaks desk creation
+- `src/core/startup.js` — `getStartedEngine()` (single
+  startup entry); `initializeDeskObjects` builds the main
+  registry (kernel + shared) + per-agent registries;
+  `scanRegistry` returns `agentToolInstances` with scope;
+  `initializeAgent` returns `toolInstances`;
+  `initializeEngine` calls `getStartedEngine`;
+  `startupSequence()` starts with the single-entry step;
+  unused `createDesk` import removed, dead `toolInstances`
+  local removed
+- `src/app/api/tools/route.js` — reads the ONE registry
+  (`specs()`, `toolNames`, `describeAll()`), not a second list
+- `src/app/api/{agent,artifact,desk,desk-snapshot,engine,
+  harness,models,snapshots,snapshots/[id],soul}/route.js` —
+  switched to `getStartedEngine` (import order fixed by
+  Biome in desk-snapshot, models, snapshots); route headers
+  that still said "getEngineObject" were updated where the
+  switch changed them
+- `src/app/api/engine-object/route.js` — header now states
+  explicitly it does `getEngineObject` +
+  `initializeDeskObjects` with scannedError tolerance (the
+  one exception to the `getStartedEngine` rule, for the
+  stated reason); no functional change
+- `src/app/api/harness/route.js` — header updated: the
+  legacy `/api/chat` reference now says "deleted in
+  Milestone 4"
+- `src/app/page.js`, `src/components/combined-view.jsx` —
+  comments updated to say the DeskTemplate/render-template
+  sections and the `/api/chat` route were deleted in
+  Milestone 4, not left as legacy references
+- `src/core/milestone2.test.js` — harness route assertion
+  updated to `getStartedEngine`; chat route assertion
+  changed from `LEGACY` content to file absence (see
+  Milestone 4, above)
+- `src/core/agent-tools.test.js` — unbound function tool
+  assertion changed from fake run value to honest throw
+  (see Milestone 4, above)
+- `src/core/elements.test.js` — tools-element string
+  assertion changed from `[expectation]` suffix to the
+  single reader's exact string (see Milestone 4, above)
+- `src/core/startup.test.js` — startup sequence assertion
+  updated: step 0 is the single entry, step 1 is
+  desk-discovery
+- `PR.md` — Milestone 4 section, Changes (this section),
+  status Milestone 4
+- `src/core/README.md` — startup section updated with the
+  Milestone 4 sequence + origin table (object → source file
+  → deterministic location → reader) + reader/registry/
+  desk-split/G6/G7 decisions
+
+Deleted (via `delete_file`, one commit each — snapshot-push
+cannot delete, and omitting the files from a snapshot would
+leave the GitHub copies in place, so deletion is explicit):
+
+- `src/app/api/chat/route.js` — not used by any UI; removed
+  to avoid confusion, not left as a legacy comment
+- `src/components/desk-template.jsx` — not imported by
+  `src/app/page.js`; sections superseded by the combined view
+- `src/core/render-template.js` — shaping module for
+  DeskTemplate only; `template-order.js` is the canonical
+  template and stays
+- `src/core/render-template.test.js` — test for the deleted
+  shaping module
 
 Untouched by design: `src/core/engine.js` single-turn chat, `package.json`
 (no dependencies added), `public/defaults/model.json` (pre-existing trailing

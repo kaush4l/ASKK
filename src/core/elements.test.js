@@ -23,7 +23,14 @@ describe("abstract elements", () => {
       },
     ]);
     expect(tools.toString()).toContain("files.read {path: the file}");
-    expect(tools.toString()).toContain("immediate");
+    // Milestone 4: the single reader is Tool.describe(), whose
+    // exact string (asserted in tools.test.js) has NO
+    // [expectation] suffix — the old toolSpecToString suffix
+    // was the second format, and it is gone. Expectation lives
+    // in the tool spec object, not in the string.
+    expect(tools.toString()).toBe(
+      "- files.read {path: the file} — read a file",
+    );
   });
 
   test("cache: unchanged object returns cached string, changed data re-renders", () => {

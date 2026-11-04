@@ -4,11 +4,11 @@
 // history entry and writes NO state. Building the desk loads (never
 // creates) the saved artifact, so this route has no side effects.
 // No keys, no absolute paths, no .env content are returned.
-import { getEngineObject } from "@/core/engine-object.js";
+import { getStartedEngine } from "@/core/startup.js";
 
 export async function GET() {
   try {
-    const desk = getEngineObject("personal").desk;
+    const desk = getStartedEngine("personal").desk;
     const artifact = desk.liveArtifact;
     const openFiles = await artifact.openPreviews();
     return Response.json({

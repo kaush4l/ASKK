@@ -16,7 +16,7 @@
 // send() posts { request } to /api/harness (harness -> one
 // goal.create -> developer plan -> execute -> critique ->
 // report back), and the reply shown is the developer's report.
-// The old single-turn /api/chat route is LEGACY and is no
+// The old single-turn /api/chat route was DELETED in Milestone 4 and is no
 // longer called from this page. If no model is present, the
 // screen says so plainly and Send stays disabled.
 // The model picker is still removed (the models store is the
@@ -30,8 +30,8 @@
 // panels are superseded by the combined view, which renders
 // their data in its dashboard, card, and expanded dot sections
 // (Agent from desk.agent, Tools, Live Artifacts, Soul, History).
-// The render-template DeskTemplate sections are likewise
-// superseded by this combined view — feature/render-template
+// The DeskTemplate sections (render-template.js, deleted in Milestone 4) are likewise
+// superseded by this combined view
 // is left alone for Kaushal to close, not rebased here.
 "use client";
 
@@ -184,7 +184,7 @@ export default function Home() {
       // Harness entry (Milestone 2): the request goes to the
       // harness, which creates one goal and passes it to the
       // developer; the reply shown is the developer's report.
-      // The legacy single-turn /api/chat route is not used here.
+      // The single-turn /api/chat route was deleted in Milestone 4; it is not used here.
       const response = await fetch("/api/harness", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -262,7 +262,7 @@ export default function Home() {
           CombinedView panels below still fetch
           /api/engine|tools|artifact|agent|soul once into React
           state (snapshot-then-events), and the old single-turn
-          /api/chat route is legacy too. Neither is the harness
+          /api/chat route was deleted in Milestone 4. Neither is the harness
           path: send() above posts to /api/harness, and the
           live-agent section below it is the engine-twin path:
           it subscribes to the engine signal, not to a second

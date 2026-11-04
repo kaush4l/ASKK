@@ -23,6 +23,7 @@
 // so the same elements can be used server-side and in tests.
 
 import { createTemplate } from "./template-order.js";
+import { describeTool } from "./tool.js";
 
 function stableString(value) {
   if (value === undefined) return "undefined";
@@ -131,14 +132,12 @@ export function instructionsElement(text) {
   });
 }
 
-export function toolSpecToString(spec) {
-  const fields = Object.entries(spec.input ?? {})
-    .map(([k, v]) => `${k}: ${v}`)
-    .join(", ");
-  const exp = spec.expectation ? ` [${spec.expectation}]` : "";
-  return `- ${spec.name} {${fields}} — ${spec.description ?? ""}${exp}`;
-}
-
+// NOTE (Milestone 4): there is no toolSpecToString anymore. The
+// tools element renders through the SINGLE reader,
+// tool.js describeTool(), which reads name/args/documentation
+// from the tool object itself — so the prompt string, the
+// registry's describeAll(), and /api/tools specs are the same
+// string for the same tool, never two formats.
 export function toolsElement(specs) {
   const data = { tools: Array.isArray(specs) ? specs : [] };
   return createElement({
@@ -146,9 +145,20 @@ export function toolsElement(specs) {
     kind: "tools",
     data,
     render: (d) =>
-      d.tools.length === 0
-        ? "No tools."
-        : d.tools.map(toolSpecToString).join("\n"),
+      d.tools.length === 0 ? "No tools." : d.tools.map(describeTool).join("\n"),
+  });
+}
+
+export function skillsElement(skills) {
+  const data = { skills: Array.isArray(skills) ? skills : [] };
+  return createElement({
+    id: "skills",
+    kind: "skills",
+    data,
+    render: (d) =>
+      d.skills.length === 0
+        ? "Skills: none."
+        : `Skills:\n${d.skills.map((s) => `- ${s.id ?? s.name ?? s} (${s.duty ?? "phase"})`).join("\n")}`,
   });
 }
 

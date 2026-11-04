@@ -1,5 +1,29 @@
 // Desk — the script that initializes state and gives back a desk.
 //
+// CANONICAL ORIGIN (Milestone 4, G4) — read this before adding
+// a second reader:
+//   - The DESK OBJECT (inferences, core tools, live artifact,
+//     agent twin) is assembled here, by createDesk() — this file
+//     is the canonical desk assembler. No other file assembles
+//     a desk object.
+//   - MEMORY-TREE FILES (soul.md, <name>.agent.md,
+//     <name>.instructions.md, model.json, scripts/, watchers/,
+//     skills/ under personal/memory/ or public/defaults/memory/)
+//     are read by ONE reader only: desk-reader.js
+//     readDeskSnapshot(). createDesk() below DELEGATES memory-tree
+//     reading to that reader (soul + instructions override, when
+//     present) instead of reading the same logical files a second
+//     way. A literal "desk.js is a thin redirect to desk-reader"
+//     was NOT done, and would be wrong: desk-reader returns a
+//     plain snapshot (no inferences, no Tool instances, no live
+//     artifact), so it cannot assemble a desk on its own — the
+//     split is reader (desk-reader) vs assembler (this file),
+//     with exactly one reader for memory-tree files.
+//   - Legacy root files (personal/instructions.md,
+//     personal/model.json, personal/agent.md) are the fallback
+//     only, via desk-reader's legacy candidates and the helpers
+//     below, so existing checkouts keep working.
+//
 // Folder check (the personal / public fallback rule):
 //   - If the personal folder is present, load personal.
 //   - If not, give a default from the public folder.
@@ -42,6 +66,7 @@ import { isAbsolute, join } from "node:path";
 import { agentTwin, loadAgentMd } from "./agent-md.js";
 import { loadLiveArtifact } from "./artifact.js";
 import { createCoreTools } from "./core-tools.js";
+import { readDeskSnapshot } from "./desk-reader.js";
 import { createEngine } from "./engine.js";
 import { createInference } from "./inference.js";
 
@@ -255,8 +280,34 @@ export function createDesk(
 ) {
   const dir = resolvePersonalDir(location);
   const defaults = resolveDefaultsDir(defaultsDir ?? "public/defaults");
-  const { instructions, source } = readInstructionsWithFallback(dir, defaults);
+  const { instructions: legacyInstructions, source } =
+    readInstructionsWithFallback(dir, defaults);
   const { list: modelList } = readModelListWithFallback(dir, defaults);
+  // Memory-tree override, via the ONE memory-tree reader
+  // (desk-reader.js): if personal/memory/ or
+  // public/defaults/memory/ carries soul.md / instructions for
+  // the default agent, those win over the legacy root files.
+  // readDeskSnapshot's own legacy candidates mean a checkout
+  // with only root files returns the same text, unchanged.
+  let memorySnapshot = null;
+  let instructions = legacyInstructions;
+  let soul = "";
+  try {
+    memorySnapshot = readDeskSnapshot({
+      personalDir: dir,
+      defaultsDir: defaults,
+      agent: "default",
+    });
+    if (memorySnapshot.soul) {
+      soul = memorySnapshot.soul;
+    }
+    if (memorySnapshot.instructions) {
+      instructions = memorySnapshot.instructions;
+    }
+  } catch {
+    // A memory-tree read failure never breaks desk creation:
+    // the legacy files above are the fallback, as before.
+  }
   // .env is personal only — never read from public/defaults.
   const envValues = readEnvFile(dir);
   const engine = createEngine({
@@ -336,6 +387,8 @@ export function createDesk(
     inferences,
     defaultInference,
     location: dir,
+    soul,
+    memorySnapshot,
     tools,
     listTools,
     coreTools: core,

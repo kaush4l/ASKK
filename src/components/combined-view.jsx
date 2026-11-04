@@ -22,7 +22,7 @@
 //     toggles, aria-expanded updates) expands IN PLACE to the
 //     minimal dot detailed view: dot + "ASKK · default desk",
 //     dense calm stats, two-column layout, and the FULL
-//     render-template sections in detail — Soul, Agent, History,
+//     template sections in detail (render-template.js was deleted in Milestone 4; template-order.js is canonical) — Soul, Agent, History,
 //     Tools, Live Artifacts, Skills. Same live object expanded,
 //     not a second copy: the feed list is rendered in exactly one
 //     place (card when compact, expanded view when expanded),

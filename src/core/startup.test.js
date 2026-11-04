@@ -233,7 +233,10 @@ describe("startup: scan-and-initialize, agent.md names only, tools.md ignored", 
 
   test("startup sequence is documented in order, desk -> engine -> scan -> harness -> goal -> developer -> report", () => {
     const steps = startupSequence();
-    expect(steps[0]).toContain("desk-discovery");
+    // Milestone 4: the single startup entry is step 0, and
+    // desk-discovery is step 1 after it.
+    expect(steps[0]).toContain("startup-entry");
+    expect(steps[1]).toContain("desk-discovery");
     expect(steps.join("\n")).toContain("getEngineObject-singleton");
     expect(steps.join("\n")).toContain("loadAgentDefinition-per-agent");
     expect(steps.join("\n")).toContain("goal-create");

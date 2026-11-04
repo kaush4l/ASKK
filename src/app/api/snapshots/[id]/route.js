@@ -5,14 +5,15 @@
 // modified), like the artifact twin; it carries no keys, no
 // absolute paths, and no .env content. Unknown ids are 404, bad
 // ids (path traversal attempts) are 400.
-import { getEngineObject } from "@/core/engine-object.js";
+
 import { checkSnapshotId } from "@/core/snapshot.js";
 import { loadSnapshot } from "@/core/snapshot-store.js";
+import { getStartedEngine } from "@/core/startup.js";
 
 export async function GET(_request, { params }) {
   try {
     const id = checkSnapshotId((await params).id);
-    const desk = getEngineObject("personal").desk;
+    const desk = getStartedEngine("personal").desk;
     const snapshot = loadSnapshot(desk.location, id, "default");
     if (!snapshot) {
       return Response.json({ error: "snapshot not found" }, { status: 404 });

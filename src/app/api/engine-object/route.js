@@ -1,4 +1,9 @@
 // GET /api/engine-object — the single engine object, as data.
+// Milestone 4 exception to the getStartedEngine rule, stated
+// explicitly: this route does getEngineObject +
+// initializeDeskObjects directly, because a scan failure must
+// be reported as scannedError (request continues with the last
+// scan) instead of turning into a 502 via getStartedEngine.
 // Returns the CURRENT state/elements of the one engine object
 // for this server process (getEngineObject): state snapshot,
 // element strings in insert order, the rendered prompt, tool

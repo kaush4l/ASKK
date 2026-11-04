@@ -6,11 +6,11 @@
 // apiKeyEnv is omitted entirely — even a key name is not needed
 // by the UI, and omitting it avoids leaking anything secret-adjacent.
 import { publicDesk } from "@/core/desk.js";
-import { getEngineObject } from "@/core/engine-object.js";
+import { getStartedEngine } from "@/core/startup.js";
 
 export async function GET() {
   try {
-    const desk = getEngineObject("personal").desk;
+    const desk = getStartedEngine("personal").desk;
     const pub = publicDesk(desk);
     return Response.json({
       engine: desk.engine.twin(),

@@ -14,7 +14,7 @@
 // per-file source.
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { getEngineObject } from "@/core/engine-object.js";
+import { getStartedEngine } from "@/core/startup.js";
 
 function readSoulFile(personalDir, defaultsDir) {
   const personalFile = join(personalDir, "soul.md");
@@ -36,7 +36,7 @@ function readSoulFile(personalDir, defaultsDir) {
 
 export async function GET() {
   try {
-    const desk = getEngineObject("personal").desk;
+    const desk = getStartedEngine("personal").desk;
     const personalDir = desk.location;
     const defaultsDir = join(process.cwd(), "public/defaults");
     const { soul, source: soulSource } = readSoulFile(personalDir, defaultsDir);

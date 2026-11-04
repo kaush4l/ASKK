@@ -122,7 +122,11 @@ describe("agent-created tools live in memory folders, scoped by agent", () => {
     expect(names).not.toContain("theirs");
     const sharedOne = tools.find((t) => t.name === "shared.one");
     expect(sharedOne.description).toBe("agent wins");
-    const run = await tools.find((t) => t.name === "mine").run({});
-    expect(run.scope).toBe("agent");
+    // Milestone 4: a function tool with no JS implementation
+    // bound throws honestly, instead of returning a fake
+    // { definition, scope } value as it did before.
+    await expect(tools.find((t) => t.name === "mine").run({})).rejects.toThrow(
+      "no JS implementation bound",
+    );
   });
 });

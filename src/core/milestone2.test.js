@@ -140,15 +140,17 @@ describe("gap 1: dashboard chat entry is the harness route chain", () => {
       "utf8",
     );
     expect(harnessRoute).toContain("runHarnessRequest");
-    expect(harnessRoute).toContain("getEngineObject");
+    // Milestone 4: routes go through the single startup entry,
+    // getStartedEngine(), not getEngineObject() alone.
+    expect(harnessRoute).toContain("getStartedEngine");
     const page = readFileSync(join(process.cwd(), "src/app/page.js"), "utf8");
     expect(page).toContain('"/api/harness"');
     expect(page).not.toContain('fetch("/api/chat"');
-    const chatRoute = readFileSync(
-      join(process.cwd(), "src/app/api/chat/route.js"),
-      "utf8",
+    // Milestone 4: the unused /api/chat route was DELETED, not
+    // left as a legacy comment — so its file must not exist.
+    expect(existsSync(join(process.cwd(), "src/app/api/chat/route.js"))).toBe(
+      false,
     );
-    expect(chatRoute).toContain("LEGACY");
   });
 });
 

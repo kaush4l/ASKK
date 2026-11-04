@@ -64,9 +64,8 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import { listAgentToolDefinitions, loadAgentTools } from "./agent-tools.js";
 import { createCoreTools } from "./core-tools.js";
-import { createDesk } from "./desk.js";
 import { parseAgentFile } from "./desk-reader.js";
-import { getEngineObject } from "./engine-object.js";
+import { buildToolsRegistry, getEngineObject } from "./engine-object.js";
 import { createHarness, loadAgentDefinition } from "./harness.js";
 import { parseSkill } from "./skills.js";
 
@@ -353,13 +352,25 @@ export function scanRegistry({
         agent,
       )
     : [];
-  const agentTools = agent
+  const agentToolInstances = agent
     ? loadAgentTools({ personalDir: personal, defaultsDir: defaults }, agent)
     : [];
+  // Attach the definition's scope to the instance, so the
+  // registry builder can tell shared tools from agent-specific
+  // ones without a second lookup. A Tool instance has no scope
+  // field of its own — this is registry metadata, not a tool spec.
+  for (const tool of agentToolInstances) {
+    const def = agentDefs.find((d) => d.name === tool.name);
+    if (def) {
+      tool.scope = def.scope;
+    }
+  }
+  const agentTools = agentToolInstances;
   return {
     kernel: kernelSpecs,
     kernelNames: kernelSpecs.map((t) => t?.name).filter(Boolean),
     agentDefinitions: agentDefs,
+    agentToolInstances,
     agentTools: agentTools.map((tool) =>
       typeof tool?.spec === "function" ? tool.spec() : tool,
     ),
@@ -427,6 +438,11 @@ export function initializeAgent(
     instructionsSource: definition.instructionsSource,
     toolNames: [...definition.tools],
     tools,
+    // Real Tool instances for this agent (kernel tools are NOT
+    // in here — they come from the desk's core tools; this list
+    // is the agent's memory-folder tools only, with scope
+    // attached, for the per-agent registry builder).
+    toolInstances: registry.agentToolInstances ?? [],
     missingTools,
     errors:
       missingTools.length > 0
@@ -436,6 +452,22 @@ export function initializeAgent(
         : [],
     agentDefinitions: registry.agentDefinitions,
   };
+}
+
+// THE single startup entry (Milestone 4, G5). Every API route
+// must go through this, never getEngineObject() alone and never
+// createDesk() directly: it returns the ONE engine object for
+// the location, with scanned objects initialized on it. Calling
+// it twice for the same location returns the same engine (the
+// engine-object cache), re-scanned — it does not create a
+// second engine, a second desk, or a second registry.
+export function getStartedEngine(location = "personal", opts = {}) {
+  const engine = getEngineObject(location, opts);
+  initializeDeskObjects(engine, {
+    personalDir: opts.personalDir ?? engine.desk?.location ?? null,
+    defaultsDir: opts.defaultsDir ?? engine.desk?.defaultsDir ?? null,
+  });
+  return engine;
 }
 
 // Scan-and-initialize ALL objects for an engine, and attach
@@ -487,11 +519,50 @@ export function initializeDeskObjects(engine, opts = {}) {
   engine.watchers = watchers;
   engine.skills = skills;
   engine.goals = goals;
+  // ONE local registry, rebuilt from the scan (Milestone 4, G3):
+  // kernel Tool instances + shared agent tools only, by name,
+  // duplicates recorded (never silently merged). Per-agent
+  // registries are kernel + shared + that agent's tools only —
+  // an agent-specific tool is never in another agent's registry.
+  // Agents' toolInstances come from loadAgentTools() in
+  // initializeAgent's scan (see below: initializeAgent now
+  // returns toolInstances alongside specs).
+  if (typeof engine.setToolsRegistry === "function") {
+    const kernelTools =
+      engine.desk?.tools ?? engine.desk?.coreTools?.tools ?? [];
+    const sharedTools = [];
+    for (const agent of agents) {
+      for (const tool of agent.toolInstances ?? []) {
+        if (tool?.scope === "shared") {
+          sharedTools.push(tool);
+        }
+      }
+    }
+    const built = buildToolsRegistry([...kernelTools, ...sharedTools]);
+    // buildToolsRegistry already dedupes; setToolsRegistry does
+    // the same, so passing the registry's own list is idempotent.
+    engine.setToolsRegistry(built.registry.list());
+    for (const agent of agents) {
+      const own = (agent.toolInstances ?? []).filter(
+        (tool) => tool?.scope !== "shared",
+      );
+      engine.setToolsRegistry([...built.registry.list(), ...own], {
+        agent: agent.name,
+      });
+    }
+    scanned.toolsRegistry = {
+      names: built.registry.list().map((t) => t.name),
+      duplicates: built.duplicates,
+    };
+    scanned.counts.toolsRegistry = built.registry.list().length;
+  }
   engine.refreshScanned = () => initializeDeskObjects(engine, opts);
   return scanned;
 }
 
-// Full startup, in order. The dashboard snapshot/signal and the
+// Full startup, in order. This is NOT a second entry: it calls
+// getStartedEngine() (the single entry) and then creates the
+// harness on that engine. The dashboard snapshot/signal and the
 // /api/harness request follow this — they are the next steps in
 // the documented sequence, not part of initializeEngine itself.
 export function initializeEngine(location = "personal", opts = {}) {
@@ -503,9 +574,13 @@ export function initializeEngine(location = "personal", opts = {}) {
     "personal",
   );
   const defaultsDir = resolveDir(opts.defaultsDir, "public/defaults");
-  const desk = opts.desk ?? createDesk(location, { defaultsDir });
-  const engine = getEngineObject(location, { desk });
-  const scanned = initializeDeskObjects(engine, { personalDir, defaultsDir });
+  const engine = getStartedEngine(location, {
+    ...opts,
+    personalDir,
+    defaultsDir,
+  });
+  const desk = engine.desk;
+  const scanned = engine.scanned;
   const harness =
     opts.harness === false ? null : createHarness(desk, { engine });
   return {
@@ -514,6 +589,7 @@ export function initializeEngine(location = "personal", opts = {}) {
     scanned,
     harness,
     steps: [
+      "getStartedEngine-single-entry",
       "desk-discovery",
       "createDesk",
       "getEngineObject-singleton",
@@ -528,6 +604,7 @@ export function initializeEngine(location = "personal", opts = {}) {
 
 export function startupSequence() {
   return [
+    "startup-entry: getStartedEngine() is THE single startup entry — every API route calls it, never getEngineObject() alone and never createDesk() directly (startup.js getStartedEngine; it returns the ONE engine object, re-scanned)",
     "desk-discovery: desk folder looked for — personal/ else public/defaults/ else honest empty state (harness.js discoverDesk; desk.js per-file fallback)",
     "createDesk: desk config loaded — instructions, model.json, inferences, kernel tools, live artifact (desk.js createDesk; core-tools.js createCoreTools)",
     "getEngineObject-singleton: ONE engine object per location in the server process, cached in engine-object.js (never a per-request fresh desk)",

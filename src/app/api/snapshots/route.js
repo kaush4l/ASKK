@@ -8,7 +8,7 @@
 // paths, like the artifact route.
 //
 // POST takes a snapshot from the single live desk instance:
-// getEngineObject("personal").desk gives the desk, captureFromDesk derives
+// getStartedEngine("personal").desk gives the desk, captureFromDesk derives
 // its twin, soul/tools versions, and live artifact state at that
 // moment, and saveSnapshot deep-copies them into
 // personal/memory/agent/<id>/snapshots/<snapshot-id>.json (+ a
@@ -20,17 +20,18 @@
 // Snapshot creation writes ONLY the snapshot files: it never
 // rewrites state.md, never appends to history.md, and never
 // writes to public/defaults/.
-import { getEngineObject } from "@/core/engine-object.js";
+
 import { snapshotTwin } from "@/core/snapshot.js";
 import {
   captureFromDesk,
   listSnapshots,
   saveSnapshot,
 } from "@/core/snapshot-store.js";
+import { getStartedEngine } from "@/core/startup.js";
 
 export async function GET() {
   try {
-    const desk = getEngineObject("personal").desk;
+    const desk = getStartedEngine("personal").desk;
     const snapshots = listSnapshots(desk.location, "default");
     return Response.json({ snapshots: snapshots.map(snapshotTwin) });
   } catch (error) {
@@ -41,7 +42,7 @@ export async function GET() {
 export async function POST(request) {
   try {
     const body = (await request.json().catch(() => ({}))) ?? {};
-    const desk = getEngineObject("personal").desk;
+    const desk = getStartedEngine("personal").desk;
     const snapshot = captureFromDesk(desk, {
       ...(typeof body.id === "string" ? { id: body.id } : {}),
       messages: Array.isArray(body.messages) ? body.messages : [],

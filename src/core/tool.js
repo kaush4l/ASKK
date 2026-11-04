@@ -119,6 +119,65 @@ export class Tool {
   }
 }
 
+// THE single tool-to-string reader (Milestone 4). Every place that
+// turns a tool into a string — the prompt's tools element, the
+// registry's describeAll(), /api/tools, the UI — must use this
+// function, never a second formatter. It reads the name, the args
+// (input keys + descriptions) and the documentation (description)
+// FROM THE TOOL/METHOD OBJECT ITSELF:
+//   - a Tool instance: its own describe(), which reads its input
+//     and description fields (the method's own fields);
+//   - a plain spec (a Tool.spec() snapshot): the same fields,
+//     formatted with the same fieldLine() rule, so the string is
+//     identical to the instance's describe() for the same tool.
+// There is no second reader anywhere in the tree: elements.js
+// toolSpecToString was deleted in Milestone 4, and toolsElement
+// calls describeTool().
+export function describeTool(tool) {
+  if (!tool || typeof tool !== "object") {
+    throw new Error("describeTool needs a tool or tool spec");
+  }
+  if (typeof tool.describe === "function") {
+    return tool.describe();
+  }
+  const fields = Object.entries(tool.input ?? {})
+    .map(([key, value]) => fieldLine(key, value))
+    .join(", ");
+  return `- ${tool.name} {${fields}} — ${tool.description ?? ""}`;
+}
+
+// Wrap a plain spec (or any tool-like object) into a real Tool
+// instance, so a registry always holds instances with a run(),
+// never spec-only data pretending to be a method. A spec-only
+// tool's run() throws honestly — it cannot be invoked until a
+// real run function is bound — instead of returning a fake value.
+export function toToolInstance(tool) {
+  if (!tool || typeof tool !== "object" || typeof tool.name !== "string") {
+    throw new Error("toToolInstance needs a tool or tool spec with a name");
+  }
+  if (tool instanceof Tool) {
+    return tool;
+  }
+  if (typeof tool.run === "function" && typeof tool.describe === "function") {
+    return tool;
+  }
+  const spec = typeof tool.spec === "function" ? tool.spec() : tool;
+  return new Tool({
+    name: spec.name,
+    description: spec.description ?? "",
+    input: spec.input ?? {},
+    type: spec.type ?? "function",
+    view: spec.view ?? null,
+    outside: spec.outside ?? null,
+    expectation: spec.expectation ?? "immediate",
+    run: async () => {
+      throw new Error(
+        `${spec.name}: spec-only tool, no run function bound — bind a real method before calling it`,
+      );
+    },
+  });
+}
+
 // A registry: a flat list of Tool instances, with lookup by name
 // and a plain-data view for the UI. Duplicate names are refused —
 // the agent must never have two tools answering to one name.

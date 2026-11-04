@@ -6,11 +6,11 @@
 // If no model is present, hasDefault is false and the UI asks for
 // a default first; if any is present, the first entry is the default.
 import { publicDesk } from "@/core/desk.js";
-import { getEngineObject } from "@/core/engine-object.js";
+import { getStartedEngine } from "@/core/startup.js";
 
 export async function GET() {
   try {
-    const desk = getEngineObject("personal").desk;
+    const desk = getStartedEngine("personal").desk;
     return Response.json(publicDesk(desk));
   } catch (error) {
     return Response.json({ error: error.message }, { status: 502 });

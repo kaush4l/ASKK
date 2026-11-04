@@ -11,15 +11,15 @@
 // Response shape unchanged from before the engine-object change.
 import { publicDesk } from "@/core/desk.js";
 import { deskSnapshotTwin, readDeskSnapshot } from "@/core/desk-reader.js";
-import { getEngineObject } from "@/core/engine-object.js";
 import { mergePlacement } from "@/core/placement.js";
 import { listProviders } from "@/core/providers.js";
+import { getStartedEngine } from "@/core/startup.js";
 
 export async function GET(request) {
   try {
     const url = new URL(request.url);
     const agent = url.searchParams.get("agent") ?? "developer";
-    const engine = getEngineObject("personal");
+    const engine = getStartedEngine("personal");
     const desk = engine.desk;
     const snap = readDeskSnapshot({
       personalDir: desk.location,

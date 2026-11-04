@@ -12,13 +12,13 @@
 // configured at all, the harness throws a clear "no model
 // configured" error instead of inventing one. Returns
 // { report, goal, goalCreateCalls, developer, harnessHistory }.
-// The single-turn /api/chat route is LEGACY (see that file):
-// it is kept for single-turn compatibility only and is NOT the
-// harness chain — the dashboard no longer calls it.
+// The former single-turn /api/chat route was DELETED in
+// Milestone 4: it was not used by any UI, so it was removed
+// rather than left as a legacy comment.
 
-import { getEngineObject } from "@/core/engine-object.js";
 import { runHarnessRequest } from "@/core/harness-route.js";
 import { createInference } from "@/core/inference.js";
+import { getStartedEngine } from "@/core/startup.js";
 
 export async function POST(request) {
   let body;
@@ -37,7 +37,7 @@ export async function POST(request) {
     );
   }
   try {
-    const engine = getEngineObject("personal");
+    const engine = getStartedEngine("personal");
     const desk = engine.desk;
     let inference = desk.defaultInference;
     if (typeof body?.inferenceId === "string" && body.inferenceId !== "") {
