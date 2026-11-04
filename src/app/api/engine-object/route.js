@@ -9,11 +9,24 @@
 // this route plus the live-event bus). There is no server push
 // (no SSE/WebSocket): the next call returns the object's
 // current state. No keys, no absolute paths.
+import { renderAgentForScreen } from "@/core/agent-render.js";
 import { getEngineObject } from "@/core/engine-object.js";
 
 export async function GET() {
   try {
     const engine = getEngineObject("personal");
+    // Additional, non-breaking field (Checkpoint 1): the agent
+    // render tree — dashboard + canvas, rendered dynamically
+    // from what this same engine object holds (agent-render.js).
+    // If the tree cannot be built, the existing fields still
+    // return and the failure is reported plainly, not hidden.
+    let agentRender = null;
+    let agentRenderError = null;
+    try {
+      agentRender = renderAgentForScreen(engine);
+    } catch (err) {
+      agentRenderError = err.message;
+    }
     return Response.json({
       state: engine.snapshot(),
       elementStrings: engine.elementStrings(),
@@ -21,6 +34,8 @@ export async function GET() {
       prompt: engine.renderPrompt(),
       tools: engine.tools.map((t) => t?.name ?? t),
       goal: engine.goal ? engine.goal.snapshot() : null,
+      agentRender,
+      ...(agentRenderError ? { agentRenderError } : {}),
     });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 502 });

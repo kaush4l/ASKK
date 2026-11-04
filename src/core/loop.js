@@ -35,6 +35,74 @@
 
 import { parseReply } from "./toon.js";
 
+// Slice B — goal delivery (artifact twin snapshot as the goal
+// element). runLoop used to drop the goal it was passed
+// (element-mapping mistake #2): the harness passed
+// goal.snapshot() but runLoop never read it, so the executing
+// agent saw only the raw owner request. Now, when opts.goal
+// (kernel artifact, delivered object, or plain snapshot) or
+// opts.goalElement is given, runLoop adds the goal element as
+// its own system message, read LIVE at call time — a kernel
+// artifact's snapshot() is called here, per run, so steps /
+// phase / evidence added since the last phase are visible in
+// the next phase's prompt, with no refetch and no new goal
+// object. The element carries no history transcript.
+export function formatGoalElement(goal) {
+  if (typeof goal === "string") {
+    return goal;
+  }
+  if (goal && typeof goal.element === "string") {
+    return goal.element;
+  }
+  let snapshot = null;
+  if (goal && typeof goal.snapshot === "function") {
+    snapshot = goal.snapshot();
+  } else if (goal && typeof goal.snapshot === "object" && goal.snapshot !== null) {
+    snapshot = goal.snapshot;
+  } else if (goal && typeof goal === "object") {
+    snapshot = goal;
+  }
+  if (!snapshot || typeof snapshot.statement !== "string") {
+    return null;
+  }
+  const steps = Array.isArray(snapshot.steps) ? snapshot.steps : [];
+  const done = steps.filter((s) => s.done).length;
+  const lines = [
+    `Goal (artifact twin, artifactKind: goal):`,
+    `- id: ${snapshot.id ?? ""}`,
+    `- statement: ${snapshot.statement}`,
+    `- status: ${snapshot.status ?? ""}`,
+    `- phase: ${snapshot.phase ?? "none"}`,
+    `- attempts: ${typeof snapshot.attempts === "number" ? snapshot.attempts : 0}`,
+    `- steps: ${done} of ${steps.length} done`,
+  ];
+  for (const step of steps) {
+    lines.push(`  - [${step.done ? "x" : " "}] ${step.id}: ${step.text ?? ""}`);
+  }
+  const list = (label, values) => {
+    if (!Array.isArray(values) || values.length === 0) {
+      lines.push(`- ${label}: none`);
+      return;
+    }
+    lines.push(`- ${label}:`);
+    for (const value of values) {
+      lines.push(
+        `  - ${typeof value === "string" ? value : JSON.stringify(value)}`,
+      );
+    }
+  };
+  list("evidence", snapshot.evidence);
+  list("decisions", snapshot.decisions);
+  list("open questions", snapshot.openQuestions);
+  if (snapshot.folder?.root) {
+    lines.push(`- folder root: ${snapshot.folder.root}`);
+  }
+  if (snapshot.report) {
+    lines.push(`- report: ${snapshot.report}`);
+  }
+  return lines.join("\n");
+}
+
 export const MAX_STEPS = 12;
 export const COMPACTION_THRESHOLD = 0.9;
 
@@ -146,6 +214,8 @@ export async function runLoop({
   inference,
   prompt = "",
   phase = null,
+  goal = null,
+  goalElement = null,
   maxSteps = MAX_STEPS,
   ctxLength = null,
   summarise = null,
@@ -164,8 +234,21 @@ export async function runLoop({
   if (!Array.isArray(state.modified)) {
     state.modified = [];
   }
+  // Goal delivery: the artifact twin's snapshot, as its own
+  // system message, before the phase instructions — so the
+  // executing agent receives the goal (kernel + twin snapshot),
+  // not just the raw owner request. Read live here, per run.
+  const deliveredGoalElement =
+    typeof goalElement === "string" && goalElement !== ""
+      ? goalElement
+      : goal
+        ? formatGoalElement(goal)
+        : null;
   const messages = [
     { role: "system", content: prompt },
+    ...(deliveredGoalElement
+      ? [{ role: "system", content: deliveredGoalElement }]
+      : []),
     ...(phase?.instructions
       ? [
           {
@@ -401,6 +484,7 @@ export async function runLoop({
     history,
     runState: state,
     toolsAvailable: toolNamesOf(tools),
+    goalElement: deliveredGoalElement,
   };
 }
 
@@ -408,6 +492,10 @@ export async function runLoop({
 // phase's allowedTools before the loop ever sees it, so a phase
 // cannot call a tool it was not given — enforcement is in code,
 // not in prose. Returns the loop result plus the phase id.
+// Slice B: opts.goal / opts.goalElement are forwarded untouched
+// to runLoop, which renders the goal element live per run (see
+// formatGoalElement above) — runPhase does not snapshot the goal
+// itself, so a stale snapshot can never be delivered.
 export async function runPhase(phase, opts = {}) {
   if (!phase || typeof phase.id !== "string") {
     throw new Error("runPhase needs a phase with an id");

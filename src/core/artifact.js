@@ -410,6 +410,11 @@ export class LiveArtifact {
         ? defaultsBase
         : join(/* turbopackIgnore: true */ process.cwd(), defaultsBase)
       : null;
+    // Slice C: artifact state-change listeners. A twin
+    // subscribes here (see tool-artifact-twin.js); with no
+    // listeners this is a no-op. Listener errors never break
+    // the state-changing call.
+    this._stateChangeListeners = new Set();
     this.dir = this.personalBase
       ? join(this.personalBase, "memory", "agent", this.id)
       : null;
@@ -554,6 +559,26 @@ export class LiveArtifact {
     return previews;
   }
 
+  // Slice C: subscribe to artifact state-change events.
+  // Listener signature: (detail). Returns unsubscribe.
+  subscribeStateChange(listener) {
+    if (typeof listener !== "function") {
+      throw new Error("artifact state-change listener must be a function");
+    }
+    this._stateChangeListeners.add(listener);
+    return () => this._stateChangeListeners.delete(listener);
+  }
+
+  emitStateChange(detail = {}) {
+    for (const listener of [...this._stateChangeListeners]) {
+      try {
+        listener(detail);
+      } catch {
+        // A twin update must never break the state change.
+      }
+    }
+  }
+
   _saveState() {
     if (!this._persist) {
       return;
@@ -564,6 +589,11 @@ export class LiveArtifact {
       stateToMarkdown(this.state(), this._previewsForState()),
       "utf8",
     );
+    // Slice C: every state-changing call already saves state
+    // exactly via this method (called from #delegate/expand);
+    // it now also emits the artifact state-change event, so a
+    // subscribed artifact twin updates from the event.
+    this.emitStateChange({ id: this.id, state: this.state() });
   }
 
   _record(action, path, detail) {
