@@ -34,9 +34,17 @@
 // files tool itself; expand() re-reads them again, so an external
 // edit shows up on the next expand.
 //
-// Persistence — agent state in personal/memory/agent/:
+// Persistence — agent state in personal/memory/agent/, with a
+// public template fallback that mirrors it exactly:
 //   <personalBase>/memory/agent/<id>/state.md
 //   <personalBase>/memory/agent/<id>/history.md
+//   else <defaultsBase>/memory/agent/<id>/state.md
+//   else <defaultsBase>/memory/agent/<id>/history.md
+// The public defaults are a READ-ONLY template (empty state,
+// header-only history, no fake entries). The loader reads them
+// when no personal memory exists; it NEVER writes to them —
+// writes (state.md rewrites, history appends) always go to the
+// personal folder, created when needed.
 // Plain markdown only, NO state.json in this feature, so tools can
 // read the state back with the files tools themselves. Nothing is
 // ever written to public/defaults/. History and state carry logical
@@ -379,6 +387,7 @@ export class LiveArtifact {
     location,
     filesTool,
     personalBase = null,
+    defaultsBase = null,
     agent = "default",
   } = {}) {
     this.id = checkId(id);
@@ -393,10 +402,43 @@ export class LiveArtifact {
         ? personalBase
         : join(/* turbopackIgnore: true */ process.cwd(), personalBase)
       : null;
+    // Read-only fallback for memory, mirroring the personal
+    // structure exactly (public/defaults/memory/agent/<id>/).
+    // Nothing in this class ever writes to defaultsDir.
+    this.defaultsBase = defaultsBase
+      ? isAbsolute(defaultsBase)
+        ? defaultsBase
+        : join(/* turbopackIgnore: true */ process.cwd(), defaultsBase)
+      : null;
     this.dir = this.personalBase
       ? join(this.personalBase, "memory", "agent", this.id)
       : null;
+    this.defaultsDir = this.defaultsBase
+      ? join(this.defaultsBase, "memory", "agent", this.id)
+      : null;
     this._persist = Boolean(this.dir);
+  }
+
+  // Where this artifact's memory came from: "personal" if a
+  // personal state/history file exists, else "public" if a
+  // defaults template file exists, else "none". Computed live,
+  // so after the first personal write it flips to personal.
+  get memorySource() {
+    if (
+      this.dir &&
+      (existsSync(join(this.dir, "state.md")) ||
+        existsSync(join(this.dir, "history.md")))
+    ) {
+      return "personal";
+    }
+    if (
+      this.defaultsDir &&
+      (existsSync(join(this.defaultsDir, "state.md")) ||
+        existsSync(join(this.defaultsDir, "history.md")))
+    ) {
+      return "public";
+    }
+    return "none";
   }
 
   get statePath() {
@@ -447,7 +489,13 @@ export class LiveArtifact {
   }
 
   history() {
-    return this.dir ? readHistoryEntries(this.dir) : [];
+    if (this.dir && existsSync(join(this.dir, "history.md"))) {
+      return readHistoryEntries(this.dir);
+    }
+    if (this.defaultsDir && existsSync(join(this.defaultsDir, "history.md"))) {
+      return readHistoryEntries(this.defaultsDir);
+    }
+    return [];
   }
 
   // Restore saved state into this artifact's files state. Open
@@ -774,6 +822,21 @@ export function createLiveArtifact(options = {}) {
     }
     return artifact;
   }
+  // Public template present and personal absent: restore the
+  // template (empty) state without writing anything — neither
+  // to personal (no create entry for a template) nor, ever, to
+  // public/defaults. The first real change writes to personal.
+  if (
+    artifact.defaultsDir &&
+    existsSync(join(artifact.defaultsDir, "state.md"))
+  ) {
+    artifact._restore(
+      parseStateMarkdown(
+        readFileSync(join(artifact.defaultsDir, "state.md"), "utf8"),
+      ),
+    );
+    return artifact;
+  }
   artifact._saveState();
   artifact._record(
     "artifact.create",
@@ -797,6 +860,21 @@ export function loadLiveArtifact(options = {}) {
   if (existsSync(artifact.statePath)) {
     artifact._restore(
       parseStateMarkdown(readFileSync(artifact.statePath, "utf8")),
+    );
+    return artifact;
+  }
+  // Public template fallback, read-only: restoring the empty
+  // template state is a no-op in practice, but the path matters
+  // — a fresh checkout without personal memory still loads the
+  // shipped template shape, and nothing is written to defaults.
+  if (
+    artifact.defaultsDir &&
+    existsSync(join(artifact.defaultsDir, "state.md"))
+  ) {
+    artifact._restore(
+      parseStateMarkdown(
+        readFileSync(join(artifact.defaultsDir, "state.md"), "utf8"),
+      ),
     );
   }
   return artifact;

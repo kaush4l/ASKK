@@ -1,67 +1,111 @@
 # Agent: default
 
-The default way to write and initialize an agent: one page,
-human-readable, machine-parseable by headings and lists (the same way
-history.md entries are read), so a loader can read it without a JSON
-parser. This is the shipped default. A user-added personal/agent.md
-wins over this file when present; user-added agent.md saves go to
-personal/, never to public/defaults/.
+Version: 2
+
+This file is a RENDER TEMPLATE, not an inventory. It does not list
+tools, models, files, or skills literally — it names the elements
+the template composes, and each element says which live variable
+it is filled from at runtime. The renderer (src/core/agent-md.js)
+takes this template + the current desk object and produces the
+instructions string at that moment. Changing the desk (a tool added
+to the registry, a file opened in the live artifact, a new session
+message) changes the rendered instructions with NO edit to this file.
+The renderer is src/core/agent-md.js (renderAgentInstructions),
+which fills each element from the live desk and caches per
+element: a Tools change re-renders Tools only, an unchanged
+object returns the cache, a registry change invalidates it.
+
+A user-added personal/agent.md wins over this file when present;
+user-added agent.md saves go to personal/, never to public/defaults/.
 
 ## Soul
 
-- instructions: personal/instructions.md
-- fallback: public/defaults/instructions.md
-- preview: You are ASKK, a helpful assistant. Answer plainly.
+- variable: desk.soul
+- carries: soul text (who the agent is — character, role, north star), from personal/soul.md else public/defaults/soul.md
+- note: soul is NOT instructions — the two are separate files and are never merged into one string
+- preview: generated at render time (first line, truncated) — never stored here as a separate copy
 
-## Model
+## Instructions
 
-- default: desk default (first entry in personal/model.json)
-- model: (resolved from the desk default at load time, never written here)
-- key: (never written here — resolved server-side from personal/.env)
+- variable: desk.engine.instructions
+- carries: instructions text (how the agent answers), from personal/instructions.md else public/defaults/instructions.md
+- note: shown as its own element, not folded into Soul
+
+## Agent
+
+- variable: desk.engine twin + desk.defaultInference
+- carries: engine twin (model, instructions preview), desk default model, provider, endpoint, status, inference count
+- key: never written here — resolved server-side from personal/.env
+
+## History
+
+- variable: session messages + agent history.md entries
+- carries: session history AND agent history, labelled separately, never merged
+- session: the current conversation messages, in order
+- agent: parsed history.md entries (timestamp · action · agent · path · detail)
 
 ## Tools
 
-Default tools, loaded for every agent. No web tools.
+- variable: desk.tools (the live tool registry)
+- carries: tool specs at render time — name, description, input, expectation — for exactly the tools in the registry at that moment
+- web: none — the registry must contain no web.* tool; this is a guard on the registry, not a list in this file
+- note: adding, removing, or changing a tool in the registry changes the rendered Tools section, with no edit to this file
 
-### files
+## Live Artifacts
 
-- files.list — immediate — list files under the live artifact root
-- files.read — immediate — read a file, with from/lines slice for big files
-- files.write — immediate — write a file inside the root
-- files.edit — immediate — replace one exact passage, old must match once
-- files.append — immediate — append to a file
-- files.search — immediate — case-insensitive text search under a folder/file
-- files.open — live-state — keep a file open, re-read on open (max 25)
-- files.close — live-state — close an open file
-- files.focus — live-state — focus a section of a big file, or a folder as tree root
-
-### terminal
-
-- terminal.run — done — run a command to its end, return exit + last lines
-- terminal.start — stream — start a long session, keep it running
-- terminal.wait — stream — wait until exit, until text appears, or seconds pass
-- terminal.read — stream — read a session's last lines
-- terminal.send — stream — send a line to a session's stdin
-- terminal.stop — stream — stop a session
-- terminal.list — immediate — list every session
-
-## Live artifact
-
+- variable: desk.liveArtifact twin
+- carries: artifact id, open files, focus, modified files (summary only in the instructions string; bounded previews live in the UI, not here)
 - id: default
-- location: (project root — the desk's root at load time)
 - state: personal/memory/agent/default/state.md
 - history: personal/memory/agent/default/history.md
 
+## Skills
+
+- variable: desk.skills
+- carries: the skills list at render time
+- note: Skills will be added later — the current list is empty, and this template invents no skill definitions
+
+## Memory
+
+- variable: desk.memory (live artifact state + history)
+- carries: agent memory — state (open, focus, modified) + agent history entries, labelled, never merged with session chat
+- state: personal/memory/agent/default/state.md
+- history: personal/memory/agent/default/history.md
+- note: personal memory wins when present, else the public template in public/defaults/memory/agent/default/ (empty state, no fake history); writes never go to public/defaults/
+
+## Observations
+
+Template-level observations only — lessons that apply to every
+agent, written by subagents improving this template. Shape,
+machine-parseable like history.md entries: each observation is
+a bullet whose four fields, in order, are date, agent-id,
+observation, and improvement, separated by middle dots, with
+an optional following improvesOn line naming the previous
+version or element it changes. (The shape is described here
+in prose on purpose, so this description itself is never
+parsed as an observation entry.)
+
+- 2026-11-03 · agent-template-correction · Tools hardcoded in agent.md drifted stale on registry change. · Render Tools from desk.tools at runtime with per-element cache.
+improvesOn: tools v1 (hardcoded 16-tool list in agent.md)
+- 2026-11-03 · agent-template-correction · Soul folded into Instructions conflated who the agent is with how it answers. · Keep soul.md and instructions.md as separate elements, rendered separately, never merged.
+improvesOn: soul v2 (instructions.md rendered as the Soul section)
+
+Run-specific observations (what happened in one run, file
+paths, results) do NOT go here — they go to
+personal/memory/agent/<id>/history.md and are never pushed.
+No keys, no absolute paths, no .env content in either place.
+
 ## Initialization
 
-How an agent is initialized from this file, in order:
+How an agent is initialized from this template, in order:
 
 1. createDesk — load the desk (personal/ else public/defaults/ fallback)
-2. load agent.md — read Soul, Model, Tools, and Live artifact above
+2. load agent.md — read this template: section structure + variable references above
 3. createEngine — create the engine with the soul instructions
-4. load core tools — attach the 16 default tools listed above
+4. load core tools — attach the live tool registry (the Tools variable's source)
 5. create/load live artifact — create or load the live artifact for the location
-6. twin — return the live object (engine twin + tools + artifact twin) for the UI
+6. render — renderAgentInstructions(template, desk): fill each element from the desk at runtime, per-element cached (see src/core/agent-md.js)
+7. twin — return the rendered twin (engine twin + rendered sections) for the UI
 
 ## Live-object test
 
