@@ -495,3 +495,149 @@ field, terminal streams (only final lines as a tool result are
 replayable), model internal state (never captured), external
 changes after a step. Until the loop records steps, a snapshot
 replays messages only, with those labels.
+
+## Desk reader + engine structure standardization (night PR)
+
+Snapshot version: the desk snapshot folder is `memory/`, and
+`personal/` and `public/defaults/` are exact replicas following the
+SAME logical structure:
+
+```
+personal/memory/soul.md
+personal/memory/developer.agent.md        (<name>.<type>.md)
+personal/memory/developer.instructions.md
+personal/memory/model.json
+personal/memory/agent/<name>/state.md, history.md, snapshots/
+personal/memory/scripts/shared/, scripts/<agent>/
+personal/memory/watchers/shared/, watchers/<agent>/
+public/defaults/memory/  — the same tree, as templates.
+```
+
+Per-file fallback: `personal/memory/<file>` wins, else
+`public/defaults/memory/<file>`, else legacy `personal/<file>` /
+`public/defaults/<file>`. New writes go to the memory folder only.
+Never write to public/. Agent name is a variable, never hardcoded
+"default". Desk reader: `src/core/desk-reader.js` (`readDeskSnapshot`,
+`deskSnapshotTwin` — twin strips keys, apiKeyEnv, absolute paths).
+
+Abstract elements core: `src/core/elements.js`. Every render-prompt
+element is `{id, kind, version, data, render(), toString(), cacheKey}`:
+soul, instructions, tools, live artifact, watchers-running, scripts,
+models, response format, history. `toString()` is the element's string
+as it is NOW (soul text, instructions text, tool specs as
+`- name {inputs} — description [expectation]`, etc.). Cache: unchanged
+object → cached string, changed object → invalidate and re-render,
+never a stale tool list. `renderPrompt()` joins elements in order:
+static top (soul, instructions, tools), dynamic bottom (artifact,
+watchers, scripts, models, history, response last).
+
+Runtime placement: `src/core/placement.js`. Every agent calls the SAME
+create tool; at runtime, shared loads first, then agent-specific,
+agent-specific wins on the same name, no duplicates. Shared items are
+available to any agent but still narrowed to the caller's tools/lanes.
+Agent-specific items are visible/runnable only by that agent. Created
+items go to shared ONLY if explicitly chosen, else to `<agent>/`, so
+they survive restarts as files. Soul is immutable: any spawn/create
+input trying to set a soul is refused. Spawn validation:
+`validateSpawn` (name, task goal, tools subset, lanes narrowed,
+keep run|desk, agent file `memory/<name>.agent.md`, memory
+`memory/agent/<name>`).
+
+Template agent skin: `src/core/template-skin.js`
+(`createTemplateAgentSkin` / `createSnapshot`). Creates
+`memory/<name>.agent.md` (data + metadata only), empty
+`memory/agent/<name>/state.md` + `history.md`, `snapshots/`,
+`scripts/<name>/`, `watchers/<name>/`. If `memory/soul.md` exists it
+is NEVER modified; a template soul is created only if absent.
+
+Snapshot state v2: `src/core/snapshot-state.js`
+(`createDeskSnapshotState`). Includes every element's toString(),
+watchers running, scripts we have, tools, artifact state, phase state
+(if any), activity, counts — not just messages. Deep-copied.
+Restart state (`createRestartState`): kept (keep:"desk") agents /
+watchers / scripts respawn, run-only items are recorded but NOT
+restarted, plus phase and artifact open/focus, so a restart can
+restart what was running.
+
+Default tools — what they enable (core 16, files + terminal, NO web):
+- `files.list/read/search` — read the workspace, find context.
+  Lanes: workspace-relative only, `..` escapes refused, `.env*`
+  (except `.env.example`), `.git`, `.mcp.json` never read/written.
+- `files.write/edit/append` — write, gated: exact-match edit, only
+  in the holder's writes lane, recorded in history + modified list.
+- `files.open/close/focus` — live artifact state: open (max 25,
+  re-read on open), focus a file/section/folder, reset with "".
+- `terminal.run/start/wait/read/send/stop/list` — run a single
+  program or `&&` chain, no shell, no pipes/redirects, workspace
+  scoped. `terminal.run` is the build/test tool (done expectation).
+- No web tools: the core factory throws if any tool name starts
+  with `web.`. Web reads are outside results and are ignored for now.
+
+Models attached (template only): `src/core/providers.js`. Kinds:
+API (`api-openai`, `api-anthropic`, `api-local`) and CLI
+(`cli-claude`, `cli-openai`, `cli-gemini` — command, not endpoint).
+NO built-ins, NO silent default: only what was added is listed,
+empty list => empty state, default only if explicitly marked or a
+defaultId is passed. No real model calls in this PR; `mockTestProvider`
+returns `{ok, mocked}` so the template can be tested without a model,
+key, or CLI. Template page: `/models` (separate view, not a dashboard
+section). Replay view shell: `/replay` (lists snapshot twins only;
+full replay is NOT in this PR). Dashboard: `/` (combined view, chat,
+live-event bus — snapshot on load, then events, no refetch, no SSE
+claim — unchanged by this PR).
+
+Choose-base script: `scripts/choose-base.mjs`. Default base
+`askk-skeleton`; refuses `main` unless `--allow-main`; verifies the
+branch head via `git ls-remote`, optionally counts tracked files via
+a shallow clone (`--verify-count`), and prints the compare URL.
+It creates, pushes, and merges nothing.
+
+## Phases — RESEARCH ONLY (not implemented in this PR)
+
+A phase, in the configuration-driven reading, is the SET OF CURRENT
+INSTRUCTIONS passed at that moment: a prompt statement (duty, inputs,
+outputs, allowed tools, response format) PLUS a complete indication
+to move control to the next phase (exit gate, handoff packet, named
+next phase, on-fail loop-back). ReAct is the inner loop inside a
+phase; the phase graph is the outer loop, enforced by code. Because
+everything is metadata + configuration, the agent itself can, over
+time, create the required structure: a new phase is a new
+`<name>.phase.md` file (duty, gates, handoff schema, agent assignment),
+loaded by the desk reader, validated like any other element — not a
+code change, not a prompt the owner must remember. The responses
+element must therefore be DYNAMIC: the response format is an element
+with its own toString(), version, and cache, not a string literal in
+engine code, so a phase can change what a valid response looks like
+without changing the engine.
+
+Response formats checked for a phase handoff packet:
+
+- JSON: universal, machine-parsable, schema-validatable, easy to
+  test, but verbose (tokens), brittle to a single missing comma,
+  and hard for a human to read in a feed. Fits a handoff packet
+  well when the packet is consumed by code (checks, gates, snapshot
+  review) and when strict validation matters. toString for a JSON
+  response element is the JSON itself, pretty-printed, with the
+  schema named alongside it.
+- TOON (Token-Oriented Object Notation): compact, token-efficient,
+  human-readable for flat/tabular data, and good for a phase
+  handoff that is mostly lists (files changed, checks, counts).
+  Cons: less universal than JSON, fewer validators, nested
+  structures get awkward, and a model that has seen far less TOON
+  in training may produce invalid TOON more often than invalid
+  JSON. Fits a handoff packet when token budget matters and the
+  packet is flat, but it needs a validator + a JSON fallback on
+  parse failure, or a bad packet silently becomes a bad phase.
+- Recommendation for the phase work (tomorrow, not this PR): JSON
+  as the canonical handoff format (validated, versioned, snapshot
+  as JSON), TOON as an optional compact rendering for the UI feed
+  and for token-sensitive steps, derived FROM the JSON, never as
+  the source of truth. A phase's response element toString() should
+  be able to render either, from the same data, with the same
+  version/cache rules as every other element.
+
+NOT in this PR, by design: the developer workflow
+(plan → implement → build → critique → review), a create-workflow
+tool, developer-desk loading for feature work, real model calls,
+the full replay feature, and a restart implementation. Those are
+tomorrow's work, on top of this structure — not inside it.
