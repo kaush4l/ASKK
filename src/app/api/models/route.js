@@ -1,13 +1,14 @@
-// POST /api/models — two jobs, kept apart by the body:
-//   1. Provider actions: body { action: "use"|"test"|"edit"|"delete",
-//      id, patch? } — Use/Test/Edit/Delete against providers.js
-//      (Test is mocked, no real model call, no CLI). The provider
-//      list is seeded from the desk snapshot's template providers
-//      (memory/model.json). Persistence: when a personal desk
-//      folder exists, the updated list is written back to
-//      personal/memory/model.json; otherwise the action applies to
-//      an in-memory store for this server process and the response
-//      says persisted: false plainly. Never writes to public/.
+// GET /api/models — the providers list from the SINGLE live
+// engine object (getEngineModels): the one models store, not a
+// per-request seed. POST /api/models — two jobs, kept apart:
+//   1. Provider actions: body { action: "use"|"test"|"edit"|
+//      "delete", id, patch? } — Use/Test/Edit/Delete through
+//      the engine object (src/core/engine-models.js).
+//      Persistence: when the desk folder exists, the updated
+//      list is written back to <desk>/memory/model.json;
+//      otherwise the action applies in-memory for this server
+//      process and the response says persisted: false plainly.
+//      Never writes to public/.
 //   2. Server proxy for the OpenAI-standard models list (the old
 //      behaviour): body { endpoint, apiKey?, provider?, apiKeyEnv? }.
 //      Returns { models: [id, ...] }. The browser never calls the
@@ -18,43 +19,37 @@
 //      server-side from personal/.env (or process.env) under that
 //      name, or under the provider-derived name (e.g.
 //      OLLAMA_API_KEY). Keys are never returned to the browser.
+//
+// This is the PROVIDERS template store (the models page list).
+// It is NOT the chat inference list: /api/inferences writes
+// personal/model.json (order = chat default). See the route
+// audit in PR.md Milestone 2.
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
 import {
   defaultApiKeyEnv,
   readEnvFile,
   resolvePersonalDir,
 } from "@/core/desk.js";
-import { readDeskSnapshot } from "@/core/desk-reader.js";
-import { createInference } from "@/core/inference.js";
 import {
-  applyProviderAction,
-  listProviders,
-} from "@/core/providers.js";
-// listProviders is used only for the seed default, above.
+  applyEngineModelsAction,
+  getEngineModels,
+} from "@/core/engine-models.js";
+import { getEngineObject } from "@/core/engine-object.js";
+import { createInference } from "@/core/inference.js";
+import { listProviders } from "@/core/providers.js";
 
-let memoryStore = null;
-
-function seedProviders() {
-  if (memoryStore) {
-    return memoryStore;
-  }
+export async function GET() {
   try {
-    const snap = readDeskSnapshot({
-      personalDir: resolvePersonalDir("personal"),
-      defaultsDir: `${process.cwd()}/public/defaults`,
-      agent: "developer",
+    const engine = getEngineObject("personal");
+    const store = getEngineModels(engine);
+    const listed = listProviders(store.providers, store.defaultId);
+    return Response.json({
+      providers: listed.providers,
+      defaultId: listed.default?.id ?? store.defaultId,
     });
-    memoryStore = {
-      providers: snap.models ?? [],
-      defaultId:
-        listProviders(snap.models).default?.id ?? null,
-    };
-  } catch {
-    memoryStore = { providers: [], defaultId: null };
+  } catch (error) {
+    return Response.json({ error: error.message }, { status: 502 });
   }
-  return memoryStore;
 }
 
 export async function POST(request) {
@@ -72,34 +67,9 @@ export async function POST(request) {
     ["use", "test", "edit", "delete"].includes(body.action)
   ) {
     try {
-      const store = seedProviders();
-      const { state, result } = applyProviderAction(store, body);
-      memoryStore = state;
-      let persisted = false;
-      const personalDir = resolvePersonalDir("personal");
-      if (existsSync(personalDir)) {
-        try {
-          const file = join(personalDir, "memory", "model.json");
-          writeFileSync(file, `${JSON.stringify(state.providers, null, 2)}\n`, "utf8");
-          persisted = true;
-        } catch {
-          persisted = false;
-        }
-      }
-      return Response.json({
-        ...result,
-        // Raw entries, with isDefault marked — not normalized here,
-        // so a template entry with an unlisted kind still round-trips.
-        providers: state.providers.map((entry) => ({
-          ...entry,
-          isDefault: state.defaultId ? entry.id === state.defaultId : Boolean(entry.isDefault),
-        })),
-        defaultId: state.defaultId,
-        persisted,
-        ...(persisted
-          ? {}
-          : { note: "not persisted: no personal desk folder; in-memory only for this server process" }),
-      });
+      const engine = getEngineObject("personal");
+      const result = applyEngineModelsAction(engine, body);
+      return Response.json(result);
     } catch (error) {
       return Response.json({ error: error.message }, { status: 400 });
     }

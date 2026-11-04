@@ -1,5 +1,3 @@
-> MILESTONE 1 CHECKPOINT ONLY — This checkpoint contains Milestone-1-only files. Shared files (src/app/page.js, src/app/models/page.js, src/app/api/models/route.js, src/app/api/chat/route.js, src/lib/live-events.js) are NOT yet at their Milestone 2 state in this commit; they arrive in Milestone 2. The Milestone 2 sections below describe the following checkpoint, not this one.
-
 # PR: Goal artifact + harness agent — step-by-step prompt anatomy
 
 - Branch: feature/goal-artifact-harness
@@ -8,7 +6,7 @@
   addendum diff (Milestones 1–2) is measured against 9709a1c,
   verified by diffing the workdir against a fresh clone of
   askk-skeleton @ 9709a1c (excluding .git/node_modules/.next).
-- Status: Milestone 1 — checkpoint, refining continues (assistant never merges; Kaushal merges himself when perfect)
+- Status: Milestone 2 — checkpoint, refining continues (assistant never merges; Kaushal merges himself when perfect)
 - Kind: Feature
 
 ## GOVERNING ARCHITECTURE — PLANNED ARCHITECTURE AND IDEOLOGY — LIVE OBJECT (correction 2026-11-04, wins on conflict)

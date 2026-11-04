@@ -12,9 +12,13 @@
 //     deliberately NO refetch after a chat reply.
 //   - No server SSE stream is claimed here; that is a later step.
 //
-// The chat itself is unchanged in behaviour: one user query in,
-// one LLM reply out, no loop, no streaming. If no model is
-// present, the screen says so plainly and Send stays disabled.
+// Milestone 2: the dashboard chat IS the harness entry now.
+// send() posts { request } to /api/harness (harness -> one
+// goal.create -> developer plan -> execute -> critique ->
+// report back), and the reply shown is the developer's report.
+// The old single-turn /api/chat route is LEGACY and is no
+// longer called from this page. If no model is present, the
+// screen says so plainly and Send stays disabled.
 // The model picker is still removed (the models store is the
 // source of truth; an improved picker comes later). Server
 // routes for models/inferences still exist, unused by this UI.
@@ -33,9 +37,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 import AgentCard from "@/components/agent-card";
-import LiveCanvas from "@/components/live-canvas";
 import CombinedView from "@/components/combined-view";
-import { emitLiveEvent } from "@/lib/live-events.js";
+import LiveCanvas from "@/components/live-canvas";
+import LiveStatus from "@/components/live-status";
+import { emitLiveEvent, subscribeLiveEvent } from "@/lib/live-events.js";
+import { createSignal } from "@/lib/signals.js";
+import { useLiveState } from "@/lib/use-live-state.js";
 
 async function fetchJson(path) {
   const response = await fetch(path);
@@ -58,6 +65,36 @@ export default function Home() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  // Engine signal (live-agent section only): one client-side
+  // signal holding the engine snapshot, fed by /api/engine-object
+  // (the server's single engine object, current state on every
+  // call) and by the client live-event bus. Components below
+  // subscribe to it and re-render on state change only — no
+  // polling, no refresh re-render. Honest boundary: there is no
+  // server push (no SSE/WebSocket); across HTTP, the next route
+  // call returns the same engine object's current state.
+  const [engineSignal] = useState(() => createSignal(null));
+  const engineSnapshot = useLiveState(engineSignal, null);
+  const [engineError, setEngineError] = useState("");
+  const loadEngine = useCallback(async () => {
+    try {
+      const body = await fetchJson("/api/engine-object");
+      const state = body.state ?? {};
+      engineSignal.set({
+        id: "engine",
+        activity: state.activity ?? "idle",
+        agents: state.agents ?? {},
+        goals: state.goals ?? {},
+        calls: state.calls ?? [],
+        tools: body.tools ?? [],
+        artifact: state.artifact ?? null,
+        elementStrings: body.elementStrings ?? {},
+        prompt: body.prompt ?? "",
+      });
+    } catch (err) {
+      setEngineError(err.message);
+    }
+  }, [engineSignal]);
   const loadSnapshot = useCallback(async () => {
     try {
       const [engine, tools, artifact, agent, soul] = await Promise.all([
@@ -83,6 +120,48 @@ export default function Home() {
     loadSnapshot();
   }, [loadSnapshot]);
 
+  useEffect(() => {
+    loadEngine();
+  }, [loadEngine]);
+
+  // Live-event bus feeds the engine signal's activity, so the
+  // status indicator moves during a chat turn without a refetch.
+  // The bus carries no server state: it only flips the activity
+  // word on the snapshot this section already holds.
+  // Milestone 2: goal:/agent: events are NOT dropped anymore
+  // (the bus now accepts them — see src/lib/live-events.js).
+  // Canonical reactivity for the live-agent section is still
+  // the state-based engine signal itself; a goal:/agent: event
+  // triggers a route refetch into that signal (loadEngine),
+  // which is a refetch-on-event, never a server push.
+  useEffect(() => {
+    const offs = [
+      subscribeLiveEvent("llm:start", () =>
+        engineSignal.set((prev) =>
+          prev ? { ...prev, activity: "llm" } : prev,
+        ),
+      ),
+      subscribeLiveEvent("llm:end", () =>
+        engineSignal.set((prev) =>
+          prev ? { ...prev, activity: "idle" } : prev,
+        ),
+      ),
+      subscribeLiveEvent("llm:error", () =>
+        engineSignal.set((prev) =>
+          prev ? { ...prev, activity: "error" } : prev,
+        ),
+      ),
+      subscribeLiveEvent("goal:phase", () => loadEngine()),
+      subscribeLiveEvent("agent:spawn", () => loadEngine()),
+      subscribeLiveEvent("agent:report", () => loadEngine()),
+    ];
+    return () => {
+      for (const off of offs) {
+        off();
+      }
+    };
+  }, [engineSignal, loadEngine]);
+
   async function send() {
     const text = input.trim();
     if (!text || loading || !live?.hasDefault) {
@@ -102,33 +181,44 @@ export default function Home() {
       detail: "Model call — drafting the reply…",
     });
     try {
-      const response = await fetch("/api/chat", {
+      // Harness entry (Milestone 2): the request goes to the
+      // harness, which creates one goal and passes it to the
+      // developer; the reply shown is the developer's report.
+      // The legacy single-turn /api/chat route is not used here.
+      const response = await fetch("/api/harness", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: nextMessages }),
+        body: JSON.stringify({ request: text }),
       });
       const body = await response.json();
       if (!response.ok) {
-        throw new Error(body.error ?? "chat request failed");
+        throw new Error(body.error ?? "harness request failed");
       }
       setMessages([
         ...nextMessages,
-        { id: crypto.randomUUID(), role: "assistant", content: body.reply },
+        { id: crypto.randomUUID(), role: "assistant", content: body.report },
       ]);
       emitLiveEvent("llm:end", {
         detail: "Model call finished — reply received.",
       });
+      emitLiveEvent("agent:report", {
+        detail: "Developer reported back.",
+      });
+      // The harness run changed the engine object's goal/agents
+      // state: refresh the engine signal from /api/engine-object
+      // so card, canvas, and status show exactly the new state.
+      await loadEngine();
     } catch (err) {
       setError(err.message);
       emitLiveEvent("llm:error", {
         reason: err.message,
-        detail: `LLM call failed: ${err.message}`,
+        detail: `Harness run failed: ${err.message}`,
       });
     } finally {
       setLoading(false);
-      // Deliberately no loadSnapshot() here: the bus already
-      // updated the live view. A refetch after a reply would
-      // be the old fetch/manual pattern this view replaces.
+      // Deliberately no loadSnapshot() here: the legacy panels
+      // keep their fetch-once state; the live-agent section is
+      // refreshed via loadEngine() above, not via the old path.
     }
   }
 
@@ -168,6 +258,15 @@ export default function Home() {
         )}
         {loadError && <p className="text-sm text-red-600">{loadError}</p>}
 
+        {/* LEGACY PATH (marked, not silently divergent): the
+          CombinedView panels below still fetch
+          /api/engine|tools|artifact|agent|soul once into React
+          state (snapshot-then-events), and the old single-turn
+          /api/chat route is legacy too. Neither is the harness
+          path: send() above posts to /api/harness, and the
+          live-agent section below it is the engine-twin path:
+          it subscribes to the engine signal, not to a second
+          fetched copy. */}
         <CombinedView
           live={live}
           soul={soulData}
@@ -183,47 +282,26 @@ export default function Home() {
           liveLoading={liveLoading}
         />
 
-        {/* Live agent section (new): the card and the canvas below
-          render from the SAME snapshot object built from the data
-          already fetched above — no new fetch, no hardcoded panels.
-          The existing chat and snapshot sections above are untouched. */}
-        {!liveLoading && (agentData || toolsData || artifactData) && (
+        {/* Live agent section (engine-twin path): card, canvas,
+          and status all render from the SAME engine signal
+          snapshot — the server's single engine object, via
+          /api/engine-object — not from a second fetched copy.
+          No new fetch, no hardcoded panels. If the engine does
+          not load, this section says so instead of rendering a
+          divergent copy from the legacy chat data above. */}
+        {engineError && (
+          <p className="text-sm text-red-600">
+            Engine live section unavailable: {engineError}
+          </p>
+        )}
+        {engineSnapshot && (
           <div className="flex flex-col gap-6">
             <p className="text-sm text-zinc-600 dark:text-zinc-400">
-              Live agent — card and canvas from one snapshot.
+              Live agent — card, canvas, and status from one engine signal.
             </p>
-            <AgentCard
-              snapshot={{
-                id: "dashboard",
-                activity: loading ? "llm" : "idle",
-                agents: agentData?.agent
-                  ? [
-                      {
-                        name: agentData.agent.name ?? agentData.agent.id ?? "agent",
-                        status: loading ? "working" : "idle",
-                      },
-                    ]
-                  : [],
-                tools: (toolsData?.tools ?? []).map((t) => t.name ?? t),
-                artifact: artifactData?.artifact ?? null,
-              }}
-            />
-            <LiveCanvas
-              snapshot={{
-                id: "dashboard",
-                activity: loading ? "llm" : "idle",
-                agents: agentData?.agent
-                  ? [
-                      {
-                        name: agentData.agent.name ?? agentData.agent.id ?? "agent",
-                        status: loading ? "working" : "idle",
-                      },
-                    ]
-                  : [],
-                tools: (toolsData?.tools ?? []).map((t) => t.name ?? t),
-                artifact: artifactData?.artifact ?? null,
-              }}
-            />
+            <LiveStatus signal={engineSignal} />
+            <AgentCard snapshot={engineSnapshot} />
+            <LiveCanvas snapshot={engineSnapshot} />
           </div>
         )}
       </main>

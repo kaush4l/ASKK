@@ -1,11 +1,15 @@
 // Models — separate view, not a dashboard section.
-// Renders providers from the desk snapshot on load: saved ones only,
-// no built-ins, no defaults to fill a void. Empty state if none added.
-// Use/Test/Edit/Delete now work against the /api/models action route
-// (providers.js actions): Test is mocked server-side, no real model
-// call, no CLI. Use sets the default in the snapshot object; when no
-// personal desk folder exists the route keeps it in memory for this
-// server process and says so plainly in its note.
+// Milestone 2: renders providers from GET /api/models — the
+// SINGLE live engine object's models store — not from a second
+// seed via /api/desk-snapshot (that drift path is removed from
+// this page). Saved ones only, no built-ins, no defaults to
+// fill a void. Empty state if none added.
+// Use/Test/Edit/Delete work against the /api/models action route
+// through the engine object: Test is mocked server-side, no real
+// model call, no CLI. Use sets the default in the engine's
+// models store; when no personal desk folder exists the route
+// keeps it in memory for this server process and says so plainly
+// in its note.
 "use client";
 
 import { useEffect, useState } from "react";
@@ -18,15 +22,15 @@ export default function ModelsPage() {
   const [editLabel, setEditLabel] = useState("");
   const [editModel, setEditModel] = useState("");
   useEffect(() => {
-    fetch("/api/desk-snapshot?agent=developer")
+    fetch("/api/models")
       .then(async (r) => {
         const body = await r.json();
-        if (!r.ok) throw new Error(body.error ?? "desk snapshot failed");
+        if (!r.ok) throw new Error(body.error ?? "models failed");
         setData(body);
       })
       .catch((err) => setError(err.message));
   }, []);
-  const providers = data?.providers?.providers ?? [];
+  const providers = data?.providers ?? [];
   async function act(action, id, patch) {
     setError("");
     setNotice("");
@@ -41,7 +45,8 @@ export default function ModelsPage() {
       if (Array.isArray(body.providers)) {
         setData((prev) => ({
           ...prev,
-          providers: { ...(prev?.providers ?? {}), providers: body.providers },
+          providers: body.providers,
+          defaultId: body.defaultId ?? prev?.defaultId ?? null,
         }));
       }
       setNotice(

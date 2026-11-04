@@ -29,6 +29,19 @@
 //     //   error red, waiting amber, idle grey, running emerald
 //     //   pulse). No new colour is added here.
 
+// Milestone 2: extended with the engine signal types. The
+// server-side live-state bus (src/core/live-state.js) already
+// carried goal:/agent: events, but this client bus validated
+// against a fixed list without them — so a goal:/agent: event
+// emitted on this bus was refused as "unknown" and dropped.
+// That gap is closed here: the bus now accepts every engine
+// signal type (llm:, tool:, goal:, agent:, artifact:, run:,
+// compaction), with a state mapping for each. Canonical bus
+// for the live-agent section is still the state-based signal
+// (src/lib/signals.js, fed by /api/engine-object); this bus is
+// kept for the legacy chat flow only, and now forwards
+// goal:/agent: events to a route refetch (page.js) instead of
+// dropping them. No SSE/WebSocket is claimed for either bus.
 export const LIVE_EVENT_TYPES = Object.freeze([
   "llm:start",
   "llm:end",
@@ -39,6 +52,15 @@ export const LIVE_EVENT_TYPES = Object.freeze([
   "run:error",
   "run:waiting",
   "run:idle",
+  "tool:start",
+  "tool:end",
+  "tool:error",
+  "goal:phase",
+  "goal:complete",
+  "agent:spawn",
+  "agent:report",
+  "agent:dismiss",
+  "compaction",
 ]);
 
 const EVENT_STATE = Object.freeze({
@@ -95,6 +117,60 @@ const EVENT_STATE = Object.freeze({
     face: "idle",
     glow: "grey",
     status: "Idle — ready when you are.",
+  },
+  "tool:start": {
+    phase: "tool",
+    face: "tool",
+    glow: "violet",
+    status: "Calling tool…",
+  },
+  "tool:end": {
+    phase: "tool",
+    face: "tool",
+    glow: "violet",
+    status: "Tool call finished.",
+  },
+  "tool:error": {
+    phase: "error",
+    face: "error",
+    glow: "red",
+    status: "Error — tool call failed.",
+  },
+  "goal:phase": {
+    phase: "tool",
+    face: "tool",
+    glow: "violet",
+    status: "Goal phase changed.",
+  },
+  "goal:complete": {
+    phase: "success",
+    face: "success",
+    glow: "emerald",
+    status: "Success — goal complete.",
+  },
+  "agent:spawn": {
+    phase: "tool",
+    face: "tool",
+    glow: "violet",
+    status: "Agent spawned.",
+  },
+  "agent:report": {
+    phase: "success",
+    face: "success",
+    glow: "emerald",
+    status: "Agent reported back.",
+  },
+  "agent:dismiss": {
+    phase: "idle",
+    face: "idle",
+    glow: "grey",
+    status: "Agent dismissed.",
+  },
+  compaction: {
+    phase: "waiting",
+    face: "waiting",
+    glow: "amber",
+    status: "Compacting history…",
   },
 });
 

@@ -1,16 +1,33 @@
-// POST /api/chat — server proxy for one chat turn.
+// POST /api/chat — LEGACY single-turn path, kept for
+// single-turn compatibility only. It is NOT the harness chain:
+// it makes exactly one model call and returns one reply, with
+// no goal.create, no developer, no plan -> execute -> critique.
+// The primary entry is POST /api/harness (harness -> goal ->
+// developer -> complete -> report back), and the dashboard chat
+// (src/app/page.js send()) uses /api/harness, not this route.
+// This route is deliberately NOT removed yet because external
+// single-turn callers may still use it; it must not be mistaken
+// for the success-criterion path. See PR.md Milestone 2.
+// Server proxy for one chat turn.
 // Body: { inferenceId?, endpoint?, apiKey?, model?, messages }.
-// Instructions are NOT accepted from the client. The desk is always
-// loaded from personal/ on the server (instructions.md + model.json
-// + .env, re-read on every request, so editing them takes effect
-// without a restart). Resolution: an explicit inferenceId, else an
-// explicit endpoint+model one-off, else the desk default (the first
-// entry in personal/model.json). If no model is configured at all,
-// chat() throws a clear "no model configured" error instead of
-// inventing one. Returns { reply }.
+// Instructions are NOT accepted from the client. The prompt is
+// rendered from the SINGLE engine object (getEngineObject):
+// engine.renderPrompt() — the same ordered elements the UI
+// shows — so what the model reads and what the UI shows are one
+// object, not two lists. (The old path sent only instructions +
+// history, which is exactly how the model could answer "what
+// tools do you have" generically while the card showed Tools.)
+// The engine object is cached per server process: a second tab
+// or reload sees the same object, not a fresh desk. That also
+// means desk config edits take effect on server restart, not
+// per request — the singleton trade-off, stated plainly.
+// Resolution: an explicit inferenceId, else an explicit
+// endpoint+model one-off, else the desk default (the first entry
+// in personal/model.json). If no model is configured at all,
+// askEngine() throws a clear "no model configured" error instead
+// of inventing one. Returns { reply } — shape unchanged.
 
-import { createDesk } from "@/core/desk.js";
-import { chat } from "@/core/engine.js";
+import { askEngine, getEngineObject } from "@/core/engine-object.js";
 import { createInference } from "@/core/inference.js";
 
 export async function POST(request) {
@@ -30,7 +47,8 @@ export async function POST(request) {
     );
   }
   try {
-    const desk = createDesk("personal");
+    const engine = getEngineObject("personal");
+    const desk = engine.desk;
     let inference = desk.defaultInference;
     if (typeof body?.inferenceId === "string" && body.inferenceId !== "") {
       inference = desk.inferences.find(
@@ -54,9 +72,8 @@ export async function POST(request) {
         model: body.model,
       });
     }
-    const reply = await chat(desk.engine, {
+    const { reply } = await askEngine(engine, {
       inference,
-      inferences: desk.inferences,
       messages: body.messages,
     });
     return Response.json({ reply });
