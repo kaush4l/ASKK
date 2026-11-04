@@ -118,6 +118,21 @@ export function createAgent(input = {}, caller = {}, opts = {}) {
   // validateSpawn already checked the subset against caller.tools;
   // re-check explicitly so the refusal names the rule.
   validateToolsSubset(input.tools, caller.tools ?? []);
+  // Narrowed tools, enforced: a subagent never gets ALL of the
+  // caller's tools. Equality with the caller's full set is
+  // refused (the single-tool caller is the one exception: when
+  // the caller holds exactly one tool, giving that tool is
+  // narrowing to everything the caller has, and refusing it
+  // would make single-tool delegation impossible).
+  const callerTools = caller.tools ?? [];
+  if (
+    callerTools.length > 1 &&
+    callerTools.every((tool) => input.tools.includes(tool))
+  ) {
+    throw new Error(
+      "spawn refused: a subagent never gets all caller tools — narrow the tool subset",
+    );
+  }
   if (input.lanes) {
     validateLanesSubset(input.lanes, caller.lanes ?? caller.reads ?? []);
   }

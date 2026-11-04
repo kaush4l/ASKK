@@ -38,6 +38,31 @@ import { parseReply } from "./toon.js";
 export const MAX_STEPS = 12;
 export const COMPACTION_THRESHOLD = 0.9;
 
+// Owner guidance channel — the "guide" side of the typing-icon
+// UI. guide(text) holds guidance for exactly ONE next step;
+// take() returns it and consumes it, so guidance sent mid-run
+// is seen at the next step and never repeated. The loop records
+// consumed guidance in its history. A channel with nothing
+// pending returns null from take() and peek().
+export function createGuidanceChannel() {
+  let pending = null;
+  return {
+    guide: (text) => {
+      if (typeof text !== "string" || text.trim() === "") {
+        throw new Error("guide needs guidance text");
+      }
+      pending = text;
+      return pending;
+    },
+    take: () => {
+      const text = pending;
+      pending = null;
+      return text;
+    },
+    peek: () => pending,
+  };
+}
+
 export function createStopSignal() {
   const signal = { stopped: false };
   signal.stop = () => {
@@ -129,6 +154,7 @@ export async function runLoop({
   live = null,
   requireChecks = false,
   runState = null,
+  guidance = null,
 } = {}) {
   if (!inference || typeof inference.infer !== "function") {
     throw new Error("loop needs an inference with infer(messages)");
@@ -216,6 +242,26 @@ export async function runLoop({
     }
     await compactIfNeeded();
     step += 1;
+    // Owner guidance, consumed exactly once: held guidance is
+    // injected as a system message at this step's start, recorded
+    // in history, and never re-injected at a later step, because
+    // take() clears it. Guidance received after this check waits
+    // for the next step's check.
+    if (guidance && typeof guidance.take === "function") {
+      const guided = guidance.take();
+      if (guided !== null && guided !== undefined) {
+        const guidanceMessage = {
+          role: "system",
+          content: `Owner guidance: ${guided}`,
+        };
+        messages.push(guidanceMessage);
+        history.push(`guidance: ${guided}`);
+        if (live && typeof live.appendHistory === "function") {
+          live.appendHistory(`guidance: ${guided}`);
+        }
+        emit("guidance", { step, text: guided });
+      }
+    }
     emit("llm:start", { step, phase: phase?.id ?? null });
     const replyText = await inference.infer(messages);
     emit("llm:end", { step });

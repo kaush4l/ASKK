@@ -771,3 +771,52 @@ a goal carried a phases statement:
   edit of a named path is NOT gitignore-filtered, only safety-refused
   (.env, .git, .mcp.json). Gitignored files are never loaded into the
   file artifact through a view.
+
+## Lifecycles — defined, configuration-based (2026-11-04)
+
+Every element type has a defined default lifecycle, and
+lifecycles are configuration, not engine code. The canonical
+registry is `src/core/lifecycles.js` (`defineElementLifecycle`,
+`runLifecycle`, `runLifecycleSequence`, `removeElementLifecycle`).
+The engine (`src/core/engine-object.js`) runs hooks from
+configuration; it holds no `switch(type)` branches, and neither
+does the loop — the loop emits tool events, and the engine runs
+lifecycles from them via the `TOOL_ELEMENT_KIND` table
+(artifact-affecting file tools → `live-artifact`, everything
+else → `function`). A new element type runs with no engine
+change (tested with a test-only `"note"` type); removing its
+definition removes its lifecycle.
+
+Completeness rule: a live-artifact call that only returns a
+value, without updating state + view + prompt, is INCOMPLETE by
+definition. `engine.applyArtifactCall()` runs the full lifecycle
+and returns the completeness report; `artifactCallComplete()` is
+the predicate and `assertArtifactCallComplete()` rejects an
+incomplete call.
+
+UI priority — live state never missed: `lifecycleTwins(engine)`
+in `src/core/ui-data.js` gives every lifecycle type a UI twin
+(data-level; the JSX stays simple on purpose). The test iterates
+the registry, mutates each type's state through its lifecycle,
+and asserts the twin reflects exactly that change immediately,
+with no refetch or sync step; a registered type with no twin
+key fails the test by design.
+
+Signal boundary (honest): the signal chain is in-process.
+Across HTTP there is no server push (no SSE/WebSocket); the
+next route call returns the same engine object's current state.
+
+| element | lifecycle steps | what triggers the next step | what is recorded | what the UI shows | what the prompt sees |
+|---|---|---|---|---|---|
+| function tool call | call → run → return → record → next-step | loop stage runs the call; result returns; record step runs | `tool call:` + `tool result recorded:` in history; trace entry | calls list: stable id, status, partial, parallel group | tools element (specs, unchanged by the call) |
+| live artifact | call → update-state → render-view → re-render-prompt → record | artifact tool called; state updated; view refreshed; prompt re-rendered; record step | `artifact call:` + `artifact updated:` in history; state + signal + prompt all changed (else incomplete) | artifact twin: open, focus, modified; artifact element string | artifact element with the NEW open/focus/modified |
+| soul | load → render → version-change | desk load; render; a new soul element set (version change) | load is a fact, not history; version change re-renders | soul element string | soul element (stable mid-run unless version changes) |
+| instructions | load → render → phase-change | desk load; render; phase change re-renders | phase-change refresh (no history rewrite) | instructions element string | YOU ARE element, current phase's instructions via phase line |
+| history | append → clip | every record appends; compaction clips at 90% ctx | append-only entries; clip recorded as `history clipped by compaction` | history entries (goal-clipped in context) | goal-clipped history segment |
+| goal | create → plan → execute → critique → report-back → complete | one goal.create; developer internal phases; report; done status | `goal create/phase/report-back/complete` in history; snapshots at transitions; trace entries | goals list: statement, status, steps | goal is a harness/engine property; request + work-done elements carry its statement/steps |
+| subagent | spawn → quest → report → ask → dismiss → update | spawn; work; report/ask channel; dismiss/update | `agent spawned/reported/...` in history; trace entries; report in both histories | agents list: name, status, phase, goal | agents are not a prompt segment; their work reaches the prompt via artifact/history |
+| watcher | subscribe → event → notify → halt | watcher subscribed; watched event fires; notify; halt rule | `watcher subscribed/event/notified/halted` in history | watchers list (names, status; empty = none) | watchers are desk-reader data, not an engine prompt segment |
+| script | sequence → done | on-demand trigger; commands run; done notification | `script sequence/done` in history | scripts list (names; shared + agent, agent wins) | scripts are desk-reader data, not an engine prompt segment |
+| skill-phase | entry-gate → run → exit-gate → handoff | phase entry gate; run with phase tools; exit gate; handoff packet | phase transitions; gate results in phase results | phases list: id, duty, status | current-phase instructions + phase tools (via runPhase narrowing) |
+| model call | infer → record-timings → update-meter | infer called; timings/counts recorded; meter refreshed | `model call/timings recorded` in history; llm events in event log | activity word (thinking/tool call/working/idle), llm events | prompt meter segments summing exactly to prompt length |
+| snapshot | deep-copy → store | transition (status/phase change); copy stored, never mutated after | `snapshot stored` in history; snapshot file (restart) | snapshot count + latest reason (goal snapshots) | snapshots are history, not prompt text |

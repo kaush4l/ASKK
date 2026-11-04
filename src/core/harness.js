@@ -9,9 +9,12 @@
 //   3. Pass that goal to the right executing agent (the developer,
 //      first) and return the developer's report to the owner.
 // The harness does NOT plan, does NOT write phases into the goal,
-// and does NOT choose the executing agent's tools beyond spawn
-// lanes (the developer's tools are the kernel tools narrowed by
-// the developer's own internal phases, per phase, in the loop).
+// and does NOT give the developer all tools: at spawn it passes
+// the goal plus the RULES — the curated developer tool subset
+// from memory/developer.agent.md (a strict subset of the kernel
+// tools), lanes, gates, and soul reference — on agent.rules.
+// The developer's tools are narrowed per internal phase by the
+// loop on top of that subset.
 //
 // The developer owns its loop internally (spawn.js):
 // plan -> execute -> critique, looping back to plan/execute on
@@ -31,10 +34,10 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
-import { renderContext, selectContext } from "./context.js";
 import { createCoreTools } from "./core-tools.js";
+import { parseAgentFile } from "./desk-reader.js";
+import { createEngineObject } from "./engine-object.js";
 import { createGoal, loadGoalArtifact } from "./goal-artifact.js";
-import { createLiveState } from "./live-state.js";
 import { runPhase } from "./loop.js";
 import {
   createAgent,
@@ -115,37 +118,167 @@ export function loadGoalDefault({
   };
 }
 
+// Load a curated agent definition from memory files, personal
+// else public defaults — the SAME per-file fallback as the desk
+// reader, for <name>.agent.md + <name>.instructions.md +
+// <name>.tools.md. Returns null when no agent file exists at
+// all: a missing definition is an honest null, never an invented
+// agent. The tools list comes from the agent file's "- tools:"
+// line, split on commas; the instructions/tools files are text
+// for the agent, not registry tools.
+export function loadAgentDefinition(
+  name,
+  { personalDir = null, defaultsDir = null } = {},
+) {
+  const readCandidate = (rel) => {
+    const candidates = [];
+    if (personalDir) {
+      candidates.push(join(personalDir, "memory", rel));
+    }
+    if (defaultsDir) {
+      candidates.push(join(defaultsDir, "memory", rel));
+    }
+    candidates.push(join(process.cwd(), "public/defaults/memory", rel));
+    for (const file of candidates) {
+      try {
+        if (existsSync(file)) {
+          return { text: readFileSync(file, "utf8"), source: file };
+        }
+      } catch {
+        // Try the next candidate.
+      }
+    }
+    return null;
+  };
+  const agentFile = readCandidate(`${name}.agent.md`);
+  if (!agentFile) {
+    return null;
+  }
+  const meta = parseAgentFile(agentFile.text);
+  const instructions = readCandidate(`${name}.instructions.md`);
+  const toolsFile = readCandidate(`${name}.tools.md`);
+  return {
+    name,
+    role: meta.role ?? "",
+    goal: meta.goal ?? "",
+    tools: (meta.tools ?? "")
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean),
+    keep: meta.keep ?? "run",
+    instructions: instructions ? instructions.text.trim() : "",
+    instructionsSource: instructions ? instructions.source : null,
+    toolsText: toolsFile ? toolsFile.text.trim() : "",
+    toolsSource: toolsFile ? toolsFile.source : null,
+    agentFile: agentFile.text,
+    source: agentFile.source,
+    default: false,
+  };
+}
+
+// The default (harness/desk) agent, loaded from its curated
+// files. A short fallback LABELLED "default" only when the files
+// are missing everywhere — it carries no tools and no invented
+// instructions, so a missing definition can never silently act
+// as a curated one.
+export function loadDefaultAgent(opts = {}) {
+  return (
+    loadAgentDefinition("default", opts) ?? {
+      name: "default",
+      role: "",
+      goal: "",
+      tools: [],
+      keep: "desk",
+      instructions: "",
+      instructionsSource: null,
+      toolsText: "",
+      toolsSource: null,
+      agentFile: "",
+      source: null,
+      default: true,
+    }
+  );
+}
+
+export function loadDeveloperAgent(opts = {}) {
+  return loadAgentDefinition("developer", opts);
+}
+
 export function createHarness(desk, opts = {}) {
   if (!desk) {
     throw new Error("harness needs a desk");
   }
   const kernel = desk.tools ?? desk.coreTools?.tools ?? [];
   const kernelNames = kernel.map((t) => t.name);
-  const live =
-    opts.live ??
-    createLiveState({ location: desk.location ?? "desk", id: "harness" });
+  // The harness runs on the ONE engine object: its live state IS
+  // engine.state, and its prompts ARE engine.renderPrompt().
+  // An explicit opts.live is honoured by building the engine
+  // object on that live state, never by keeping a second state.
+  const engine = opts.engine ?? createEngineObject(desk, { live: opts.live });
+  const live = engine.state;
   const children = createChildrenRegistry();
   const harness = {
     desk,
+    engine,
     tools: kernel,
     kernelToolNames: kernelNames,
     live,
     children,
     goalCreateCalls: 0,
     goals: [],
+    history: [],
+    defaultAgent: loadDefaultAgent({
+      personalDir: desk.location ?? null,
+      defaultsDir: opts.defaultsDir ?? null,
+    }),
+    developerDefinition: loadDeveloperAgent({
+      personalDir: desk.location ?? null,
+      defaultsDir: opts.defaultsDir ?? null,
+    }),
   };
+  // Owner guidance channel: the engine's channel, shared with
+  // the loop. guide(text) is seen once at the next step, then
+  // consumed (see loop.js createGuidanceChannel).
+  harness.guide = (text) => engine.guide(text);
 
-  // Spawn the developer: tools are the kernel tools (the caller's
-  // lanes), narrowed per internal phase by the loop — never a
-  // harness-chosen tool list for the goal. keep "run" by default.
+  // Spawn the developer: tools are the CURATED developer subset
+  // from developer.agent.md, intersected with the kernel tools
+  // the caller actually holds — a strict subset, never all
+  // kernel tools (createAgent refuses an all-tools spawn).
+  // The developer also receives the RULES at spawn: its tool
+  // subset, lanes, gates (its internal phases), and soul
+  // reference — on agent.rules, not in the goal. keep "run" by
+  // default. A missing developer definition is refused plainly,
+  // never replaced by a generic template skin.
   harness.spawnDeveloper = (goal, { keep = "run" } = {}) => {
     const persona = developerPersona();
+    const definition = harness.developerDefinition;
+    if (!definition) {
+      throw new Error(
+        "developer agent definition not found: add memory/developer.agent.md (personal) or public/defaults/memory/developer.agent.md",
+      );
+    }
+    const tools = definition.tools.filter((tool) => kernelNames.includes(tool));
+    if (tools.length === 0) {
+      throw new Error(
+        "developer agent definition names no tools held by the caller",
+      );
+    }
+    const rules = {
+      tools,
+      lanes: ["**"],
+      gates: persona.internalPhases.map((phase) => ({
+        id: phase.id,
+        duty: phase.duty,
+      })),
+      soul: "desk soul (memory/soul.md, inherited, never copied)",
+    };
     const agent = createAgent(
       {
         name: "developer",
         goal: goal.statement,
-        role: persona.role,
-        tools: kernelNames,
+        role: definition.role || persona.role,
+        tools,
         keep,
         persona: "developer",
       },
@@ -153,9 +286,15 @@ export function createHarness(desk, opts = {}) {
       {
         onReport: (entry) => {
           live.appendHistory(`developer ${entry.channel}: ${entry.text}`);
+          harness.history.push(`report from developer: ${entry.text}`);
         },
       },
     );
+    agent.rules = rules;
+    agent.definition = {
+      name: definition.name,
+      source: definition.source,
+    };
     agent.internalPhases = persona.internalPhases.map((phase) => ({
       ...phase,
     }));
@@ -192,6 +331,7 @@ export function createHarness(desk, opts = {}) {
     const runState = { modified: [], checksPassed: false };
     const goalRegistry = [...kernel];
     loadGoalArtifact(goalRegistry, goal);
+    engine.setGoal(goal);
     const phaseResults = [];
     let attempts = 0;
     let done = false;
@@ -208,26 +348,19 @@ export function createHarness(desk, opts = {}) {
           goal: goal.id,
           currentPhase: phase.id,
         });
-        live.recordPhaseTransition({
+        engine.recordPhaseTransition({
           goal: goal.id,
           from: phaseResults.at(-1)?.phase ?? null,
           to: phase.id,
         });
         agent.history.push(`internal phase: ${phase.id}`);
-        const selection = selectContext(
-          {
-            soul: desk.soul ?? "",
-            tools: goalRegistry.map((t) => ({
-              name: t.name,
-              description: t.description,
-            })),
-            goal: goal.snapshot(),
-            history: goal.history,
-            phase,
-          },
-          { phase, goal: goal.snapshot() },
-        );
-        const { prompt } = renderContext(selection);
+        // The phase prompt IS the engine object's rendered
+        // elements, in insert order — the same object the UI
+        // shows. runPhase appends the phase line (id + duty),
+        // and narrows the registry to the phase's allowedTools.
+        // Owner guidance travels on the engine's guidance
+        // channel: the loop consumes it once, at the next step.
+        const prompt = engine.renderPrompt();
         const result = await runPhase(phase, {
           registry: goalRegistry,
           inference: model,
@@ -237,6 +370,7 @@ export function createHarness(desk, opts = {}) {
           live,
           runState,
           requireChecks: false,
+          guidance: engine.guidance,
         });
         // The phase's own exit gate, evaluated by the harness from
         // the phase result (the gate lives on the developer's
@@ -282,7 +416,15 @@ export function createHarness(desk, opts = {}) {
     harness.goalCreateCalls += 1;
     const goal = createGoal({ id: goalId, statement });
     harness.goals.push(goal);
-    live.setGoal(goal.id, goal.snapshot());
+    // Owner history, labelled separately from developer reports:
+    // "owner request:" here, "report from developer:" on report.
+    harness.history.push(`owner request: ${request.trim()}`);
+    engine.setRequest(request.trim());
+    engine.setGoal(goal);
+    engine.runLifecycle(
+      { kind: "goal" },
+      { step: "create", payload: { goal } },
+    );
     const developer = harness.spawnDeveloper(goal);
     const run = await harness.runDeveloper(developer, goal, { inference });
     const lastCritique = [...run.phaseResults]
@@ -292,10 +434,18 @@ export function createHarness(desk, opts = {}) {
       ? `Done: ${lastCritique?.result?.answer ?? "developer completed the goal."}`
       : `Needs review after ${run.attempts} attempt(s): critique did not pass.`;
     developer.report(reportText, "report");
+    engine.runLifecycle(
+      { kind: "goal" },
+      { step: "report-back", payload: { goal } },
+    );
     if (run.done) {
       goal.setStatus("done");
+      engine.runLifecycle(
+        { kind: "goal" },
+        { step: "complete", payload: { goal } },
+      );
     }
-    live.setGoal(goal.id, goal.snapshot());
+    engine.setGoal(goal);
     live.emit("agent:report", { agent: "developer", goal: goal.id });
     return {
       report: reportText,
@@ -306,7 +456,11 @@ export function createHarness(desk, opts = {}) {
         currentPhase: developer.currentPhase,
         internalPhases: developer.internalPhases.map((p) => p.id),
         history: developer.history,
+        rules: developer.rules,
+        tools: developer.tools,
+        definition: developer.definition,
       },
+      harnessHistory: [...harness.history],
       run,
     };
   };
