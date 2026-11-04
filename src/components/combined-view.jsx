@@ -963,7 +963,7 @@ export default function CombinedView({
               >
                 {showDetail
                   ? "Hide detail ↑"
-                  : "Show detail ↓ · Soul · Agent · History · Tools · Artifacts · Skills (card detail)"}
+                  : "Show detail ↓ · Soul · Instructions · Agent · History · Tools · Artifacts · Memory · Skills (card detail)"}
               </CollapsibleTrigger>
               <CollapsibleContent className="flex flex-col gap-2 px-1 py-3 text-sm">
                 <section>
@@ -1164,7 +1164,24 @@ export default function CombinedView({
                 <h2 className="text-sm font-semibold">Soul</h2>
                 <details open>
                   <summary className="cursor-pointer text-sm text-zinc-500">
-                    Instructions preview — click to collapse / expand
+                    Soul (soul.md) — who the agent is — click to collapse /
+                    expand
+                  </summary>
+                  <pre className="mt-2 whitespace-pre-wrap break-words text-sm">
+                    {soul?.soul ?? "—"}
+                  </pre>
+                  <p className="mt-1 text-xs text-zinc-500">
+                    Source: {soul?.soulSource ?? "public"}. Separate from
+                    Instructions below; no keys or absolute paths shown.
+                  </p>
+                </details>
+              </section>
+              <section>
+                <h2 className="text-sm font-semibold">Instructions</h2>
+                <details open>
+                  <summary className="cursor-pointer text-sm text-zinc-500">
+                    Instructions (instructions.md) — how it answers — click to
+                    collapse / expand
                   </summary>
                   <pre className="mt-2 whitespace-pre-wrap break-words text-sm">
                     {soul?.instructions ??
@@ -1172,8 +1189,9 @@ export default function CombinedView({
                       "—"}
                   </pre>
                   <p className="mt-1 text-xs text-zinc-500">
-                    Source: {soul?.source ?? "public"}. No keys or absolute
-                    paths shown.
+                    Source:{" "}
+                    {soul?.instructionsSource ?? soul?.source ?? "public"}.
+                    Shown as its own item, not folded into Soul.
                   </p>
                 </details>
               </section>
@@ -1240,6 +1258,43 @@ export default function CombinedView({
                       ? "none"
                       : modified.map((entry) => entry.path ?? entry).join(", ")}
                   </span>
+                </p>
+              </section>
+              <section>
+                <h3 className="text-sm font-semibold">Memory</h3>
+                <p className="text-sm">
+                  <b>Agent memory (persistent):</b> state + agent history,
+                  labelled separately from session chat history above.
+                </p>
+                <p className="text-sm">
+                  <b>State:</b> open: {openFiles.join(", ") || "none"} · focus:{" "}
+                  {focus ?? "none"} · modified:{" "}
+                  {modified.length === 0
+                    ? "none"
+                    : modified.map((entry) => entry.path ?? entry).join(", ")}
+                </p>
+                <p className="text-sm">
+                  <b>Agent history entries:</b>{" "}
+                  {agentHistory.length === 0
+                    ? "none yet (public template history is header-only, no fake entries)"
+                    : `${agentHistory.length} entr${agentHistory.length === 1 ? "y" : "ies"}`}
+                </p>
+                <ul className="flex flex-col gap-1 text-sm">
+                  {agentHistory.map((entry, index) => (
+                    <li key={`${entry.timestamp}-${entry.action}-${index}`}>
+                      <span className="text-zinc-500">
+                        {entry.timestamp ? `${entry.timestamp} · ` : ""}
+                        {entry.action}
+                        {entry.path ? ` · ${entry.path}` : ""}
+                        {entry.detail ? ` — ${entry.detail}` : ""}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-1 text-xs text-zinc-500">
+                  Source: personal memory when present, else the public template
+                  (empty state, no fake history). Writes go to personal only,
+                  never to public/defaults/.
                 </p>
               </section>
               <section>

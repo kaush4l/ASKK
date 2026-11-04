@@ -300,6 +300,10 @@ export function createDesk(
     location: process.cwd(),
     filesTool: core.files,
     personalBase: dir,
+    // Public memory template fallback, read-only: personal/
+    // memory/agent/default/ wins, else public/defaults/memory/
+    // agent/default/. Writes never go to public/defaults/.
+    defaultsBase: defaults,
   });
   const artifacts = [liveArtifact];
   // Default agent.md: personal/agent.md wins, else
@@ -312,9 +316,19 @@ export function createDesk(
     defaults,
   );
   parsedAgent.source = agentSource;
+  // agentTwin is now the runtime renderer: it fills the twin
+  // from the live desk (tools from the registry, soul from
+  // soul.md, memory from the live artifact), not from the file.
   const agent = agentTwin(parsedAgent, {
     defaultInference,
     source: agentSource,
+    engine,
+    inferences,
+    listTools,
+    listArtifacts: () => artifacts.map((artifact) => artifact.twin()),
+    liveArtifact,
+    artifacts,
+    location: dir,
   });
   const agents = [agent];
   return {
