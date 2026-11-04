@@ -474,3 +474,24 @@ artifact open list), PASS/FAIL per step, failures left
 visible. Verification feed/artifact entries are simulated
 (their details say "(verification)") — they are not real
 disk state, and no real model or tool is called.
+
+## Simulate agent — snapshots + replay
+
+`src/core/snapshot.js` (pure, no Node imports — the replay UI
+imports it) defines a snapshot: `{ id, at, deskTwin, messages,
+steps, progress, partial }`, with steps carrying thought (or
+null), calls, context (soul/tools versions, artifact state),
+activity, and counts. `src/core/snapshot-store.js` stores it
+under `personal/memory/agent/<id>/snapshots/<id>.json` (+ a .md
+summary), atomically, personal only, never public/defaults/.
+Routes: `GET /api/snapshots` (twins only, no keys/paths),
+`GET /api/snapshots/<id>` (full snapshot), `POST /api/snapshots`
+(take from the live desk). Replay UI:
+`src/components/snapshot-replay.jsx`, driven by the stored
+snapshot, not the live run. Honesty label per step ("Context at
+this step" vs "now — N later calls changed it since"). Not
+captured, labelled never invented: thinking without a thought
+field, terminal streams (only final lines as a tool result are
+replayable), model internal state (never captured), external
+changes after a step. Until the loop records steps, a snapshot
+replays messages only, with those labels.
