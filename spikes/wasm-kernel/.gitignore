@@ -1,6 +1,0 @@
-node_modules/
-host-rs/target/
-out/
-lane/
-probe/js/
-probe/*.wasm

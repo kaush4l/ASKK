@@ -1,4 +1,0 @@
-[test]
-# vendor/ folders (the repo's and each desk's) hold other projects' clean clones: their tests are theirs, not ASKK's.
-# memory/ holds each desk's checkpoints (copies of the tree, tests included: companion/capabilities/checkpoints.js).
-pathIgnorePatterns = ["**/vendor/**", "memory/**"]
