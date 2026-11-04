@@ -386,3 +386,91 @@ Everything else is for Kaushal to direct: how metadata expands, what
 other files live in the personal folder, streaming, persistence of
 chats, and any loop or tool-calling by the LLM — none of those are
 in this skeleton. Web tools are also deliberately absent for now.
+
+## Combined view + default agent.md (picked view-6)
+
+The main page is now the combined view
+(`src/components/combined-view.jsx`): dashboard overview (runs,
+LLM/tool/error counts, Recent runs, Desk overview) + companion
+card (SVG face, plain-language status, 4-up stats, live feed,
+Show detail toggle) + click-expand minimal dot detailed view
+(Soul, Agent, History session vs agent labelled separately,
+Tools 16 core / 0 web, Live Artifacts, Skills placeholder).
+The card's outline glows with the orb's state colour
+(`src/app/globals.css` `.combined-card[data-glow]`): idle grey
+dim, LLM sky 1.1s, tool violet 0.7s, waiting amber 2.2s, error
+red 0.45s, success emerald 1.4s; motion only while running,
+prefers-reduced-motion stops it. Expand is in place and shares
+state: the feed list renders in exactly one place (card when
+compact, expanded view when expanded), so expand/collapse
+preserves feed/stats exactly. The separate EngineLive /
+ToolsPanel / LiveArtifactPanel panels and the render-template
+DeskTemplate sections are superseded by this view (their files
+remain in the tree, but page.js no longer renders them).
+
+### Default agent.md
+
+`public/defaults/agent.md` is the shipped default, from the
+agent.md template: Soul (personal/instructions.md, fallback
+public/defaults/instructions.md), Model (desk default, first
+entry in personal/model.json, resolved at load, key NEVER
+written here), Tools (16 core: files.* 9 + terminal.* 7, no
+web), Live artifact (id default, project root,
+personal/memory/agent/default/state.md + history.md),
+Initialization (createDesk → load agent.md → createEngine →
+load core tools → create/load live artifact → twin).
+`src/core/agent-md.js` parses it by headings/lists
+(`parseAgentMd`), loads it with the personal/public fallback
+(`loadAgentMd`: personal/agent.md wins, else
+public/defaults/agent.md, else a built-in 16-tool default),
+and twins it (`agentTwin`: no keys — any key value in the file
+is dropped — no absolute paths, no .env content).
+`createDesk()` exposes `desk.agent` + `desk.listAgents()`
+(one agent, id default), and `GET /api/agent` returns that
+twin. The combined view's Agent section renders from
+desk.agent where it fits, without duplicating the engine twin.
+User-added agent.md saves go to personal/, never to
+public/defaults/ (this loader only reads; it never writes).
+
+### Live event-driven UI — what is event-driven in v1, what is NOT
+
+Event-driven in v1: the page takes ONE initial snapshot on
+load (/api/engine, /api/tools, /api/artifact, /api/agent,
+/api/soul), then the client live-event bus
+(`src/lib/live-events.js`, EventTarget-based, no new
+dependency) carries llm:start, llm:end, llm:error,
+artifact:open, artifact:expand, run:success, run:error,
+run:waiting, run:idle. The chat flow emits llm:start /
+llm:end / llm:error; the combined view subscribes and updates
+face, glow, status, stats and feed IMMEDIATELY on the event,
+with no manual refresh and NO refetch after a reply
+(page.js deliberately does not re-snapshot after send).
+Feed rows: one line first, detail on expand (inputs, result,
+artifact state after the call, honesty label "after this
+call" vs "now — N later calls changed it since"), stable
+call ids (`engine-call-combined-N`) shared by running and
+finished rows, failed steps stay visible marked with a plain
+reason, partial "N of 5 run tasks done" while a run is in
+progress (tasks: LLM plan, files.open, artifact expand,
+recovery, success).
+
+NOT yet: a server SSE stream. The bus is in-page only; a
+full page reload re-takes the snapshot, it does not replay a
+stream. Do not claim SSE for this view until that route is
+built. Also not here: loop/tool-calling (chat still
+single-turn, tools loaded/listed only), skills, web tools.
+
+### Verification test
+
+The combined view has a "Run verification" test control
+(labelled as such) + visible test-results panel. It resets to
+a clean state, then simulates the agent life cycle through
+the SAME bus and state the real chat uses (idle → LLM →
+files.open → artifact expand → terminal/build error →
+recovery → success → idle, plus expand/collapse preserving
+feed/stats) and asserts actual DOM/UI state after each step
+(face, glow, status, stats, feed rows, expanded/collapsed,
+artifact open list), PASS/FAIL per step, failures left
+visible. Verification feed/artifact entries are simulated
+(their details say "(verification)") — they are not real
+disk state, and no real model or tool is called.

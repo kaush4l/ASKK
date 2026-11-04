@@ -1,81 +1,86 @@
+// Home — the main screen is the chat, wrapped by the combined
+// view (picked view-6: dashboard overview + companion card with
+// orb glow outline + click-expand minimal dot detail).
+//
+// Live model, v1 — snapshot, then events, not refetches:
+//   - On load, one snapshot fetch each from /api/engine,
+//     /api/tools, /api/artifact, /api/agent and /api/soul.
+//   - After that, the chat flow emits live events on the client
+//     bus (src/lib/live-events.js: llm:start, llm:end, llm:error)
+//     and the combined view subscribes — face, glow, status,
+//     stats and feed update immediately on the event. There is
+//     deliberately NO refetch after a chat reply.
+//   - No server SSE stream is claimed here; that is a later step.
+//
+// The chat itself is unchanged in behaviour: one user query in,
+// one LLM reply out, no loop, no streaming. If no model is
+// present, the screen says so plainly and Send stays disabled.
+// The model picker is still removed (the models store is the
+// source of truth; an improved picker comes later). Server
+// routes for models/inferences still exist, unused by this UI.
+// No keys, no secrets: instructions always come from the desk
+// on the server (personal/ first, public/defaults/ fallback);
+// the client never sends them.
+//
+// The separate EngineLive / ToolsPanel / LiveArtifactPanel
+// panels are superseded by the combined view, which renders
+// their data in its dashboard, card, and expanded dot sections
+// (Agent from desk.agent, Tools, Live Artifacts, Soul, History).
+// The render-template DeskTemplate sections are likewise
+// superseded by this combined view — feature/render-template
+// is left alone for Kaushal to close, not rebased here.
 "use client";
 
-// Home — the main screen is the chat. Skeleton only: one user query in,
-// one LLM reply out, no loop, no streaming.
-//
-// The model picker has been removed from this screen: the models
-// store (personal/model.json, via the desk) is now the source of
-// truth, and the picker will be re-added improved later. The user
-// manages models in the file for now. If no model is present, the
-// screen says so plainly and Send stays disabled — it does not show
-// a picker. The server routes for models/inferences still exist,
-// they are just unused by this UI for now.
-//
-// The live engine object (src/components/engine-live.jsx) loads on
-// page load and refreshes after every chat reply, from GET
-// /api/engine: engine model id, provider, endpoint, instructions
-// preview, desk default status, inference count, and the session
-// message count. No keys, no secrets. Instructions always come from
-// the desk on the server (personal/ first, public/defaults/ as
-// fallback); the client never sends them.
-//
-// Live activity (src/core/activity.js, like the old UI): idle is
-// "no working", llm is shown while a /api/chat request is in
-// flight, error on failure, connecting while the live object loads,
-// no-model when the desk has no default. Tool, tools and waiting
-// are defined but never fire here — the chat does not invoke tools
-// yet. The Tools panel below (src/components/tools-panel.jsx,
-// GET /api/tools) shows the core tools the desk loads by default
-// (files.* + terminal.*, no web tools), expandable for details.
-// The Live artifact panel (src/components/live-artifact-panel.jsx,
-// GET /api/artifact) shows the default live artifact the desk
-// loads — its open files, focus, modified files, and history —
-// expandable per open file (preview) and per history entry.
 import { useCallback, useEffect, useState } from "react";
-import EngineLive from "@/components/engine-live";
-import LiveArtifactPanel from "@/components/live-artifact-panel";
-import ToolsPanel from "@/components/tools-panel";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { describeActivity, engineTone } from "@/core/activity.js";
-import { cn } from "@/lib/utils";
+import CombinedView from "@/components/combined-view";
+import { emitLiveEvent } from "@/lib/live-events.js";
+
+async function fetchJson(path) {
+  const response = await fetch(path);
+  const body = await response.json();
+  if (!response.ok) {
+    throw new Error(body.error ?? `${path} request failed`);
+  }
+  return body;
+}
 
 export default function Home() {
   const [live, setLive] = useState(null);
+  const [toolsData, setToolsData] = useState(null);
+  const [artifactData, setArtifactData] = useState(null);
+  const [agentData, setAgentData] = useState(null);
+  const [soulData, setSoulData] = useState(null);
   const [liveLoading, setLiveLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [activity, setActivity] = useState({ phase: "connecting" });
-  const [stats, setStats] = useState({ calls: 0, lastMs: null });
 
-  const loadLive = useCallback(async (keepActivity = false) => {
+  const loadSnapshot = useCallback(async () => {
     try {
-      const response = await fetch("/api/engine");
-      const body = await response.json();
-      if (!response.ok) {
-        throw new Error(body.error ?? "engine request failed");
-      }
-      setLive(body);
-      if (!keepActivity) {
-        setActivity(
-          body.hasDefault ? { phase: "idle" } : { phase: "no-model" },
-        );
-      }
+      const [engine, tools, artifact, agent, soul] = await Promise.all([
+        fetchJson("/api/engine"),
+        fetchJson("/api/tools"),
+        fetchJson("/api/artifact"),
+        fetchJson("/api/agent"),
+        fetchJson("/api/soul"),
+      ]);
+      setLive(engine);
+      setToolsData(tools);
+      setArtifactData(artifact);
+      setAgentData(agent);
+      setSoulData(soul);
     } catch (err) {
-      setError(err.message);
-      if (!keepActivity) {
-        setActivity({ phase: "error", error: err.message });
-      }
+      setLoadError(err.message);
     } finally {
       setLiveLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    loadLive();
-  }, [loadLive]);
+    loadSnapshot();
+  }, [loadSnapshot]);
 
   async function send() {
     const text = input.trim();
@@ -90,8 +95,11 @@ export default function Home() {
     setMessages(nextMessages);
     setInput("");
     setLoading(true);
-    setActivity({ phase: "llm" });
-    const started = Date.now();
+    // Live event, not a refetch: the combined view updates its
+    // face, glow, status, stats and feed on this event alone.
+    emitLiveEvent("llm:start", {
+      detail: "Model call — drafting the reply…",
+    });
     try {
       const response = await fetch("/api/chat", {
         method: "POST",
@@ -106,17 +114,20 @@ export default function Home() {
         ...nextMessages,
         { id: crypto.randomUUID(), role: "assistant", content: body.reply },
       ]);
-      setActivity({ phase: "idle" });
+      emitLiveEvent("llm:end", {
+        detail: "Model call finished — reply received.",
+      });
     } catch (err) {
       setError(err.message);
-      setActivity({ phase: "error", error: err.message });
+      emitLiveEvent("llm:error", {
+        reason: err.message,
+        detail: `LLM call failed: ${err.message}`,
+      });
     } finally {
-      setStats((prev) => ({
-        calls: prev.calls + 1,
-        lastMs: Date.now() - started,
-      }));
       setLoading(false);
-      await loadLive(true);
+      // Deliberately no loadSnapshot() here: the bus already
+      // updated the live view. A refetch after a reply would
+      // be the old fetch/manual pattern this view replaces.
     }
   }
 
@@ -135,85 +146,27 @@ export default function Home() {
           </a>
         </div>
 
-        <EngineLive
-          live={live}
-          messageCount={messages.length}
-          activity={activity}
-          stats={stats}
-        />
-
-        <ToolsPanel />
-
-        <LiveArtifactPanel />
-
-        {!liveLoading && live && !live.hasDefault && (
-          <p className="text-sm font-medium">
-            No model configured — add an entry to personal/model.json
+        {liveLoading && (
+          <p className="text-sm text-zinc-600 dark:text-zinc-400">
+            Connecting…
           </p>
         )}
+        {loadError && <p className="text-sm text-red-600">{loadError}</p>}
 
-        <section className="flex flex-1 flex-col gap-3">
-          {messages.length === 0 && (
-            <p className="text-zinc-600 dark:text-zinc-400">
-              Say something — the reply comes from the desk default model.
-            </p>
-          )}
-          {messages.map((message) => (
-            <div
-              key={message.id}
-              className={`max-w-[85%] rounded-xl px-4 py-2 text-sm leading-6 whitespace-pre-wrap ${
-                message.role === "user"
-                  ? "self-end bg-zinc-900 text-zinc-50 dark:bg-zinc-50 dark:text-zinc-900"
-                  : "self-start bg-white text-zinc-900 border border-zinc-200 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50"
-              }`}
-            >
-              {message.content}
-            </div>
-          ))}
-          {loading && (
-            <p className="text-sm text-zinc-600 dark:text-zinc-400">
-              Thinking…
-            </p>
-          )}
-          {error && <p className="text-sm text-red-600">{error}</p>}
-        </section>
-
-        <div className="flex gap-2">
-          <Input
-            value={input}
-            onChange={(event) => setInput(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault();
-                send();
-              }
-            }}
-            placeholder="Type a message"
-          />
-          <Button
-            onClick={send}
-            disabled={!input.trim() || loading || !live?.hasDefault}
-          >
-            Send
-          </Button>
-        </div>
-
-        {/* Thin status strip, like the old status bar but skeleton
-            simple: activity dot + text, model, and call stats. */}
-        <div className="flex items-center gap-2 border-t border-zinc-200 py-2 text-xs text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">
-          <span
-            aria-hidden
-            className={cn(
-              "size-2 shrink-0 rounded-full",
-              engineTone(activity).dot,
-            )}
-          />
-          <span aria-live="polite">{describeActivity(activity)}</span>
-          <span className="ml-auto">
-            {live?.defaultInference?.model ?? live?.engine?.model ?? "—"}
-            {stats.calls > 0 && ` · ${stats.calls}× · last ${stats.lastMs} ms`}
-          </span>
-        </div>
+        <CombinedView
+          live={live}
+          soul={soulData}
+          agent={agentData?.agent ?? null}
+          toolsData={toolsData}
+          artifactData={artifactData}
+          messages={messages}
+          input={input}
+          setInput={setInput}
+          onSend={send}
+          loading={loading}
+          error={error}
+          liveLoading={liveLoading}
+        />
       </main>
     </div>
   );
