@@ -33,6 +33,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import CombinedView from "@/components/combined-view";
+import SnapshotReplay from "@/components/snapshot-replay";
 import { emitLiveEvent } from "@/lib/live-events.js";
 
 async function fetchJson(path) {
@@ -56,6 +57,52 @@ export default function Home() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  // Snapshots (simulate agent) — minimal wiring only, no
+  // card/glow/dashboard redesign. The list is loaded on demand,
+  // replay is driven by a stored snapshot, never by the live run,
+  // and replaying writes nothing (see /api/snapshots routes).
+  const [snapshots, setSnapshots] = useState([]);
+  const [replay, setReplay] = useState(null);
+  const [snapshotError, setSnapshotError] = useState("");
+
+  async function loadSnapshots() {
+    try {
+      const data = await fetchJson("/api/snapshots");
+      setSnapshots(data.snapshots ?? []);
+    } catch (err) {
+      setSnapshotError(err.message);
+    }
+  }
+
+  async function takeSnapshot() {
+    setSnapshotError("");
+    try {
+      const response = await fetch("/api/snapshots", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages }),
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        throw new Error(body.error ?? "snapshot failed");
+      }
+      await loadSnapshots();
+    } catch (err) {
+      setSnapshotError(err.message);
+    }
+  }
+
+  async function openReplay(id) {
+    setSnapshotError("");
+    try {
+      const data = await fetchJson(
+        `/api/snapshots/${encodeURIComponent(id)}`,
+      );
+      setReplay(data.snapshot);
+    } catch (err) {
+      setSnapshotError(err.message);
+    }
+  }
 
   const loadSnapshot = useCallback(async () => {
     try {
@@ -167,6 +214,61 @@ export default function Home() {
           error={error}
           liveLoading={liveLoading}
         />
+
+        <section className="rounded-2xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+          <h2 className="text-base font-semibold">Snapshots — simulate agent</h2>
+          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+            Take a snapshot of the current conversation and desk state,
+            then replay it step by step. Replay shows the stored
+            snapshot, not the live run, and writes nothing. Until the
+            agent loop records thoughts and tool calls, a snapshot
+            replays messages only — thinking and tool calls are
+            labelled not captured, never invented.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={takeSnapshot}
+              className="rounded-full border border-zinc-300 px-4 py-2 text-sm"
+            >
+              Take snapshot
+            </button>
+            <button
+              type="button"
+              onClick={loadSnapshots}
+              className="rounded-full border border-zinc-300 px-4 py-2 text-sm"
+            >
+              List snapshots
+            </button>
+          </div>
+          {snapshotError && (
+            <p className="mt-2 text-sm text-red-600">{snapshotError}</p>
+          )}
+          {snapshots.length > 0 && (
+            <ul className="mt-3 flex flex-col gap-2 text-sm">
+              {snapshots.map((snap) => (
+                <li key={snap.id} className="flex items-baseline justify-between gap-4">
+                  <span>
+                    {snap.id} · {snap.at} · {snap.stepCount} steps ·{" "}
+                    {snap.progress}
+                    {snap.partial ? " · partial" : ""}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => openReplay(snap.id)}
+                    className="font-medium text-zinc-600 dark:text-zinc-400"
+                  >
+                    Replay
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        {replay ? (
+          <SnapshotReplay snapshot={replay} onClose={() => setReplay(null)} />
+        ) : null}
       </main>
     </div>
   );
