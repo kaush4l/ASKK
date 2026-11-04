@@ -88,6 +88,31 @@ export class Tool {
     if (run) {
       this._run = run;
     }
+    // Slice C: tool-call event listeners (tool:start/end/error).
+    // A tool twin subscribes here (see tool-artifact-twin.js);
+    // with no listeners this is a no-op and execution is
+    // unchanged. Listener errors never break the tool call.
+    this._toolListeners = new Set();
+  }
+
+  // Subscribe to tool:start / tool:end / tool:error events.
+  // Listener signature: (event, detail). Returns unsubscribe.
+  onToolEvent(listener) {
+    if (typeof listener !== "function") {
+      throw new Error("tool event listener must be a function");
+    }
+    this._toolListeners.add(listener);
+    return () => this._toolListeners.delete(listener);
+  }
+
+  emitToolEvent(event, detail = {}) {
+    for (const listener of [...this._toolListeners]) {
+      try {
+        listener(event, detail);
+      } catch {
+        // A twin update must never break the tool call it reports.
+      }
+    }
   }
 
   // Plain data for the UI and for /api/tools. No run function, no
@@ -115,7 +140,37 @@ export class Tool {
     if (!this._run) {
       throw new Error(`${this.name}: no run()`);
     }
-    return this._run(input ?? {}, ctx);
+    // Slice C: every tool call emits tool:start, then tool:end
+    // on success or tool:error on failure, so a subscribed tool
+    // twin updates from the event — no polling, no behaviour
+    // change to the result or the error itself.
+    const args = input ?? {};
+    const startedAt = Date.now();
+    this.emitToolEvent("tool:start", {
+      name: this.name,
+      args,
+      at: new Date().toISOString(),
+    });
+    try {
+      const result = await this._run(args, ctx);
+      this.emitToolEvent("tool:end", {
+        name: this.name,
+        args,
+        result,
+        duration: Date.now() - startedAt,
+        at: new Date().toISOString(),
+      });
+      return result;
+    } catch (error) {
+      this.emitToolEvent("tool:error", {
+        name: this.name,
+        args,
+        error: error?.message ?? String(error),
+        duration: Date.now() - startedAt,
+        at: new Date().toISOString(),
+      });
+      throw error;
+    }
   }
 }
 

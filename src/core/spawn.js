@@ -46,6 +46,11 @@ import {
   validateToolsSubset,
 } from "./placement.js";
 import { agentFileText, createTemplateAgentSkin } from "./template-skin.js";
+import {
+  AGENT_TWIN_DEFINITION,
+  createTwinFor,
+  removeTwin,
+} from "./kernel-twin.js";
 
 export const DEVELOPER_INTERNAL_PHASES = Object.freeze([
   {
@@ -137,6 +142,7 @@ export function createAgent(input = {}, caller = {}, opts = {}) {
     validateLanesSubset(input.lanes, caller.lanes ?? caller.reads ?? []);
   }
   const agent = {
+    id: validated.name,
     name: validated.name,
     goal: validated.goal,
     role: validated.role,
@@ -151,6 +157,15 @@ export function createAgent(input = {}, caller = {}, opts = {}) {
     children: [],
     reportChannel: [],
   };
+  // Agent twin, same id as the agent, created in the same call
+  // (kernel-twin.js AGENT_TWIN_DEFINITION: name, role,
+  // instructionsSource, toolNames, keep, lifecycle, status).
+  // Spawned agents run, so the twin walks to "running".
+  const twin = createTwinFor(agent, AGENT_TWIN_DEFINITION);
+  twin.transitionTo("initialized");
+  twin.transitionTo("idle");
+  twin.transitionTo("running");
+  agent.twin = twin;
   agent.report = (text, channel = "report") => {
     if (channel !== "report" && channel !== "ask") {
       throw new Error(
@@ -171,6 +186,7 @@ export function createAgent(input = {}, caller = {}, opts = {}) {
     if (typeof opts.onReport === "function") {
       opts.onReport(entry, agent);
     }
+    agent.twin?.emit("agent:report", entry);
     return entry;
   };
   agent.ask = (question) => agent.report(question, "ask");
@@ -215,6 +231,10 @@ export function createChildrenRegistry() {
       }
       children.delete(name);
       agent.status = "dismissed";
+      // Dismissing the kernel object removes its twin. Desk-kept
+      // agents above keep theirs: they persist, they are not
+      // dismissed (see D3 in kernel-twin.js).
+      removeTwin(name, "agent");
       return { removed: true, kept: false, agent };
     },
     update: (name, patch) => {
@@ -248,7 +268,8 @@ export function loadAgent(baseDir, name) {
     return null;
   }
   const meta = parseAgentFile(readFileSync(file, "utf8"));
-  return {
+  const agent = {
+    id: name,
     name,
     role: meta.role ?? "",
     goal: meta.goal ?? "",
@@ -263,6 +284,14 @@ export function loadAgent(baseDir, name) {
     memoryDir: `memory/agent/${name}`,
     status: "restored",
   };
+  // Restart re-creates the twin: loading the kernel file
+  // re-creates the agent, and that re-creation re-creates its
+  // twin (idle here — a restored agent is not running).
+  const twin = createTwinFor(agent, AGENT_TWIN_DEFINITION);
+  twin.transitionTo("initialized");
+  twin.transitionTo("idle");
+  agent.twin = twin;
+  return agent;
 }
 
 export function agentFileFor(agent) {

@@ -10,7 +10,10 @@
 //     and the combined view subscribes — face, glow, status,
 //     stats and feed update immediately on the event. There is
 //     deliberately NO refetch after a chat reply.
-//   - No server SSE stream is claimed here; that is a later step.
+//   - Server push across HTTP is now named: SSE at
+//     /api/engine-stream (see src/lib/component-transport.js),
+//     which feeds the agentRender signal; polling is only the
+//     fallback when EventSource is unavailable or errors.
 //
 // Milestone 2: the dashboard chat IS the harness entry now.
 // send() posts { request } to /api/harness (harness -> one
@@ -37,9 +40,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 import AgentCard from "@/components/agent-card";
+import AgentDashboardCanvas from "@/components/agent-dashboard-canvas";
 import CombinedView from "@/components/combined-view";
 import LiveCanvas from "@/components/live-canvas";
 import LiveStatus from "@/components/live-status";
+import { createComponentTransport } from "@/lib/component-transport.js";
 import { emitLiveEvent, subscribeLiveEvent } from "@/lib/live-events.js";
 import { createSignal } from "@/lib/signals.js";
 import { useLiveState } from "@/lib/use-live-state.js";
@@ -75,10 +80,25 @@ export default function Home() {
   // call returns the same engine object's current state.
   const [engineSignal] = useState(() => createSignal(null));
   const engineSnapshot = useLiveState(engineSignal, null);
+  // Agent render tree (Checkpoint 1): dashboard + canvas space,
+  // from /api/engine-object's agentRender field — the same engine
+  // object, rendered dynamically from what it holds. Nothing else
+  // on this page is removed or rewritten for it.
+  const [agentRender, setAgentRender] = useState(null);
+  // Agent render signal: the dashboard/canvas component
+  // subscribes to this signal itself (useLiveState) and
+  // re-renders when it changes. The component transport feeds
+  // it (SSE first, polling fallback); this page never asks the
+  // component to refetch the desk.
+  const [agentRenderSignal] = useState(() => createSignal(null));
   const [engineError, setEngineError] = useState("");
   const loadEngine = useCallback(async () => {
     try {
       const body = await fetchJson("/api/engine-object");
+      if (body.agentRender) {
+        setAgentRender(body.agentRender);
+        agentRenderSignal.set(body.agentRender);
+      }
       const state = body.state ?? {};
       engineSignal.set({
         id: "engine",
@@ -94,7 +114,7 @@ export default function Home() {
     } catch (err) {
       setEngineError(err.message);
     }
-  }, [engineSignal]);
+  }, [agentRenderSignal, engineSignal]);
   const loadSnapshot = useCallback(async () => {
     try {
       const [engine, tools, artifact, agent, soul] = await Promise.all([
@@ -123,6 +143,32 @@ export default function Home() {
   useEffect(() => {
     loadEngine();
   }, [loadEngine]);
+
+  // Component transport (component lifecycle completion): the
+  // agent render signal is fed by SSE first, polling fallback
+  // — the dashboard/canvas component subscribes to the signal
+  // itself and re-renders on change, without refetching the
+  // desk. This effect only feeds the signal; it never renders.
+  useEffect(() => {
+    const transport = createComponentTransport({
+      onTree: (tree) => {
+        if (tree) {
+          setAgentRender(tree);
+          agentRenderSignal.set(tree);
+        }
+      },
+      fetchTree: async () => {
+        try {
+          const body = await fetchJson("/api/engine-object");
+          return body.agentRender ?? null;
+        } catch {
+          return null;
+        }
+      },
+    });
+    const handle = transport.start();
+    return () => handle.stop();
+  }, [agentRenderSignal]);
 
   // Live-event bus feeds the engine signal's activity, so the
   // status indicator moves during a chat turn without a refetch.
@@ -302,6 +348,16 @@ export default function Home() {
             <LiveStatus signal={engineSignal} />
             <AgentCard snapshot={engineSnapshot} />
             <LiveCanvas snapshot={engineSnapshot} />
+            {/* Dynamic dashboard + canvas space (Checkpoint 1):
+              the agent sent to the screen, rendered from its own
+              render tree — no hardcoded panels here. The chat
+              above and the legacy panels are untouched. */}
+            {agentRender && (
+              <AgentDashboardCanvas
+                renderTree={agentRender}
+                signal={agentRenderSignal}
+              />
+            )}
           </div>
         )}
       </main>

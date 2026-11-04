@@ -126,6 +126,73 @@ export function createInference({
   return inference;
 }
 
+// Infer registry — infer methods chosen by identifier, never by
+// a hardcoded model and never by a silent default.
+//
+//   const registry = createInferRegistry();
+//   registry.register("my-method", async (messages) => "…");
+//   await registry.infer("my-method", messages);
+//
+// An unknown identifier throws plainly; a registry with no
+// methods returns NO default, it throws — an engine that asks
+// for an infer method it never registered has a configuration
+// error, not a fallback model. Duplicate identifiers are
+// refused. A method is any function taking messages and
+// returning a reply string (or a promise of one); how it calls
+// a model is the method's own business, not the registry's.
+export function createInferRegistry(methods = []) {
+  const byId = new Map();
+  const register = (id, fn) => {
+    if (typeof id !== "string" || id.trim() === "") {
+      throw new Error("infer registry needs a non-empty method identifier");
+    }
+    if (typeof fn !== "function") {
+      throw new Error(`infer method "${id}" needs a function`);
+    }
+    if (byId.has(id)) {
+      throw new Error(`infer registry already has a method named "${id}"`);
+    }
+    byId.set(id, fn);
+    return fn;
+  };
+  if (!Array.isArray(methods)) {
+    throw new Error("infer registry methods, when given, must be a list");
+  }
+  for (const entry of methods) {
+    if (!entry || typeof entry.id !== "string") {
+      throw new Error("infer registry method entries need an id");
+    }
+    register(entry.id, entry.infer ?? entry.fn);
+  }
+  return {
+    register,
+    has(id) {
+      return byId.has(id);
+    },
+    list() {
+      return [...byId.keys()];
+    },
+    get(id) {
+      const fn = byId.get(id);
+      if (!fn) {
+        throw new Error(
+          `no infer method named "${id}": register it by identifier first, no default is used`,
+        );
+      }
+      return fn;
+    },
+    async infer(id, messages) {
+      const fn = byId.get(id);
+      if (!fn) {
+        throw new Error(
+          `no infer method named "${id}": register it by identifier first, no default is used`,
+        );
+      }
+      return fn(messages);
+    },
+  };
+}
+
 // Standalone wrappers (no inference object yet).
 export async function listModels({ endpoint, apiKey, fetchImpl = fetch }) {
   return createInference({ endpoint, apiKey, fetchImpl }).listModels();

@@ -37,7 +37,7 @@ import { isAbsolute, join } from "node:path";
 import { createCoreTools } from "./core-tools.js";
 import { parseAgentFile } from "./desk-reader.js";
 import { createEngineObject } from "./engine-object.js";
-import { createGoal, loadGoalArtifact } from "./goal-artifact.js";
+import { createGoal, deliverGoal, loadGoalArtifact } from "./goal-artifact.js";
 import { runPhase } from "./loop.js";
 import {
   createAgent,
@@ -291,6 +291,11 @@ export function createHarness(desk, opts = {}) {
       },
     );
     agent.rules = rules;
+    // Slice B delivery: the executing agent receives the goal
+    // kernel + its artifact twin snapshot (deliverGoal), not
+    // just the raw owner request string on agent.goal.
+    agent.deliveredGoal = deliverGoal(goal);
+    agent.goalKernel = goal;
     agent.definition = {
       name: definition.name,
       source: definition.source,
@@ -332,6 +337,11 @@ export function createHarness(desk, opts = {}) {
     const goalRegistry = [...kernel];
     loadGoalArtifact(goalRegistry, goal);
     engine.setGoal(goal);
+    // Slice B: the goal is delivered to the developer as its
+    // artifact twin snapshot; the per-phase prompt carries it
+    // live (see loop.js), re-read at each phase, not snapshotted
+    // once here.
+    agent.deliveredGoal = deliverGoal(goal);
     const phaseResults = [];
     let attempts = 0;
     let done = false;
@@ -342,6 +352,11 @@ export function createHarness(desk, opts = {}) {
           continue;
         }
         agent.currentPhase = phase.id;
+        // Phase mirror only: the goal's singular `phase` field
+        // mirrors the developer's current internal phase for the
+        // artifact twin's display. The internal phases themselves
+        // stay on the developer record, never as a goal plan.
+        goal.setPhase(phase.id);
         live.setAgent("developer", {
           name: "developer",
           status: "running",
@@ -366,7 +381,9 @@ export function createHarness(desk, opts = {}) {
           inference: model,
           prompt,
           phase,
-          goal: goal.snapshot(),
+          // Live kernel, not a snapshot copy: runLoop renders
+          // the artifact twin snapshot at call time, per phase.
+          goal,
           live,
           runState,
           requireChecks: false,
@@ -390,6 +407,12 @@ export function createHarness(desk, opts = {}) {
           break; // critique ends the attempt: pass -> done, fail -> loop back
         }
       }
+      // Critique loop-back, recorded on the goal artifact twin
+      // (attempts++, goal:loop-back event, file rewrite) only
+      // when another attempt will actually run.
+      if (!done && attempts < maxAttempts) {
+        goal.recordLoopBack();
+      }
     }
     agent.currentPhase = "done";
     live.setAgent("developer", {
@@ -412,9 +435,18 @@ export function createHarness(desk, opts = {}) {
       defaultsDir: opts.defaultsDir ?? null,
     });
     const statement = `${request.trim()}\n\nDefault goal: ${goalDefault.text}`;
-    // Exactly one goal.create call, statement only.
+    // Exactly one goal.create call, statement only. Slice B:
+    // the desk location is the personal dir, so the goal file
+    // is written immediately to <desk.location>/memory/goals/
+    // and on every later mutation; without a desk location no
+    // file is invented (see goal-artifact.js D-B1).
     harness.goalCreateCalls += 1;
-    const goal = createGoal({ id: goalId, statement });
+    const goal = createGoal(
+      { id: goalId, statement },
+      typeof desk.location === "string" && desk.location !== ""
+        ? { personalDir: desk.location }
+        : {},
+    );
     harness.goals.push(goal);
     // Owner history, labelled separately from developer reports:
     // "owner request:" here, "report from developer:" on report.
@@ -438,18 +470,29 @@ export function createHarness(desk, opts = {}) {
       { kind: "goal" },
       { step: "report-back", payload: { goal } },
     );
+    // Report first, then status: the artifact twin's report
+    // field and its lifecycle both update, via events, and the
+    // goal file is rewritten for each. A failed run is
+    // needs-review, not silently left "open".
+    goal.setReport(reportText);
     if (run.done) {
       goal.setStatus("done");
       engine.runLifecycle(
         { kind: "goal" },
         { step: "complete", payload: { goal } },
       );
+    } else {
+      goal.setStatus("needs-review");
     }
     engine.setGoal(goal);
     live.emit("agent:report", { agent: "developer", goal: goal.id });
+    const deliveredFinal = deliverGoal(goal);
     return {
       report: reportText,
       goal: goal.snapshot(),
+      goalTwin: deliveredFinal.snapshot,
+      goalElement: deliveredFinal.element,
+      deliveredGoal: deliveredFinal,
       goalCreateCalls: harness.goalCreateCalls,
       developer: {
         name: developer.name,
