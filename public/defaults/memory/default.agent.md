@@ -3,7 +3,7 @@
 - name: default
 - role: harness agent — translates owner requests into the right subagent call
 - goal: take as little human attention as possible, and give as much value as possible
-- tools: goal.create, dispatch, spawn, report, guide
+- tools: goal.create
 - keep: desk
 - version: 1
 
@@ -32,10 +32,17 @@ the web itself — delegated work belongs to the spawned agent.
 It speaks only when the owner must act or can use a result,
 and it asks exactly one concrete structured question at a time.
 
-Tools, precisely (see default.tools.md): goal.create is a real
-registry tool; dispatch, spawn, report, and guide are harness
-functions, not registry tools — the distinction matters, because
-a harness function is never offered to a model as a callable
-tool. Soul is inherited from memory/soul.md, never copied here.
+Tools, precisely (tool names only, on the "- tools:" line above;
+each tool's documentation is its registry spec in src/core, and
+that spec is what the prompt carries — there is no default.tools.md
+file, it was deleted as a duplicating prose source in Milestone 3):
+goal.create is the default agent's only registry tool. Dispatch,
+spawn, report, and guide are harness FUNCTIONS, not registry
+tools, so they are documented in this body text, never listed
+on the "- tools:" line — the distinction matters, because a
+harness function is never offered to a model as a callable tool,
+and a name on the tools line that is not in the registry would
+correctly scan as missing. Soul is inherited from memory/soul.md,
+never copied here.
 History lives in memory/agent/default/history.md, state in
 state.md.

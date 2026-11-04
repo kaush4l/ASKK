@@ -25,6 +25,7 @@
 // level proven, wiring asserted, neither claimed as the other.
 
 import { createHarness } from "./harness.js";
+import { initializeDeskObjects } from "./startup.js";
 
 export async function runHarnessRequest(
   engine,
@@ -35,6 +36,21 @@ export async function runHarnessRequest(
   }
   if (typeof request !== "string" || request.trim() === "") {
     throw new Error("harness route needs an owner request");
+  }
+  // Startup, scan-and-initialize, on the request path: the
+  // engine's scanned objects (agents, scripts, watchers, skills)
+  // are refreshed from the scanned folders before the harness
+  // runs, so an added/removed definition file is visible to
+  // this request with no code change and no restart. A scan
+  // failure must not hide the harness error: it is recorded on
+  // the engine and the request continues with the last scan.
+  try {
+    initializeDeskObjects(engine, {
+      personalDir: engine.desk?.location ?? null,
+      defaultsDir: engine.desk?.defaultsDir ?? null,
+    });
+  } catch (error) {
+    engine.scannedError = error.message;
   }
   const harness = createHarness(engine.desk, { engine });
   return harness.ask(request, { inference });

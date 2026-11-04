@@ -6,7 +6,7 @@
   addendum diff (Milestones 1–2) is measured against 9709a1c,
   verified by diffing the workdir against a fresh clone of
   askk-skeleton @ 9709a1c (excluding .git/node_modules/.next).
-- Status: Milestone 2 — checkpoint, refining continues (assistant never merges; Kaushal merges himself when perfect)
+- Status: Milestone 3 — checkpoint, refining continues (assistant never merges; Kaushal merges himself when perfect)
 - Kind: Feature
 
 ## GOVERNING ARCHITECTURE — PLANNED ARCHITECTURE AND IDEOLOGY — LIVE OBJECT (correction 2026-11-04, wins on conflict)
@@ -444,6 +444,148 @@ is not claimed done beyond what its test proves):
    missed, no hardcoding) as the governing list, not only in
    chat.
 
+## Milestone 3 — self-contained tools, scan-and-initialize startup (this checkpoint)
+
+Milestone 3 state: core tests 203 pass, 0 fail (1001 expects,
+37 files), up from 197 in Milestone 2; `next build` 20 routes
+(unchanged — no new route, `/api/harness` and
+`/api/engine-object` are still the two additions). One existing
+test was changed, and the change is stated here, not hidden:
+`src/core/addendum.test.js` previously asserted
+`agent.toolsText` contained "goal.create" — that assertion read
+`developer.tools.md`'s prose about goal tools attached
+separately. That prose file is deleted in this milestone (see
+below), so the assertion is replaced with the Milestone 3 rule
+itself: the definition has NO `toolsText`/`toolsSource` fields
+at all. No other existing test was changed.
+
+1. WHY THERE WERE developer.tools.md AND OTHER tools.md —
+   ANSWERED, THEN REMOVED. `public/defaults/memory/default.tools.md`
+   and `developer.tools.md` were prose contracts, NOT registry
+   sources. `harness.js loadAgentDefinition` already parsed tool
+   NAMES from agent.md's "- tools:" line, intersected them with
+   kernel tools from `createCoreTools`, and stored the tools.md
+   text only as `toolsText`. That duplication is exactly what
+   Kaushal asked about on 2026-11-04 10:00 EST, and it is
+   confusing because a reader cannot tell which file is the
+   source. It is gone: `loadAgentDefinition` never reads
+   `<name>.tools.md` (a tools.md file left in a desk folder is
+   ignored, never merged), the two files are DELETED (see
+   Changes — deletions are pushed with `delete_file`, one
+   commit each, because snapshot-push cannot delete), and
+   `default.agent.md`'s "(see default.tools.md)" reference is
+   replaced with the registry-spec rule. The only remaining
+   "tools.md" mentions in code are comments explaining the
+   deletion, never reads.
+2. SELF-CONTAINED MODEL — AS BUILT. All tools live in
+   deterministic locations, and nowhere else: kernel tools in
+   `src/core` (`createCoreTools` — files + terminal, 16 tools,
+   no web); agent-created tools in that agent's memory folder
+   (`memory/agent/<agent>/<name>.tool.md`,
+   `memory/scripts/<agent or shared>/*.script.md`,
+   `memory/watchers/<agent or shared>/*.md` — shared first,
+   agent-specific wins, no duplicates, agent-specific visible
+   only to that agent; `src/core/agent-tools.js`, unchanged
+   in location by this milestone). `agent.md` is the ONLY
+   metadata source for an agent's tools: it carries tool NAMES
+   only (its "- tools:" line, plus role/goal/keep/version).
+   It carries NO full tool definitions, and no other file may
+   override that list. Each tool's OWN documentation is its
+   registry spec — name, description, input schema from the
+   tool object in `src/core` — and THAT spec is what the
+   prompt's tools element carries, not prose from any .md
+   file. A tool name in agent.md that is not in the scanned
+   registry is recorded as missing (an honest error in the
+   agent record), never invented. Applied to the default
+   agent itself in this milestone: its "- tools:" line used
+   to list harness functions (dispatch, spawn, report, guide)
+   alongside goal.create, and the live scan correctly showed
+   them as missing — they are not registry tools. The line
+   now lists only goal.create; the harness functions are
+   documented in the agent file's body text, never on the
+   tools line, so the scanned default agent now has
+   missingTools: [].
+3. WHY SCRIPTS ARE .md FILES — ANSWERED IN THE CODE AND HERE.
+   A script is a DEFINITION, not a program: kind, trigger,
+   commands, notify, halt rule, following `<name>.<type>.md`,
+   human- and agent-readable, versioned, creatable via tools.
+   The runtime parses the definition (`startup.js
+   parseDefinitionFile`) and executes its commands via the
+   terminal tool; the .md file itself is NOT executable code
+   and is never passed to `terminal.run` as a shell script.
+   The same holds for watchers, which are notify scripts: a
+   definition with a watch/event trigger, a notify target,
+   and a halt rule (e.g. `build-complete.notify.script.md`:
+   trigger on-event, watch "build exits", notify owner,
+   halt after 3 failures). Scripts are NOT turned into .js
+   executables in this milestone — that would lose the
+   readable, versioned, tool-creatable definition model.
+4. STARTUP: SCAN AND INITIALIZE, NEVER HARDCODE — DONE, IN
+   `src/core/startup.js`. On startup, all objects are loaded
+   and initialized by SCANNING deterministic locations, not
+   by hardcoded lists in engine/harness/page code: desk folder
+   (personal else public/defaults, per-file fallback), memory
+   tree (soul.md, `<name>.agent.md`,
+   `<name>.instructions.md`, model.json, skills/, scripts/,
+   watchers/, goals/), and the core tool registry. On load,
+   the agent.md reader reads the metadata (tool names, role,
+   goal, keep), looks each name up in the scanned registry,
+   and initializes the agent object with exactly those tools
+   (intersected with caller-held tools, strict subset,
+   all-tools refused). Every dynamic element is configurable
+   and dynamic: adding/removing a tool, agent, skill, script,
+   watcher, or phase file in a scanned folder, then
+   re-running `initializeDeskObjects` (`engine.refreshScanned`),
+   makes it appear/disappear in the engine object, the
+   prompt, and the UI with NO code change — proven by test
+   (add a `<name>.tool.md` definition file → it appears in
+   the scanned agent definitions; remove it → it disappears).
+   The scanner caches nothing: every initialize/refresh
+   re-reads the folders, so a removed file cannot linger.
+5. SCRIPTS/WATCHERS AS OBJECTS AT STARTUP — DONE, WITH THE
+   DISTINCTION STATED. Previously scripts/watchers were
+   validated on demand, not auto-initialized at startup. Now
+   `startup.js scanScripts`/`scanWatchers` create objects at
+   startup: each object carries its definition (kind, trigger,
+   commands/watch/notify/halt), scope, agent, and source, plus
+   runtime state (lastRun, fires, running, errors) that lives
+   on the object in runtime memory, NEVER in the definition
+   folder — a run never rewrites its definition file (tested).
+   Watchers are INITIALIZED, not auto-started, unless their
+   definition's trigger is on-start/always (the shipped
+   build-complete watcher is on-event, so started: false);
+   scripts are initialized as ON-DEMAND objects, not run at
+   startup (started: false, runnable: true). That distinction
+   is the rule, not an accident of the test data.
+6. STARTUP SEQUENCE — DOCUMENTED AS BUILT, IN THIS PR AND IN
+   `src/core/README.md` (startup section), with
+   file/function evidence per step. The sequence is:
+   desk discovery → createDesk → getEngineObject singleton →
+   scan registry + memory tree → loadAgentDefinition per
+   agent → harness → dashboard snapshot/signal →
+   /api/harness → goal.create → spawn developer with rules →
+   developer plan/execute/critique → report back. The full
+   step list, with evidence, is in `src/core/startup.js
+   startupSequence()` and is asserted in order by
+   `startup.test.js` — a step that is not in that list is not
+   part of the documented startup.
+7. WIRING — DONE, NOT JUST A MODULE. `startup.js` is called
+   on the real paths, not only in tests:
+   `src/core/harness-route.js runHarnessRequest` refreshes
+   the engine's scanned objects before the harness runs, so
+   an added/removed definition file is visible to that
+   request with no restart (a scan failure is recorded as
+   `engine.scannedError` and the request continues with the
+   last scan, never hidden as a harness failure);
+   `src/app/api/engine-object/route.js` GET re-scans on every
+   snapshot read and returns a `scanned` summary (counts,
+   agents with tool names + missing tools, scripts/watchers
+   with trigger + started, skill ids) plus `scannedError` —
+   so the dashboard shows the scanned objects as they are on
+   disk right now, not a load-time copy. Route count is
+   unchanged (20) because no new route was added; the scanned
+   summary is a field on the existing engine-object route.
+
 ## Known gaps, remaining after Milestone 2 (not yet perfect)
 
 - No live-browser clicks: page wiring is verified by build +
@@ -714,6 +856,57 @@ Modified:
 - `src/app/page.js` — chat send() posts to `/api/harness` and refreshes
   the engine signal; goal:/agent: bus subscriptions refetch into it
 
+### Milestone 3 — self-contained tools + scan-and-initialize startup (this checkpoint)
+
+New:
+
+- `src/core/startup.js` — scan-and-initialize startup:
+  `scanAgents`, `scanScripts`, `scanWatchers`, `scanSkills`,
+  `scanGoals`, `scanRegistry`, `initializeAgent`,
+  `initializeDeskObjects` (attaches `engine.scanned/agents/
+  scripts/watchers/skills/goals` + `engine.refreshScanned`),
+  `initializeEngine`, `startupSequence` (documented order,
+  asserted in test), `parseDefinitionFile`
+- `src/core/startup.test.js` — 6 tests: tools.md never read,
+  registry resolution + missing-tool honesty, scanAgents
+  personal-wins + no hardcoded names, scripts/watchers as
+  objects (not auto-started, state not in file), dynamic
+  add/remove tool definition, startup sequence order
+
+Modified:
+
+- `PR.md` — Milestone 3 section, Changes (this section),
+  startup sequence, tools.md deletion + scripts-.md
+  explanation, status Milestone 3
+- `src/core/README.md` — startup section appended (sequence,
+  deterministic locations, tools.md deletion, scripts-.md
+  explanation, dynamic proof)
+- `src/core/harness.js` — `loadAgentDefinition` never reads
+  `<name>.tools.md` (comment + code); `toolsText`/`toolsSource`
+  removed from the definition and from the default fallback
+- `src/core/addendum.test.js` — the one changed test (see
+  Milestone 3, above): toolsText assertion replaced with the
+  no-toolsText rule; no other existing test changed
+- `public/defaults/memory/default.agent.md` — "(see
+  default.tools.md)" replaced with the registry-spec rule
+- `src/core/harness-route.js` — `runHarnessRequest` refreshes
+  scanned objects before the harness runs (scan failure
+  recorded as `engine.scannedError`, request continues)
+- `src/app/api/engine-object/route.js` — GET re-scans on every
+  snapshot read, returns `scanned` summary + `scannedError`;
+  route count unchanged (20)
+
+Deleted (via `delete_file`, one commit each — snapshot-push
+cannot delete, and omitting the files from a snapshot would
+leave the GitHub copies in place, so deletion is explicit):
+
+- `public/defaults/memory/default.tools.md` — prose contract,
+  duplicating default.agent.md's tool names; registry specs
+  are the source now
+- `public/defaults/memory/developer.tools.md` — prose contract,
+  duplicating developer.agent.md's tool names; registry specs
+  are the source now
+
 Untouched by design: `src/core/engine.js` single-turn chat, `package.json`
 (no dependencies added), `public/defaults/model.json` (pre-existing trailing
 newline issue left alone). `src/lib/live-events.js` was untouched
@@ -793,3 +986,11 @@ the developer, and the developer works to complete the feature.
   TOON default, dev-check gate, no-hardcoding proof — 160 core tests pass,
   build 18 routes. (Milestone 0 record only; current count is 20 routes —
   see Milestone 2.)
+- 2026-11-04 — Milestone 3: self-contained tools, scan-and-initialize
+  startup — `<name>.tools.md` deleted as a duplicating prose source
+  (agent.md names only + registry specs), scripts explained as .md
+  definitions (parsed, executed via terminal, never executable code),
+  scripts/watchers initialized as objects at startup (not auto-started),
+  every dynamic element configurable via scanned folders (add/remove
+  file → appears/disappears, no code change), startup sequence
+  documented as built — 203 core tests pass, build 20 routes.

@@ -820,3 +820,103 @@ next route call returns the same engine object's current state.
 | skill-phase | entry-gate → run → exit-gate → handoff | phase entry gate; run with phase tools; exit gate; handoff packet | phase transitions; gate results in phase results | phases list: id, duty, status | current-phase instructions + phase tools (via runPhase narrowing) |
 | model call | infer → record-timings → update-meter | infer called; timings/counts recorded; meter refreshed | `model call/timings recorded` in history; llm events in event log | activity word (thinking/tool call/working/idle), llm events | prompt meter segments summing exactly to prompt length |
 | snapshot | deep-copy → store | transition (status/phase change); copy stored, never mutated after | `snapshot stored` in history; snapshot file (restart) | snapshot count + latest reason (goal snapshots) | snapshots are history, not prompt text |
+
+## Startup — scan and initialize, never hardcode (Milestone 3)
+
+`src/core/startup.js` is the startup module. On startup, all
+objects are loaded and initialized by SCANNING deterministic
+locations, not by hardcoded lists in engine/harness/page code:
+
+- kernel tools: `src/core` (`createCoreTools`)
+- agent definitions: `<desk>/memory/<name>.agent.md`
+  (personal wins, public/defaults fallback)
+- agent instructions: `<desk>/memory/<name>.instructions.md`
+- agent-created tools: `<desk>/memory/agent/<agent>/<name>.tool.md`,
+  `<desk>/memory/scripts/<agent or shared>/*.script.md`,
+  `<desk>/memory/watchers/<agent or shared>/*.md`
+- skills: `<desk>/memory/skills/<agent or shared>/*.skill.md`
+- goals: `<desk>/memory/goals/*.md` (when present)
+- models: `<desk>/memory/model.json` (per-file fallback)
+
+agent.md is the ONLY metadata source for an agent's tools: it
+carries tool NAMES only (its "- tools:" line). On load, the
+agent.md reader (`harness.js loadAgentDefinition`, called by
+`startup.js initializeAgent`) reads that metadata, looks each
+name up in the scanned registry, and initializes the agent
+object with exactly those tools (intersected with caller-held
+tools, strict subset, all-tools refused). A name not in the
+registry is recorded as missing, never invented.
+
+tools.md is DELETED as a source (Milestone 3):
+`public/defaults/memory/default.tools.md` and
+`developer.tools.md` were prose contracts duplicating agent.md's
+tool lists, and `loadAgentDefinition` already parsed names from
+agent.md and stored the prose only as `toolsText`. That
+duplication is gone: the reader never reads `<name>.tools.md`,
+a tools.md file left in a desk folder is ignored, and each
+tool's own documentation is its registry spec (name,
+description, input schema from the tool object in src/core) —
+that spec is what the prompt's tools element carries.
+
+Scripts are .md files because a script is a DEFINITION — kind,
+trigger, commands, notify, halt rule, following
+`<name>.<type>.md`, human- and agent-readable, versioned,
+creatable via tools. The runtime parses the definition and
+executes its commands via the terminal tool; the .md file
+itself is NOT executable code. Watchers are notify scripts:
+a watch/event trigger, a notify target, and a halt rule.
+Scripts/watchers are initialized as OBJECTS at startup
+(`scanScripts`/`scanWatchers`): scripts are on-demand objects,
+not run at startup; watchers are initialized, not auto-started,
+unless their trigger is on-start/always. Runtime state
+(lastRun, fires, running, errors) lives on the object, never
+in the definition folder.
+
+Startup sequence, as built (`startup.js startupSequence()`,
+asserted in order by `startup.test.js`):
+
+1. desk discovery — desk folder looked for: personal/ else
+   public/defaults/ else honest empty state
+   (`harness.js discoverDesk`; `desk.js` per-file fallback)
+2. createDesk — desk config loaded: instructions, model.json,
+   inferences, kernel tools, live artifact (`desk.js createDesk`;
+   `core-tools.js createCoreTools`)
+3. getEngineObject singleton — ONE engine object per location
+   in the server process (`engine-object.js`, never a
+   per-request fresh desk)
+4. scan registry + memory tree — `startup.js` scans the kernel
+   registry + memory tree (agents, scripts, watchers, skills,
+   goals), no hardcoded lists
+5. loadAgentDefinition per agent — agent.md reader reads
+   metadata (tool names only), looks each name up in the
+   scanned registry, initializes the agent object with exactly
+   those tools (`harness.js loadAgentDefinition`;
+   `startup.js initializeAgent`)
+6. harness — harness agent created on the same engine object
+   (`harness.js createHarness`; `startup.js initializeEngine`)
+7. dashboard snapshot/signal — dashboard loads
+   `/api/engine-object`, subscribes to the engine signal; UI
+   is the twin of the same object (`src/app/page.js`;
+   `src/lib/signals.js`)
+8. /api/harness — POST `/api/harness`, owner request in plain
+   words (`src/app/api/harness/route.js`;
+   `src/core/harness-route.js runHarnessRequest`, which
+   refreshes the scanned objects before the harness runs)
+9. goal.create — harness translates the request into exactly
+   ONE goal.create call, statement only (`harness.js ask`;
+   `goal-artifact.js createGoal`)
+10. spawn developer with rules — developer spawned with its
+    narrowed tool subset, lanes, gates, soul reference, never
+    all tools (`spawn.js createAgent`; `harness.js spawnDeveloper`)
+11. developer plan/execute/critique — developer owns its loop,
+    looping back on critique failure, max 3 attempts
+    (`spawn.js developerPersona`; `loop.js runPhase`)
+12. report back — developer reports to the harness, harness
+    returns the report to the owner, labelled separately in
+    both histories (`spawn.js report`; `harness.js ask`)
+
+Dynamic proof: adding a tool definition file to a scanned
+folder and re-running `initializeDeskObjects`
+(`engine.refreshScanned`) makes it appear in the engine object;
+removing it makes it disappear — with NO code change. The
+scanner caches nothing, so a removed file cannot linger.

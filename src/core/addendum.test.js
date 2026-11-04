@@ -133,7 +133,14 @@ describe("curated agents load from memory files, not generic skins", () => {
     ]);
     expect(agent.tools).not.toContain("files.close");
     expect(agent.tools).not.toContain("web.search");
-    expect(agent.toolsText).toContain("goal.create");
+    // Milestone 3: <name>.tools.md is deleted as a source, so
+    // there is no toolsText at all — the tool list is agent.md
+    // names only, and each tool's spec comes from the registry.
+    // (The old assertion here read developer.tools.md's prose
+    // about goal tools attached separately; that prose file is
+    // gone, and the registry spec is the source now.)
+    expect("toolsText" in agent).toBe(false);
+    expect("toolsSource" in agent).toBe(false);
     expect(agent.instructions).toContain("plan");
     expect(agent.instructions).toContain("critique");
     // The desk reader sees the curated files and scripts.

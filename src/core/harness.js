@@ -120,12 +120,21 @@ export function loadGoalDefault({
 
 // Load a curated agent definition from memory files, personal
 // else public defaults — the SAME per-file fallback as the desk
-// reader, for <name>.agent.md + <name>.instructions.md +
-// <name>.tools.md. Returns null when no agent file exists at
-// all: a missing definition is an honest null, never an invented
-// agent. The tools list comes from the agent file's "- tools:"
-// line, split on commas; the instructions/tools files are text
-// for the agent, not registry tools.
+// reader, for <name>.agent.md + <name>.instructions.md ONLY.
+// Milestone 3: <name>.tools.md is DELETED as a source, on
+// purpose. It was a prose contract duplicating the agent file's
+// tool list, and it was never a registry source — loadAgentDefinition
+// already parsed tool NAMES from agent.md and stored the prose
+// only as toolsText. That duplication is confusing and is gone:
+// agent.md is the ONLY metadata source for an agent's tools
+// (names only, on its "- tools:" line), and each tool's OWN
+// documentation/description is its registry spec (name,
+// description, input schema from the tool object in src/core),
+// which is what the prompt's tools element carries — never prose
+// from a tools.md file. Returns null when no agent file exists
+// at all: a missing definition is an honest null, never an
+// invented agent. The instructions file is text for the agent,
+// not a registry tool.
 export function loadAgentDefinition(
   name,
   { personalDir = null, defaultsDir = null } = {},
@@ -156,7 +165,10 @@ export function loadAgentDefinition(
   }
   const meta = parseAgentFile(agentFile.text);
   const instructions = readCandidate(`${name}.instructions.md`);
-  const toolsFile = readCandidate(`${name}.tools.md`);
+  // Deliberately NO readCandidate(`${name}.tools.md`): that file
+  // no longer exists as a source (Milestone 3). A tools.md file
+  // left in a desk folder is ignored by this reader, never read,
+  // never merged into the tool list — agent.md names only.
   return {
     name,
     role: meta.role ?? "",
@@ -168,8 +180,6 @@ export function loadAgentDefinition(
     keep: meta.keep ?? "run",
     instructions: instructions ? instructions.text.trim() : "",
     instructionsSource: instructions ? instructions.source : null,
-    toolsText: toolsFile ? toolsFile.text.trim() : "",
-    toolsSource: toolsFile ? toolsFile.source : null,
     agentFile: agentFile.text,
     source: agentFile.source,
     default: false,
@@ -191,8 +201,6 @@ export function loadDefaultAgent(opts = {}) {
       keep: "desk",
       instructions: "",
       instructionsSource: null,
-      toolsText: "",
-      toolsSource: null,
       agentFile: "",
       source: null,
       default: true,
