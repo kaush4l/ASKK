@@ -130,6 +130,70 @@
     font-synthesis-weight: none;
   }
 }
+/* Combined view — orb glow on the companion card's OUTLINE.
+   No separate orb element: border + box-shadow carry the state
+   colour, readable at a glance before reading any text. Shared
+   colour system, unchanged: LLM sky, tool violet, success
+   emerald, error red, waiting amber, idle grey, running emerald
+   pulse. Motion only while running; prefers-reduced-motion
+   stops the pulse. The glow state is also data-glow on the
+   card, so tests can assert it in the DOM, not just see it. */
+@keyframes combinedGlowPulse {
+  0%,
+  100% {
+    filter: brightness(1);
+  }
+  50% {
+    filter: brightness(1.12);
+  }
+}
+.combined-card[data-glow="grey"] {
+  border-color: #9ca3af;
+  box-shadow: 0 0 10px rgba(156, 163, 175, 0.35);
+}
+.combined-card[data-glow="sky"] {
+  border-color: #0ea5e9;
+  box-shadow:
+    0 0 28px rgba(14, 165, 233, 0.65),
+    0 0 70px rgba(14, 165, 233, 0.25);
+  animation: combinedGlowPulse 1.1s ease-in-out infinite;
+}
+.combined-card[data-glow="violet"] {
+  border-color: #8b5cf6;
+  box-shadow:
+    0 0 28px rgba(139, 92, 246, 0.65),
+    0 0 70px rgba(139, 92, 246, 0.25);
+  animation: combinedGlowPulse 0.7s ease-in-out infinite;
+}
+.combined-card[data-glow="amber"] {
+  border-color: #f59e0b;
+  box-shadow:
+    0 0 22px rgba(245, 158, 11, 0.55),
+    0 0 55px rgba(245, 158, 11, 0.2);
+  animation: combinedGlowPulse 2.2s ease-in-out infinite;
+}
+.combined-card[data-glow="red"] {
+  border-color: #ef4444;
+  box-shadow:
+    0 0 30px rgba(239, 68, 68, 0.75),
+    0 0 70px rgba(239, 68, 68, 0.3);
+  animation: combinedGlowPulse 0.45s ease-in-out infinite;
+}
+.combined-card[data-glow="emerald"] {
+  border-color: #10b981;
+  box-shadow:
+    0 0 28px rgba(16, 185, 129, 0.65),
+    0 0 70px rgba(16, 185, 129, 0.25);
+  animation: combinedGlowPulse 1.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  /* Same specificity as the glow rules above, later in the file,
+     so it wins without !important. */
+  .combined-card[data-glow] {
+    animation: none;
+  }
+}
+
 /* Glass (Apple's Liquid Glass on the web): the material of chrome that floats over content — toolbars, an inspector,
    a legend, a floating button. What is behind shows through, blurred and saturated, under a light rim, so the content
    stays the subject and the chrome reads as a layer above it. Never on content itself (cards, rows, the page): there

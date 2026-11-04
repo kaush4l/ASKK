@@ -39,6 +39,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
+import { agentTwin, loadAgentMd } from "./agent-md.js";
 import { loadLiveArtifact } from "./artifact.js";
 import { createCoreTools } from "./core-tools.js";
 import { createEngine } from "./engine.js";
@@ -301,6 +302,21 @@ export function createDesk(
     personalBase: dir,
   });
   const artifacts = [liveArtifact];
+  // Default agent.md: personal/agent.md wins, else
+  // public/defaults/agent.md, else the built-in default (see
+  // src/core/agent-md.js). The twin is plain data — no keys, no
+  // absolute paths, no .env content — and the desk default is
+  // resolved at load time, never written into agent.md.
+  const { agent: parsedAgent, source: agentSource } = loadAgentMd(
+    dir,
+    defaults,
+  );
+  parsedAgent.source = agentSource;
+  const agent = agentTwin(parsedAgent, {
+    defaultInference,
+    source: agentSource,
+  });
+  const agents = [agent];
   return {
     engine,
     inferences,
@@ -312,6 +328,9 @@ export function createDesk(
     liveArtifact,
     artifacts,
     listArtifacts: () => artifacts.map((artifact) => artifact.twin()),
+    agent,
+    agents,
+    listAgents: () => agents,
   };
 }
 
