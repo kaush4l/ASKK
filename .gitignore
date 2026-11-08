@@ -10,3 +10,4 @@
 /archive/build
 /archive/.svelte-kit
 data/
+.worktrees/

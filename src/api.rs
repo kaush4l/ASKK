@@ -93,6 +93,7 @@ mod server {
             Quote.into_tool(),
         ]
         .into_iter()
+        .chain(crate::pr::tools())
         .chain(crate::devtools::all(crate::devtools::workspace(), data_dir().join("engines"), Arc::new(|engine, input| {
             tokio::spawn(async move {
                 match find(&engine).await {

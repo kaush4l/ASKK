@@ -170,3 +170,17 @@ Every backend object (engine and every element kind) draws itself; the UI only r
   `act-refocusing` violet, `act-fired` flash, `act-error` red, `act-stopped` dim).
 - Components page groups kinds into **Engine, Prompt, Action, Live** (`core::category`), plus
   **Created** (runtime components); each kind shows a running object of it at all four sizes.
+
+## PRs, changelog and restart (static features, `src/pr.rs`)
+
+- **PRs page** (`/pr`): every `git worktree` is a PR. Its `pr.md` is `# Title`, optional
+  `status: working | ready`, then `## Section` blocks. Tabs: Overview (sections), Changes
+  (diff against the merge-base with `main`, numbered rows), Commits (over `main`). `main`
+  shows its uncommitted work; its log is the changelog. Put feature work in
+  `.worktrees/<slug>` on a `feature/<slug>` branch.
+- **Restart**: run the app with `scripts/service.sh`. It keeps the terminal, starts the app
+  (`start` in `data/service.json`), and on Restart runs `update`, then `build`; if both pass it
+  stops the app and starts it again, all output in the same terminal. A failed step leaves the
+  running app alone. Status: `data/service-status.json`. Without the supervisor, Restart runs
+  the same steps detached (plus `stop`) and logs to `data/service.log`.
+- Tools for engines and scripts: `list_prs`, `changelog`, `restart`.

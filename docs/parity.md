@@ -32,3 +32,5 @@
 | Engine state files | `notes` element + `config.file`: goal.md, focus.md, learning.md (sections via `learn`) | done; askk set focus.md and learnt into learning.md live |
 | TOON replies | `response` default `toon`; tolerant parser; JSON fallback | done; claude CLI replied in TOON live |
 | Object views + live activity | `render(size)` icon/small/medium/large on every component and engine; engine activity idle/thinking/calling/refocusing/stopped/error with CSS effects; catalog by category | done; chat header showed idle → thinking → calling run → thinking → idle live |
+| PR page + changelog | `src/pr.rs`, `/pr`: worktrees, pr.md sections, diff, commits, changelog; tools list_prs/changelog/restart | done |
+| Restart service | `scripts/service.sh` supervisor keeps the terminal; Restart → build → stop → start; data/service.json | done; restarted live from the button, app back in the same terminal |

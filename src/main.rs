@@ -13,6 +13,7 @@ mod elements;
 mod infer;
 #[cfg_attr(not(feature = "server"), allow(dead_code))]
 mod routes;
+mod pr;
 mod views;
 
 use views::{Home, RoutePage, Shell};

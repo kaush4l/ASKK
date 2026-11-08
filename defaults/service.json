@@ -1,0 +1,6 @@
+{
+  "update": "",
+  "build": "cargo build --features server",
+  "stop": "pkill -f 'dx serve'; pkill -f 'target/dx/askk'",
+  "start": "dx serve --port 8080 --open false"
+}

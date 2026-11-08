@@ -137,3 +137,24 @@ textarea { font: inherit; font-family: ui-monospace, Menlo, monospace; font-size
 .size-col .size-large { grid-column: auto; }
 @media (max-width: 900px) { .sizes { grid-template-columns: 1fr; } }
 .obj .link { font-size: var(--text-sm); font-weight: 400; }
+/* PR page */
+.prs { display: grid; gap: var(--space-4); grid-template-columns: minmax(260px, 1fr) minmax(0, 2.4fr); align-items: start; }
+@media (max-width: 900px) { .prs { grid-template-columns: 1fr; } }
+.prs h2 { margin: 0; font-size: var(--text-lg); }
+.pr-item { display: flex; flex-direction: column; gap: 2px; text-align: left; font: inherit; color: var(--ink); background: transparent; cursor: pointer;
+  border: 1px solid color-mix(in srgb, var(--edge) 10%, transparent); border-radius: var(--radius-md); padding: var(--space-2) var(--space-3); }
+.pr-item.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.st-ready { background: color-mix(in srgb, #5be3a5 35%, transparent); } .st-failed { background: color-mix(in srgb, #ff5c7a 40%, transparent); }
+.tabs { display: flex; gap: var(--space-1); border-bottom: 1px solid color-mix(in srgb, var(--edge) 12%, transparent); }
+.tab { font: inherit; color: var(--ink-dim); background: none; border: 0; border-bottom: 2px solid transparent; padding: var(--space-2) var(--space-3); cursor: pointer; }
+.tab.on { color: var(--ink); border-color: var(--accent); }
+.log-row { display: flex; gap: var(--space-2); font-size: var(--text-sm); align-items: baseline; }
+.log-row code { color: var(--accent); }
+.file summary { cursor: pointer; padding: var(--space-1) 0; }
+.add { color: #5be3a5; } .del { color: #ff7a8f; }
+.diff { font-family: ui-monospace, monospace; font-size: var(--text-xs); overflow-x: auto; border-radius: var(--radius-sm); }
+.diff > div { display: grid; grid-template-columns: 3.5em 3.5em 1fr; white-space: pre; }
+.diff .ln { color: var(--ink-dim); text-align: right; padding-right: var(--space-2); user-select: none; }
+.d-add { background: color-mix(in srgb, #5be3a5 14%, transparent); } .d-del { background: color-mix(in srgb, #ff5c7a 14%, transparent); }
+.d-hunk { color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.svc-log { max-height: 200px; overflow-y: auto; font-size: var(--text-xs); }

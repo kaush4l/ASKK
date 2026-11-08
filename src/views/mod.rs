@@ -7,6 +7,7 @@ mod engine;
 mod layout;
 mod models;
 mod page;
+mod pr;
 mod shell;
 mod theme;
 pub use chat::ChatView;
@@ -16,6 +17,7 @@ pub use engine::EngineView;
 pub use layout::LayoutView;
 pub use models::ModelsView;
 pub use page::{Home, RoutePage};
+pub use pr::PrView;
 pub use shell::Shell;
 pub use theme::ThemeView;
 
@@ -26,6 +28,7 @@ use dioxus::prelude::*;
 pub fn Builtin(name: String) -> Element {
     match name.as_str() {
         "chat" => rsx! { ChatView {} },
+        "pr" => rsx! { PrView {} },
         "dashboard" => rsx! { Dashboard {} },
         "engine" => rsx! { EngineView {} },
         "models" => rsx! { ModelsView {} },

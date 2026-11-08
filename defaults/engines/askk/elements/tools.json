@@ -16,7 +16,10 @@
       "create_view",
       "list_views",
       "create_component",
-      "list_components"
+      "list_components",
+      "list_prs",
+      "changelog",
+      "restart"
     ]
   }
 }
