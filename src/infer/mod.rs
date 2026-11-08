@@ -8,13 +8,10 @@
 //! `connector`, optional `base_url`, optional `key_env` (the *name* of an env var holding the key;
 //! keys are never stored).
 //!
-//! | connector | request |
-//! | --- | --- |
-//! | `openai` | POST `{base_url}/chat/completions` (oMLX, LM Studio, vLLM, OpenAI) |
-//! | `openai-responses` | POST `{base_url}/responses` |
-//! | `anthropic` | POST `{base_url}/v1/messages` |
-//! | `cli` | runs `command` (e.g. `["claude","-p","{prompt}"]`, `["copilot","-p","{prompt}"]`); `{prompt}`/`{model}` are filled, no `{prompt}` = sent on stdin |
-//! | `echo` | returns the prompt (tests) |
+//! Runtimes: `cli` (any command: `["claude","-p","{prompt}"]`, `["copilot","-p","{prompt}"]`;
+//! no `{prompt}` = stdin) and `echo` are mechanisms in code. Every HTTP runtime (OpenAI chat
+//! completions, OpenAI Responses, Anthropic, oMLX, …) is a [`Runtime`] entry in
+//! `data/runtimes.json`.
 //!
 //! [`discover_models`] lists the names a server offers (`GET {base_url}/models`) so the UI can add
 //! them with one click.
@@ -24,7 +21,40 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "server")]
 mod connectors;
 
-pub const CONNECTORS: &[&str] = &["openai", "openai-responses", "anthropic", "cli", "echo"];
+/// Runtimes that are mechanisms in code; the rest come from `data/runtimes.json`.
+#[cfg_attr(not(feature = "server"), allow(dead_code))]
+pub const BUILT_IN: &[&str] = &["cli", "echo"];
+
+/// An HTTP runtime as data: `POST {base_url}{path}` with `body` (`{model}`/`{prompt}` filled),
+/// auth from the model's `key_env` (`auth`: `bearer` or a header name), reply text at the first
+/// matching JSON pointer in `reply`; `models` = GET path listing models (`data[].id`).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(not(feature = "server"), allow(dead_code))]
+pub struct Runtime {
+    pub name: String,
+    #[serde(default)]
+    pub base_url: String,
+    #[serde(default)]
+    pub path: String,
+    #[serde(default)]
+    pub auth: String,
+    #[serde(default)]
+    pub headers: std::collections::BTreeMap<String, String>,
+    #[serde(default)]
+    pub body: serde_json::Value,
+    #[serde(default)]
+    pub reply: Vec<String>,
+    #[serde(default)]
+    pub models: String,
+}
+
+/// Every runtime name a model can use.
+#[server]
+pub async fn connectors() -> Result<Vec<String>, ServerFnError> {
+    let mut v: Vec<String> = BUILT_IN.iter().map(|s| s.to_string()).collect();
+    v.extend(connectors::runtimes().into_iter().map(|r| r.name));
+    Ok(v)
+}
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Model {

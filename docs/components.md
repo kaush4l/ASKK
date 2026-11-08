@@ -53,16 +53,19 @@ components (phase, state, history) like direct calls.
 
 ## 4. Inference
 `Infer::complete(model, prompt)` is the one call. `ModelsInfer` resolves the model by name in
-`data/models.json` **each call** (switch at runtime). Runtimes (`src/infer/connectors.rs`): `openai`
-(chat/completions), `openai-responses`, `anthropic`, `cli` (any command: `["claude","-p","{prompt}"]`,
-`["copilot","-p","{prompt}"]`; no `{prompt}` = stdin), `echo`.
+`data/models.json` **each call** (switch at runtime). Runtimes:
+- mechanisms in code: `cli` (any command, e.g. `["claude","-p","{prompt}"]`, `["copilot","-p","{prompt}"]`;
+  no `{prompt}` = stdin) and `echo` (tests);
+- every HTTP runtime is data in `data/runtimes.json`: `{name, base_url, path, auth (bearer | header
+  name), headers, body (template with {model}/{prompt}), reply (JSON pointers, first match), models}`.
+  Shipped: `openai` (chat completions), `openai-responses`, `anthropic`, `omlx`. Add one by adding an entry.
 
 ## 5. Boot: folder → objects
 ```
 data/engines/<engine>/engine.json            {name, description, model, max_steps, status}
 data/engines/<engine>/elements/<name>.json   {kind, config, state}
 data/engines/<engine>/<sub>/…                sub-engine, same layout, any depth
-data/models.json  data/ui.json  data/components/*.json
+data/models.json  data/runtimes.json  data/ui.json  data/theme.json  data/layout.json  data/components/*.json
 ```
 1. `seed`: copy anything missing from `defaults/` into `data/`.
 2. `scan`: read folders into trees (configuration + state; nothing initialised — only components exist).

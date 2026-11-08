@@ -1,5 +1,5 @@
 use crate::components::Pane;
-use crate::infer::{self, Model, Models, CONNECTORS};
+use crate::infer::{self, Model, Models};
 use dioxus::prelude::*;
 
 /// Models view: list, add (by name or discovered), set default, delete, save to models.json, test.
@@ -8,7 +8,13 @@ pub fn ModelsView() -> Element {
     let ui = use_context::<crate::api::UiConfig>();
     let mut models = use_signal(Models::default);
     let mut status = use_signal(String::new);
-    let mut connector = use_signal(|| CONNECTORS[0].to_string());
+    let mut connector = use_signal(String::new);
+    let mut runtimes = use_signal(Vec::<String>::new);
+    use_future(move || async move {
+        let r = infer::connectors().await.unwrap_or_default();
+        if connector.read().is_empty() { connector.set(r.first().cloned().unwrap_or_default()); }
+        runtimes.set(r);
+    });
     let mut base_url = use_signal(String::new);
     let mut command = use_signal(String::new);
     let mut key_env = use_signal(String::new);
@@ -67,7 +73,7 @@ pub fn ModelsView() -> Element {
             h3 { {ui.t("add-a-model")} }
             div { class: "row",
                 select { value: "{connector}", onchange: move |e| connector.set(e.value()),
-                    for c in CONNECTORS { option { value: "{c}", "{c}" } }
+                    for c in runtimes() { option { value: "{c}", "{c}" } }
                 }
                 input { placeholder: "base url", value: "{base_url}", oninput: move |e| base_url.set(e.value()) }
                 if connector() == "cli" { input { placeholder: "command, e.g. copilot -p {prompt}", value: "{command}", oninput: move |e| command.set(e.value()) } }
