@@ -53,9 +53,9 @@ impl Component for Response {
     }
     fn prompt(&self) -> Option<String> {
         Some(if self.toon() {
-            "Reply in TOON only. To call tools (they run in order; results arrive next step):\ncalls[N]{tool,args}:\n  <tool>,<args as JSON>\nawait: any   (optional: continue after the first result; the others are cancelled)\nWhen finished:\nanswer: <text>".into()
+            "Reply in TOON only. To call tools (they run at the same time; results arrive next step):\ncalls[N]{tool,args}:\n  <tool>,<args as JSON>\nawait: any   (optional: continue after the first result; the others are cancelled)\nWhen finished:\nanswer: <text>".into()
         } else {
-            r#"Reply with one JSON object only. To call tools (they run in order; results arrive next step): {"calls":[{"tool":"<name>","args":{...}}]} (add "await":"any" to continue after the first result; the others are cancelled). When finished: {"answer":"<text>"}"#.into()
+            r#"Reply with one JSON object only. To call tools (they run at the same time; results arrive next step): {"calls":[{"tool":"<name>","args":{...}}]} (add "await":"any" to continue after the first result; the others are cancelled). When finished: {"answer":"<text>"}"#.into()
         })
     }
     fn parse(&self, reply: &str) -> Option<Reply> {

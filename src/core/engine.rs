@@ -39,6 +39,16 @@ fn is_zero(n: &usize) -> bool {
 
 const REFOCUS: &str = "The context is nearly full. Summarise, in a few lines, the essentials needed to continue and the lessons learnt (what worked, what failed). Reply with the summary only.";
 
+/// The input as shown at `step`: after the first step the model is reminded that its calls
+/// for this request already ran (their results end the history), so it continues, not restarts.
+pub fn continued(input: &str, step: usize) -> String {
+    if step == 0 {
+        input.into()
+    } else {
+        format!("{input}\n\n(step {}: your calls for this request and their results are the last lines of history; continue from there, do not repeat them)", step + 1)
+    }
+}
+
 pub type Save = Arc<dyn Fn(&Engine) + Send + Sync>;
 
 pub struct Engine {
@@ -116,19 +126,26 @@ impl Engine {
         Toolbox::new(list).logged()
     }
 
-    /// One section per element with content, then tools, then the input.
-    pub fn prompt(&self, tools: &Toolbox, input: &str) -> String {
-        let mut out = String::new();
-        for e in self.elements.lock().unwrap().iter() {
-            if let Some(body) = e.prompt() {
-                out.push_str(&format!("## {}\n{}\n\n", e.name(), body.trim_end()));
-            }
-        }
+    /// The prompt as ordered sections: elements by [`super::rank`] of their kind (then name),
+    /// the toolbox at the `tools` rank, the input always last. Same engine + input = same prompt.
+    pub fn sections(&self, tools: &Toolbox, input: &str) -> Vec<Section> {
+        let mut out: Vec<Section> = self
+            .elements
+            .lock()
+            .unwrap()
+            .iter()
+            .filter_map(|e| e.prompt().map(|b| Section { name: e.name().into(), kind: e.kind().into(), body: b.trim_end().into() }))
+            .collect();
         if let Some(t) = tools.describe() {
-            out.push_str(&format!("## tools\n{t}\n\n"));
+            out.push(Section { name: "tools".into(), kind: "tools".into(), body: t });
         }
-        out.push_str(&format!("## input\n{input}\n"));
+        out.sort_by(|a, b| super::rank(&a.kind).cmp(&super::rank(&b.kind)).then(a.name.cmp(&b.name)));
+        out.push(Section { name: "input".into(), kind: "input".into(), body: input.into() });
         out
+    }
+
+    pub fn prompt(&self, tools: &Toolbox, input: &str) -> String {
+        super::render(&self.sections(tools, input))
     }
 
     fn parse(&self, reply: &str) -> Reply {
@@ -147,7 +164,7 @@ impl Engine {
         };
         // Context window in tokens: the engine's override, else what the model reports.
         let context = if context > 0 { context } else { self.infer.context(&model).await };
-        for _ in 0..steps {
+        for step in 0..steps {
             if self.stopping.swap(false, Ordering::SeqCst) {
                 self.set_status("stopped");
                 self.persist();
@@ -169,11 +186,12 @@ impl Engine {
                 };
                 self.dispatch(&Event::Snapshot { name, content });
             }
-            let mut prompt = self.prompt(&tools, input);
+            let shown = continued(input, step);
+            let mut prompt = self.prompt(&tools, &shown);
             if context > 0 && super::tokens(&prompt) * 10 >= context * 9 {
                 let summary = self.infer.complete(&model, format!("{REFOCUS}\n\n{prompt}")).await?;
                 self.dispatch(&Event::Folded(summary));
-                prompt = self.prompt(&tools, input);
+                prompt = self.prompt(&tools, &shown);
             }
             let reply = match self.infer.complete(&model, prompt).await {
                 Ok(r) => r,
@@ -327,6 +345,7 @@ pub mod tests {
         let prompts = infer.prompts.lock().unwrap();
         assert!(prompts[0].contains("- add: sum"));
         assert!(prompts[1].contains("add({\"a\":2,\"b\":3}) -> 5.0"), "{}", prompts[1]);
+        assert!(prompts[0].ends_with("## input\nadd\n") && prompts[1].contains("(step 2: your calls"), "{}", prompts[1]);
         assert_eq!(e.file.lock().unwrap().status, "idle");
     }
 

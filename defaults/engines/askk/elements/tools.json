@@ -1,12 +1,22 @@
 {
- "kind": "tools",
- "config": {
-  "use": [
-   "now",
-   "create_view",
-   "list_views",
-   "create_component",
-   "list_components"
-  ]
- }
+  "kind": "tools",
+  "config": {
+    "use": [
+      "now",
+      "read_file",
+      "write_file",
+      "list_dir",
+      "run",
+      "spawn",
+      "jobs",
+      "stop",
+      "alarm",
+      "create_script",
+      "parallel",
+      "create_view",
+      "list_views",
+      "create_component",
+      "list_components"
+    ]
+  }
 }

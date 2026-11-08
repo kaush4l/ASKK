@@ -1,5 +1,6 @@
 //! Views: pages assembled from components. What they show comes from the backend.
 //! Which view sits at which URL is data: see [`crate::routes`].
+mod chat;
 mod components_view;
 mod dashboard;
 mod engine;
@@ -8,6 +9,7 @@ mod models;
 mod page;
 mod shell;
 mod theme;
+pub use chat::ChatView;
 pub use components_view::ComponentsView;
 pub use dashboard::Dashboard;
 pub use engine::EngineView;
@@ -23,6 +25,7 @@ use dioxus::prelude::*;
 #[component]
 pub fn Builtin(name: String) -> Element {
     match name.as_str() {
+        "chat" => rsx! { ChatView {} },
         "dashboard" => rsx! { Dashboard {} },
         "engine" => rsx! { EngineView {} },
         "models" => rsx! { ModelsView {} },

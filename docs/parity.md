@@ -25,3 +25,8 @@
 | Folder routing | `data/routes/**/page.json`, `[param]`, `[...rest]`, nav from pages; `create_view` tool | done |
 | Max tokens 32k | `models.json max_tokens` → `{max_tokens}` in bodies | done |
 | Real model | default `claude` (cli runtime) answers live: askk ran create_view, set_phase, stamp script against it | done |
+| Prompt order | `core::ORDER`: goal → phase → state → artifact → alert → script → history → tools → response → (other kinds) → input; ties by element name; `Engine::sections` | done |
+| Goal element | `elements/goal.rs`: config `goal`, `done`; `set_goal`, `goal_reached` | done |
+| Default developer tools | `src/devtools.rs`: read_file, write_file, list_dir, run, spawn/jobs/stop, alarm, create_script, parallel; rooted at `ASKK_WORKSPACE` | done; askk ran parallel(list_dir, run), spawn → jobs → stop live via claude CLI |
+| Load another desk | `--desk <dir>` (or `ASKK_DATA`) points engines, models, routes and theme at another folder | done |
+| Chat dashboard | `/` = `view chat`: askk chat beside its current prompt (colour per section kind, token bar, sections, full text); old dashboard at `/engines` | done |

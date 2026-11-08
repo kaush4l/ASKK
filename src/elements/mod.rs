@@ -3,6 +3,7 @@
 //! lifecycle (`on`), prompt section and UI view. They are registered in `core::KINDS`.
 pub mod alert;
 pub mod artifact;
+pub mod goal;
 pub mod history;
 pub mod phase;
 pub mod response;

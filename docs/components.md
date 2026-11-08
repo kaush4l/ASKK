@@ -99,3 +99,34 @@ come from `data/ui.json`; design tokens from `data/theme.json` (Theme page). The
 `models.json` per model: `max_tokens` (default 32000, sent as `{max_tokens}` in the runtime body) and
 `context` (window in tokens; 0 = read once from the runtime's models listing via `runtimes.json context`
 pointers such as `/max_input_tokens`, `/context_length`, `/max_model_len`, then cached).
+
+## Prompt: sections in a fixed order
+
+`Engine::sections(tools, input)` is the prompt as data: one `Section {name, kind, body}` per
+element with a prompt, plus `tools` and `input`. Order is by kind (`core::ORDER`), then name:
+
+goal → phase → state → artifact → alert → script → history → tools → response → other kinds → input
+
+So the same engine and input always render the same text (`core::render`). After the first
+step the input carries a reminder that this request's calls already ran (`engine::continued`).
+The chat page (`/`) shows these sections live: one colour per kind, a token bar, each section,
+and the full rendered text.
+
+## Default developer tools (`src/devtools.rs`)
+
+Shared tools, chosen per engine with a `tools` element. File tools and commands are rooted at
+`ASKK_WORKSPACE` (default: working directory); paths with `..` or absolute paths are refused.
+
+| tool | args | result |
+| --- | --- | --- |
+| read_file / write_file / list_dir | `{path, content?}` | text / bytes written / entries |
+| run | `{command, timeout_s?}` | `{code, stdout, stderr}` |
+| spawn / jobs / stop | `{command}` / – / `{id}` | `{id}` / status + output tail / stopped |
+| alarm | `{after_s, input, engine?}` | wakes the engine later with `input` |
+| create_script | `{engine, name, description, steps}` | saves `elements/<name>.json` (next boot) |
+| parallel | `{calls: [{tool, args}]}` | results in call order, run at once |
+
+## Desk location
+
+`askk --desk <dir>` (or `ASKK_DATA=<dir>`) loads engines, models, runtimes, routes, theme and
+layout from `<dir>`; anything missing is seeded from `defaults/`.

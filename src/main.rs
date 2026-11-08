@@ -6,6 +6,8 @@ mod compose;
 // The engine runtime lives on the server; the browser build only needs the shared types.
 #[cfg_attr(not(feature = "server"), allow(dead_code, unused_imports))]
 mod core;
+#[cfg(feature = "server")]
+mod devtools;
 #[cfg_attr(not(feature = "server"), allow(dead_code, unused_imports))]
 mod elements;
 mod infer;
@@ -31,7 +33,16 @@ const GLASS_CSS: Asset = asset!("/assets/styling/glass.css");
 
 fn main() {
     #[cfg(feature = "server")]
-    api::boot_now();
+    {
+        // `--desk <dir>`: load engines, models, routes and theme from another folder.
+        let args: Vec<String> = std::env::args().collect();
+        if let Some(i) = args.iter().position(|a| a == "--desk") {
+            if let Some(d) = args.get(i + 1) {
+                std::env::set_var("ASKK_DATA", d);
+            }
+        }
+        api::boot_now();
+    }
     dioxus::launch(App);
 }
 

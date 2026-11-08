@@ -79,3 +79,27 @@ textarea { font: inherit; font-family: ui-monospace, Menlo, monospace; font-size
 .link:hover { color: var(--accent); }
 .board { display: grid; gap: var(--space-4); grid-template-columns: repeat(var(--cols, 1), minmax(0, 1fr)); }
 @media (max-width: 768px) { .board { grid-template-columns: 1fr; } }
+
+/* Chat + prompt breakdown. One colour per section kind (core::ORDER). */
+.k-goal { --k: #ffb547; } .k-phase { --k: #ff6fae; } .k-state { --k: #5be3a5; } .k-artifact { --k: #4fd1ff; }
+.k-alert { --k: #ff7a59; } .k-script { --k: #c58bff; } .k-history { --k: #8b9cff; } .k-tools { --k: #e8e36b; }
+.k-response { --k: #9ef0ff; } .k-input { --k: var(--ink); }
+.chat { display: grid; gap: var(--space-4); grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); align-items: start; }
+@media (max-width: 900px) { .chat { grid-template-columns: 1fr; } }
+.chat h2 { margin: 0; font-size: var(--text-lg); }
+.chat-log, .prompt { display: flex; flex-direction: column; gap: var(--space-3); }
+.bubbles { display: flex; flex-direction: column; gap: var(--space-2); max-height: 65vh; overflow-y: auto; }
+.bubble { max-width: 90%; padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); background: color-mix(in srgb, var(--edge) 8%, transparent); }
+.bubble pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: var(--text-sm); }
+.bubble span { font-size: var(--text-xs); }
+.bubble.user { align-self: flex-end; background: color-mix(in srgb, var(--accent) 30%, transparent); }
+.bubble.tool { opacity: .75; font-family: ui-monospace, monospace; }
+.bubble.pending { opacity: .6; }
+.bar { display: flex; height: 10px; border-radius: var(--radius-full); overflow: hidden; gap: 2px; }
+.bar span { background: var(--k); min-width: 3px; }
+.legend { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+.chip { font-size: var(--text-xs); padding: 0 var(--space-2); border-radius: var(--radius-full); border: 1px solid var(--k); color: var(--k); }
+.section { border-left: 3px solid var(--k); padding: var(--space-1) var(--space-3); background: color-mix(in srgb, var(--k) 8%, transparent); border-radius: var(--radius-sm); }
+.section summary { cursor: pointer; color: var(--k); }
+.section pre, .rendered { margin: var(--space-1) 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--text-xs); max-height: 40vh; overflow-y: auto; }
+.rendered { max-height: 70vh; } .rendered span { color: var(--k); }

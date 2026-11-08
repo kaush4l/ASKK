@@ -1,12 +1,12 @@
 {
-  "title": "Dashboard",
+  "title": "Chat",
   "nav": 0,
   "root": {
     "kind": "stack",
     "children": [
       {
         "kind": "view",
-        "text": "dashboard"
+        "text": "chat"
       }
     ]
   }

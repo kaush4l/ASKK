@@ -92,6 +92,18 @@ mod server {
             crate::routes::ListViews(crate::routes::dir()).into_tool(),
             Quote.into_tool(),
         ]
+        .into_iter()
+        .chain(crate::devtools::all(crate::devtools::workspace(), data_dir().join("engines"), Arc::new(|engine, input| {
+            tokio::spawn(async move {
+                match find(&engine).await {
+                    Some(e) => {
+                        let _ = e.run(&input).await;
+                    }
+                    None => eprintln!("askk: alarm for unknown engine '{engine}'"),
+                }
+            });
+        })))
+        .collect()
     }
 
     /// Tool: last price of a symbol (Yahoo chart endpoint, no key).
@@ -235,6 +247,40 @@ pub async fn engine_view(path: String) -> Result<Node, ServerFnError> {
 pub async fn run_engine(path: String, input: String) -> Result<String, ServerFnError> {
     let e = find(&path).await.ok_or_else(|| ServerFnError::new(format!("no engine '{path}'")))?;
     e.run(&input).await.map_err(ServerFnError::new)
+}
+
+/// The prompt the engine would send now for `input`, as ordered sections (see `core::ORDER`).
+#[server]
+pub async fn engine_prompt(path: String, input: String) -> Result<Vec<crate::core::Section>, ServerFnError> {
+    let e = find(&path).await.ok_or_else(|| ServerFnError::new(format!("no engine '{path}'")))?;
+    Ok(e.sections(&e.toolbox(), &input))
+}
+
+/// One chat line: `role` is user | model | tool.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct ChatTurn {
+    pub role: String,
+    pub text: String,
+}
+
+/// The engine's conversation, from its history elements (model replies shown as their answer).
+#[server]
+pub async fn engine_chat(path: String) -> Result<Vec<ChatTurn>, ServerFnError> {
+    let e = find(&path).await.ok_or_else(|| ServerFnError::new(format!("no engine '{path}'")))?;
+    Ok(e.specs()
+        .into_iter()
+        .filter(|s| s.kind == "history")
+        .flat_map(|s| s.state["turns"].as_array().cloned().unwrap_or_default())
+        .map(|t| {
+            let role = t["role"].as_str().unwrap_or_default().to_string();
+            let raw = t["text"].as_str().unwrap_or_default().to_string();
+            let text = match serde_json::from_str::<serde_json::Value>(&raw) {
+                Ok(v) if role == "model" && v["answer"].is_string() => v["answer"].as_str().unwrap().to_string(),
+                _ => raw,
+            };
+            ChatTurn { role, text }
+        })
+        .collect())
 }
 
 /// A component kind and its own documentation.

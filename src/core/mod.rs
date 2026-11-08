@@ -120,6 +120,30 @@ pub trait Component: Send + Sync {
     }
 }
 
+/// One titled part of a prompt; `kind` is the element kind (or `tools` / `input`).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Section {
+    pub name: String,
+    pub kind: String,
+    pub body: String,
+}
+
+/// Prompt order by kind: what to achieve, where we are, what we know, what happened, what we
+/// can do, how to answer, then the input. Unknown kinds go after `response`, before the input.
+pub const ORDER: &[&str] = &["goal", "phase", "state", "artifact", "alert", "script", "history", "tools", "response"];
+
+pub fn rank(kind: &str) -> usize {
+    ORDER.iter().position(|k| *k == kind).unwrap_or(ORDER.len())
+}
+
+/// Sections as prompt text: `## name` then the body.
+pub fn render(sections: &[Section]) -> String {
+    let mut out: String = sections.iter().map(|s| format!("## {}\n{}\n\n", s.name, s.body)).collect();
+    out.truncate(out.trim_end().len());
+    out.push('\n');
+    out
+}
+
 /// Model access, implemented once per runtime (HTTP APIs, CLIs, test fakes).
 pub trait Infer: Send + Sync {
     fn complete(&self, model: &str, prompt: String) -> Fut<Result<String, String>>;
@@ -160,6 +184,7 @@ pub const KINDS: &[(&str, Ctor)] = &[
     ("artifact", crate::elements::artifact::new),
     ("alert", crate::elements::alert::new),
     ("script", crate::elements::script::new),
+    ("goal", crate::elements::goal::new),
 ];
 
 pub fn build(spec: Spec) -> Result<Box<dyn Component>, String> {
@@ -197,6 +222,15 @@ mod tests {
             let _ = c.view();
             assert_eq!(build(c.spec()).unwrap().spec(), c.spec(), "{kind} state must survive a restart");
         }
+    }
+
+    #[test]
+    fn prompt_order_is_fixed_by_kind_then_name_with_input_last() {
+        let s = |k: &str, n: &str| Section { name: n.into(), kind: k.into(), body: "b".into() };
+        let mut v = vec![s("response", "r"), s("history", "h"), s("goal", "g"), s("state", "z"), s("state", "a"), s("tools", "tools")];
+        v.sort_by(|a, b| rank(&a.kind).cmp(&rank(&b.kind)).then(a.name.cmp(&b.name)));
+        assert_eq!(v.iter().map(|x| x.name.as_str()).collect::<Vec<_>>(), ["g", "a", "z", "h", "tools", "r"]);
+        assert_eq!(render(&[s("goal", "g"), s("input", "input")]), "## g\nb\n\n## input\nb\n");
     }
 
     #[test]
