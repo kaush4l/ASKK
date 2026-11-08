@@ -39,8 +39,8 @@ pub fn ModelsView() -> Element {
 
     rsx! {
         Pane { class: "stack",
-            h2 { "Models" }
-            p { class: "dim", "Saved in data/models.json. Inference reads it on every call, so changes apply at once." }
+            h2 { {ui.t("models")} }
+            p { class: "dim", {ui.t("saved-in-data-models")} }
             if models.read().models.is_empty() { p { class: "dim", "{ui.t(\"no-models\")}" } }
             for m in models.read().models.clone() {
                 div { class: "row", key: "{m.name}",
@@ -53,18 +53,18 @@ pub fn ModelsView() -> Element {
                         let mut all = models.write();
                         all.models.retain(|x| x.name != n);
                         if all.default == n { all.default = all.models.first().map(|x| x.name.clone()).unwrap_or_default(); }
-                    } }, "Remove" }
+                    } }, {ui.t("remove")} }
                 }
             }
             div { class: "row",
                 button { class: "btn primary", onclick: move |_| async move {
-                    status.set(match infer::save_models(models()).await { Ok(()) => "Saved.".into(), Err(e) => format!("save failed: {e}") });
-                }, "Save" }
+                    status.set(match infer::save_models(models()).await { Ok(()) => consume_context::<crate::api::UiConfig>().t("saved"), Err(e) => format!("save failed: {e}") });
+                }, {ui.t("save")} }
                 span { class: "dim", "{status}" }
             }
         }
         Pane { class: "stack",
-            h3 { "Add a model" }
+            h3 { {ui.t("add-a-model")} }
             div { class: "row",
                 select { value: "{connector}", onchange: move |e| connector.set(e.value()),
                     for c in CONNECTORS { option { value: "{c}", "{c}" } }
@@ -77,7 +77,7 @@ pub fn ModelsView() -> Element {
                         Ok(v) => { status.set(format!("{} found", v.len())); found.set(v) }
                         Err(e) => status.set(format!("find failed: {e}")),
                     }
-                }, "Find models" }
+                }, {ui.t("find-models")} }
             }
             if !found.read().is_empty() {
                 div { class: "chips",
@@ -88,11 +88,11 @@ pub fn ModelsView() -> Element {
             }
             div { class: "row",
                 input { placeholder: "or type a model name", value: "{name}", oninput: move |e| name.set(e.value()) }
-                button { class: "btn", onclick: move |_| { add(name()); name.set(String::new()); }, "Add" }
+                button { class: "btn", onclick: move |_| { add(name()); name.set(String::new()); }, {ui.t("add")} }
             }
         }
         Pane { class: "stack",
-            h3 { "Try inference" }
+            h3 { {ui.t("try-inference")} }
             div { class: "row",
                 select { value: "{test_model}", onchange: move |e| test_model.set(e.value()),
                     option { value: "", "default ({models.read().default})" }
@@ -102,7 +102,7 @@ pub fn ModelsView() -> Element {
                 button { class: "btn", onclick: move |_| async move {
                     reply.set("…".into());
                     reply.set(match infer::infer(test_model(), prompt()).await { Ok(t) => t, Err(e) => format!("error: {e}") });
-                }, "Send" }
+                }, {ui.t("send")} }
             }
             if !reply.read().is_empty() { pre { class: "reply", "{reply}" } }
         }

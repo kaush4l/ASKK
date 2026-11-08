@@ -21,4 +21,4 @@
 | Live updates | long-poll `wait_change` on a per-engine change counter | done |
 | Theme editing from the UI | `data/theme.json` → `:root` vars; Theme page | done; layout too: `data/layout.json` (columns, engine order, hidden kinds), Layout page |
 | sandbox-exec for the server | `sandbox/server.sb`, `scripts/sandboxed.sh` | done (boot, pages, HTTPS quotes, claude CLI call verified) |
-| Desktop | `dx serve --platform desktop` builds Askk.app; server boots | built + launched (window not visually checked) |
+| Desktop | `dx serve --platform desktop` builds Askk.app; server boots | built + launched; window check skipped by owner (web is the target for now) |

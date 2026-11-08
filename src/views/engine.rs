@@ -6,6 +6,7 @@ use dioxus::prelude::*;
 /// One engine: its view (all elements) and an input. The engine is a tool: input → answer.
 #[component]
 pub fn EngineView(path: Vec<String>) -> Element {
+    let ui = use_context::<crate::api::UiConfig>();
     let path = path.join("/");
     let p = path.clone();
     let mut view = use_resource(move || { let p = p.clone(); async move { engine_view(p).await } });
@@ -45,9 +46,9 @@ pub fn EngineView(path: Vec<String>) -> Element {
         Pane { class: "stack",
             div { class: "row",
                 input { class: "grow", value: "{input}", oninput: move |e| input.set(e.value()) }
-                button { class: "btn primary", disabled: busy(), onclick: run, if busy() { "Running…" } else { "Run" } }
+                button { class: "btn primary", disabled: busy(), onclick: run, if busy() { {ui.t("running")} } else { {ui.t("run")} } }
                 if busy() {
-                    button { class: "btn", onclick: move |_| { let p = stop_path.clone(); async move { let _ = crate::api::stop_engine(p).await; } }, "Stop" }
+                    button { class: "btn", onclick: move |_| { let p = stop_path.clone(); async move { let _ = crate::api::stop_engine(p).await; } }, {ui.t("stop")} }
                 }
             }
             if !answer.read().is_empty() { pre { class: "reply", "{answer}" } }

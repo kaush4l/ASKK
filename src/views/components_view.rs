@@ -12,8 +12,8 @@ pub fn ComponentsView() -> Element {
     let mut status = use_signal(String::new);
     rsx! {
         Pane { class: "stack",
-            h2 { "Element kinds" }
-            p { class: "dim", "Every engine element is one of these. Each carries its own docs, config, state, lifecycle and view." }
+            h2 { {ui.t("element-kinds")} }
+            p { class: "dim", {ui.t("every-engine-element-is")} }
             div { class: "grid",
                 for k in catalog.read().as_ref().and_then(|r| r.as_ref().ok()).cloned().unwrap_or_default() {
                     div { class: "tile", div { class: "tile-head", span { "{k.kind}" } } p { class: "dim", "{k.doc}" } }
@@ -21,14 +21,14 @@ pub fn ComponentsView() -> Element {
             }
         }
         Pane { class: "stack",
-            h2 { "UI components" }
+            h2 { {ui.t("ui-components")} }
             p { class: "dim", "create_component tool: the same call an engine makes. Primitives: {compose::PRIMITIVES.join(\", \")}" }
             textarea { rows: "8", placeholder: "{{\"name\": \"...\", \"root\": {{\"kind\": \"pane\"}}}}", value: "{args}", oninput: move |e| args.set(e.value()) }
             div { class: "row",
                 button { class: "btn primary", onclick: move |_| async move {
                     status.set(compose::create_component(args()).await.unwrap_or_else(|e| e.to_string()));
                     specs.restart();
-                }, "Create" }
+                }, {ui.t("create")} }
                 span { class: "dim", "{status}" }
             }
         }

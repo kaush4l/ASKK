@@ -226,6 +226,7 @@ impl Engine {
     }
 
     /// The engine's UI: header, description, element views, sub-engine links.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn view(&self) -> Node {
         self.view_with(&[])
     }

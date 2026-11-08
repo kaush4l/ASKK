@@ -5,6 +5,7 @@ use dioxus::prelude::*;
 /// Layout: dashboard columns, engine order, hidden element kinds. Saved to data/layout.json.
 #[component]
 pub fn LayoutView() -> Element {
+    let ui = use_context::<crate::api::UiConfig>();
     let mut l = use_signal(Layout::default);
     let mut paths = use_signal(Vec::<String>::new);
     let mut all_kinds = use_signal(Vec::<String>::new);
@@ -25,14 +26,14 @@ pub fn LayoutView() -> Element {
     };
     rsx! {
         Pane { class: "stack",
-            h2 { "Layout" }
+            h2 { {ui.t("layout")} }
             div { class: "row",
-                span { class: "grow", "Dashboard columns" }
+                span { class: "grow", {ui.t("dashboard-columns")} }
                 select { value: "{l().columns}", onchange: move |e| l.write().columns = e.value().parse().unwrap_or(0),
                     for n in 0..5u8 { option { value: "{n}", if n == 0 { "1 per row" } else { "{n}" } } }
                 }
             }
-            h3 { "Engine order" }
+            h3 { {ui.t("engine-order")} }
             for (i, p) in paths().into_iter().enumerate() {
                 div { class: "row", key: "{p}",
                     span { class: "grow", "{p}" }
@@ -40,7 +41,7 @@ pub fn LayoutView() -> Element {
                     button { class: "btn", onclick: move |_| swap(i, i + 1), "↓" }
                 }
             }
-            h3 { "Shown element kinds" }
+            h3 { {ui.t("shown-element-kinds")} }
             div { class: "chips",
                 for k in all_kinds() {
                     label { class: "chip", key: "{k}",
@@ -58,8 +59,8 @@ pub fn LayoutView() -> Element {
                 button { class: "btn primary", onclick: move |_| async move {
                     let mut next = l();
                     next.order = paths();
-                    status.set(match save_layout(next).await { Ok(()) => "Saved.".into(), Err(e) => e.to_string() });
-                }, "Save" }
+                    status.set(match save_layout(next).await { Ok(()) => consume_context::<crate::api::UiConfig>().t("saved"), Err(e) => e.to_string() });
+                }, {ui.t("save")} }
                 span { class: "dim", "{status}" }
             }
         }
