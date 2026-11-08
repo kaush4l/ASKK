@@ -34,3 +34,4 @@
 | Object views + live activity | `render(size)` icon/small/medium/large on every component and engine; engine activity idle/thinking/calling/refocusing/stopped/error with CSS effects; catalog by category | done; chat header showed idle → thinking → calling run → thinking → idle live |
 | PR page + changelog | `src/pr.rs`, `/pr`: worktrees, pr.md sections, diff, commits, changelog; tools list_prs/changelog/restart | done |
 | Restart service | `scripts/service.sh` supervisor keeps the terminal; Restart → build → stop → start; data/service.json | done; restarted live from the button, app back in the same terminal |
+| Responsive glass shell | panel / icon rail / phone routes button + sheet; collapse lives in the panel header; nav icons from page.json; design rules (AAA contrast, 44px targets, focus ring, motion) | done; checked at 1440, 1000, 390px |

@@ -9,3 +9,5 @@ mod topbar;
 pub use topbar::Topbar;
 mod stat;
 pub use stat::Stat;
+mod icon;
+pub use icon::Icon;

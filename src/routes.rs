@@ -24,6 +24,9 @@ pub struct Page {
     /// Position in the sidebar; absent = not listed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub nav: Option<i32>,
+    /// Nav icon name (see `components::ICONS`).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub icon: String,
     pub root: Node,
 }
 
@@ -89,7 +92,7 @@ pub fn nav(pages: &[(Vec<String>, Page)]) -> Vec<crate::api::NavLink> {
     let mut v: Vec<(i32, crate::api::NavLink)> = pages
         .iter()
         .filter(|(pat, _)| pat.iter().all(|s| !s.starts_with('[')))
-        .filter_map(|(pat, p)| p.nav.map(|n| (n, crate::api::NavLink { label: p.title.clone(), to: format!("/{}", pat.join("/")) })))
+        .filter_map(|(pat, p)| p.nav.map(|n| (n, crate::api::NavLink { label: p.title.clone(), to: format!("/{}", pat.join("/")), icon: p.icon.clone() })))
         .collect();
     v.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.to.cmp(&b.1.to)));
     v.into_iter().map(|(_, l)| l).collect()
@@ -216,7 +219,7 @@ mod tests {
     }
 
     fn page(title: &str, nav: Option<i32>) -> Page {
-        Page { title: title.into(), nav, root: Node::new("text").text(title) }
+        Page { title: title.into(), nav, icon: String::new(), root: Node::new("text").text(title) }
     }
 
     #[test]

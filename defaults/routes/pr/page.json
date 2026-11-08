@@ -1,6 +1,7 @@
 {
   "title": "PRs",
   "nav": 3,
+  "icon": "branch",
   "root": {
     "kind": "stack",
     "children": [

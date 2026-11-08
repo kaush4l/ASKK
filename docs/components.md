@@ -184,3 +184,22 @@ Every backend object (engine and every element kind) draws itself; the UI only r
   running app alone. Status: `data/service-status.json`. Without the supervisor, Restart runs
   the same steps detached (plus `stop`) and logs to `data/service.log`.
 - Tools for engines and scripts: `list_prs`, `changelog`, `restart`.
+
+## Design rules (every element follows these)
+
+Liquid glass: floating surfaces (`.glass`: panel, page header, phone routes button) carry a
+top-left sheen, a lit top edge and two-layer depth; content sits on calm `.pane`s; never glass on
+glass. Over busy content (the phone sheet) glass goes near-opaque so text stays legible.
+
+1. **Type**: system stack (SF Pro on Apple), tight headings, tabular numbers in code and diffs.
+2. **Contrast**: text meets AAA (7:1) in dark and light; `prefers-contrast: more` raises it further.
+3. **Focus**: one visible ring on `:focus-visible`, none for pointer clicks.
+4. **Targets**: every control is at least 44px tall (`--hit`).
+5. **Motion**: quick feedback, spring arrivals, press scales to .96; `prefers-reduced-motion`
+   removes it; `prefers-reduced-transparency` removes blur.
+6. **Disabled** always reads as disabled.
+
+Navigation panel by screen: **wide** (≥1200px) full panel, folded to an icon rail by the button
+in its own header (labels become hover/focus tooltips); **medium** (768–1199px) icon rail;
+**phone** one floating routes button opening the panel as a sheet (scrim tap or a link closes
+it). Icons come from each route's `page.json` (`icon`). The page header shows where you are.

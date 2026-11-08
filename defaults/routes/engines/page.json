@@ -1,6 +1,7 @@
 {
   "title": "Engines",
   "nav": 5,
+  "icon": "engine",
   "root": {
     "kind": "stack",
     "children": [

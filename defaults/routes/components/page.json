@@ -1,6 +1,7 @@
 {
   "title": "Components",
   "nav": 20,
+  "icon": "shapes",
   "root": {
     "kind": "view",
     "text": "components"

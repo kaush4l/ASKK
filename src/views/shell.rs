@@ -7,7 +7,9 @@ use dioxus::prelude::*;
 /// route folders that set `nav`.
 #[component]
 pub fn Shell() -> Element {
-    let mut collapsed = use_signal(|| false);
+    let collapsed = use_signal(|| false);
+    let open = use_signal(|| false);
+    let here = use_route::<Route>().to_string();
     let ui = use_server_future(ui_config)?;
     let cfg: UiConfig = ui.read().as_ref().and_then(|r| r.as_ref().ok()).cloned().unwrap_or_default();
     use_context_provider(|| cfg.clone());
@@ -19,9 +21,9 @@ pub fn Shell() -> Element {
         document::Style { ":root{{{vars}}}" }
         Wall {}
         div { class: if collapsed() { "shell collapsed" } else { "shell" },
-            Sidebar { brand: cfg.brand.clone(), items: links, collapsed: collapsed() }
+            Sidebar { brand: cfg.brand.clone(), items: links.clone(), collapsed, open }
             main { class: "main",
-                Topbar { title: cfg.brand.clone(), on_toggle: move |_| collapsed.toggle() }
+                Topbar { brand: cfg.brand.clone(), title: links.iter().find(|l| l.to == here).map(|l| l.label.clone()).unwrap_or_else(|| here.trim_start_matches('/').to_string()) }
                 Outlet::<Route> {}
             }
         }

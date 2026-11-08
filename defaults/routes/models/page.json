@@ -1,6 +1,7 @@
 {
   "title": "Models",
   "nav": 10,
+  "icon": "cube",
   "root": {
     "kind": "view",
     "text": "models"

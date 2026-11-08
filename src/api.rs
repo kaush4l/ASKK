@@ -27,6 +27,8 @@ impl UiConfig {
 pub struct NavLink {
     pub label: String,
     pub to: String,
+    #[serde(default)]
+    pub icon: String,
 }
 
 /// `data/layout.json`: how things are arranged (not what they are).
