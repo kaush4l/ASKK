@@ -122,6 +122,10 @@ pub trait Component: Send + Sync {
     fn activity(&self) -> String {
         "idle".into()
     }
+    /// The instruction to send when the context is nearly full (a phase marked `refocus`).
+    fn refocus(&self) -> Option<String> {
+        None
+    }
     /// A short state marker shown beside the icon (the phase element: its current phase).
     fn indicator(&self) -> Option<String> {
         None

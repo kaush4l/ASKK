@@ -55,6 +55,12 @@ pub fn Dashboard() -> Element {
             onpointermove: move |e| { if e.held_buttons().is_empty() { return; } pressing += 1; },
             for (i, n) in w.engines.clone().into_iter().enumerate() {
                 div { class: "cell size-{n.size}", key: "{paths[i]}", draggable: edit(),
+                    // Not editing: a click expands the card (medium <-> large).
+                    onclick: { let paths = paths.clone(); let size = n.size.clone(); move |_| {
+                        let order = paths.clone();
+                        let next = if size == "large" { Size::Medium } else { Size::Large };
+                        async move { if !edit() { let p = order[i].clone(); save(order, Some((p, next))).await; } }
+                    } },
                     ondragstart: move |_| dragged.set(Some(i)),
                     ondragover: move |e| e.prevent_default(),
                     ondrop: { let paths = paths.clone(); move |e: DragEvent| {

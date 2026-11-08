@@ -16,6 +16,9 @@ struct Def {
     focus: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     tools: Option<Vec<String>>,
+    /// This phase is the refocus: its `focus` is the instruction sent when the context is 90% full.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    refocus: bool,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -42,7 +45,7 @@ pub fn new(s: Spec) -> Result<Box<dyn Component>, String> {
 
 impl Phase {
     fn current(&self) -> Option<&Def> {
-        self.cfg.phases.iter().find(|p| p.name == self.st.current).or(self.cfg.phases.first())
+        self.cfg.phases.iter().find(|p| p.name == self.st.current).or(self.cfg.phases.iter().find(|p| !p.refocus))
     }
 }
 
@@ -58,6 +61,9 @@ impl Component for Phase {
             format!("{mark}{}: {}", p.name, p.focus)
         });
         super::tile(&self.name, "phase", lines)
+    }
+    fn refocus(&self) -> Option<String> {
+        self.cfg.phases.iter().find(|p| p.refocus).map(|p| p.focus.clone()).filter(|f| !f.is_empty())
     }
     fn indicator(&self) -> Option<String> {
         self.current().map(|p| format!("phase {}", p.name))

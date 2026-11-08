@@ -17,6 +17,11 @@
       {
         "name": "act",
         "focus": "Do the work with the fewest calls."
+      },
+      {
+        "name": "refocus",
+        "refocus": true,
+        "focus": "The context is nearly full. Write the summary the next steps need: the request and goal in one line; what is done (with file paths and ids); what is left, in order; open questions; lessons (what worked, what failed and why). Drop raw tool output and anything already in learning.md. Reply with the summary only."
       }
     ]
   }

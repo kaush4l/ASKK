@@ -278,7 +278,7 @@ pub fn Render(node: Node) -> Element {
     let kids = rsx! { for c in node.children.clone() { Render { node: c } } };
     match node.kind.as_str() {
         "object" => rsx! { Object { node: node.clone() } },
-        "marks" => rsx! { div { class: "marks", {kids} } },
+        "marks" => rsx! { div { class: "marks", role: "group", "aria-label": "{node.label}", if !node.label.is_empty() { span { class: "marks-label", "{node.label}" } } {kids} } },
         "mark" => rsx! { span { class: "mark", title: "{node.label}", "aria-label": "{node.label}", Art { icon: node.icon.clone(), size: 16 } } },
         "pane" => rsx! { crate::components::Pane { class: "stack", {kids} } },
         "glass" => rsx! { crate::components::Glass { class: "stack pad", {kids} } },

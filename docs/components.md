@@ -223,3 +223,19 @@ Home (`/`) is the dashboard: every top engine at its own size. Press and hold th
 or press Edit layout: cards jiggle, drag to reorder, S/M/L per engine; saved in
 `data/layout.json` (`order`, `sizes`). Routes: Home, Chat, PRs, Components, Settings (Models,
 Theme, Layout as tabs). The PR page is one component.
+
+## Design note (in progress, 2026-11-08)
+
+We are still fine-tuning the look; these are the current decisions, not final ones.
+
+- Engines and elements are both 2×2 when small (an engine was 3×3; too big).
+- Medium card bottom half: what it can use, grouped by type: **Tools** (selected shared tools,
+  scripts, set_phase), **Live** (artifacts, alerts), **Engines** (sub-engines). Same icon = one
+  mark, names on hover. Note-editing tools (goal, focus, learning) and the reply format are left
+  off the card. Below them, the run log: the last 3 actions, newest first.
+- Home: click a card to switch it between medium and large; long press for full layout edit.
+- Refocus is a phase: a phase with `"refocus": true` gives the instruction sent at 90% context
+  (detailed: what to keep, what to drop). It is never the default working phase.
+- Open: dark/light contrast measured only by eye; orb motion strength; how large views compose
+  for engines with many elements; the startup sequence (scripts that build state from folders
+  or a database) is next.

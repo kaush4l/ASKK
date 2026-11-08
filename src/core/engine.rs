@@ -208,7 +208,8 @@ impl Engine {
             let mut prompt = self.prompt(&tools, &shown);
             if context > 0 && super::tokens(&prompt) * 10 >= context * 9 {
                 self.act("refocusing", "");
-                let summary = self.infer.complete(&model, format!("{REFOCUS}\n\n{prompt}")).await?;
+                let how = self.elements.lock().unwrap().iter().find_map(|e| e.refocus()).unwrap_or_else(|| REFOCUS.into());
+                let summary = self.infer.complete(&model, format!("{how}\n\n{prompt}")).await?;
                 self.dispatch(&Event::Folded(summary));
                 prompt = self.prompt(&tools, &shown);
             }
@@ -288,26 +289,45 @@ impl Engine {
         let els = self.elements.lock().unwrap();
         let phase = els.iter().find_map(|e| e.indicator());
         let note = if !detail.is_empty() { detail } else { phase.unwrap_or_else(|| if f.status.is_empty() || f.status == "idle" { String::new() } else { f.status.clone() }) };
-        let tools: Vec<(String, String)> = {
-            let mut names: Vec<String> = self.shared.iter().map(|t| t.name()).filter(|t| els.iter().any(|e| e.selects(t))).collect();
-            names.extend(els.iter().flat_map(|e| e.tools()).map(|t| t.name()));
-            names.into_iter().map(|t| (crate::compose::tool_icon(&t).to_string(), t)).collect()
+        // Bottom half of the card: what it can use, grouped by type. Element tools that only
+        // edit its own notes (goal, focus, learning) or reply format are left out.
+        let mut tool_names: Vec<String> = self.shared.iter().map(|t| t.name()).filter(|t| els.iter().any(|e| e.selects(t))).collect();
+        tool_names.extend(els.iter().filter(|e| matches!(e.kind(), "script" | "phase")).flat_map(|e| e.tools()).map(|t| t.name()));
+        let group = |items: Vec<(String, String)>| {
+            let mut g: Vec<(String, String)> = vec![];
+            for (icon, name) in items {
+                match g.iter_mut().find(|(i, _)| *i == icon) {
+                    Some((_, l)) => { l.push_str(", "); l.push_str(&name); }
+                    None => g.push((icon, name)),
+                }
+            }
+            g
         };
-        let live: Vec<(String, String)> = els.iter().filter(|e| matches!(e.kind(), "artifact" | "alert")).map(|e| (crate::compose::kind_icon(e.kind()).to_string(), e.name().to_string())).collect();
+        let tools = group(tool_names.into_iter().map(|t| (crate::compose::tool_icon(&t).to_string(), t)).collect());
+        let live = group(els.iter().filter(|e| matches!(e.kind(), "artifact" | "alert")).map(|e| (crate::compose::kind_icon(e.kind()).to_string(), e.name().to_string())).collect());
         let subs: Vec<(String, String)> = self.subs.iter().map(|s| { let i = s.file.lock().unwrap().icon.clone(); (if i.is_empty() { "engine".into() } else { i }, s.name()) }).collect();
-        // One mark per icon (same icon = same kind of ability); its label lists the names.
-        let mut grouped: Vec<(String, String)> = vec![];
-        for (icon, name) in tools.into_iter().chain(live).chain(subs) {
-            match grouped.iter_mut().find(|(i, _)| *i == icon) {
-                Some((_, l)) => { l.push_str(", "); l.push_str(&name); }
-                None => grouped.push((icon, name)),
+        let mut n = n.note(&note);
+        for (label, items) in [("Tools", tools), ("Live", live), ("Engines", subs)] {
+            if !items.is_empty() {
+                n = n.child(Node::marks(items).label(label));
             }
         }
-        let mut n = n.note(&note).child(Node::marks(grouped));
+        // Run log: the last actions (tool calls), newest first.
+        let log: Vec<String> = els
+            .iter()
+            .filter(|e| e.kind() == "history")
+            .flat_map(|e| e.state()["turns"].as_array().cloned().unwrap_or_default())
+            .filter(|t| t["role"] == "tool")
+            .map(|t| t["text"].as_str().unwrap_or_default().to_string())
+            .collect();
+        let short = |t: &str| { let t: String = t.chars().take(90).collect(); t };
         let link = Node::new("link").label("Open").text(&format!("/e/{}", self.path));
         if size == Size::Medium {
-            if !f.description.is_empty() {
+            let recent: Vec<Node> = log.iter().rev().take(3).map(|t| Node::new("muted").text(&short(t))).collect();
+            if recent.is_empty() {
                 n = n.child(Node::new("muted").text(&f.description));
+            } else {
+                n = n.children(recent);
             }
             return n.child(link);
         }
@@ -550,11 +570,24 @@ pub mod tests {
         }
         assert!(e.render(Size::Small, &[]).children.is_empty(), "small is only the live icon");
         let card = e.render(Size::Medium, &[]);
-        assert_eq!(card.children[0].kind, "marks", "card row 3: icons of what it holds");
+        assert_eq!((card.children[0].kind.as_str(), card.children[0].label.as_str()), ("marks", "Tools"), "card: what it holds, grouped by type");
         assert!(card.children[0].children.iter().any(|m| m.label.contains("probe") && m.icon == "wrench"));
         let icons: Vec<&str> = card.children[0].children.iter().map(|m| m.icon.as_str()).collect();
         assert!(icons.iter().enumerate().all(|(i, x)| !icons[..i].contains(x)), "one mark per icon: {icons:?}");
         assert!(e.render(Size::Large, &[]).children.iter().any(|c| c.kind == "grid" && c.children[0].size == "medium"));
+    }
+
+    #[tokio::test]
+    async fn a_refocus_phase_supplies_the_refocus_instruction() {
+        let infer = Scripted::new(&["kept: the plan", r#"{"answer":"ok"}"#]);
+        let mut f = file("e");
+        f.context = 20;
+        let phase = spec("phase", "phase", json!({"phases": [{"name": "work", "focus": "do it"}, {"name": "refocus", "refocus": true, "focus": "Keep the plan, the open files and every failed attempt."}]}));
+        let e = Engine::new(f, "e".into(), vec![phase, spec("history", "h", Value::Null)], vec![], vec![], infer.clone()).unwrap();
+        e.run("a long enough input to pass the tiny window").await.unwrap();
+        let p = infer.prompts.lock().unwrap();
+        assert!(p[0].starts_with("Keep the plan, the open files and every failed attempt."), "{}", p[0]);
+        assert!(p[1].contains("Current phase: work"), "refocus is never the working phase by default");
     }
 
     #[tokio::test]
