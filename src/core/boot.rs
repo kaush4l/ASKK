@@ -43,6 +43,10 @@ pub fn scan_one(dir: &Path, path: String) -> Result<Tree, String> {
         if s.name.is_empty() {
             s.name = f.file_stem().unwrap().to_string_lossy().into();
         }
+        // An element with `config.file` keeps its state as that file's text (goal.md, …).
+        if let Some(md) = s.config["file"].as_str() {
+            s.state = serde_json::json!({"text": std::fs::read_to_string(dir.join(md)).unwrap_or_default()});
+        }
         specs.push(s);
     }
     let mut subs = vec![];
@@ -72,7 +76,11 @@ pub fn save(dir: &Path, e: &Engine) -> Result<(), String> {
     let w = |p: PathBuf, v: String| std::fs::write(&p, v).map_err(|err| format!("{}: {err}", p.display()));
     w(dir.join("engine.json"), serde_json::to_string_pretty(&*e.file.lock().unwrap()).unwrap())?;
     std::fs::create_dir_all(dir.join("elements")).map_err(|err| err.to_string())?;
-    for s in e.specs() {
+    for mut s in e.specs() {
+        if let Some(md) = s.config["file"].as_str() {
+            w(dir.join(md), s.state["text"].as_str().unwrap_or_default().into())?;
+            s.state = Value::Null;
+        }
         w(dir.join("elements").join(format!("{}.json", s.name)), serde_json::to_string_pretty(&s).unwrap())?;
     }
     Ok(())
@@ -136,12 +144,15 @@ mod tests {
         write(&root.join("top/elements/history.json"), json!({"kind": "history"}));
         write(&root.join("top/sub/engine.json"), json!({"name": "sub", "description": "helps"}));
         write(&root.join("bare/engine.json"), json!({"name": "bare"}));
+        write(&root.join("top/elements/learning.json"), json!({"kind": "notes", "config": {"file": "learning.md", "mode": "sections"}}));
+        std::fs::write(root.join("top/learning.md"), "## tools\n- add works\n").unwrap();
         std::fs::create_dir_all(root.join("not-an-engine")).unwrap();
 
         let trees = scan(&root).unwrap();
         assert_eq!(trees.iter().map(|t| t.path.as_str()).collect::<Vec<_>>(), ["bare", "top"]);
         assert_eq!(trees[1].subs[0].path, "top/sub");
         assert_eq!(trees[1].specs[0].name, "history", "name defaults to the file stem");
+        assert_eq!(trees[1].specs[1].state["text"], "## tools\n- add works\n", "state read from learning.md");
 
         let top = init(trees[1].clone(), &[], Scripted::new(&["hello"])).unwrap();
         assert!(top.find("top/sub").is_some());
@@ -152,6 +163,8 @@ mod tests {
         let turns = &again[1].specs[0].state["turns"];
         assert_eq!(turns.as_array().unwrap().len(), 2, "history persisted: {turns}");
         assert_eq!(again[1].file.status, "idle");
+        assert_eq!(std::fs::read_to_string(root.join("top/learning.md")).unwrap(), "## tools\n- add works\n", "md written back");
+        assert!(std::fs::read_to_string(root.join("top/elements/learning.json")).unwrap().contains("\"state\": null"), "state lives in the .md only");
         let _ = std::fs::remove_dir_all(&root);
     }
 

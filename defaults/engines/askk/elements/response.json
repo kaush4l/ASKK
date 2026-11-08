@@ -1,1 +1,6 @@
-{ "kind": "response", "config": { "format": "json" } }
+{
+  "kind": "response",
+  "config": {
+    "format": "toon"
+  }
+}

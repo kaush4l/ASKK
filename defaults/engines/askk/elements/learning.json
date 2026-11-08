@@ -1,0 +1,10 @@
+{
+  "kind": "notes",
+  "name": "learning",
+  "config": {
+    "file": "learning.md",
+    "mode": "sections",
+    "hint": "lessons by topic, added with learn"
+  },
+  "state": null
+}

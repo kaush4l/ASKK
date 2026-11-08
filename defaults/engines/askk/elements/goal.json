@@ -1,9 +1,10 @@
 {
-  "kind": "goal",
+  "kind": "notes",
   "name": "goal",
   "config": {
-    "goal": "Help the developer with what they ask, using the workspace tools.",
-    "done": "the request is answered or the change is made and checked"
+    "file": "goal.md",
+    "mode": "replace",
+    "hint": "what this engine is for and when it is done"
   },
   "state": null
 }

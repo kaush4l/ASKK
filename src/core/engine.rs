@@ -139,7 +139,7 @@ impl Engine {
         if let Some(t) = tools.describe() {
             out.push(Section { name: "tools".into(), kind: "tools".into(), body: t });
         }
-        out.sort_by(|a, b| super::rank(&a.kind).cmp(&super::rank(&b.kind)).then(a.name.cmp(&b.name)));
+        out.sort_by(|a, b| super::rank(&a.kind, &a.name).cmp(&super::rank(&b.kind, &b.name)).then(a.name.cmp(&b.name)));
         out.push(Section { name: "input".into(), kind: "input".into(), body: input.into() });
         out
     }
@@ -150,7 +150,7 @@ impl Engine {
 
     fn parse(&self, reply: &str) -> Reply {
         let els = self.elements.lock().unwrap();
-        els.iter().find_map(|e| e.parse(reply)).unwrap_or_else(|| crate::elements::response::parse_json(reply))
+        els.iter().find_map(|e| e.parse(reply)).unwrap_or_else(|| crate::elements::response::parse_toon(reply))
     }
 
     pub async fn run(&self, input: &str) -> Result<String, String> {

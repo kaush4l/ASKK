@@ -1,0 +1,10 @@
+{
+  "kind": "notes",
+  "name": "focus",
+  "config": {
+    "file": "focus.md",
+    "mode": "replace",
+    "hint": "what to concentrate on right now"
+  },
+  "state": null
+}

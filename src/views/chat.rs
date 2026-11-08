@@ -87,23 +87,23 @@ pub fn ChatView() -> Element {
                 }
                 div { class: "bar",
                     for s in sections.iter() {
-                        span { class: "k-{s.kind}", style: "flex-grow:{crate::core::tokens(&s.body).max(1)}", title: "{s.name}" }
+                        span { class: "k-{s.kind} k-{s.name}", style: "flex-grow:{crate::core::tokens(&s.body).max(1)}", title: "{s.name}" }
                     }
                 }
                 div { class: "legend",
                     for s in sections.iter() {
-                        span { class: "chip k-{s.kind}", "{s.name} · {crate::core::tokens(&s.body)}" }
+                        span { class: "chip k-{s.kind} k-{s.name}", "{s.name} · {crate::core::tokens(&s.body)}" }
                     }
                 }
                 if full() {
                     pre { class: "rendered",
                         for s in sections.iter() {
-                            span { class: "k-{s.kind}", "## {s.name}\n{s.body}\n\n" }
+                            span { class: "k-{s.kind} k-{s.name}", "## {s.name}\n{s.body}\n\n" }
                         }
                     }
                 } else {
                     for s in sections.iter() {
-                        details { class: "section k-{s.kind}", open: s.kind != "history" && s.kind != "tools",
+                        details { class: "section k-{s.kind} k-{s.name}", open: s.kind != "history" && s.kind != "tools",
                             summary { b { "{s.name}" } span { class: "dim", " {s.kind} · ~{crate::core::tokens(&s.body)} tokens" } }
                             pre { "{s.body}" }
                         }

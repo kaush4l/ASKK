@@ -103,9 +103,9 @@ pointers such as `/max_input_tokens`, `/context_length`, `/max_model_len`, then 
 ## Prompt: sections in a fixed order
 
 `Engine::sections(tools, input)` is the prompt as data: one `Section {name, kind, body}` per
-element with a prompt, plus `tools` and `input`. Order is by kind (`core::ORDER`), then name:
+element with a prompt, plus `tools` and `input`. Order is by element name if listed in `core::ORDER`, else by kind, then name:
 
-goal → phase → state → artifact → alert → script → history → tools → response → other kinds → input
+goal → focus → phase → state → learning → notes → artifact → alert → script → history → tools → response → other → input
 
 So the same engine and input always render the same text (`core::render`). After the first
 step the input carries a reminder that this request's calls already ran (`engine::continued`).
@@ -130,3 +130,27 @@ Shared tools, chosen per engine with a `tools` element. File tools and commands 
 
 `askk --desk <dir>` (or `ASKK_DATA=<dir>`) loads engines, models, runtimes, routes, theme and
 layout from `<dir>`; anything missing is seeded from `defaults/`.
+
+## Engine state files: goal.md, focus.md, learning.md
+
+A `notes` element with `config.file` keeps its state as a markdown file in the engine folder;
+boot reads it, every save writes it (the element JSON keeps `state: null`). Edit the file by
+hand or let the model change it.
+
+| file | mode | tool | prompt |
+| --- | --- | --- | --- |
+| goal.md | replace | `set_goal {text}` | first section |
+| focus.md | replace | `set_focus {text}` | second |
+| learning.md | sections | `learn {section, lesson}` adds `- lesson` under `## section`; refocus summaries go to `## refocus` | after state |
+
+## Replies are TOON
+
+`response` defaults to `format: toon` (`json` still available):
+
+```
+calls[2]{tool,args}:
+  read_file,{"path":"src/main.rs"}
+  run,{"command":"cargo test"}
+answer: text
+```
+The parser also accepts `calls[i]{tool,NAME}: {args}` rows and falls back to JSON.

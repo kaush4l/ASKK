@@ -128,12 +128,14 @@ pub struct Section {
     pub body: String,
 }
 
-/// Prompt order by kind: what to achieve, where we are, what we know, what happened, what we
-/// can do, how to answer, then the input. Unknown kinds go after `response`, before the input.
-pub const ORDER: &[&str] = &["goal", "phase", "state", "artifact", "alert", "script", "history", "tools", "response"];
+/// Prompt order, by element name first, else kind: what to achieve, what to concentrate on,
+/// where we are, what we know and have learnt, what happened, what we can do, how to answer,
+/// then the input. Anything unlisted goes after `response`, before the input.
+pub const ORDER: &[&str] = &["goal", "focus", "phase", "state", "learning", "notes", "artifact", "alert", "script", "history", "tools", "response"];
 
-pub fn rank(kind: &str) -> usize {
-    ORDER.iter().position(|k| *k == kind).unwrap_or(ORDER.len())
+pub fn rank(kind: &str, name: &str) -> usize {
+    let at = |x: &str| ORDER.iter().position(|k| *k == x);
+    at(name).or(at(kind)).unwrap_or(ORDER.len())
 }
 
 /// Sections as prompt text: `## name` then the body.
@@ -184,7 +186,7 @@ pub const KINDS: &[(&str, Ctor)] = &[
     ("artifact", crate::elements::artifact::new),
     ("alert", crate::elements::alert::new),
     ("script", crate::elements::script::new),
-    ("goal", crate::elements::goal::new),
+    ("notes", crate::elements::notes::new),
 ];
 
 pub fn build(spec: Spec) -> Result<Box<dyn Component>, String> {
@@ -227,10 +229,10 @@ mod tests {
     #[test]
     fn prompt_order_is_fixed_by_kind_then_name_with_input_last() {
         let s = |k: &str, n: &str| Section { name: n.into(), kind: k.into(), body: "b".into() };
-        let mut v = vec![s("response", "r"), s("history", "h"), s("goal", "g"), s("state", "z"), s("state", "a"), s("tools", "tools")];
-        v.sort_by(|a, b| rank(&a.kind).cmp(&rank(&b.kind)).then(a.name.cmp(&b.name)));
-        assert_eq!(v.iter().map(|x| x.name.as_str()).collect::<Vec<_>>(), ["g", "a", "z", "h", "tools", "r"]);
-        assert_eq!(render(&[s("goal", "g"), s("input", "input")]), "## g\nb\n\n## input\nb\n");
+        let mut v = vec![s("response", "r"), s("history", "h"), s("notes", "learning"), s("notes", "focus"), s("notes", "goal"), s("state", "z"), s("state", "a"), s("tools", "tools")];
+        v.sort_by(|a, b| rank(&a.kind, &a.name).cmp(&rank(&b.kind, &b.name)).then(a.name.cmp(&b.name)));
+        assert_eq!(v.iter().map(|x| x.name.as_str()).collect::<Vec<_>>(), ["goal", "focus", "a", "z", "learning", "h", "tools", "r"]);
+        assert_eq!(render(&[s("notes", "g"), s("input", "input")]), "## g\nb\n\n## input\nb\n");
     }
 
     #[test]

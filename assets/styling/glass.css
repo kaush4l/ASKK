@@ -103,3 +103,5 @@ textarea { font: inherit; font-family: ui-monospace, Menlo, monospace; font-size
 .section summary { cursor: pointer; color: var(--k); }
 .section pre, .rendered { margin: var(--space-1) 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--text-xs); max-height: 40vh; overflow-y: auto; }
 .rendered { max-height: 70vh; } .rendered span { color: var(--k); }
+/* notes kind, then by name (later rules win): goal.md, focus.md, learning.md */
+.k-notes { --k: #d6b8ff; } .k-goal { --k: #ffb547; } .k-focus { --k: #ff9f43; } .k-learning { --k: #7cf29a; }

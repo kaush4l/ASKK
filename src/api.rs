@@ -274,8 +274,9 @@ pub async fn engine_chat(path: String) -> Result<Vec<ChatTurn>, ServerFnError> {
         .map(|t| {
             let role = t["role"].as_str().unwrap_or_default().to_string();
             let raw = t["text"].as_str().unwrap_or_default().to_string();
-            let text = match serde_json::from_str::<serde_json::Value>(&raw) {
-                Ok(v) if role == "model" && v["answer"].is_string() => v["answer"].as_str().unwrap().to_string(),
+            let reply = crate::elements::response::parse_toon(&raw);
+            let text = match reply.answer {
+                Some(a) if role == "model" && reply.calls.is_empty() => a,
                 _ => raw,
             };
             ChatTurn { role, text }
