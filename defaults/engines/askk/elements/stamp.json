@@ -1,0 +1,2 @@
+{ "kind": "script", "config": { "description": "remember the current time as last_seen",
+  "steps": [ { "tool": "now" }, { "tool": "remember", "args": { "key": "last_seen", "value": "$prev" } } ] } }

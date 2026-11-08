@@ -1,0 +1,1 @@
+{ "kind": "artifact", "config": { "read": { "tool": "quote", "args": { "symbol": "AAPL" } } } }

@@ -1,0 +1,4 @@
+{ "kind": "phase", "config": { "phases": [
+  { "name": "understand", "focus": "Restate the request and what is missing.", "tools": ["now", "remember"] },
+  { "name": "act", "focus": "Do the work with the fewest calls." }
+] } }

@@ -1,11 +1,29 @@
-[workspace]
-resolver = "3"
-members = ["core", "server", "src-tauri"]
+[package]
+name = "askk"
+version = "0.1.0"
+authors = ["kaush <kaushal.beyblader@gmail.com>"]
+edition = "2021"
 
-# Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
-[profile.release]
-codegen-units = 1
-lto = true
-opt-level = 3
-panic = "abort"
-strip = true
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+dioxus = { version = "0.7.1", features = ["router", "fullstack"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+futures = "0.3"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"], optional = true }
+tokio = { version = "1", features = ["fs", "process", "io-util", "sync", "time", "rt", "rt-multi-thread"], optional = true }
+
+[features]
+default = ["web"]
+# The feature that are only required for the web = ["dioxus/web"] build target should be optional and only enabled in the web = ["dioxus/web"] feature
+web = ["dioxus/web"]
+# The feature that are only required for the desktop = ["dioxus/desktop"] build target should be optional and only enabled in the desktop = ["dioxus/desktop"] feature
+desktop = ["dioxus/desktop"]
+# The feature that are only required for the mobile = ["dioxus/mobile"] build target should be optional and only enabled in the mobile = ["dioxus/mobile"] feature
+mobile = ["dioxus/mobile"]
+# The feature that are only required for the server = ["dioxus/server", "dep:reqwest", "dep:tokio"] build target should be optional and only enabled in the server = ["dioxus/server", "dep:reqwest", "dep:tokio"] feature
+server = ["dioxus/server", "dep:reqwest", "dep:tokio"]
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt", "fs", "process", "io-util", "sync", "time"] }

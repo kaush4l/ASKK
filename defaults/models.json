@@ -1,0 +1,29 @@
+{
+  "default": "claude",
+  "models": [
+    {
+      "name": "claude",
+      "connector": "cli",
+      "command": [
+        "claude",
+        "-p",
+        "{prompt}"
+      ]
+    },
+    {
+      "name": "claude-sonnet-5-5",
+      "connector": "cli",
+      "command": [
+        "claude",
+        "-p",
+        "{prompt}",
+        "--model",
+        "{model}"
+      ]
+    },
+    {
+      "name": "echo",
+      "connector": "echo"
+    }
+  ]
+}
