@@ -43,6 +43,9 @@ pub struct Layout {
     /// Element kinds left out of engine cards.
     #[serde(default)]
     pub hidden: Vec<String>,
+    /// Size of each engine on the dashboard (small | medium | large); default medium.
+    #[serde(default)]
+    pub sizes: std::collections::BTreeMap<String, crate::compose::Size>,
 }
 
 impl Layout {
@@ -60,6 +63,8 @@ impl Layout {
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct WorldView {
     pub engines: Vec<Node>,
+    /// Engine paths, in the order shown (for editing the layout).
+    pub paths: Vec<String>,
     pub columns: u8,
     pub error: String,
 }
@@ -236,8 +241,9 @@ pub async fn world_view() -> Result<WorldView, ServerFnError> {
     let w = world().await;
     let l = load_layout();
     let paths: Vec<String> = w.engines.iter().map(|e| e.path.clone()).collect();
-    let engines = l.arrange(&paths).into_iter().map(|i| w.engines[i].view_with(&l.hidden)).collect();
-    Ok(WorldView { engines, columns: l.columns, error: w.error.clone() })
+    let order = l.arrange(&paths);
+    let engines = order.iter().map(|&i| w.engines[i].render(l.sizes.get(&paths[i]).copied().unwrap_or_default(), &l.hidden)).collect();
+    Ok(WorldView { engines, paths: order.iter().map(|&i| paths[i].clone()).collect(), columns: l.columns, error: w.error.clone() })
 }
 
 #[server]
@@ -293,7 +299,7 @@ pub struct KindDoc {
     pub kind: String,
     pub doc: String,
     pub category: String,
-    /// icon, small, medium, large.
+    /// small, medium, large.
     pub views: Vec<Node>,
 }
 

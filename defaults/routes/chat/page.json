@@ -1,0 +1,14 @@
+{
+  "title": "Chat",
+  "nav": 1,
+  "icon": "chat",
+  "root": {
+    "kind": "stack",
+    "children": [
+      {
+        "kind": "view",
+        "text": "chat"
+      }
+    ]
+  }
+}

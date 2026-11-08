@@ -31,6 +31,9 @@ pub struct EngineFile {
     /// Context window override in tokens; 0 = use the model's. At 90% the engine refocuses (folds history).
     #[serde(default, skip_serializing_if = "is_zero")]
     pub context: usize,
+    /// Emoji or icon name for its small view and card; empty = the engine icon.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub icon: String,
 }
 
 fn is_zero(n: &usize) -> bool {
@@ -268,47 +271,78 @@ impl Engine {
         self.subs.iter().find_map(|s| s.find(path))
     }
 
-    /// The engine at one of the four sizes, carrying its live activity:
-    /// icon = glyph; small = name + activity detail; medium = description, status, elements
-    /// small, sub-engines as icons; large = elements medium, sub-engines small.
+    /// The engine at one of the three sizes, carrying its live activity.
+    /// - small: its icon (emoji from `engine.json` `icon`) with the activity orb.
+    /// - medium: a card: icon 2×2 with activity and the phase (or what it is doing), a row of
+    ///   icons for the tools and live artifacts it holds, then its description (scrolls).
+    /// - large: the state view: the card head, recent tool calls, live artifacts and alerts at
+    ///   medium, every element at medium, sub-engines small.
     /// Elements of the `hidden` kinds are left out (layout config).
     pub fn render(&self, size: Size, hidden: &[String]) -> Node {
         let f = self.file.lock().unwrap().clone();
         let (act, detail) = self.activity();
-        let mut n = Node::object("engine", &f.name, size, &act);
-        if size == Size::Icon {
-            return n;
-        }
-        let mut head = Node::new("row").child(Node::new("link").label("open").text(&format!("/e/{}", self.path)));
-        if !detail.is_empty() {
-            head = head.child(Node::new("badge").text(&detail));
-        }
-        if !f.status.is_empty() && f.status != "idle" && f.status != act {
-            head = head.child(Node::new("badge").text(&f.status));
-        }
-        n = n.child(head);
+        let n = Node::object("engine", &f.name, size, &act).icon(&f.icon);
         if size == Size::Small {
             return n;
         }
-        if !f.description.is_empty() {
-            n = n.child(Node::new("muted").text(&f.description));
-        }
-        let inner = if size == Size::Large { Size::Medium } else { Size::Small };
         let els = self.elements.lock().unwrap();
-        let shown: Vec<Node> = els.iter().filter(|e| !hidden.iter().any(|h| h == e.kind())).map(|e| e.render(inner)).collect();
-        if !shown.is_empty() {
-            n = n.child(Node::new("grid").children(shown));
+        let phase = els.iter().find_map(|e| e.indicator());
+        let note = if !detail.is_empty() { detail } else { phase.unwrap_or_else(|| if f.status.is_empty() || f.status == "idle" { String::new() } else { f.status.clone() }) };
+        let tools: Vec<(String, String)> = {
+            let mut names: Vec<String> = self.shared.iter().map(|t| t.name()).filter(|t| els.iter().any(|e| e.selects(t))).collect();
+            names.extend(els.iter().flat_map(|e| e.tools()).map(|t| t.name()));
+            names.into_iter().map(|t| (crate::compose::tool_icon(&t).to_string(), t)).collect()
+        };
+        let live: Vec<(String, String)> = els.iter().filter(|e| matches!(e.kind(), "artifact" | "alert")).map(|e| (crate::compose::kind_icon(e.kind()).to_string(), e.name().to_string())).collect();
+        let subs: Vec<(String, String)> = self.subs.iter().map(|s| { let i = s.file.lock().unwrap().icon.clone(); (if i.is_empty() { "engine".into() } else { i }, s.name()) }).collect();
+        // One mark per icon (same icon = same kind of ability); its label lists the names.
+        let mut grouped: Vec<(String, String)> = vec![];
+        for (icon, name) in tools.into_iter().chain(live).chain(subs) {
+            match grouped.iter_mut().find(|(i, _)| *i == icon) {
+                Some((_, l)) => { l.push_str(", "); l.push_str(&name); }
+                None => grouped.push((icon, name)),
+            }
+        }
+        let mut n = n.note(&note).child(Node::marks(grouped));
+        let link = Node::new("link").label("Open").text(&format!("/e/{}", self.path));
+        if size == Size::Medium {
+            if !f.description.is_empty() {
+                n = n.child(Node::new("muted").text(&f.description));
+            }
+            return n.child(link);
+        }
+        if !f.description.is_empty() {
+            n = n.child(Node::new("text").text(&f.description));
+        }
+        let calls: Vec<Node> = els
+            .iter()
+            .filter(|e| e.kind() == "history")
+            .flat_map(|e| e.state()["turns"].as_array().cloned().unwrap_or_default())
+            .filter(|t| t["role"] == "tool")
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .take(12)
+            .map(|t| Node::new("muted").text(t["text"].as_str().unwrap_or_default()))
+            .collect();
+        if !calls.is_empty() {
+            n = n.child(Node::new("heading").text("Recent tool calls")).child(Node::new("stack").children(calls));
+        }
+        let shown = |pick: &dyn Fn(&str) -> bool| -> Vec<Node> { els.iter().filter(|e| pick(e.kind()) && !hidden.iter().any(|h| h == e.kind())).map(|e| e.render(Size::Medium)).collect() };
+        let live = shown(&|k| matches!(k, "artifact" | "alert"));
+        if !live.is_empty() {
+            n = n.child(Node::new("heading").text("Live")).child(Node::new("grid").children(live));
+        }
+        let rest = shown(&|k| !matches!(k, "artifact" | "alert"));
+        if !rest.is_empty() {
+            n = n.child(Node::new("heading").text("Elements")).child(Node::new("grid").children(rest));
         }
         if !self.subs.is_empty() {
-            let sub = if size == Size::Large { Size::Small } else { Size::Icon };
-            n = n.child(Node::new("row").children(self.subs.iter().map(|s| s.render(sub, hidden)).collect()));
+            n = n.child(Node::new("heading").text("Sub-engines")).child(Node::new("row").children(self.subs.iter().map(|s| s.render(Size::Small, hidden)).collect()));
         }
         n
     }
 
-    pub fn view_with(&self, hidden: &[String]) -> Node {
-        self.render(Size::Medium, hidden)
-    }
 }
 
 /// An engine as a tool: `{"input": "..."}` → its answer.
@@ -359,7 +393,7 @@ pub mod tests {
     }
 
     pub fn file(name: &str) -> EngineFile {
-        EngineFile { name: name.into(), description: String::new(), model: String::new(), max_steps: 8, status: String::new(), context: 0 }
+        EngineFile { name: name.into(), description: String::new(), model: String::new(), max_steps: 8, status: String::new(), context: 0, icon: String::new() }
     }
 
     pub fn spec(kind: &str, name: &str, config: Value) -> Spec {
@@ -514,7 +548,12 @@ pub mod tests {
             let n = e.render(size, &[]);
             assert_eq!((n.kind.as_str(), n.text.as_str(), n.state.as_str(), n.size.as_str()), ("object", "engine", "idle", size.as_str()));
         }
-        assert!(e.render(Size::Icon, &[]).children.is_empty());
+        assert!(e.render(Size::Small, &[]).children.is_empty(), "small is only the live icon");
+        let card = e.render(Size::Medium, &[]);
+        assert_eq!(card.children[0].kind, "marks", "card row 3: icons of what it holds");
+        assert!(card.children[0].children.iter().any(|m| m.label.contains("probe") && m.icon == "wrench"));
+        let icons: Vec<&str> = card.children[0].children.iter().map(|m| m.icon.as_str()).collect();
+        assert!(icons.iter().enumerate().all(|(i, x)| !icons[..i].contains(x)), "one mark per icon: {icons:?}");
         assert!(e.render(Size::Large, &[]).children.iter().any(|c| c.kind == "grid" && c.children[0].size == "medium"));
     }
 

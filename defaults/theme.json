@@ -1,9 +1,1 @@
-{
-  "--accent": "#8b9cff",
-  "--wall-a": "#6d4aff",
-  "--wall-b": "#00b3ff",
-  "--wall-c": "#ff4fa3",
-  "--glass-blur": "24px",
-  "--glass-alpha": "62%",
-  "--radius-lg": "16px"
-}
+{}

@@ -13,10 +13,10 @@ use serde::{Deserialize, Serialize};
 /// `view` draws a built-in view (`text` = one of [`VIEWS`]); `use` draws a created component
 /// (`text` = its name).
 pub const PRIMITIVES: &[&str] =
-    &["object", "pane", "glass", "row", "stack", "grid", "tile", "heading", "text", "muted", "badge", "link", "stat", "button", "view", "use"];
+    &["object", "marks", "mark", "pane", "glass", "row", "stack", "grid", "tile", "heading", "text", "muted", "badge", "link", "stat", "button", "view", "use"];
 
 /// Built-in views a page can place with a `view` node.
-pub const VIEWS: &[&str] = &["chat", "pr", "dashboard", "engine", "models", "components", "theme", "layout"];
+pub const VIEWS: &[&str] = &["chat", "pr", "settings", "dashboard", "engine", "models", "components", "theme", "layout"];
 
 /// Every node is a known primitive, every `view` a known view; glass never nests inside glass.
 pub fn validate_node(n: &Node) -> Result<(), String> {
@@ -50,19 +50,40 @@ pub struct Node {
     /// `object` only: the object's live activity (idle, thinking, calling, …); drives effects.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub state: String,
+    /// `object` / `mark`: an icon name (see `components::ICONS`) or an emoji.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub icon: String,
+    /// `object` only: one line beside the icon (phase, activity detail, summary).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub note: String,
 }
 
 #[cfg_attr(not(feature = "server"), allow(dead_code))]
 impl Node {
     pub fn new(kind: &str) -> Self {
-        Self { kind: kind.into(), text: String::new(), label: String::new(), children: vec![], size: String::new(), state: String::new() }
+        Self { kind: kind.into(), text: String::new(), label: String::new(), children: vec![], size: String::new(), state: String::new(), icon: String::new(), note: String::new() }
     }
     /// A backend object's view: `label` = name, `text` = its kind.
     pub fn object(kind: &str, name: &str, size: Size, state: &str) -> Self {
         let mut n = Self::new("object").label(name).text(kind);
         n.size = size.as_str().into();
         n.state = state.into();
+        n.icon = kind_icon(kind).into();
         n
+    }
+    pub fn icon(mut self, i: &str) -> Self {
+        if !i.is_empty() {
+            self.icon = i.into();
+        }
+        self
+    }
+    pub fn note(mut self, n: &str) -> Self {
+        self.note = n.into();
+        self
+    }
+    /// A row of small icons (tools, artifacts): each `(icon, label)`.
+    pub fn marks(items: impl IntoIterator<Item = (String, String)>) -> Self {
+        Self::new("marks").children(items.into_iter().map(|(i, l)| Self::new("mark").label(&l).icon(&i)).collect())
     }
     pub fn text(mut self, t: &str) -> Self {
         self.text = t.into();
@@ -82,11 +103,12 @@ impl Node {
     }
 }
 
-/// The four view templates every object has.
+/// The three view templates every object has: **small** = its live icon (a square), **medium**
+/// = a card (icon 2×2 with status and phase, a row of tool/artifact icons, a scrolling body),
+/// **large** = its full state view.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Size {
-    Icon,
     Small,
     #[default]
     Medium,
@@ -95,10 +117,9 @@ pub enum Size {
 
 impl Size {
     #[cfg_attr(not(feature = "server"), allow(dead_code))]
-    pub const ALL: [Size; 4] = [Size::Icon, Size::Small, Size::Medium, Size::Large];
+    pub const ALL: [Size; 3] = [Size::Small, Size::Medium, Size::Large];
     pub fn as_str(self) -> &'static str {
         match self {
-            Size::Icon => "icon",
             Size::Small => "small",
             Size::Medium => "medium",
             Size::Large => "large",
@@ -106,21 +127,40 @@ impl Size {
     }
 }
 
-/// One mark per object kind (icon view).
-pub fn glyph(kind: &str) -> &'static str {
+/// The icon for an object kind.
+pub fn kind_icon(kind: &str) -> &'static str {
     match kind {
-        "engine" => "◎",
-        "notes" => "✎",
-        "phase" => "▶",
-        "state" => "▣",
-        "history" => "≡",
-        "response" => "↩",
-        "tools" => "⚒",
-        "script" => "⧉",
-        "artifact" => "◫",
-        "alert" => "⚑",
-        _ => "◇",
+        "engine" => "engine",
+        "notes" => "pencil",
+        "phase" => "flag",
+        "state" => "database",
+        "history" => "history",
+        "response" => "reply",
+        "tools" => "wrench",
+        "script" => "layers",
+        "artifact" => "eye",
+        "alert" => "bell",
+        _ => "dot",
     }
+}
+
+/// The icon for a tool, by what it does (name patterns), so a card can show what an engine holds.
+pub fn tool_icon(name: &str) -> &'static str {
+    let has = |w: &[&str]| w.iter().any(|x| name.contains(x));
+    if has(&["file", "dir"]) { "file" }
+    else if has(&["run", "spawn", "job", "stop"]) { "terminal" }
+    else if has(&["alarm"]) { "bell" }
+    else if has(&["parallel"]) { "split" }
+    else if has(&["restart"]) { "refresh" }
+    else if name == "list_prs" || name == "changelog" { "branch" }
+    else if has(&["view", "component"]) { "shapes" }
+    else if has(&["quote", "price"]) { "chart" }
+    else if has(&["now", "time"]) { "clock" }
+    else if has(&["learn"]) { "book" }
+    else if has(&["remember", "memory"]) { "database" }
+    else if has(&["phase"]) { "flag" }
+    else if has(&["set_", "goal", "focus"]) { "pencil" }
+    else { "wrench" }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -237,24 +277,9 @@ impl Tool for ListComponents {
 pub fn Render(node: Node) -> Element {
     let kids = rsx! { for c in node.children.clone() { Render { node: c } } };
     match node.kind.as_str() {
-        "object" => {
-            let cls = format!("obj size-{} kind-{} act-{}", node.size, node.text, if node.state.is_empty() { "idle" } else { &node.state });
-            let g = glyph(&node.text);
-            match node.size.as_str() {
-                "icon" => rsx! { span { class: "{cls}", title: "{node.label} · {node.text} · {node.state}", "{g}" } },
-                _ => rsx! {
-                    div { class: "{cls}",
-                        div { class: "obj-head",
-                            span { class: "obj-glyph", "{g}" }
-                            b { class: "grow", "{node.label}" }
-                            span { class: "obj-state", "{node.state}" }
-                            if node.size != "small" { span { class: "dim", "{node.text}" } }
-                        }
-                        {kids}
-                    }
-                },
-            }
-        }
+        "object" => rsx! { Object { node: node.clone() } },
+        "marks" => rsx! { div { class: "marks", {kids} } },
+        "mark" => rsx! { span { class: "mark", title: "{node.label}", "aria-label": "{node.label}", Art { icon: node.icon.clone(), size: 16 } } },
         "pane" => rsx! { crate::components::Pane { class: "stack", {kids} } },
         "glass" => rsx! { crate::components::Glass { class: "stack pad", {kids} } },
         "row" => rsx! { div { class: "row", {kids} } },
@@ -308,5 +333,51 @@ mod tests {
         assert_eq!(ok.unwrap(), json!("created kpi"));
         assert_eq!(tb.call("list_components", json!({})).await.unwrap(), json!(["kpi"]));
         let _ = std::fs::remove_dir_all(d);
+    }
+}
+
+/// An icon name from the icon set, or an emoji drawn as text.
+#[component]
+pub fn Art(icon: String, #[props(default = 20)] size: u32) -> Element {
+    if crate::components::ICONS.iter().any(|(n, _)| *n == icon) || icon.is_empty() {
+        rsx! { crate::components::Icon { name: icon, size } }
+    } else {
+        rsx! { span { class: "emoji", style: "font-size:{size}px", "{icon}" } }
+    }
+}
+
+/// A backend object at its size, carrying its own activity (class `act-<activity>` drives the
+/// orb's colour and motion). Medium cards have fixed rows; the body scrolls inside.
+#[component]
+fn Object(node: Node) -> Element {
+    let act = if node.state.is_empty() { "idle".to_string() } else { node.state.clone() };
+    let cls = format!("obj size-{} kind-{} act-{act}", node.size, node.text);
+    let (marks, body): (Vec<Node>, Vec<Node>) = node.children.iter().cloned().partition(|c| c.kind == "marks");
+    let art = rsx! {
+        div { class: "obj-art", "aria-hidden": "true",
+            span { class: "orb" }
+            Art { icon: node.icon.clone(), size: if node.size == "small" { 26 } else { 30 } }
+            span { class: "dot" }
+        }
+    };
+    match node.size.as_str() {
+        "small" => rsx! {
+            div { class: "{cls}", title: "{node.label} · {act}", role: "img", "aria-label": "{node.label}, {node.text}, {act}",
+                {art}
+                span { class: "obj-cap", "{node.label}" }
+            }
+        },
+        _ => rsx! {
+            article { class: "{cls}", "aria-label": "{node.label}",
+                {art}
+                div { class: "obj-meta",
+                    b { class: "obj-name", "{node.label}" }
+                    span { class: "obj-state", "{act}" }
+                    if !node.note.is_empty() { span { class: "obj-note", "{node.note}" } }
+                }
+                div { class: "obj-marks", for m in marks { Render { node: m } } }
+                div { class: "obj-body", for c in body { Render { node: c } } }
+            }
+        },
     }
 }

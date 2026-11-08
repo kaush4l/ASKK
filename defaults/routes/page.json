@@ -1,13 +1,13 @@
 {
-  "title": "Chat",
+  "title": "Home",
   "nav": 0,
-  "icon": "chat",
+  "icon": "home",
   "root": {
     "kind": "stack",
     "children": [
       {
         "kind": "view",
-        "text": "chat"
+        "text": "dashboard"
       }
     ]
   }

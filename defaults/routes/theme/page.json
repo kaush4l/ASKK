@@ -1,7 +1,5 @@
 {
   "title": "Theme",
-  "nav": 30,
-  "icon": "palette",
   "root": {
     "kind": "view",
     "text": "theme"

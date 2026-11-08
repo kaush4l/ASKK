@@ -1,0 +1,14 @@
+{
+  "title": "Settings",
+  "nav": 9,
+  "icon": "settings",
+  "root": {
+    "kind": "stack",
+    "children": [
+      {
+        "kind": "view",
+        "text": "settings"
+      }
+    ]
+  }
+}

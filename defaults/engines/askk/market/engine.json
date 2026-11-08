@@ -1,1 +1,6 @@
-{ "name": "market", "description": "Watches AAPL every minute; wakes when it rises over 1% across 5 polls.", "max_steps": 4 }
+{
+  "name": "market",
+  "description": "Watches AAPL every minute; wakes when it rises over 1% across 5 polls.",
+  "max_steps": 4,
+  "icon": "\ud83d\udcc8"
+}

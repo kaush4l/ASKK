@@ -1,7 +1,5 @@
 {
   "title": "Layout",
-  "nav": 40,
-  "icon": "layout",
   "root": {
     "kind": "view",
     "text": "layout"

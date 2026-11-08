@@ -203,3 +203,23 @@ Navigation panel by screen: **wide** (≥1200px) full panel, folded to an icon r
 in its own header (labels become hover/focus tooltips); **medium** (768–1199px) icon rail;
 **phone** one floating routes button opening the panel as a sheet (scrim tap or a link closes
 it). Icons come from each route's `page.json` (`icon`). The page header shows where you are.
+
+## Object sizes v2: small, medium, large (supersedes the four-size section)
+
+Design tokens and rules follow `archive/docs/design-rules.md` (Amarante 400 for everything but
+data, hierarchy by size, `.pane` content / `.glass` floats, state changes colour and shadow
+only). Objects sit on a cell grid (`--cell` 48px, 52px from 768px; `--gap` 12px).
+
+| size | what | footprint |
+| --- | --- | --- |
+| small | the live icon: emoji or icon over a breathing orb, status dot with halo while working, name beneath | 2×2 cells; engines 3×3 |
+| medium | a card: icon 2×2 · name, activity, phase (or what it is doing) · a row of icons for the tools, live artifacts and sub-engines it holds (one per kind of ability, names on hover) · body that scrolls inside | 6 cells wide, 4 rows + body |
+| large | the state view filling the content area: head, recent tool calls, live artifacts and alerts, every element as a medium card, sub-engines small | full width |
+
+`engine.json` `icon` sets an engine's emoji. Activity tones: idle/stopped neutral, thinking
+busy, calling accent, refocusing warn, armed ok, fired warn, error error.
+
+Home (`/`) is the dashboard: every top engine at its own size. Press and hold the board (450ms)
+or press Edit layout: cards jiggle, drag to reorder, S/M/L per engine; saved in
+`data/layout.json` (`order`, `sizes`). Routes: Home, Chat, PRs, Components, Settings (Models,
+Theme, Layout as tabs). The PR page is one component.

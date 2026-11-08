@@ -23,7 +23,7 @@ pub fn Shell() -> Element {
         div { class: if collapsed() { "shell collapsed" } else { "shell" },
             Sidebar { brand: cfg.brand.clone(), items: links.clone(), collapsed, open }
             main { class: "main",
-                Topbar { brand: cfg.brand.clone(), title: links.iter().find(|l| l.to == here).map(|l| l.label.clone()).unwrap_or_else(|| here.trim_start_matches('/').to_string()) }
+                Topbar { brand: cfg.brand.clone(), title: links.iter().find(|l| l.to == here).map(|l| l.label.clone()).unwrap_or_else(|| here.rsplit('/').find(|s| !s.is_empty()).unwrap_or_default().to_string()) }
                 Outlet::<Route> {}
             }
         }

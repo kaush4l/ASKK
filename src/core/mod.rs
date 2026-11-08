@@ -122,18 +122,28 @@ pub trait Component: Send + Sync {
     fn activity(&self) -> String {
         "idle".into()
     }
-    /// One of the four view templates. Default: icon = glyph + activity; small = the first
-    /// line of `view()`; medium = all of `view()`; large = that plus config and state.
+    /// A short state marker shown beside the icon (the phase element: its current phase).
+    fn indicator(&self) -> Option<String> {
+        None
+    }
+    /// One of the three view templates. Default: small = the live icon; medium = a card whose
+    /// note is the first line of `view()` and whose body is the rest; large = all of `view()`
+    /// plus config and state.
     fn render(&self, size: Size) -> Node {
         let n = Node::object(self.kind(), self.name(), size, &self.activity());
-        let body = self.view().children;
+        let mut body = self.view().children;
         match size {
-            Size::Icon => n,
-            Size::Small => n.children(body.into_iter().take(1).collect()),
-            Size::Medium => n.children(body),
+            Size::Small => n,
+            Size::Medium => {
+                let note = self.indicator().or_else(|| body.first().map(|c| c.text.clone())).unwrap_or_default();
+                if self.indicator().is_none() && !body.is_empty() {
+                    body.remove(0);
+                }
+                n.note(&note).children(body)
+            }
             Size::Large => {
-                let json = |v: Value| { let s = v.to_string(); if s.len() > 400 { format!("{}…", &s[..s.floor_char_boundary(400)]) } else { s } };
-                n.children(body).child(Node::new("muted").text(&format!("config {}", json(self.config())))).child(Node::new("muted").text(&format!("state {}", json(self.state()))))
+                let json = |v: Value| serde_json::to_string_pretty(&v).unwrap_or_default();
+                n.note(&self.indicator().unwrap_or_default()).children(body).child(Node::new("muted").text(&format!("config {}", json(self.config())))).child(Node::new("muted").text(&format!("state {}", json(self.state()))))
             }
         }
     }
@@ -258,7 +268,8 @@ mod tests {
                 assert_eq!((n.kind.as_str(), n.text.as_str(), n.size.as_str()), ("object", *kind, size.as_str()), "{kind} renders itself at every size");
                 assert!(!n.state.is_empty(), "{kind} view carries its activity");
             }
-            assert_eq!(c.render(Size::Icon).children.len(), 0);
+            assert_eq!(c.render(Size::Small).children.len(), 0, "{kind}: small is only the live icon");
+            assert!(!c.render(Size::Small).icon.is_empty(), "{kind} has an icon");
             assert_ne!(category(kind), "other", "{kind} needs a catalog category");
             assert_eq!(build(c.spec()).unwrap().spec(), c.spec(), "{kind} state must survive a restart");
         }

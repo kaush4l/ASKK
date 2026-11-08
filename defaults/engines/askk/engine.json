@@ -1,1 +1,7 @@
-{"name": "askk", "description": "Top engine. Plans, keeps notes, builds pages (create_view) and components (create_component); hands deeper UI work to designer.", "model": "", "max_steps": 8}
+{
+  "name": "askk",
+  "description": "Top engine. Plans, keeps notes, builds pages (create_view) and components (create_component); hands deeper UI work to designer.",
+  "model": "",
+  "max_steps": 8,
+  "icon": "\ud83e\udde0"
+}

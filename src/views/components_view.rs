@@ -27,7 +27,7 @@ pub fn ComponentsView() -> Element {
                     div { class: "kind",
                         div { class: "row", b { "{k.kind}" } span { class: "dim grow", "{k.doc}" } }
                         div { class: "sizes",
-                            for (n, size) in k.views.iter().zip(["icon", "small", "medium", "large"]) {
+                            for (n, size) in k.views.iter().zip(["small", "medium", "large"]) {
                                 div { class: "size-col", span { class: "dim", "{size}" } Render { node: n.clone() } }
                             }
                         }

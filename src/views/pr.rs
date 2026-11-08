@@ -18,9 +18,9 @@ pub fn PrView() -> Element {
     }
     let cur: Option<Pr> = b.prs.get(pick()).cloned();
     rsx! {
-        div { class: "prs",
-            div { class: "stack",
-                Pane { class: "stack",
+        Pane { class: "pr-app",
+            aside { class: "pr-side",
+                section { class: "stack",
                     h2 { "Worktrees" }
                     for (i, p) in b.prs.iter().enumerate() {
                         button { class: if i == pick() { "pr-item on" } else { "pr-item" }, onclick: move |_| { pick.set(i); tab.set("overview"); },
@@ -35,7 +35,7 @@ pub fn PrView() -> Element {
                     }
                 }
                 Restart {}
-                Pane { class: "stack",
+                section { class: "stack",
                     h2 { "Changelog" }
                     for c in b.changelog.iter() {
                         div { class: "log-row", code { "{c.id}" } span { class: "grow", "{c.subject}" } span { class: "dim", "{c.at.get(..10).unwrap_or_default()}" } }
@@ -43,7 +43,7 @@ pub fn PrView() -> Element {
                 }
             }
             if let Some(p) = cur {
-                Pane { class: "stack pr-main",
+                div { class: "stack pr-main",
                     div { class: "row", h2 { class: "grow", "{p.title}" } span { class: "dim", "{p.path}" } }
                     div { class: "tabs",
                         for (id, label) in [("overview", "Overview".to_string()), ("changes", format!("Changes ({})", p.files.len())), ("commits", format!("Commits ({})", p.commits.len()))] {
@@ -102,7 +102,7 @@ fn Restart() -> Element {
     let busy = matches!(st.step.as_str(), "queued" | "update" | "build" | "stop" | "start");
     let label = if st.note.is_empty() { st.step.clone() } else { format!("{}: {}", st.step, st.note) };
     rsx! {
-        Pane { class: "stack",
+        section { class: "stack",
             div { class: "row",
                 h2 { class: "grow", "Service" }
                 if !st.step.is_empty() { span { class: if st.ok { "badge" } else { "badge st-failed" }, "{label}" } }

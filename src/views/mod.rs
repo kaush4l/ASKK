@@ -8,6 +8,7 @@ mod layout;
 mod models;
 mod page;
 mod pr;
+mod settings;
 mod shell;
 mod theme;
 pub use chat::ChatView;
@@ -18,6 +19,7 @@ pub use layout::LayoutView;
 pub use models::ModelsView;
 pub use page::{Home, RoutePage};
 pub use pr::PrView;
+pub use settings::SettingsView;
 pub use shell::Shell;
 pub use theme::ThemeView;
 
@@ -29,6 +31,7 @@ pub fn Builtin(name: String) -> Element {
     match name.as_str() {
         "chat" => rsx! { ChatView {} },
         "pr" => rsx! { PrView {} },
+        "settings" => rsx! { SettingsView {} },
         "dashboard" => rsx! { Dashboard {} },
         "engine" => rsx! { EngineView {} },
         "models" => rsx! { ModelsView {} },

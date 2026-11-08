@@ -59,6 +59,9 @@ impl Component for Phase {
         });
         super::tile(&self.name, "phase", lines)
     }
+    fn indicator(&self) -> Option<String> {
+        self.current().map(|p| format!("phase {}", p.name))
+    }
     fn on(&mut self, ev: &Event) {
         if let Event::Called { tool, args, result } = ev {
             if tool == "set_phase" && !result.starts_with("error") {
