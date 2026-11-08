@@ -1,7 +1,7 @@
 //! Server-only runtimes. Two are mechanisms in code: `cli` (start a process) and `echo` (tests).
 //! Every HTTP runtime is data in `data/runtimes.json` (see [`Runtime`]): endpoint, auth style,
 //! body template and where the reply text sits. Adding an HTTP runtime needs no code.
-use super::{Model, Runtime};
+use super::{Found, Model, Runtime};
 use serde_json::Value;
 
 fn key(m: &Model) -> Option<String> {
@@ -16,16 +16,25 @@ pub fn runtimes() -> Vec<Runtime> {
         .unwrap_or_default()
 }
 
-/// Replace `{prompt}` / `{model}` in every string of a template. A string that is exactly a
-/// placeholder becomes the value itself (so no quoting problems).
-pub fn fill(t: &Value, model: &str, prompt: &str) -> Value {
+/// Replace `{name}` placeholders in every string of a template. A string that is exactly one
+/// placeholder becomes the value itself (a number stays a number; no quoting problems).
+pub fn fill(t: &Value, vars: &[(&str, Value)]) -> Value {
     match t {
-        Value::String(s) if s == "{prompt}" => Value::String(prompt.into()),
-        Value::String(s) => Value::String(s.replace("{model}", model).replace("{prompt}", prompt)),
-        Value::Array(a) => Value::Array(a.iter().map(|x| fill(x, model, prompt)).collect()),
-        Value::Object(o) => Value::Object(o.iter().map(|(k, x)| (k.clone(), fill(x, model, prompt))).collect()),
+        Value::String(s) => {
+            let whole = s.strip_prefix('{').and_then(|x| x.strip_suffix('}'));
+            if let Some((_, v)) = vars.iter().find(|(k, _)| whole == Some(*k)) {
+                return v.clone();
+            }
+            Value::String(vars.iter().fold(s.clone(), |s, (k, v)| s.replace(&format!("{{{k}}}"), &crate::core::text(v))))
+        }
+        Value::Array(a) => Value::Array(a.iter().map(|x| fill(x, vars)).collect()),
+        Value::Object(o) => Value::Object(o.iter().map(|(k, x)| (k.clone(), fill(x, vars))).collect()),
         v => v.clone(),
     }
+}
+
+fn vars(m: &Model, prompt: &str) -> Vec<(&'static str, Value)> {
+    vec![("model", Value::String(m.name.clone())), ("prompt", Value::String(prompt.into())), ("max_tokens", Value::from(m.max_tokens))]
 }
 
 /// The first JSON pointer that yields a string.
@@ -52,7 +61,7 @@ fn base(rt: &Runtime, m: &Model) -> String {
 
 pub async fn http(rt: &Runtime, m: &Model, prompt: &str) -> Result<String, String> {
     let url = format!("{}{}", base(rt, m), rt.path);
-    let body = fill(&rt.body, &m.name, prompt);
+    let body = fill(&rt.body, &vars(m, prompt));
     let res = request(rt, m, reqwest::Client::new().post(&url).json(&body)).send().await.map_err(|e| format!("{url}: {e}"))?;
     let status = res.status();
     let v: Value = res.json().await.map_err(|e| format!("{url}: {e}"))?;
@@ -66,7 +75,7 @@ pub async fn http(rt: &Runtime, m: &Model, prompt: &str) -> Result<String, Strin
 async fn cli(m: &Model, prompt: &str) -> Result<String, String> {
     use tokio::io::AsyncWriteExt;
     let (prog, args) = m.command.split_first().ok_or("cli model needs a command")?;
-    let fill = |a: &String| a.replace("{prompt}", prompt).replace("{model}", &m.name);
+    let fill = |a: &String| a.replace("{prompt}", prompt).replace("{model}", &m.name).replace("{max_tokens}", &m.max_tokens.to_string());
     let stdin = !m.command.iter().any(|a| a.contains("{prompt}"));
     let mut child = tokio::process::Command::new(prog)
         .args(args.iter().map(fill))
@@ -97,9 +106,9 @@ pub async fn complete(m: &Model, prompt: &str) -> Result<String, String> {
     }
 }
 
-pub async fn discover(m: &Model) -> Result<Vec<String>, String> {
+pub async fn discover(m: &Model) -> Result<Vec<Found>, String> {
     let rt = match m.connector.as_str() {
-        "echo" => return Ok(vec!["echo".into()]),
+        "echo" => return Ok(vec![Found { name: "echo".into(), context: 0 }]),
         "cli" => return Ok(vec![]),
         name => runtimes().into_iter().find(|r| r.name == name).ok_or_else(|| format!("unknown connector '{name}'"))?,
     };
@@ -114,7 +123,35 @@ pub async fn discover(m: &Model) -> Result<Vec<String>, String> {
         .json()
         .await
         .map_err(|e| e.to_string())?;
-    Ok(v["data"].as_array().into_iter().flatten().filter_map(|x| x["id"].as_str().map(String::from)).collect())
+    Ok(listed(&v, &rt.context))
+}
+
+/// Entries of a models listing (`data[]`, or a bare array), with context windows when reported.
+pub fn listed(v: &Value, context: &[String]) -> Vec<Found> {
+    let entries = v["data"].as_array().or(v.as_array()).into_iter().flatten();
+    entries
+        .filter_map(|x| {
+            let name = x["id"].as_str().or(x["name"].as_str())?.to_string();
+            let context = context.iter().find_map(|p| x.pointer(p).and_then(|c| c.as_u64())).unwrap_or(0) as u32;
+            Some(Found { name, context })
+        })
+        .collect()
+}
+
+static CONTEXTS: std::sync::Mutex<Option<std::collections::HashMap<String, u32>>> = std::sync::Mutex::new(None);
+
+/// A model's context window: its own `context`, else what its runtime lists (asked once, cached).
+pub async fn context(m: &Model) -> u32 {
+    if m.context > 0 {
+        return m.context;
+    }
+    let key = format!("{}|{}|{}", m.connector, m.base_url, m.name);
+    if let Some(c) = CONTEXTS.lock().unwrap().get_or_insert_with(Default::default).get(&key) {
+        return *c;
+    }
+    let c = discover(m).await.ok().and_then(|f| f.into_iter().find(|f| f.name == m.name)).map(|f| f.context).unwrap_or(0);
+    CONTEXTS.lock().unwrap().get_or_insert_with(Default::default).insert(key, c);
+    c
 }
 
 #[cfg(test)]
@@ -145,12 +182,24 @@ mod tests {
 
     #[test]
     fn templates_fill_and_replies_are_picked() {
-        let body = json!({"model": "{model}", "messages": [{"role": "user", "content": "{prompt}"}], "note": "for {model}"});
-        let f = fill(&body, "m", "say \"hi\"");
-        assert_eq!(f, json!({"model": "m", "messages": [{"role": "user", "content": "say \"hi\""}], "note": "for m"}));
+        let body = json!({"model": "{model}", "max_tokens": "{max_tokens}", "messages": [{"role": "user", "content": "{prompt}"}], "note": "for {model}"});
+        let m = Model { name: "m".into(), ..Default::default() };
+        let f = fill(&body, &vars(&m, "say \"hi\""));
+        assert_eq!(f, json!({"model": "m", "max_tokens": 32000, "messages": [{"role": "user", "content": "say \"hi\""}], "note": "for m"}));
         let v = json!({"output": [{"content": [{"text": "deep"}]}]});
         assert_eq!(pick(&v, &["/output_text".into(), "/output/0/content/0/text".into()]).unwrap(), "deep");
         assert!(pick(&v, &["/nope".into()]).is_none());
+    }
+
+    #[tokio::test]
+    async fn context_window_is_the_models_own_or_read_from_the_listing() {
+        let ptrs: Vec<String> = vec!["/max_input_tokens".into(), "/context_length".into()];
+        let anthropic = json!({"data": [{"id": "claude-x", "max_input_tokens": 200000}, {"id": "bare"}]});
+        assert_eq!(listed(&anthropic, &ptrs), vec![Found { name: "claude-x".into(), context: 200000 }, Found { name: "bare".into(), context: 0 }]);
+        let lmstudio = json!([{"name": "qwen", "context_length": 32768}]);
+        assert_eq!(listed(&lmstudio, &ptrs)[0].context, 32768);
+        let own = Model { name: "m".into(), connector: "echo".into(), context: 1234, ..Default::default() };
+        assert_eq!(context(&own).await, 1234);
     }
 
     /// A configured HTTP runtime against a local stub server: body sent as templated, auth

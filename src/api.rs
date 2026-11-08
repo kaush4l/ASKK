@@ -7,13 +7,11 @@ use crate::compose::Node;
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
-/// `data/ui.json`: everything the shell shows that is not an engine.
+/// `data/ui.json`: brand and UI words. Pages and nav are folders (`data/routes`).
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct UiConfig {
     #[serde(default)]
     pub brand: String,
-    #[serde(default)]
-    pub nav: Vec<NavLink>,
     /// UI words by key (`no-engines`, `no-models`, …); a missing key shows nothing.
     #[serde(default)]
     pub text: std::collections::BTreeMap<String, String>,
@@ -90,6 +88,8 @@ mod server {
             }),
             crate::compose::CreateComponent(comps.clone()).into_tool(),
             crate::compose::ListComponents(comps).into_tool(),
+            crate::routes::CreateView(crate::routes::dir()).into_tool(),
+            crate::routes::ListViews(crate::routes::dir()).into_tool(),
             Quote.into_tool(),
         ]
     }

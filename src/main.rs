@@ -9,26 +9,21 @@ mod core;
 #[cfg_attr(not(feature = "server"), allow(dead_code, unused_imports))]
 mod elements;
 mod infer;
+#[cfg_attr(not(feature = "server"), allow(dead_code))]
+mod routes;
 mod views;
 
-use views::{ComponentsView, Dashboard, EngineView, LayoutView, ModelsView, Shell, ThemeView};
+use views::{Home, RoutePage, Shell};
 
 #[derive(Debug, Clone, Routable, PartialEq)]
 #[rustfmt::skip]
 pub enum Route {
     #[layout(Shell)]
+        // Every URL is resolved against the folders in data/routes (see routes.rs).
         #[route("/")]
-        Dashboard {},
-        #[route("/e/:..path")]
-        EngineView { path: Vec<String> },
-        #[route("/models")]
-        ModelsView {},
-        #[route("/components")]
-        ComponentsView {},
-        #[route("/theme")]
-        ThemeView {},
-        #[route("/layout")]
-        LayoutView {},
+        Home {},
+        #[route("/:..segments")]
+        RoutePage { segments: Vec<String> },
 }
 
 const FAVICON: Asset = asset!("/assets/favicon.ico");

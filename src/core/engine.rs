@@ -28,7 +28,7 @@ pub struct EngineFile {
     /// idle | running | stopped | interrupted | error: …
     #[serde(default)]
     pub status: String,
-    /// Context budget in characters; at 90% the engine refocuses (folds history). 0 = off.
+    /// Context window override in tokens; 0 = use the model's. At 90% the engine refocuses (folds history).
     #[serde(default, skip_serializing_if = "is_zero")]
     pub context: usize,
 }
@@ -145,6 +145,8 @@ impl Engine {
             let f = self.file.lock().unwrap();
             (f.model.clone(), f.max_steps, f.context)
         };
+        // Context window in tokens: the engine's override, else what the model reports.
+        let context = if context > 0 { context } else { self.infer.context(&model).await };
         for _ in 0..steps {
             if self.stopping.swap(false, Ordering::SeqCst) {
                 self.set_status("stopped");
@@ -168,7 +170,7 @@ impl Engine {
                 self.dispatch(&Event::Snapshot { name, content });
             }
             let mut prompt = self.prompt(&tools, input);
-            if context > 0 && prompt.len() * 10 >= context * 9 {
+            if context > 0 && super::tokens(&prompt) * 10 >= context * 9 {
                 let summary = self.infer.complete(&model, format!("{REFOCUS}\n\n{prompt}")).await?;
                 self.dispatch(&Event::Folded(summary));
                 prompt = self.prompt(&tools, input);
@@ -223,12 +225,6 @@ impl Engine {
             return Some(self.clone());
         }
         self.subs.iter().find_map(|s| s.find(path))
-    }
-
-    /// The engine's UI: header, description, element views, sub-engine links.
-    #[cfg_attr(not(test), allow(dead_code))]
-    pub fn view(&self) -> Node {
-        self.view_with(&[])
     }
 
     /// The view without elements of the `hidden` kinds (layout config).
@@ -419,7 +415,7 @@ pub mod tests {
     async fn refocus_folds_history_near_the_context_limit_and_keeps_lessons() {
         let infer = Scripted::new(&["lesson: add works", r#"{"answer":"done"}"#]);
         let mut f = file("e");
-        f.context = 200;
+        f.context = 50;
         let h = Spec {
             kind: "history".into(),
             name: "h".into(),

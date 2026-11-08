@@ -43,7 +43,7 @@ components (phase, state, history) like direct calls.
 
 ## 3b. Lifecycle controls
 - **Stop**: `Engine::stop()` (Stop button) ends the run before the next step; status `stopped`.
-- **Refocus**: with `context` (chars) in `engine.json`, a prompt at 90% of it triggers one model call that
+- **Refocus**: the context window in tokens (`engine.json context` override, else the model's `context`, else read from its runtime's models listing; ≈4 chars/token), a prompt at 90% of it triggers one model call that
   summarises the essentials and lessons; `Event::Folded` makes history keep that summary + the last 4 turns.
 - **await: any** in a reply: continue after the first call finishes; the others are cancelled.
 - **Live**: every save bumps the engine's change counter; the UI long-polls `wait_change` and re-reads.
@@ -65,7 +65,7 @@ components (phase, state, history) like direct calls.
 data/engines/<engine>/engine.json            {name, description, model, max_steps, status}
 data/engines/<engine>/elements/<name>.json   {kind, config, state}
 data/engines/<engine>/<sub>/…                sub-engine, same layout, any depth
-data/models.json  data/runtimes.json  data/ui.json  data/theme.json  data/layout.json  data/components/*.json
+data/routes/**/page.json  data/models.json  data/runtimes.json  data/ui.json  data/theme.json  data/layout.json  data/components/*.json
 ```
 1. `seed`: copy anything missing from `defaults/` into `data/`.
 2. `scan`: read folders into trees (configuration + state; nothing initialised — only components exist).
@@ -74,7 +74,11 @@ data/models.json  data/runtimes.json  data/ui.json  data/theme.json  data/layout
 4. Start one poller per alert. 5. Serve. Everything an engine produces is data in its folder.
 
 ## 6. UI is configuration
-Shell brand and nav come from `data/ui.json`; design tokens from `data/theme.json` (Theme page). The dashboard is one card per engine, each the engine's own
+Pages are folders (Next.js style): `data/routes/<path>/page.json` = `{title, nav?, root: Node}`;
+`[name]` captures a segment, `[...name]` the rest; static beats dynamic beats catch-all. The sidebar is
+the pages with `nav`, ordered by it. `view` nodes place built-in views, `use` nodes place created
+components. Engines write pages with `create_view` / `list_views` (askk has them). Shell brand and words
+come from `data/ui.json`; design tokens from `data/theme.json` (Theme page). The dashboard is one card per engine, each the engine's own
 `view()`; element tiles are each element's `view()`. Created components are `Node` trees in
 `data/components/`. The Rust UI only holds primitives and layout rules.
 
@@ -89,3 +93,9 @@ Shell brand and nav come from `data/ui.json`; design tokens from `data/theme.jso
 | `src/components/` | layout primitives (Wall, Pane, Glass, Sidebar, Topbar, Stat) |
 | `src/views/` | pages: Dashboard, EngineView, Models, Components, Shell |
 | `defaults/` | the starting configuration |
+
+## Tokens
+
+`models.json` per model: `max_tokens` (default 32000, sent as `{max_tokens}` in the runtime body) and
+`context` (window in tokens; 0 = read once from the runtime's models listing via `runtimes.json context`
+pointers such as `/max_input_tokens`, `/context_length`, `/max_model_len`, then cached).

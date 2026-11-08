@@ -11,12 +11,16 @@
           "role": "user",
           "content": "{prompt}"
         }
-      ]
+      ],
+      "max_completion_tokens": "{max_tokens}"
     },
     "reply": [
       "/choices/0/message/content"
     ],
-    "models": "/models"
+    "models": "/models",
+    "context": [
+      "/context_window"
+    ]
   },
   {
     "name": "openai-responses",
@@ -25,14 +29,18 @@
     "auth": "bearer",
     "body": {
       "model": "{model}",
-      "input": "{prompt}"
+      "input": "{prompt}",
+      "max_output_tokens": "{max_tokens}"
     },
     "reply": [
       "/output_text",
       "/output/0/content/0/text",
       "/output/1/content/0/text"
     ],
-    "models": "/models"
+    "models": "/models",
+    "context": [
+      "/context_window"
+    ]
   },
   {
     "name": "anthropic",
@@ -44,7 +52,7 @@
     },
     "body": {
       "model": "{model}",
-      "max_tokens": 4096,
+      "max_tokens": "{max_tokens}",
       "messages": [
         {
           "role": "user",
@@ -55,7 +63,10 @@
     "reply": [
       "/content/0/text"
     ],
-    "models": "/v1/models"
+    "models": "/v1/models",
+    "context": [
+      "/max_input_tokens"
+    ]
   },
   {
     "name": "omlx",
@@ -69,11 +80,17 @@
           "role": "user",
           "content": "{prompt}"
         }
-      ]
+      ],
+      "max_tokens": "{max_tokens}"
     },
     "reply": [
       "/choices/0/message/content"
     ],
-    "models": "/models"
+    "models": "/models",
+    "context": [
+      "/max_model_len",
+      "/context_length",
+      "/max_context_length"
+    ]
   }
 ]

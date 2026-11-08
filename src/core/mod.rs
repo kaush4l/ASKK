@@ -123,6 +123,15 @@ pub trait Component: Send + Sync {
 /// Model access, implemented once per runtime (HTTP APIs, CLIs, test fakes).
 pub trait Infer: Send + Sync {
     fn complete(&self, model: &str, prompt: String) -> Fut<Result<String, String>>;
+    /// The model's context window in tokens; 0 = unknown (no refocus).
+    fn context(&self, _model: &str) -> Fut<usize> {
+        Box::pin(async { 0 })
+    }
+}
+
+/// Rough token count of a text (≈ 4 chars per token), enough to budget the context window.
+pub fn tokens(text: &str) -> usize {
+    text.len().div_ceil(4)
 }
 
 /// Read a config/state value into `T`; null means `T::default()`.

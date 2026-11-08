@@ -10,8 +10,30 @@ use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
 /// Primitives a spec may use. Each maps to a fixed, styled element in [`Render`].
+/// `view` draws a built-in view (`text` = one of [`VIEWS`]); `use` draws a created component
+/// (`text` = its name).
 pub const PRIMITIVES: &[&str] =
-    &["pane", "glass", "row", "stack", "grid", "tile", "heading", "text", "muted", "badge", "link", "stat", "button"];
+    &["pane", "glass", "row", "stack", "grid", "tile", "heading", "text", "muted", "badge", "link", "stat", "button", "view", "use"];
+
+/// Built-in views a page can place with a `view` node.
+pub const VIEWS: &[&str] = &["dashboard", "engine", "models", "components", "theme", "layout"];
+
+/// Every node is a known primitive, every `view` a known view; glass never nests inside glass.
+pub fn validate_node(n: &Node) -> Result<(), String> {
+    fn walk(n: &Node, in_glass: bool) -> Result<(), String> {
+        if !PRIMITIVES.contains(&n.kind.as_str()) {
+            return Err(format!("unknown primitive '{}'", n.kind));
+        }
+        if n.kind == "view" && !VIEWS.contains(&n.text.as_str()) {
+            return Err(format!("unknown view '{}' (one of {})", n.text, VIEWS.join(", ")));
+        }
+        if n.kind == "glass" && in_glass {
+            return Err("glass inside glass is not allowed".into());
+        }
+        n.children.iter().try_for_each(|c| walk(c, in_glass || n.kind == "glass"))
+    }
+    walk(n, false)
+}
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Node {
@@ -55,21 +77,12 @@ pub struct Spec {
 
 #[cfg_attr(not(feature = "server"), allow(dead_code))]
 impl Spec {
-    /// Name is a slug; every node is a known primitive; glass never nests inside glass.
+    /// Name is a slug and the tree is valid ([`validate_node`]).
     pub fn validate(&self) -> Result<(), String> {
         if self.name.is_empty() || !self.name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
             return Err("name must be letters, digits or '-'".into());
         }
-        fn walk(n: &Node, in_glass: bool) -> Result<(), String> {
-            if !PRIMITIVES.contains(&n.kind.as_str()) {
-                return Err(format!("unknown primitive '{}'", n.kind));
-            }
-            if n.kind == "glass" && in_glass {
-                return Err("glass inside glass is not allowed".into());
-            }
-            n.children.iter().try_for_each(|c| walk(c, in_glass || n.kind == "glass"))
-        }
-        walk(&self.root, false)
+        validate_node(&self.root)
     }
 }
 
@@ -183,7 +196,20 @@ pub fn Render(node: Node) -> Element {
         "text" => rsx! { p { "{node.text}" } },
         "stat" => rsx! { crate::components::Stat { label: node.label.clone(), value: node.text.clone() } },
         "button" => rsx! { button { class: "btn", "{node.label}" } },
+        "view" => rsx! { crate::views::Builtin { name: node.text.clone() } },
+        "use" => rsx! { Use { name: node.text.clone() } },
         other => rsx! { p { class: "dim", "unknown primitive {other}" } },
+    }
+}
+
+/// A created component, by name.
+#[component]
+pub fn Use(name: String) -> Element {
+    let all = use_resource(list_components);
+    let found = all.read().as_ref().and_then(|r| r.as_ref().ok()).and_then(|v| v.iter().find(|s| s.name == name).cloned());
+    match found {
+        Some(s) => rsx! { Render { node: s.root } },
+        None => rsx! {},
     }
 }
 

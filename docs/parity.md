@@ -16,9 +16,11 @@
 | Glass design (wall → pane → glass) | `assets/styling/glass.css` | done (tokens in CSS, not yet editable) |
 | Live artifacts, alerts, scripts | `elements/artifact|alert|script.rs` | new |
 | Non-blocking calls | all calls of a reply start together; `await: any` continues after the first (rest cancelled) | done |
-| Refocus at 90% context | `engine.json context`; model summarises essentials + lessons; history keeps summary + last 4 turns | done |
+| Refocus at 90% context | tokens: engine override, else model `context`, else discovered from runtime; model summarises essentials + lessons; history keeps summary + last 4 turns | done |
 | Stop a running engine | `stop()` before next step, status `stopped`; Stop button | done |
 | Live updates | long-poll `wait_change` on a per-engine change counter | done |
 | Theme editing from the UI | `data/theme.json` → `:root` vars; Theme page | done; layout too: `data/layout.json` (columns, engine order, hidden kinds), Layout page |
 | sandbox-exec for the server | `sandbox/server.sb`, `scripts/sandboxed.sh` | done (boot, pages, HTTPS quotes, claude CLI call verified) |
 | Desktop | `dx serve --platform desktop` builds Askk.app; server boots | built + launched; window check skipped by owner (web is the target for now) |
+| Folder routing | `data/routes/**/page.json`, `[param]`, `[...rest]`, nav from pages; `create_view` tool | done |
+| Max tokens 32k | `models.json max_tokens` → `{max_tokens}` in bodies | done |

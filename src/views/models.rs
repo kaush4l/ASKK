@@ -1,5 +1,5 @@
 use crate::components::Pane;
-use crate::infer::{self, Model, Models};
+use crate::infer::{self, Found, Model, Models};
 use dioxus::prelude::*;
 
 /// Models view: list, add (by name or discovered), set default, delete, save to models.json, test.
@@ -19,7 +19,9 @@ pub fn ModelsView() -> Element {
     let mut command = use_signal(String::new);
     let mut key_env = use_signal(String::new);
     let mut name = use_signal(String::new);
-    let mut found = use_signal(Vec::<String>::new);
+    let mut found = use_signal(Vec::<Found>::new);
+    let mut max_tokens = use_signal(|| infer::MAX_TOKENS.to_string());
+    let mut context = use_signal(String::new);
     let mut prompt = use_signal(String::new);
     let mut test_model = use_signal(String::new);
     let mut reply = use_signal(String::new);
@@ -31,11 +33,19 @@ pub fn ModelsView() -> Element {
         }
     });
 
-    let mut add = move |n: String| {
+    let mut add = move |n: String, found_context: u32| {
         if n.is_empty() || models.read().models.iter().any(|m| m.name == n) {
             return;
         }
-        let m = Model { name: n, connector: connector(), base_url: base_url(), key_env: key_env(), command: command().split_whitespace().map(String::from).collect() };
+        let m = Model {
+            name: n,
+            connector: connector(),
+            base_url: base_url(),
+            key_env: key_env(),
+            command: command().split_whitespace().map(String::from).collect(),
+            max_tokens: max_tokens().parse().unwrap_or(infer::MAX_TOKENS),
+            context: context().parse().unwrap_or(found_context),
+        };
         let mut all = models.write();
         if all.default.is_empty() {
             all.default = m.name.clone();
@@ -55,6 +65,8 @@ pub fn ModelsView() -> Element {
                     strong { "{m.name}" }
                     span { class: "dim", "{m.connector} {m.base_url} {m.command.join(\" \")}" }
                     if !m.key_env.is_empty() { span { class: "dim", "key: ${m.key_env}" } }
+                    span { class: "badge", "out {m.max_tokens}" }
+                    span { class: "badge", if m.context > 0 { "ctx {m.context}" } else { "ctx from runtime" } }
                     button { class: "btn", onclick: { let n = m.name.clone(); move |_| {
                         let mut all = models.write();
                         all.models.retain(|x| x.name != n);
@@ -78,6 +90,8 @@ pub fn ModelsView() -> Element {
                 input { placeholder: "base url", value: "{base_url}", oninput: move |e| base_url.set(e.value()) }
                 if connector() == "cli" { input { placeholder: "command, e.g. copilot -p {prompt}", value: "{command}", oninput: move |e| command.set(e.value()) } }
                 input { placeholder: "key env var (optional)", value: "{key_env}", oninput: move |e| key_env.set(e.value()) }
+                input { placeholder: "max tokens", value: "{max_tokens}", oninput: move |e| max_tokens.set(e.value()) }
+                input { placeholder: "context (blank = from runtime)", value: "{context}", oninput: move |e| context.set(e.value()) }
                 button { class: "btn", onclick: move |_| async move {
                     match infer::discover_models(connector(), base_url(), key_env()).await {
                         Ok(v) => { status.set(format!("{} found", v.len())); found.set(v) }
@@ -87,14 +101,17 @@ pub fn ModelsView() -> Element {
             }
             if !found.read().is_empty() {
                 div { class: "chips",
-                    for n in found() {
-                        button { class: "chip", onclick: { let n = n.clone(); move |_| add(n.clone()) }, "+ {n}" }
+                    for f in found() {
+                        button { class: "chip", onclick: { let f = f.clone(); move |_| add(f.name.clone(), f.context) },
+                            "+ {f.name}"
+                            if f.context > 0 { span { class: "dim", " {f.context}" } }
+                        }
                     }
                 }
             }
             div { class: "row",
                 input { placeholder: "or type a model name", value: "{name}", oninput: move |e| name.set(e.value()) }
-                button { class: "btn", onclick: move |_| { add(name()); name.set(String::new()); }, {ui.t("add")} }
+                button { class: "btn", onclick: move |_| { add(name(), 0); name.set(String::new()); }, {ui.t("add")} }
             }
         }
         Pane { class: "stack",

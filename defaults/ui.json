@@ -1,33 +1,11 @@
 {
   "brand": "Askk",
-  "nav": [
-    {
-      "label": "Engines",
-      "to": "/"
-    },
-    {
-      "label": "Models",
-      "to": "/models"
-    },
-    {
-      "label": "Components",
-      "to": "/components"
-    },
-    {
-      "label": "Theme",
-      "to": "/theme"
-    },
-    {
-      "label": "Layout",
-      "to": "/layout"
-    }
-  ],
   "text": {
     "no-engines": "No engines in data/engines.",
     "no-models": "No models.",
     "no-components": "No components yet.",
-    "loading": "Loading…",
-    "running": "Running…",
+    "loading": "Loading\u2026",
+    "running": "Running\u2026",
     "run": "Run",
     "saved": "Saved.",
     "layout": "Layout",

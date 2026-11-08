@@ -4,10 +4,11 @@ use crate::components::Pane;
 use dioxus::prelude::*;
 
 /// One engine: its view (all elements) and an input. The engine is a tool: input → answer.
+/// Which engine: the page's `path` param (`routes/e/[...path]`).
 #[component]
-pub fn EngineView(path: Vec<String>) -> Element {
+pub fn EngineView() -> Element {
     let ui = use_context::<crate::api::UiConfig>();
-    let path = path.join("/");
+    let path = try_use_context::<crate::routes::Params>().and_then(|p| p.0.get("path").cloned()).unwrap_or_default();
     let p = path.clone();
     let mut view = use_resource(move || { let p = p.clone(); async move { engine_view(p).await } });
     let mut input = use_signal(String::new);

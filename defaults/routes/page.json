@@ -1,0 +1,13 @@
+{
+  "title": "Dashboard",
+  "nav": 0,
+  "root": {
+    "kind": "stack",
+    "children": [
+      {
+        "kind": "view",
+        "text": "dashboard"
+      }
+    ]
+  }
+}

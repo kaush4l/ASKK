@@ -13,8 +13,12 @@
 //! completions, OpenAI Responses, Anthropic, oMLX, …) is a [`Runtime`] entry in
 //! `data/runtimes.json`.
 //!
-//! [`discover_models`] lists the names a server offers (`GET {base_url}/models`) so the UI can add
-//! them with one click.
+//! [`discover_models`] lists the names a server offers (`GET {base_url}/models`) with their
+//! context windows, so the UI can add them with one click.
+//!
+//! Tokens: `max_tokens` (default [`MAX_TOKENS`] = 32k) caps each reply; `context` is the window.
+//! When `context` is 0 it is read from the runtime's models listing (pointers in
+//! `Runtime::context`) once and cached; engines refocus at 90% of it.
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -46,6 +50,28 @@ pub struct Runtime {
     pub reply: Vec<String>,
     #[serde(default)]
     pub models: String,
+    /// JSON pointers, inside one entry of the models listing, to its context window in tokens
+    /// (`/max_input_tokens`, `/context_length`, `/max_model_len`, …).
+    #[serde(default)]
+    pub context: Vec<String>,
+}
+
+/// A model a server offers, with its context window when the server reports it.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Found {
+    pub name: String,
+    pub context: u32,
+}
+
+/// Output cap per reply when a model sets none.
+pub const MAX_TOKENS: u32 = 32_000;
+
+fn max_tokens() -> u32 {
+    MAX_TOKENS
+}
+
+fn is_zero(n: &u32) -> bool {
+    *n == 0
 }
 
 /// Every runtime name a model can use.
@@ -56,7 +82,7 @@ pub async fn connectors() -> Result<Vec<String>, ServerFnError> {
     Ok(v)
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Model {
     pub name: String,
     pub connector: String,
@@ -67,6 +93,18 @@ pub struct Model {
     /// `cli` only: program and args.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub command: Vec<String>,
+    /// Output cap per reply, sent as `{max_tokens}` in the runtime body.
+    #[serde(default = "max_tokens")]
+    pub max_tokens: u32,
+    /// Context window in tokens. 0 = ask the runtime (models listing), else unknown.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub context: u32,
+}
+
+impl Default for Model {
+    fn default() -> Self {
+        Self { name: String::new(), connector: String::new(), base_url: String::new(), key_env: String::new(), command: vec![], max_tokens: MAX_TOKENS, context: 0 }
+    }
 }
 
 /// Contents of `data/models.json`.
@@ -112,6 +150,15 @@ impl crate::core::Infer for ModelsInfer {
             connectors::complete(&m, &prompt).await
         })
     }
+    fn context(&self, model: &str) -> crate::core::Fut<usize> {
+        let model = model.to_string();
+        Box::pin(async move {
+            match load().await.find(&model) {
+                Some(m) => connectors::context(m).await as usize,
+                None => 0,
+            }
+        })
+    }
 }
 
 #[server]
@@ -131,8 +178,8 @@ pub async fn save_models(models: Models) -> Result<(), ServerFnError> {
 }
 
 #[server]
-pub async fn discover_models(connector: String, base_url: String, key_env: String) -> Result<Vec<String>, ServerFnError> {
-    let probe = Model { name: String::new(), connector, base_url, key_env, command: vec![] };
+pub async fn discover_models(connector: String, base_url: String, key_env: String) -> Result<Vec<Found>, ServerFnError> {
+    let probe = Model { connector, base_url, key_env, ..Default::default() };
     connectors::discover(&probe).await.map_err(ServerFnError::new)
 }
 

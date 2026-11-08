@@ -8,7 +8,9 @@
         "claude",
         "-p",
         "{prompt}"
-      ]
+      ],
+      "context": 200000,
+      "max_tokens": 32000
     },
     {
       "name": "claude-sonnet-5-5",
@@ -19,11 +21,14 @@
         "{prompt}",
         "--model",
         "{model}"
-      ]
+      ],
+      "context": 200000,
+      "max_tokens": 32000
     },
     {
       "name": "echo",
-      "connector": "echo"
+      "connector": "echo",
+      "max_tokens": 32000
     }
   ]
 }
