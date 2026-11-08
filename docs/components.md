@@ -154,3 +154,19 @@ calls[2]{tool,args}:
 answer: text
 ```
 The parser also accepts `calls[i]{tool,NAME}: {args}` rows and falls back to JSON.
+
+## Objects: four views and live activity
+
+Every backend object (engine and every element kind) draws itself; the UI only renders.
+
+- `Component::render(size)` / `Engine::render(size, hidden)` → an `object` node carrying the
+  object's name, kind, size and activity. Sizes: **icon** (glyph), **small** (name + one
+  line), **medium** (its view), **large** (view + config + state; engines: elements at medium,
+  sub-engines small). Elements get all four by default and may override.
+- `activity()`: live state. Engine: `idle → thinking (waiting on the model) → calling (tools;
+  detail = names) → refocusing → idle | stopped | error`; alert: `armed | fired`. Each engine
+  change bumps its version, so open pages update through `wait_change`.
+- CSS gives each activity its effect (`act-thinking` slow pulse, `act-calling` fast pulse,
+  `act-refocusing` violet, `act-fired` flash, `act-error` red, `act-stopped` dim).
+- Components page groups kinds into **Engine, Prompt, Action, Live** (`core::category`), plus
+  **Created** (runtime components); each kind shows a running object of it at all four sizes.

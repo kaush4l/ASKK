@@ -239,7 +239,7 @@ pub async fn world_view() -> Result<WorldView, ServerFnError> {
 
 #[server]
 pub async fn engine_view(path: String) -> Result<Node, ServerFnError> {
-    find(&path).await.map(|e| e.view_with(&load_layout().hidden)).ok_or_else(|| ServerFnError::new(format!("no engine '{path}'")))
+    find(&path).await.map(|e| e.render(crate::compose::Size::Large, &load_layout().hidden)).ok_or_else(|| ServerFnError::new(format!("no engine '{path}'")))
 }
 
 /// Invoke an engine (it is a tool: input in, answer out).
@@ -284,23 +284,48 @@ pub async fn engine_chat(path: String) -> Result<Vec<ChatTurn>, ServerFnError> {
         .collect())
 }
 
-/// A component kind and its own documentation.
+/// A kind in the catalog: docs, category, and one live object of it at all four sizes.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct KindDoc {
     pub kind: String,
     pub doc: String,
+    pub category: String,
+    /// icon, small, medium, large.
+    pub views: Vec<Node>,
 }
 
-/// The catalog: every registered component kind with its docs.
+/// Every object kind (engine and elements) with docs, category and its four views, drawn from
+/// a running object of that kind when one exists (so it carries real state), else an empty one.
 #[server]
 pub async fn kinds() -> Result<Vec<KindDoc>, ServerFnError> {
-    Ok(crate::core::KINDS
-        .iter()
-        .map(|(k, _)| {
-            let c = crate::core::build(crate::core::Spec { kind: k.to_string(), name: k.to_string(), ..Default::default() }).unwrap();
-            KindDoc { kind: k.to_string(), doc: c.doc().to_string() }
-        })
-        .collect())
+    use crate::compose::Size;
+    fn all(e: &std::sync::Arc<crate::core::Engine>, out: &mut Vec<std::sync::Arc<crate::core::Engine>>) {
+        out.push(e.clone());
+        e.subs.iter().for_each(|s| all(s, out));
+    }
+    let mut engines = vec![];
+    world().await.engines.iter().for_each(|e| all(e, &mut engines));
+    let mut out = vec![];
+    if let Some(e) = engines.first() {
+        out.push(KindDoc {
+            kind: "engine".into(),
+            doc: "A set of elements that make up the prompt; a tool of its parent; live activity: idle, thinking, calling, refocusing, stopped, error.".into(),
+            category: "engine".into(),
+            views: Size::ALL.iter().map(|s| e.render(*s, &[])).collect(),
+        });
+    }
+    for (k, _) in crate::core::KINDS {
+        let sample = engines.iter().find_map(|e| e.elements.lock().unwrap().iter().find(|c| c.kind() == *k).map(|c| c.spec()));
+        let c = crate::core::build(sample.unwrap_or(crate::core::Spec { kind: k.to_string(), name: k.to_string(), ..Default::default() })).unwrap();
+        out.push(KindDoc { kind: k.to_string(), doc: c.doc().into(), category: crate::core::category(k).into(), views: Size::ALL.iter().map(|s| c.render(*s)).collect() });
+    }
+    Ok(out)
+}
+
+/// One engine as an object view at `size` (icon | small | medium | large).
+#[server]
+pub async fn engine_object(path: String, size: crate::compose::Size) -> Result<Node, ServerFnError> {
+    find(&path).await.map(|e| e.render(size, &[])).ok_or_else(|| ServerFnError::new(format!("no engine '{path}'")))
 }
 
 #[server]

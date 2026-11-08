@@ -128,8 +128,10 @@ fn one_call(t: &str) -> Option<(String, Value)> {
     if name.is_empty() || name == "args" {
         return None;
     }
+    // Only a JSON object (or nothing) counts as args: `calls[0]{tool,reply}: none` is not a call.
     let args = args.trim();
-    Some((name.into(), if args.is_empty() { Value::Null } else { serde_json::from_str(args).unwrap_or_else(|_| Value::String(args.into())) }))
+    let args = if args.is_empty() { Value::Null } else { serde_json::from_str::<Value>(args).ok().filter(Value::is_object)? };
+    Some((name.into(), args))
 }
 
 #[cfg(test)]
@@ -175,5 +177,7 @@ mod tests {
         assert_eq!(got.calls.iter().map(|c| c.tool.as_str()).collect::<Vec<_>>(), ["set_focus", "learn"]);
         assert_eq!(got.calls[0].args, json!({"text": "x"}));
         assert!(got.answer.is_none());
+        let hello = r.parse("calls[0]{tool,reply}: none\nawait: none\nanswer: Hello").unwrap();
+        assert!(hello.calls.is_empty() && hello.answer.as_deref() == Some("Hello"));
     }
 }

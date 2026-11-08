@@ -7,7 +7,7 @@
 //! run calls → `Called`) until a reply has no calls, gives an answer, or `max_steps` is hit.
 //! State is saved through the `save` hook after every step, so a restart resumes.
 use super::*;
-use crate::compose::Node;
+use crate::compose::{Node, Size};
 use std::sync::Mutex;
 
 fn default_steps() -> usize {
@@ -65,6 +65,10 @@ pub struct Engine {
     pub stopping: std::sync::atomic::AtomicBool,
     /// Bumped on every save; the UI waits on it for live updates.
     pub version: std::sync::atomic::AtomicU64,
+    /// What the engine is doing right now: (activity, detail). Activities: idle, thinking
+    /// (waiting on the model), calling (tools running; detail = their names), refocusing,
+    /// stopped, error. Every change bumps `version`, so views update live.
+    pub activity: Mutex<(String, String)>,
 }
 
 impl Engine {
@@ -77,7 +81,7 @@ impl Engine {
         infer: Arc<dyn Infer>,
     ) -> Result<Self, String> {
         let elements = specs.into_iter().map(build).collect::<Result<Vec<_>, _>>()?;
-        Ok(Self { file: Mutex::new(file), path, elements: Mutex::new(elements), subs, shared, infer, save: None, stopping: Default::default(), version: Default::default() })
+        Ok(Self { file: Mutex::new(file), path, elements: Mutex::new(elements), subs, shared, infer, save: None, stopping: Default::default(), version: Default::default(), activity: Mutex::new(("idle".into(), String::new())) })
     }
 
     pub fn name(&self) -> String {
@@ -100,6 +104,16 @@ impl Engine {
     /// Changes so far, this engine and its sub-engines.
     pub fn total_version(&self) -> u64 {
         self.version.load(std::sync::atomic::Ordering::SeqCst) + self.subs.iter().map(|s| s.total_version()).sum::<u64>()
+    }
+
+    /// Set the live activity and wake watchers (not saved: it describes this process only).
+    pub fn act(&self, activity: &str, detail: &str) {
+        *self.activity.lock().unwrap() = (activity.into(), detail.into());
+        self.version.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    pub fn activity(&self) -> (String, String) {
+        self.activity.lock().unwrap().clone()
     }
 
     fn persist(&self) {
@@ -166,6 +180,7 @@ impl Engine {
         let context = if context > 0 { context } else { self.infer.context(&model).await };
         for step in 0..steps {
             if self.stopping.swap(false, Ordering::SeqCst) {
+                self.act("stopped", "");
                 self.set_status("stopped");
                 self.persist();
                 return Ok("stopped".into());
@@ -189,13 +204,16 @@ impl Engine {
             let shown = continued(input, step);
             let mut prompt = self.prompt(&tools, &shown);
             if context > 0 && super::tokens(&prompt) * 10 >= context * 9 {
+                self.act("refocusing", "");
                 let summary = self.infer.complete(&model, format!("{REFOCUS}\n\n{prompt}")).await?;
                 self.dispatch(&Event::Folded(summary));
                 prompt = self.prompt(&tools, &shown);
             }
+            self.act("thinking", &format!("step {}", step + 1));
             let reply = match self.infer.complete(&model, prompt).await {
                 Ok(r) => r,
                 Err(e) => {
+                    self.act("error", &e);
                     self.set_status(&format!("error: {e}"));
                     self.persist();
                     return Err(e);
@@ -203,6 +221,9 @@ impl Engine {
             };
             self.dispatch(&Event::Reply(reply.clone()));
             let parsed = self.parse(&reply);
+            if !parsed.calls.is_empty() {
+                self.act("calling", &parsed.calls.iter().map(|c| c.tool.as_str()).collect::<Vec<_>>().join(", "));
+            }
             // All calls of one reply start together; results are recorded in completion order.
             let calls: Vec<_> = parsed.calls.iter().map(|c| Box::pin(tools.call(&c.tool, c.args.clone()))).collect();
             if parsed.wait_any && !calls.is_empty() {
@@ -215,11 +236,13 @@ impl Engine {
             }
             self.persist();
             if parsed.calls.is_empty() || parsed.answer.is_some() {
+                self.act("idle", "");
                 self.set_status("idle");
                 self.persist();
                 return Ok(parsed.answer.unwrap_or(reply));
             }
         }
+        self.act("idle", "");
         self.set_status("idle");
         self.persist();
         Ok(format!("stopped after {steps} steps"))
@@ -245,28 +268,46 @@ impl Engine {
         self.subs.iter().find_map(|s| s.find(path))
     }
 
-    /// The view without elements of the `hidden` kinds (layout config).
-    pub fn view_with(&self, hidden: &[String]) -> Node {
+    /// The engine at one of the four sizes, carrying its live activity:
+    /// icon = glyph; small = name + activity detail; medium = description, status, elements
+    /// small, sub-engines as icons; large = elements medium, sub-engines small.
+    /// Elements of the `hidden` kinds are left out (layout config).
+    pub fn render(&self, size: Size, hidden: &[String]) -> Node {
         let f = self.file.lock().unwrap().clone();
-        let mut head = Node::new("row").child(Node::new("link").label(&f.name).text(&format!("/e/{}", self.path)));
-        if !f.status.is_empty() {
+        let (act, detail) = self.activity();
+        let mut n = Node::object("engine", &f.name, size, &act);
+        if size == Size::Icon {
+            return n;
+        }
+        let mut head = Node::new("row").child(Node::new("link").label("open").text(&format!("/e/{}", self.path)));
+        if !detail.is_empty() {
+            head = head.child(Node::new("badge").text(&detail));
+        }
+        if !f.status.is_empty() && f.status != "idle" && f.status != act {
             head = head.child(Node::new("badge").text(&f.status));
         }
-        let mut card = Node::new("pane").child(head);
-        if !f.description.is_empty() {
-            card = card.child(Node::new("muted").text(&f.description));
+        n = n.child(head);
+        if size == Size::Small {
+            return n;
         }
+        if !f.description.is_empty() {
+            n = n.child(Node::new("muted").text(&f.description));
+        }
+        let inner = if size == Size::Large { Size::Medium } else { Size::Small };
         let els = self.elements.lock().unwrap();
-        let shown: Vec<Node> = els.iter().filter(|e| !hidden.iter().any(|h| h == e.kind())).map(|e| e.view()).collect();
+        let shown: Vec<Node> = els.iter().filter(|e| !hidden.iter().any(|h| h == e.kind())).map(|e| e.render(inner)).collect();
         if !shown.is_empty() {
-            card = card.child(Node::new("grid").children(shown));
+            n = n.child(Node::new("grid").children(shown));
         }
         if !self.subs.is_empty() {
-            card = card.child(Node::new("row").children(
-                self.subs.iter().map(|s| Node::new("link").label(&s.name()).text(&format!("/e/{}", s.path))).collect(),
-            ));
+            let sub = if size == Size::Large { Size::Small } else { Size::Icon };
+            n = n.child(Node::new("row").children(self.subs.iter().map(|s| s.render(sub, hidden)).collect()));
         }
-        card
+        n
+    }
+
+    pub fn view_with(&self, hidden: &[String]) -> Node {
+        self.render(Size::Medium, hidden)
     }
 }
 
@@ -449,10 +490,39 @@ pub mod tests {
         assert!(e.total_version() > 0);
     }
 
+    /// Activity follows the run: thinking while the model is asked, calling while tools run,
+    /// idle after; every change bumps the version (live UI), and every size carries it.
+    #[tokio::test]
+    async fn activity_tracks_model_and_tool_phases_and_shows_on_every_size() {
+        let seen: Arc<Mutex<Vec<String>>> = Arc::default();
+        let handle: Arc<std::sync::OnceLock<std::sync::Weak<Engine>>> = Arc::default();
+        let (h, s2) = (handle.clone(), seen.clone());
+        let probe = tool("probe", "records activity", Value::Null, move |_| {
+            let e = h.get().and_then(|w| w.upgrade()).ok_or("no engine")?;
+            s2.lock().unwrap().push(e.activity().0 + ":" + &e.activity().1);
+            Ok(json!("ok"))
+        });
+        let infer = Scripted::new(&["calls[1]{tool,args}:\n  probe,{}", "answer: done"]);
+        let e = Arc::new(Engine::new(file("e"), "e".into(), vec![spec("tools", "t", json!({"use": ["probe"]}))], vec![], vec![probe], infer).unwrap());
+        handle.set(Arc::downgrade(&e)).unwrap();
+        let v0 = e.total_version();
+        assert_eq!(e.run("x").await.unwrap(), "done");
+        assert_eq!(*seen.lock().unwrap(), ["calling:probe"]);
+        assert_eq!(e.activity().0, "idle");
+        assert!(e.total_version() >= v0 + 4, "thinking, calling, thinking, idle each bump");
+        for size in Size::ALL {
+            let n = e.render(size, &[]);
+            assert_eq!((n.kind.as_str(), n.text.as_str(), n.state.as_str(), n.size.as_str()), ("object", "engine", "idle", size.as_str()));
+        }
+        assert!(e.render(Size::Icon, &[]).children.is_empty());
+        assert!(e.render(Size::Large, &[]).children.iter().any(|c| c.kind == "grid" && c.children[0].size == "medium"));
+    }
+
     #[tokio::test]
     async fn model_errors_are_returned_and_recorded() {
         let e = Engine::new(file("e"), "e".into(), vec![], vec![], vec![], Scripted::new(&[])).unwrap();
         assert!(e.run("x").await.is_err());
         assert!(e.file.lock().unwrap().status.starts_with("error"));
+        assert_eq!(e.activity().0, "error");
     }
 }

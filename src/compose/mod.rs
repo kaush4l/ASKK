@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 /// `view` draws a built-in view (`text` = one of [`VIEWS`]); `use` draws a created component
 /// (`text` = its name).
 pub const PRIMITIVES: &[&str] =
-    &["pane", "glass", "row", "stack", "grid", "tile", "heading", "text", "muted", "badge", "link", "stat", "button", "view", "use"];
+    &["object", "pane", "glass", "row", "stack", "grid", "tile", "heading", "text", "muted", "badge", "link", "stat", "button", "view", "use"];
 
 /// Built-in views a page can place with a `view` node.
 pub const VIEWS: &[&str] = &["chat", "dashboard", "engine", "models", "components", "theme", "layout"];
@@ -44,12 +44,25 @@ pub struct Node {
     pub label: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub children: Vec<Node>,
+    /// `object` only: view size (icon | small | medium | large).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub size: String,
+    /// `object` only: the object's live activity (idle, thinking, calling, …); drives effects.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub state: String,
 }
 
 #[cfg_attr(not(feature = "server"), allow(dead_code))]
 impl Node {
     pub fn new(kind: &str) -> Self {
-        Self { kind: kind.into(), text: String::new(), label: String::new(), children: vec![] }
+        Self { kind: kind.into(), text: String::new(), label: String::new(), children: vec![], size: String::new(), state: String::new() }
+    }
+    /// A backend object's view: `label` = name, `text` = its kind.
+    pub fn object(kind: &str, name: &str, size: Size, state: &str) -> Self {
+        let mut n = Self::new("object").label(name).text(kind);
+        n.size = size.as_str().into();
+        n.state = state.into();
+        n
     }
     pub fn text(mut self, t: &str) -> Self {
         self.text = t.into();
@@ -66,6 +79,47 @@ impl Node {
     pub fn children(mut self, c: Vec<Node>) -> Self {
         self.children.extend(c);
         self
+    }
+}
+
+/// The four view templates every object has.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Size {
+    Icon,
+    Small,
+    #[default]
+    Medium,
+    Large,
+}
+
+impl Size {
+    #[cfg_attr(not(feature = "server"), allow(dead_code))]
+    pub const ALL: [Size; 4] = [Size::Icon, Size::Small, Size::Medium, Size::Large];
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Size::Icon => "icon",
+            Size::Small => "small",
+            Size::Medium => "medium",
+            Size::Large => "large",
+        }
+    }
+}
+
+/// One mark per object kind (icon view).
+pub fn glyph(kind: &str) -> &'static str {
+    match kind {
+        "engine" => "◎",
+        "notes" => "✎",
+        "phase" => "▶",
+        "state" => "▣",
+        "history" => "≡",
+        "response" => "↩",
+        "tools" => "⚒",
+        "script" => "⧉",
+        "artifact" => "◫",
+        "alert" => "⚑",
+        _ => "◇",
     }
 }
 
@@ -183,6 +237,24 @@ impl Tool for ListComponents {
 pub fn Render(node: Node) -> Element {
     let kids = rsx! { for c in node.children.clone() { Render { node: c } } };
     match node.kind.as_str() {
+        "object" => {
+            let cls = format!("obj size-{} kind-{} act-{}", node.size, node.text, if node.state.is_empty() { "idle" } else { &node.state });
+            let g = glyph(&node.text);
+            match node.size.as_str() {
+                "icon" => rsx! { span { class: "{cls}", title: "{node.label} · {node.text} · {node.state}", "{g}" } },
+                _ => rsx! {
+                    div { class: "{cls}",
+                        div { class: "obj-head",
+                            span { class: "obj-glyph", "{g}" }
+                            b { class: "grow", "{node.label}" }
+                            span { class: "obj-state", "{node.state}" }
+                            if node.size != "small" { span { class: "dim", "{node.text}" } }
+                        }
+                        {kids}
+                    }
+                },
+            }
+        }
         "pane" => rsx! { crate::components::Pane { class: "stack", {kids} } },
         "glass" => rsx! { crate::components::Glass { class: "stack pad", {kids} } },
         "row" => rsx! { div { class: "row", {kids} } },

@@ -31,3 +31,4 @@
 | Chat dashboard | `/` = `view chat`: askk chat beside its current prompt (colour per section kind, token bar, sections, full text); old dashboard at `/engines` | done |
 | Engine state files | `notes` element + `config.file`: goal.md, focus.md, learning.md (sections via `learn`) | done; askk set focus.md and learnt into learning.md live |
 | TOON replies | `response` default `toon`; tolerant parser; JSON fallback | done; claude CLI replied in TOON live |
+| Object views + live activity | `render(size)` icon/small/medium/large on every component and engine; engine activity idle/thinking/calling/refocusing/stopped/error with CSS effects; catalog by category | done; chat header showed idle → thinking → calling run → thinking → idle live |

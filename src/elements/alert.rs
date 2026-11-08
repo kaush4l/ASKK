@@ -135,6 +135,9 @@ impl Component for Alert {
     fn doc(&self) -> &'static str { DOC }
     fn config(&self) -> Value { value(&self.cfg) }
     fn state(&self) -> Value { value(&self.st) }
+    fn activity(&self) -> String {
+        if self.st.pending.is_some() { "fired".into() } else { "armed".into() }
+    }
     fn view(&self) -> crate::compose::Node {
         let last = self.st.series.last().map(|v| v.to_string()).unwrap_or_else(|| "–".into());
         super::tile(&self.name, "alert", [

@@ -14,7 +14,7 @@
 //!
 //! Until an engine is initialised there are only components (this registry). Everything an
 //! engine produces at runtime is data in its folder.
-use crate::compose::Node;
+use crate::compose::{Node, Size};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::Value;
 use std::{future::Future, pin::Pin, sync::Arc};
@@ -117,6 +117,37 @@ pub trait Component: Send + Sync {
     }
     fn spec(&self) -> Spec {
         Spec { kind: self.kind().into(), name: self.name().into(), config: self.config(), state: self.state() }
+    }
+    /// Live activity, shown on every view and driving its effects (idle, armed, fired, …).
+    fn activity(&self) -> String {
+        "idle".into()
+    }
+    /// One of the four view templates. Default: icon = glyph + activity; small = the first
+    /// line of `view()`; medium = all of `view()`; large = that plus config and state.
+    fn render(&self, size: Size) -> Node {
+        let n = Node::object(self.kind(), self.name(), size, &self.activity());
+        let body = self.view().children;
+        match size {
+            Size::Icon => n,
+            Size::Small => n.children(body.into_iter().take(1).collect()),
+            Size::Medium => n.children(body),
+            Size::Large => {
+                let json = |v: Value| { let s = v.to_string(); if s.len() > 400 { format!("{}…", &s[..s.floor_char_boundary(400)]) } else { s } };
+                n.children(body).child(Node::new("muted").text(&format!("config {}", json(self.config())))).child(Node::new("muted").text(&format!("state {}", json(self.state()))))
+            }
+        }
+    }
+}
+
+/// Where a kind sits in the catalog: `engine`, `prompt` (shapes the prompt), `action` (what it
+/// can do), `live` (watches the world).
+pub fn category(kind: &str) -> &'static str {
+    match kind {
+        "engine" => "engine",
+        "notes" | "phase" | "state" | "history" | "response" => "prompt",
+        "tools" | "script" => "action",
+        "artifact" | "alert" => "live",
+        _ => "other",
     }
 }
 
@@ -222,6 +253,13 @@ mod tests {
                 c.on(&ev);
             }
             let _ = c.view();
+            for size in Size::ALL {
+                let n = c.render(size);
+                assert_eq!((n.kind.as_str(), n.text.as_str(), n.size.as_str()), ("object", *kind, size.as_str()), "{kind} renders itself at every size");
+                assert!(!n.state.is_empty(), "{kind} view carries its activity");
+            }
+            assert_eq!(c.render(Size::Icon).children.len(), 0);
+            assert_ne!(category(kind), "other", "{kind} needs a catalog category");
             assert_eq!(build(c.spec()).unwrap().spec(), c.spec(), "{kind} state must survive a restart");
         }
     }

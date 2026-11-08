@@ -11,7 +11,8 @@ pub fn ChatView() -> Element {
     let mut pending = use_signal(String::new);
     let mut busy = use_signal(|| false);
     let mut full = use_signal(|| false);
-    let (p1, p2, p3) = (path.clone(), path.clone(), path.clone());
+    let (p1, p2, p3, p4) = (path.clone(), path.clone(), path.clone(), path.clone());
+    let mut me = use_resource(move || { let p = p4.clone(); async move { crate::api::engine_object(p, crate::compose::Size::Small).await } });
     let mut turns = use_resource(move || { let p = p1.clone(); async move { engine_chat(p).await } });
     let mut prompt = use_resource(move || { let p = p2.clone(); let i = input(); async move { engine_prompt(p, i).await } });
     use_future(move || {
@@ -23,6 +24,7 @@ pub fn ChatView() -> Element {
                     seen = now;
                     turns.restart();
                     prompt.restart();
+                    me.restart();
                 }
             }
         }
@@ -61,7 +63,10 @@ pub fn ChatView() -> Element {
     rsx! {
         div { class: "chat",
             Pane { class: "chat-log",
-                div { class: "row", h2 { class: "grow", "{path}" } if busy() { span { class: "badge", "running" } } }
+                match &*me.read() {
+                    Some(Ok(n)) => rsx! { crate::compose::Render { node: n.clone() } },
+                    _ => rsx! { h2 { "{path}" } },
+                }
                 div { class: "bubbles",
                     match &*turns.read() {
                         Some(Ok(ts)) => rsx! {
