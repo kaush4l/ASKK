@@ -239,3 +239,16 @@ We are still fine-tuning the look; these are the current decisions, not final on
 - Open: dark/light contrast measured only by eye; orb motion strength; how large views compose
   for engines with many elements; the startup sequence (scripts that build state from folders
   or a database) is next.
+
+## PR page v2
+
+Header (title, counts: changed files on main, ready, in progress) with tabs:
+- **Changes**: main's work in progress, with Restart (build, stop, start) on top.
+- **Ready**: only PRs whose pr.md says `status: ready`. Overview shows pr.md's sections and
+  **Squash and merge** (two-step confirm). It refuses a PR that is not ready, an unknown branch,
+  a main with uncommitted tracked changes, and conflicts (the merge is aborted). The commit
+  message is pr.md: title, then each section.
+- **Changelog**: main's log.
+
+Every diff has three views: Unified, Split (deletions beside the additions that follow them),
+Raw (diff text).

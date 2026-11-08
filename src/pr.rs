@@ -335,6 +335,42 @@ mod server {
         lines[lines.len().saturating_sub(30)..].join("\n")
     }
 
+    /// Squash a ready PR's branch into main with its pr.md as the message. Refuses when main
+    /// has uncommitted tracked changes, the branch is unknown, or its pr.md is not `ready`.
+    pub fn squash_merge(repo: &Path, branch: &str) -> Result<String, String> {
+        if branch == MAIN || branch.is_empty() {
+            return Err("pick a PR branch".into());
+        }
+        let trees = worktrees(repo);
+        let (path, _, _) = trees.iter().find(|(_, b, _)| b == branch).ok_or_else(|| format!("no worktree on {branch}"))?;
+        let pr = read_pr(Path::new(path)).ok_or("no pr.md in that worktree")?;
+        if pr.status != "ready" {
+            return Err(format!("{branch} is '{}', not ready", if pr.status.is_empty() { "working" } else { &pr.status }));
+        }
+        let main_tree = trees.iter().find(|(_, b, _)| b == MAIN).map(|(p, _, _)| p.clone()).ok_or("main is not checked out in any worktree")?;
+        let main_tree = Path::new(&main_tree);
+        if !git(main_tree, &["status", "--porcelain", "--untracked-files=no"]).unwrap_or_default().trim().is_empty() {
+            return Err("main has uncommitted changes; commit or stash them first".into());
+        }
+        let run = |args: &[&str]| -> Result<String, String> {
+            let o = std::process::Command::new("git").args(args).current_dir(main_tree).output().map_err(|e| e.to_string())?;
+            if o.status.success() { Ok(String::from_utf8_lossy(&o.stdout).into()) } else { Err(String::from_utf8_lossy(&o.stderr).trim().to_string()) }
+        };
+        if let Err(e) = run(&["merge", "--squash", branch]) {
+            let _ = run(&["merge", "--abort"]);
+            let _ = run(&["reset", "--merge"]);
+            return Err(format!("conflicts with main: {e}"));
+        }
+        if run(&["diff", "--cached", "--quiet"]).is_ok() {
+            return Err("nothing to merge: main already has these changes".into());
+        }
+        let body: Vec<String> = pr.sections.iter().map(|s| format!("{}:\n{}", s.name, s.body)).collect();
+        let message = [pr.title.clone(), body.join("\n\n")].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join("\n\n");
+        run(&["commit", "-q", "-m", &message])?;
+        let id = run(&["rev-parse", "--short", "HEAD"])?.trim().to_string();
+        Ok(format!("squashed {branch} into main as {id}"))
+    }
+
     pub fn tools() -> Vec<Arc<dyn Tool>> {
         vec![
             tool("list_prs", "every worktree as a PR: branch, pr.md title/status/sections, commits, changed files", Value::Null, |_| {
@@ -350,6 +386,11 @@ mod server {
 #[server]
 pub async fn pr_board() -> Result<Board, ServerFnError> {
     Ok(board(&repo()))
+}
+
+#[server]
+pub async fn merge_pr(branch: String) -> Result<String, ServerFnError> {
+    squash_merge(&repo(), &branch).map_err(ServerFnError::new)
 }
 
 #[server]
@@ -404,5 +445,40 @@ mod tests {
         assert_eq!((s.step.as_str(), s.ok), ("started", true));
         assert!(["pulled", "built", "stopping", "up and running"].iter().all(|w| log.contains(w)), "{log}");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Squash-merge only takes a ready PR, refuses a dirty main, and commits with pr.md.
+    #[cfg(feature = "server")]
+    #[test]
+    fn squash_merge_takes_ready_prs_into_a_clean_main() {
+        use std::process::Command;
+        let root = std::env::temp_dir().join(format!("askk-merge-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let g = |dir: &std::path::Path, args: &[&str]| { let o = Command::new("git").args(args).current_dir(dir).output().unwrap(); assert!(o.status.success(), "{args:?}: {}", String::from_utf8_lossy(&o.stderr)); };
+        g(&root, &["init", "-q", "-b", "main"]);
+        g(&root, &["config", "user.email", "t@t"]);
+        g(&root, &["config", "user.name", "t"]);
+        std::fs::write(root.join("a.txt"), "one\n").unwrap();
+        g(&root, &["add", "."]);
+        g(&root, &["commit", "-qm", "start"]);
+        let wt = root.join(".worktrees/x");
+        g(&root, &["worktree", "add", "-q", "-b", "feature/x", wt.to_str().unwrap()]);
+        std::fs::write(wt.join("a.txt"), "one\ntwo\n").unwrap();
+        std::fs::write(wt.join("pr.md"), "# Add two\nstatus: working\n\n## Why\nNeed two.\n").unwrap();
+        g(&wt, &["add", "."]);
+        g(&wt, &["commit", "-qm", "wip"]);
+        assert!(squash_merge(&root, "feature/x").unwrap_err().contains("not ready"));
+        std::fs::write(wt.join("pr.md"), "# Add two\nstatus: ready\n\n## Why\nNeed two.\n").unwrap();
+        std::fs::write(root.join("a.txt"), "dirty\n").unwrap();
+        assert!(squash_merge(&root, "feature/x").unwrap_err().contains("uncommitted"));
+        g(&root, &["checkout", "-q", "a.txt"]);
+        let ok = squash_merge(&root, "feature/x").unwrap();
+        assert!(ok.starts_with("squashed feature/x into main"), "{ok}");
+        assert_eq!(std::fs::read_to_string(root.join("a.txt")).unwrap(), "one\ntwo\n");
+        let log = String::from_utf8(Command::new("git").args(["log", "-1", "--format=%B"]).current_dir(&root).output().unwrap().stdout).unwrap();
+        assert!(log.starts_with("Add two") && log.contains("Why:\nNeed two."), "{log}");
+        assert!(squash_merge(&root, "feature/nope").is_err());
+        let _ = std::fs::remove_dir_all(&root);
     }
 }
