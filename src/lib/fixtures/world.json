@@ -1,0 +1,2363 @@
+{
+ "engines": [
+  {
+   "id": "home",
+   "kind": "engine",
+   "title": "Home",
+   "phase": "running",
+   "state": {
+    "boots": 3
+   },
+   "prompt": "engine Home",
+   "actions": [
+    {
+     "name": "element.add",
+     "label": "Add element",
+     "args": {
+      "kind": "text",
+      "title": "text",
+      "config": "text"
+     }
+    },
+    {
+     "name": "element.remove",
+     "label": "Remove",
+     "args": {
+      "id": "text"
+     }
+    },
+    {
+     "name": "element.edit",
+     "label": "Edit",
+     "args": {
+      "id": "text",
+      "title": "text",
+      "config": "text"
+     }
+    },
+    {
+     "name": "engine.add",
+     "label": "Add engine",
+     "args": {
+      "title": "text"
+     }
+    }
+   ],
+   "views": {
+    "icon": {
+     "c": "Card",
+     "props": {
+      "title": "Home",
+      "tone": "busy",
+      "phase": "running",
+      "size": "icon",
+      "status": {
+       "light": "busy",
+       "now": "running",
+       "since": 1762600000
+      }
+     },
+     "children": [
+      {
+       "c": "Badge",
+       "props": {
+        "label": "Ho",
+        "tone": "busy"
+       }
+      }
+     ]
+    },
+    "small": {
+     "c": "Card",
+     "props": {
+      "title": "Home",
+      "tone": "busy",
+      "phase": "running",
+      "size": "small",
+      "status": {
+       "light": "busy",
+       "now": "running",
+       "since": 1762600000
+      }
+     },
+     "children": [
+      {
+       "c": "Stack",
+       "props": {
+        "dir": "row",
+        "gap": 2,
+        "align": "between"
+       },
+       "children": [
+        {
+         "c": "Badge",
+         "props": {
+          "label": "running",
+          "tone": "busy"
+         }
+        }
+       ]
+      }
+     ]
+    },
+    "medium": {
+     "c": "Card",
+     "props": {
+      "title": "Home",
+      "phase": "running",
+      "size": "medium",
+      "status": {
+       "light": "busy",
+       "now": "running",
+       "since": 1762600000
+      }
+     },
+     "children": [
+      {
+       "c": "Stack",
+       "props": {
+        "dir": "row",
+        "gap": 2,
+        "wrap": true
+       },
+       "children": [
+        {
+         "c": "Badge",
+         "props": {
+          "label": "running",
+          "tone": "busy"
+         }
+        },
+        {
+         "c": "Badge",
+         "props": {
+          "label": "3 elements"
+         }
+        }
+       ]
+      },
+      {
+       "c": "Text",
+       "props": {
+        "value": "The default engine.",
+        "md": true,
+        "size": "sm"
+       }
+      },
+      {
+       "c": "Table",
+       "props": {
+        "columns": [
+         "id",
+         "kind",
+         "phase"
+        ],
+        "rows": [
+         [
+          "home/readme",
+          "note",
+          "idle"
+         ],
+         [
+          "home/runs",
+          "counter",
+          "idle"
+         ],
+         [
+          "home/job",
+          "status",
+          "running"
+         ]
+        ]
+       }
+      }
+     ]
+    },
+    "large": {
+     "c": "Card",
+     "props": {
+      "title": "Home",
+      "tone": "busy",
+      "phase": "running",
+      "size": "large",
+      "status": {
+       "light": "busy",
+       "now": "running",
+       "since": 1762600000
+      }
+     },
+     "children": [
+      {
+       "c": "Stack",
+       "props": {
+        "dir": "col",
+        "gap": 3
+       },
+       "children": [
+        {
+         "c": "Stack",
+         "props": {
+          "dir": "row",
+          "gap": 2,
+          "wrap": true
+         },
+         "children": [
+          {
+           "c": "Badge",
+           "props": {
+            "label": "running",
+            "tone": "busy"
+           }
+          },
+          {
+           "c": "Badge",
+           "props": {
+            "label": "3 elements"
+           }
+          }
+         ]
+        },
+        {
+         "c": "Text",
+         "props": {
+          "value": "The default engine.",
+          "md": true,
+          "size": "sm"
+         }
+        },
+        {
+         "c": "Table",
+         "props": {
+          "columns": [
+           "id",
+           "kind",
+           "phase"
+          ],
+          "rows": [
+           [
+            "home/readme",
+            "note",
+            "idle"
+           ],
+           [
+            "home/runs",
+            "counter",
+            "idle"
+           ],
+           [
+            "home/job",
+            "status",
+            "running"
+           ]
+          ]
+         }
+        },
+        {
+         "c": "Divider"
+        },
+        {
+         "c": "Text",
+         "props": {
+          "value": "Prompt",
+          "size": "sm",
+          "tone": "neutral"
+         }
+        },
+        {
+         "c": "Code",
+         "props": {
+          "value": "engine Home"
+         }
+        }
+       ]
+      }
+     ]
+    }
+   },
+   "elements": [
+    {
+     "id": "home/readme",
+     "kind": "note",
+     "title": "Readme",
+     "phase": "idle",
+     "state": {
+      "text": "# Welcome\nThis is a *fixture* world.\n- one\n- two"
+     },
+     "actions": [
+      {
+       "name": "edit",
+       "label": "Edit",
+       "args": {
+        "text": "text"
+       }
+      }
+     ],
+     "prompt": "note Readme: {\"text\":\"# Welcome\\nThis is a *fixture* world.\\n- one\\n- two\"}",
+     "views": {
+      "icon": {
+       "c": "Card",
+       "props": {
+        "title": "Readme",
+        "tone": "neutral",
+        "phase": "idle",
+        "size": "icon",
+        "status": {
+         "light": "neutral",
+         "now": "idle",
+         "since": 1762600000
+        }
+       },
+       "children": [
+        {
+         "c": "Badge",
+         "props": {
+          "label": "Re",
+          "tone": "neutral"
+         }
+        }
+       ]
+      },
+      "small": {
+       "c": "Card",
+       "props": {
+        "title": "Readme",
+        "tone": "neutral",
+        "phase": "idle",
+        "size": "small",
+        "status": {
+         "light": "neutral",
+         "now": "idle",
+         "since": 1762600000
+        }
+       },
+       "children": [
+        {
+         "c": "Stack",
+         "props": {
+          "dir": "row",
+          "gap": 2,
+          "align": "between"
+         },
+         "children": [
+          {
+           "c": "Badge",
+           "props": {
+            "label": "note"
+           }
+          }
+         ]
+        }
+       ]
+      },
+      "medium": {
+       "c": "Card",
+       "props": {
+        "title": "Readme",
+        "phase": "idle",
+        "size": "medium",
+        "status": {
+         "light": "neutral",
+         "now": "idle",
+         "since": 1762600000
+        }
+       },
+       "children": [
+        {
+         "c": "Text",
+         "props": {
+          "value": "# Welcome\nThis is a *fixture* world.\n- one\n- two",
+          "md": true
+         }
+        },
+        {
+         "c": "Field",
+         "props": {
+          "label": "Text",
+          "name": "text",
+          "value": "# Welcome\nThis is a *fixture* world.\n- one\n- two",
+          "action": "edit",
+          "kind": "text"
+         }
+        }
+       ]
+      },
+      "large": {
+       "c": "Card",
+       "props": {
+        "title": "Readme",
+        "tone": "neutral",
+        "phase": "idle",
+        "size": "large",
+        "status": {
+         "light": "neutral",
+         "now": "idle",
+         "since": 1762600000
+        }
+       },
+       "children": [
+        {
+         "c": "Stack",
+         "props": {
+          "dir": "col",
+          "gap": 3
+         },
+         "children": [
+          {
+           "c": "Text",
+           "props": {
+            "value": "# Welcome\nThis is a *fixture* world.\n- one\n- two",
+            "md": true
+           }
+          },
+          {
+           "c": "Field",
+           "props": {
+            "label": "Text",
+            "name": "text",
+            "value": "# Welcome\nThis is a *fixture* world.\n- one\n- two",
+            "action": "edit",
+            "kind": "text"
+           }
+          },
+          {
+           "c": "Divider"
+          },
+          {
+           "c": "Text",
+           "props": {
+            "value": "Prompt",
+            "size": "sm",
+            "tone": "neutral"
+           }
+          },
+          {
+           "c": "Code",
+           "props": {
+            "value": "note Readme: {\"text\":\"# Welcome\\nThis is a *fixture* world.\\n- one\\n- two\"}"
+           }
+          }
+         ]
+        }
+       ]
+      }
+     },
+     "config": {},
+     "status": {
+      "light": "neutral",
+      "now": "idle",
+      "since": 1762600000
+     }
+    },
+    {
+     "id": "home/runs",
+     "kind": "counter",
+     "title": "Runs",
+     "phase": "idle",
+     "state": {
+      "value": 4
+     },
+     "actions": [
+      {
+       "name": "inc",
+       "label": "+"
+      },
+      {
+       "name": "dec",
+       "label": "−"
+      },
+      {
+       "name": "reset",
+       "label": "Reset"
+      }
+     ],
+     "prompt": "counter Runs: {\"value\":4}",
+     "views": {
+      "icon": {
+       "c": "Card",
+       "props": {
+        "title": "Runs",
+        "tone": "neutral",
+        "phase": "idle",
+        "size": "icon",
+        "status": {
+         "light": "neutral",
+         "now": "value 4",
+         "since": 1762600000
+        }
+       },
+       "children": [
+        {
+         "c": "Badge",
+         "props": {
+          "label": "Ru",
+          "tone": "neutral"
+         }
+        }
+       ]
+      },
+      "small": {
+       "c": "Card",
+       "props": {
+        "title": "Runs",
+        "tone": "neutral",
+        "phase": "idle",
+        "size": "small",
+        "status": {
+         "light": "neutral",
+         "now": "value 4",
+         "since": 1762600000
+        }
+       },
+       "children": [
+        {
+         "c": "Stack",
+         "props": {
+          "dir": "row",
+          "gap": 2,
+          "align": "between"
+         },
+         "children": [
+          {
+           "c": "Text",
+           "props": {
+            "value": "4",
+            "mono": true
+           }
+          }
+         ]
+        }
+       ]
+      },
+      "medium": {
+       "c": "Card",
+       "props": {
+        "title": "Runs",
+        "phase": "idle",
+        "size": "medium",
+        "status": {
+         "light": "neutral",
+         "now": "value 4",
+         "since": 1762600000
+        }
+       },
+       "children": [
+        {
+         "c": "Text",
+         "props": {
+          "value": "4",
+          "size": "xl",
+          "mono": true
+         }
+        },
+        {
+         "c": "Stack",
+         "props": {
+          "dir": "row",
+          "gap": 2
+         },
+         "children": [
+          {
+           "c": "Button",
+           "props": {
+            "label": "−",
+            "action": "dec"
+           }
+          },
+          {
+           "c": "Button",
+           "props": {
+            "label": "+",
+            "action": "inc",
+            "tone": "accent"
+           }
+          },
+          {
+           "c": "Button",
+           "props": {
+            "label": "Reset",
+            "action": "reset"
+           }
+          }
+         ]
+        }
+       ]
+      },
+      "large": {
+       "c": "Card",
+       "props": {
+        "title": "Runs",
+        "tone": "neutral",
+        "phase": "idle",
+        "size": "large",
+        "status": {
+         "light": "neutral",
+         "now": "value 4",
+         "since": 1762600000
+        }
+       },
+       "children": [
+        {
+         "c": "Stack",
+         "props": {
+          "dir": "col",
+          "gap": 3
+         },
+         "children": [
+          {
+           "c": "Text",
+           "props": {
+            "value": "4",
+            "size": "xl",
+            "mono": true
+           }
+          },
+          {
+           "c": "Stack",
+           "props": {
+            "dir": "row",
+            "gap": 2
+           },
+           "children": [
+            {
+             "c": "Button",
+             "props": {
+              "label": "−",
+              "action": "dec"
+             }
+            },
+            {
+             "c": "Button",
+             "props": {
+              "label": "+",
+              "action": "inc",
+              "tone": "accent"
+             }
+            },
+            {
+             "c": "Button",
+             "props": {
+              "label": "Reset",
+              "action": "reset"
+             }
+            }
+           ]
+          },
+          {
+           "c": "Divider"
+          },
+          {
+           "c": "Text",
+           "props": {
+            "value": "Prompt",
+            "size": "sm",
+            "tone": "neutral"
+           }
+          },
+          {
+           "c": "Code",
+           "props": {
+            "value": "counter Runs: {\"value\":4}"
+           }
+          }
+         ]
+        }
+       ]
+      }
+     },
+     "config": {},
+     "status": {
+      "light": "neutral",
+      "now": "value 4",
+      "since": 1762600000
+     }
+    },
+    {
+     "id": "home/job",
+     "kind": "status",
+     "title": "Job",
+     "phase": "running",
+     "state": {},
+     "actions": [
+      {
+       "name": "start",
+       "label": "Start"
+      },
+      {
+       "name": "stop",
+       "label": "Stop"
+      }
+     ],
+     "prompt": "status Job: {}",
+     "views": {
+      "icon": {
+       "c": "Card",
+       "props": {
+        "title": "Job",
+        "tone": "busy",
+        "phase": "running",
+        "size": "icon",
+        "status": {
+         "light": "busy",
+         "now": "running",
+         "since": 1762600000
+        }
+       },
+       "children": [
+        {
+         "c": "Badge",
+         "props": {
+          "label": "Jo",
+          "tone": "busy"
+         }
+        }
+       ]
+      },
+      "small": {
+       "c": "Card",
+       "props": {
+        "title": "Job",
+        "tone": "busy",
+        "phase": "running",
+        "size": "small",
+        "status": {
+         "light": "busy",
+         "now": "running",
+         "since": 1762600000
+        }
+       },
+       "children": [
+        {
+         "c": "Stack",
+         "props": {
+          "dir": "row",
+          "gap": 2,
+          "align": "between"
+         },
+         "children": [
+          {
+           "c": "Badge",
+           "props": {
+            "label": "running",
+            "tone": "busy"
+           }
+          }
+         ]
+        }
+       ]
+      },
+      "medium": {
+       "c": "Card",
+       "props": {
+        "title": "Job",
+        "phase": "running",
+        "size": "medium",
+        "status": {
+         "light": "busy",
+         "now": "running",
+         "since": 1762600000
+        }
+       },
+       "children": [
+        {
+         "c": "Badge",
+         "props": {
+          "label": "running",
+          "tone": "busy"
+         }
+        },
+        {
+         "c": "Stack",
+         "props": {
+          "dir": "row",
+          "gap": 2
+         },
+         "children": [
+          {
+           "c": "Button",
+           "props": {
+            "label": "Start",
+            "action": "start",
+            "tone": "ok"
+           }
+          },
+          {
+           "c": "Button",
+           "props": {
+            "label": "Stop",
+            "action": "stop",
+            "tone": "error"
+           }
+          }
+         ]
+        }
+       ]
+      },
+      "large": {
+       "c": "Card",
+       "props": {
+        "title": "Job",
+        "tone": "busy",
+        "phase": "running",
+        "size": "large",
+        "status": {
+         "light": "busy",
+         "now": "running",
+         "since": 1762600000
+        }
+       },
+       "children": [
+        {
+         "c": "Stack",
+         "props": {
+          "dir": "col",
+          "gap": 3
+         },
+         "children": [
+          {
+           "c": "Badge",
+           "props": {
+            "label": "running",
+            "tone": "busy"
+           }
+          },
+          {
+           "c": "Stack",
+           "props": {
+            "dir": "row",
+            "gap": 2
+           },
+           "children": [
+            {
+             "c": "Button",
+             "props": {
+              "label": "Start",
+              "action": "start",
+              "tone": "ok"
+             }
+            },
+            {
+             "c": "Button",
+             "props": {
+              "label": "Stop",
+              "action": "stop",
+              "tone": "error"
+             }
+            }
+           ]
+          },
+          {
+           "c": "Divider"
+          },
+          {
+           "c": "Text",
+           "props": {
+            "value": "Prompt",
+            "size": "sm",
+            "tone": "neutral"
+           }
+          },
+          {
+           "c": "Code",
+           "props": {
+            "value": "status Job: {}"
+           }
+          }
+         ]
+        }
+       ]
+      }
+     },
+     "config": {},
+     "status": {
+      "light": "busy",
+      "now": "running",
+      "since": 1762600000
+     }
+    }
+   ],
+   "children": [],
+   "config": {},
+   "status": {
+    "light": "busy",
+    "now": "running",
+    "since": 1762600000
+   }
+  },
+  {
+   "id": "lab",
+   "kind": "engine",
+   "title": "Lab",
+   "phase": "interrupted",
+   "state": {
+    "boots": 3
+   },
+   "prompt": "engine Lab",
+   "actions": [
+    {
+     "name": "element.add",
+     "label": "Add element",
+     "args": {
+      "kind": "text",
+      "title": "text",
+      "config": "text"
+     }
+    },
+    {
+     "name": "element.remove",
+     "label": "Remove",
+     "args": {
+      "id": "text"
+     }
+    },
+    {
+     "name": "element.edit",
+     "label": "Edit",
+     "args": {
+      "id": "text",
+      "title": "text",
+      "config": "text"
+     }
+    },
+    {
+     "name": "engine.add",
+     "label": "Add engine",
+     "args": {
+      "title": "text"
+     }
+    }
+   ],
+   "views": {
+    "icon": {
+     "c": "Card",
+     "props": {
+      "title": "Lab",
+      "tone": "warn",
+      "phase": "interrupted",
+      "size": "icon",
+      "status": {
+       "light": "warn",
+       "now": "interrupted",
+       "since": 1762600000
+      }
+     },
+     "children": [
+      {
+       "c": "Badge",
+       "props": {
+        "label": "La",
+        "tone": "warn"
+       }
+      }
+     ]
+    },
+    "small": {
+     "c": "Card",
+     "props": {
+      "title": "Lab",
+      "tone": "warn",
+      "phase": "interrupted",
+      "size": "small",
+      "status": {
+       "light": "warn",
+       "now": "interrupted",
+       "since": 1762600000
+      }
+     },
+     "children": [
+      {
+       "c": "Stack",
+       "props": {
+        "dir": "row",
+        "gap": 2,
+        "align": "between"
+       },
+       "children": [
+        {
+         "c": "Badge",
+         "props": {
+          "label": "interrupted",
+          "tone": "warn"
+         }
+        }
+       ]
+      }
+     ]
+    },
+    "medium": {
+     "c": "Card",
+     "props": {
+      "title": "Lab",
+      "phase": "interrupted",
+      "size": "medium",
+      "status": {
+       "light": "warn",
+       "now": "interrupted",
+       "since": 1762600000
+      }
+     },
+     "children": [
+      {
+       "c": "Stack",
+       "props": {
+        "dir": "row",
+        "gap": 2,
+        "wrap": true
+       },
+       "children": [
+        {
+         "c": "Badge",
+         "props": {
+          "label": "interrupted",
+          "tone": "warn"
+         }
+        },
+        {
+         "c": "Badge",
+         "props": {
+          "label": "2 elements"
+         }
+        }
+       ]
+      },
+      {
+       "c": "Text",
+       "props": {
+        "value": "Experiments.",
+        "md": true,
+        "size": "sm"
+       }
+      },
+      {
+       "c": "Table",
+       "props": {
+        "columns": [
+         "id",
+         "kind",
+         "phase"
+        ],
+        "rows": [
+         [
+          "lab/gpu",
+          "meter",
+          "idle"
+         ],
+         [
+          "lab/train",
+          "status",
+          "failed"
+         ]
+        ]
+       }
+      },
+      {
+       "c": "Weird",
+       "props": {}
+      }
+     ]
+    },
+    "large": {
+     "c": "Card",
+     "props": {
+      "title": "Lab",
+      "tone": "warn",
+      "phase": "interrupted",
+      "size": "large",
+      "status": {
+       "light": "warn",
+       "now": "interrupted",
+       "since": 1762600000
+      }
+     },
+     "children": [
+      {
+       "c": "Stack",
+       "props": {
+        "dir": "col",
+        "gap": 3
+       },
+       "children": [
+        {
+         "c": "Stack",
+         "props": {
+          "dir": "row",
+          "gap": 2,
+          "wrap": true
+         },
+         "children": [
+          {
+           "c": "Badge",
+           "props": {
+            "label": "interrupted",
+            "tone": "warn"
+           }
+          },
+          {
+           "c": "Badge",
+           "props": {
+            "label": "2 elements"
+           }
+          }
+         ]
+        },
+        {
+         "c": "Text",
+         "props": {
+          "value": "Experiments.",
+          "md": true,
+          "size": "sm"
+         }
+        },
+        {
+         "c": "Table",
+         "props": {
+          "columns": [
+           "id",
+           "kind",
+           "phase"
+          ],
+          "rows": [
+           [
+            "lab/gpu",
+            "meter",
+            "idle"
+           ],
+           [
+            "lab/train",
+            "status",
+            "failed"
+           ]
+          ]
+         }
+        },
+        {
+         "c": "Weird",
+         "props": {}
+        },
+        {
+         "c": "Divider"
+        },
+        {
+         "c": "Text",
+         "props": {
+          "value": "Prompt",
+          "size": "sm",
+          "tone": "neutral"
+         }
+        },
+        {
+         "c": "Code",
+         "props": {
+          "value": "engine Lab"
+         }
+        }
+       ]
+      }
+     ]
+    }
+   },
+   "elements": [
+    {
+     "id": "lab/gpu",
+     "kind": "meter",
+     "title": "GPU",
+     "phase": "idle",
+     "state": {
+      "value": 9
+     },
+     "actions": [
+      {
+       "name": "set",
+       "label": "Set",
+       "args": {
+        "value": "number"
+       }
+      }
+     ],
+     "prompt": "meter GPU: {\"value\":9}",
+     "views": {
+      "icon": {
+       "c": "Card",
+       "props": {
+        "title": "GPU",
+        "tone": "neutral",
+        "phase": "idle",
+        "size": "icon",
+        "status": {
+         "light": "neutral",
+         "now": "9 of 100",
+         "since": 1762600000
+        }
+       },
+       "children": [
+        {
+         "c": "Badge",
+         "props": {
+          "label": "GP",
+          "tone": "neutral"
+         }
+        }
+       ]
+      },
+      "small": {
+       "c": "Card",
+       "props": {
+        "title": "GPU",
+        "tone": "neutral",
+        "phase": "idle",
+        "size": "small",
+        "status": {
+         "light": "neutral",
+         "now": "9 of 100",
+         "since": 1762600000
+        }
+       },
+       "children": [
+        {
+         "c": "Stack",
+         "props": {
+          "dir": "row",
+          "gap": 2,
+          "align": "between"
+         },
+         "children": [
+          {
+           "c": "Meter",
+           "props": {
+            "value": 9,
+            "max": 10
+           }
+          }
+         ]
+        }
+       ]
+      },
+      "medium": {
+       "c": "Card",
+       "props": {
+        "title": "GPU",
+        "phase": "idle",
+        "size": "medium",
+        "status": {
+         "light": "neutral",
+         "now": "9 of 100",
+         "since": 1762600000
+        }
+       },
+       "children": [
+        {
+         "c": "Meter",
+         "props": {
+          "label": "GPU",
+          "value": 9,
+          "max": 10,
+          "tone": "warn"
+         }
+        },
+        {
+         "c": "Field",
+         "props": {
+          "label": "Value",
+          "name": "value",
+          "value": 9,
+          "action": "set",
+          "kind": "number"
+         }
+        }
+       ]
+      },
+      "large": {
+       "c": "Card",
+       "props": {
+        "title": "GPU",
+        "tone": "neutral",
+        "phase": "idle",
+        "size": "large",
+        "status": {
+         "light": "neutral",
+         "now": "9 of 100",
+         "since": 1762600000
+        }
+       },
+       "children": [
+        {
+         "c": "Stack",
+         "props": {
+          "dir": "col",
+          "gap": 3
+         },
+         "children": [
+          {
+           "c": "Meter",
+           "props": {
+            "label": "GPU",
+            "value": 9,
+            "max": 10,
+            "tone": "warn"
+           }
+          },
+          {
+           "c": "Field",
+           "props": {
+            "label": "Value",
+            "name": "value",
+            "value": 9,
+            "action": "set",
+            "kind": "number"
+           }
+          },
+          {
+           "c": "Divider"
+          },
+          {
+           "c": "Text",
+           "props": {
+            "value": "Prompt",
+            "size": "sm",
+            "tone": "neutral"
+           }
+          },
+          {
+           "c": "Code",
+           "props": {
+            "value": "meter GPU: {\"value\":9}"
+           }
+          }
+         ]
+        }
+       ]
+      }
+     },
+     "config": {},
+     "status": {
+      "light": "neutral",
+      "now": "9 of 100",
+      "since": 1762600000
+     }
+    },
+    {
+     "id": "lab/train",
+     "kind": "status",
+     "title": "Train",
+     "phase": "failed",
+     "state": {},
+     "actions": [
+      {
+       "name": "start",
+       "label": "Start"
+      },
+      {
+       "name": "stop",
+       "label": "Stop"
+      }
+     ],
+     "prompt": "status Train: {}",
+     "views": {
+      "icon": {
+       "c": "Card",
+       "props": {
+        "title": "Train",
+        "tone": "error",
+        "phase": "failed",
+        "size": "icon",
+        "status": {
+         "light": "error",
+         "now": "failed",
+         "since": 1762600000
+        }
+       },
+       "children": [
+        {
+         "c": "Badge",
+         "props": {
+          "label": "Tr",
+          "tone": "error"
+         }
+        }
+       ]
+      },
+      "small": {
+       "c": "Card",
+       "props": {
+        "title": "Train",
+        "tone": "error",
+        "phase": "failed",
+        "size": "small",
+        "status": {
+         "light": "error",
+         "now": "failed",
+         "since": 1762600000
+        }
+       },
+       "children": [
+        {
+         "c": "Stack",
+         "props": {
+          "dir": "row",
+          "gap": 2,
+          "align": "between"
+         },
+         "children": [
+          {
+           "c": "Badge",
+           "props": {
+            "label": "failed",
+            "tone": "error"
+           }
+          }
+         ]
+        }
+       ]
+      },
+      "medium": {
+       "c": "Card",
+       "props": {
+        "title": "Train",
+        "phase": "failed",
+        "size": "medium",
+        "status": {
+         "light": "error",
+         "now": "failed",
+         "since": 1762600000
+        }
+       },
+       "children": [
+        {
+         "c": "Badge",
+         "props": {
+          "label": "failed",
+          "tone": "error"
+         }
+        },
+        {
+         "c": "Stack",
+         "props": {
+          "dir": "row",
+          "gap": 2
+         },
+         "children": [
+          {
+           "c": "Button",
+           "props": {
+            "label": "Start",
+            "action": "start",
+            "tone": "ok"
+           }
+          },
+          {
+           "c": "Button",
+           "props": {
+            "label": "Stop",
+            "action": "stop",
+            "tone": "error"
+           }
+          }
+         ]
+        }
+       ]
+      },
+      "large": {
+       "c": "Card",
+       "props": {
+        "title": "Train",
+        "tone": "error",
+        "phase": "failed",
+        "size": "large",
+        "status": {
+         "light": "error",
+         "now": "failed",
+         "since": 1762600000
+        }
+       },
+       "children": [
+        {
+         "c": "Stack",
+         "props": {
+          "dir": "col",
+          "gap": 3
+         },
+         "children": [
+          {
+           "c": "Badge",
+           "props": {
+            "label": "failed",
+            "tone": "error"
+           }
+          },
+          {
+           "c": "Stack",
+           "props": {
+            "dir": "row",
+            "gap": 2
+           },
+           "children": [
+            {
+             "c": "Button",
+             "props": {
+              "label": "Start",
+              "action": "start",
+              "tone": "ok"
+             }
+            },
+            {
+             "c": "Button",
+             "props": {
+              "label": "Stop",
+              "action": "stop",
+              "tone": "error"
+             }
+            }
+           ]
+          },
+          {
+           "c": "Divider"
+          },
+          {
+           "c": "Text",
+           "props": {
+            "value": "Prompt",
+            "size": "sm",
+            "tone": "neutral"
+           }
+          },
+          {
+           "c": "Code",
+           "props": {
+            "value": "status Train: {}"
+           }
+          }
+         ]
+        }
+       ]
+      }
+     },
+     "config": {},
+     "status": {
+      "light": "error",
+      "now": "failed",
+      "since": 1762600000
+     }
+    }
+   ],
+   "children": [
+    {
+     "id": "lab/probe",
+     "kind": "engine",
+     "title": "Probe",
+     "phase": "waiting",
+     "state": {
+      "boots": 3
+     },
+     "prompt": "engine Probe",
+     "actions": [
+      {
+       "name": "element.add",
+       "label": "Add element",
+       "args": {
+        "kind": "text",
+        "title": "text",
+        "config": "text"
+       }
+      },
+      {
+       "name": "element.remove",
+       "label": "Remove",
+       "args": {
+        "id": "text"
+       }
+      },
+      {
+       "name": "element.edit",
+       "label": "Edit",
+       "args": {
+        "id": "text",
+        "title": "text",
+        "config": "text"
+       }
+      },
+      {
+       "name": "engine.add",
+       "label": "Add engine",
+       "args": {
+        "title": "text"
+       }
+      }
+     ],
+     "views": {
+      "icon": {
+       "c": "Card",
+       "props": {
+        "title": "Probe",
+        "tone": "accent",
+        "phase": "waiting",
+        "size": "icon",
+        "status": {
+         "light": "accent",
+         "now": "waiting",
+         "since": 1762600000
+        }
+       },
+       "children": [
+        {
+         "c": "Badge",
+         "props": {
+          "label": "Pr",
+          "tone": "accent"
+         }
+        }
+       ]
+      },
+      "small": {
+       "c": "Card",
+       "props": {
+        "title": "Probe",
+        "tone": "accent",
+        "phase": "waiting",
+        "size": "small",
+        "status": {
+         "light": "accent",
+         "now": "waiting",
+         "since": 1762600000
+        }
+       },
+       "children": [
+        {
+         "c": "Stack",
+         "props": {
+          "dir": "row",
+          "gap": 2,
+          "align": "between"
+         },
+         "children": [
+          {
+           "c": "Badge",
+           "props": {
+            "label": "waiting",
+            "tone": "accent"
+           }
+          }
+         ]
+        }
+       ]
+      },
+      "medium": {
+       "c": "Card",
+       "props": {
+        "title": "Probe",
+        "phase": "waiting",
+        "size": "medium",
+        "status": {
+         "light": "accent",
+         "now": "waiting",
+         "since": 1762600000
+        }
+       },
+       "children": [
+        {
+         "c": "Stack",
+         "props": {
+          "dir": "row",
+          "gap": 2,
+          "wrap": true
+         },
+         "children": [
+          {
+           "c": "Badge",
+           "props": {
+            "label": "waiting",
+            "tone": "accent"
+           }
+          },
+          {
+           "c": "Badge",
+           "props": {
+            "label": "2 elements"
+           }
+          }
+         ]
+        },
+        {
+         "c": "Table",
+         "props": {
+          "columns": [
+           "id",
+           "kind",
+           "phase"
+          ],
+          "rows": [
+           [
+            "lab/probe/load",
+            "meter",
+            "idle"
+           ],
+           [
+            "lab/probe/why",
+            "note",
+            "idle"
+           ]
+          ]
+         }
+        },
+        {
+         "c": "Weird",
+         "props": {}
+        }
+       ]
+      },
+      "large": {
+       "c": "Card",
+       "props": {
+        "title": "Probe",
+        "tone": "accent",
+        "phase": "waiting",
+        "size": "large",
+        "status": {
+         "light": "accent",
+         "now": "waiting",
+         "since": 1762600000
+        }
+       },
+       "children": [
+        {
+         "c": "Stack",
+         "props": {
+          "dir": "col",
+          "gap": 3
+         },
+         "children": [
+          {
+           "c": "Stack",
+           "props": {
+            "dir": "row",
+            "gap": 2,
+            "wrap": true
+           },
+           "children": [
+            {
+             "c": "Badge",
+             "props": {
+              "label": "waiting",
+              "tone": "accent"
+             }
+            },
+            {
+             "c": "Badge",
+             "props": {
+              "label": "2 elements"
+             }
+            }
+           ]
+          },
+          {
+           "c": "Table",
+           "props": {
+            "columns": [
+             "id",
+             "kind",
+             "phase"
+            ],
+            "rows": [
+             [
+              "lab/probe/load",
+              "meter",
+              "idle"
+             ],
+             [
+              "lab/probe/why",
+              "note",
+              "idle"
+             ]
+            ]
+           }
+          },
+          {
+           "c": "Weird",
+           "props": {}
+          },
+          {
+           "c": "Divider"
+          },
+          {
+           "c": "Text",
+           "props": {
+            "value": "Prompt",
+            "size": "sm",
+            "tone": "neutral"
+           }
+          },
+          {
+           "c": "Code",
+           "props": {
+            "value": "engine Probe"
+           }
+          }
+         ]
+        }
+       ]
+      }
+     },
+     "elements": [
+      {
+       "id": "lab/probe/load",
+       "kind": "meter",
+       "title": "Load",
+       "phase": "idle",
+       "state": {
+        "value": 7
+       },
+       "actions": [
+        {
+         "name": "set",
+         "label": "Set",
+         "args": {
+          "value": "number"
+         }
+        }
+       ],
+       "prompt": "meter Load: {\"value\":7}",
+       "views": {
+        "icon": {
+         "c": "Card",
+         "props": {
+          "title": "Load",
+          "tone": "neutral",
+          "phase": "idle",
+          "size": "icon",
+          "status": {
+           "light": "neutral",
+           "now": "7 of 100",
+           "since": 1762600000
+          }
+         },
+         "children": [
+          {
+           "c": "Badge",
+           "props": {
+            "label": "Lo",
+            "tone": "neutral"
+           }
+          }
+         ]
+        },
+        "small": {
+         "c": "Card",
+         "props": {
+          "title": "Load",
+          "tone": "neutral",
+          "phase": "idle",
+          "size": "small",
+          "status": {
+           "light": "neutral",
+           "now": "7 of 100",
+           "since": 1762600000
+          }
+         },
+         "children": [
+          {
+           "c": "Stack",
+           "props": {
+            "dir": "row",
+            "gap": 2,
+            "align": "between"
+           },
+           "children": [
+            {
+             "c": "Meter",
+             "props": {
+              "value": 7,
+              "max": 10
+             }
+            }
+           ]
+          }
+         ]
+        },
+        "medium": {
+         "c": "Card",
+         "props": {
+          "title": "Load",
+          "phase": "idle",
+          "size": "medium",
+          "status": {
+           "light": "neutral",
+           "now": "7 of 100",
+           "since": 1762600000
+          }
+         },
+         "children": [
+          {
+           "c": "Meter",
+           "props": {
+            "label": "Load",
+            "value": 7,
+            "max": 10,
+            "tone": "ok"
+           }
+          },
+          {
+           "c": "Field",
+           "props": {
+            "label": "Value",
+            "name": "value",
+            "value": 7,
+            "action": "set",
+            "kind": "number"
+           }
+          }
+         ]
+        },
+        "large": {
+         "c": "Card",
+         "props": {
+          "title": "Load",
+          "tone": "neutral",
+          "phase": "idle",
+          "size": "large",
+          "status": {
+           "light": "neutral",
+           "now": "7 of 100",
+           "since": 1762600000
+          }
+         },
+         "children": [
+          {
+           "c": "Stack",
+           "props": {
+            "dir": "col",
+            "gap": 3
+           },
+           "children": [
+            {
+             "c": "Meter",
+             "props": {
+              "label": "Load",
+              "value": 7,
+              "max": 10,
+              "tone": "ok"
+             }
+            },
+            {
+             "c": "Field",
+             "props": {
+              "label": "Value",
+              "name": "value",
+              "value": 7,
+              "action": "set",
+              "kind": "number"
+             }
+            },
+            {
+             "c": "Divider"
+            },
+            {
+             "c": "Text",
+             "props": {
+              "value": "Prompt",
+              "size": "sm",
+              "tone": "neutral"
+             }
+            },
+            {
+             "c": "Code",
+             "props": {
+              "value": "meter Load: {\"value\":7}"
+             }
+            }
+           ]
+          }
+         ]
+        }
+       },
+       "config": {},
+       "status": {
+        "light": "neutral",
+        "now": "7 of 100",
+        "since": 1762600000
+       }
+      },
+      {
+       "id": "lab/probe/why",
+       "kind": "note",
+       "title": "Why",
+       "phase": "idle",
+       "state": {
+        "text": "Nested **child** engine."
+       },
+       "actions": [
+        {
+         "name": "edit",
+         "label": "Edit",
+         "args": {
+          "text": "text"
+         }
+        }
+       ],
+       "prompt": "note Why: {\"text\":\"Nested **child** engine.\"}",
+       "views": {
+        "icon": {
+         "c": "Card",
+         "props": {
+          "title": "Why",
+          "tone": "neutral",
+          "phase": "idle",
+          "size": "icon",
+          "status": {
+           "light": "neutral",
+           "now": "idle",
+           "since": 1762600000
+          }
+         },
+         "children": [
+          {
+           "c": "Badge",
+           "props": {
+            "label": "Wh",
+            "tone": "neutral"
+           }
+          }
+         ]
+        },
+        "small": {
+         "c": "Card",
+         "props": {
+          "title": "Why",
+          "tone": "neutral",
+          "phase": "idle",
+          "size": "small",
+          "status": {
+           "light": "neutral",
+           "now": "idle",
+           "since": 1762600000
+          }
+         },
+         "children": [
+          {
+           "c": "Stack",
+           "props": {
+            "dir": "row",
+            "gap": 2,
+            "align": "between"
+           },
+           "children": [
+            {
+             "c": "Badge",
+             "props": {
+              "label": "note"
+             }
+            }
+           ]
+          }
+         ]
+        },
+        "medium": {
+         "c": "Card",
+         "props": {
+          "title": "Why",
+          "phase": "idle",
+          "size": "medium",
+          "status": {
+           "light": "neutral",
+           "now": "idle",
+           "since": 1762600000
+          }
+         },
+         "children": [
+          {
+           "c": "Text",
+           "props": {
+            "value": "Nested **child** engine.",
+            "md": true
+           }
+          },
+          {
+           "c": "Field",
+           "props": {
+            "label": "Text",
+            "name": "text",
+            "value": "Nested **child** engine.",
+            "action": "edit",
+            "kind": "text"
+           }
+          },
+          {
+           "c": "Slot",
+           "props": {
+            "of": "home/runs",
+            "at": "small"
+           }
+          }
+         ]
+        },
+        "large": {
+         "c": "Card",
+         "props": {
+          "title": "Why",
+          "tone": "neutral",
+          "phase": "idle",
+          "size": "large",
+          "status": {
+           "light": "neutral",
+           "now": "idle",
+           "since": 1762600000
+          }
+         },
+         "children": [
+          {
+           "c": "Stack",
+           "props": {
+            "dir": "col",
+            "gap": 3
+           },
+           "children": [
+            {
+             "c": "Text",
+             "props": {
+              "value": "Nested **child** engine.",
+              "md": true
+             }
+            },
+            {
+             "c": "Field",
+             "props": {
+              "label": "Text",
+              "name": "text",
+              "value": "Nested **child** engine.",
+              "action": "edit",
+              "kind": "text"
+             }
+            },
+            {
+             "c": "Divider"
+            },
+            {
+             "c": "Text",
+             "props": {
+              "value": "Prompt",
+              "size": "sm",
+              "tone": "neutral"
+             }
+            },
+            {
+             "c": "Code",
+             "props": {
+              "value": "note Why: {\"text\":\"Nested **child** engine.\"}"
+             }
+            }
+           ]
+          }
+         ]
+        }
+       },
+       "config": {},
+       "status": {
+        "light": "neutral",
+        "now": "idle",
+        "since": 1762600000
+       }
+      }
+     ],
+     "children": [],
+     "config": {},
+     "status": {
+      "light": "accent",
+      "now": "waiting",
+      "since": 1762600000
+     }
+    }
+   ],
+   "config": {},
+   "status": {
+    "light": "warn",
+    "now": "interrupted",
+    "since": 1762600000
+   }
+  }
+ ],
+ "theme": {
+  "radius": "10px",
+  "font": "system-ui, sans-serif",
+  "mono": "ui-monospace, monospace",
+  "light": {
+   "bg": "#ffffff",
+   "surface": "#ffffff",
+   "fg": "#111111",
+   "muted": "#666666",
+   "border": "#e2e2e2",
+   "neutral": "#6b7280",
+   "ok": "#16a34a",
+   "warn": "#d97706",
+   "error": "#dc2626",
+   "busy": "#2563eb",
+   "accent": "#7c3aed"
+  },
+  "dark": {
+   "bg": "#000000",
+   "surface": "#000000",
+   "fg": "#f2f2f2",
+   "muted": "#9a9a9a",
+   "border": "#2a2a2a",
+   "neutral": "#9ca3af",
+   "ok": "#4ade80",
+   "warn": "#fbbf24",
+   "error": "#f87171",
+   "busy": "#60a5fa",
+   "accent": "#a78bfa"
+  }
+ },
+ "layouts": {
+  "dashboard": {
+   "order": [
+    "lab",
+    "home"
+   ]
+  },
+  "canvas": {
+   "positions": {
+    "home": {
+     "x": 40,
+     "y": 40
+    },
+    "lab": {
+     "x": 460,
+     "y": 60
+    }
+   }
+  }
+ },
+ "kinds": [
+  {
+   "kind": "note",
+   "about": "markdown text",
+   "config": {}
+  },
+  {
+   "kind": "counter",
+   "about": "a number",
+   "config": {
+    "step": "number"
+   }
+  },
+  {
+   "kind": "status",
+   "about": "a lifecycle you drive by hand",
+   "config": {}
+  },
+  {
+   "kind": "meter",
+   "about": "a bounded value",
+   "config": {
+    "max": "number"
+   }
+  }
+ ],
+ "ui": {
+  "dashboard": {
+   "c": "Page",
+   "props": {
+    "background": {
+     "image": null,
+     "fields": [
+      {
+       "at": "16% 8%",
+       "size": "26vmax",
+       "color": "wall-a",
+       "hard": true
+      },
+      {
+       "at": "88% 92%",
+       "size": "34vmax",
+       "color": "wall-b",
+       "hard": true
+      },
+      {
+       "at": "74% 6%",
+       "size": "22vmax",
+       "color": "wall-c",
+       "hard": true
+      },
+      {
+       "at": "34% 104%",
+       "size": "20vmax",
+       "color": "wall-d",
+       "hard": true
+      }
+     ],
+     "wash": true,
+     "ripples": true,
+     "tint": null,
+     "blur": 0,
+     "dim": 0
+    }
+   },
+   "children": [
+    {
+     "c": "Panel"
+    },
+    {
+     "c": "CardGrid",
+     "props": {
+      "source": "engines",
+      "size": "auto",
+      "min": 360,
+      "gap": 4,
+      "max": 1600
+     }
+    }
+   ]
+  },
+  "canvas": {
+   "c": "Page",
+   "props": {
+    "background": {
+     "image": null,
+     "fields": [
+      {
+       "at": "16% 8%",
+       "size": "26vmax",
+       "color": "wall-a",
+       "hard": true
+      },
+      {
+       "at": "88% 92%",
+       "size": "34vmax",
+       "color": "wall-b",
+       "hard": true
+      },
+      {
+       "at": "74% 6%",
+       "size": "22vmax",
+       "color": "wall-c",
+       "hard": true
+      },
+      {
+       "at": "34% 104%",
+       "size": "20vmax",
+       "color": "wall-d",
+       "hard": true
+      }
+     ],
+     "wash": true,
+     "ripples": true,
+     "tint": null,
+     "blur": 0,
+     "dim": 0
+    }
+   },
+   "children": [
+    {
+     "c": "Panel"
+    },
+    {
+     "c": "Canvas",
+     "props": {
+      "source": "engines",
+      "zoom": {
+       "icon": 0.35,
+       "small": 0.6,
+       "medium": 1.25
+      }
+     }
+    }
+   ]
+  }
+ }
+}

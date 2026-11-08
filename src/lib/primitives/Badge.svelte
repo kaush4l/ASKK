@@ -1,0 +1,3 @@
+<script>import { toneVar } from "../logic/tones.js"; let { label = "", tone } = $props();</script>
+<span style:--t={toneVar(tone)} title={label}>{label}</span>
+<style>span{display:inline-block;line-height:calc(var(--control-xs) - var(--line-bold));min-height:var(--control-xs);max-width:100%;overflow:hidden;text-overflow:ellipsis;vertical-align:middle;border:var(--line-hair) solid color-mix(in oklab,var(--t) 70%,transparent);background:color-mix(in oklab,var(--t) 10%,transparent);color:var(--t);border-radius:var(--radius-full);padding:0 var(--space-2);font-size:var(--text-xs);white-space:nowrap;box-sizing:border-box}</style>

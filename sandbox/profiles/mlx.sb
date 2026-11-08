@@ -1,0 +1,7 @@
+;; mlx.sb — layered after job.sb by run.sh (job.sb rules, then these).
+;; What Apple Metal needs for MLX on Apple Silicon, found empirically on macOS 27.2
+;; by running an MLX matmul under job.sb and reading the Sandbox denials
+;; (log stream --predicate 'sender == "Sandbox"'). See docs/sandbox-exec.md.
+(version 1)
+(allow iokit-open (iokit-user-client-class "AGXDeviceUserClient" "IOSurfaceRootUserClient"))
+(allow mach-lookup (xpc-service-name "com.apple.MTLCompilerService"))

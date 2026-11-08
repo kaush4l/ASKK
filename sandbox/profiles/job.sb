@@ -1,0 +1,56 @@
+;; job.sb — generic job profile: deny by default, workspace read-write,
+;; toolchain read-only, no network. Params (passed with -D):
+;;   WORKSPACE  absolute, symlink-resolved path the job may read and write
+;;   TOOL1..TOOL4  extra read-only roots (venv, uv python, homebrew); unset = /nonexistent
+;;   HOME       the user's home (only used to make denials explicit)
+(version 1)
+(deny default)
+
+;; process: may fork and exec, but only binaries it can also read (below)
+(allow process-fork)
+(allow process-exec
+  (subpath "/usr/bin") (subpath "/bin") (subpath "/usr/libexec")
+  (subpath (param "WORKSPACE"))
+  (subpath (param "TOOL1")) (subpath (param "TOOL2"))
+  (subpath (param "TOOL3")) (subpath (param "TOOL4")))
+(allow signal (target same-sandbox))
+(allow process-info* (target same-sandbox))
+
+;; read-only system: libraries, dyld shared cache, frameworks, locale, timezone
+(allow file-read-metadata)                         ; stat/realpath on any path (no contents)
+(allow file-read*
+  (literal "/")
+  (subpath "/System")
+  (subpath "/usr/lib") (subpath "/usr/share") (subpath "/usr/bin") (subpath "/bin")
+  (subpath "/usr/libexec")
+  (subpath "/private/var/db/dyld")
+  (subpath "/private/var/db/timezone")
+  (subpath "/Library/Preferences")                 ; global prefs read by CoreFoundation
+  (literal "/private/etc/localtime")
+  (subpath "/private/etc/ssl")                     ; curl/libressl config (no keys there)
+  (literal "/dev/null") (literal "/dev/zero")
+  (literal "/dev/random") (literal "/dev/urandom")
+  (literal "/dev/tty") (literal "/dev/dtracehelper"))
+(allow file-write-data (literal "/dev/null") (literal "/dev/tty") (literal "/dev/dtracehelper"))
+(allow file-ioctl (literal "/dev/dtracehelper") (literal "/dev/tty"))
+
+;; toolchains, read-only
+(allow file-read*
+  (subpath (param "TOOL1")) (subpath (param "TOOL2"))
+  (subpath (param "TOOL3")) (subpath (param "TOOL4")))
+
+;; the workspace: the only place a job writes (TMPDIR points inside it)
+(allow file-read* file-write* (subpath (param "WORKSPACE")))
+
+;; small kernel and IPC surface every libSystem process uses
+(allow sysctl-read)
+(allow ipc-posix-shm-read-data ipc-posix-shm-read-metadata
+  (ipc-posix-name "apple.shm.notification_center"))
+(allow mach-lookup
+  (global-name "com.apple.system.notification_center")
+  (global-name "com.apple.system.opendirectoryd.libinfo")
+  (global-name "com.apple.logd")
+  (global-name "com.apple.diagnosticd"))
+
+;; network: nothing. (deny default already covers it; explicit for readers)
+(deny network*)
