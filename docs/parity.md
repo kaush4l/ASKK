@@ -24,3 +24,4 @@
 | Desktop | `dx serve --platform desktop` builds Askk.app; server boots | built + launched; window check skipped by owner (web is the target for now) |
 | Folder routing | `data/routes/**/page.json`, `[param]`, `[...rest]`, nav from pages; `create_view` tool | done |
 | Max tokens 32k | `models.json max_tokens` → `{max_tokens}` in bodies | done |
+| Real model | default `claude` (cli runtime) answers live: askk ran create_view, set_phase, stamp script against it | done |
