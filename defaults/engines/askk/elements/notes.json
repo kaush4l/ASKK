@@ -1,0 +1,10 @@
+{
+  "kind": "notes",
+  "name": "notes",
+  "config": {
+    "file": "notes.md",
+    "mode": "list",
+    "hint": "important facts and what is left to do; tool results are shown once, so note what matters"
+  },
+  "state": null
+}

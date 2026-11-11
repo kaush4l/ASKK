@@ -1,0 +1,9 @@
+{
+  "kind": "notes",
+  "name": "asks",
+  "config": {
+    "file": "asks.md",
+    "hint": "questions to ask the user when they are available: one per line, with which engine asked and why"
+  },
+  "state": null
+}

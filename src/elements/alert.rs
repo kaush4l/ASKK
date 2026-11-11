@@ -131,6 +131,9 @@ fn value_of(t: &Term, xs: &[f64]) -> Option<f64> {
 
 impl Component for Alert {
     fn kind(&self) -> &'static str { "alert" }
+    fn category(&self) -> &'static str { "live" }
+    fn icon(&self) -> &'static str { "bell" }
+    fn slot(&self) -> crate::core::Slot { crate::core::Slot::World }
     fn name(&self) -> &str { &self.name }
     fn doc(&self) -> &'static str { DOC }
     fn config(&self) -> Value { value(&self.cfg) }
@@ -138,7 +141,7 @@ impl Component for Alert {
     fn activity(&self) -> String {
         if self.st.pending.is_some() { "fired".into() } else { "armed".into() }
     }
-    fn view(&self) -> crate::compose::Node {
+    fn view(&self) -> crate::core::node::Node {
         let last = self.st.series.last().map(|v| v.to_string()).unwrap_or_else(|| "–".into());
         super::tile(&self.name, "alert", [
             format!("{} every {}ms", self.cfg.source.tool, self.cfg.every_ms),

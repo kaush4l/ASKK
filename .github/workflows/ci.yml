@@ -1,0 +1,90 @@
+# Every push: the rules and tests, then the one source built for every machine GitHub offers.
+# What each build is, and what it can do, is in docs/maintenance.md (section "Builds").
+name: ci
+
+on:
+  push:
+    branches: [main, rust]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # The same command a person runs before keeping a change (scripts/check.sh): tests, the
+  # walls in src/structure.rs, and a compile of each build this runner can make.
+  check:
+    name: check (rules, tests, every build)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - run: ./scripts/check.sh
+
+  # The host (the server that runs the engines), as released, for each machine.
+  host:
+    name: host ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, target: x86_64-unknown-linux-gnu }
+          - { os: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu }
+          - { os: macos-latest, target: aarch64-apple-darwin }
+          - { os: macos-13, target: x86_64-apple-darwin }
+          - { os: windows-latest, target: x86_64-pc-windows-msvc }
+          - { os: windows-11-arm, target: aarch64-pc-windows-msvc }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - name: build the host
+        run: cargo build --release --features server --target ${{ matrix.target }}
+      - name: test on this machine
+        # The tests start real programs (`sh`, `cp`); Windows has none of them yet.
+        if: runner.os != 'Windows'
+        run: cargo test --features server --target ${{ matrix.target }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: askk-host-${{ matrix.target }}
+          path: |
+            target/${{ matrix.target }}/release/askk
+            target/${{ matrix.target }}/release/askk.exe
+          if-no-files-found: error
+
+  # The two builds that run in a browser: a window on a host (`web`), and the whole app
+  # inside the tab (`local`, the one GitHub Pages serves; see pages.yml).
+  browser:
+    name: browser ${{ matrix.build }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { build: web, flags: "--features web" }
+          - { build: local, flags: "--no-default-features --features local" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.build }}
+      - run: cargo build --release --target wasm32-unknown-unknown ${{ matrix.flags }}

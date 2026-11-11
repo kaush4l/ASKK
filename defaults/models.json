@@ -1,34 +1,89 @@
 {
-  "default": "claude",
+  "default": "claude-sonnet-5-5",
   "models": [
     {
       "name": "claude",
-      "connector": "cli",
+      "method": "cli",
       "command": [
         "claude",
         "-p",
         "{prompt}"
       ],
-      "context": 200000,
-      "max_tokens": 32000
+      "max_tokens": 32000,
+      "context": 200000
     },
     {
       "name": "claude-sonnet-5-5",
-      "connector": "cli",
+      "method": "cli",
       "command": [
         "claude",
         "-p",
         "{prompt}",
         "--model",
-        "{model}"
+        "{model}",
+        "--tools",
+        "",
+        "--strict-mcp-config",
+        "--setting-sources",
+        "",
+        "--no-session-persistence",
+        "--system-prompt",
+        "You are the model inside an engine. Follow the prompt's reply format exactly. You have no tools of your own: tool calls are written in your reply as the prompt describes."
       ],
-      "context": 200000,
-      "max_tokens": 32000
+      "max_tokens": 32000,
+      "context": 200000
     },
     {
-      "name": "echo",
-      "connector": "echo",
-      "max_tokens": 32000
+      "name": "claude-sonnet-5-5-vision",
+      "method": "cli",
+      "input": "stream-json",
+      "command": [
+        "claude",
+        "-p",
+        "--input-format",
+        "stream-json",
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--model",
+        "claude-sonnet-5-5",
+        "--tools",
+        "",
+        "--strict-mcp-config",
+        "--setting-sources",
+        "",
+        "--no-session-persistence",
+        "--system-prompt",
+        "You are the model inside an engine. Follow the prompt's reply format exactly. You have no tools of your own: tool calls are written in your reply as the prompt describes. Images in the message are what the user attached; each is named just before it."
+      ],
+      "max_tokens": 32000,
+      "context": 200000
+    },
+    {
+      "name": "claude-sonnet-5-5-market",
+      "method": "cli",
+      "command": [
+        "/usr/bin/env",
+        "MCP_CONNECTION_NONBLOCKING=0",
+        "claude",
+        "-p",
+        "{prompt}",
+        "--model",
+        "claude-sonnet-5-5",
+        "--tools",
+        "WebSearch,WebFetch",
+        "--setting-sources",
+        "",
+        "--no-session-persistence",
+        "--allowedTools",
+        "mcp__claude_ai_Robinhood__get_accounts,mcp__claude_ai_Robinhood__get_advanced_orders,mcp__claude_ai_Robinhood__get_alert_log,mcp__claude_ai_Robinhood__get_alerts,mcp__claude_ai_Robinhood__get_bank_accounts,mcp__claude_ai_Robinhood__get_banking_transactions,mcp__claude_ai_Robinhood__get_crypto_orders,mcp__claude_ai_Robinhood__get_crypto_positions,mcp__claude_ai_Robinhood__get_crypto_quotes,mcp__claude_ai_Robinhood__get_currency_pairs,mcp__claude_ai_Robinhood__get_earnings_calendar,mcp__claude_ai_Robinhood__get_earnings_results,mcp__claude_ai_Robinhood__get_equity_analyst_ratings,mcp__claude_ai_Robinhood__get_equity_fundamentals,mcp__claude_ai_Robinhood__get_equity_historicals,mcp__claude_ai_Robinhood__get_equity_orders,mcp__claude_ai_Robinhood__get_equity_positions,mcp__claude_ai_Robinhood__get_equity_price_book,mcp__claude_ai_Robinhood__get_equity_quotes,mcp__claude_ai_Robinhood__get_equity_tax_lots,mcp__claude_ai_Robinhood__get_equity_technical_indicators,mcp__claude_ai_Robinhood__get_equity_tradability,mcp__claude_ai_Robinhood__get_financials,mcp__claude_ai_Robinhood__get_index_historicals,mcp__claude_ai_Robinhood__get_index_quotes,mcp__claude_ai_Robinhood__get_indexes,mcp__claude_ai_Robinhood__get_option_chains,mcp__claude_ai_Robinhood__get_option_historicals,mcp__claude_ai_Robinhood__get_option_instruments,mcp__claude_ai_Robinhood__get_option_orders,mcp__claude_ai_Robinhood__get_option_positions,mcp__claude_ai_Robinhood__get_option_quotes,mcp__claude_ai_Robinhood__get_option_watchlist,mcp__claude_ai_Robinhood__get_pnl_trade_history,mcp__claude_ai_Robinhood__get_politician_trades,mcp__claude_ai_Robinhood__get_popular_watchlists,mcp__claude_ai_Robinhood__get_portfolio,mcp__claude_ai_Robinhood__get_realized_pnl,mcp__claude_ai_Robinhood__get_sec_filing,mcp__claude_ai_Robinhood__get_sec_filing_facts,mcp__claude_ai_Robinhood__get_sec_filing_index,mcp__claude_ai_Robinhood__get_scans,mcp__claude_ai_Robinhood__get_scanner_datapoints,mcp__claude_ai_Robinhood__get_watchlists,mcp__claude_ai_Robinhood__get_watchlist_items,mcp__claude_ai_Robinhood__search,mcp__claude_ai_Robinhood__run_scan,WebSearch,WebFetch",
+        "--disallowedTools",
+        "mcp__claude_ai_Robinhood__place_equity_order,mcp__claude_ai_Robinhood__place_option_order,mcp__claude_ai_Robinhood__place_crypto_order,mcp__claude_ai_Robinhood__place_advanced_order,mcp__claude_ai_Robinhood__cancel_equity_order,mcp__claude_ai_Robinhood__cancel_option_order,mcp__claude_ai_Robinhood__cancel_crypto_order,mcp__claude_ai_Robinhood__cancel_advanced_order,mcp__claude_ai_Robinhood__exercise_option,mcp__claude_ai_Robinhood__review_equity_order,mcp__claude_ai_Robinhood__review_option_order,mcp__claude_ai_Robinhood__review_advanced_order,mcp__claude_ai_Robinhood__preview_crypto_order,mcp__claude_ai_Robinhood__decline_trade_approval,mcp__claude_ai_Robinhood__cancel_option_exercise,mcp__claude_ai_Robinhood__replace_equity_order,mcp__claude_ai_Robinhood__replace_option_order",
+        "--system-prompt",
+        "You are the model inside a trading-research engine. Before you write your reply, use your own tools directly as needed: the Robinhood get_* tools for market data and WebSearch/WebFetch for news. Never put those tools in act: (act only lists the engine's tools shown in the prompt). You can never place, review, cancel or exercise orders. Then reply in the prompt's format exactly."
+      ],
+      "max_tokens": 32000,
+      "context": 200000
     }
   ]
 }

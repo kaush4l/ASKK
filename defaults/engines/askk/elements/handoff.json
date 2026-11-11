@@ -1,0 +1,18 @@
+{
+  "kind": "handoff",
+  "name": "handoff",
+  "config": {
+    "fields": [
+      {
+        "name": "summary",
+        "about": "one line for the user's dashboard: what this step does"
+      },
+      {
+        "name": "plan",
+        "about": "what is asked, what you know, who should do it and why"
+      }
+    ],
+    "format": "toon"
+  },
+  "state": null
+}

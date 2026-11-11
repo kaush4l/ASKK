@@ -25,11 +25,14 @@ pub fn new(s: Spec) -> Result<Box<dyn Component>, String> {
 
 impl Component for Tools {
     fn kind(&self) -> &'static str { "tools" }
+    fn category(&self) -> &'static str { "action" }
+    fn icon(&self) -> &'static str { "wrench" }
+    fn slot(&self) -> crate::core::Slot { crate::core::Slot::Tools }
     fn name(&self) -> &str { &self.name }
     fn doc(&self) -> &'static str { DOC }
     fn config(&self) -> Value { value(&self.cfg) }
     fn state(&self) -> Value { Value::Null }
-    fn view(&self) -> crate::compose::Node {
+    fn view(&self) -> crate::core::node::Node {
         let lines = if self.cfg.names.is_empty() { vec!["none".to_string()] } else { self.cfg.names.clone() };
         super::tile(&self.name, "tools", lines)
     }

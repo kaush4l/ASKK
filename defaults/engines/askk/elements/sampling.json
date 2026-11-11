@@ -1,0 +1,11 @@
+{
+  "kind": "sampling",
+  "name": "sampling",
+  "config": {
+    "phases": {
+      "understand": "precise",
+      "refocus": "precise"
+    }
+  },
+  "state": null
+}

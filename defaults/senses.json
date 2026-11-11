@@ -1,0 +1,76 @@
+{
+  "image": {
+    "command": [
+      "/usr/bin/sips",
+      "-Z",
+      "1568",
+      "-s",
+      "format",
+      "jpeg",
+      "{input}",
+      "--out",
+      "{output}"
+    ]
+  },
+  "hear": {
+    "command": [
+      "/usr/bin/curl",
+      "-sS",
+      "-f",
+      "-m",
+      "300",
+      "http://127.0.0.1:8873/v1/audio/transcriptions",
+      "-F",
+      "file=@{input}",
+      "-F",
+      "model=mlx-community--whisper-large-v3-turbo-asr-fp16"
+    ],
+    "field": "text"
+  },
+  "frame": {
+    "command": [
+      "ffmpeg",
+      "-y",
+      "-loglevel",
+      "error",
+      "-ss",
+      "{at}",
+      "-i",
+      "{input}",
+      "-frames:v",
+      "1",
+      "-vf",
+      "scale=1024:-2",
+      "{output}"
+    ]
+  },
+  "sound": {
+    "command": [
+      "ffmpeg",
+      "-y",
+      "-loglevel",
+      "error",
+      "-i",
+      "{input}",
+      "-vn",
+      "-ac",
+      "1",
+      "-ar",
+      "16000",
+      "{output}"
+    ]
+  },
+  "length": {
+    "command": [
+      "ffprobe",
+      "-v",
+      "error",
+      "-show_entries",
+      "format=duration",
+      "-of",
+      "csv=p=0",
+      "{input}"
+    ]
+  },
+  "frames": 6
+}

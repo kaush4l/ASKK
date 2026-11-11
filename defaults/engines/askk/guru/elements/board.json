@@ -1,0 +1,7 @@
+{
+  "kind": "whiteboard",
+  "name": "board",
+  "config": {
+    "max": 24
+  }
+}

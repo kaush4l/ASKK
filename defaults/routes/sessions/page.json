@@ -1,0 +1,9 @@
+{
+  "title": "Sessions",
+  "nav": 3,
+  "icon": "branch",
+  "root": {
+    "kind": "view",
+    "text": "sessions"
+  }
+}

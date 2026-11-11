@@ -1,25 +1,13 @@
 {
   "kind": "tools",
+  "name": "tools",
   "config": {
     "use": [
       "now",
-      "read_file",
-      "write_file",
-      "list_dir",
-      "run",
-      "spawn",
-      "jobs",
-      "stop",
-      "alarm",
-      "create_script",
-      "parallel",
-      "create_view",
-      "list_views",
-      "create_component",
-      "list_components",
-      "list_prs",
-      "changelog",
-      "restart"
+      "create_engine",
+      "dismiss_engine",
+      "list_tools"
     ]
-  }
+  },
+  "state": null
 }

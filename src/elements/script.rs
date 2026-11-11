@@ -65,11 +65,15 @@ impl Tool for ScriptTool {
 
 impl Component for Script {
     fn kind(&self) -> &'static str { "script" }
+    fn category(&self) -> &'static str { "action" }
+    fn icon(&self) -> &'static str { "layers" }
+    fn slot(&self) -> crate::core::Slot { crate::core::Slot::Tools }
+    fn abilities(&self) -> Vec<String> { self.tools().iter().map(|t| t.name()).collect() }
     fn name(&self) -> &str { &self.name }
     fn doc(&self) -> &'static str { DOC }
     fn config(&self) -> Value { value(&self.cfg) }
     fn state(&self) -> Value { Value::Null }
-    fn view(&self) -> crate::compose::Node {
+    fn view(&self) -> crate::core::node::Node {
         let chain: Vec<String> = self.cfg.steps.iter().map(|s| s.tool.clone()).collect();
         super::tile(&self.name, "script", [self.cfg.description.clone(), chain.join(" → ")])
     }

@@ -1,0 +1,31 @@
+{
+  "modes": [
+    {
+      "name": "regular",
+      "about": "Fill in the setup yourself",
+      "makers": ["form"]
+    },
+    {
+      "name": "creator",
+      "about": "Say what you want; the desk agent designs the room or the page",
+      "makers": ["desk", "view"]
+    }
+  ],
+  "presets": [
+    {
+      "name": "discussion",
+      "rule": "round",
+      "scenario": "A discussion. Each speaker answers the question on the table from their own part, in a few sentences, and may disagree with the others."
+    },
+    {
+      "name": "board",
+      "rule": "round",
+      "scenario": "A shared board of notes. Each speaker adds or corrects one item, then shows the whole board as a short list."
+    },
+    {
+      "name": "game",
+      "rule": "turn",
+      "scenario": "A game of tic-tac-toe on a 3x3 grid. The first seat plays X, the second O. On your turn, make one legal move, show the grid, and say if the game is won or drawn."
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "kind": "tools",
+  "config": {
+    "use": [
+      "run",
+      "spawn",
+      "jobs",
+      "stop",
+      "parallel",
+      "now"
+    ]
+  }
+}

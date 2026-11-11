@@ -23,11 +23,14 @@ pub fn new(s: Spec) -> Result<Box<dyn Component>, String> {
 
 impl Component for State {
     fn kind(&self) -> &'static str { "state" }
+    fn category(&self) -> &'static str { "prompt" }
+    fn icon(&self) -> &'static str { "database" }
+    fn slot(&self) -> crate::core::Slot { crate::core::Slot::Position }
     fn name(&self) -> &str { &self.name }
     fn doc(&self) -> &'static str { DOC }
     fn config(&self) -> Value { Value::Null }
     fn state(&self) -> Value { Value::Object(self.map.clone()) }
-    fn view(&self) -> crate::compose::Node {
+    fn view(&self) -> crate::core::node::Node {
         let lines: Vec<String> = self.map.iter().map(|(k, v)| format!("{k}: {v}")).collect();
         super::tile(&self.name, "state", if lines.is_empty() { vec!["empty".into()] } else { lines })
     }

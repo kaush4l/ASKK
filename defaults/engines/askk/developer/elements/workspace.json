@@ -1,0 +1,21 @@
+{
+  "kind": "workspace",
+  "config": {
+    "exclude": [
+      "target/",
+      ".git/",
+      ".worktrees/",
+      "node_modules/",
+      "archive/",
+      "dist/",
+      "*.lock",
+      ".DS_Store",
+      "data/",
+      "*.env",
+      ".env"
+    ],
+    "protect": [
+      "src/core/"
+    ]
+  }
+}

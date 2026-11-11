@@ -35,11 +35,14 @@ pub fn new(s: Spec) -> Result<Box<dyn Component>, String> {
 
 impl Component for Artifact {
     fn kind(&self) -> &'static str { "artifact" }
+    fn category(&self) -> &'static str { "live" }
+    fn icon(&self) -> &'static str { "eye" }
+    fn slot(&self) -> crate::core::Slot { crate::core::Slot::World }
     fn name(&self) -> &str { &self.name }
     fn doc(&self) -> &'static str { DOC }
     fn config(&self) -> Value { value(&self.cfg) }
     fn state(&self) -> Value { value(&self.st) }
-    fn view(&self) -> crate::compose::Node {
+    fn view(&self) -> crate::core::node::Node {
         let src = self.cfg.read.as_ref().map(|c| format!("reads {}", c.tool)).unwrap_or_else(|| "static".into());
         super::tile(&self.name, "artifact", [format!("v{} · {src}", self.st.version), self.st.content.chars().take(160).collect()])
     }
@@ -61,8 +64,9 @@ impl Component for Artifact {
 
 #[cfg(test)]
 mod tests {
+    use crate::core::held::Held;
     use super::*;
-    use crate::core::engine::tests::{file, spec, Scripted};
+    use crate::core::engine::tests::{file, reply, spec, Scripted};
     use crate::core::{tool, Engine};
     use serde_json::json;
     use std::sync::{atomic::{AtomicU32, Ordering}, Arc};
@@ -77,10 +81,11 @@ mod tests {
         let specs = vec![
             spec("tools", "tools", json!({"use": ["bump", "peek"]})),
             spec("artifact", "counter", json!({"read": {"tool": "peek"}})),
+            reply(),
         ];
         let e = Engine::new(file("e"), "e".into(), specs, vec![], vec![bump, peek], infer.clone()).unwrap();
         e.run("go").await.unwrap();
-        let p = infer.prompts.lock().unwrap();
+        let p = infer.prompts.held();
         assert!(p[0].contains("(live, v1)\ncounter=0"));
         assert!(p[1].contains("(live, v2)\ncounter=1"), "{}", p[1]);
     }

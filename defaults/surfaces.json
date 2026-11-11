@@ -1,0 +1,42 @@
+{
+  "window": {
+    "title": "askk",
+    "page": "/",
+    "width": 1280,
+    "height": 820
+  },
+  "tray": {
+    "on": true,
+    "number": "running",
+    "items": [
+      {
+        "label": "Open",
+        "page": "/"
+      },
+      {
+        "label": "Asks",
+        "page": "/asks"
+      }
+    ]
+  },
+  "dock": {
+    "badge": "waiting"
+  },
+  "notch": {
+    "on": true,
+    "place": "under",
+    "page": "/notch",
+    "width": 360,
+    "height": 34
+  },
+  "companion": {
+    "on": true,
+    "place": "bottom-right",
+    "size": 96,
+    "engine": "askk",
+    "bubble": {
+      "width": 380,
+      "height": 520
+    }
+  }
+}

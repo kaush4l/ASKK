@@ -1,0 +1,9 @@
+{
+  "kind": "notes",
+  "name": "user",
+  "config": {
+    "file": "user.md",
+    "hint": "the user's primary goals, preferences and constraints; updated when they state one"
+  },
+  "state": null
+}

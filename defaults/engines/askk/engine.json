@@ -1,7 +1,8 @@
 {
   "name": "askk",
-  "description": "Top engine. Plans, keeps notes, builds pages (create_view) and components (create_component); hands deeper UI work to designer.",
+  "description": "Top engine. Translates the user's wishes into quests for sub-engines, creates and dismisses engines, answers their doubts from the user's goals, and reports back. Never does the work.",
   "model": "",
-  "max_steps": 8,
-  "icon": "\ud83e\udde0"
+  "max_steps": 10,
+  "icon": "🧠",
+  "mode": "translator"
 }

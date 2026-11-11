@@ -5,7 +5,8 @@
 //!   writes it back on save, so the file *is* the state.
 //! - `mode`: `replace` (default; tool `set_<name> {text}` replaces the text) or `sections`
 //!   (tool `learn {section, lesson}` adds `- lesson` under `## section`; refocus lessons go to
-//!   `## refocus`).
+//!   `## refocus`), or `list` (tools `note {text}` adds `- text`, `done {text}` removes the
+//!   matching item: the engine's running notes of what matters and what is left to do).
 //! - `hint`: shown when the text is empty (what belongs here).
 use crate::core::{read, tool, value, Component, Event, Spec, Tool};
 use serde::{Deserialize, Serialize};
@@ -22,6 +23,9 @@ struct Cfg {
     mode: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     hint: String,
+    /// The text is craft (a goal, a skill), not what the engine learnt about its user.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    share: bool,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -38,8 +42,8 @@ pub struct Notes {
 
 pub fn new(s: Spec) -> Result<Box<dyn Component>, String> {
     let cfg: Cfg = read(&s.config)?;
-    if !["", "replace", "sections"].contains(&cfg.mode.as_str()) {
-        return Err(format!("mode must be replace or sections, not '{}'", cfg.mode));
+    if !["", "replace", "sections", "list"].contains(&cfg.mode.as_str()) {
+        return Err(format!("mode must be replace, sections or list, not '{}'", cfg.mode));
     }
     Ok(Box::new(Notes { name: s.name, cfg, st: read(&s.state)? }))
 }
@@ -86,18 +90,30 @@ impl Notes {
 
 impl Component for Notes {
     fn kind(&self) -> &'static str { "notes" }
+    fn category(&self) -> &'static str { "prompt" }
+    fn icon(&self) -> &'static str { "pencil" }
+    /// `goal` states the purpose (first in the prompt); every other notes element is knowledge.
+    fn slot(&self) -> crate::core::Slot { if self.name == "goal" { crate::core::Slot::Purpose } else { crate::core::Slot::Knowledge } }
     fn name(&self) -> &str { &self.name }
     fn doc(&self) -> &'static str { DOC }
     fn config(&self) -> Value { value(&self.cfg) }
     fn state(&self) -> Value { value(&self.st) }
-    fn view(&self) -> crate::compose::Node {
+    fn view(&self) -> crate::core::node::Node {
         let lines: Vec<String> = self.st.text.lines().filter(|l| !l.trim().is_empty()).map(String::from).collect();
         super::tile(&self.name, if self.cfg.file.is_empty() { "notes" } else { &self.cfg.file }, if lines.is_empty() { vec![self.cfg.hint.clone()] } else { lines })
     }
     fn on(&mut self, ev: &Event) {
         match ev {
             Event::Called { tool, args, result } if !result.starts_with("error") => {
-                if self.sections() && tool == "learn" {
+                if self.cfg.mode == "list" {
+                    let text = args["text"].as_str().unwrap_or_default().trim();
+                    if tool == "note" {
+                        self.st.text.push_str(&format!("- {text}\n"));
+                    } else if tool == "done" {
+                        let mut gone = false;
+                        self.st.text = self.st.text.lines().filter(|l| gone || !(l.contains(text) && { gone = true; true })).map(|l| format!("{l}\n")).collect();
+                    }
+                } else if self.sections() && tool == "learn" {
                     self.st.text = add_lesson(&self.st.text, args["section"].as_str().unwrap_or("general"), args["lesson"].as_str().unwrap_or_default());
                 } else if !self.sections() && *tool == self.setter() {
                     self.st.text = args["text"].as_str().unwrap_or_default().trim().to_string() + "\n";
@@ -118,6 +134,17 @@ impl Component for Notes {
         }
     }
     fn tools(&self) -> Vec<Arc<dyn Tool>> {
+        if self.cfg.mode == "list" {
+            let need = |a: &Value| a["text"].as_str().filter(|t| !t.trim().is_empty()).map(String::from).ok_or_else(|| "text missing".to_string());
+            let items: Vec<String> = self.st.text.lines().map(String::from).collect();
+            return vec![
+                tool("note", "note something important or left to do (kept across steps; tool results are not)", json!({"text": "one line"}), move |a| need(&a).map(|t| json!(format!("noted: {t}")))),
+                tool("done", "remove the note containing this text", json!({"text": "part of the note"}), move |a| {
+                    let t = need(&a)?;
+                    if items.iter().any(|l| l.contains(&t)) { Ok(json!(format!("done: {t}"))) } else { Err(format!("no note contains '{t}'")) }
+                }),
+            ];
+        }
         if self.sections() {
             return vec![tool("learn", "record a lesson under a section of learning", json!({"section": "topic", "lesson": "one line"}), |a| {
                 match (a["section"].as_str(), a["lesson"].as_str()) {
@@ -150,6 +177,19 @@ mod tests {
         assert_eq!(crate::core::build(g.spec()).unwrap().prompt().unwrap(), "Ship v2");
         g.on(&Event::Called { tool: "set_goal".into(), args: json!({"text": "x"}), result: "error: no".into() });
         assert_eq!(g.prompt().unwrap(), "Ship v2");
+    }
+
+    #[test]
+    fn list_mode_notes_and_clears_items() {
+        let mut n = notes("notes", "list", "");
+        let names: Vec<String> = n.tools().iter().map(|t| t.name()).collect();
+        assert_eq!(names, ["note", "done"]);
+        for t in ["fix the build", "port alerts"] {
+            n.on(&Event::Called { tool: "note".into(), args: json!({"text": t}), result: "noted".into() });
+        }
+        n.on(&Event::Called { tool: "done".into(), args: json!({"text": "build"}), result: "done".into() });
+        assert_eq!(n.prompt().unwrap(), "- port alerts");
+        assert_eq!(crate::core::build(n.spec()).unwrap().prompt().unwrap(), "- port alerts");
     }
 
     #[test]

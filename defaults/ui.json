@@ -1,5 +1,9 @@
 {
   "brand": "Askk",
+  "contact": {
+    "email": "",
+    "site": ""
+  },
   "text": {
     "no-engines": "No engines in data/engines.",
     "no-models": "No models.",
@@ -13,7 +17,7 @@
     "shown-element-kinds": "Shown element kinds",
     "element-kinds": "Element kinds",
     "ui-components": "UI components",
-    "models": "Models",
+    "models": "Model connectors",
     "add-a-model": "Add a model",
     "try-inference": "Try inference",
     "theme": "Theme",

@@ -1,0 +1,93 @@
+{
+  "kind": "phase",
+  "config": {
+    "repeat": true,
+    "phases": [
+      {
+        "name": "triage",
+        "focus": "Find out exactly what to change for the quest.",
+        "instructions": "Ack the new quest and note it with who sent it. Look at the file tree in the workspace section, find_files and open_file what matters (run with grep for searches) until you can name the files and the change. If the judge sent the work back, start from its notes.",
+        "expect": [
+          "the files to change",
+          "the change in a few lines",
+          "how it will be checked (test or command)"
+        ],
+        "goal": "the change and its check are written in notes",
+        "tools": [
+          "ack",
+          "answer",
+          "note",
+          "done",
+          "post",
+          "open_file",
+          "close_file",
+          "find_files",
+          "run",
+          "jobs",
+          "parallel"
+        ],
+        "budget": 5
+      },
+      {
+        "name": "change",
+        "focus": "Make the change.",
+        "instructions": "Edit only the files named in triage. Add or update a test that captures the behaviour.",
+        "goal": "the files are changed and a test covers it",
+        "tools": [
+          "note",
+          "open_file",
+          "close_file",
+          "find_files",
+          "write_file",
+          "edit_file",
+          "run",
+          "parallel"
+        ],
+        "budget": 8
+      },
+      {
+        "name": "critique",
+        "focus": "Build and test; compare the output with what the quest asked.",
+        "instructions": "Run `cargo test --features server` and `cargo check --target wasm32-unknown-unknown --features web` (use spawn + jobs for long runs). Note every failure and every gap between the output and the quest.",
+        "expect": [
+          "build and test results",
+          "gaps against the quest"
+        ],
+        "goal": "build and test results and the gaps are in notes",
+        "tools": [
+          "note",
+          "open_file",
+          "close_file",
+          "find_files",
+          "run",
+          "spawn",
+          "jobs",
+          "stop",
+          "parallel"
+        ],
+        "budget": 5
+      },
+      {
+        "name": "judge",
+        "focus": "Judge the change: pass it, or send it back to triage.",
+        "instructions": "If tests pass and the quest is met: post(to: <sender>, text: what changed, files, how it was checked), clear the quest's notes with done, and answer. Otherwise phase_done(met: \"sent back: <what is wrong>\") to return to triage.",
+        "goal": "the sender has the result, or the work is back in triage with the reason",
+        "tools": [
+          "note",
+          "done",
+          "post",
+          "open_file",
+          "close_file",
+          "find_files",
+          "run"
+        ],
+        "budget": 2
+      },
+      {
+        "name": "refocus",
+        "refocus": true,
+        "focus": "The context is nearly full. Summarise: the quest and its sender; the phase; files changed; test results; what is left; lessons. Reply with the summary only."
+      }
+    ]
+  }
+}

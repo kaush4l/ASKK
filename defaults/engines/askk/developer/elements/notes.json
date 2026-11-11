@@ -1,0 +1,8 @@
+{
+  "kind": "notes",
+  "config": {
+    "file": "notes.md",
+    "mode": "list",
+    "hint": "the quest, who sent it, what to change, what failed and why"
+  }
+}

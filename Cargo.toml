@@ -7,23 +7,48 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-dioxus = { version = "0.7.1", features = ["router", "fullstack"] }
+# `fullstack` comes with every feature that talks to a server (below): the web renderer always
+# hydrates when it is on, and the `local` build has no server HTML to hydrate.
+dioxus = { version = "0.7.1", features = ["router"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 futures = "0.3"
+# Clocks that also work in a browser tab (std's panic there); std itself on native.
+web-time = "1"
+# The `local` build runs the engine inside the tab: its futures run on the tab's own loop.
+wasm-bindgen-futures = { version = "0.4", optional = true }
+wasm-bindgen = { version = "0.2", optional = true }
+# The Mac shell raises its notch panel above the menu bar with one AppKit call.
+objc2 = { version = "0.6", optional = true }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"], optional = true }
 tokio = { version = "1", features = ["fs", "process", "io-util", "sync", "time", "rt", "rt-multi-thread"], optional = true }
 
 [features]
 default = ["web"]
+# Spike: the engine runs in the browser tab itself (no server, so not `web`).
+# Build: `scripts/local.sh` (dx would add `web`).
+local = ["dioxus/web", "dep:reqwest", "dep:wasm-bindgen-futures", "dep:wasm-bindgen"]
 # The feature that are only required for the web = ["dioxus/web"] build target should be optional and only enabled in the web = ["dioxus/web"] feature
-web = ["dioxus/web"]
-# The feature that are only required for the desktop = ["dioxus/desktop"] build target should be optional and only enabled in the desktop = ["dioxus/desktop"] feature
-desktop = ["dioxus/desktop"]
+web = ["dioxus/web", "dioxus/fullstack"]
+# The feature that are only required for the desktop = ["dioxus/desktop", "dep:objc2"] build target should be optional and only enabled in the desktop = ["dioxus/desktop", "dep:objc2"] feature
+desktop = ["dioxus/desktop", "dep:objc2", "dioxus/fullstack"]
 # The feature that are only required for the mobile = ["dioxus/mobile"] build target should be optional and only enabled in the mobile = ["dioxus/mobile"] feature
-mobile = ["dioxus/mobile"]
+mobile = ["dioxus/mobile", "dioxus/fullstack"]
 # The feature that are only required for the server = ["dioxus/server", "dep:reqwest", "dep:tokio"] build target should be optional and only enabled in the server = ["dioxus/server", "dep:reqwest", "dep:tokio"] feature
-server = ["dioxus/server", "dep:reqwest", "dep:tokio"]
+server = ["dioxus/server", "dep:reqwest", "dep:tokio", "dioxus/fullstack"]
+
+[build-dependencies]
+serde_json = "1"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt", "fs", "process", "io-util", "sync", "time"] }
+
+# Release builds (`dx bundle --release`): smaller and faster binaries, wasm included.
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "debuginfo"  # keep names: readable wasm panics
+
+# Debug builds: dependencies are optimised once and cached; askk's own code stays quick to rebuild.
+[profile.dev.package."*"]
+opt-level = 2

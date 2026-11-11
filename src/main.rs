@@ -1,60 +1,48 @@
-use dioxus::prelude::*;
-
+//! # askk
+//!
+//! The folders are the map. A problem has one place:
+//!
+//! | folder | question it answers | may use |
+//! | --- | --- | --- |
+//! | `core/` | what things are and how they behave | the language only |
+//! | `elements/` | the kinds of object an engine is made of | `core` |
+//! | `host/` | how it is done on this machine (server only) | `core`, `elements` |
+//! | `local/` | how it is done inside a browser tab (`local` build only; a spike) | `core`, `elements` |
+//! | `api/` | what a window may ask, and the answers (plain functions) | `core`; `host` where a port is still missing |
+//! | `ui/` | how it is drawn | `core`, `api` |
+//! | `shells/` | what holds the window | `ui`, `api` |
+//!
+//! `structure.rs` holds the tests that keep these walls up.
+// The tab's page asks only some of the questions; the rest are there for the real UI.
+#[cfg_attr(feature = "local", allow(dead_code, unused_imports))]
 mod api;
-mod components;
-mod compose;
-// The engine runtime lives on the server; the browser build only needs the shared types.
+#[cfg(all(feature = "local", any(feature = "server", feature = "web", feature = "desktop", feature = "mobile")))]
+compile_error!("`local` (the engine inside a browser tab) is a build of its own: build it with `--no-default-features --features local` (scripts/local.sh), not together with server, web, desktop or mobile");
+// The engine runtime lives on the server; other builds only need the shared shapes.
 #[cfg_attr(not(feature = "server"), allow(dead_code, unused_imports))]
 mod core;
-#[cfg(feature = "server")]
-mod devtools;
 #[cfg_attr(not(feature = "server"), allow(dead_code, unused_imports))]
 mod elements;
-mod infer;
-#[cfg_attr(not(feature = "server"), allow(dead_code))]
-mod routes;
-mod pr;
-mod views;
+#[cfg(feature = "server")]
+mod host;
+#[cfg(feature = "local")]
+mod local;
+#[cfg(not(feature = "local"))]
+mod shells;
+#[cfg(test)]
+mod structure;
+#[cfg(not(feature = "local"))]
+mod ui;
 
-use views::{Home, RoutePage, Shell};
-
-#[derive(Debug, Clone, Routable, PartialEq)]
-#[rustfmt::skip]
-pub enum Route {
-    #[layout(Shell)]
-        // Every URL is resolved against the folders in data/routes (see routes.rs).
-        #[route("/")]
-        Home {},
-        #[route("/:..segments")]
-        RoutePage { segments: Vec<String> },
-}
-
-const FAVICON: Asset = asset!("/assets/favicon.ico");
-const GLASS_CSS: Asset = asset!("/assets/styling/glass.css");
-const AMARANTE: Asset = asset!("/assets/fonts/amarante-latin-400-normal.woff2");
+#[cfg(not(feature = "local"))]
+pub use ui::app::Route;
 
 fn main() {
     #[cfg(feature = "server")]
-    {
-        // `--desk <dir>`: load engines, models, routes and theme from another folder.
-        let args: Vec<String> = std::env::args().collect();
-        if let Some(i) = args.iter().position(|a| a == "--desk") {
-            if let Some(d) = args.get(i + 1) {
-                std::env::set_var("ASKK_DATA", d);
-            }
-        }
-        api::boot_now();
-    }
-    dioxus::launch(App);
-}
-
-#[component]
-fn App() -> Element {
-    rsx! {
-        document::Link { rel: "icon", href: FAVICON }
-        document::Link { rel: "preload", href: AMARANTE, r#as: "font", r#type: "font/woff2", crossorigin: "anonymous" }
-        document::Style { "@font-face{{font-family:\"Amarante\";font-style:normal;font-weight:400;font-display:swap;src:url(\"{AMARANTE}\") format(\"woff2\")}}" }
-        document::Link { rel: "stylesheet", href: GLASS_CSS }
-        Router::<Route> {}
-    }
+    host::start(std::env::args().collect());
+    // The tab is its own host: no server to ask, so it draws its own page.
+    #[cfg(feature = "local")]
+    local::launch();
+    #[cfg(not(feature = "local"))]
+    shells::launch();
 }

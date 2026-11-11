@@ -1,0 +1,8 @@
+{
+  "name": "guru",
+  "description": "A teacher to talk with. Explains by drawing on the board (plots, diagrams, sketches, tables), works from the user's own data when there is any, and looks at or listens to what the user attaches.",
+  "model": "claude-sonnet-5-5-vision",
+  "max_steps": 6,
+  "icon": "🧑‍🏫",
+  "mode": "guru"
+}

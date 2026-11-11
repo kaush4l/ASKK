@@ -1,0 +1,53 @@
+# Publish the build that runs wholly inside a browser tab (`local`) to GitHub Pages.
+#
+# What is published is the app and the defaults in this repository (they are packed into the
+# program by build.rs). Nothing from anyone's data folder is part of it: a visitor's engines
+# and history live in their own browser.
+#
+# The site is https://kaush4l.github.io/ASKK/ and is served from the `gh-pages` branch, as it
+# always was: this writes the built files there as one more commit, so every earlier site is
+# still in that branch's history.
+name: pages
+
+on:
+  push:
+    branches: [main, rust]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: pages
+      # The tool that prepares the program for the browser must be the version the program
+      # was built against (named in Cargo.lock).
+      - name: which wasm-bindgen
+        id: bindgen
+        shell: bash
+        run: echo "version=$(awk '/^name = "wasm-bindgen"$/ { getline; gsub(/[^0-9.]/, ""); print; exit }' Cargo.lock)" >> "$GITHUB_OUTPUT"
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-bindgen-cli@${{ steps.bindgen.outputs.version }}
+      - name: build the tab
+        run: ./scripts/local.sh
+      # GitHub Pages would otherwise skip folders it takes for templates.
+      - run: touch target/local/.nojekyll
+      - uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: target/local
+          publish_branch: gh-pages
+          commit_message: "Publish ${{ github.sha }}"

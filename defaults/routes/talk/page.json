@@ -1,0 +1,10 @@
+{
+  "title": "Talk",
+  "nav": 2,
+  "icon": "chat",
+  "root": {
+    "kind": "view",
+    "text": "chat",
+    "label": "askk/guru"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "title": "Canvas",
+  "nav": 1,
+  "icon": "layout",
+  "root": {
+    "kind": "stack",
+    "children": [
+      {
+        "kind": "view",
+        "text": "canvas"
+      }
+    ]
+  }
+}

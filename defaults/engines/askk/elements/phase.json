@@ -1,28 +1,37 @@
 {
   "kind": "phase",
+  "name": "phase",
   "config": {
+    "repeat": true,
     "phases": [
       {
-        "name": "understand",
-        "focus": "Restate the request and what is missing.",
+        "name": "route",
+        "focus": "Turn new messages into quests for engines.",
+        "goal": "every new message is acked and either posted to an engine, answered from user.md, or written to asks",
         "tools": [
           "now",
-          "remember",
-          "read_file",
-          "list_dir",
-          "jobs",
-          "parallel"
-        ]
-      },
-      {
-        "name": "act",
-        "focus": "Do the work with the fewest calls."
+          "ack",
+          "answer",
+          "post",
+          "note",
+          "done",
+          "set_user",
+          "set_asks",
+          "learn",
+          "create_engine",
+          "dismiss_engine",
+          "list_tools"
+        ],
+        "instructions": "Use the skills in your goal: Route a request, Create an engine, Answer a sub-engine's doubt, Report to the user. Never try to do the work."
       },
       {
         "name": "refocus",
         "refocus": true,
-        "focus": "The context is nearly full. Write the summary the next steps need: the request and goal in one line; what is done (with file paths and ids); what is left, in order; open questions; lessons (what worked, what failed and why). Drop raw tool output and anything already in learning.md. Reply with the summary only."
+        "focus": "The context is nearly full. Write the summary the next steps need: open quests (engine, goal, done line), what each engine reported, open asks for the user, lessons. Reply with the summary only."
       }
     ]
+  },
+  "state": {
+    "current": "route"
   }
 }

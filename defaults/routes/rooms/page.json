@@ -1,0 +1,9 @@
+{
+  "title": "Rooms",
+  "nav": 4,
+  "icon": "shapes",
+  "root": {
+    "kind": "view",
+    "text": "rooms"
+  }
+}

@@ -1,13 +1,20 @@
 ;; server.sb — the askk server binary (dx fullstack build). Deny by default; the repo read-only,
 ;; the data and engines folders read-write, loopback listen on PORT, outbound HTTPS for model APIs.
-;; Params (-D): ROOT (repo, read-only), DATA (read-write), PORT, CLI (dir of model CLIs it may run), CLI_HOME (their state dir, read-write), HOME.
+;; ASKK is the app's own environment: inside it the app may read, write and run anything it made.
+;; Params (-D): ROOT (repo, read-only), ASKK (the app's home, full access), DATA (read-write), PORT, CLI (dir of model CLIs it may run), CLI_HOME (their state dir, read-write), HOME,
+;; TOOLS (where the media tools' libraries live, read-only), FFMPEG, FFPROBE and their real paths FFMPEG_REAL, FFPROBE_REAL (the only two programs there it may run).
 (version 1)
 (deny default)
 
 (allow process-fork)
-(allow process-exec (subpath (param "ROOT")) (subpath (param "CLI")) (subpath "/usr/bin") (subpath "/bin"))
+(allow process-exec (subpath (param "ROOT")) (subpath (param "ASKK")) (subpath (param "CLI")) (subpath "/usr/bin") (subpath "/bin"))
 (allow signal (target same-sandbox))
 (allow process-info* (target same-sandbox))
+
+;; media tools (senses.json: a video's frames, sound track and length): these two programs and nothing else from TOOLS;
+;; TOOLS itself is read-only (their libraries)
+(allow process-exec (literal (param "FFMPEG")) (literal (param "FFPROBE")) (literal (param "FFMPEG_REAL")) (literal (param "FFPROBE_REAL")))
+(allow file-read* (subpath (param "TOOLS")))
 
 ;; read-only system
 (allow file-read-metadata)
@@ -27,7 +34,7 @@
 
 ;; the app: repo read-only, its state read-write
 (allow file-read* (subpath (param "ROOT")))
-(allow file-read* file-write* (subpath (param "DATA")) (subpath (param "CLI_HOME")))
+(allow file-read* file-write* (subpath (param "ASKK")) (subpath (param "DATA")) (subpath (param "CLI_HOME")))
 (allow file-read* (subpath (param "CLI")))
 ;; model CLIs (claude, copilot) keep config at $HOME/.<name>*, use the login keychain and temp files
 (allow file-read* file-write* (regex (string-append "^" (param "HOME") "/\\.(claude|copilot)")))
@@ -48,7 +55,23 @@
   (global-name "com.apple.trustd") (global-name "com.apple.trustd.agent")
   (global-name "com.apple.SecurityServer"))
 
-;; network: listen on loopback PORT only; out to HTTPS only
+;; the GPU (Metal): the driver's user clients, shader compilation, and the driver's own files
+(allow iokit-open
+  (iokit-user-client-class "AGXDeviceUserClient")
+  (iokit-user-client-class "AGXSharedUserClient")
+  (iokit-user-client-class "AGXCommandQueue")
+  (iokit-user-client-class "IOSurfaceRootUserClient")
+  (iokit-user-client-class "IOSurfaceAcceleratorClient"))
+(allow iokit-get-properties)
+(allow mach-lookup
+  (global-name "com.apple.MTLCompilerService")
+  (global-name "com.apple.cvmsServ"))
+(allow user-preference-read (preference-domain "com.apple.Metal"))
+(allow file-read* (subpath "/Library/GPUBundles") (subpath "/Library/Apple/System/Library"))
+
+;; network: listen on loopback PORT only; out to HTTPS, and to this machine itself
 (allow network-bind network-inbound (local ip (string-append "localhost:" (param "PORT"))))
 (allow network-outbound (remote tcp "*:443"))
+;; model servers on this machine (LM Studio, oMLX, Ollama…): loopback only, any port
+(allow network-outbound (remote ip "localhost:*"))
 (allow network-outbound (literal "/private/var/run/mDNSResponder"))

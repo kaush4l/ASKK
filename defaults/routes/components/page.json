@@ -1,9 +1,0 @@
-{
-  "title": "Components",
-  "nav": 3,
-  "icon": "shapes",
-  "root": {
-    "kind": "view",
-    "text": "components"
-  }
-}

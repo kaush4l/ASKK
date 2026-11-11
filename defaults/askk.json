@@ -1,0 +1,19 @@
+{
+  "engines": "engines",
+  "board": "board.json",
+  "routes": "routes",
+  "components": "components",
+  "models": "models.json",
+  "templates": "templates",
+  "theme": "theme.json",
+  "ui": "ui.json",
+  "layout": "layout.json",
+  "jobs": "jobs.json",
+  "dismissed": "dismissed",
+  "surfaces": "surfaces.json",
+  "senses": "senses.json",
+  "sessions": "sessions",
+  "rooms": "rooms",
+  "harnesses": "harnesses.json",
+  "modes": "modes.json"
+}

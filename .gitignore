@@ -11,3 +11,14 @@
 /archive/.svelte-kit
 data/
 .worktrees/
+
+# Private: one person's trading desk (account details, live money rules, its schedules).
+# Kept on the machine, never in the repository or in a published build.
+/defaults/engines/askk/trade-desk/
+/defaults/engines/askk/trade-card/
+/docs/plans/trading-desks.md
+/scripts/order-gate.sh
+/scripts/order-gate-test.sh
+/scripts/desk-schedule.sh
+/scripts/desk-wake.sh
+/sandbox/rails.json

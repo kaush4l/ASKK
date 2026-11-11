@@ -2,6 +2,7 @@
 //! Anything invocable: a name, a description, and `invoke(args) -> result`.
 //! [`IntoTool`] turns any object into one (closures via [`tool`], engines, scripts).
 //! [`Toolbox`] is the set an engine can call; a tool receives it so it can call others.
+use crate::core::held::Held;
 use super::{Event, Fut};
 use serde_json::Value;
 use std::{collections::BTreeMap, sync::{Arc, Mutex}};
@@ -78,7 +79,7 @@ impl Toolbox {
     }
     /// Take the calls recorded so far, in completion order (inner calls first).
     pub fn drain(&self) -> Vec<Event> {
-        self.1.as_ref().map(|l| std::mem::take(&mut *l.lock().unwrap())).unwrap_or_default()
+        self.1.as_ref().map(|l| std::mem::take(&mut *l.held())).unwrap_or_default()
     }
     #[cfg_attr(not(test), allow(dead_code))]
     pub fn names(&self) -> Vec<String> {
@@ -94,7 +95,7 @@ impl Toolbox {
                 Ok(v) => text(v),
                 Err(e) => format!("error: {e}"),
             };
-            log.lock().unwrap().push(Event::Called { tool: name.into(), args, result });
+            log.held().push(Event::Called { tool: name.into(), args, result });
         }
         r
     }
@@ -106,10 +107,7 @@ impl Toolbox {
         Some(
             self.0
                 .values()
-                .map(|t| match t.args() {
-                    Value::Null => format!("- {}: {}", t.name(), t.description()),
-                    a => format!("- {}: {} args {}", t.name(), t.description(), a),
-                })
+                .map(|t| format!("- {} — {}", sig(&t.name(), &t.args()), t.description()))
                 .collect::<Vec<_>>()
                 .join("\n"),
         )
@@ -141,7 +139,7 @@ mod tests {
         assert_eq!(tb.call("add", json!({"a": 2, "b": 3})).await.unwrap(), json!(5.0));
         assert_eq!(tb.call("add", json!({})).await.unwrap_err(), "a missing");
         assert_eq!(tb.call("nope", json!({})).await.unwrap_err(), "no tool 'nope'");
-        assert!(tb.describe().unwrap().contains("- add: sum args"));
+        assert!(tb.describe().unwrap().contains("- add(a: number, b: number) — sum"));
         assert!(Toolbox::default().describe().is_none());
     }
 
@@ -160,5 +158,26 @@ mod tests {
         let tools: Vec<String> = tb.drain().into_iter().map(|e| match e { Event::Called { tool, .. } => tool, _ => String::new() }).collect();
         assert_eq!(tools, ["add", "outer"]);
         assert!(tb.drain().is_empty());
+    }
+}
+
+/// A tool as a signature: `read_file(path: text)`; free-form hints stay as given.
+pub fn sig(name: &str, args: &Value) -> String {
+    match args {
+        Value::Null => format!("{name}()"),
+        Value::Object(m) => {
+            let parts: Vec<String> = m.iter().map(|(k, v)| format!("{k}: {}", v.as_str().map(String::from).unwrap_or_else(|| v.to_string()))).collect();
+            format!("{name}({})", parts.join(", "))
+        }
+        a => format!("{name}({a})"),
+    }
+}
+
+/// A call as written in a reply: `read_file(path: "a.rs")`, values as JSON.
+pub fn call_sig(name: &str, args: &Value) -> String {
+    match args {
+        Value::Null => format!("{name}()"),
+        Value::Object(m) => format!("{name}({})", m.iter().map(|(k, v)| format!("{k}: {v}")).collect::<Vec<_>>().join(", ")),
+        a => format!("{name}({a})"),
     }
 }
