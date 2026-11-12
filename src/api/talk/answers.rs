@@ -217,6 +217,12 @@ pub async fn talk_settle(path: String, id: u64, settled: bool) -> Result<(), Str
     engine(&path)?.mark_talk(id, |m| m.settled = settled)
 }
 
+/// Snooze the conversation `id` for `minutes`: out of the list until then; 0 wakes it now.
+pub async fn talk_snooze(path: String, id: u64, minutes: u64) -> Result<(), String> {
+    let until = crate::core::talks::snooze_until(minutes.min(60 * 24 * 365));
+    engine(&path)?.mark_talk(id, |m| m.snooze = until)
+}
+
 /// Every conversation of the engine whose title or words hold `query`.
 pub async fn talk_search(path: String, query: String) -> Result<Vec<TalkHit>, String> {
     Ok(engine(&path)?.search_talks(&query))

@@ -31,9 +31,9 @@ herdr [concepts](https://herdr.dev/tui/docs/concepts/),
 | Markdown, code colouring | Markdown, six languages, copy button | built | `ui/features/markdown.rs`, `code.rs` tests |
 | answers the agent asks for (approvals) | an engine's asks answered in its tile; a tool call its permission mode holds is an approval with Allow and Deny in the conversation (and a yes/no ask in its tile; the box is blocked) | part | `core::permit` test; seen 2026-11-12: `run(…)` waited, Allow ran it, Deny gave the model "the owner did not allow run". A harness's own permission prompts are still not seen |
 | permission modes | ask every time / allow edits / allow all, chosen in the composer, kept in the engine's `engine.json` (`permit`), held at the toolbox (`core/permit.rs`): files and engines changed are edits, `run`/`spawn`/`stop` run programs, reading and its own notes always go. A session gives its harness the mode in its own words: Claude Code `--permission-mode` (`acceptEdits`, `bypassPermissions`), Codex `-s` (`workspace-write`, `danger-full-access`); Muse takes none. An engine with no mode allows all, as before | built | `core::permit`, harness tests; seen 2026-11-12: "Ask every time" chosen on the page wrote `"permit": "ask"`. The harness flags are checked against the programs' `--help`, not run |
-| `@` mentions, `/` commands, `$` skills | a menu opens as `/` (at the start), `@` or `#` is typed, moved with the arrows, taken with Enter or Tab, closed with Escape: `/clear /new /goal /model /compact /permit`; `@` names another box or conversation and the message carries a note on it; `#` names a workspace file | part | `features::compose` tests; seen 2026-11-12: the `/` menu with ArrowDown to `/goal`, `@as` offered `@askk`. No `$` skills: askk has none to name |
+| `@` mentions, `/` commands, `$` skills | a menu opens as `/` (at the start), `@` or `#` is typed, moved with the arrows, taken with Enter or Tab, closed with Escape: `/clear /new /goal /model /compact /permit`; `@` names another box or conversation and the message carries a note on it; `#` names a workspace file; `$` names a skill on disk (`SKILL.md` in the workspace's `.claude/skills` or `.agents/skills`, then the owner's, and `~/.codex/skills`) and the message says where it is, to be read and followed | built | `features::compose` tests; seen 2026-11-12: the `/` menu with ArrowDown to `/goal`, `@as` offered `@askk`. seen 2026-11-12 in WebKit: `$cave` offered `$cavecrew`, `$caveman`, … from `~/.claude/skills`, Enter wrote `$cavecrew `; `host::skills` and `features::compose` tests |
 | `/goal` across turns | an engine has a goal by design (`goal.md`); `/goal <text>` sets it from the composer | built | seen 2026-11-12: `/goal Answer in metres` wrote `goal.md` and said so |
-| settle, snooze, archive, undo | a conversation is renamed, settled (listed under Settled) or archived (out of the list, still found), with Undo for 5 s; the list searches titles and words | part | `core::talks` test; seen 2026-11-12: archive showed Undo and the list lost the row, Undo brought it back; a search for "metres" found the conversation by its words. No snooze |
+| settle, snooze, archive, undo | a conversation is renamed, settled (listed under Settled) or archived (out of the list, still found), with Undo for 5 s, or snoozed for a day (under Snoozed, "back in 24 h", woken early or back on its own); the list searches titles and words | built | `core::talks` test; seen 2026-11-12: archive showed Undo and the list lost the row, Undo brought it back; a search for "metres" found the conversation by its words; seen 2026-11-12 in WebKit: Snooze moved "hello snooze test" under Snoozed, "back in 24 h", Wake brought it back |
 | prompt stash, ArrowUp recall, cite a reply, edit from here | mod+S puts the text aside (kept by the browser per engine) and brings it back; ArrowUp in an empty composer walks back through what was asked; "Cite in composer" quotes the words chosen in an answer, or all of it; "Edit from here" forgets the conversation from that message on and puts it back in the composer | built | `features::compose`, `core::owner` tests; seen 2026-11-12: two ArrowUps brought back the prompt before last, mod+S said "1 put aside", a chosen phrase came in as `> Streams arrive piece by`, edit from here emptied the thread and filled the composer |
 | voice input | the Web Speech API where the browser has one (a mic button and mod+shift+D, the words written in as heard); hidden where it has none | part | seen 2026-11-12: the button and the key started it; the Browser pane refused the microphone and the composer said so. Speech itself was not heard |
 | remote access, phone app | the service listens on this machine only, by decision | no (by decision) | `docs/decisions.md` |
@@ -74,12 +74,24 @@ Read off the running page on 2026-11-12:
 | a press | `transform: scale(var(--press-scale))` in 100ms |
 | reduced motion, reduced transparency | springs fall back to 200ms ease, travel to none; glass to a solid fill (seen by stream B) |
 
+## Browsers and widths
+
+Seen 2026-11-12 with Playwright's own engines, headless, against a built service:
+
+| engine | what was seen |
+| --- | --- |
+| Chromium (the Browser pane, `scripts/shots.sh`) | every screen, phone to desktop, dark and light |
+| WebKit (Safari's engine, build 2227) | Home and Talk at 1440 and 390, dark and light: `backdrop-filter` and `linear()` springs supported, 3–5 glass surfaces, no sideways scroll, the `/` menu opens, no page errors; `$` skills and snooze worked. It showed the composer's model picker running off a 390-wide phone (its row reached 502px); fixed in `talk.css`, the row now fits at 320 and 390 |
+| Firefox (build 1497) | not seen: this build cannot draw on this macOS (its compositor finds no framebuffer, in or out of a sandbox); a newer one is a download, left to the owner |
+| Safari itself | not seen: the owner kept the screen to themselves |
+
 ## What this says
 
 Both have their spine on par: a background server that owns the work, clients that
 attach, detach and refresh in place, live state per box, streaming, threads, a diff,
 a palette, panes and copy mode. Both tables were then built row by row (2026-11-12): every
 herdr row and every T3 Code row askk can have is built, each with its proof. What is left
-is said in each row: on the page, snooze, `$` skills and a harness's own permission prompts;
+is said in each row: on the page, a harness's own permission prompts, speech heard, and
+providers beyond claude, codex and muse;
 in the terminal, the limits listed in `docs/service.md` ("Where `askk terminal` is not
 herdr"). Remote access stays out by decision.

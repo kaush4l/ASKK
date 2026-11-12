@@ -7,14 +7,14 @@
 //! | what it may do without asking | `engine_permit`, chosen with `set_engine_permit` |
 //! | its model | `engine_model` and the models, chosen with `set_engine_model` |
 //! | `/` commands | `clear_history`, `talk_new`, `set_engine_goal`, `set_engine_model`, `compact`, `set_engine_permit` |
-//! | `@` names, `#` files | the boxes this window knows; `workspace_view`, only once `#` is typed |
+//! | `@` names, `#` files, `$` skills | the boxes this window knows; `workspace_view`, only once `#` is typed; `skills`, only once `$` is typed |
 //! | steer | `steer`, and `steers` (live) to say where it landed |
 //! | a paste, a drop, several files | `upload_bytes` (a paste of 32 KB or more becomes a text file) |
 //! | text put aside (mod+S), voice (mod+shift+D) | this browser: `localStorage`, the Web Speech API where there is one |
 use super::boxes::Boxes;
 use crate::api::{post_message, Talk};
 use crate::core::media::token;
-use crate::ui::features::compose::{command, references, steer_line, Mention};
+use crate::ui::features::compose::{command, references, skill_notes, steer_line, Mention};
 use crate::ui::features::run as words;
 use crate::ui::web::components::{ApprovalForm, Attached, Composer, ModelChoice, Reach, SteerLine};
 use dioxus::prelude::*;
@@ -147,7 +147,20 @@ pub fn Foot(path: String, mut input: Signal<String>, mut pending: Signal<(String
             crate::api::workspace_view(p).await.ok().and_then(|v| v.workspace).map(|w| w.files).unwrap_or_default()
         }
     });
-    let reach = Reach { mentions: mentions(&boxes, &id, &talks), files: files().unwrap_or_default(), asked: t.beats.iter().filter(|b| b.from == "user" && !b.text.trim().is_empty()).map(|b| b.text.clone()).collect() };
+    // `$` reaches the skills on disk: asked once the sign is typed.
+    let wants_skills = use_memo(move || input.read().contains('$'));
+    let p5 = path.clone();
+    let skills = use_resource(move || {
+        let (want, p) = (wants_skills(), p5.clone());
+        async move {
+            if !want {
+                return vec![];
+            }
+            let found = crate::api::skills(p).await.unwrap_or_default();
+            found.into_iter().map(|s| Mention { note: format!("the skill “{}”: its instructions are in {}", s.name, s.file), name: s.name, about: s.about }).collect::<Vec<_>>()
+        }
+    });
+    let reach = Reach { mentions: mentions(&boxes, &id, &talks), files: files().unwrap_or_default(), skills: skills().unwrap_or_default(), asked: t.beats.iter().filter(|b| b.from == "user" && !b.text.trim().is_empty()).map(|b| b.text.clone()).collect() };
     // What this browser keeps put aside, and whether it can hear.
     let mut stash = use_signal(Vec::<String>::new);
     let mut hears = use_signal(|| None::<bool>);
@@ -225,7 +238,7 @@ pub fn Foot(path: String, mut input: Signal<String>, mut pending: Signal<(String
             if (said.is_empty() && tokens.is_empty()) || busy() || sending {
                 return;
             }
-            let text = [references(&said, &reach.mentions), tokens.join(" ")].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" ");
+            let text = [skill_notes(&references(&said, &reach.mentions), &reach.skills), tokens.join(" ")].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" ");
             input.set(String::new());
             attached.write().clear();
             error.set(String::new());

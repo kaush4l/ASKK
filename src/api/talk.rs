@@ -174,6 +174,7 @@ wire! {
     talk_rename(path: String, id: u64, name: String) -> ();
     talk_archive(path: String, id: u64, archived: bool) -> ();
     talk_settle(path: String, id: u64, settled: bool) -> ();
+    talk_snooze(path: String, id: u64, minutes: u64) -> ();
     talk_search(path: String, query: String) -> Vec<TalkHit>;
     rewind(path: String, n: usize) -> String;
 }

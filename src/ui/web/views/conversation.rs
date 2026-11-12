@@ -233,6 +233,7 @@ pub fn Conversation(path: String, #[props(default)] engines: Vec<Mode>, #[props(
                 let done = match what.as_str() {
                     "archive" | "unarchive" => crate::api::talk_archive(path, tid, what == "archive").await,
                     "settle" | "unsettle" => crate::api::talk_settle(path, tid, what == "settle").await,
+                    s if s.starts_with("snooze:") => crate::api::talk_snooze(path, tid, s["snooze:".len()..].parse().unwrap_or(0)).await,
                     name => crate::api::talk_rename(path, tid, name.strip_prefix("name:").unwrap_or_default().to_string()).await,
                 };
                 match done {

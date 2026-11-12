@@ -38,6 +38,11 @@ pub async fn workspace_view(_path: String) -> Result<IdeView, String> {
     Ok(IdeView::default())
 }
 
+/// A tab reads no disk: it knows no skills.
+pub async fn skills(_path: String) -> Result<Vec<super::Skill>, String> {
+    Ok(vec![])
+}
+
 pub async fn workspace_diff(_path: String) -> Result<WorkspaceDiff, String> {
     Err(lacks("A workspace (the files an engine changes)"))
 }

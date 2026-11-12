@@ -32,6 +32,7 @@ pub mod media;
 pub mod room;
 pub mod sandbox;
 pub mod service;
+pub mod skills;
 pub mod store;
 #[cfg(feature = "terminals")]
 pub mod terminals;
@@ -68,6 +69,7 @@ fn boot() {
     crate::core::media::set(std::sync::Arc::new(media::Kept));
     crate::core::tasks::set(std::sync::Arc::new(Runtime));
     crate::core::tables::set(std::sync::Arc::new(data::Personal));
+    crate::core::skills::set(skills::on_disk);
     crate::core::workspaces::set(std::sync::Arc::new(git::Repo));
     crate::core::world::boots_with(world::start);
     // What this build can do, noted beside the lines that make it so (core/caps.rs).

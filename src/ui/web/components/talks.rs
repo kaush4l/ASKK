@@ -8,10 +8,23 @@ use crate::api::{TalkHit, TalkInfo};
 use crate::ui::web::kit::{Button, ButtonSize, ButtonVariant};
 use dioxus::prelude::*;
 
+/// How long a snooze lasts: a day, in minutes.
+const SNOOZE: u64 = 24 * 60;
+
+/// Minutes said the short way: "45 min", "3 h", "2 d".
+fn back_in(minutes: u64) -> String {
+    match minutes {
+        m if m < 60 => format!("{m} min"),
+        m if m < 48 * 60 => format!("{} h", m.div_ceil(60)),
+        m => format!("{} d", m.div_ceil(24 * 60)),
+    }
+}
+
 /// `busy`: the engine is at work, so no new conversation can begin now (the others can still be
 /// read). `reading`: the conversation put aside that is shown now instead of the open one.
 /// `query`, `hits`: what is searched for and what was found. `on_mark((id, what, title))`:
-/// `archive`, `settle`, `unsettle`, `unarchive`, or `name:<new name>`.
+/// `archive`, `settle`, `unsettle`, `unarchive`, `snooze:<minutes>` (0 wakes it), or
+/// `name:<new name>`. A snoozed one waits under Snoozed, saying when it is back.
 #[component]
 pub fn TalkList(
     talks: Vec<TalkInfo>,
@@ -28,6 +41,7 @@ pub fn TalkList(
     let mut renaming = use_signal(|| None::<(u64, String)>);
     let archived = talks.iter().filter(|t| t.archived).count();
     let shown: Vec<TalkInfo> = talks.iter().filter(|t| !t.archived || t.current || show_archived()).cloned().collect();
+    let (snoozed, shown): (Vec<TalkInfo>, Vec<TalkInfo>) = shown.into_iter().partition(|t| t.snoozed > 0 && !t.current);
     let (settled, open): (Vec<TalkInfo>, Vec<TalkInfo>) = shown.into_iter().partition(|t| t.settled && !t.current);
     let n = talks.len() - archived;
     let mark = move |x: (u64, String, String)| if let Some(h) = &on_mark { h.call(x) };
@@ -69,7 +83,7 @@ pub fn TalkList(
                     }
                 }
             } else {
-                for (head, list) in [("", open), ("Settled", settled)] {
+                for (head, list) in [("", open), ("Snoozed", snoozed), ("Settled", settled)] {
                     if !head.is_empty() && !list.is_empty() { p { class: "talks-section", "{head}" } }
                     ol { class: "talks-list",
                         for t in list {
@@ -95,6 +109,7 @@ pub fn TalkList(
                                         Icon { name: if t.archived { "archive" } else if t.settled { "check" } else { "chat" }, size: 14 }
                                         span { class: "talk-title", if !t.name.is_empty() { "{t.name}" } else if t.title.is_empty() { "(nothing said yet)" } else { "{t.title}" } }
                                         if t.current { span { class: "talk-live dim", "open" } }
+                                        if t.snoozed > 0 { span { class: "talk-live dim", "back in {back_in(t.snoozed)}" } }
                                         span { class: "talk-turns dim", "{t.turns}" }
                                     }
                                     if on_mark.is_some() {
@@ -102,6 +117,11 @@ pub fn TalkList(
                                             Button { variant: ButtonVariant::Ghost, size: ButtonSize::IconSm, aria_label: "Rename", title: "Rename", onclick: { let name = if t.name.is_empty() { t.title.clone() } else { t.name.clone() }; move |_| renaming.set(Some((t.id, name.clone()))) }, Icon { name: "pencil", size: 12 } }
                                             Button { variant: ButtonVariant::Ghost, size: ButtonSize::IconSm, aria_label: if t.settled { "Not settled" } else { "Settle" }, title: if t.settled { "Back among the others" } else { "Settle: done with it, kept under Settled" },
                                                 onclick: { let title = t.title.clone(); move |_| mark((t.id, if t.settled { "unsettle".into() } else { "settle".into() }, title.clone())) }, Icon { name: "check", size: 12 } }
+                                            if !t.current {
+                                                Button { variant: ButtonVariant::Ghost, size: ButtonSize::IconSm, aria_label: if t.snoozed > 0 { "Wake" } else { "Snooze" }, aria_pressed: t.snoozed > 0,
+                                                    title: if t.snoozed > 0 { "Wake it: back in the list now" } else { "Snooze: out of the list until tomorrow, then back on its own" },
+                                                    onclick: { let title = t.title.clone(); let wake = t.snoozed > 0; move |_| mark((t.id, if wake { "snooze:0".into() } else { format!("snooze:{SNOOZE}") }, title.clone())) }, Icon { name: "clock", size: 12 } }
+                                            }
                                             Button { variant: ButtonVariant::Ghost, size: ButtonSize::IconSm, aria_label: if t.archived { "Unarchive" } else { "Archive" }, title: if t.archived { "Back in the list" } else { "Archive: out of the list, found by a search; undo for 5 seconds" },
                                                 onclick: { let title = if t.name.is_empty() { t.title.clone() } else { t.name.clone() }; move |_| mark((t.id, if t.archived { "unarchive".into() } else { "archive".into() }, title.clone())) }, Icon { name: "archive", size: 12 } }
                                         }

@@ -111,6 +111,15 @@ pub async fn workspace_view(path: String) -> Result<IdeView, String> {
     Ok(IdeView { workspace, jobs })
 }
 
+/// The skills a message to the engine at `path` can name with `$` (`core::skills`): its
+/// workspace's own first, then the owner's.
+#[cfg(feature = "server")]
+pub async fn skills(path: String) -> Result<Vec<super::Skill>, String> {
+    let e = find(&path).ok_or_else(|| say(format!("no engine {path}")))?;
+    let root = e.specs().into_iter().find(|s| s.kind == "workspace").and_then(|s| crate::elements::workspace::view_of(s).ok()).map(|w| w.root);
+    Ok(crate::core::skills::find(root.as_deref()).into_iter().map(|f| super::Skill { name: f.name, about: f.about, file: f.file }).collect())
+}
+
 /// What the last run of the engine at `path` that changed files changed in its workspace.
 #[cfg(feature = "server")]
 pub async fn workspace_diff(path: String) -> Result<WorkspaceDiff, String> {

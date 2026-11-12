@@ -150,6 +150,7 @@ wire! {
     pack_import(path: String, files: Vec<(String, String)>) -> Vec<(String, String)>;
     inbox(path: String) -> Vec<crate::core::board::Message>;
     workspace_view(path: String) -> IdeView;
+    skills(path: String) -> Vec<Skill>;
     workspace_diff(path: String) -> WorkspaceDiff;
     workspace_file(path: String, file: String) -> String;
     run_engine(path: String, input: String) -> String;
@@ -187,6 +188,16 @@ pub struct JobView {
 pub struct IdeView {
     pub workspace: Option<crate::elements::workspace::WorkspaceView>,
     pub jobs: Vec<JobView>,
+}
+
+/// A skill a message can name with `$`: a `SKILL.md` in the engine's workspace or the owner's
+/// home (`.claude/skills`, `.agents/skills`, `.codex/skills`), by the name and the description
+/// its head gives, and where it is, so the engine reads it with its own tools.
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Skill {
+    pub name: String,
+    pub about: String,
+    pub file: String,
 }
 
 /// What the last run of an engine that changed files changed in its workspace: the run, and

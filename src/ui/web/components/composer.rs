@@ -50,6 +50,8 @@ pub struct ModelChoice {
 pub struct Reach {
     pub mentions: Vec<Mention>,
     pub files: Vec<String>,
+    /// What `$` can name: the skills on disk.
+    pub skills: Vec<Mention>,
     /// What was asked before, oldest first.
     pub asked: Vec<String>,
 }
@@ -109,7 +111,7 @@ pub fn Composer(
     let mut shut = use_signal(String::new);
     // Where ArrowUp has brought the composer back to (`None`: what is being written).
     let mut back = use_signal(|| None::<usize>);
-    let items = if *shut.read() == *value.read() { vec![] } else { menu(&value.read(), &reach.mentions, &reach.files) };
+    let items = if *shut.read() == *value.read() { vec![] } else { menu(&value.read(), &reach.mentions, &reach.files, &reach.skills) };
     let open = !items.is_empty();
     let at = chosen().min(items.len().saturating_sub(1));
     let asked = reach.asked.clone();
@@ -171,7 +173,7 @@ pub fn Composer(
                 id: "composer",
                 rows: 1,
                 value: value(),
-                placeholder: "Message {to}  ·  / commands  @ names  # files",
+                placeholder: "Message {to}  ·  / commands  @ names  # files  $ skills",
                 aria_label: "Message {to}",
                 oninput: move |e: FormEvent| { value.set(e.value()); back.set(None); chosen.set(0); },
                 onkeydown: move |e: KeyboardEvent| {

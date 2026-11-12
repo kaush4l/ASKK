@@ -330,3 +330,8 @@
 .compose-hint > * { flex: none; }
 .compose-bar { container-type: inline-size; }
 @container (max-width: 620px) { .compose-hint { display: none; } }
+/* On a phone the choices share the line: the model's name is cut, never the bar. */
+@container (max-width: 440px) {
+  .compose-bar .model-pick { flex-shrink: 1; }
+  .compose-bar .model-pick .model-select { max-width: 9ch; }
+}

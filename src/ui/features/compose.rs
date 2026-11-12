@@ -5,6 +5,7 @@
 //! | `/` at the start | the commands ([`COMMANDS`]) | writes the command; Enter runs it ([`command`]) |
 //! | `@` | the other boxes and this engine's other conversations | writes `@name`; sent, the message carries a note on what it names ([`references`]) |
 //! | `#` | the files of the engine's workspace | writes `#path`; the engine reads it with its own tools |
+//! | `$` | the skills on disk (`skills`) | writes `$name`; sent, the message says where that skill is, to be read and followed ([`skill_notes`]) |
 //!
 //! The menu is found by the last word only ([`trigger`]), so it opens as the word is typed and
 //! closes when a space ends it. It is moved through with the arrows, taken with Enter or Tab,
@@ -59,7 +60,7 @@ pub fn trigger(text: &str) -> Option<(char, String)> {
     let sign = word.chars().next()?;
     match sign {
         '/' if text.trim_start() == word => Some(('/', word[1..].to_string())),
-        '@' | '#' => Some((sign, word[1..].to_string())),
+        '@' | '#' | '$' => Some((sign, word[1..].to_string())),
         _ => None,
     }
 }
@@ -68,7 +69,7 @@ pub fn trigger(text: &str) -> Option<(char, String)> {
 pub const MENU: usize = 8;
 
 /// The menu for `text`: the lines that start with (then hold) what was typed after the sign.
-pub fn menu(text: &str, mentions: &[Mention], files: &[String]) -> Vec<Item> {
+pub fn menu(text: &str, mentions: &[Mention], files: &[String], skills: &[Mention]) -> Vec<Item> {
     let Some((sign, typed)) = trigger(text) else { return vec![] };
     let low = typed.to_lowercase();
     let rank = |name: &str| {
@@ -78,6 +79,7 @@ pub fn menu(text: &str, mentions: &[Mention], files: &[String]) -> Vec<Item> {
     let mut found: Vec<(u8, Item)> = match sign {
         '/' => COMMANDS.iter().filter_map(|c| rank(c.name).map(|r| (r, Item { label: format!("/{} {}", c.name, c.takes).trim().to_string(), detail: c.about.into(), insert: format!("/{}", c.name) }))).collect(),
         '@' => mentions.iter().filter_map(|m| rank(&m.name).map(|r| (r, Item { label: format!("@{}", m.name), detail: m.about.clone(), insert: format!("@{}", m.name) }))).collect(),
+        '$' => skills.iter().filter_map(|m| rank(&m.name).map(|r| (r, Item { label: format!("${}", m.name), detail: m.about.clone(), insert: format!("${}", m.name) }))).collect(),
         _ => files.iter().filter_map(|f| rank(f).map(|r| (r, Item { label: format!("#{f}"), detail: "a file in its workspace".into(), insert: format!("#{f}") }))).collect(),
     };
     found.sort_by_key(|(r, _)| *r);
@@ -108,6 +110,17 @@ pub fn references(text: &str, mentions: &[Mention]) -> String {
     }
     let notes: Vec<String> = named.iter().map(|m| format!("- @{}: {}", m.name, m.note)).collect();
     format!("{text}\n\n(named in this message)\n{}", notes.join("\n"))
+}
+
+/// The message with a note for each `$skill` in it that names a known skill: where its
+/// instructions are, to be read and followed for this message.
+pub fn skill_notes(text: &str, skills: &[Mention]) -> String {
+    let named: Vec<&Mention> = skills.iter().filter(|m| text.split(|c: char| c.is_whitespace() || ",.;:!?()".contains(c)).any(|w| w == format!("${}", m.name))).collect();
+    if named.is_empty() {
+        return text.to_string();
+    }
+    let notes: Vec<String> = named.iter().map(|m| format!("- ${}: {}", m.name, m.note)).collect();
+    format!("{text}\n\n(skills named in this message: read each and follow it for this message)\n{}", notes.join("\n"))
 }
 
 /// The prompt ArrowUp brings back: from the newest (`at` none) to older ones; `up` false goes
@@ -159,12 +172,19 @@ mod tests {
         assert_eq!(trigger("read #src/ma"), Some(('#', "src/ma".into())));
         assert_eq!(trigger("ask @guru "), None, "a space ends the word");
         assert_eq!(trigger(""), None);
-        let m = menu("/c", &[], &[]);
+        let m = menu("/c", &[], &[], &[]);
         assert_eq!(m.iter().map(|i| i.insert.as_str()).collect::<Vec<_>>(), ["/clear", "/compact"]);
         let mentions = vec![Mention { name: "askk/guru".into(), about: "engine".into(), note: "the teacher".into() }];
-        assert_eq!(menu("@gu", &mentions, &[])[0].label, "@askk/guru", "found inside the name too");
-        assert_eq!(menu("#main", &[], &["src/main.rs".into()])[0].insert, "#src/main.rs");
-        assert_eq!(apply("ask @gu", &menu("@gu", &mentions, &[])[0]), "ask @askk/guru ");
+        assert_eq!(menu("@gu", &mentions, &[], &[])[0].label, "@askk/guru", "found inside the name too");
+        assert_eq!(menu("#main", &[], &["src/main.rs".into()], &[])[0].insert, "#src/main.rs");
+        assert_eq!(apply("ask @gu", &menu("@gu", &mentions, &[], &[])[0]), "ask @askk/guru ");
+        // `$` names a skill, anywhere; sent, the message says where its instructions are.
+        let skills = vec![Mention { name: "apple-design".into(), about: "glass and motion".into(), note: "the skill at /s/apple-design/SKILL.md".into() }];
+        assert_eq!(trigger("use $app"), Some(('$', "app".into())));
+        assert_eq!(menu("use $des", &[], &[], &skills)[0].insert, "$apple-design");
+        let sent = skill_notes("use $apple-design here", &skills);
+        assert!(sent.ends_with("- $apple-design: the skill at /s/apple-design/SKILL.md"), "{sent}");
+        assert_eq!(skill_notes("costs $5", &skills), "costs $5", "a $ that names no skill is left as it is");
     }
 
     #[test]

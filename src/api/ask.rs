@@ -75,6 +75,7 @@ pub fn table() -> Vec<Ask> {
         pack_import(path, files),
         inbox(path),
         workspace_view(path),
+        skills(path),
         workspace_diff(path),
         workspace_file(path, file),
         run_engine(path, input),
@@ -157,6 +158,7 @@ pub fn table() -> Vec<Ask> {
         talk_rename(path, id, name),
         talk_archive(path, id, archived),
         talk_settle(path, id, settled),
+        talk_snooze(path, id, minutes),
         talk_search(path, query),
         rewind(path, n),
         // terminals.rs

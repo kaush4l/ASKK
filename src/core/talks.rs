@@ -53,6 +53,9 @@ pub struct TalkInfo {
     /// Done with: listed under its own heading.
     #[serde(default)]
     pub settled: bool,
+    /// Snoozed: the minutes until it comes back into the list; 0, it is not snoozed.
+    #[serde(default)]
+    pub snoozed: u64,
 }
 
 /// What the owner said about one conversation.
@@ -64,6 +67,18 @@ pub struct Meta {
     pub archived: bool,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub settled: bool,
+    /// When (milliseconds since 1970) a snoozed conversation comes back; 0, never snoozed.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub snooze: u64,
+}
+
+fn is_zero(n: &u64) -> bool {
+    *n == 0
+}
+
+/// The milliseconds since 1970 `minutes` from now: when a conversation snoozed now comes back.
+pub fn snooze_until(minutes: u64) -> u64 {
+    if minutes == 0 { 0 } else { now() + minutes * 60_000 }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -225,9 +240,11 @@ impl Engine {
             .collect();
         others.sort_by(|a, b| b.at.cmp(&a.at));
         out.extend(others);
+        let at = now();
         for t in out.iter_mut() {
             let m = meta.get(&t.id).cloned().unwrap_or_default();
             (t.name, t.archived, t.settled) = (m.name, m.archived, m.settled);
+            t.snoozed = if m.snooze > at { (m.snooze - at).div_ceil(60_000) } else { 0 };
         }
         out
     }
@@ -347,5 +364,12 @@ mod tests {
         assert!(e.search_talks("  ").is_empty() && e.search_talks("zebra").is_empty());
         e.mark_talk(other, |m| m.archived = false).unwrap();
         assert!(!e.talks()[1].archived, "undone");
+        // Snoozed for an hour: the minutes left are said; woken, and one whose time has passed, are back.
+        e.mark_talk(other, |m| m.snooze = snooze_until(60)).unwrap();
+        assert_eq!(e.talks()[1].snoozed, 60);
+        e.mark_talk(other, |m| m.snooze = now().saturating_sub(1)).unwrap();
+        assert_eq!(e.talks()[1].snoozed, 0, "its time has passed");
+        e.mark_talk(other, |m| m.snooze = snooze_until(0)).unwrap();
+        assert_eq!(e.talks()[1].snoozed, 0, "woken");
     }
 }

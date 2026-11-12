@@ -55,6 +55,7 @@ pub mod steer;
 pub mod boot;
 pub mod store;
 pub mod surfaces;
+pub mod skills;
 pub mod tables;
 pub mod talks;
 pub mod tasks;

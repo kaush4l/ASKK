@@ -245,11 +245,11 @@ mod tests {
     /// Rigid rule: askk state reaches disk only through the store. The files allowed to use
     /// the filesystem are the store itself and the ones that work on things that are not askk
     /// state: the user's workspace and git (`workspace.rs`), the user's own data files, which
-    /// are only read (`data.rs`), and attached media, which is not text (`media.rs`). A new
+    /// are only read (`data.rs`), the skills on disk, which are only read too (`skills.rs`), and attached media, which is not text (`media.rs`). A new
     /// writer of state must go through [`Store`].
     #[test]
     fn only_the_store_touches_the_data_folder() {
-        const ALLOWED: &[&str] = &["host/store.rs", "host/workspace.rs", "host/data.rs", "host/media.rs", "structure.rs"];
+        const ALLOWED: &[&str] = &["host/store.rs", "host/workspace.rs", "host/data.rs", "host/skills.rs", "host/media.rs", "structure.rs"];
         fn walk(d: &Path, out: &mut Vec<PathBuf>) {
             for e in std::fs::read_dir(d).unwrap().flatten() {
                 if e.path().is_dir() { walk(&e.path(), out) } else if e.path().extension().is_some_and(|x| x == "rs") { out.push(e.path()) }
