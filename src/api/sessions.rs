@@ -11,4 +11,5 @@ wire! {
     sessions() -> Vec<Session>;
     session_open(harness: String, title: String, project: String) -> Session;
     session_prompt(id: u64, text: String) -> ();
+    session_permit(id: u64, mode: String) -> Session;
 }

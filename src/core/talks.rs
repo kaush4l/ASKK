@@ -44,11 +44,55 @@ pub struct TalkInfo {
     pub at: u64,
     /// It is the one open now.
     pub current: bool,
+    /// What the owner named it; empty: it goes by its title.
+    #[serde(default)]
+    pub name: String,
+    /// Put away: not in the list, but kept and found by a search.
+    #[serde(default)]
+    pub archived: bool,
+    /// Done with: listed under its own heading.
+    #[serde(default)]
+    pub settled: bool,
+}
+
+/// What the owner said about one conversation.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Meta {
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub name: String,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub archived: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub settled: bool,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 struct Index {
     current: u64,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    meta: BTreeMap<u64, Meta>,
+}
+
+/// One conversation a search found: where, and the words around what was looked for.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct TalkHit {
+    pub id: u64,
+    pub title: String,
+    /// The line it was found in, cut around the words; empty when only the title matched.
+    pub said: String,
+    pub current: bool,
+    pub archived: bool,
+}
+
+/// `text` cut to about 90 letters around the first place `low` (small letters) is in it.
+fn around(text: &str, low: &str) -> Option<String> {
+    let lower = text.to_lowercase();
+    let at = lower.find(low)?;
+    let chars: Vec<char> = text.chars().collect();
+    let start = lower[..at].chars().count().saturating_sub(30);
+    let piece: String = chars.iter().skip(start).take(90).collect();
+    let piece = piece.split_whitespace().collect::<Vec<_>>().join(" ");
+    Some(format!("{}{piece}{}", if start > 0 { "…" } else { "" }, if start + 90 < chars.len() { "…" } else { "" }))
 }
 
 /// The id of the conversation an engine had before there were several.
@@ -78,9 +122,52 @@ impl Engine {
         join(&self.key, &format!("{TALKS}/{id}.json"))
     }
 
+    fn index(&self) -> Index {
+        store::data().get(&self.index_key()).and_then(|s| serde_json::from_str::<Index>(&s).ok()).unwrap_or_default()
+    }
+
+    fn save_index(&self, i: &Index) -> Result<(), String> {
+        store::data().put(&self.index_key(), &serde_json::to_string(i).map_err(|e| e.to_string())?)
+    }
+
     /// The id of the conversation open now.
     pub fn current_talk(&self) -> u64 {
-        store::data().get(&self.index_key()).and_then(|s| serde_json::from_str::<Index>(&s).ok()).map(|i| i.current).filter(|c| *c > 0).unwrap_or(FIRST)
+        Some(self.index().current).filter(|c| *c > 0).unwrap_or(FIRST)
+    }
+
+    /// Change what the owner said about the conversation `id` (rename, archive, settle).
+    pub fn mark_talk(&self, id: u64, change: impl FnOnce(&mut Meta)) -> Result<(), String> {
+        if !self.talks().iter().any(|t| t.id == id) {
+            return Err(format!("{} has no conversation {id}", self.path));
+        }
+        let mut i = self.index();
+        if i.current == 0 {
+            i.current = FIRST;
+        }
+        change(i.meta.entry(id).or_default());
+        i.meta.retain(|_, m| *m != Meta::default());
+        self.save_index(&i)?;
+        self.bump();
+        Ok(())
+    }
+
+    /// Every conversation whose title, name or words hold `query` (small and capital letters
+    /// alike), the open one first; archived ones too.
+    pub fn search_talks(&self, query: &str) -> Vec<TalkHit> {
+        let low = query.trim().to_lowercase();
+        if low.is_empty() {
+            return vec![];
+        }
+        let mut out = vec![];
+        for t in self.talks() {
+            let turns: Vec<(String, String)> = if t.current { self.transcript() } else { self.talk_parts(t.id).map(|p| p.iter().flat_map(|c| c.transcript()).collect()).unwrap_or_default() };
+            let said = turns.iter().filter(|(role, _)| role == "user" || role == "model" || role == "summary").find_map(|(_, text)| around(text, &low));
+            let named = t.title.to_lowercase().contains(&low) || t.name.to_lowercase().contains(&low);
+            if named || said.is_some() {
+                out.push(TalkHit { id: t.id, title: if t.name.is_empty() { t.title } else { t.name }, said: said.unwrap_or_default(), current: t.current, archived: t.archived });
+            }
+        }
+        out
     }
 
     fn transcript(&self) -> Vec<(String, String)> {
@@ -115,14 +202,17 @@ impl Engine {
     }
 
     fn set_current(&self, id: u64) -> Result<(), String> {
-        store::data().put(&self.index_key(), &serde_json::to_string(&Index { current: id }).map_err(|e| e.to_string())?)
+        let mut i = self.index();
+        i.current = id;
+        self.save_index(&i)
     }
 
     /// Every conversation, the open one first, then the others, last open first.
     pub fn talks(&self) -> Vec<TalkInfo> {
         let current = self.current_talk();
         let turns = self.transcript();
-        let mut out = vec![TalkInfo { id: current, title: title_of(&turns), turns: turns.len(), at: now(), current: true }];
+        let meta = self.index().meta;
+        let mut out = vec![TalkInfo { id: current, title: title_of(&turns), turns: turns.len(), at: now(), current: true, ..Default::default() }];
         let data = store::data();
         let mut others: Vec<TalkInfo> = data
             .list(&join(&self.key, TALKS))
@@ -131,10 +221,14 @@ impl Engine {
             .filter_map(|f| data.get(&join(&self.key, &format!("{TALKS}/{}", f.name))))
             .filter_map(|s| serde_json::from_str::<Saved>(&s).ok())
             .filter(|s| s.id != current)
-            .map(|s| TalkInfo { id: s.id, title: s.title, turns: s.turns, at: s.at, current: false })
+            .map(|s| TalkInfo { id: s.id, title: s.title, turns: s.turns, at: s.at, ..Default::default() })
             .collect();
         others.sort_by(|a, b| b.at.cmp(&a.at));
         out.extend(others);
+        for t in out.iter_mut() {
+            let m = meta.get(&t.id).cloned().unwrap_or_default();
+            (t.name, t.archived, t.settled) = (m.name, m.archived, m.settled);
+        }
         out
     }
 
@@ -239,5 +333,19 @@ mod tests {
         assert!(e.transcript().iter().any(|(_, t)| t.contains("two and two")), "it goes on where it was");
         assert_eq!(e.talks().len(), 2);
         assert!(e.open_talk(999).is_err());
+        // Renamed, settled and archived; found by its title and by its words.
+        let other = e.talks()[1].id;
+        e.mark_talk(other, |m| { m.name = "Colours".into(); m.archived = true; }).unwrap();
+        e.mark_talk(FIRST, |m| m.settled = true).unwrap();
+        let all = e.talks();
+        assert_eq!((all[1].name.as_str(), all[1].archived, all[0].settled), ("Colours", true, true));
+        assert!(e.mark_talk(999, |m| m.settled = true).is_err());
+        let hits = e.search_talks("SKY");
+        assert_eq!(hits.iter().map(|h| (h.id, h.title.as_str(), h.archived)).collect::<Vec<_>>(), [(other, "Colours", true)]);
+        assert!(hits[0].said.to_lowercase().contains("sky"), "{hits:?}");
+        assert_eq!(e.search_talks("colours")[0].said, "", "found by its name only");
+        assert!(e.search_talks("  ").is_empty() && e.search_talks("zebra").is_empty());
+        e.mark_talk(other, |m| m.archived = false).unwrap();
+        assert!(!e.talks()[1].archived, "undone");
     }
 }

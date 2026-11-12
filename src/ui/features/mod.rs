@@ -23,6 +23,7 @@
 pub mod asks;
 pub mod boxes;
 pub mod code;
+pub mod compose;
 pub mod diff;
 pub mod files;
 pub mod keymap;

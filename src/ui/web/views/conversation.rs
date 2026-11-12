@@ -13,14 +13,12 @@
 //!
 //! This file only asks and hands down. Every part it draws with is given its values
 //! (`ui/web/components`).
-use super::boxes::Boxes;
 use crate::api::{engine_run, media_picture, post_message, talk, talk_saved, Chip, Mode, Talk};
 use crate::core::boxes::{GOAL, LEARNING};
-use crate::core::media::token;
 use crate::core::run::Run;
 use crate::ui::features::asks::{answer_text, parse_asks};
 use crate::ui::features::run as words;
-use crate::ui::web::components::{AskForm, Attached, Composer, EngineChip, EnginePick, Icon, ModelChoice, RunView, SideEdge, SpecView, TalkList, Thread, SIDE_WIDTH};
+use crate::ui::web::components::{AskForm, EngineChip, EnginePick, Icon, RunView, SideEdge, SpecView, TalkList, Thread, SIDE_WIDTH};
 use crate::ui::web::figure::FigureView;
 use crate::ui::web::kit::{Button, ButtonSize, ButtonVariant, Collapsible, CollapsibleContent, CollapsibleTrigger, Tabs, TabsContent, TabsList, TabsTrigger};
 use dioxus::prelude::*;
@@ -39,31 +37,6 @@ fn going(t: &Talk) -> BTreeSet<u64> {
 /// What a run was asked, in a few words (no sender, no attachment tokens).
 fn asked(input: &str) -> String {
     crate::core::media::without_refs(&crate::api::sender(input).1).chars().take(90).collect()
-}
-
-/// Which model answers `path`: every model, the default, and the one the engine names itself.
-fn use_models(path: String) -> (ModelChoice, EventHandler<String>) {
-    let mut models = use_resource(crate::api::models::list_models);
-    let own = use_resource(move || {
-        let path = path.clone();
-        async move {
-            // The engine's own file says which model it names; none = it follows the default.
-            let files = crate::api::pack_export(path).await.map(|(files, _)| files).unwrap_or_default();
-            files.into_iter().find(|(name, _)| name == "engine.json").and_then(|(_, text)| serde_json::from_str::<serde_json::Value>(&text).ok()).and_then(|v| v["model"].as_str().map(String::from)).unwrap_or_default()
-        }
-    });
-    let all = models.read().as_ref().and_then(|r| r.as_ref().ok()).cloned().unwrap_or_default();
-    let choice = ModelChoice { models: all.models.iter().map(|m| m.name.clone()).collect(), default: all.default.clone(), own: own().unwrap_or_default() };
-    let pick = use_callback(move |name: String| {
-        let mut next = all.clone();
-        spawn(async move {
-            next.default = name;
-            if crate::api::models::save_models(next).await.is_ok() {
-                models.restart();
-            }
-        });
-    });
-    (choice, pick)
 }
 
 /// How wide the panel beside is, kept by this browser for the page and for an open box apart.
@@ -101,14 +74,11 @@ pub fn Conversation(path: String, #[props(default)] engines: Vec<Mode>, #[props(
     // The message just sent, shown until the conversation holds it: (text, turns when sent).
     let mut pending = use_signal(|| (String::new(), 0usize));
     let mut error = use_signal(String::new);
-    let mut busy = use_signal(|| false);
     let mut confirm = use_signal(|| false);
-    let mut attached = use_signal(Vec::<Attached>::new);
-    let next_key = use_signal(|| 0u64);
     // The panel beside the conversation: `None` leaves it to the screen (shown when wide).
     let mut side = use_signal(|| None::<bool>);
-    let mut boxes = use_context::<Boxes>();
-    let id = format!("engine:{path}");
+    // A conversation archived a moment ago, which can still be brought back: (id, title).
+    let mut undo = use_signal(|| None::<(u64, String, bool)>);
     let (p1, p2, p3, p4, p5) = (path.clone(), path.clone(), path.clone(), path.clone(), path.clone());
     let m = super::live::use_manifest();
     // The answer being written arrives under a key of its own, so the rest is not asked again
@@ -130,6 +100,19 @@ pub fn Conversation(path: String, #[props(default)] engines: Vec<Mode>, #[props(
     });
     let talk_list = talks.read().as_ref().and_then(|r| r.as_ref().ok()).cloned().unwrap_or_default();
     let mut show_talks = use_signal(|| false);
+    // Conversations found by what is typed in the list's search field.
+    let mut query = use_signal(String::new);
+    let p9 = path.clone();
+    let hits = use_resource(move || {
+        let (p, q) = (p9.clone(), query());
+        async move {
+            if q.trim().is_empty() {
+                return None;
+            }
+            crate::api::talk_search(p, q).await.ok()
+        }
+    });
+    let hits = move || hits.read().clone().flatten();
     // A conversation put aside, being read while the open one stays as it is (`None`: the open one).
     let mut reading = use_signal(|| None::<u64>);
     let p8 = path.clone();
@@ -195,8 +178,7 @@ pub fn Conversation(path: String, #[props(default)] engines: Vec<Mode>, #[props(
     let mut pictures = use_signal(BTreeMap::<String, String>::new);
     let _pictures = use_resource(move || {
         let in_talk: Vec<Chip> = shown.read().as_ref().map(|t| t.beats.iter().flat_map(|b| b.media.clone()).collect()).unwrap_or_default();
-        let here: Vec<Chip> = attached.read().iter().filter_map(|a| a.chip.clone()).collect();
-        let ids: Vec<String> = in_talk.into_iter().chain(here).filter(|c| c.pictures > 0 && !pictures.peek().contains_key(&c.id)).map(|c| c.id).collect();
+        let ids: Vec<String> = in_talk.into_iter().filter(|c| c.pictures > 0 && !pictures.peek().contains_key(&c.id)).map(|c| c.id).collect();
         async move {
             for id in ids {
                 if let Ok(src) = media_picture(id.clone()).await {
@@ -210,14 +192,14 @@ pub fn Conversation(path: String, #[props(default)] engines: Vec<Mode>, #[props(
         let _ = live();
         crate::api::engine_asks(p4.clone())
     });
-    let open_asks = asks.read().as_ref().and_then(|r| r.as_ref().ok()).map(|(_, text)| parse_asks(text)).unwrap_or_default();
+    // A call that waits for a yes is answered in the foot, with Allow and Deny.
+    let open_asks: Vec<_> = asks.read().as_ref().and_then(|r| r.as_ref().ok()).map(|(_, text)| parse_asks(text)).unwrap_or_default().into_iter().filter(|a| crate::core::permit::id_in(&a.question).is_none()).collect();
     let mut answered = use_signal(String::new);
     let spec = use_resource(move || {
         let _ = live();
         crate::api::engine_prompt(p5.clone(), String::new())
     });
     let part = |name: &str| spec.read().as_ref().and_then(|r| r.as_ref().ok()).and_then(|s| s.iter().find(|x| x.name == name).map(|x| x.body.clone())).unwrap_or_default();
-    let (model, on_model) = use_models(path.clone());
     // Keep the newest message in sight, and the answer being written as it grows.
     use_effect(move || {
         let _ = (shown.read().as_ref().map(|t| (t.beats.len(), t.beats.last().map(|b| b.replies.len() + b.figures.len()))), pending.read().0.len());
@@ -226,56 +208,47 @@ pub fn Conversation(path: String, #[props(default)] engines: Vec<Mode>, #[props(
         // so the first jump lands on an estimate and the second on the true end.
         document::eval("const end = () => { const b = document.getElementById('thread'); if (b) b.scrollTop = b.scrollHeight; }; requestAnimationFrame(() => { end(); requestAnimationFrame(end); });");
     });
-    let sending = attached.read().iter().any(Attached::sending);
-    let turns_now = t.beats.len();
     let working = words::at_work(&t.activity);
-    let queued = boxes.queue.read().of(&id);
-    let waits = working || !queued.is_empty();
-    let send = {
-        let (path, id) = (path.clone(), id.clone());
-        move |_| {
-            let tokens: Vec<String> = attached.read().iter().filter_map(|p| p.chip.as_ref().map(|c| token(&c.id))).collect();
-            let said = input().trim().to_string();
-            if (said.is_empty() && tokens.is_empty()) || busy() || sending {
-                return;
-            }
-            let text = [said.clone(), tokens.join(" ")].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" ");
-            input.set(String::new());
-            attached.write().clear();
-            error.set(String::new());
-            // While it works, the message waits in sight and goes when it is done.
-            if waits {
-                boxes.say(id.clone(), text);
-                return;
-            }
+    let act = {
+        let path = path.clone();
+        // Clear its conversation.
+        move |_: bool| {
             let path = path.clone();
-            busy.set(true);
-            pending.set((if said.is_empty() { "(attachment)".into() } else { said }, turns_now));
             spawn(async move {
-                // Posted to the engine's box: it runs on its own; live updates bring the reply.
-                if let Err(e) = post_message(path, text).await {
+                if let Err(e) = crate::api::clear_history(path).await {
                     error.set(e.to_string());
-                    pending.set((String::new(), 0));
                 }
-                busy.set(false);
+                confirm.set(false);
+                full.write().clear();
                 conv.restart();
             });
         }
     };
-    let act = {
+    // Rename, settle or archive a conversation; an archive can be undone for five seconds.
+    let mark = {
         let path = path.clone();
-        // Stop the engine, or clear its conversation.
-        move |clear: bool| {
+        move |(tid, what, title): (u64, String, String)| {
             let path = path.clone();
             spawn(async move {
-                let done = if clear { crate::api::clear_history(path).await } else { crate::api::stop_engine(path).await };
-                if let Err(e) = done {
-                    error.set(e.to_string());
-                }
-                if clear {
-                    confirm.set(false);
-                    full.write().clear();
-                    conv.restart();
+                let done = match what.as_str() {
+                    "archive" | "unarchive" => crate::api::talk_archive(path, tid, what == "archive").await,
+                    "settle" | "unsettle" => crate::api::talk_settle(path, tid, what == "settle").await,
+                    name => crate::api::talk_rename(path, tid, name.strip_prefix("name:").unwrap_or_default().to_string()).await,
+                };
+                match done {
+                    Err(e) => error.set(e.to_string()),
+                    Ok(()) => {
+                        talks.restart();
+                        if what == "archive" {
+                            let stamp = web_time::SystemTime::now().duration_since(web_time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
+                            undo.set(Some((tid, title, stamp % 2 == 0)));
+                            let mine = undo();
+                            let _ = document::eval("await new Promise(r => setTimeout(r, 5000)); return 0;").await;
+                            if undo() == mine {
+                                undo.set(None);
+                            }
+                        }
+                    }
                 }
             });
         }
@@ -376,7 +349,7 @@ pub fn Conversation(path: String, #[props(default)] engines: Vec<Mode>, #[props(
                             Button { variant: ButtonVariant::Destructive, size: ButtonSize::Sm, onclick: { let act = act.clone(); move |_| act(true) }, "Clear all turns" }
                             Button { variant: ButtonVariant::Ghost, size: ButtonSize::Sm, onclick: move |_| confirm.set(false), "Cancel" }
                         } else {
-                            Button { variant: ButtonVariant::Ghost, size: ButtonSize::Icon, disabled: busy(), aria_label: "Clear the conversation", title: "Clear the conversation and the board (notes and learning stay)", onclick: move |_| confirm.set(true),
+                            Button { variant: ButtonVariant::Ghost, size: ButtonSize::Icon, disabled: working, aria_label: "Clear the conversation", title: "Clear the conversation and the board (notes and learning stay)", onclick: move |_| confirm.set(true),
                                 Icon { name: "trash", size: 18 }
                             }
                         }
@@ -389,14 +362,30 @@ pub fn Conversation(path: String, #[props(default)] engines: Vec<Mode>, #[props(
                     }
                 }
                 if show_talks() {
-                    TalkList { talks: talk_list.clone(), busy: working, reading: reading(),
+                    TalkList { talks: talk_list.clone(), busy: working, reading: reading(), hits: hits().unwrap_or_default(), query: query(),
                         on_open: { let switch = switch.clone(); move |id| switch(Some(id)) },
                         on_new: { let switch = switch.clone(); move |_| switch(None) },
+                        on_mark: { let mark = mark.clone(); move |x| mark(x) },
+                        on_query: move |q: String| query.set(q),
                     }
                 }
                 Thread { beats: seen.beats.clone(), runs: runs.clone(), pictures: pictures(), pending: if waiting && reading().is_none() { pending.read().0.clone() } else { String::new() }, loading, writing: writing.filter(|_| reading().is_none()),
                     on_open: move |(id, open): (u64, bool)| {
                         if open { opened.write().insert(id); } else { opened.write().remove(&id); }
+                    },
+                    on_edit: if reading().is_none() && !working { Some(EventHandler::new({ let path = path.clone(); move |n: usize| {
+                        let path = path.clone();
+                        spawn(async move {
+                            match crate::api::rewind(path, n).await {
+                                Ok(asked) => { pending.set((String::new(), 0)); input.set(asked); full.write().clear(); conv.restart(); document::eval("document.getElementById('composer')?.focus()"); }
+                                Err(e) => error.set(e.to_string()),
+                            }
+                        });
+                    } })) } else { None },
+                    on_cite: move |said: String| {
+                        let next = crate::ui::features::compose::cite(&said, &input.peek());
+                        input.set(next);
+                        document::eval("const c = document.getElementById('composer'); if (c) { c.focus(); c.setSelectionRange(c.value.length, c.value.length); }");
                     },
                 }
                 div { class: "talk-foot",
@@ -425,17 +414,20 @@ pub fn Conversation(path: String, #[props(default)] engines: Vec<Mode>, #[props(
                                 }
                             }
                         }
-                        if reading().is_none() { Composer { value: input, to: path.clone(), attached: attached(), pictures: pictures(), working, busy: busy() || sending, queued, model,
-                            on_send: send, on_stop: { let act = act.clone(); move |_| act(false) },
-                            on_attach: move |e: FormEvent| { spawn(super::upload::upload(e.files(), attached, next_key)); },
-                            on_remove: move |key| attached.write().retain(|a| a.key != key),
-                            on_unqueue: { let id = id.clone(); move |(key, edit): (u64, bool)| {
-                                let text = boxes.unqueue(&id, key);
-                                if let Some(text) = text.filter(|_| edit) { input.set(text); }
-                            } },
-                            on_steer: { let id = id.clone(); move |key: u64| boxes.steer(&id, key) },
-                            on_model: move |name| on_model.call(name),
-                        } }
+                        if let Some((tid, title, _)) = undo() {
+                            div { class: "undo-note glass", role: "status",
+                                p { class: "grow", "“{title}” is archived." }
+                                Button { variant: ButtonVariant::Outline, size: ButtonSize::Sm, onclick: { let mark = mark.clone(); move |_| { undo.set(None); mark((tid, "unarchive".into(), String::new())); } },
+                                    Icon { name: "undo", size: 14 } "Undo"
+                                }
+                            }
+                        }
+                        if reading().is_none() {
+                            super::compose::Foot { path: path.clone(), input, pending, error, t: t.clone(), talks: talk_list.clone(),
+                                on_sent: move |_| conv.restart(),
+                                on_reset: move |_| { pending.set((String::new(), 0)); full.write().clear(); opened.write().clear(); conv.restart(); talks.restart(); },
+                            }
+                        }
                     }
                 }
             }

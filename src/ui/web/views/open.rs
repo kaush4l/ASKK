@@ -81,6 +81,14 @@ fn SessionTalk(n: u64) -> Element {
                     div { class: "lane",
                         if !wrong.is_empty() { p { class: "talk-error", role: "alert", "{wrong}" } }
                         Composer { value: input, to: s.harness.clone(), working, queued,
+                            // Its harness is given the mode in its own words, from the next prompt on.
+                            permit: Some(s.permit.map(|m| m.word()).unwrap_or("ask").to_string()),
+                            on_permit: move |mode: String| {
+                                let mut wrong = boxes.wrong;
+                                spawn(async move {
+                                    if let Err(e) = crate::api::session_permit(n, mode).await { wrong.set(e.to_string()); }
+                                });
+                            },
                             on_send: { let id = id.clone(); move |_| {
                                 let text = input().trim().to_string();
                                 if !text.is_empty() {

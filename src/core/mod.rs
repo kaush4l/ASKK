@@ -34,8 +34,10 @@ pub mod manifest;
 pub mod media;
 pub mod models;
 pub mod node;
+pub mod owner;
 pub mod pack;
 pub mod param;
+pub mod permit;
 pub mod keys;
 pub mod places;
 pub mod reread;
@@ -49,6 +51,7 @@ pub mod sandbox;
 pub mod service;
 pub mod session;
 pub mod settings;
+pub mod steer;
 pub mod boot;
 pub mod store;
 pub mod surfaces;
@@ -94,6 +97,9 @@ pub enum Event {
     Folded(String),
     /// The user cleared the conversation (history forgets its turns).
     Cleared,
+    /// The conversation goes back to just before its `n`-th asking (0: the first): what came
+    /// from there on is forgotten, so it can be asked again ("edit from here").
+    Rewound(usize),
     /// The element now belongs to the engine at this path (sent once, when the engine is built).
     Bound(String),
 }

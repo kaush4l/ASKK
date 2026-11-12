@@ -35,7 +35,7 @@ pub use surface::{Glass, Pane};
 mod pill;
 pub use pill::{Pill, PILL_WIDTH};
 mod asks;
-pub use asks::AskForm;
+pub use asks::{ApprovalForm, AskForm};
 mod boxes;
 pub use boxes::{BoxRow, BoxTile, OpenHead, Shown};
 mod markdown;
@@ -75,4 +75,4 @@ mod workspace;
 pub use workspace::{DiffView, FilesView};
 mod composer;
 #[allow(unused_imports)]
-pub use composer::{Attached, Composer, ModelChoice, ModelPick, QueueList};
+pub use composer::{Attached, Composer, ModelChoice, ModelPick, PermitPick, QueueList, Reach, SteerLine};

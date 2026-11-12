@@ -8,8 +8,13 @@
 //! (`turn.failed`), and an answer and a resumed answer with `-m` set to a model the account
 //! accepts. The model comes from this home's `harnesses.json`; none there = Codex's own.
 //!
-//! A new session is read-only: it can read and answer but changes nothing.
+//! The session's permission mode is Codex's sandbox (`-s`): none or `ask` is `read-only` (it
+//! reads and answers but changes nothing), `edits` is `workspace-write`, `all` is
+//! `danger-full-access` (still inside the folder askk's own sandbox allows). `exec` never
+//! stops to ask, so these are the whole of it. A resumed session is given the same as a
+//! setting (`-c sandbox_mode=...`).
 use super::{missing, or_stderr, run};
+use crate::core::permit::Mode;
 use crate::core::session::{Harness, Prompt, Reply};
 use crate::core::Fut;
 use serde_json::Value;
@@ -42,6 +47,15 @@ fn parse(out: &str) -> Result<Reply, String> {
     }
 }
 
+/// Codex's sandbox for a permission mode.
+fn sandbox(permit: Option<Mode>) -> &'static str {
+    match permit {
+        None | Some(Mode::Ask) => "read-only",
+        Some(Mode::Edits) => "workspace-write",
+        Some(Mode::All) => "danger-full-access",
+    }
+}
+
 impl Harness for Codex {
     fn kind(&self) -> &'static str {
         PROGRAM
@@ -59,9 +73,11 @@ impl Harness for Codex {
         let state = self.state();
         Box::pin(async move {
             let mut args = vec!["exec".to_string()];
+            let sandbox = sandbox(p.permit);
+            let setting = format!("sandbox_mode={sandbox:?}");
             match &p.native {
-                Some(id) => args.extend(["resume", "--json", "--skip-git-repo-check", id, "-"].map(String::from)),
-                None => args.extend(["--json", "--skip-git-repo-check", "-s", "read-only", "-"].map(String::from)),
+                Some(id) => args.extend(["-c", &setting, "resume", "--json", "--skip-git-repo-check", id, "-"].map(String::from)),
+                None => args.extend(["--json", "--skip-git-repo-check", "-s", sandbox, "-"].map(String::from)),
             }
             if !p.model.is_empty() {
                 // Before the trailing `-` (the prompt comes on stdin).
@@ -76,6 +92,11 @@ impl Harness for Codex {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_owners_mode_is_codexs_sandbox() {
+        assert_eq!([None, Some(Mode::Ask), Some(Mode::Edits), Some(Mode::All)].map(sandbox), ["read-only", "read-only", "workspace-write", "danger-full-access"]);
+    }
 
     #[test]
     fn the_codex_wire_becomes_a_reply() {

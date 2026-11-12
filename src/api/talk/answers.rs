@@ -126,6 +126,102 @@ pub async fn busy() -> Result<Vec<Busy>, String> {
     Ok(out)
 }
 
+fn engine(path: &str) -> Result<std::sync::Arc<crate::core::Engine>, String> {
+    crate::core::world::find(path).ok_or_else(|| say(format!("no engine '{path}'")))
+}
+
+/// What the engine at `path` may do without asking, and the calls that wait for a yes now.
+pub async fn engine_permit(path: String) -> Result<Permit, String> {
+    let e = engine(&path)?;
+    let mode = e.file.held().permit;
+    Ok(Permit { mode: mode.word().into(), waiting: crate::core::permit::waiting(&path) })
+}
+
+/// Choose what the engine at `path` may do without asking: `ask`, `edits` or `all`. Kept in
+/// its `engine.json`; the next step of a run in hand is already held to it.
+pub async fn set_engine_permit(path: String, mode: String) -> Result<(), String> {
+    let mode = crate::core::permit::Mode::parse(&mode)?;
+    engine(&path)?.set_permit(mode);
+    Ok(())
+}
+
+/// Answer a call that waits for a yes: `yes` runs it, no tells the engine it was refused.
+pub async fn approve(path: String, id: u64, yes: bool) -> Result<(), String> {
+    engine(&path)?;
+    crate::core::permit::answer(&path, id, yes)
+}
+
+/// The model the engine at `path` names itself; empty: it follows the default.
+pub async fn engine_model(path: String) -> Result<String, String> {
+    Ok(engine(&path)?.file.held().model.clone())
+}
+
+/// Name `model` as the engine's own (written in its `engine.json`); empty: follow the default.
+pub async fn set_engine_model(path: String, model: String) -> Result<(), String> {
+    let e = engine(&path)?;
+    let key = crate::core::manifest::manifest().models.clone();
+    let known: Vec<String> = crate::core::store::data().get(&key).and_then(|t| serde_json::from_str::<crate::core::models::Models>(&t).ok()).map(|m| m.models.into_iter().map(|m| m.name).collect()).unwrap_or_default();
+    e.set_model(&model, &known)
+}
+
+/// Replace the engine's goal (`/goal` in the composer).
+pub async fn set_engine_goal(path: String, text: String) -> Result<(), String> {
+    engine(&path)?.set_goal_text(&text)
+}
+
+/// Fold the conversation into a summary now (`/compact`); the summary.
+pub async fn compact(path: String) -> Result<String, String> {
+    engine(&path)?.compact().await
+}
+
+/// Send `text` into the run the engine at `path` has in hand: it lands at the run's next step.
+/// An engine that is not at work gets it as a plain message instead (0 is given back then).
+pub async fn steer(path: String, text: String) -> Result<u64, String> {
+    let e = engine(&path)?;
+    if text.trim().is_empty() {
+        return Err(say("an empty steer"));
+    }
+    if !crate::core::engine::working(&e.activity().0) {
+        crate::core::board::board().post("user", &path, &text, crate::core::board::Cause::Person).map_err(say)?;
+        return Ok(0);
+    }
+    Ok(crate::core::steer::push(&path, &e.key, &text))
+}
+
+/// The steers of the engine at `path`: those that wait for its next step, and where the last landed.
+pub async fn steers(path: String) -> Result<Vec<Steer>, String> {
+    engine(&path)?;
+    Ok(crate::core::steer::of(&path))
+}
+
+/// Go back to just before the `n`-th asking of the open conversation ("edit from here"); the
+/// words asked there, without who sent them.
+pub async fn rewind(path: String, n: usize) -> Result<String, String> {
+    let raw = engine(&path)?.rewind(n)?;
+    Ok(crate::core::media::without_refs(&sender(&raw).1))
+}
+
+/// Name the conversation `id` (empty: it goes by its first message again).
+pub async fn talk_rename(path: String, id: u64, name: String) -> Result<(), String> {
+    let name: String = name.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(80).collect();
+    engine(&path)?.mark_talk(id, |m| m.name = name)
+}
+
+/// Put the conversation `id` away (`archived`), or back in the list.
+pub async fn talk_archive(path: String, id: u64, archived: bool) -> Result<(), String> {
+    engine(&path)?.mark_talk(id, |m| m.archived = archived)
+}
+
+/// Mark the conversation `id` as done with (`settled`), or not.
+pub async fn talk_settle(path: String, id: u64, settled: bool) -> Result<(), String> {
+    engine(&path)?.mark_talk(id, |m| m.settled = settled)
+}
+
+/// Every conversation of the engine whose title or words hold `query`.
+pub async fn talk_search(path: String, query: String) -> Result<Vec<TalkHit>, String> {
+    Ok(engine(&path)?.search_talks(&query))
+}
+
 /// Start sending a file; returns the id its pieces go to.
 #[cfg(feature = "server")]
 pub async fn media_begin(name: String, mime: String) -> Result<String, String> {

@@ -162,7 +162,31 @@ wire! {
     talk_new(path: String) -> u64;
     talk_open(path: String, id: u64) -> ();
     talk_saved(path: String, id: u64) -> Talk;
+    engine_permit(path: String) -> Permit;
+    set_engine_permit(path: String, mode: String) -> ();
+    approve(path: String, id: u64, yes: bool) -> ();
+    engine_model(path: String) -> String;
+    set_engine_model(path: String, model: String) -> ();
+    set_engine_goal(path: String, text: String) -> ();
+    compact(path: String) -> String;
+    steer(path: String, text: String) -> u64;
+    steers(path: String) -> Vec<Steer>;
+    talk_rename(path: String, id: u64, name: String) -> ();
+    talk_archive(path: String, id: u64, archived: bool) -> ();
+    talk_settle(path: String, id: u64, settled: bool) -> ();
+    talk_search(path: String, query: String) -> Vec<TalkHit>;
+    rewind(path: String, n: usize) -> String;
 }
+
+/// What an engine may do without asking (`ask`, `edits`, `all`), and the calls that wait for a yes.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Permit {
+    pub mode: String,
+    pub waiting: Vec<crate::core::permit::Approval>,
+}
+
+pub use crate::core::steer::Steer;
+pub use crate::core::talks::TalkHit;
 
 /// The answer an engine is writing now, as far as it has come: the run and step it is for,
 /// the answer so far (what the reply format calls the answer; all of it without one), and how
