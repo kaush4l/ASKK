@@ -10,7 +10,7 @@
 #   ./scripts/stream.sh                 test the last build
 #   ./scripts/stream.sh <app>           the built app's folder
 #
-# PORT is the service's port; TAB_PORT the model server's (the same pair the landmark uses).
+# PORT is the service's port; the model server listens on SSE_PORT (default TAB_PORT + 1).
 set -u
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 OUT=${1:-$ROOT/target/dx/askk/release/web}
@@ -20,7 +20,8 @@ BIN=$OUT/server
 command -v python3 >/dev/null || { echo "python3 is not installed: there is no model server to stream from"; exit 1; }
 
 PORT=${PORT:-8798}
-SSE_PORT=${TAB_PORT:-8799}
+# Its own port: the landmark, just before, serves the tab on TAB_PORT, which may not be free yet.
+SSE_PORT=${SSE_PORT:-$((${TAB_PORT:-8799} + 1))}
 URL=http://127.0.0.1:$PORT
 WORK=$(mktemp -d)
 mkdir -p "$WORK/app" "$WORK/home/data" "$WORK/ws"
@@ -57,7 +58,14 @@ until curl -s -o /dev/null "$URL/ask" || [ $n -ge 60 ]; do
     sleep 1
     n=$((n + 1))
 done
-curl -s -o /dev/null "http://127.0.0.1:$SSE_PORT/v1/models" || fail "the model server did not start on $SSE_PORT"
+# The model server may come up later than the service on a busy machine.
+n=0
+until curl -s -o /dev/null "http://127.0.0.1:$SSE_PORT/v1/models" || [ $n -ge 75 ]; do
+    kill -0 "$MODEL" 2>/dev/null || break
+    sleep 0.2
+    n=$((n + 1))
+done
+curl -s -o /dev/null "http://127.0.0.1:$SSE_PORT/v1/models" || fail "the model server did not start on $SSE_PORT; it said: $(tail -5 "$WORK/model.log" 2>/dev/null | tr '\n' ' ')"
 
 echo "== 1. the answer is seen while it arrives"
 ask run_engine '{"path":"askk/developer","input":"Tell me how a stream arrives."}' >"$WORK/answer.json" &

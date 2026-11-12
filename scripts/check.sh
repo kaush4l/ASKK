@@ -32,7 +32,7 @@ quiet() {
         tail -40 "$log"
         # On GitHub, also put the end of it where the run's summary shows it.
         if [ -n "${GITHUB_ACTIONS:-}" ]; then
-            printf '::error title=check.sh: %s::%s\n' "$1 $2" "$(tail -25 "$log" | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"
+            printf '::error title=check.sh: %s::%s\n' "$1 ${2:-}" "$(tail -25 "$log" | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"
         fi
         rm -f "$log"
         return 1
