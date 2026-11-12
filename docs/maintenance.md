@@ -84,7 +84,7 @@ shell (what holds the window); the core is the same in all of them.
 
 | build | made with | what it is | host | checked in CI | published |
 | --- | --- | --- | --- | --- | --- |
-| `server` | `--features server` | the host: runs the engines, serves pages and `/ask` | `host/` | built and tested on Linux and macOS (x86-64, arm64), built on Windows (x86-64, arm64) | a program per machine, kept with each CI run |
+| `server` | `--features "server terminals sandbox"` (preset `full`; `docs/build.md`) | the host: runs the engines, serves pages and `/ask`, holds terminals | `host/` | built and tested on Linux and macOS (x86-64, arm64), built on Windows (x86-64, arm64) | a program per machine, kept with each CI run |
 | `web` | `--features web` (wasm) | a window in a browser, on a running host | none: it asks the host | built | with the server (`dx build`) |
 | `desktop` | `--features desktop` | the Mac app: window, tray, Dock, notch | none: it asks the host | compiled on macOS | not yet |
 | `mobile` | `--features mobile` | iPhone and iPad | none: it asks the host | not yet | not yet |

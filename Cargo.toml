@@ -57,7 +57,15 @@ desktop = ["dioxus/desktop", "dep:objc2", "dioxus/fullstack"]
 # The feature that are only required for the mobile = ["dioxus/mobile"] build target should be optional and only enabled in the mobile = ["dioxus/mobile"] feature
 mobile = ["dioxus/mobile", "dioxus/fullstack"]
 # The feature that are only required for the server = ["dioxus/server", "dep:reqwest", "dep:tokio"] build target should be optional and only enabled in the server = ["dioxus/server", "dep:reqwest", "dep:tokio"] feature
-server = ["dioxus/server", "dep:reqwest", "dep:tokio", "dioxus/fullstack", "dep:portable-pty", "dep:vt100", "dep:ratatui", "dep:unicode-width", "dep:landlock"]
+# The host with nothing optional: the service, `/ask`, engines, harnesses, `askk terminal`.
+# (The name is the one Dioxus's `#[server]` looks for.)
+server = ["dioxus/server", "dep:reqwest", "dep:tokio", "dioxus/fullstack", "dep:ratatui", "dep:unicode-width"]
+# Capabilities a host may add (core/caps.rs says which a running build has). Named sets of
+# them are the presets in builds.toml (scripts/build.sh).
+# Real terminals held by the service: the multiplexer.
+terminals = ["server", "dep:portable-pty", "dep:vt100"]
+# A terminal's program confined by the system's own sandbox (macOS: sandbox-exec; Linux: Landlock).
+sandbox = ["server", "dep:landlock"]
 
 [build-dependencies]
 serde_json = "1"

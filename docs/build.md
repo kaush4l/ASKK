@@ -39,3 +39,43 @@ behind `#[cfg(feature = "server")]` or inside a `#[server]` function body.
 ## Data
 
 `ASKK_DATA` (default `./data`) holds runtime files. `data/models.json` is written by the Models view.
+
+## Shells, capabilities and presets
+
+Three things decide a build, and each is chosen apart from the others:
+
+| what | chosen by | the choices |
+| --- | --- | --- |
+| the **shell**: what the build is | one Cargo feature | `server` (the host), `web` (its page), `desktop` (the Mac window), `local` (the whole app in a tab), `mobile` (no shell yet) |
+| the **capabilities**: what a host can do besides the base | more Cargo features, each `["server", …]` | `terminals` (the service holds real terminals: the multiplexer), `sandbox` (their programs are confined: `sandbox-exec` on macOS, Landlock on Linux) |
+| the **target**: which machine | `--target` | this one, or one of the six CI builds the host for |
+
+Cargo's own profiles (`dev`, `release`) only say how hard the compiler works; they never
+change what is in a build.
+
+A capability that is left out is not an error: `capabilities()` (`core/caps.rs`) says what the
+build does without it, and a window hides what it cannot do. The base feature keeps the name
+`server` because Dioxus's `#[server]` looks for a feature of that name.
+
+**Presets** are named sets of these, in `builds.toml`, built by `scripts/build.sh`:
+
+| preset | shell | capabilities | for |
+| --- | --- | --- | --- |
+| `full` | web | terminals, sandbox | what `scripts/run.sh` builds and runs (`PRESET=` picks another) |
+| `lean` | web | none | engines and agents' sessions only, no process held |
+| `open-terminals` | web | terminals | terminals where the system's sandbox gets in the way; each box says it is not confined |
+| `mac` | desktop | none | the Mac window, asking a service started by `askk start` |
+| `tab` | local | none | the app in one browser tab (`scripts/local.sh`, published to Pages) |
+
+```sh
+./scripts/build.sh                 # the presets
+./scripts/build.sh full            # build one as released
+./scripts/build.sh all --check     # compile every preset (a step of scripts/check.sh)
+```
+
+With dx, only the host gets the capabilities, and each half names its platform, or dx builds
+the host for the browser too:
+`dx build --release @client --platform web @server --platform server --features terminals,sandbox`.
+
+A test (`every_preset_names_what_there_is`, `src/structure.rs`) holds the presets to Cargo.toml,
+to the capabilities the core knows, and CI's host build to `full`.

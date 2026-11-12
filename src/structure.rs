@@ -536,3 +536,35 @@ fn what_a_new_hello_means_is_decided_once() {
         }
     }
 }
+
+/// The presets in builds.toml (scripts/build.sh) name only features Cargo.toml has, and
+/// shells the scripts know; CI builds the host as the `full` preset does; and every
+/// capability a feature adds is one the core knows how to say is missing (core/caps.rs).
+#[test]
+fn every_preset_names_what_there_is() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let cargo = std::fs::read_to_string(root.join("Cargo.toml")).unwrap();
+    let builds = std::fs::read_to_string(root.join("builds.toml")).unwrap();
+    let mut presets: Vec<(String, String, Vec<String>)> = Vec::new();
+    for line in builds.lines().map(str::trim) {
+        if let Some(name) = line.strip_prefix('[').and_then(|l| l.strip_suffix(']')) {
+            presets.push((name.to_string(), String::new(), Vec::new()));
+        } else if let (Some(p), Some(v)) = (presets.last_mut(), line.strip_prefix("shell = ")) {
+            p.1 = v.trim_matches('"').to_string();
+        } else if let (Some(p), Some(v)) = (presets.last_mut(), line.strip_prefix("features = ")) {
+            p.2 = v.trim_matches(['[', ']']).split(',').map(|f| f.trim().trim_matches('"').to_string()).filter(|f| !f.is_empty()).collect();
+        }
+    }
+    assert!(presets.iter().any(|p| p.0 == "full"), "scripts/run.sh builds `full`");
+    for (name, shell, features) in &presets {
+        assert!(["web", "desktop", "local", "mobile"].contains(&shell.as_str()), "{name}: no shell '{shell}'");
+        for f in features {
+            assert!(cargo.contains(&format!("\n{f} = [\"server\"")), "{name}: '{f}' is not a feature of the host in Cargo.toml");
+            assert!(crate::core::caps::all().iter().any(|c| &c.name == f), "{name}: '{f}' is not a capability core/caps.rs can say is missing");
+        }
+    }
+    let full = &presets.iter().find(|p| p.0 == "full").unwrap().2;
+    let ci = std::fs::read_to_string(root.join(".github/workflows/ci.yml")).unwrap();
+    let want = format!("--features \"server {}\"", full.join(" "));
+    assert!(ci.contains(&want), "CI builds the host as `full` does: {want}");
+}

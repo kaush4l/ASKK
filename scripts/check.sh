@@ -39,22 +39,17 @@ quiet() {
     fi
 }
 
-step "tests (rules and behaviour)" quiet cargo test --quiet --features server
-step "build: server (the host)" cargo check --quiet --features server
+FULL=$(./scripts/build.sh full --features)
+step "tests (rules and behaviour)" quiet cargo test --quiet --features "$FULL"
+# Every preset in builds.toml compiles: each shell, and each set of capabilities a host may have.
+step "build: every preset in builds.toml (scripts/build.sh)" quiet ./scripts/build.sh all --check
 # Release reads page templates strictly; the everyday build lets some mistakes through.
-step "build: server, as released" cargo check --quiet --release --features server
-step "build: web (a window in a browser)" cargo check --quiet --target $WASM --features web
-if [ "$(uname)" = Darwin ]; then
-    step "build: desktop (the Mac app)" cargo check --quiet --features desktop
-else
-    printf '== build: desktop (the Mac app)\n   not checked: it builds on a Mac only\n'
-fi
-step "build: local (the engine inside a browser tab)" cargo check --quiet --target $WASM --no-default-features --features local
+step "build: server, as released" cargo check --quiet --release --features "$FULL"
 
 # The app as a person runs it (scripts/run.sh): dx puts the host and its window together, and
 # chooses features itself, so only this step shows whether that choice still compiles.
 if command -v dx >/dev/null; then
-    step "build: the full app, as scripts/run.sh builds it" quiet dx build --release --platform web
+    step "build: the full app, as scripts/run.sh builds it" quiet ./scripts/build.sh full
     step "the built app runs (scripts/smoke.sh)" quiet ./scripts/smoke.sh
     step "build: the tab, as published (scripts/local.sh)" quiet ./scripts/local.sh
     # The landmark of 0.1: the engine loop, whole, as a terminal process, as a hosted service

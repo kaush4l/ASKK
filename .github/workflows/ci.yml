@@ -87,12 +87,12 @@ jobs:
         with:
           key: ${{ matrix.target }}
       - name: build the host
-        run: cargo build --release --features server --target ${{ matrix.target }}
+        run: cargo build --release --features "server terminals sandbox" --target ${{ matrix.target }}
       - name: test on this machine
         # The tests start real programs (`sh`, `cp`); Windows has none of them yet.
         if: runner.os != 'Windows'
         shell: bash
-        run: cargo test --features server --target ${{ matrix.target }} 2>&1 | tee test.log
+        run: cargo test --features "server terminals sandbox" --target ${{ matrix.target }} 2>&1 | tee test.log
       # A run's log needs a login to read; its summary does not. Say there what failed.
       - name: say which test failed
         if: failure()

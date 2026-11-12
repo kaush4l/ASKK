@@ -1,0 +1,37 @@
+# The builds this one source makes, by name (`scripts/build.sh <name>`).
+#
+# Three things decide a build (docs/build.md):
+#   shell     what it is: the host and its page (`web`), the Mac window (`desktop`), the tab
+#             with no server (`local`), a phone (`mobile`, no shell yet)
+#   features  what the host can do besides the base `server`: `terminals` (the service holds
+#             real terminals), `sandbox` (their programs are confined). A capability that is
+#             left out is said by `capabilities()`, never an error.
+#   target    which machine; empty is this one. CI builds the host for six.
+#
+# A test in src/structure.rs reads this file: every feature named here is in Cargo.toml, and
+# every preset is built by `./scripts/check.sh`.
+
+[full]
+about = "the service with every capability, and the page it serves: what scripts/run.sh runs"
+shell = "web"
+features = ["terminals", "sandbox"]
+
+[lean]
+about = "the service and its page with no terminals and nothing to confine: engines and agents' sessions only"
+shell = "web"
+features = []
+
+[open-terminals]
+about = "terminals without the sandbox, for a machine whose sandbox gets in the way (and the box says so)"
+shell = "web"
+features = ["terminals"]
+
+[mac]
+about = "the Mac window, which asks a service started by `askk start`"
+shell = "desktop"
+features = []
+
+[tab]
+about = "the whole app inside one browser tab, no server: no terminals, programs run in the browser's sandbox"
+shell = "local"
+features = []

@@ -16,6 +16,8 @@
 //! can, and may **write** only in its own folder, in the system's temp folders, and where
 //! its own state lives. A box says in a fact how its program is confined ([`Sandbox::how`]),
 //! so "not confined" is never silent.
+// A host without `terminals` starts nothing to confine; one without `sandbox` fills nothing.
+#![cfg_attr(not(all(feature = "terminals", feature = "sandbox")), allow(dead_code))]
 use super::held::Shared;
 use std::path::Path;
 use std::sync::{Arc, RwLock};

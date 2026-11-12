@@ -11,7 +11,7 @@
 //!
 //! Only files are confined. The network, and on Linux the kernel's call filter, are not
 //! touched: a confined program can still reach the internet.
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "macos", all(target_os = "linux", feature = "sandbox")))]
 use crate::core::sandbox::Sandbox;
 use std::path::Path;
 
@@ -95,7 +95,7 @@ impl Sandbox for Seatbelt {
 }
 
 /// Linux: Landlock, taken on by a process for itself just before it becomes the program.
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "sandbox"))]
 struct Landlocked {
     /// This program's own file: it is what starts a confined program.
     exe: String,
@@ -104,7 +104,7 @@ struct Landlocked {
 /// The word after `askk` that starts a program confined (Linux).
 pub const CONFINE: &str = "confine";
 
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "sandbox"))]
 impl Sandbox for Landlocked {
     fn how(&self) -> String {
         "Landlock: it may write only in its folder and in temp".into()
@@ -125,10 +125,10 @@ impl Sandbox for Landlocked {
 }
 
 /// Linux on a kernel without Landlock: nothing confines, and the box says why.
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "sandbox"))]
 struct NoLandlock;
 
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "sandbox"))]
 impl Sandbox for NoLandlock {
     fn how(&self) -> String {
         "not confined: this kernel has no Landlock (it came with Linux 5.13), so the program can write wherever you can".into()
@@ -139,12 +139,12 @@ impl Sandbox for NoLandlock {
 }
 
 /// Where a confined program may write besides its folder (Linux).
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "sandbox"))]
 const WRITABLE: &[&str] = &["/dev", "/tmp", "/var/tmp"];
 
 /// Give up, for this process and everything it starts, the right to write anywhere but
 /// `writable` (Linux). Reading and running stay as they were.
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "sandbox"))]
 pub fn confine_self(writable: &[String]) -> Result<(), String> {
     use landlock::{path_beneath_rules, Access, AccessFs, Ruleset, RulesetAttr, RulesetCreatedAttr, RulesetStatus, ABI};
     // The newest rules this program knows; on an older kernel the ones it lacks are left out.
@@ -169,7 +169,7 @@ pub fn confine_self(writable: &[String]) -> Result<(), String> {
 
 /// Whether this kernel has Landlock, asked without confining anything: making a set of
 /// rules that must hold fails where there is none.
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "sandbox"))]
 fn landlock_here() -> bool {
     use landlock::{Access, AccessFs, CompatLevel, Compatible, Ruleset, RulesetAttr, ABI};
     Ruleset::default().set_compatibility(CompatLevel::HardRequirement).handle_access(AccessFs::from_all(ABI::V1)).and_then(|r| r.create()).is_ok()
@@ -178,7 +178,7 @@ fn landlock_here() -> bool {
 /// `askk confine <folder> [<also writable>…] -- <program> [<arguments>…]` (Linux): confine
 /// this process to those folders, then become the program. It returns only when that could
 /// not be done, with the reason.
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "sandbox"))]
 pub fn confined(args: &[String]) -> String {
     use std::os::unix::process::CommandExt;
     let Some(at) = args.iter().position(|a| a == "--") else {
@@ -197,7 +197,7 @@ pub fn confined(args: &[String]) -> String {
 }
 
 /// On a system that confines programs another way, the word is not used.
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(all(target_os = "linux", feature = "sandbox")))]
 pub fn confined(_: &[String]) -> String {
     format!("`askk {CONFINE}` is how a program is confined on Linux (Landlock); this system does not use it")
 }
@@ -214,7 +214,7 @@ pub fn start() {
             eprintln!("askk: {SANDBOX_EXEC} is not on this Mac, so programs started in a terminal are not confined");
         }
     }
-    #[cfg(target_os = "linux")]
+    #[cfg(all(target_os = "linux", feature = "sandbox"))]
     {
         match std::env::current_exe() {
             Ok(exe) if landlock_here() => {
@@ -246,7 +246,7 @@ mod tests {
     /// A folder of its own for one test, with `mine` (the program's folder) and `other`
     /// (somebody else's) in it. It is under the build's own folder, not under temp: temp is
     /// a place a confined program may write.
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(any(target_os = "macos", all(target_os = "linux", feature = "sandbox")))]
     fn scratch(tag: &str) -> std::path::PathBuf {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("target").join(format!("askk-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
@@ -276,7 +276,7 @@ mod tests {
     /// The same rule on Linux. The test process cannot confine itself (every later test would
     /// be confined too), so a child does, between being made and becoming `sh`: exactly what
     /// `askk confine` does. On a kernel without Landlock the test says so and checks nothing.
-    #[cfg(target_os = "linux")]
+    #[cfg(all(target_os = "linux", feature = "sandbox"))]
     #[test]
     fn a_confined_program_cannot_write_outside_its_folder() {
         use std::os::unix::process::CommandExt;

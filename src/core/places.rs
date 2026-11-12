@@ -141,6 +141,7 @@ pub fn path() -> Vec<PathBuf> {
 
 /// The person's own shell: what a terminal runs when no command is named. `SHELL` where
 /// there is one (Mac, Linux), else the system's command line (`COMSPEC` on Windows).
+#[cfg_attr(not(feature = "terminals"), allow(dead_code))]
 pub fn shell() -> String {
     var("SHELL").or_else(|| var("COMSPEC")).unwrap_or_else(|| if cfg!(windows) { "cmd.exe".into() } else { "/bin/sh".into() })
 }

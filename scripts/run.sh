@@ -44,8 +44,8 @@ if [ -z "${ASKK_HOME:-}" ]; then
 fi
 
 if [ $BUILD = 1 ]; then
-    command -v dx >/dev/null || { echo "dx is not installed. Install it: cargo install dioxus-cli"; exit 1; }
-    dx build --release --platform web
+    # PRESET names a build in builds.toml whose shell is `web`; `full` has every capability.
+    ./scripts/build.sh "${PRESET:-full}"
 fi
 if [ $COPY = 1 ]; then
     [ -x "$OUT/server" ] || { echo "nothing is built yet at $OUT. Run ./scripts/run.sh without --built"; exit 1; }

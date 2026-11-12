@@ -31,6 +31,7 @@ pub mod room;
 pub mod sandbox;
 pub mod service;
 pub mod store;
+#[cfg(feature = "terminals")]
 pub mod terminals;
 pub mod tools;
 pub mod watch;
@@ -81,7 +82,9 @@ fn boot() {
         provided("code", "node on this machine, in an empty context (JavaScript)");
     }
     // The sandbox first: a terminal's program is started through it.
+    #[cfg(feature = "sandbox")]
     sandbox::start();
+    #[cfg(feature = "terminals")]
     match terminals::found() {
         Ok(()) => {
             crate::core::terminals::set(std::sync::Arc::new(terminals::Ptys));

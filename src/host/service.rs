@@ -104,6 +104,7 @@ pub fn booted() {
             // Long enough for the answer to this very question to leave.
             std::thread::sleep(Duration::from_millis(300));
             // Its terminals end with it (docs/concept.md, section 6).
+            #[cfg(feature = "terminals")]
             crate::host::terminals::end_all();
             let _ = crate::core::store::data().remove(LOCK);
             crate::host::watch::settle();
