@@ -111,6 +111,8 @@ pub fn table() -> Vec<Ask> {
         // routes.rs
         resolve_route(path),
         nav_links(),
+        // boxes.rs
+        boxes(),
         // service.rs
         hello(),
         reload(),

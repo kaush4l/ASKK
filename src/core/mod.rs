@@ -20,6 +20,7 @@ use serde_json::Value;
 use std::{future::Future, pin::Pin, sync::Arc};
 
 pub mod board;
+pub mod boxes;
 pub mod caps;
 pub mod code;
 pub mod changes;

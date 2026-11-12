@@ -81,7 +81,6 @@ impl Toolbox {
     pub fn drain(&self) -> Vec<Event> {
         self.1.as_ref().map(|l| std::mem::take(&mut *l.held())).unwrap_or_default()
     }
-    #[cfg_attr(not(test), allow(dead_code))]
     pub fn names(&self) -> Vec<String> {
         self.0.keys().cloned().collect()
     }
