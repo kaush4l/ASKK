@@ -945,6 +945,8 @@ dialog.run-panel::backdrop { background: color-mix(in srgb, var(--ink-shade) var
 .session-item[aria-pressed="true"] { border-color: var(--press); }
 .session-talk .bubbles { max-height: 58vh; }
 .session-composer textarea { resize: none; }
+/* What the owner decided about what the harness asked for: neither side's bubble. */
+.session-note { margin: 0; align-self: center; font-size: var(--text-sm); color: var(--muted); text-align: center; }
 @media (max-width: 760px) { .sessions { grid-template-columns: minmax(0, 1fr); } }
 .seat-row { gap: var(--space-1); }
 .room-setup { white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--font-face); }

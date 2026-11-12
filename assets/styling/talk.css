@@ -289,6 +289,10 @@
 .ask-form.approval { --tone: var(--busy); }
 .approval-call { font-family: var(--font-mono); font-size: var(--text-xs); overflow-wrap: anywhere; }
 .approval-row { justify-content: flex-start; }
+/* What another agent's harness asks to do: one line per call. */
+.approval-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--space-1); }
+.approval-list li { min-width: 0; font-size: var(--text-sm); }
+.approval-tool { font-weight: 600; }
 
 /* ---------- on a turn: edit from here, cite in composer ---------- */
 .turn-act { display: inline-flex; align-items: center; gap: var(--space-1); align-self: flex-end; min-height: var(--hit-row); padding: 0 var(--space-2); border: 0; border-radius: var(--radius-full);
