@@ -3,7 +3,7 @@
 # among them), then every build the one source must still make. See docs/maintenance.md.
 #
 # A build that is not installed on this machine (a missing target) is reported, not skipped
-# silently.
+# silently. With --shots, the screens of every UI are taken after (scripts/shots.sh).
 set -u
 cd "$(dirname "$0")/.."
 
@@ -71,3 +71,7 @@ if [ -n "$failed" ]; then
     exit 1
 fi
 printf '\nready: every rule holds, every build compiles, the built app runs, the loop works on every runtime, the service runs in the background, and it holds terminals\n'
+if [ "${1:-}" = --shots ]; then
+    printf '\n== the screens of every UI (scripts/shots.sh)\n'
+    ./scripts/shots.sh
+fi

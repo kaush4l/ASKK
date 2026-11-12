@@ -79,3 +79,18 @@ the host for the browser too:
 
 A test (`every_preset_names_what_there_is`, `src/structure.rs`) holds the presets to Cargo.toml,
 to the capabilities the core knows, and CI's host build to `full`.
+
+## Screens of every build type
+
+`./scripts/shots.sh` (or `./scripts/check.sh --shots`) starts the built app on a fresh home and
+takes the screens of each UI, so each can be judged and improved on its own. It writes
+`target/shots/index.html`, one section per type:
+
+| type | how | what |
+| --- | --- | --- |
+| `web` | headless Chrome (`scripts/shots/page.mjs`) | canvas, every box, pill, palette, an engine box, a terminal box, settings; phone 375, tablet 900, wide 1440; dark and light; and less motion, no glass, more contrast |
+| `terminal` | `askk terminal` under a pseudo-terminal (`scripts/shots/tui.py`), and piped | the full screen step by step (first screen, keys, boxes, a box, a new tab, a split, a zoom), and the lines |
+| `tab` | headless Chrome, when `./scripts/build.sh tab` has built it | the tab's page at each size and theme |
+| `mac` | `--mac`: the Mac window, by `screencapture` | the window. macOS refuses the picture until the terminal running it is allowed under Privacy & Security, Screen Recording |
+
+Frames are named `<type>--<screen>--<size>-<theme>`; nothing in `target/` is kept in git.

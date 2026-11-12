@@ -258,4 +258,6 @@ def main():
     # 6. ctrl+b q: detach.
     leave()
 
-main()
+# scripts/shots/tui.py borrows `Screen` without walking.
+if __name__ == "__main__":
+    main()
