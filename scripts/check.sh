@@ -23,20 +23,7 @@ step() {
 
 WASM=wasm32-unknown-unknown
 
-step "tests (rules and behaviour)" cargo test --quiet --features server
-step "build: server (the host)" cargo check --quiet --features server
-# Release reads page templates strictly; the everyday build lets some mistakes through.
-step "build: server, as released" cargo check --quiet --release --features server
-step "build: web (a window in a browser)" cargo check --quiet --target $WASM --features web
-if [ "$(uname)" = Darwin ]; then
-    step "build: desktop (the Mac app)" cargo check --quiet --features desktop
-else
-    printf '== build: desktop (the Mac app)\n   not checked: it builds on a Mac only\n'
-fi
-step "build: local (the engine inside a browser tab)" cargo check --quiet --target $WASM --no-default-features --features local
-
-# The app as a person runs it (scripts/run.sh): dx puts the host and its window together, and
-# chooses features itself, so only this step shows whether that choice still compiles.
+# Run a step without its chatter; when it fails, show the end of what it said.
 quiet() {
     log=$(mktemp)
     if "$@" >"$log" 2>&1; then
@@ -51,6 +38,21 @@ quiet() {
         return 1
     fi
 }
+
+step "tests (rules and behaviour)" quiet cargo test --quiet --features server
+step "build: server (the host)" cargo check --quiet --features server
+# Release reads page templates strictly; the everyday build lets some mistakes through.
+step "build: server, as released" cargo check --quiet --release --features server
+step "build: web (a window in a browser)" cargo check --quiet --target $WASM --features web
+if [ "$(uname)" = Darwin ]; then
+    step "build: desktop (the Mac app)" cargo check --quiet --features desktop
+else
+    printf '== build: desktop (the Mac app)\n   not checked: it builds on a Mac only\n'
+fi
+step "build: local (the engine inside a browser tab)" cargo check --quiet --target $WASM --no-default-features --features local
+
+# The app as a person runs it (scripts/run.sh): dx puts the host and its window together, and
+# chooses features itself, so only this step shows whether that choice still compiles.
 if command -v dx >/dev/null; then
     step "build: the full app, as scripts/run.sh builds it" quiet dx build --release --platform web
     step "the built app runs (scripts/smoke.sh)" quiet ./scripts/smoke.sh

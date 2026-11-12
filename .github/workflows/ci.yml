@@ -91,7 +91,17 @@ jobs:
       - name: test on this machine
         # The tests start real programs (`sh`, `cp`); Windows has none of them yet.
         if: runner.os != 'Windows'
-        run: cargo test --features server --target ${{ matrix.target }}
+        shell: bash
+        run: cargo test --features server --target ${{ matrix.target }} 2>&1 | tee test.log
+      # A run's log needs a login to read; its summary does not. Say there what failed.
+      - name: say which test failed
+        if: failure()
+        shell: bash
+        run: |
+          [ -f test.log ] || exit 0
+          said=$(grep -E 'panicked at|^test .* FAILED|^error|^failures:' -A5 test.log | head -60 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+          echo "::error title=tests on ${{ matrix.target }}::$said"
+          node --version || true
       - uses: actions/upload-artifact@v7
         with:
           name: askk-host-${{ matrix.target }}
