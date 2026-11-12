@@ -14,13 +14,13 @@
 //! This file only asks and hands down. Every part it draws with is given its values
 //! (`ui/web/components`).
 use super::boxes::Boxes;
-use crate::api::{engine_run, media_picture, post_message, talk, Chip, Mode, Talk};
+use crate::api::{engine_run, media_picture, post_message, talk, talk_saved, Chip, Mode, Talk};
 use crate::core::boxes::{GOAL, LEARNING};
 use crate::core::media::token;
 use crate::core::run::Run;
 use crate::ui::features::asks::{answer_text, parse_asks};
 use crate::ui::features::run as words;
-use crate::ui::web::components::{AskForm, Attached, Composer, EngineChip, EnginePick, Icon, ModelChoice, RunView, SpecView, TalkList, Thread};
+use crate::ui::web::components::{AskForm, Attached, Composer, EngineChip, EnginePick, Icon, ModelChoice, RunView, SideEdge, SpecView, TalkList, Thread, SIDE_WIDTH};
 use crate::ui::web::figure::FigureView;
 use crate::ui::web::kit::{Button, ButtonSize, ButtonVariant, Collapsible, CollapsibleContent, CollapsibleTrigger, Tabs, TabsContent, TabsList, TabsTrigger};
 use dioxus::prelude::*;
@@ -66,6 +66,34 @@ fn use_models(path: String) -> (ModelChoice, EventHandler<String>) {
     (choice, pick)
 }
 
+/// How wide the panel beside is, kept by this browser for the page and for an open box apart.
+/// Until it is read (or when nothing is kept) it is as wide as the stylesheet makes it.
+fn use_side_width(boxed: bool) -> (Signal<Option<u32>>, Signal<u32>, impl FnMut((u32, bool)) + Copy) {
+    let key = if boxed { "askk-side-w-box" } else { "askk-side-w" };
+    let mut kept = use_signal(|| None::<u32>);
+    // The width an edge starts from when nothing is kept: the stylesheet's own.
+    let mut start = use_signal(|| 400u32);
+    use_effect(move || {
+        spawn(async move {
+            let js = format!("let k = 0; try {{ k = Number(localStorage.getItem('{key}')) || 0; }} catch (e) {{}} return [k, Math.round(Math.min(460, Math.max(320, innerWidth * 0.34)))];");
+            if let Ok(v) = document::eval(&js).await {
+                let (k, d) = (v[0].as_u64().unwrap_or(0) as u32, v[1].as_u64().unwrap_or(400) as u32);
+                start.set(d);
+                if k > 0 {
+                    kept.set(Some(k.clamp(SIDE_WIDTH.0, SIDE_WIDTH.1)));
+                }
+            }
+        });
+    });
+    let set = move |(w, last): (u32, bool)| {
+        kept.set(Some(w));
+        if last {
+            document::eval(&format!("try {{ localStorage.setItem('{key}', '{w}'); }} catch (e) {{}}"));
+        }
+    };
+    (kept, start, set)
+}
+
 /// `boxed`: it is drawn inside an open box, whose head already says who this is.
 #[component]
 pub fn Conversation(path: String, #[props(default)] engines: Vec<Mode>, #[props(optional)] on_pick: Option<EventHandler<String>>, #[props(default)] boxed: bool) -> Element {
@@ -102,6 +130,20 @@ pub fn Conversation(path: String, #[props(default)] engines: Vec<Mode>, #[props(
     });
     let talk_list = talks.read().as_ref().and_then(|r| r.as_ref().ok()).cloned().unwrap_or_default();
     let mut show_talks = use_signal(|| false);
+    // A conversation put aside, being read while the open one stays as it is (`None`: the open one).
+    let mut reading = use_signal(|| None::<u64>);
+    let p8 = path.clone();
+    let saved = use_resource(move || {
+        let _ = live();
+        let (p, id) = (p8.clone(), reading());
+        async move {
+            match id {
+                Some(id) => talk_saved(p, id).await.map(|t| Some((id, t))).map_err(|e| e.to_string()),
+                None => Ok(None),
+            }
+        }
+    });
+    let (side_w, side_start, on_side_w) = use_side_width(boxed);
     let mut conv = use_resource(move || {
         let _ = live();
         talk(p2.clone())
@@ -113,8 +155,18 @@ pub fn Conversation(path: String, #[props(default)] engines: Vec<Mode>, #[props(
             shown.set(Some(t.clone()));
         }
     });
-    let loading = shown.read().is_none() && conv.read().is_none();
     let t = shown().unwrap_or_default();
+    // What the thread and the board show: the open conversation, or the one being read.
+    // Kept while it is asked again, so the one being read never blinks.
+    let mut held_read = use_signal(|| None::<(u64, Talk)>);
+    use_effect(move || {
+        if let Some(Ok(Some(got))) = saved.read().as_ref() {
+            held_read.set(Some(got.clone()));
+        }
+    });
+    let read_one: Option<Talk> = held_read().filter(|(id, _)| Some(*id) == reading()).map(|(_, t)| t);
+    let loading = (shown.read().is_none() && conv.read().is_none()) || (reading().is_some() && read_one.is_none());
+    let seen = read_one.clone().unwrap_or_else(|| if reading().is_some() { Talk::default() } else { t.clone() });
     let fetch_error = conv.read().as_ref().and_then(|r| r.as_ref().err().map(|e| e.to_string())).unwrap_or_default();
     // The runs a person opened, and those still going, are asked for in full (their long
     // texts: the prompt, the reply, each program and its result) and asked again as they move.
@@ -228,10 +280,23 @@ pub fn Conversation(path: String, #[props(default)] engines: Vec<Mode>, #[props(
             });
         }
     };
-    // Begin a new conversation (`None`) or bring back one put aside.
+    let current_id = talk_list.iter().find(|t| t.current).map(|t| t.id);
+    // Begin a new conversation (`None`) or bring back one put aside. While it works, one put
+    // aside is only read: the open one goes on, and is shown live again when it is chosen.
     let switch = {
         let path = path.clone();
         move |id: Option<u64>| {
+            let (mut reading, mut show_talks) = (reading, show_talks);
+            if id.is_some() && id == current_id {
+                reading.set(None);
+                show_talks.set(false);
+                return;
+            }
+            if let (Some(id), true) = (id, working) {
+                reading.set(Some(id));
+                show_talks.set(false);
+                return;
+            }
             let path = path.clone();
             spawn(async move {
                 let done = match id {
@@ -242,6 +307,7 @@ pub fn Conversation(path: String, #[props(default)] engines: Vec<Mode>, #[props(
                     Err(e) => error.set(e.to_string()),
                     Ok(()) => {
                         error.set(String::new());
+                        reading.set(None);
                         full.write().clear();
                         opened.write().clear();
                         show_talks.set(false);
@@ -252,7 +318,9 @@ pub fn Conversation(path: String, #[props(default)] engines: Vec<Mode>, #[props(
             });
         }
     };
-    let current_title = talk_list.iter().find(|t| t.current).map(|t| t.title.clone()).filter(|t| !t.is_empty()).unwrap_or_else(|| "New conversation".to_string());
+    let title_of = |id: Option<u64>| talk_list.iter().find(|t| Some(t.id) == id || (id.is_none() && t.current)).map(|t| t.title.clone()).filter(|t| !t.is_empty()).unwrap_or_else(|| "New conversation".to_string());
+    let current_title = title_of(None);
+    let reading_title = title_of(reading());
     let answer = {
         let path = path.clone();
         move |(question, said): (String, String)| {
@@ -274,14 +342,16 @@ pub fn Conversation(path: String, #[props(default)] engines: Vec<Mode>, #[props(
             side.set(Some(!now));
         });
     };
-    let waiting = !pending.read().0.is_empty() && pending.read().1 >= t.beats.len();
+    // Until the conversation holds it (a refocus can fold turns, so it is looked for, not counted).
+    let waiting = !pending.read().0.is_empty() && pending.read().1 >= t.beats.len() && t.beats.last().is_none_or(|b| b.text.trim() != pending.read().0.trim());
     let side_class = match side() {
         Some(true) => "talk fill side-open",
         Some(false) => "talk fill side-closed",
         None => "talk fill",
     };
+    let side_style = side_w().map(|w| format!("--side-kept:{w}px")).unwrap_or_default();
     rsx! {
-        div { class: if boxed { "{side_class} is-boxed" } else { "{side_class}" },
+        div { class: if boxed { "{side_class} is-boxed" } else { "{side_class}" }, style: "{side_style}",
             section { class: "talk-main", "aria-label": "Conversation with {path}",
                 Collapsible { class: "talk-top",
                     header { class: "talk-head",
@@ -289,9 +359,9 @@ pub fn Conversation(path: String, #[props(default)] engines: Vec<Mode>, #[props(
                         if let Some(pick) = on_pick.filter(|_| engines.len() > 1) { EnginePick { engines: engines.clone(), chosen: path.clone(), on_pick: pick } }
                         span { class: "grow" }
                         // Its conversations: which is open, the others behind one touch, and a new one.
-                        Button { variant: ButtonVariant::Ghost, size: ButtonSize::Sm, class: "talks-toggle", aria_pressed: show_talks(), aria_label: "Conversations: {current_title}", title: "Every conversation with it",
+                        Button { variant: ButtonVariant::Ghost, size: ButtonSize::Sm, class: "talks-toggle", aria_pressed: show_talks(), aria_label: "Conversations: {reading_title}", title: "Every conversation with it",
                             onclick: move |_| show_talks.toggle(),
-                            Icon { name: "history", size: 16 } span { class: "talks-now", "{current_title}" }
+                            Icon { name: "history", size: 16 } span { class: "talks-now", "{reading_title}" }
                             if talk_list.len() > 1 { span { class: "count", "{talk_list.len()}" } }
                         }
                         Button { variant: ButtonVariant::Ghost, size: ButtonSize::Icon, disabled: working, aria_label: "New conversation", title: if working { "It is at work: a new conversation can begin when it is done" } else { "Begin a new conversation; this one is kept" },
@@ -319,12 +389,12 @@ pub fn Conversation(path: String, #[props(default)] engines: Vec<Mode>, #[props(
                     }
                 }
                 if show_talks() {
-                    TalkList { talks: talk_list.clone(), busy: working,
+                    TalkList { talks: talk_list.clone(), busy: working, reading: reading(),
                         on_open: { let switch = switch.clone(); move |id| switch(Some(id)) },
                         on_new: { let switch = switch.clone(); move |_| switch(None) },
                     }
                 }
-                Thread { beats: t.beats.clone(), runs: runs.clone(), pictures: pictures(), pending: if waiting { pending.read().0.clone() } else { String::new() }, loading, writing,
+                Thread { beats: seen.beats.clone(), runs: runs.clone(), pictures: pictures(), pending: if waiting && reading().is_none() { pending.read().0.clone() } else { String::new() }, loading, writing: writing.filter(|_| reading().is_none()),
                     on_open: move |(id, open): (u64, bool)| {
                         if open { opened.write().insert(id); } else { opened.write().remove(&id); }
                     },
@@ -333,15 +403,29 @@ pub fn Conversation(path: String, #[props(default)] engines: Vec<Mode>, #[props(
                     div { class: "lane",
                         if !error.read().is_empty() { p { class: "talk-error", role: "alert", "{error}" } }
                         if !fetch_error.is_empty() { p { class: "talk-error", role: "alert", "{fetch_error}" } }
+                        // A conversation put aside, read: back to the open one, or open this one.
+                        if reading().is_some() {
+                            div { class: "reading-note glass", role: "status",
+                                p { class: "grow",
+                                    "You are reading “{reading_title}”, put aside. "
+                                    if working { "It is at work in “{current_title}”, which goes on and is shown live when you go back to it. This one can be opened to talk in when it is done." } else { "Open it to go on with it here." }
+                                }
+                                Button { variant: ButtonVariant::Outline, size: ButtonSize::Sm, onclick: move |_| reading.set(None), "Back to “{current_title}”" }
+                                Button { variant: ButtonVariant::Default, size: ButtonSize::Sm, disabled: working, title: if working { "It is at work: this one can be opened when it is done" } else { "Bring this conversation back; the open one is put aside" },
+                                    onclick: { let switch = switch.clone(); move |_| if let Some(id) = reading() { switch(Some(id)) } },
+                                    "Open this one"
+                                }
+                            }
+                        }
                         // What it waits for is answered here, where it is seen.
-                        if !open_asks.is_empty() {
+                        if !open_asks.is_empty() && reading().is_none() {
                             div { class: "asks-here", role: "group", "aria-label": "It waits for you",
                                 for ask in open_asks {
                                     AskForm { key: "{ask.question}", sent: answered(), on_answer: { let (q, answer) = (ask.question.clone(), answer.clone()); move |a| answer((q.clone(), a)) }, ask }
                                 }
                             }
                         }
-                        Composer { value: input, to: path.clone(), attached: attached(), pictures: pictures(), working, busy: busy() || sending, queued, model,
+                        if reading().is_none() { Composer { value: input, to: path.clone(), attached: attached(), pictures: pictures(), working, busy: busy() || sending, queued, model,
                             on_send: send, on_stop: { let act = act.clone(); move |_| act(false) },
                             on_attach: move |e: FormEvent| { spawn(super::upload::upload(e.files(), attached, next_key)); },
                             on_remove: move |key| attached.write().retain(|a| a.key != key),
@@ -351,16 +435,19 @@ pub fn Conversation(path: String, #[props(default)] engines: Vec<Mode>, #[props(
                             } },
                             on_steer: { let id = id.clone(); move |key: u64| boxes.steer(&id, key) },
                             on_model: move |name| on_model.call(name),
-                        }
+                        } }
                     }
                 }
             }
             div { class: "talk-scrim", onclick: move |_| side.set(Some(false)) }
+            // Between the conversation and the panel: drawn outside the panel, whose glass
+            // would hold the window-wide layer a drag spreads over the page.
+            SideEdge { width: side_w().unwrap_or(side_start()), on_width: on_side_w }
             aside { class: "talk-side glass", "aria-label": "Board, loop, prompt, diff and files",
                 Tabs { default_value: "board", class: "fill talk-tabs",
                     div { class: "talk-side-head",
                         TabsList {
-                            TabsTrigger { value: "board", class: "px-3", Icon { name: "chart", size: 16 } "Board" if !t.board.is_empty() { span { class: "count", "{t.board.len()}" } } }
+                            TabsTrigger { value: "board", class: "px-3", Icon { name: "chart", size: 16 } "Board" if !seen.board.is_empty() { span { class: "count", "{seen.board.len()}" } } }
                             TabsTrigger { value: "loop", class: "px-3", Icon { name: "refresh", size: 16 } "Loop" }
                             TabsTrigger { value: "prompt", class: "px-3", Icon { name: "layers", size: 16 } "Prompt" }
                             TabsTrigger { value: "diff", class: "px-3", Icon { name: "diff", size: 16 } "Diff" }
@@ -369,8 +456,8 @@ pub fn Conversation(path: String, #[props(default)] engines: Vec<Mode>, #[props(
                         Button { variant: ButtonVariant::Ghost, size: ButtonSize::Icon, class: "side-close", aria_label: "Close the panel", onclick: move |_| side.set(Some(false)), Icon { name: "close", size: 18 } }
                     }
                     TabsContent { value: "board", class: "talk-panel",
-                        if t.board.is_empty() { p { class: "dim", "Nothing on the board yet. Ask for something that can be shown." } }
-                        for f in t.board.iter().rev() { FigureView { node: f.clone() } }
+                        if seen.board.is_empty() { p { class: "dim", "Nothing on the board yet. Ask for something that can be shown." } }
+                        for f in seen.board.iter().rev() { FigureView { node: f.clone() } }
                     }
                     TabsContent { value: "loop", class: "talk-panel",
                         p { class: "dim", "Every run of this engine, newest first. Open one to read it stage by stage." }

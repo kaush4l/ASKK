@@ -14,6 +14,10 @@ pub trait Files: Send + Sync {
     fn read(&self, file: &Path) -> Result<String, String>;
     /// Write a file, making the folders above it.
     fn write(&self, file: &Path, text: &str) -> Result<(), String>;
+    /// How many bytes a file holds, when that can be known without reading it.
+    fn size(&self, _file: &Path) -> Option<u64> {
+        None
+    }
 }
 
 /// No files: what a build without a host has.

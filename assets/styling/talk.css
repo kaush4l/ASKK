@@ -29,7 +29,9 @@
 .nav-item { transition: background var(--motion-base) var(--ease-out), color var(--motion-base) var(--ease-out), transform var(--motion-fast) var(--ease-out); }
 
 /* ---------- the screen ---------- */
-.talk { --side-w: clamp(320px, 34vw, 460px); display: grid; grid-template-columns: minmax(0, 1fr) var(--side-w); gap: var(--space-4); min-height: 0;
+/* The panel is as wide as the stylesheet says, or as the owner dragged it (`--side-kept`),
+   never past most of the screen. */
+.talk { --side-w: clamp(300px, var(--side-kept, clamp(320px, 34vw, 460px)), max(300px, 62vw)); display: grid; grid-template-columns: minmax(0, 1fr) var(--side-w); gap: var(--space-4); min-height: 0;
   transition: grid-template-columns var(--motion-spring) var(--ease-spring), gap var(--motion-spring) var(--ease-spring); }
 .talk.side-closed { grid-template-columns: minmax(0, 1fr) 0px; gap: 0px; }
 .talk-main { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; min-height: 0; }
@@ -146,6 +148,19 @@
 .talk-panel:not(.hidden) { display: flex; flex-direction: column; gap: var(--space-3); min-height: 0; overflow: auto; padding: var(--space-1); }
 .talk-panel .prompt { padding: 0; border: 0; background: none; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
 .side-close, .talk-scrim { display: none; }
+/* The edge on the panel's left is dragged, or moved with the arrow keys, to make it wider. */
+.talk { position: relative; }
+.side-edge { position: absolute; z-index: 2; top: var(--space-4); bottom: var(--space-4); right: var(--side-w); width: var(--space-4); cursor: col-resize; touch-action: none; border-radius: var(--radius-full); }
+.side-edge::after { content: ""; position: absolute; top: 0; bottom: 0; left: calc(50% - 1px); width: 2px; border-radius: var(--radius-full); background: transparent; transition: background var(--motion-fast) var(--ease-out); }
+.side-edge:hover::after, .side-edge:focus-visible::after, .side-edge.is-dragging::after { background: var(--press); }
+.side-edge:focus-visible { outline: none; }
+.side-drag { position: fixed; inset: 0; z-index: 80; cursor: col-resize; touch-action: none; }
+/* while it is dragged the panel follows the pointer exactly: no easing in between */
+.talk:has(.side-edge.is-dragging) { transition: none; }
+.talk.side-closed .side-edge { display: none; }
+/* A conversation put aside, read while the open one goes on. */
+.reading-note { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); padding: var(--space-3); border-radius: var(--radius-lg); }
+.reading-note p { margin: 0; font-size: var(--text-sm); min-width: min(100%, 16rem); }
 
 /* A medium screen or a phone: the panel is a sheet from the right, over a dimmed page. It
    leaves the way it came. */
@@ -160,6 +175,7 @@
   .talk.side-open .talk-scrim { display: block; position: fixed; inset: 0; z-index: 55; background: color-mix(in srgb, var(--bg) var(--scrim-alpha), transparent);
     animation: fade-in var(--motion-base) var(--ease-out) backwards; }
   .side-close { display: inline-flex; }
+  .side-edge { display: none; }
 }
 /* A phone: the head takes two lines, text keeps its size, hints for a keyboard are left out. */
 @media (max-width: 767px) {
@@ -201,7 +217,9 @@
 .talk-row:active:not(:disabled) { transform: scale(var(--press-scale)); transition-duration: var(--motion-press); }
 .talk-row:focus-visible { outline: 2px solid var(--press); outline-offset: 1px; }
 .talk-row:disabled { cursor: default; opacity: .55; }
-.talk-row.is-current { color: var(--fg); background: color-mix(in srgb, var(--press) 14%, transparent); box-shadow: inset 0 0 0 1px var(--stroke-hi); cursor: default; }
+.talk-row.is-reading { color: var(--fg); box-shadow: inset 0 0 0 1px var(--stroke-hi); }
+.talk-live { flex: none; font-size: var(--text-xs); }
+.talk-row.is-current { color: var(--fg); background: color-mix(in srgb, var(--press) 14%, transparent); box-shadow: inset 0 0 0 1px var(--stroke-hi); }
 .talk-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .talk-turns { font-family: var(--font-mono); font-size: var(--text-xs); }
 @media (max-width: 767px) { .talks-toggle { max-width: 9rem; } }
@@ -211,10 +229,11 @@
 .change-file { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
 .change-name { display: flex; align-items: center; gap: var(--space-2); margin: 0; min-width: 0; font-size: var(--text-sm); }
 .change-name .mono { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
-.change-add, .change-gone, .change-new { flex: none; font-family: var(--font-mono); font-size: var(--text-xs); }
+.change-add, .change-gone, .change-new, .change-gone-file { flex: none; font-family: var(--font-mono); font-size: var(--text-xs); }
 .change-add { color: var(--ok); }
 .change-gone { color: var(--error); }
-.change-new { padding: 0 var(--space-1); border-radius: var(--radius-full); color: var(--busy); box-shadow: inset 0 0 0 1px currentColor; }
+.change-new, .change-gone-file { padding: 0 var(--space-1); border-radius: var(--radius-full); color: var(--busy); box-shadow: inset 0 0 0 1px currentColor; }
+.change-gone-file { color: var(--error); }
 .ws-files { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
 .files-root { display: flex; gap: var(--space-1); margin: 0; min-width: 0; font-size: var(--text-xs); white-space: nowrap; }
 .files-count { flex: none; }
