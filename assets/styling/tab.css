@@ -1,0 +1,9 @@
+/* The tab build (scripts/local.sh) is not bundled by dx, so its face is named here, relative
+   to this file, and the page links this sheet (ui/web/app.rs). */
+@font-face {
+  font-family: "Amarante";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../fonts/amarante-latin-400-normal.woff2") format("woff2");
+}

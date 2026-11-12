@@ -1,0 +1,1 @@
+export function query() { return location.search; }
