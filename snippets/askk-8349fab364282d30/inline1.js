@@ -1,0 +1,1 @@
+export function later(ms, f) { setTimeout(f, ms); }
