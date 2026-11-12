@@ -12,6 +12,8 @@ keys and reads the screen, and says each thing it saw on a line of its own:
     saw: a terminal box shows its live screen
     saw: a shell in a new tab ran what was typed
     "shell": 12345                      (the shell's process number, for the caller)
+    saw: a split pane beside it, and a click moved the focus
+    saw: a click on a box in the sidebar showed it in the pane
     saw: detached with 0
 
 A full-screen program does not write lines: it places the cursor and writes the cells that
@@ -135,6 +137,18 @@ def main():
         os.write(fd, keys.encode())
         read(0.2)
 
+    def click(col, row):
+        """Press and let go of the left button over a cell (counted from 0)."""
+        press(f"\x1b[<0;{col + 1};{row + 1}M\x1b[<0;{col + 1};{row + 1}m")
+
+    def where(pattern, what):
+        """The row and the column at which `pattern` is on the screen."""
+        wait(pattern, what)
+        for number, row in enumerate(screen.rows()):
+            found = re.search(pattern, row)
+            if found:
+                return number, found.start()
+
     prefix = "\x02"  # ctrl+b
 
     # 1. The first screen: the sidebar with every box, and a pane on an engine.
@@ -169,7 +183,25 @@ def main():
     print(f'"shell": {found.group(1)}')
     show("a shell in a new tab")
 
-    # 4. ctrl+b q: detach. The program leaves with 0; what it opened is not its business.
+    # 4. ctrl+b v: a second shell beside the first. A click on the left pane takes the focus
+    #    there: what is typed next lands in the first shell, not in the new one.
+    press(prefix + "v")
+    wait(r"┌ ● sh · sh ─+┐┌ ● sh · sh ─", "two panes side by side, each with a shell")
+    row, col = where(r"│tui-42 shell-", "the first shell's pane")
+    click(col + 5, row)
+    press("echo left-$((1+1))\r")
+    wait(r"^.{%d}│left-2" % col, "the typed line's answer in the left pane")
+    print("saw: a split pane beside it, and a click moved the focus")
+    show("two panes, the left one in focus")
+
+    # 5. A click on a row of the sidebar shows that box in the pane in focus.
+    row, col = where(r"^.[○●✓] \S+ · engine", "an engine's row in the sidebar")
+    click(5, row)
+    wait(r"┌ ○ \S+ · engine ─", "the engine in the pane that was clicked into")
+    print("saw: a click on a box in the sidebar showed it in the pane")
+    show("an engine beside a shell")
+
+    # 6. ctrl+b q: detach. The program leaves with 0; what it opened is not its business.
     press(prefix + "q")
     end = time.time() + 15
     status = None

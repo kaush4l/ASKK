@@ -13,7 +13,8 @@ same: VS Code and herdr. `./scripts/service.sh` proves every sentence in section
 | to know how it is | `askk status` | running or not, the address, since when, version and build, engines, what it can and cannot do. Ends with 0 only when it runs, so a script can ask |
 | to end it | `askk stop` | it is asked to finish (`stop_service`), completes the write in hand, and ends; the command waits for that |
 | a new build, or a new address, in force | `askk restart` | stop, then start |
-| a terminal on it | `askk terminal` | with a service running for this home, the terminal talks to it; with none, the terminal is the host itself, as before |
+| a terminal on it | `askk terminal` | a full screen like herdr's: every box in a sidebar, tabs of split panes, keys after `ctrl+b` (`?` lists them), the mouse. With a service running for this home it only looks, and `ctrl+b q` leaves everything running; with none, the terminal is the host itself. Sent to a pipe, or with `--lines`, it is lines, as before |
+| a program in a terminal of its own | ask `terminal_open` (in `askk terminal`: `ctrl+b c`) | the service starts it in a real terminal it holds itself, confined to its folder, and keeps it for the program's whole life: `terminal_screen` gives what it shows, `terminal_type` types, `terminal_close` ends it. It is one of the `boxes` |
 | to change how it runs | edit a file in the home | noticed within `look_every_ms` (2 seconds), read again, in force, and every window redraws. No restart |
 | the same, now | ask `reload` | looks at once; the answer lists what was read again, what waits for a restart, what was refused and why |
 | to see it work | ask `changes`, then `busy` | `changes` is held open until something changes; a run marks a change at every stage it enters |
@@ -37,6 +38,29 @@ start time, process number. Held against the hello it had (`ui/features/service.
 
 The build is a short name for exactly the source a program was made from (`build.rs`). The
 service and the page it serves are made from the same source, so they carry the same one.
+
+**The terminals.** The service is a multiplexer: it holds real terminals, and windows only
+look (`core/terminals.rs`, `host/terminals.rs`; `./scripts/terminals.sh` proves this part).
+
+| | |
+| --- | --- |
+| who holds a terminal | the service, for the program's whole life. It reads what the program writes whether or not anyone looks, and keeps the screen those bytes make |
+| what a window gets | the screen as an object (`core/screen.rs`: rows of text with their looks, the cursor, the title, whether the program runs), asked for when the change feed names `terminals/<id>`; never the bytes |
+| typing | `terminal_type(id, keys)`: the bytes a terminal sends for the keys (`ui/features/terminals.rs`, `typed`). The service turns the arrow keys for a program that asked for the other form |
+| where it starts | in a folder under the workspace (`place`, a plain folder name, made if missing); the person's own shell when no command is named |
+| what it may touch | it reads and runs what the owner can, and writes only in its folder, in temp, and in its agent's own state, where the build's system can confine it (`core/sandbox.rs`): macOS by the system's sandbox, Linux by Landlock, nothing on Windows. The box's fact `confined` says which |
+| when a window leaves | nothing happens: the program runs on |
+| when the service stops | its terminals end with it, and a restart does not bring them back: a box of this kind is lost, and its facts say so beforehand |
+| how many | 64 at most; an ended one stays, with how it ended, until it is closed |
+
+**Who may ask.** The service starts programs, so it is strict about who asks. It listens on
+this machine only. A page at another address is answered only if the owner named its origin
+(`origins`). And every request, whatever it asks for, must be sent to this machine by name
+(`127.0.0.1`, `localhost`, `[::1]`) or to the host of a named origin: a page on the internet
+can point a name of its own at `127.0.0.1` and so reach the service from the owner's
+browser, but such a request still carries the page's name, and is refused with 403 and a
+sentence. A phone that reaches the service by the machine's address in the house is refused
+the same way until that address is named in `origins`.
 
 **The settings.** `settings.json` in the data place is the one file about the service
 itself. Models, theme, words and layout keep their own files.
@@ -87,7 +111,12 @@ agents running in panes.
 | `herdr` starts or attaches; detaching leaves everything running; `herdr server stop` ends it | [README](https://github.com/herdrdev/herdr/blob/master/README.md), [session state](https://herdr.dev/docs/session-state/) | `askk start`, `askk terminal`, `askk stop` |
 | One config file; `herdr server reload-config` applies most settings while everything keeps running, and says that settings read at startup still need a restart | [configuration](https://herdr.dev/docs/configuration/) | `reload`, with the same honesty. askk also notices the edit by itself |
 | Client and server builds need not match: they agree on what each can do | [socket API](https://herdr.dev/docs/socket-api/) | `capabilities` already says what a build can do; the build in `hello` is only used to reload a stale page |
-| After a server restart the processes are gone; the layout is restored | [session state](https://herdr.dev/docs/session-state/) | an engine's state is on disk after every step, so a restart loses at most the step in hand |
+| After a server restart the processes are gone; the layout is restored | [session state](https://herdr.dev/docs/session-state/) | an engine's state is on disk after every step, so a restart loses at most the step in hand. A terminal is gone, as in herdr; the layout is the window's own and is not kept |
+| "A pane is a real terminal": the server renders its output, sends it input, and keeps it running across client detach | [concepts](https://herdr.dev/tui/docs/concepts/) | the same, with one difference: the screen is worked out in the service and handed out as an object, so a page can draw it without a terminal library |
+| A sidebar lists agents with a state (blocked, working, done, idle); "done" is kept per client | [concepts](https://herdr.dev/tui/docs/concepts/), [quick start](https://herdr.dev/tui/docs/quick-start/) | the same list for every UI (`boxes`), and "done" is the window's (`ui/features/boxes.rs`); in `askk terminal` it is the sidebar |
+| Keys after a prefix, `ctrl+b`: `c` new tab, `v` split right, `-` split down, `n` `p` tabs, `w` navigate, `q` detach, `?` help; the mouse does the same | [quick start](https://herdr.dev/tui/docs/quick-start/), [configuration](https://herdr.dev/tui/docs/configuration/) | the same keys (`ui/features/terminals.rs`), fixed, not yet set in a file. Clicks focus a pane, a tab, a box; a border is dragged |
+| An agent is "a process Herdr recognizes inside a pane", by the foreground process and by what its screen shows; blocked is "deliberately strict"; an unknown prompt reads as idle | [agents](https://herdr.dev/tui/docs/agents/) | the same idea, much less of it: the program's name, and three or four patterns. The box says the state is a guess. An agent that reports its own state (a harness session, an engine) is known, not guessed |
+| No sandbox of its own; a wrapper may be named with `HERDR_AGENT` | [agents](https://herdr.dev/tui/docs/agents/) | each terminal's program is confined by the build's own sandbox, and the box says how |
 
 ## 3. What askk does differently, and why
 
@@ -118,3 +147,20 @@ itself again, once per build of the service, so page and service are always the 
 **Not there yet.** On Windows the four commands say they are not there. A new engine folder
 copied into the home is booted at the next start, not in place. The log is one file that
 grows. The page does not yet say in words that the service is away or was restarted.
+
+**Where `askk terminal` is not herdr.** Said plainly, so nobody finds out by trying:
+
+- No scrolling back and no copy mode: a pane shows the terminal's screen as it is now.
+- The mouse is the window's, never the program's: a program in a pane that wants clicks
+  (an editor, a pager) does not get them. No right-click menus.
+- No workspaces with their branch and git state: boxes are one list, each with its place.
+- The layout (tabs, splits) lives in the window and is gone when it closes; herdr's server
+  keeps it and gives it back.
+- The keys are fixed; there is no config file for them, no themes, no notifications.
+- A screen is asked for whole each time it changes (about 30 times a second at most), not
+  sent as differences. On this machine that is not felt; over a slow link it would be.
+- Agents are recognised by name with a few patterns, against herdr's manifests for twenty
+  agents; a node program that calls itself `node` is not recognised at all.
+- Two windows on one terminal: the last one to change its layout sets the size; the other
+  draws what fits.
+- Windows: it compiles there (ConPTY) and was never run there.

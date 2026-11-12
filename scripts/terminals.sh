@@ -4,7 +4,8 @@
 # It is the built app (what scripts/run.sh builds) started with `askk start` on a new, empty
 # home. A terminal is opened over /ask by a client that leaves at once (curl); the program
 # in it runs on, its screen is read as an object, typing reaches it, it is one of the boxes,
-# it is confined to its folder where this system can confine, and a request under a foreign
+# it is confined to its folder where this system can confine, a program named like an agent
+# is recognised (scripts/terminals/agent.sh stands in for one), and a request under a foreign
 # name is refused. Then the full-screen terminal UI is driven once under a real terminal
 # (scripts/terminals/tui.py). See docs/concept.md (sections 6 and 7) and docs/service.md.
 #
@@ -35,10 +36,13 @@ LOG=$H/service/service.log
 mkdir -p "$WORK/app" "$H"
 cp "$BIN" "$WORK/app/" && cp -R "$OUT/public" "$WORK/app/public"
 BIN=$WORK/app/$(basename "$BIN")
+# A program with an agent's name, for the service to recognise: it is found by its name alone.
+mkdir -p "$WORK/bin"
+cp "$ROOT/scripts/terminals/agent.sh" "$WORK/bin/opencode" && chmod +x "$WORK/bin/opencode"
 
 # Every command is given the same home and the same port, as a person's shell would. The
 # person's shell is named, so the test is the same on every machine.
-askk() { (cd "$H" && ASKK_HOME="$H" PORT=$PORT IP=127.0.0.1 SHELL=/bin/sh "$BIN" "$@"); }
+askk() { (cd "$H" && PATH="$WORK/bin:$PATH" ASKK_HOME="$H" PORT=$PORT IP=127.0.0.1 SHELL=/bin/sh "$BIN" "$@"); }
 ask() { curl -s -m 30 -X POST -H 'content-type: application/json' -d "$2" "$URL/ask/$1"; }
 # The text after "name": in a line of JSON (a number, or a word in quotes).
 number() { printf '%s' "$1" | sed -n "s/.*\"$2\": *\([0-9][0-9]*\).*/\1/p" | head -1; }
@@ -147,7 +151,10 @@ case $status in
     wait_screen "$C" 'tried-' || { fail "the confined program ran to its end; its screen: $(screen "$C")"; ok=0; }
     [ -f "$H/projects/demo/inside.txt" ] || { fail "a confined program may write in its own folder ($H/projects/demo)"; ok=0; }
     [ ! -e "$H/data/outside.txt" ] || { fail "a confined program may NOT write outside its folder (it wrote $H/data/outside.txt)"; ok=0; }
-    has "$(screen "$C")" 'tried-1' "the system refused the write outside, and the program was told" || ok=0
+    # (The shell says how the refused write ended: 1 in one shell, 2 in another, never 0.)
+    case $(screen "$C") in
+    *tried-0*) fail "the system refused the write outside, and the program was told (its screen: $(screen "$C"))"; ok=0 ;;
+    esac
     case $B in
     *'"value":"not confined'*) fail "the box says its program is confined"; ok=0 ;;
     esac
@@ -160,6 +167,27 @@ case $status in
     unchecked="$unchecked\n  the program is confined to its folder"
     ;;
 esac
+
+echo "== an agent in a terminal is recognised by its program's name; its state is a guess"
+ok=1
+opened=$(ask terminal_open '{"command":"opencode","place":"demo","cols":80,"rows":24}')
+A=$(word "$opened" ok)
+# state_of <what the screen must show first> : the box's state once the screen shows it.
+agent_box() {
+    wait_screen "$A" "$1" || fail "the stand-in agent's screen shows: $1 (it shows: $(screen "$A"))"
+    box "$(ask boxes '{}')" "terminal:$A"
+}
+G=$(agent_box 'esc to interrupt')
+has "$G" '"kind":"opencode"' "the box is named after the agent, not after the shell that carries it" || ok=0
+has "$G" '"depth":"recognised"' "askk sees one step deeper than a screen: which agent it is" || ok=0
+has "$G" '"state":"working"' "while its screen says it works, the box is working" || ok=0
+has "$G" '{"label":"its state","value":"a guess, read off its screen"}' "and the box says that this state is a guess" || ok=0
+ask terminal_type "{\"id\":\"$A\",\"keys\":\"\\r\"}" >/dev/null
+has "$(agent_box 'Do you want to')" '"state":"blocked"' "a question on its screen: the box waits for the owner" || ok=0
+ask terminal_type "{\"id\":\"$A\",\"keys\":\"y\\r\"}" >/dev/null
+has "$(agent_box 'ready')" '"state":"idle"' "back at its prompt: idle" || ok=0
+ask terminal_close "{\"id\":\"$A\"}" >/dev/null
+done_step $ok
 
 echo "== a request under a foreign name is refused"
 ok=1
@@ -182,6 +210,8 @@ if command -v python3 >/dev/null; then
     has "$drove" "saw: a pane shows the engine" "and a pane with the engine to talk to" || ok=0
     has "$drove" "saw: a terminal box shows its live screen" "a terminal box chosen in the sidebar shows its live screen in the pane" || ok=0
     has "$drove" "saw: a shell in a new tab ran what was typed" "ctrl+b c opens a shell in a new tab, and typing reaches it" || ok=0
+    has "$drove" "saw: a split pane beside it, and a click moved the focus" "ctrl+b v splits the pane, and a click on a pane takes the focus there" || ok=0
+    has "$drove" "saw: a click on a box in the sidebar showed it in the pane" "a click on a row of the sidebar shows that box" || ok=0
     has "$drove" "saw: detached with 0" "ctrl+b q detaches" || ok=0
     SHELL_PID=$(number "$drove" shell)
     kill -0 "${SHELL_PID:-0}" 2>/dev/null || { fail "after the terminal UI detached, the shell it opened still runs (process ${SHELL_PID:-unknown})"; ok=0; }
@@ -224,4 +254,4 @@ fi
 if [ -n "$unchecked" ]; then
     printf '\nnot checked on this machine:%b\n' "$unchecked"
 fi
-printf '\nthe terminals work: the service holds them with nobody attached, shows each as a screen and as a box, takes typing, confines the program, refuses a foreign name, and ends them when it stops\n'
+printf '\nthe terminals work: the service holds them with nobody attached, shows each as a screen and as a box, takes typing, confines the program, recognises an agent, refuses a foreign name, and ends them when it stops\n'
