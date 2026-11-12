@@ -61,7 +61,8 @@ jobs:
       - name: check
         shell: bash
         run: |
-          set -o pipefail
+          # GitHub's bash stops at the first failure (-e); the end must still be written down.
+          set +e -o pipefail
           ./scripts/check.sh 2>&1 | tee check.log
           status=$?
           if [ "$status" != 0 ]; then
