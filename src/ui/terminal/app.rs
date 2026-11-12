@@ -10,7 +10,8 @@
 //! | the boxes | every session, in the order `ui/features/boxes.rs` decides, with what this window has seen; the places they run in, with their git state |
 //! | the tabs | tabs of split panes; each pane shows one box (`panes.rs`), laid out again from what the service kept (`kept.rs`) |
 //! | what the panes show | a terminal's last screen; an engine's or a session's lines and the line being typed |
-//! | where the keys go | to the pane in focus, to the sidebar (after `ctrl+b w`), to copy mode (`copy.rs`), or to the panes themselves for one key after the prefix |
+//! | where the keys go | to the pane in focus, to navigate mode (after `ctrl+b w`, `navigate.rs`), to copy mode (`copy.rs`), to an open menu (`menu.rs`), to a name being typed, or to the panes themselves for one key after the prefix |
+//! | what it tells | a box that comes to need the owner while it is not shown (`tell.rs`) |
 //!
 //! The keys are herdr's, or the owner's from `settings.json` (`ui/features/keymap.rs`). A
 //! pane on a terminal box sends every other key to its program; a pane on an engine or a
@@ -80,6 +81,14 @@ pub struct App {
     pub(super) pressed: Option<super::copy::Cell>,
     /// What the window finds when it opens (`kept.rs`).
     pub(super) opened: super::kept::Opened,
+    /// The menu a right-click opened (`menu.rs`).
+    pub(super) menu: Option<super::menu::Menu>,
+    /// A name being typed for a tab or a pane (`navigate.rs`).
+    pub(super) naming: Option<super::navigate::Naming>,
+    /// The boxes told of that nobody has looked at since (`tell.rs`).
+    pub(super) rung: BTreeSet<String>,
+    /// How the terminal looks and tells, from `settings.json` (`terminal`).
+    pub(super) look_of: crate::core::settings::Terminal,
 }
 
 impl App {
@@ -109,6 +118,10 @@ impl App {
             dragging: None,
             pressed: None,
             opened: super::kept::Opened::new(first),
+            menu: None,
+            naming: None,
+            rung: BTreeSet::new(),
+            look_of: Default::default(),
         }
     }
 
@@ -177,6 +190,7 @@ impl App {
     pub(super) fn look(&mut self) -> Vec<Want> {
         let shown = self.shown().to_string();
         self.seen.looked(&shown);
+        self.unmark_in_view();
         self.tabs.shown(self.main()).iter().filter_map(|(_, _, b)| self.content(b)).collect()
     }
 
@@ -222,7 +236,7 @@ impl App {
         wants
     }
 
-    fn act(&mut self, action: Action) -> Vec<Want> {
+    pub(super) fn act(&mut self, action: Action) -> Vec<Want> {
         let main = self.main();
         match action {
             Action::NewTab => {
@@ -282,6 +296,13 @@ impl App {
                     return typed(&c.key, c.ctrl, c.alt, c.shift).map(|keys| Want::Type { id, keys }).into_iter().collect();
                 }
             }
+            Action::Menu => {
+                let focus = self.tabs.focus();
+                let at = self.tabs.shown(main).into_iter().find(|(p, _, _)| *p == focus).map(|(_, r, _)| (r.x + 2, r.y + 1)).unwrap_or((main.x, main.y));
+                return self.pane_menu(focus, at);
+            }
+            Action::RenameTab => self.naming_begin(super::navigate::Named::Tab(self.tabs.at)),
+            Action::RenamePane => self.naming_begin(super::navigate::Named::Pane(self.tabs.focus())),
         }
         self.look()
     }
@@ -331,28 +352,18 @@ impl App {
         }
     }
 
-    fn side_key(&mut self, k: Key) -> Vec<Want> {
-        let listed = self.listed();
-        match k.name.as_str() {
-            "ArrowUp" | "k" => self.side_at = self.side_at.saturating_sub(1),
-            "ArrowDown" | "j" => self.side_at = (self.side_at + 1).min(listed.len().saturating_sub(1)),
-            "Enter" => {
-                if let Some(id) = listed.get(self.side_at).map(|i| self.boxes[*i].id.clone()) {
-                    return self.show(&id);
-                }
-            }
-            "Escape" | "q" => self.mode = Mode::Pane,
-            _ => {}
-        }
-        vec![]
-    }
-
     fn key(&mut self, k: Key) -> Vec<Want> {
         if self.help {
             self.help = false;
             return vec![];
         }
         self.note.clear();
+        if self.menu.is_some() {
+            return self.menu_key(&k);
+        }
+        if self.naming.is_some() {
+            return self.naming_key(&k);
+        }
         let prefix = self.keys.is_prefix(&k.name, k.ctrl, k.alt, k.shift);
         match self.mode {
             Mode::Prefix => {
@@ -371,7 +382,7 @@ impl App {
                 self.mode = Mode::Prefix;
                 vec![]
             }
-            Mode::Side => self.side_key(k),
+            Mode::Side => self.navigate_key(&k),
             Mode::Copy => self.copy_key(&k.name, k.ctrl),
             Mode::Pane => self.pane_key(k),
         }
@@ -400,11 +411,15 @@ impl App {
                 vec![]
             }
             Got::Boxes(list) => {
+                let before = self.opened.has_boxes().then(|| self.marks());
                 self.seen.take(&list);
                 let shown = self.shown().to_string();
                 self.seen.looked(&shown);
                 self.boxes = order(&list, &self.seen);
-                let wants = self.found_boxes();
+                let mut wants = self.found_boxes();
+                if let Some(before) = before {
+                    wants.extend(self.tell(&before));
+                }
                 self.known.extend(list.iter().map(|b| b.id.clone()));
                 self.side_at = self.side_at.min(self.boxes.len().saturating_sub(1));
                 wants
@@ -414,6 +429,10 @@ impl App {
                 vec![]
             }
             Got::Layout(layout) => self.found_layout(layout),
+            Got::Settings(keys, look) => {
+                self.look_of = look;
+                self.on(Got::Keys(keys))
+            }
             Got::Keys(keys) => {
                 match Keymap::new(&keys) {
                     Ok(map) if map != self.keys => {
@@ -428,14 +447,8 @@ impl App {
                 self.opened.keys_read = true;
                 vec![]
             }
-            Got::Screen(id, screen) => {
-                self.took(id, screen, None);
-                vec![]
-            }
-            Got::Scrolled(id, screen, back) => {
-                self.took(id, screen, Some(back));
-                vec![]
-            }
+            Got::Screen(id, screen) => self.took(id, screen, None),
+            Got::Scrolled(id, screen, back) => self.took(id, screen, Some(back)),
             Got::Talk(box_id, lines) => {
                 self.talks.entry(box_id).or_default().lines = lines;
                 vec![]
@@ -575,7 +588,7 @@ mod tests {
         assert!(rows[2].contains("│user: What is 17 * 23?") && rows[3].contains("│model: 17 * 23 is 391."), "{} / {}", rows[2], rows[3]);
         assert!(rows[27].contains("│> "), "a line to speak into: {}", rows[27]);
         assert_eq!(cursor, Some((35, 27)), "the cursor waits on that line");
-        assert_eq!(rows[29], " ctrl+b  then  c tab  v split right  - split down  w boxes  z zoom  ? help  q detach");
+        assert_eq!(rows[29], " ctrl+b  then  c tab  v split right  - split down  w navigate  z zoom  m menu  ? help  q detach");
     }
 
     #[test]
@@ -652,7 +665,7 @@ mod tests {
         let mut app = open();
         assert_eq!(keys(&mut app, &["ctrl+b", "w"]), []);
         let (rows, cursor) = drawn(&app);
-        assert!(rows[29].starts_with(" ↑ ↓ choose a box  enter show it in the pane  esc back to the pane"), "{}", rows[29]);
+        assert!(rows[29].starts_with(" NAVIGATE  ↑ ↓ box  [ ] place  h j k l pane  n p tab"), "the foot says the mode: {}", rows[29]);
         assert_eq!(cursor, None, "the keys are the sidebar's: no cursor in a pane");
         // It starts on the box the pane shows (the engine, third), and goes up to the terminal.
         assert_eq!(keys(&mut app, &["ArrowUp", "Enter"]), [Want::Screen("7".into())]);
@@ -813,7 +826,7 @@ mod tests {
         app.on(Got::Boxes(list.clone()));
         list[1].state = State::Idle;
         app.on(Got::Boxes(list.clone()));
-        assert!(drawn(&app).0[2].starts_with(" ? reviewer") && drawn(&app).0[4].starts_with(" ✓ sh"), "done comes after what waits: {:?}", &drawn(&app).0[2..6]);
+        assert!(drawn(&app).0[2].starts_with(" ? reviewer") && drawn(&app).0[4].starts_with("◆✓ sh"), "done comes after what waits, marked as told: {:?}", &drawn(&app).0[2..6]);
         app.on(Got::Mouse(Mouse::Down(5, 4)));
         app.on(Got::Boxes(list));
         assert!(drawn(&app).0.iter().any(|r| r.starts_with("▎○ sh")), "shown in the pane, it has been seen: {:?}", &drawn(&app).0[2..8]);
@@ -986,5 +999,187 @@ mod tests {
         assert_eq!(app.on(Got::Mouse(Mouse::Down(3, 5))), [], "a click on a heading shows nothing");
         assert_eq!(app.on(Got::Mouse(Mouse::Down(3, 3))), [Want::Talk("session:4".into())]);
         assert_eq!(keys(&mut app, &["ctrl+b", "2"]), [Want::Screen("7".into())], "the numbers are what waits first, whatever the place");
+    }
+
+    #[test]
+    fn a_right_click_opens_a_menu_on_a_pane_a_tab_a_box_and_keys_or_a_click_work_it() {
+        let mut app = open();
+        // On the engine's pane: its menu, drawn over it; Esc leaves it.
+        assert_eq!(app.on(Got::Mouse(Mouse::Right(60, 10))), [Want::Talk(ENGINE.into())]);
+        let (rows, cursor) = drawn(&app);
+        assert!(rows[10].contains("┌ pane · developer") && rows[11].contains("│ split right") && rows[13].contains("│ zoom") && rows.iter().any(|r| r.contains("│ open in a new tab")), "{rows:?}");
+        assert_eq!(cursor, None, "the keys are the menu's");
+        assert_eq!(keys(&mut app, &["Escape"]), []);
+        assert!(app.menu.is_none() && !drawn(&app).0[11].contains("split right"));
+        // Down to "split down", Enter: the pane is split, and a shell asked for the new half.
+        app.on(Got::Mouse(Mouse::Right(60, 10)));
+        assert_eq!(keys(&mut app, &["ArrowDown", "Enter"]), [Want::Open { pane: 2, cols: 86, rows: 12 }]);
+        // A click on a line does it: "zoom" is the third.
+        app.on(Got::Mouse(Mouse::Right(60, 5)));
+        let at = app.menu.as_ref().map(|m| m.rect(app.area)).unwrap_or_default();
+        app.on(Got::Mouse(Mouse::Down(at.x + 3, at.y + 3)));
+        assert!(app.tabs.tab().zoomed && app.menu.is_none(), "zoomed by a click on its line");
+        app.on(Got::Mouse(Mouse::Right(60, 5)));
+        assert!(drawn(&app).0.iter().any(|r| r.contains("│ unzoom")), "the menu says what a line will do now");
+        app.on(Got::Mouse(Mouse::Down(1, 25)));
+        assert!(app.menu.is_none(), "a click anywhere else closes it");
+        // On a tab's name: new, rename, close.
+        app.on(Got::Mouse(Mouse::Right(36, 0)));
+        assert!(drawn(&app).0.iter().any(|r| r.contains("tab 1 · developer")) && drawn(&app).0.iter().any(|r| r.contains("│ rename this tab")));
+        keys(&mut app, &["Escape"]);
+        // On a box in the sidebar: open it in a new tab.
+        app.on(Got::Mouse(Mouse::Right(5, 2)));
+        assert!(drawn(&app).0.iter().any(|r| r.contains("reviewer · claude ─")) && drawn(&app).0.iter().any(|r| r.contains("│ copy its last line")), "{:?}", drawn(&app).0);
+        assert_eq!(keys(&mut app, &["j", "Enter"]), [Want::Talk("session:4".into())]);
+        assert_eq!((app.tabs.tabs.len(), app.shown()), (2, "session:4"));
+        // Copy its name, from the keys: ctrl+b m is the menu of the pane in focus.
+        app.on(Got::Mouse(Mouse::Right(5, 2)));
+        assert_eq!(keys(&mut app, &["j", "j", "j", "Enter"]), [Want::Copy("reviewer".into())]);
+        assert!(drawn(&app).0[29].contains("copied its name to the clipboard"));
+        keys(&mut app, &["ctrl+b", "m"]);
+        assert!(drawn(&app).0.iter().any(|r| r.contains("pane · reviewer")), "{:?}", drawn(&app).0);
+        // Close this tab, from its menu.
+        keys(&mut app, &["Escape"]);
+        app.on(Got::Mouse(Mouse::Right(50, 0)));
+        keys(&mut app, &["j", "j", "Enter"]);
+        assert_eq!(app.tabs.tabs.len(), 1, "the second tab is closed by its menu");
+    }
+
+    #[test]
+    fn a_places_heading_has_a_menu_too() {
+        let mut app = open();
+        let mut list = boxes();
+        (list[1].place, list[2].place) = ("demo".into(), "askk".into());
+        app.on(Got::Boxes(list));
+        // Row 5 is the heading of `demo`.
+        app.on(Got::Mouse(Mouse::Right(3, 5)));
+        assert!(drawn(&app).0.iter().any(|r| r.contains("place · demo")), "{:?}", drawn(&app).0);
+        assert_eq!(keys(&mut app, &["Enter"]), [Want::Screen("7".into())], "its first box is shown");
+    }
+
+    #[test]
+    fn navigate_mode_goes_over_boxes_places_panes_and_tabs_until_esc() {
+        let mut app = open();
+        let wants = keys(&mut app, &["ctrl+b", "v"]);
+        shell(&mut app, &wants, "1", &["right"]);
+        let wants = keys(&mut app, &["ctrl+b", "c"]);
+        shell(&mut app, &wants, "2", &["third"]);
+        keys(&mut app, &["ctrl+b", "w"]);
+        assert!(drawn(&app).0[29].starts_with(" NAVIGATE "), "{}", drawn(&app).0[29]);
+        // Tabs and panes, without the prefix each time.
+        keys(&mut app, &["p"]);
+        assert_eq!(app.tabs.at, 0);
+        keys(&mut app, &["h"]);
+        assert_eq!(app.tabs.focus(), 1);
+        keys(&mut app, &["l"]);
+        assert_eq!(app.tabs.focus(), 2);
+        assert!(drawn(&app).0[1].contains("┐┌ terminal:1") || drawn(&app).0[1].contains("┐┌ ● sh"), "{}", drawn(&app).0[1]);
+        keys(&mut app, &["2"]);
+        assert_eq!(app.tabs.at, 1);
+        keys(&mut app, &["n"]);
+        assert_eq!(app.tabs.at, 0, "round the tabs");
+        assert_eq!(app.mode, Mode::Side, "still navigating");
+        // Boxes, and places: [ and ] go from the first box of one place to the next.
+        let mut list = boxes();
+        (list[1].place, list[2].place) = ("demo".into(), "askk".into());
+        app.on(Got::Boxes(list));
+        app.side_at = 0;
+        keys(&mut app, &["]"]);
+        assert_eq!(app.side_at, 1, "the first box of the next place");
+        keys(&mut app, &["]", "]"]);
+        assert!(drawn(&app).0[29].contains("this is the last place"), "{}", drawn(&app).0[29]);
+        keys(&mut app, &["[", "ArrowDown"]);
+        assert_eq!(app.side_at, 2);
+        assert_eq!(keys(&mut app, &["Escape"]), []);
+        assert_eq!(app.mode, Mode::Pane);
+    }
+
+    #[test]
+    fn a_tab_and_a_pane_are_named_and_the_names_are_kept_with_the_layout() {
+        let mut app = open();
+        keys(&mut app, &["ctrl+b", "T"]);
+        let (rows, cursor) = drawn(&app);
+        assert!(rows[29].starts_with(" name tab 1: "), "{}", rows[29]);
+        assert_eq!(cursor, Some((13, 29)), "the cursor waits where the name is typed");
+        keys(&mut app, &["w", "o", "r", "k", "x", "Backspace", "Enter"]);
+        assert!(drawn(&app).0[0].contains("│ 1 work"), "{}", drawn(&app).0[0]);
+        assert!(drawn(&app).0[29].contains("the tab is called work"));
+        keys(&mut app, &["ctrl+b", "P", "l", "o", "g", "s", "Enter"]);
+        assert!(drawn(&app).0[1].contains("logs (developer · engine)"), "{}", drawn(&app).0[1]);
+        keys(&mut app, &["ctrl+b", "P", "x", "Escape"]);
+        assert!(drawn(&app).0[1].contains("logs (developer"), "Esc leaves the name as it was");
+        let laid = app.to_keep().expect("a name is a new layout");
+        assert_eq!((laid.tabs[0].name.as_str(), laid.tabs[0].names.clone()), ("work", vec!["logs".to_string()]));
+        // And a new window finds them again.
+        let mut again = App::new("h", ENGINE, 120, 30);
+        again.on(Got::Layout(laid));
+        again.on(Got::Boxes(boxes()));
+        assert!(drawn(&again).0[0].contains("│ 1 work") && drawn(&again).0[1].contains("logs (developer"), "{:?}", &drawn(&again).0[..2]);
+        // An empty name takes it away.
+        keys(&mut again, &["ctrl+b", "T", "ctrl+u", "Enter"]);
+        assert!(drawn(&again).0[0].contains("│ 1 developer"));
+    }
+
+    #[test]
+    fn a_box_that_comes_to_wait_while_it_is_not_shown_is_told_and_marked_until_it_is_looked_at() {
+        let mut app = open();
+        let mut list = boxes();
+        list[1].state = State::Blocked;
+        let tell = Want::Tell { bell: true, osc9: true, osc777: false, title: "askk".into(), body: "sh · sh waits for you".into() };
+        assert_eq!(app.on(Got::Boxes(list.clone())), [tell], "the bell and OSC 9, as settings.json says by default");
+        let (rows, _) = drawn(&app);
+        assert!(rows[29].contains("◆ sh · sh waits for you"), "{}", rows[29]);
+        assert!(rows.iter().any(|r| r.starts_with("◆? sh · sh")), "marked in the sidebar: {rows:?}");
+        assert_eq!(app.on(Got::Boxes(list.clone())), [], "told once");
+        // The session that already waited when the window opened is not told; a pane shows it now.
+        keys(&mut app, &["ctrl+b", "1"]);
+        assert!(drawn(&app).0.iter().any(|r| r.starts_with("▎? sh")), "looked at, the mark goes");
+        assert!(app.rung.is_empty());
+        // A box in view that comes to wait is not told; with `notify` off, only the foot and the mark say it.
+        list[1].state = State::Working;
+        app.on(Got::Boxes(list.clone()));
+        list[1].state = State::Blocked;
+        assert_eq!(app.on(Got::Boxes(list.clone())), [], "it is in view");
+        let off = crate::core::settings::Terminal { notify: "off".into(), theme: "glass-light".into(), ..Default::default() };
+        app.on(Got::Settings(Default::default(), off));
+        assert_eq!(app.picture().theme.palette, Some(super::super::theme::GLASS_LIGHT), "the theme of the settings");
+        keys(&mut app, &["ctrl+b", "2"]);
+        assert_eq!(app.shown(), "session:4");
+        list[1].state = State::Working;
+        app.on(Got::Boxes(list.clone()));
+        list[1].state = State::Idle;
+        assert_eq!(app.on(Got::Boxes(list)), [], "notify off: nothing told outside");
+        assert!(drawn(&app).0[29].contains("◆ sh · sh done") && app.rung.contains("terminal:7"));
+    }
+
+    #[test]
+    fn copy_mode_goes_by_words_and_finds_a_text_up_into_what_scrolled_off() {
+        let mut app = on_a_terminal();
+        keys(&mut app, &["ctrl+b", "[", "k", "k", "0"]);
+        assert_eq!(app.copy.as_ref().map(|c| c.at), Some((0, 0)));
+        keys(&mut app, &["w"]);
+        assert_eq!(app.copy.as_ref().map(|c| c.at), Some((2, 0)));
+        keys(&mut app, &["e"]);
+        assert_eq!(app.copy.as_ref().map(|c| c.at), Some((5, 0)));
+        // `/one`: not before the cursor in the rows there are, so a page further up is asked for.
+        assert_eq!(keys(&mut app, &["/", "o", "n", "e"]), []);
+        assert!(drawn(&app).0[27].contains("find upwards: one▏"), "{}", drawn(&app).0[27]);
+        assert_eq!(keys(&mut app, &["Enter"]), [Want::Scrolled { id: "7".into(), back: 25 }]);
+        assert_eq!(app.on(Got::Scrolled("7".into(), screen(&["older one", "$ echo one", "one"], 86, 26), 25)), []);
+        assert_eq!(app.copy.as_ref().map(|c| c.at), Some((0, -23)), "found where it came");
+        assert!(drawn(&app).0[29].contains("found 'one'"));
+        keys(&mut app, &["n"]);
+        assert_eq!(app.copy.as_ref().map(|c| c.at), Some((7, -24)), "n: again, further up");
+        keys(&mut app, &["n"]);
+        assert_eq!(keys(&mut app, &["n"]), [Want::Scrolled { id: "7".into(), back: 50 }], "past what is known: further up");
+        // The service has no more than 30 rows: it is not there, and the cursor goes back.
+        app.on(Got::Scrolled("7".into(), screen(&["first"], 86, 26), 30));
+        assert_eq!(app.copy.as_ref().map(|c| c.at), Some((6, -25)));
+        assert!(drawn(&app).0[29].contains("'one' is not in what is kept"), "{}", drawn(&app).0[29]);
+        keys(&mut app, &["N"]);
+        assert_eq!(app.copy.as_ref().map(|c| c.at), Some((7, -24)), "N: back down");
+        // A rectangle, copied.
+        keys(&mut app, &["0", "ctrl+v", "j", "l", "l", "l"]);
+        assert_eq!(keys(&mut app, &["y"]), [Want::Copy("$ ec\none".into()), Want::Screen("7".into())]);
     }
 }

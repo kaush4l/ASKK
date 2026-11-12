@@ -31,7 +31,11 @@
 //! | `events.rs` | what the full screen is told (a key, an answer, a change) and what it asks for |
 //! | `app.rs` | the full screen's whole behaviour: what happened in, what to ask out |
 //! | `kept.rs` | what a window finds when it opens: the layout the service kept, the terminals that ran on |
-//! | `copy.rs` | copy mode: moving over a terminal's pane and its scroll-back, selecting, copying |
+//! | `copy.rs` | copy mode: moving over a terminal's pane and its scroll-back, by words, finding a text, selecting rows or a rectangle, copying |
+//! | `menu.rs` | what a right-click opens on a pane, a tab, a box, a place |
+//! | `navigate.rs` | navigate mode (the boxes, places, panes and tabs without the prefix), and naming a tab or a pane |
+//! | `tell.rs` | a box that comes to need the owner while it is not shown: the foot, a mark, the bell, a desktop notification |
+//! | `theme.rs` | the page's glass palette in the cells, dark or light, in true colour or 256 |
 //! | `picture.rs` | the app as the values that are drawn: the panes in view, the tabs, the foot |
 //! | `draw.rs` | the full screen as cells, from values |
 //! | `side.rs` | the sidebar as cells: every box under the place it runs in, with its git state |
@@ -53,10 +57,14 @@ pub mod events;
 mod heard;
 mod kept;
 pub mod layout;
+mod menu;
 mod mouse;
+mod navigate;
 pub mod panes;
 mod picture;
 mod side;
+mod tell;
+pub mod theme;
 use crate::api::{Busy, ChatTurn};
 use crate::core::caps::Cap;
 use crate::core::run::Run;
@@ -232,8 +240,10 @@ impl Session {
 }
 
 /// Be the full screen for a person at a real terminal, until they leave (`client.rs`). The
-/// first pane shows the engine named, else the one a person talks to first.
-pub fn full_screen(rt: &tokio::runtime::Runtime, door: Door, engine: Option<String>) -> Result<(), String> {
+/// first pane shows the engine named, else the one a person talks to first. `session` is the
+/// named session whose layout it lays out and keeps (`--session`); none: the one the
+/// settings name (`terminal.session`), else the one without a name.
+pub fn full_screen(rt: &tokio::runtime::Runtime, door: Door, engine: Option<String>, session: Option<String>) -> Result<(), String> {
     let host = match &door {
         Door::Here => "its own host".to_string(),
         Door::There(base) => base.trim_start_matches("http://").trim_start_matches("https://").trim_end_matches('/').to_string(),
@@ -245,8 +255,69 @@ pub fn full_screen(rt: &tokio::runtime::Runtime, door: Door, engine: Option<Stri
             Some(path) => return Err(format!("no engine '{path}'. There are: {}", engines.join(", "))),
             None => talk::first_choice(&engines).and_then(|i| engines.get(i).cloned()),
         };
-        client::run(door, first.map(|path| crate::ui::features::terminals::engine_box(&path)).unwrap_or_default(), host).await
+        let session = match session {
+            Some(name) => name,
+            None => door.ask::<crate::core::settings::Settings>("service_settings", json!({})).await.map(|s| s.terminal.session).unwrap_or_default(),
+        };
+        crate::core::terminals::session_key(&session)?;
+        let host = if session.is_empty() { host } else { format!("{session} @ {host}") };
+        client::run(door, first.map(|path| crate::ui::features::terminals::engine_box(&path)).unwrap_or_default(), host, session).await
     })
+}
+
+/// A terminal box's id as a person may write it: `3` or `terminal:3`.
+fn terminal_id(written: &str) -> String {
+    written.trim().trim_start_matches("terminal:").to_string()
+}
+
+/// What the terminal `id` shows now, as text, one row a line (`askk terminal --read <id>`).
+pub fn read_terminal(rt: &tokio::runtime::Runtime, door: &Door, id: &str) -> Result<String, String> {
+    let s: crate::core::screen::Screen = rt.block_on(door.ask("terminal_screen", json!({"id": terminal_id(id)})))?;
+    Ok(s.text().trim_end().to_string())
+}
+
+/// `written` with `\r`, `\n`, `\t`, `\e` (Escape), `\xNN` and `\\` turned into what they
+/// stand for, as a shell's `printf` does.
+pub fn unescaped(written: &str) -> String {
+    let mut out = String::new();
+    let mut rest = written.chars().peekable();
+    while let Some(c) = rest.next() {
+        if c != '\\' {
+            out.push(c);
+            continue;
+        }
+        match rest.next() {
+            Some('r') => out.push('\r'),
+            Some('n') => out.push('\n'),
+            Some('t') => out.push('\t'),
+            Some('e') => out.push('\x1b'),
+            Some('x') => {
+                let hex: String = (0..2).filter_map(|_| rest.next_if(|h| h.is_ascii_hexdigit())).collect();
+                match u8::from_str_radix(&hex, 16) {
+                    Ok(b) => out.push(char::from(b)),
+                    Err(_) => out.push_str(&format!("\\x{hex}")),
+                }
+            }
+            Some(other) => out.push(other),
+            None => out.push('\\'),
+        }
+    }
+    out
+}
+
+/// Type `keys` (with the escapes [`unescaped`] reads) into the terminal `id`
+/// (`askk terminal --send <id> <keys>`).
+pub fn send_terminal(rt: &tokio::runtime::Runtime, door: &Door, id: &str, keys: &str) -> Result<(), String> {
+    rt.block_on(door.ask::<()>("terminal_type", json!({"id": terminal_id(id), "keys": unescaped(keys)})))
+}
+
+/// The sessions there are, as lines (`askk terminal --sessions`): the one without a name,
+/// then each named one that has a layout kept.
+pub fn session_lines(rt: &tokio::runtime::Runtime, door: &Door) -> Result<String, String> {
+    let names: Vec<String> = rt.block_on(door.ask("terminal_sessions", json!({})))?;
+    let mut out = vec!["(the session without a name)  askk terminal".to_string()];
+    out.extend(names.iter().map(|n| format!("{n}  askk terminal --session {n}")));
+    Ok(out.join("\n"))
 }
 
 /// Read lines until the input ends or the person leaves. An error is said and the session

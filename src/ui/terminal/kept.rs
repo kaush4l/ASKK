@@ -39,6 +39,11 @@ impl Opened {
         Opened { first: Tabs::new(first), layout: None, boxes: false, found: false, kept: None, keys_read: false }
     }
 
+    /// The boxes have come once.
+    pub fn has_boxes(&self) -> bool {
+        self.boxes
+    }
+
     /// Both the layout and the boxes have come, and what could be laid out again was.
     pub fn done(&self) -> bool {
         self.found

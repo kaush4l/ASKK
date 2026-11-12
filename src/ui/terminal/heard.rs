@@ -12,7 +12,7 @@ impl App {
     /// What the change feed's keys mean for what is in view.
     pub(super) fn changed(&mut self, keys: &[String]) -> Vec<Want> {
         // The layout this window keeps is its own: hearing it back changes nothing.
-        let keys: Vec<&String> = keys.iter().filter(|k| *k != crate::core::terminals::LAYOUT).collect();
+        let keys: Vec<&String> = keys.iter().filter(|k| *k != crate::core::terminals::LAYOUT && !k.starts_with(crate::core::terminals::SESSIONS)).collect();
         if keys.is_empty() {
             return vec![];
         }
@@ -32,8 +32,9 @@ impl App {
     }
 
     /// A terminal's screen arrived, `back` rows up (`None`: at its end).
-    pub(super) fn took(&mut self, id: String, screen: Screen, back: Option<u16>) {
+    pub(super) fn took(&mut self, id: String, screen: Screen, back: Option<u16>) -> Vec<Want> {
         let copying = self.copy.as_ref().is_some_and(|c| c.id == id);
+        let mut wants = vec![];
         match back {
             // A screen of the end that arrives while the pane is looked back in is late.
             None if !self.backs.contains_key(&id) => {
@@ -44,8 +45,10 @@ impl App {
             // copied from: then it stands still where it is).
             Some(back) => {
                 if copying {
-                    self.copy_took(&id, &screen, back);
-                    self.backs.insert(id.clone(), back);
+                    wants = self.copy_took(&id, &screen, back);
+                    if !wants.iter().any(|w| matches!(w, Want::Scrolled { .. })) {
+                        self.backs.insert(id.clone(), back);
+                    }
                     self.screens.insert(id, screen);
                 } else if back == 0 {
                     self.backs.remove(&id);
@@ -57,6 +60,7 @@ impl App {
                 }
             }
         }
+        wants
     }
 
 }

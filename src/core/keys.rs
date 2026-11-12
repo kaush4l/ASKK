@@ -42,6 +42,9 @@ pub struct Keys {
     pub fold_sidebar: String,
     pub help: String,
     pub detach: String,
+    pub menu: String,
+    pub rename_tab: String,
+    pub rename_pane: String,
     pub boxes_by_number: String,
     pub tabs_by_number: String,
 }
@@ -70,6 +73,9 @@ impl Default for Keys {
             fold_sidebar: k("b"),
             help: k("?"),
             detach: k("q d"),
+            menu: k("m"),
+            rename_tab: k("T"),
+            rename_pane: k("P"),
             boxes_by_number: k("N"),
             tabs_by_number: k("alt+N"),
         }
@@ -157,7 +163,7 @@ pub fn digits(pattern: &str) -> Result<Vec<Chord>, String> {
 
 impl Keys {
     /// Every entry but the prefix and the digits: its name, and what is written for it.
-    pub fn entries(&self) -> [(&'static str, &str); 19] {
+    pub fn entries(&self) -> [(&'static str, &str); 22] {
         [
             ("new_tab", &self.new_tab),
             ("split_right", &self.split_right),
@@ -178,6 +184,9 @@ impl Keys {
             ("fold_sidebar", &self.fold_sidebar),
             ("help", &self.help),
             ("detach", &self.detach),
+            ("menu", &self.menu),
+            ("rename_tab", &self.rename_tab),
+            ("rename_pane", &self.rename_pane),
         ]
     }
 
@@ -243,7 +252,7 @@ mod tests {
     #[test]
     fn the_default_table_is_read_and_a_wrong_one_names_its_entry() {
         let b = Keys::default().bound().unwrap();
-        assert_eq!((b.prefix.key.as_str(), b.entries.len(), b.boxes.len(), b.tabs.len()), ("b", 19, 9, 9));
+        assert_eq!((b.prefix.key.as_str(), b.entries.len(), b.boxes.len(), b.tabs.len()), ("b", 22, 9, 9));
         let twice = Keys { zoom: "c".into(), ..Default::default() }.bound().unwrap_err();
         assert_eq!(twice, "`keys.zoom`: 'c' already does `new_tab`: one key does one thing");
         assert!(Keys { help: "ctrl+?+".into(), ..Default::default() }.bound().unwrap_err().starts_with("`keys.help`: "));

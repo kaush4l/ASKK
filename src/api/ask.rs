@@ -153,6 +153,9 @@ pub fn table() -> Vec<Ask> {
         terminal_close(id),
         terminal_layout(),
         save_terminal_layout(layout),
+        terminal_sessions(),
+        session_layout(session),
+        save_session_layout(session, layout),
     ]
 }
 

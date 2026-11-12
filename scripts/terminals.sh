@@ -6,8 +6,10 @@
 # in it runs on, its screen is read as an object, typing reaches it, it is one of the boxes,
 # it is confined to its folder where this system can confine, a program named like an agent
 # is recognised (scripts/terminals/agent.sh stands in for one), and a request under a foreign
-# name is refused. Then the full-screen terminal UI is driven once under a real terminal
-# (scripts/terminals/tui.py). See docs/concept.md (sections 6 and 7) and docs/service.md.
+# name is refused. A terminal is read and typed into from the command line (`--read`,
+# `--send`). Then the full-screen terminal UI is driven under a real terminal
+# (scripts/terminals/tui.py): the walk, a second window on the layout it left, and a named
+# session with a layout of its own. See docs/concept.md (sections 6 and 7) and docs/service.md.
 #
 #   ./scripts/terminals.sh            test the last build (target/dx/askk/release/web)
 #   ./scripts/terminals.sh <folder>   test the build in that folder (it holds `server` and `public/`)
@@ -142,6 +144,15 @@ ask terminal_type "{\"id\":\"$T\",\"keys\":\"still here\\r\"}" >/dev/null
 wait_screen "$T" 'still here' 2 || { fail "after the clients have gone the program still runs and still reads what is typed"; ok=0; }
 done_step $ok
 
+echo "== a terminal is read and typed into from the command line"
+ok=1
+read_out=$(askk terminal --read "$T" 2>&1)
+has "$read_out" "still here" "\`askk terminal --read <id>\` prints what the terminal shows" || ok=0
+askk terminal --send "terminal:$T" 'sent-by-cli\r' >/dev/null 2>&1 || { fail "\`askk terminal --send <id> <keys>\` leaves with 0"; ok=0; }
+wait_screen "$T" 'sent-by-cli' 2 || { fail "what \`--send\` typed reached the program (\\r as Enter); it shows: $(screen "$T")"; ok=0; }
+has "$(askk terminal --read nope 2>&1)" "no terminal 'nope' is held" "\`--read\` of a terminal that is not there says so" || ok=0
+done_step $ok
+
 echo "== the program is confined to its folder"
 case $status in
 *"can do   "*sandbox*)
@@ -238,17 +249,42 @@ if command -v python3 >/dev/null; then
     fi
     has "$drove" "saw: the help lists the keys in force" "ctrl+b ? lists the keys in force, the numbers and copy mode among them" || ok=0
     has "$drove" "saw: an edit of the keys in settings.json held at once, and back" "keys written in settings.json hold in a running \`askk terminal\` at once" || ok=0
+    has "$drove" "saw: navigate mode moved the focus with l, without the prefix, and Esc left it" "ctrl+b w is navigate mode: h j k l move over the panes without the prefix, the foot says the mode, Esc leaves" || ok=0
+    has "$drove" "saw: a right-click opened the menu of a pane, Esc closed it, and a line of it copied the pane (OSC 52)" "a right-click opens a pane's menu in the TUI, Esc dismisses it, and its lines work" || ok=0
+    has "$drove" "saw: a right-click opened the menus of a tab and of a box in the sidebar" "a right-click on a tab and on a box in the sidebar opens their menus" || ok=0
+    has "$drove" "saw: the tab and the pane were renamed" "ctrl+b T and ctrl+b P rename the tab and the pane" || ok=0
+    has "$drove" "saw: copy mode went by words (w e) and copied a word" "copy mode moves by words" || ok=0
+    has "$drove" "saw: copy mode found a text with / and copied it" "copy mode finds a text with /" || ok=0
+    has "$drove" "saw: copy mode copied a rectangle (ctrl+v)" "copy mode selects a rectangle" || ok=0
+    has "$drove" "saw: a box that came to wait while not shown rang the bell, asked for a desktop notification (OSC 9) and was marked in the sidebar" "a box that comes to wait while it is not shown is told: BEL, OSC 9, a mark in the sidebar" || ok=0
+    has "$drove" "saw: the theme is the page's glass in true colour, and light from settings.json at once" "the TUI is drawn in the page's glass palette, and \`terminal.theme\` in settings.json changes it at once" || ok=0
     has "$drove" "saw: detached with 0" "ctrl+b q detaches" || ok=0
     SHELL_PID=$(number "$drove" shell)
     kill -0 "${SHELL_PID:-0}" 2>/dev/null || { fail "after the terminal UI detached, the shell it opened still runs (process ${SHELL_PID:-unknown})"; ok=0; }
     has "$(ask boxes '{}')" '{"label":"command","value":"your shell (sh)"}' "and it is still one of the service's boxes" || ok=0
     # A second window, later: the service kept the layout, and the terminals come back in it.
     has "$(ask terminal_layout '{}')" '"split":{"down":false' "the service keeps the layout the window left (\`terminal_layout\`)" || ok=0
+    has "$(ask terminal_layout '{}')" '"name":"mytab"' "the tab's name is kept with the layout" || ok=0
+    has "$(ask terminal_layout '{}')" '"mypane"' "and the pane's" || ok=0
     again=$(cd "$H" && ASKK_HOME="$H" PORT=$PORT IP=127.0.0.1 SHELL=/bin/sh python3 "$ROOT/scripts/terminals/tui.py" "$BIN" again 2>&1)
     has "$again" "saw: attached again, the tabs and splits laid out as they were left" "\`askk terminal\`, started again, lays out the tabs and splits the last one left, with each terminal in its pane" || ok=0
     has "$again" "saw: ctrl+b 1 showed the box that needs the owner first" "ctrl+b and a number shows that box, what needs the owner first" || ok=0
+    has "$again" "saw: the names given to the tab and the pane were kept" "the names come back in the next window" || ok=0
+    # A named session: a layout of its own, beside the one without a name, and listed.
+    session=$(cd "$H" && ASKK_HOME="$H" PORT=$PORT IP=127.0.0.1 SHELL=/bin/sh python3 "$ROOT/scripts/terminals/tui.py" "$BIN" session 2>&1)
+    has "$session" "saw: a named session opened, its name in the sidebar's head" "\`askk terminal --session work\` opens the session work" || ok=0
+    has "$(ask session_layout '{"session":"work"}')" '"name":"worktab"' "the session keeps its own layout (\`session_layout\`)" || ok=0
+    case $(ask terminal_layout '{}') in
+    *worktab*) fail "the session without a name keeps its own layout, untouched by the session work"; ok=0 ;;
+    esac
+    has "$(askk terminal --sessions 2>&1)" "work  askk terminal --session work" "\`askk terminal --sessions\` lists the named sessions" || ok=0
+    session_again=$(cd "$H" && ASKK_HOME="$H" PORT=$PORT IP=127.0.0.1 SHELL=/bin/sh python3 "$ROOT/scripts/terminals/tui.py" "$BIN" session-again 2>&1)
+    has "$session_again" "saw: the session's own layout was laid out again" "the session, opened again, lays out its own tabs and splits" || ok=0
+    has "$(ask session_layout '{"session":"Bad Name"}')" "cannot be a session's name" "a name that cannot be a session's is refused in a sentence" || ok=0
     drove="$drove
-$again"
+$again
+$session
+$session_again"
     if [ -n "${SHOW:-}" ]; then printf '%s\n' "$drove"; elif [ $ok != 1 ]; then printf '%s\n' "$drove" | tail -45; fi
     done_step $ok
 else

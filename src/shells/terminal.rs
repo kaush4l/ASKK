@@ -8,10 +8,14 @@
 //! askk terminal --to http://127.0.0.1:8090   talk to the askk server at that address
 //! askk terminal --engine askk/coder     choose the engine
 //! askk terminal What is 17 * 23?        ask once, print what the loop did and the answer, leave
+//! askk terminal --session work          the full screen with the layout of the session `work`
+//! askk terminal --sessions              the sessions that have a layout kept
+//! askk terminal --read 3                what terminal 3 shows now, as text
+//! askk terminal --send 3 'ls\r'         type into terminal 3 (\r \n \t \e \xNN as printf reads them)
 //! ```
 //!
 //! Thin, like every shell: it reads the command line and hands over to `ui/terminal`.
-use crate::ui::terminal::{full_screen, talk_until_done, Door, Session};
+use crate::ui::terminal::{full_screen, read_terminal, send_terminal, session_lines, talk_until_done, Door, Session};
 use std::io::IsTerminal;
 
 /// What the command line asked for.
@@ -23,6 +27,12 @@ pub struct Wanted {
     pub question: String,
     /// Lines were asked for, even on a terminal that could show the full screen.
     pub lines: bool,
+    /// The named session to lay out and keep (`--session`).
+    pub session: Option<String>,
+    /// Read what a terminal shows, type into one, or list the sessions, and leave.
+    pub read: Option<String>,
+    pub send: Option<(String, String)>,
+    pub sessions: bool,
 }
 
 /// How the terminal is shown.
@@ -53,7 +63,7 @@ pub fn wanted(args: &[String]) -> Option<Wanted> {
     if args.get(1).map(String::as_str) != Some("terminal") {
         return None;
     }
-    let mut w = Wanted { to: None, engine: None, question: String::new(), lines: false };
+    let mut w = Wanted { to: None, engine: None, question: String::new(), lines: false, session: None, read: None, send: None, sessions: false };
     let mut words = vec![];
     let mut rest = args[2..].iter();
     while let Some(a) = rest.next() {
@@ -61,6 +71,13 @@ pub fn wanted(args: &[String]) -> Option<Wanted> {
             "--to" => w.to = rest.next().cloned(),
             "--engine" => w.engine = rest.next().cloned(),
             "--lines" => w.lines = true,
+            "--session" => w.session = rest.next().cloned(),
+            "--sessions" => w.sessions = true,
+            "--read" => w.read = rest.next().cloned(),
+            "--send" => {
+                let id = rest.next().cloned().unwrap_or_default();
+                w.send = Some((id, rest.next().cloned().unwrap_or_default()));
+            }
             // `--desk <folder>` is read by the host (core/places.rs); it is not a word of the question.
             "--desk" => {
                 rest.next();
@@ -100,8 +117,29 @@ pub fn launch(w: Wanted) -> i32 {
         Some(base) => Door::There(base.clone()),
         None => Door::Here,
     };
+    // Read a terminal, type into one, list the sessions: one answer, and out.
+    let once = match (&w.read, &w.send, w.sessions) {
+        (Some(id), _, _) => Some(read_terminal(&rt, &door, id)),
+        (_, Some((id, keys)), _) => Some(send_terminal(&rt, &door, id, keys).map(|_| String::new())),
+        (_, _, true) => Some(session_lines(&rt, &door)),
+        _ => None,
+    };
+    if let Some(said) = once {
+        return match said {
+            Ok(text) => {
+                if !text.is_empty() {
+                    println!("{text}");
+                }
+                0
+            }
+            Err(e) => {
+                eprintln!("askk: {e}");
+                1
+            }
+        };
+    }
     if how == Shown::FullScreen {
-        return match full_screen(&rt, door, w.engine) {
+        return match full_screen(&rt, door, w.engine, w.session) {
             Ok(()) => {
                 match &w.to {
                     Some(at) => println!("askk: detached. Everything keeps running in the service at {at}: `askk terminal` comes back to it, `askk stop` ends it."),
@@ -150,6 +188,11 @@ mod tests {
         assert_eq!((w.to.as_deref(), w.engine.as_deref(), w.question.as_str()), (Some("http://h:1"), Some("askk/coder"), "What is 2 + 2?"));
         assert!(wanted(&args("askk terminal")).unwrap().question.is_empty());
         assert!(wanted(&args("askk terminal --lines")).unwrap().lines && !w.lines);
+        let w = wanted(&args("askk terminal --session work --read terminal:3")).unwrap();
+        assert_eq!((w.session.as_deref(), w.read.as_deref(), w.question.as_str()), (Some("work"), Some("terminal:3"), ""));
+        let w = wanted(&args("askk terminal --send 3 ls\\r --sessions")).unwrap();
+        assert_eq!((w.send, w.sessions), (Some(("3".to_string(), "ls\\r".to_string())), true));
+        assert_eq!(crate::ui::terminal::unescaped("ls\\r\\x41\\e\\\\"), "ls\rA\x1b\\");
     }
 
     #[test]

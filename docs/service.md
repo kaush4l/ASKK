@@ -72,6 +72,7 @@ itself. Models, theme, words and layout keep their own files.
 | `origins` | pages at other addresses that may ask, beside `ASKK_ORIGINS` | at once |
 | `look_every_ms` | how often the home is looked at for hand edits; 0 = only on `reload` | at once |
 | `keys` | which key does what in `askk terminal`: `prefix`, then one entry per action (`split_right: "v %"`), and `boxes_by_number` / `tabs_by_number` (`N`, `alt+N`) (`core/keys.rs`) | at once, in every `askk terminal`; a key that does two things is refused in a sentence |
+| `terminal` | how `askk terminal` looks and tells: `theme` (`glass-dark`, `glass-light`, `terminal`), `colours` (`truecolor`, `256`), `notify` (`bell`, `osc9`, `osc777`, or `off`), `session` (the named session it opens) (`core/settings.rs`) | at once, in every `askk terminal` (`session` at its next start) |
 
 **What is read again in place, and what is not.**
 
@@ -156,16 +157,26 @@ grows. The page does not yet say in words that the service is away or was restar
 
 - Copy mode (`ctrl+b [`, a drag of the mouse) copies through OSC 52, so it reaches the
   clipboard only where the outer terminal allows that (iTerm2, kitty, WezTerm, Alacritty,
-  tmux with `set-clipboard on`; Terminal.app does not). A selection is by rows of text: no
-  rectangle, no search, no word motions (`w`, `b`); what the program writes while a pane
-  is copied from moves the rows under the cursor.
+  tmux with `set-clipboard on`; Terminal.app does not). A word is what is between spaces
+  (vim's `W`, not `w`); `/` finds a text upwards only (`n` again, `N` back down), in the
+  thousand rows kept; what the program writes while a pane is copied from moves the rows
+  under the cursor.
 - The mouse is the window's, never the program's: a program in a pane that wants clicks
-  (an editor, a pager) does not get them. No right-click menus.
+  (an editor, a pager) does not get them. A right-click opens askk's own menu (a pane, a
+  tab, a box, a place), never the program's.
+- A desktop notification is asked of the outer terminal (OSC 9 or OSC 777, `terminal.notify`
+  in `settings.json`); whether one shows is that terminal's choice (Terminal.app shows none).
+  herdr's own toasts, sounds and per-agent sounds are not here.
+- A theme is the page's glass, dark or light, or the outer terminal's own colours: not
+  herdr's list of named themes, and no custom colours.
+- A place (herdr's workspace) is named after its folder and cannot be renamed; a tab and a
+  pane can (`ctrl+b T`, `ctrl+b P`).
 - A place's git state is read only where the place is the top of a repository (it holds
   `.git`); an engine's place is its parent engine, which is rarely a folder.
-- The layout is kept for the home, one for all windows: two windows open at once keep
-  whichever changed last.
-- No themes, no notifications.
+- The layout is kept per session (`askk terminal --session <name>`; none named: the one
+  without a name), one for all windows of that session: two windows open at once on one
+  session keep whichever changed last. A session is a layout, not a server of its own: the
+  terminals are the home's, and every session's sidebar lists them all.
 - A screen is asked for whole each time it changes (about 30 times a second at most), not
   sent as differences. On this machine that is not felt; over a slow link it would be.
 - Agents are recognised by name with a few patterns, against herdr's manifests for twenty

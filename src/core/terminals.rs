@@ -120,16 +120,25 @@ pub struct Layout {
     pub at: usize,
 }
 
-/// One tab: its panes, the one in focus (the how-manieth, in reading order, from 0), and
-/// whether that one fills the tab.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+/// One tab: its panes, the one in focus (the how-manieth, in reading order, from 0), whether
+/// that one fills the tab, and the names a person gave the tab and its panes (empty: none,
+/// and the tab or pane is called after the box it shows).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct LaidTab {
     pub panes: Laid,
     #[serde(default)]
     pub focus: usize,
     #[serde(default)]
     pub zoomed: bool,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub name: String,
+    /// The panes' names, in reading order; shorter than the panes when the last have none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub names: Vec<String>,
 }
+
+/// The longest name a person may give a tab or a pane.
+pub const NAME_MOST: usize = 64;
 
 /// A pane and what it shows, or two halves side by side (`down`: one above the other);
 /// `share` is what the first gets, in parts of a thousand.
@@ -138,6 +147,12 @@ pub struct LaidTab {
 pub enum Laid {
     Pane(String),
     Split { down: bool, share: u16, first: Box<Laid>, second: Box<Laid> },
+}
+
+impl Default for Laid {
+    fn default() -> Self {
+        Laid::Pane(String::new())
+    }
 }
 
 /// The most tabs and panes a kept layout may have, and how deep its splits may go.
@@ -175,6 +190,12 @@ impl Layout {
             if t.focus >= n {
                 return Err(format!("tab {} has {n} panes, so its focus cannot be on the {}th", i + 1, t.focus + 1));
             }
+            if t.names.len() > n {
+                return Err(format!("tab {} has {n} panes and {} pane names", i + 1, t.names.len()));
+            }
+            if let Some(long) = t.names.iter().chain([&t.name]).find(|w| w.chars().count() > NAME_MOST) {
+                return Err(format!("a tab's or a pane's name is at most {NAME_MOST} letters ('{}…' is longer)", long.chars().take(16).collect::<String>()));
+            }
             all += n;
         }
         if all > MOST_PANES {
@@ -187,21 +208,56 @@ impl Layout {
 /// The layout kept in `store`; an empty one when none is kept or it cannot be read (the
 /// window then starts as a new one does).
 pub fn layout(store: &dyn super::store::Store) -> Layout {
-    store.get(LAYOUT).and_then(|text| serde_json::from_str::<Layout>(&text).ok()).filter(|l| l.check().is_ok()).unwrap_or_default()
+    layout_of(store, "").unwrap_or_default()
+}
+
+/// Where the layouts of the named sessions are kept, one file per name (herdr's
+/// `herdr session attach <name>`). The session without a name is kept at [`LAYOUT`].
+pub const SESSIONS: &str = "terminal-sessions";
+
+/// The key a session's layout is kept at, or why `name` cannot name a session: at most 32
+/// small letters, digits, `-` and `_`. Empty is the session every window has by default.
+pub fn session_key(name: &str) -> Result<String, String> {
+    if name.is_empty() {
+        return Ok(LAYOUT.to_string());
+    }
+    let fine = name.len() <= 32 && name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_');
+    if !fine {
+        return Err(format!("'{name}' cannot be a session's name: at most 32 small letters, digits, - and _"));
+    }
+    Ok(format!("{SESSIONS}/{name}.json"))
+}
+
+/// The layout kept for the session `name` (empty: the one without a name); an empty layout
+/// when none is kept or it cannot be read.
+pub fn layout_of(store: &dyn super::store::Store, name: &str) -> Result<Layout, String> {
+    let key = session_key(name)?;
+    Ok(store.get(&key).and_then(|text| serde_json::from_str::<Layout>(&text).ok()).filter(|l| l.check().is_ok()).unwrap_or_default())
 }
 
 /// Keep `layout` in `store`, for the next window. Refused, in a sentence, when it cannot be
 /// laid out; an empty one forgets what was kept.
 pub fn keep_layout(store: &dyn super::store::Store, layout: &Layout) -> Result<(), String> {
+    keep_layout_of(store, "", layout)
+}
+
+/// Keep `layout` for the session `name` (empty: the one without a name).
+pub fn keep_layout_of(store: &dyn super::store::Store, name: &str, layout: &Layout) -> Result<(), String> {
+    let key = session_key(name)?;
     layout.check()?;
     if layout.tabs.is_empty() {
-        return store.remove(LAYOUT).or(Ok(()));
+        return store.remove(&key).or(Ok(()));
     }
     let text = serde_json::to_string_pretty(layout).map_err(|e| e.to_string())?;
-    if store.get(LAYOUT).as_deref() == Some(text.as_str()) {
+    if store.get(&key).as_deref() == Some(text.as_str()) {
         return Ok(());
     }
-    store.put(LAYOUT, &text)
+    store.put(&key, &text)
+}
+
+/// The named sessions that have a layout kept, by name.
+pub fn sessions(store: &dyn super::store::Store) -> Vec<String> {
+    store.list(SESSIONS).into_iter().filter(|e| !e.dir).filter_map(|e| e.name.strip_suffix(".json").map(String::from)).filter(|n| !n.is_empty() && session_key(n).is_ok()).collect()
 }
 
 /// What a host that holds terminals does.
@@ -284,19 +340,38 @@ mod tests {
         let store = Bundle::memory(Default::default());
         assert_eq!(layout(&store), Layout::default(), "nothing kept: a window starts as a new one");
         let split = Laid::Split { down: false, share: 400, first: Box::new(Laid::Pane("engine:askk".into())), second: Box::new(Laid::Pane("terminal:3".into())) };
-        let kept = Layout { tabs: vec![LaidTab { panes: split.clone(), focus: 1, zoomed: false }, LaidTab { panes: Laid::Pane(String::new()), focus: 0, zoomed: true }], at: 1 };
+        let kept = Layout { tabs: vec![LaidTab { panes: split.clone(), focus: 1, name: "work".into(), names: vec![String::new(), "logs".into()], ..Default::default() }, LaidTab { panes: Laid::Pane(String::new()), zoomed: true, ..Default::default() }], at: 1 };
         keep_layout(&store, &kept).unwrap();
         assert_eq!(layout(&store), kept);
         assert!(store.get(LAYOUT).unwrap().contains(r#""pane": "terminal:3""#), "{}", store.get(LAYOUT).unwrap());
         assert_eq!(keep_layout(&store, &Layout { at: 5, ..kept.clone() }).unwrap_err(), "the layout shows tab 6 of 2");
-        assert!(keep_layout(&store, &Layout { tabs: vec![LaidTab { panes: split.clone(), focus: 2, zoomed: false }], at: 0 }).unwrap_err().contains("focus cannot be on the 3th"));
+        assert!(store.get(LAYOUT).unwrap().contains(r#""name": "work""#), "the names a person gave are kept");
+        assert!(keep_layout(&store, &Layout { tabs: vec![LaidTab { panes: split.clone(), focus: 2, ..Default::default() }], at: 0 }).unwrap_err().contains("focus cannot be on the 3th"));
         let bad = Laid::Split { down: true, share: 1000, first: Box::new(Laid::Pane("a".into())), second: Box::new(Laid::Pane("b".into())) };
-        assert!(keep_layout(&store, &Layout { tabs: vec![LaidTab { panes: bad, focus: 0, zoomed: false }], at: 0 }).is_err());
+        assert!(keep_layout(&store, &Layout { tabs: vec![LaidTab { panes: bad, ..Default::default() }], at: 0 }).is_err());
+        let named = LaidTab { panes: Laid::Pane("a".into()), names: vec!["x".into(), "y".into()], ..Default::default() };
+        assert!(keep_layout(&store, &Layout { tabs: vec![named], at: 0 }).unwrap_err().contains("1 panes and 2 pane names"));
         assert_eq!(layout(&store), kept, "what was refused changed nothing");
         store.put(LAYOUT, "{").unwrap();
         assert_eq!(layout(&store), Layout::default(), "a kept layout that cannot be read is no layout");
         keep_layout(&store, &Layout::default()).unwrap();
         assert!(store.get(LAYOUT).is_none(), "an empty layout forgets");
+    }
+
+    #[test]
+    fn a_named_session_keeps_a_layout_of_its_own() {
+        use crate::core::store::{Bundle, Store};
+        let store = Bundle::memory(Default::default());
+        let one = Layout { tabs: vec![LaidTab { panes: Laid::Pane("terminal:1".into()), name: "work".into(), ..Default::default() }], at: 0 };
+        keep_layout_of(&store, "work", &one).unwrap();
+        keep_layout_of(&store, "side-project", &Layout { tabs: vec![LaidTab::default()], at: 0 }).unwrap();
+        assert_eq!((layout_of(&store, "work").unwrap(), layout(&store)), (one.clone(), Layout::default()), "the session without a name is not touched");
+        assert_eq!(sessions(&store), ["side-project", "work"]);
+        assert!(store.has("terminal-sessions/work.json"));
+        assert!(keep_layout_of(&store, "../x", &one).unwrap_err().contains("cannot be a session's name"));
+        assert!(layout_of(&store, "Work").is_err());
+        keep_layout_of(&store, "work", &Layout::default()).unwrap();
+        assert_eq!(sessions(&store), ["side-project"], "an empty layout forgets the session");
     }
 
     #[test]

@@ -67,3 +67,21 @@ pub async fn terminal_layout() -> Result<Layout, String> {
 pub async fn save_terminal_layout(layout: Layout) -> Result<(), String> {
     crate::core::terminals::keep_layout(&*crate::core::store::data(), &layout)
 }
+
+/// The named sessions of `askk terminal` that have a layout kept in this home (herdr's
+/// `herdr session list`). The session without a name is not listed: it is always there.
+pub async fn terminal_sessions() -> Result<Vec<String>, String> {
+    Ok(crate::core::terminals::sessions(&*crate::core::store::data()))
+}
+
+/// The layout kept for the session `session` (`askk terminal --session <name>`): each
+/// named session lays out its own tabs and splits; empty is the session without a name,
+/// the same as `terminal_layout`. A name that cannot be a session's is refused in a sentence.
+pub async fn session_layout(session: String) -> Result<Layout, String> {
+    crate::core::terminals::layout_of(&*crate::core::store::data(), &session)
+}
+
+/// Keep `layout` for the session `session`; an empty layout forgets the session.
+pub async fn save_session_layout(session: String, layout: Layout) -> Result<(), String> {
+    crate::core::terminals::keep_layout_of(&*crate::core::store::data(), &session, &layout)
+}

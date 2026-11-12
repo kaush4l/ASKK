@@ -3,6 +3,8 @@
 
     python3 tui.py <askk program>          the whole walk below
     python3 tui.py <askk program> again    come back after a detach: what is found
+    python3 tui.py <askk program> session  a named session (`--session work`): a layout of its own
+    python3 tui.py <askk program> session-again   that session again: its layout is found
 
 `askk terminal` is started in a pseudo-terminal of 140 x 40 (so it draws its full screen,
 not lines), in the environment it is called with (the home, the port). The script presses
@@ -22,12 +24,28 @@ keys and reads the screen, and says each thing it saw on a line of its own:
     saw: the sidebar groups the boxes by place, with the place's branch and git state
     saw: the help lists the keys in force
     saw: an edit of the keys in settings.json held at once, and back
+    saw: navigate mode moved the focus with l, without the prefix, and Esc left it
+    saw: a right-click opened the menu of a pane, Esc closed it, and a line of it copied the pane (OSC 52)
+    saw: a right-click opened the menus of a tab and of a box in the sidebar
+    saw: the tab and the pane were renamed
+    saw: copy mode went by words (w e) and copied a word
+    saw: copy mode found a text with / and copied it
+    saw: copy mode copied a rectangle (ctrl+v)
+    saw: a box that came to wait while not shown rang the bell, asked for a desktop notification (OSC 9) and was marked in the sidebar
+    saw: the theme is the page's glass in true colour, and light from settings.json at once
     saw: detached with 0
 
 and with `again`:
 
     saw: attached again, the tabs and splits laid out as they were left
     saw: ctrl+b 1 showed the box that needs the owner first
+    saw: the names given to the tab and the pane were kept
+    saw: detached with 0
+
+and with `session` / `session-again`:
+
+    saw: a named session opened, its name in the sidebar's head
+    saw: the session's own layout was laid out again
     saw: detached with 0
 
 What is copied goes to the outer terminal as OSC 52; the script reads it off what is written.
@@ -48,6 +66,7 @@ import sys
 import termios
 import time
 import unicodedata
+import urllib.request
 
 COLS, ROWS = 140, 40
 # What a terminal is told that is not a letter to show. A cursor placement is read, the
@@ -105,10 +124,12 @@ class Screen:
 
 def main():
     program = sys.argv[1]
+    mode = sys.argv[2] if len(sys.argv) > 2 else ""
     pid, fd = pty.fork()
     if pid == 0:
         os.environ["TERM"] = "xterm-256color"
-        os.execv(program, [program, "terminal"])
+        args = ["terminal", "--session", "work"] if mode.startswith("session") else ["terminal"]
+        os.execv(program, [program] + args)
     fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", ROWS, COLS, 0, 0))
     screen = Screen()
     decode = __import__("codecs").getincrementaldecoder("utf-8")("replace")
@@ -131,12 +152,13 @@ def main():
                 screen.write(text)
         return True
 
-    def copied(what, seconds=10):
-        """Wait until the program has put `what` on the clipboard (OSC 52)."""
+    def copied(what, seconds=10, part=False):
+        """Wait until the program has put `what` on the clipboard (OSC 52); with `part`, a
+        text that holds it."""
         end = time.time() + seconds
         while True:
             found = [base64.b64decode(b).decode("utf-8", "replace") for b in re.findall(r"\x1b\]52;c;([A-Za-z0-9+/=]*)\x07", "".join(written))]
-            if what in found:
+            if what in found or (part and any(what in f for f in found)):
                 return
             if time.time() > end or not read(0.1):
                 print(f"NOT seen: {what!r} put on the clipboard (OSC 52); what was: {found!r}. The screen:")
@@ -199,6 +221,29 @@ def main():
         """Press and let go of the left button over a cell (counted from 0)."""
         press(f"\x1b[<0;{col + 1};{row + 1}M\x1b[<0;{col + 1};{row + 1}m")
 
+    def right_click(col, row):
+        """Press and let go of the right button over a cell (counted from 0)."""
+        press(f"\x1b[<2;{col + 1};{row + 1}M\x1b[<2;{col + 1};{row + 1}m")
+
+    def written_since(mark):
+        return "".join(written)[mark:]
+
+    def seen_written(pattern, what, since=0, seconds=15):
+        """Wait until what the program wrote (its bytes, not the cells) holds `pattern`."""
+        end = time.time() + seconds
+        while not re.search(pattern, written_since(since)):
+            if time.time() > end or not read(0.1):
+                print(f"NOT seen: {what} (looked for {pattern!r} in what was written)")
+                os.kill(pid, 15)
+                sys.exit(1)
+
+    def ask(name, args):
+        """Ask the service over /ask, as another client would."""
+        url = f"http://127.0.0.1:{os.environ['PORT']}/ask/{name}"
+        req = urllib.request.Request(url, data=json.dumps(args).encode(), headers={"content-type": "application/json"})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return json.loads(r.read()).get("ok")
+
     def where(pattern, what):
         """The row and the column at which `pattern` is on the screen."""
         wait(pattern, what)
@@ -209,20 +254,41 @@ def main():
 
     prefix = "\x02"  # ctrl+b
 
-    if sys.argv[2:] == ["again"]:
+    if mode == "session":
+        wait(r"^ askk · work @", "the session's name in the head of the sidebar")
+        print("saw: a named session opened, its name in the sidebar's head")
+        press(prefix + "v")
+        wait(r"┐┌ ● sh · sh ─", "a split in the session's window")
+        press(prefix + "T")
+        press("worktab\r")
+        wait(r"│ 1 worktab", "the session's tab, named")
+        show("a named session")
+        leave()
+        return
+    if mode == "session-again":
+        wait(r"│ 1 worktab", "the session's named tab, laid out again")
+        wait(r"┐┌ ● sh · sh ─", "and its split")
+        print("saw: the session's own layout was laid out again")
+        leave()
+        return
+
+    if mode == "again":
         # Coming back: the service kept the layout. The tabs are as they were left, the tab in
         # view is the split one (an engine beside a shell), and the shell that was replaced
         # by the engine has a tab of its own at the end.
         wait(r"│ 1 sh -c 'echo hello-  2 sh -c 'echo hello-  3 \S+  4 sh", "the four tabs, the first two on the service's first terminal")
-        wait(r"┌ ○ \S+ · engine ─+┐┌ ● sh · sh ─", "the split tab: the engine beside the second shell, as it was left")
+        wait(r"┌ ○ \S+ · engine ─+┐┌ ● mypane \(sh · sh\) ─", "the split tab: the engine beside the second shell, named, as it was left")
         wait(r"laid out again", "the foot saying the layout was laid out again")
         print("saw: attached again, the tabs and splits laid out as they were left")
         show("attached again")
         # ctrl+b 1: the box that needs the owner first (a terminal that works, the oldest).
         press(prefix + "1")
-        wait(r"┌ ● sh -c 'echo hello.* · sh ─", "the service's first terminal in the pane in focus")
+        wait(r"┌ ● (mypane \()?sh -c 'echo hello.* · sh\)? ─", "the service's first terminal in the pane in focus")
         print("saw: ctrl+b 1 showed the box that needs the owner first")
         show("ctrl+b 1")
+        wait(r" 3 mytab", "the tab's name, kept with the layout")
+        wait(r"┌ ● mypane \(", "the pane's name, kept with the layout")
+        print("saw: the names given to the tab and the pane were kept")
         leave()
         return
 
@@ -241,8 +307,8 @@ def main():
     # 2. ctrl+b w: the sidebar. The terminal is working, so it is listed above the idle
     #    engines: up to the top, Enter, and the pane shows its live screen.
     press(prefix + "w")
-    wait(r"choose a box", "the foot of the sidebar")
-    press("kkkkkk")
+    wait(r"^ NAVIGATE ", "the foot saying navigate mode")
+    press("\x1b[A" * 6)
     press("\r")
     wait(r"│typed by a client", "the terminal's screen in the pane")
     wait(r"┌ ● sh -c 'echo hello.* · sh ─", "the pane's frame naming the terminal's box")
@@ -366,6 +432,113 @@ def main():
             f.write(before)
     wait(r" ctrl\+b  then  c tab  v split right", "the foot with ctrl+b again", seconds=15)
     print("saw: an edit of the keys in settings.json held at once, and back")
+
+    # Navigate mode: the engine is in focus on the left, a shell on the right. ctrl+b w, then
+    # l (no prefix) moves the focus right; Esc leaves; what is typed lands in the shell.
+    press(prefix + "w")
+    wait(r"^ NAVIGATE  ↑ ↓ box  \[ \] place  h j k l pane", "the foot saying navigate mode and its keys")
+    show("navigate mode")
+    press("l")
+    wait(r"^ NAVIGATE ", "still in navigate mode after a key")
+    press("\x1b")
+    gone(r"^ NAVIGATE ", "navigate mode after Esc")
+    press("echo nav-$((3+4))-right\r")
+    row, col = where(r"│nav-7-right", "the line typed after navigate mode, in the right pane")
+    print("saw: navigate mode moved the focus with l, without the prefix, and Esc left it")
+
+    # Right-click menus: on the pane, Esc closes; again, and its sixth line copies what it shows.
+    right_click(col + 4, row)
+    wait(r"┌ pane · sh ", "the pane's menu, drawn over it")
+    wait(r"│ split right", "its first line")
+    show("a right-click menu on a pane")
+    press("\x1b")
+    gone(r"┌ pane · sh ", "the menu after Esc")
+    right_click(col + 4, row)
+    wait(r"│ copy what it shows", "the line that copies the pane")
+    press("jjjjj\r")
+    copied("nav-7-right", part=True)
+    wait(r"copied what it shows", "the foot saying what was copied")
+    print("saw: a right-click opened the menu of a pane, Esc closed it, and a line of it copied the pane (OSC 52)")
+    trow, tcol = where(r"│ 1 \S+", "the line of tabs")
+    right_click(tcol + 3, trow)
+    wait(r"│ rename this tab", "the tab's menu")
+    press("q")
+    gone(r"│ rename this tab", "the tab's menu after q")
+    brow, _ = where(r"^.[○●?!✓·] \S+ · engine", "an engine's row in the sidebar")
+    right_click(5, brow)
+    wait(r"│ split right with it", "the menu of a box in the sidebar")
+    show("a right-click menu on a box")
+    press("\x1b")
+    gone(r"│ split right with it", "the box's menu after Esc")
+    print("saw: a right-click opened the menus of a tab and of a box in the sidebar")
+
+    # Rename: the tab shown, then the pane in focus (the shell on the right).
+    press(prefix + "T")
+    wait(r"^ name tab 3: ", "the foot as a line to type the tab's name into")
+    press("mytab\r")
+    wait(r" 3 mytab", "the tab, named")
+    press(prefix + "P")
+    press("mypane\r")
+    wait(r"┌ ● mypane \(sh · sh\)", "the pane, named in its frame")
+    print("saw: the tab and the pane were renamed")
+
+    # Copy mode by words, by a find, and a rectangle, in the shell on the right.
+    press("echo alpha beta gamma\r")
+    wait(r"│alpha beta gamma", "the words to go over")
+    press(prefix + "[")
+    press("k0wvey")
+    copied("beta")
+    print("saw: copy mode went by words (w e) and copied a word")
+    press(prefix + "[")
+    press("/gamma\r")
+    wait(r"found 'gamma'", "the foot saying the text was found")
+    press("vey")
+    copied("gamma")
+    print("saw: copy mode found a text with / and copied it")
+    press("printf 'abcd\\nefgh\\n'\r")
+    wait(r"│efgh", "two rows to take a rectangle of")
+    press(prefix + "[")
+    press("kk0\x16lj")
+    wait(r"y copies the rectangle", "the pane saying a rectangle is selected")
+    show("a rectangle in copy mode")
+    press("y")
+    copied("ab\nef")
+    print("saw: copy mode copied a rectangle (ctrl+v)")
+
+    # A box that comes to wait for the owner while it is not shown: the stand-in agent (on
+    # the service's PATH) is opened by another client and moved on to its question.
+    mark = len("".join(written))
+    agent = ask("terminal_open", {"command": "opencode", "place": "demo", "cols": 80, "rows": 24})
+    read(1.5)
+    ask("terminal_type", {"id": agent, "keys": "\r"})
+    wait(r"^◆\? opencode · opencode", "the agent's row, marked as told and waiting")
+    wait(r"◆ opencode · opencode waits for you", "the foot saying it waits")
+    seen_written(r"\x07", "the bell (BEL)", since=mark)
+    seen_written(r"\x1b\]9;askk: opencode · opencode waits for you\x07", "a desktop notification (OSC 9)", since=mark)
+    show("a box told of")
+    ask("terminal_close", {"id": agent})
+    print("saw: a box that came to wait while not shown rang the bell, asked for a desktop notification (OSC 9) and was marked in the sidebar")
+
+    # The theme: the page's glass, dark, in true colour (the accent is #b8aef0, the ground
+    # #000000); light at once when settings.json says so, then back.
+    seen_written(r"[[;]38;2;184;174;240[m;]", "the page's accent in true colour")
+    seen_written(r"[[;]48;2;0;0;0m", "the page's dark ground")
+    before = open(settings).read() if os.path.exists(settings) else None
+    mine = json.loads(before) if before else {}
+    mine["terminal"] = {"theme": "glass-light"}
+    mark = len("".join(written))
+    with open(settings, "w") as f:
+        json.dump(mine, f)
+    seen_written(r"[[;]48;2;247;243;236m", "the page's light ground (#f7f3ec)", since=mark)
+    show("the light glass")
+    if before is None:
+        os.remove(settings)
+    else:
+        with open(settings, "w") as f:
+            f.write(before)
+    mark = len("".join(written))
+    seen_written(r"[[;]48;2;0;0;0m", "the dark ground again", since=mark)
+    print("saw: the theme is the page's glass in true colour, and light from settings.json at once")
 
     # 6. ctrl+b q: detach.
     leave()
