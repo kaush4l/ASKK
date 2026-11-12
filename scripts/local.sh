@@ -12,7 +12,9 @@ VERSION=$(awk '/^name = "wasm-bindgen"$/ { getline; gsub(/[^0-9.]/, ""); print; 
 BINDGEN="$HOME/.dx/tools/wasm-bindgen-$VERSION/wasm-bindgen"
 [ -x "$BINDGEN" ] || BINDGEN=wasm-bindgen
 
-cargo build --release --target wasm32-unknown-unknown --no-default-features --features local
+# A release build reads the path it is served under when it is compiled (Dioxus reads the
+# meta below only in a debug build): the router and the stylesheets are named under it.
+DIOXUS_ASSET_ROOT="${BASE:-}" cargo build --release --target wasm32-unknown-unknown --no-default-features --features local
 mkdir -p "$OUT"
 "$BINDGEN" --target web --no-typescript --out-dir "$OUT" --out-name askk target/wasm32-unknown-unknown/release/askk.wasm
 # The page's own looks: dx bundles them for the served page; here they are copied as they are.
