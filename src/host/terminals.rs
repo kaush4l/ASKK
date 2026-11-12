@@ -301,13 +301,15 @@ impl Live {
             let groups: Vec<String> = front.into_iter().chain(own).map(|g| format!("-{g}")).collect();
             let signal = |how: &str, groups: &[String]| {
                 for g in groups {
-                    let _ = std::process::Command::new("kill").args([how, g]).stderr(std::process::Stdio::null()).status();
+                    // The shell's own `kill`, in the one form every system reads alike
+                    // (a group is a number with a minus before it, after `--`).
+                    let _ = std::process::Command::new("/bin/sh").args(["-c", &format!("kill -s {how} -- {g}")]).stderr(std::process::Stdio::null()).status();
                 }
             };
-            signal("-HUP", &groups);
+            signal("HUP", &groups);
             let _ = std::thread::Builder::new().name("terminals: end".into()).spawn(move || {
                 std::thread::sleep(Duration::from_millis(500));
-                signal("-KILL", &groups);
+                signal("KILL", &groups);
             });
         }
         let _ = self.killer.held().kill();
