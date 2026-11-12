@@ -23,7 +23,8 @@ use super::layout::Look;
 use crate::core::boxes::SessionBox;
 use crate::core::screen::{Screen, Span};
 use crate::ui::features::boxes::{Mark, Seen};
-use crate::ui::features::terminals::{ended, HELP, HINTS, PREFIX};
+use crate::ui::features::terminals::ended;
+pub use super::side::side_row;
 use ratatui::prelude::{Buffer, Color, Line, Modifier, Rect, Style, Widget};
 use ratatui::widgets::Block;
 use unicode_width::UnicodeWidthChar;
@@ -34,7 +35,7 @@ pub const SIDE_FOLDED: u16 = 4;
 /// The smallest window that is drawn at all.
 pub const LEAST: (u16, u16) = (40, 8);
 /// Rows above the first box in the sidebar: the head, and the heading.
-const SIDE_HEAD: u16 = 2;
+pub(super) const SIDE_HEAD: u16 = 2;
 /// The longest name a tab shows.
 const TAB_NAME: usize = 18;
 
@@ -64,21 +65,6 @@ pub fn parts(area: Rect, side_open: bool) -> Parts {
 /// The room inside a pane's frame.
 pub fn inner(pane: Rect) -> Rect {
     Rect { x: pane.x + 1, y: pane.y + 1, width: pane.width.saturating_sub(2), height: pane.height.saturating_sub(2) }
-}
-
-/// How many boxes fit in the sidebar, and the first one drawn so that `chosen` is in view.
-fn side_window(side: Rect, open: bool, boxes: usize, chosen: usize) -> (usize, usize) {
-    let rows = usize::from(side.height.saturating_sub(SIDE_HEAD));
-    let fits = if open { rows / 2 } else { rows }.max(1);
-    let first = if boxes <= fits { 0 } else { chosen.saturating_sub(fits - 1).min(boxes - fits) };
-    (first, fits)
-}
-
-/// The box drawn at row `y` of the sidebar, as its place in the list.
-pub fn side_row(side: Rect, open: bool, boxes: usize, chosen: usize, y: u16) -> Option<usize> {
-    let (first, fits) = side_window(side, open, boxes, chosen);
-    let row = usize::from(y.checked_sub(side.y + SIDE_HEAD)?) / if open { 2 } else { 1 };
-    (row < fits && first + row < boxes).then_some(first + row)
 }
 
 /// Each tab as it is written in the line of tabs.
@@ -118,6 +104,27 @@ pub struct PaneView<'a> {
     pub mark: Option<Mark>,
     pub zoomed: bool,
     pub body: Body<'a>,
+    /// Copy mode on this pane: where its cursor is and where the selection began.
+    pub copy: Option<CopyView>,
+}
+
+/// Copy mode as drawn: cells as (column, row of the pane, from 0); a row above the pane is
+/// below 0. `back`: how many rows up the pane is looked at.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CopyView {
+    pub cursor: (u16, i32),
+    pub from: Option<(u16, i32)>,
+    pub back: u16,
+}
+
+/// A place's heading in the sidebar: where in the list it begins, its name, its git state.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Head {
+    pub at: usize,
+    pub name: String,
+    /// The branch and how it stands (`main ✓`, `main ● 2 ↑1`); empty when it is no repository.
+    pub git: String,
+    pub clean: bool,
 }
 
 /// What the foot says.
@@ -129,13 +136,17 @@ pub enum Foot {
     Prefix,
     /// The keys go to the sidebar.
     Side,
+    /// Copy mode: the keys move over the pane, select and copy.
+    Copy,
 }
 
 pub struct Picture<'a> {
     /// Who answers: the service's address, or that this terminal is its own host.
     pub host: &'a str,
-    /// The boxes in the order they are listed.
-    pub boxes: &'a [SessionBox],
+    /// The boxes in the order the sidebar lists them.
+    pub boxes: Vec<&'a SessionBox>,
+    /// Where each place begins in that list; none when every box runs in one place.
+    pub heads: Vec<Head>,
     pub seen: &'a Seen,
     pub side_open: bool,
     /// The row the sidebar's own cursor is on.
@@ -146,16 +157,22 @@ pub struct Picture<'a> {
     pub tab: usize,
     pub panes: Vec<PaneView<'a>>,
     pub foot: Foot,
+    /// The keys in force: the prefix, the foot's hints, every key (for the help, when it is
+    /// open), and how a terminal that ended is forgotten.
+    pub prefix: String,
+    pub hints: Vec<(String, &'static str)>,
+    pub keys: Vec<(String, &'static str)>,
+    pub forget: String,
     /// One sentence at the foot: what just happened, or why something could not be done.
     pub note: &'a str,
     pub note_bad: bool,
     pub help: bool,
 }
 
-const DIM: Style = Style::new().fg(Color::DarkGray);
-const KEY: Style = Style::new().fg(Color::Blue).add_modifier(Modifier::BOLD);
-const STRONG: Style = Style::new().add_modifier(Modifier::BOLD);
-const HEADING: Style = Style::new().fg(Color::DarkGray).add_modifier(Modifier::BOLD);
+pub(super) const DIM: Style = Style::new().fg(Color::DarkGray);
+pub(super) const KEY: Style = Style::new().fg(Color::Blue).add_modifier(Modifier::BOLD);
+pub(super) const STRONG: Style = Style::new().add_modifier(Modifier::BOLD);
+pub(super) const HEADING: Style = Style::new().fg(Color::DarkGray).add_modifier(Modifier::BOLD);
 const BAD: Style = Style::new().fg(Color::LightRed);
 
 /// A mark's colour, as herdr colours its states; the sign says the same without colour.
@@ -246,7 +263,7 @@ fn wrapped(lines: &[String], width: u16) -> Vec<Vec<(char, Style)>> {
 }
 
 /// Write `text` at (`x`, `y`), no further than `end`; the column after it comes back.
-fn put(buf: &mut Buffer, x: u16, y: u16, end: u16, text: &str, how: Style) -> u16 {
+pub(super) fn put(buf: &mut Buffer, x: u16, y: u16, end: u16, text: &str, how: Style) -> u16 {
     if x >= end || !buf.area.contains((x, y).into()) {
         return x;
     }
@@ -261,53 +278,12 @@ fn put_row(buf: &mut Buffer, x: u16, y: u16, end: u16, row: &[(char, Style)]) {
 }
 
 /// Pairs of a key and what it does, as the foot writes them: the key bright, the rest dim.
-fn put_keys(buf: &mut Buffer, mut x: u16, y: u16, end: u16, pairs: &[(&str, &str)]) -> u16 {
+fn put_keys<K: AsRef<str>>(buf: &mut Buffer, mut x: u16, y: u16, end: u16, pairs: &[(K, &str)]) -> u16 {
     for (key, does) in pairs {
-        x = put(buf, x, y, end, key, KEY);
+        x = put(buf, x, y, end, key.as_ref(), KEY);
         x = put(buf, x, y, end, &format!(" {does}  "), DIM);
     }
     x
-}
-
-fn sidebar(buf: &mut Buffer, side: Rect, p: &Picture) {
-    let end = side.x + side.width.saturating_sub(1);
-    // The line between the sidebar and the rest.
-    for y in side.y..side.y + side.height {
-        put(buf, end, y, end + 1, "│", DIM);
-    }
-    if !p.side_open {
-        put(buf, side.x, side.y, end, " ›", KEY);
-    } else {
-        let x = put(buf, side.x, side.y, end, " askk", STRONG);
-        put(buf, x, side.y, end.saturating_sub(2), &format!(" · {}", p.host), DIM);
-        put(buf, end.saturating_sub(2), side.y, end, "‹ ", KEY);
-        put(buf, side.x, side.y + 1, end, " boxes", HEADING);
-    }
-    let (first, fits) = side_window(side, p.side_open, p.boxes.len(), p.side_at);
-    for (row, (i, b)) in p.boxes.iter().enumerate().skip(first).take(fits).enumerate() {
-        let mark = p.seen.mark(b);
-        let chosen = p.foot == Foot::Side && i == p.side_at;
-        let y = side.y + SIDE_HEAD + row as u16 * if p.side_open { 2 } else { 1 };
-        if chosen {
-            buf.set_style(Rect { x: side.x, y, width: side.width.saturating_sub(1), height: 1 }, Style::new().add_modifier(Modifier::REVERSED));
-        }
-        // The box the pane in focus shows carries a bar at the edge.
-        put(buf, side.x, y, end, if b.id == p.shown { "▎" } else { " " }, KEY);
-        let x = put(buf, side.x + 1, y, end, mark.sign(), mark_style(mark));
-        if !p.side_open {
-            continue;
-        }
-        let x = put(buf, x, y, end, &format!(" {}", b.title), STRONG);
-        put(buf, x, y, end, &format!(" · {}", b.kind), DIM);
-        let under = if b.last.is_empty() { mark.word().to_string() } else { b.last.clone() };
-        put(buf, side.x + 3, y + 1, end, &under, DIM);
-    }
-    // What does not fit is counted, not dropped in silence.
-    let more = p.boxes.len().saturating_sub(first + fits);
-    if more > 0 && side.height > 0 {
-        let y = side.y + side.height - 1;
-        put(buf, side.x, y, end, &if p.side_open { format!(" +{more} more (w, then ↓)") } else { format!("+{more}") }, DIM);
-    }
 }
 
 fn tab_line(buf: &mut Buffer, tabs: Rect, p: &Picture) {
@@ -320,7 +296,7 @@ fn tab_line(buf: &mut Buffer, tabs: Rect, p: &Picture) {
 
 /// A terminal's screen inside `room`. A screen taller than the room shows its last rows:
 /// that is where a program writes. The cursor's cell comes back when it is in view.
-fn screen_body(buf: &mut Buffer, room: Rect, s: &Screen, back: u16) -> Option<(u16, u16)> {
+fn screen_body(buf: &mut Buffer, room: Rect, s: &Screen, back: u16, forget: &str, copy: Option<CopyView>) -> Option<(u16, u16)> {
     let skip = s.lines.len().saturating_sub(usize::from(room.height));
     let end = room.x + room.width;
     for (row, line) in s.lines.iter().skip(skip).enumerate() {
@@ -329,6 +305,10 @@ fn screen_body(buf: &mut Buffer, room: Rect, s: &Screen, back: u16) -> Option<(u
             x = put(buf, x, room.y + row as u16, end, &span.text, look(span));
         }
     }
+    if let Some(c) = copy {
+        copy_marks(buf, room, c);
+        return None;
+    }
     if back > 0 && room.height > 0 {
         let y = room.y + room.height - 1;
         put(buf, room.x, y, end, &format!(" ↑ {back} rows up · wheel down or type to return "), KEY.add_modifier(Modifier::REVERSED));
@@ -336,12 +316,40 @@ fn screen_body(buf: &mut Buffer, room: Rect, s: &Screen, back: u16) -> Option<(u
     }
     if !s.alive && room.height > 0 {
         let y = room.y + room.height - 1;
-        put(buf, room.x, y, end, &format!(" its program {} · {PREFIX} X forgets it ", ended(s.exit)), DIM.add_modifier(Modifier::REVERSED));
+        put(buf, room.x, y, end, &format!(" its program {} · {forget} forgets it ", ended(s.exit)), DIM.add_modifier(Modifier::REVERSED));
         return None;
     }
     let (col, row) = s.cursor?;
     let row = usize::from(row).checked_sub(skip)?;
     (col < room.width && row < usize::from(room.height)).then(|| (room.x + col, room.y + row as u16))
+}
+
+/// Copy mode over a pane: the selection reversed, the cursor's cell bright, and a line
+/// that says which keys work here.
+fn copy_marks(buf: &mut Buffer, room: Rect, c: CopyView) {
+    let (from, to) = match c.from {
+        Some(m) if (m.1, m.0) <= (c.cursor.1, c.cursor.0) => (Some(m), c.cursor),
+        Some(m) => (Some(c.cursor), m),
+        None => (None, c.cursor),
+    };
+    for row in 0..room.height {
+        for col in 0..room.width {
+            let cell = (col, i32::from(row));
+            let selected = from.is_some_and(|f| (cell.1, cell.0) >= (f.1, f.0) && (cell.1, cell.0) <= (to.1, to.0));
+            let at = (room.x + col, room.y + row);
+            if cell == c.cursor {
+                buf[at].set_style(Style::new().bg(Color::Yellow).fg(Color::Black));
+            } else if selected {
+                buf[at].set_style(Style::new().add_modifier(Modifier::REVERSED));
+            }
+        }
+    }
+    if room.height > 0 {
+        let y = room.y + room.height - 1;
+        let up = if c.back > 0 { format!(" · ↑ {} rows up", c.back) } else { String::new() };
+        let doing = if c.from.is_some() { "y copies" } else { "v selects" };
+        put(buf, room.x, y, room.x + room.width, &format!(" copy · {doing} · esc leaves{up} "), KEY.add_modifier(Modifier::REVERSED));
+    }
 }
 
 /// An engine's or a session's lines, a rule, and the line being typed.
@@ -373,7 +381,7 @@ fn talk_body(buf: &mut Buffer, room: Rect, lines: &[String], input: &str, back: 
     Some((x.min(end.saturating_sub(1)), y))
 }
 
-fn pane(buf: &mut Buffer, v: &PaneView) -> Option<(u16, u16)> {
+fn pane(buf: &mut Buffer, v: &PaneView, forget: &str) -> Option<(u16, u16)> {
     if v.at.width < 2 || v.at.height < 2 {
         return None;
     }
@@ -388,7 +396,7 @@ fn pane(buf: &mut Buffer, v: &PaneView) -> Option<(u16, u16)> {
     Block::bordered().border_style(if v.focused { KEY } else { DIM }).title(Line::from(title)).render(v.at, buf);
     let room = inner(v.at);
     let cursor = match &v.body {
-        Body::Screen(s, back) => screen_body(buf, room, s, *back),
+        Body::Screen(s, back) => screen_body(buf, room, s, *back, forget, v.copy),
         Body::Talk { lines, input, back } => talk_body(buf, room, lines, input, *back),
         Body::Words(words) => {
             for (i, line) in words.iter().take(usize::from(room.height)).enumerate() {
@@ -406,14 +414,17 @@ fn foot(buf: &mut Buffer, at: Rect, p: &Picture) {
     let start = if p.note.is_empty() { at.x } else { put(buf, at.x, at.y, end, &format!(" {} ·", p.note), if p.note_bad { BAD } else { STRONG }) };
     match p.foot {
         Foot::Pane => {
-            let x = put(buf, start, at.y, end, &format!(" {PREFIX}"), KEY);
+            let x = put(buf, start, at.y, end, &format!(" {}", p.prefix), KEY);
             let x = put(buf, x, at.y, end, "  then  ", DIM);
-            put_keys(buf, x, at.y, end, &HINTS);
+            put_keys(buf, x, at.y, end, &p.hints);
         }
         Foot::Prefix => {
-            let x = put(buf, start, at.y, end, &format!(" {PREFIX} …"), KEY.add_modifier(Modifier::REVERSED));
+            let x = put(buf, start, at.y, end, &format!(" {} …", p.prefix), KEY.add_modifier(Modifier::REVERSED));
             let x = put(buf, x, at.y, end, "  ", DIM);
-            put_keys(buf, x, at.y, end, &HINTS.iter().copied().chain([("esc", "nothing")]).collect::<Vec<_>>());
+            put_keys(buf, x, at.y, end, &p.hints.iter().cloned().chain([("esc".to_string(), "nothing")]).collect::<Vec<_>>());
+        }
+        Foot::Copy => {
+            put_keys(buf, start + 1, at.y, end, &[("hjkl", "move"), ("v", "select"), ("y", "copy"), ("esc", "leave")]);
         }
         Foot::Side => {
             put_keys(buf, start + 1, at.y, end, &[("↑ ↓", "choose a box"), ("enter", "show it in the pane"), ("esc", "back to the pane")]);
@@ -421,17 +432,18 @@ fn foot(buf: &mut Buffer, at: Rect, p: &Picture) {
     }
 }
 
-fn help(buf: &mut Buffer, area: Rect) {
-    let w = 78.min(area.width.saturating_sub(2));
-    let h = (HELP.len() as u16 + 4).min(area.height.saturating_sub(1));
+fn help(buf: &mut Buffer, area: Rect, p: &Picture) {
+    let w = 92.min(area.width.saturating_sub(2));
+    let h = (p.keys.len() as u16 + 4).min(area.height.saturating_sub(1));
     let at = Rect { x: area.x + (area.width - w) / 2, y: area.y + (area.height - h) / 2, width: w, height: h };
     ratatui::widgets::Clear.render(at, buf);
-    Block::bordered().border_style(KEY).title(format!(" keys, each after {PREFIX} ")).title_bottom(Line::styled(" any key closes this ", DIM)).render(at, buf);
+    Block::bordered().border_style(KEY).title(format!(" keys, each after {} ", p.prefix)).title_bottom(Line::styled(" any key closes this · `keys` in settings.json changes them ", DIM)).render(at, buf);
     let room = inner(at);
-    for (i, (key, does)) in HELP.iter().take(usize::from(room.height.saturating_sub(1))).enumerate() {
+    let wide = p.keys.iter().map(|(k, _)| k.chars().count()).max().unwrap_or(0) as u16 + 4;
+    for (i, (key, does)) in p.keys.iter().take(usize::from(room.height.saturating_sub(1))).enumerate() {
         let y = room.y + 1 + i as u16;
         put(buf, room.x + 2, y, room.x + room.width, key, KEY);
-        put(buf, room.x + 11, y, room.x + room.width, does, Style::new());
+        put(buf, room.x + wide, y, room.x + room.width, does, Style::new());
     }
 }
 
@@ -443,12 +455,12 @@ pub fn draw(buf: &mut Buffer, area: Rect, p: &Picture) -> Option<(u16, u16)> {
         return None;
     }
     let at = parts(area, p.side_open);
-    sidebar(buf, at.side, p);
+    super::side::sidebar(buf, at.side, p);
     tab_line(buf, at.tabs, p);
-    let cursor = p.panes.iter().filter_map(|v| pane(buf, v)).last();
+    let cursor = p.panes.iter().filter_map(|v| pane(buf, v, &p.forget)).last();
     foot(buf, at.foot, p);
     if p.help {
-        help(buf, area);
+        help(buf, area, p);
         return None;
     }
     cursor.filter(|_| p.foot != Foot::Side)
@@ -461,7 +473,8 @@ pub mod tests {
     use crate::core::screen::Line as Row;
 
     fn picture<'a>(boxes: &'a [SessionBox], seen: &'a Seen, panes: Vec<PaneView<'a>>) -> Picture<'a> {
-        Picture { host: "h", boxes, seen, side_open: true, side_at: 0, shown: "", tabs: vec!["one".into()], tab: 0, panes, foot: Foot::Pane, note: "", note_bad: false, help: false }
+        let keys = crate::ui::features::terminals::Keymap::default();
+        Picture { host: "h", boxes: boxes.iter().collect(), heads: vec![], seen, side_open: true, side_at: 0, shown: "", tabs: vec!["one".into()], tab: 0, panes, foot: Foot::Pane, prefix: keys.prefix(), hints: keys.hints(), keys: keys.help(), forget: keys.says(crate::ui::features::terminals::Action::EndTerminal), note: "", note_bad: false, help: false }
     }
 
     /// The buffer as rows of text. The cell after a wide letter belongs to that letter.
@@ -505,7 +518,7 @@ pub mod tests {
         let at = parts(area, false).main;
         let seen = Seen::default();
         let mut buf = Buffer::empty(area);
-        let view = PaneView { at, focused: true, head: "sh · sh".into(), mark: Some(Mark::Working), zoomed: false, body: Body::Screen(&screen, 0) };
+        let view = PaneView { at, focused: true, head: "sh · sh".into(), mark: Some(Mark::Working), zoomed: false, body: Body::Screen(&screen, 0), copy: None };
         let folded = |panes| Picture { side_open: false, ..picture(&[], &seen, panes) };
         let cursor = draw(&mut buf, area, &folded(vec![view]));
         let room = inner(at);
@@ -520,14 +533,14 @@ pub mod tests {
         // A screen taller than the pane shows its last rows, where the program writes.
         let tall = Screen { cols: 20, rows: 30, lines: (1..=30).map(|n| Row { spans: vec![Span::plain(format!("row {n}"))] }).collect(), cursor: Some((0, 29)), alive: true, ..Default::default() };
         let mut buf = Buffer::empty(area);
-        let view = PaneView { at, focused: false, head: "sh".into(), mark: None, zoomed: false, body: Body::Screen(&tall, 0) };
+        let view = PaneView { at, focused: false, head: "sh".into(), mark: None, zoomed: false, body: Body::Screen(&tall, 0), copy: None };
         assert_eq!(draw(&mut buf, area, &folded(vec![view])), None, "a pane that is not in focus has no cursor");
         let drawn = rows(&buf);
         assert!(drawn[usize::from(room.y + room.height - 1)].contains("│row 30") && !drawn.iter().any(|r| r.contains("│row 1 ")), "{drawn:?}");
         assert_eq!(buf[(at.x, at.y)].fg, Color::DarkGray);
         // Looked back in, the pane says how far up it is and how to return, and has no cursor.
         let mut buf = Buffer::empty(area);
-        let view = PaneView { at, focused: true, head: "sh".into(), mark: None, zoomed: false, body: Body::Screen(&screen, 12) };
+        let view = PaneView { at, focused: true, head: "sh".into(), mark: None, zoomed: false, body: Body::Screen(&screen, 12), copy: None };
         assert_eq!(draw(&mut buf, area, &folded(vec![view])), None);
         assert!(rows(&buf)[usize::from(room.y + room.height - 1)].contains("↑ 12 rows up · wheel down or type to return"), "{:?}", rows(&buf));
     }
@@ -549,7 +562,7 @@ pub mod tests {
         let seen = Seen::default();
         let show = |back: usize| {
             let mut buf = Buffer::empty(area);
-            let view = PaneView { at, focused: true, head: "e".into(), mark: None, zoomed: false, body: Body::Talk { lines: &lines, input: "typed", back } };
+            let view = PaneView { at, focused: true, head: "e".into(), mark: None, zoomed: false, body: Body::Talk { lines: &lines, input: "typed", back }, copy: None };
             let cursor = draw(&mut buf, area, &Picture { side_open: false, ..picture(&[], &seen, vec![view]) });
             (rows(&buf), cursor)
         };
@@ -572,16 +585,55 @@ pub mod tests {
         let mut buf = Buffer::empty(area);
         draw(&mut buf, area, &p);
         assert!(rows(&buf)[2].starts_with(" ○ e1 · engine") && rows(&buf)[12].starts_with(" +15 more"), "{:?}", rows(&buf));
-        assert_eq!((side_row(side, true, 20, 0, 2), side_row(side, true, 20, 0, 3), side_row(side, true, 20, 0, 4), side_row(side, true, 20, 0, 1)), (Some(0), Some(0), Some(1), None));
+        assert_eq!((side_row(side, true, &[], 20, 0, 2), side_row(side, true, &[], 20, 0, 3), side_row(side, true, &[], 20, 0, 4), side_row(side, true, &[], 20, 0, 1)), (Some(0), Some(0), Some(1), None));
         // With the sidebar's cursor on the tenth box, the window of five ends on it.
         (p.side_at, p.foot) = (9, Foot::Side);
         let mut buf = Buffer::empty(area);
         draw(&mut buf, area, &p);
         assert!(rows(&buf)[2].starts_with(" ○ e6") && rows(&buf)[10].starts_with(" ○ e10"), "{:?}", rows(&buf));
         assert!(buf[(1, 10)].modifier.contains(Modifier::REVERSED), "the chosen row is marked");
-        assert_eq!(side_row(side, true, 20, 9, 10), Some(9), "a click lands on the row that is drawn there");
-        assert_eq!(side_row(side, false, 3, 0, 4), Some(2), "folded, a box is one row");
-        assert_eq!(side_row(side, false, 3, 0, 5), None);
+        assert_eq!(side_row(side, true, &[], 20, 9, 10), Some(9), "a click lands on the row that is drawn there");
+        assert_eq!(side_row(side, false, &[], 3, 0, 4), Some(2), "folded, a box is one row");
+        assert_eq!(side_row(side, false, &[], 3, 0, 5), None);
         assert_eq!((tab_at(Rect::new(4, 0, 50, 1), &["one".into(), "two".into()], 4), tab_at(Rect::new(4, 0, 50, 1), &["one".into(), "two".into()], 11), tab_at(Rect::new(4, 0, 50, 1), &["one".into()], 30)), (Some(0), Some(1), None));
+    }
+
+    #[test]
+    fn the_sidebar_heads_each_place_with_its_git_state_and_a_click_on_a_heading_shows_nothing() {
+        let boxes: Vec<SessionBox> = ["a", "b", "c"].iter().map(|n| SessionBox { id: format!("terminal:{n}"), title: n.to_string(), kind: "sh".into(), state: State::Working, ..Default::default() }).collect();
+        let seen = Seen::default();
+        let area = Rect { x: 0, y: 0, width: 100, height: 14 };
+        let side = parts(area, true).side;
+        let mut p = picture(&boxes, &seen, vec![]);
+        p.heads = vec![Head { at: 0, name: "askk".into(), git: "main ✓".into(), clean: true }, Head { at: 2, name: "demo".into(), git: "wip ● 2 ↑1".into(), clean: false }];
+        let mut buf = Buffer::empty(area);
+        draw(&mut buf, area, &p);
+        let drawn = rows(&buf);
+        assert!(drawn[2].starts_with(" askk main ✓") && drawn[3].starts_with(" ● a · sh") && drawn[5].starts_with(" ● b · sh"), "{drawn:?}");
+        assert!(drawn[7].starts_with(" demo wip ● 2 ↑1") && drawn[8].starts_with(" ● c · sh"), "{drawn:?}");
+        assert_eq!(buf[(6, 7)].fg, Color::Yellow, "a place with changes is told apart from a clean one");
+        let at = [0, 2];
+        assert_eq!((side_row(side, true, &at, 3, 0, 2), side_row(side, true, &at, 3, 0, 3), side_row(side, true, &at, 3, 0, 8)), (None, Some(0), Some(2)));
+        assert_eq!(side_row(side, false, &at, 3, 0, 4), Some(2), "folded, there are no headings");
+    }
+
+    #[test]
+    fn copy_mode_marks_the_selection_and_the_cursor_and_says_its_keys() {
+        let screen = Screen { cols: 20, rows: 5, lines: vec![Row { spans: vec![Span::plain("first row")] }, Row { spans: vec![Span::plain("second row")] }], alive: true, ..Default::default() };
+        let area = Rect { x: 0, y: 0, width: 60, height: 10 };
+        let at = parts(area, false).main;
+        let room = inner(at);
+        let seen = Seen::default();
+        let mut buf = Buffer::empty(area);
+        let copy = CopyView { cursor: (3, 1), from: Some((6, 0)), back: 4 };
+        let view = PaneView { at, focused: true, head: "sh".into(), mark: None, zoomed: false, body: Body::Screen(&screen, 4), copy: Some(copy) };
+        let p = Picture { side_open: false, foot: Foot::Copy, ..picture(&[], &seen, vec![view]) };
+        assert_eq!(draw(&mut buf, area, &p), None, "the program's cursor is not shown while copying");
+        assert!(buf[(room.x + 6, room.y)].modifier.contains(Modifier::REVERSED) && !buf[(room.x + 5, room.y)].modifier.contains(Modifier::REVERSED), "from the mark on");
+        assert!(buf[(room.x + 2, room.y + 1)].modifier.contains(Modifier::REVERSED), "up to the cursor");
+        assert_eq!(buf[(room.x + 3, room.y + 1)].bg, Color::Yellow, "the cursor's own cell");
+        let drawn = rows(&buf);
+        assert!(drawn[usize::from(room.y + room.height - 1)].contains("copy · y copies · esc leaves · ↑ 4 rows up"), "{drawn:?}");
+        assert!(drawn[9].contains("v select") && drawn[9].contains("esc leave"), "{}", drawn[9]);
     }
 }

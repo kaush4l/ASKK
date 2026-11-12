@@ -19,7 +19,9 @@ use crate::core::boxes::SessionBox;
 use crate::core::run::Run;
 use crate::core::screen::Screen;
 use crate::core::session::{self, Session};
-use crate::core::terminals::Scrolled;
+use crate::core::settings::Settings;
+use crate::core::terminals::{Layout, Scrolled};
+use crate::core::workspaces::Workspace;
 use crate::ui::features::talk;
 use crate::ui::features::terminals::{inside, Inside};
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
@@ -122,6 +124,14 @@ async fn talk_lines(door: &Door, box_id: &str) -> Result<Vec<String>, String> {
 async fn answer(door: &Door, want: Want) -> Result<Option<Got>, String> {
     Ok(match want {
         Want::Boxes => Some(Got::Boxes(door.ask::<Vec<SessionBox>>("boxes", json!({})).await?)),
+        Want::Places => Some(Got::Places(door.ask::<Vec<Workspace>>("workspaces", json!({})).await?)),
+        // A service that keeps no layout (an older one) is one with none kept.
+        Want::Layout => Some(Got::Layout(door.ask::<Layout>("terminal_layout", json!({})).await.unwrap_or_default())),
+        Want::Keys => Some(Got::Keys(door.ask::<Settings>("service_settings", json!({})).await?.keys)),
+        Want::Keep(layout) => {
+            door.ask::<()>("save_terminal_layout", json!({"layout": layout})).await?;
+            None
+        }
         Want::Screen(id) => Some(Got::Screen(id.clone(), door.ask::<Screen>("terminal_screen", json!({"id": id})).await?)),
         Want::Scrolled { id, back } => {
             let up: Scrolled = door.ask("terminal_scrolled", json!({"id": id, "back": back})).await?;
@@ -149,7 +159,7 @@ async fn answer(door: &Door, want: Want) -> Result<Option<Got>, String> {
             }
             _ => None,
         },
-        Want::Type { .. } | Want::Leave => None,
+        Want::Type { .. } | Want::Copy(_) | Want::Leave => None,
     })
 }
 
@@ -157,6 +167,10 @@ async fn answer(door: &Door, want: Want) -> Result<Option<Got>, String> {
 fn read(want: &Want) -> Option<String> {
     match want {
         Want::Boxes => Some("boxes".into()),
+        Want::Places => Some("places".into()),
+        Want::Keys => Some("keys".into()),
+        // One layout is kept at a time, so the last one asked for is the one that holds.
+        Want::Keep(_) => Some("keep".into()),
         Want::Screen(id) | Want::Scrolled { id, .. } => Some(format!("screen {id}")),
         Want::Talk(box_id) => Some(format!("talk {box_id}")),
         _ => None,
@@ -187,6 +201,10 @@ impl Asker {
             let _ = self.typed.send((id, keys));
             return;
         }
+        // The places are asked whenever the boxes are: a box may have come from a new place.
+        if want == Want::Boxes {
+            self.ask(Want::Places, after);
+        }
         let (door, landed) = (self.door.clone(), self.landed.clone());
         tokio::spawn(async move {
             tokio::time::sleep(after).await;
@@ -205,7 +223,7 @@ impl Asker {
     fn landed(&mut self, name: &str) {
         self.flying.remove(name);
         if let Some(want) = self.again.remove(name) {
-            let after = if want == Want::Boxes { BOXES_EVERY } else { Duration::ZERO };
+            let after = if matches!(want, Want::Boxes | Want::Places) { BOXES_EVERY } else { Duration::ZERO };
             self.ask(want, after);
         }
     }
@@ -237,6 +255,28 @@ fn typist(door: Arc<Door>, landed: UnboundedSender<Landed>) -> UnboundedSender<(
         }
     });
     typed
+}
+
+/// `bytes` as base64, the form OSC 52 carries text in.
+fn base64(bytes: &[u8]) -> String {
+    const ABC: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::new();
+    for three in bytes.chunks(3) {
+        let n = three.iter().enumerate().fold(0u32, |n, (i, b)| n | u32::from(*b) << (16 - 8 * i));
+        for i in 0..4 {
+            out.push(if i <= three.len() { char::from(ABC[(n >> (18 - 6 * i) & 63) as usize]) } else { '=' });
+        }
+    }
+    out
+}
+
+/// Put `text` on the clipboard of the terminal the person sits at: OSC 52, which a terminal
+/// that allows it takes (iTerm2, kitty, WezTerm, Alacritty, foot, tmux with `set-clipboard`).
+fn to_clipboard(text: &str) {
+    use std::io::Write;
+    let mut out = std::io::stdout();
+    let _ = write!(out, "\x1b]52;c;{}\x07", base64(text.as_bytes()));
+    let _ = out.flush();
 }
 
 /// Follow the change feed for as long as the window is open.
@@ -314,8 +354,17 @@ pub async fn run(door: Door, first: String, host: String) -> Result<(), String> 
             for want in app.on(got) {
                 match want {
                     Want::Leave => leave = true,
+                    Want::Copy(text) => to_clipboard(&text),
                     want => asker.ask(want, Duration::ZERO),
                 }
+            }
+        }
+        // The layout as it is now is kept for the next window; on leaving, before it goes.
+        if let Some(layout) = app.to_keep() {
+            if leave {
+                let _ = asker.door.ask::<()>("save_terminal_layout", json!({"layout": layout})).await;
+            } else {
+                asker.ask(Want::Keep(layout), Duration::ZERO);
             }
         }
         if leave {
@@ -325,4 +374,12 @@ pub async fn run(door: Door, first: String, host: String) -> Result<(), String> 
     let _ = execute!(std::io::stdout(), event::DisableBracketedPaste, event::DisableMouseCapture);
     ratatui::restore();
     outcome
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn text_for_the_clipboard_is_base64_as_osc_52_carries_it() {
+        assert_eq!((super::base64(b""), super::base64(b"f"), super::base64(b"fo"), super::base64(b"foo"), super::base64(b"hello, world")), (String::new(), "Zg==".into(), "Zm8=".into(), "Zm9v".into(), "aGVsbG8sIHdvcmxk".into()));
+    }
 }

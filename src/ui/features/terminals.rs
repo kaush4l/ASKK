@@ -9,7 +9,7 @@
 //! | what does a box hold, and so what does its pane show? | [`inside`]: a screen, an engine's conversation, an agent's session |
 //! | what does a key send? | [`typed`]: the bytes a terminal sends for it, by the key's name as a browser says it |
 //! | what is pasted text? | [`pasted`]: the text, with every line end as Enter |
-//! | which keys work the panes? | [`after_prefix`]: the keys herdr and tmux use, after [`PREFIX`]; [`HELP`] lists them in words |
+//! | which keys work the panes? | `keymap.rs`: the keys herdr and tmux use, or the owner's |
 //! | how does an ended program read? | [`ended`] |
 //!
 //! A program that draws its own screen asks for arrow keys in another form. No window needs
@@ -112,104 +112,19 @@ pub fn typed(key: &str, ctrl: bool, alt: bool, shift: bool) -> Option<String> {
     Some(if alt && !sent.starts_with("\x1b[") && !sent.starts_with("\x1bO") { format!("\x1b{sent}") } else { sent })
 }
 
-/// Pasted text as typing: a terminal's Enter is `\r`, whatever the text's line ends were.
-pub fn pasted(text: &str) -> String {
-    text.replace("\r\n", "\r").replace('\n', "\r")
+/// Pasted text as typing: a terminal's Enter is `\r`, whatever the text's line ends were. A
+/// program that asked for pasted text to be marked (bracketed paste, `core/screen.rs`) gets
+/// it between the two marks, so it can tell a paste from typing; a mark inside the text is
+/// taken out, so a paste cannot end itself early.
+pub fn pasted(text: &str, bracketed: bool) -> String {
+    let text = text.replace("\r\n", "\r").replace('\n', "\r");
+    if !bracketed {
+        return text;
+    }
+    format!("\x1b[200~{}\x1b[201~", text.replace("\x1b[200~", "").replace("\x1b[201~", ""))
 }
 
-/// The key that comes before a key that works the panes, as herdr and tmux have it.
-pub const PREFIX: &str = "ctrl+b";
-
-/// A direction on the screen.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Way {
-    Left,
-    Right,
-    Up,
-    Down,
-}
-
-/// What a person can do with the panes.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Action {
-    /// A new tab with a new shell in it.
-    NewTab,
-    /// Split the pane, with a new shell in the new half.
-    SplitRight,
-    SplitDown,
-    NextTab,
-    PreviousTab,
-    /// Go to the tab with this number, from 1.
-    Tab(usize),
-    /// Go to the sidebar to choose a box.
-    Navigate,
-    /// Move to the pane on that side.
-    Focus(Way),
-    /// Let the pane fill the tab, and back.
-    Zoom,
-    /// Look further up in the pane (`true`), or back down towards the end.
-    Scroll(bool),
-    /// Take the pane away; its box keeps running.
-    ClosePane,
-    /// End the terminal in the pane, and its program with it.
-    EndTerminal,
-    /// Fold the sidebar to marks, and open it again.
-    FoldSidebar,
-    Help,
-    /// Leave; everything keeps running in the service.
-    Detach,
-    /// Send the prefix key itself to the program.
-    SendPrefix,
-}
-
-/// What the key pressed after the prefix does. `key` is named as for [`typed`].
-pub fn after_prefix(key: &str, ctrl: bool) -> Option<Action> {
-    Some(match key {
-        "b" if ctrl => Action::SendPrefix,
-        "c" => Action::NewTab,
-        "v" | "%" => Action::SplitRight,
-        "-" | "\"" => Action::SplitDown,
-        "n" => Action::NextTab,
-        "p" => Action::PreviousTab,
-        "w" => Action::Navigate,
-        "z" => Action::Zoom,
-        "PageUp" => Action::Scroll(true),
-        "PageDown" => Action::Scroll(false),
-        "x" => Action::ClosePane,
-        "X" => Action::EndTerminal,
-        "b" => Action::FoldSidebar,
-        "?" => Action::Help,
-        "q" | "d" => Action::Detach,
-        "ArrowLeft" | "h" => Action::Focus(Way::Left),
-        "ArrowRight" | "l" => Action::Focus(Way::Right),
-        "ArrowUp" | "k" => Action::Focus(Way::Up),
-        "ArrowDown" | "j" => Action::Focus(Way::Down),
-        n if n.len() == 1 && ("1"..="9").contains(&n) => Action::Tab(n.parse().ok()?),
-        _ => return None,
-    })
-}
-
-/// Every key after the prefix and what it does, in the order a person needs them.
-pub const HELP: [(&str, &str); 15] = [
-    ("c", "a new tab, with a shell in it"),
-    ("v", "split to the right, with a shell in the new pane"),
-    ("-", "split downwards, with a shell in the new pane"),
-    ("n  p", "the next tab, the previous tab"),
-    ("1-9", "the tab with that number"),
-    ("w", "the sidebar: arrows choose a box, Enter shows it in the pane"),
-    ("arrows", "move to the pane on that side (also h j k l)"),
-    ("z", "zoom: the pane fills the tab, and back"),
-    ("PgUp PgDn", "look back up a pane, and down again (the wheel does too)"),
-    ("x", "close the pane; its box keeps running"),
-    ("X", "end the terminal in the pane, and its program"),
-    ("b", "fold the sidebar to marks, and open it again"),
-    ("?", "this help"),
-    ("q", "detach: leave, and everything keeps running"),
-    ("ctrl+b", "send ctrl+b itself to the program"),
-];
-
-/// The keys shown at the foot while nothing is pressed: enough to start with.
-pub const HINTS: [(&str, &str); 7] = [("c", "tab"), ("v", "split right"), ("-", "split down"), ("w", "boxes"), ("z", "zoom"), ("?", "help"), ("q", "detach")];
+pub use super::keymap::{Action, Keymap, Way};
 
 /// How an ended program reads, as the end of the sentence "its program ...".
 pub fn ended(exit: Option<i32>) -> String {
@@ -257,27 +172,12 @@ mod tests {
         for none in ["Shift", "Control", "Alt", "Meta", "CapsLock", ""] {
             assert_eq!(plain(none), None, "{none}");
         }
-        assert_eq!(pasted("one\r\ntwo\nthree"), "one\rtwo\rthree");
+        assert_eq!(pasted("one\r\ntwo\nthree", false), "one\rtwo\rthree");
+        assert_eq!(pasted("a\nb\x1b[201~rm", true), "\x1b[200~a\rbrm\x1b[201~", "marked, and no mark inside");
     }
 
     #[test]
-    fn the_keys_after_the_prefix_are_herdrs() {
-        let after = |key: &str| after_prefix(key, false);
-        assert_eq!((after("c"), after("v"), after("-")), (Some(Action::NewTab), Some(Action::SplitRight), Some(Action::SplitDown)));
-        assert_eq!((after("n"), after("p"), after("w"), after("q"), after("?")), (Some(Action::NextTab), Some(Action::PreviousTab), Some(Action::Navigate), Some(Action::Detach), Some(Action::Help)));
-        assert_eq!((after("3"), after("0"), after("ArrowLeft"), after("j")), (Some(Action::Tab(3)), None, Some(Action::Focus(Way::Left)), Some(Action::Focus(Way::Down))));
-        assert_eq!((after_prefix("b", true), after("b"), after("y")), (Some(Action::SendPrefix), Some(Action::FoldSidebar), None));
-        assert_eq!((after("PageUp"), after("PageDown")), (Some(Action::Scroll(true)), Some(Action::Scroll(false))));
-        // Every key the help lists does something, and the foot's hints are in the help.
-        for (keys, words) in HELP {
-            assert!(!words.is_empty());
-            for key in keys.split_whitespace().filter(|k| !["1-9", "arrows", "ctrl+b", "PgUp", "PgDn"].contains(k)) {
-                assert!(after(key).is_some(), "the help lists `{key}`, which does nothing");
-            }
-        }
-        for (key, _) in HINTS {
-            assert!(HELP.iter().any(|(keys, _)| keys.split_whitespace().any(|k| k == key)), "the hint `{key}` is not in the help");
-        }
+    fn an_ended_program_reads_as_how_it_ended() {
         assert_eq!((ended(Some(0)), ended(Some(2)), ended(None)), ("ended well (0)".to_string(), "ended with 2".to_string(), "ended without saying how".to_string()));
     }
 }

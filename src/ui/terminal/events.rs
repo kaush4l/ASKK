@@ -6,7 +6,10 @@
 //! and real questions out of the second; a test writes both by hand.
 use super::panes::Pane;
 use crate::core::boxes::SessionBox;
+use crate::core::keys::Keys;
 use crate::core::screen::Screen;
+use crate::core::terminals::Layout;
+use crate::core::workspaces::Workspace;
 
 /// A key, named as a browser names it (`ui/features/terminals.rs`, `typed`).
 #[derive(Clone, Debug, PartialEq)]
@@ -45,6 +48,12 @@ pub enum Got {
     /// The window has this many columns and rows.
     Size(u16, u16),
     Boxes(Vec<SessionBox>),
+    /// The places the boxes run in, with their git state.
+    Places(Vec<Workspace>),
+    /// The layout the service kept for this home (empty: none).
+    Layout(Layout),
+    /// The keys table of the settings in force.
+    Keys(Keys),
     /// A terminal's screen, by the terminal's id.
     Screen(String, Screen),
     /// A terminal's screen as it was this many rows up.
@@ -69,6 +78,15 @@ pub enum Got {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Want {
     Boxes,
+    /// The places the boxes run in (`workspaces`).
+    Places,
+    /// The layout the service kept, and the keys in force.
+    Layout,
+    Keys,
+    /// Keep this layout for the next window.
+    Keep(Layout),
+    /// Put this text on the clipboard of the terminal the person sits at.
+    Copy(String),
     Screen(String),
     /// A terminal's screen as it was `back` rows up.
     Scrolled { id: String, back: u16 },

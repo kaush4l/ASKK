@@ -9,6 +9,7 @@
 //! - [`Tabs`]: the tabs, the one shown, and what each pane shows (a box's id).
 //! - A pane is a number ([`Pane`]) that is never used twice, so an answer that arrives late
 //!   for a pane that is gone finds nothing.
+use crate::core::terminals::{Laid, LaidTab, Layout};
 use crate::ui::features::terminals::Way;
 use ratatui::layout::Rect;
 use std::collections::BTreeMap;
@@ -324,6 +325,54 @@ impl Tabs {
     pub fn shown(&self, area: Rect) -> Vec<(Pane, Rect, &str)> {
         self.tab().shown(area).into_iter().map(|(p, r)| (p, r, self.shown_in(p))).collect()
     }
+
+    /// Every pane of every tab, with what it shows.
+    pub fn every(&self) -> Vec<(Pane, &str)> {
+        self.tabs.iter().flat_map(|t| t.panes()).map(|p| (p, self.shown_in(p))).collect()
+    }
+
+    /// The tabs as the service keeps them (`core/terminals.rs`, [`Layout`]): no pane numbers,
+    /// only what each pane shows.
+    pub fn laid(&self) -> Layout {
+        fn node(n: &Node, shows: &BTreeMap<Pane, String>) -> Laid {
+            match n {
+                Node::Leaf(p) => Laid::Pane(shows.get(p).cloned().unwrap_or_default()),
+                Node::Split { dir, share, first, second } => Laid::Split { down: *dir == Dir::Down, share: *share, first: Box::new(node(first, shows)), second: Box::new(node(second, shows)) },
+            }
+        }
+        let tabs = self.tabs.iter().map(|t| LaidTab { panes: node(&t.root, &self.shows), focus: t.panes().iter().position(|p| *p == t.focus).unwrap_or(0), zoomed: t.zoomed }).collect();
+        Layout { tabs, at: self.at.min(self.tabs.len().saturating_sub(1)) }
+    }
+
+    /// The tabs a kept layout lays out, with new pane numbers; `None` when it has no tabs.
+    pub fn from_laid(layout: &Layout) -> Option<Tabs> {
+        fn node(l: &Laid, t: &mut Tabs) -> Node {
+            match l {
+                Laid::Pane(box_id) => {
+                    let p = t.fresh();
+                    t.show(p, box_id);
+                    Node::Leaf(p)
+                }
+                Laid::Split { down, share, first, second } => {
+                    let first = Box::new(node(first, t));
+                    Node::Split { dir: if *down { Dir::Down } else { Dir::Right }, share: (*share).clamp(1, 999), first, second: Box::new(node(second, t)) }
+                }
+            }
+        }
+        if layout.tabs.is_empty() {
+            return None;
+        }
+        let mut t = Tabs { tabs: vec![], at: 0, next: 1, shows: BTreeMap::new() };
+        for laid in &layout.tabs {
+            let root = node(&laid.panes, &mut t);
+            let mut tab = Tab { root, focus: 0, zoomed: laid.zoomed };
+            let panes = tab.panes();
+            tab.focus = panes.get(laid.focus).or(panes.first()).copied().unwrap_or(0);
+            t.tabs.push(tab);
+        }
+        t.at = layout.at.min(t.tabs.len() - 1);
+        Some(t)
+    }
 }
 
 #[cfg(test)]
@@ -435,5 +484,28 @@ mod tests {
         assert_eq!(tabs.shown_in(1), "", "but it shows nothing any more");
         let d = tabs.new_tab();
         assert!(d > c, "a number is never used twice: {d}");
+    }
+
+    #[test]
+    fn tabs_are_kept_as_a_layout_and_laid_out_again_from_it() {
+        let mut tabs = Tabs::new("engine:askk");
+        let b = tabs.split(Dir::Right, AREA).unwrap();
+        tabs.show(b, "terminal:1");
+        tabs.tab_mut().drag(AREA, (49, 5), (30, 5));
+        let c = tabs.split(Dir::Down, AREA).unwrap();
+        tabs.show(c, "terminal:2");
+        tabs.tab_mut().go(Way::Up, AREA);
+        let d = tabs.new_tab();
+        tabs.show(d, "session:4");
+        tabs.tab_mut().zoomed = true;
+        tabs.go_to(1);
+        let laid = tabs.laid();
+        assert_eq!((laid.tabs.len(), laid.at, laid.tabs[0].focus, laid.tabs[1].zoomed), (2, 0, 1, true));
+        let again = Tabs::from_laid(&laid).unwrap();
+        assert_eq!(again.laid(), laid, "laid out again, it is the same layout");
+        assert_eq!(again.tab().shown(AREA).iter().map(|(_, r)| *r).collect::<Vec<_>>(), tabs.tab().shown(AREA).iter().map(|(_, r)| *r).collect::<Vec<_>>(), "every pane where it was");
+        assert_eq!(again.shown_in(again.focus()), "terminal:1", "the focus where it was");
+        assert_eq!(again.every().iter().map(|(_, b)| *b).collect::<Vec<_>>(), ["engine:askk", "terminal:1", "terminal:2", "session:4"]);
+        assert_eq!(Tabs::from_laid(&Layout::default()), None);
     }
 }

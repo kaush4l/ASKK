@@ -71,6 +71,7 @@ itself. Models, theme, words and layout keep their own files.
 | `listen` | the address and port it answers at (`127.0.0.1:8090`) | after `askk restart`; `PORT` and `IP` in the environment win over it |
 | `origins` | pages at other addresses that may ask, beside `ASKK_ORIGINS` | at once |
 | `look_every_ms` | how often the home is looked at for hand edits; 0 = only on `reload` | at once |
+| `keys` | which key does what in `askk terminal`: `prefix`, then one entry per action (`split_right: "v %"`), and `boxes_by_number` / `tabs_by_number` (`N`, `alt+N`) (`core/keys.rs`) | at once, in every `askk terminal`; a key that does two things is refused in a sentence |
 
 **What is read again in place, and what is not.**
 
@@ -112,10 +113,12 @@ agents running in panes.
 | `herdr` starts or attaches; detaching leaves everything running; `herdr server stop` ends it | [README](https://github.com/herdrdev/herdr/blob/master/README.md), [session state](https://herdr.dev/docs/session-state/) | `askk start`, `askk terminal`, `askk stop` |
 | One config file; `herdr server reload-config` applies most settings while everything keeps running, and says that settings read at startup still need a restart | [configuration](https://herdr.dev/docs/configuration/) | `reload`, with the same honesty. askk also notices the edit by itself |
 | Client and server builds need not match: they agree on what each can do | [socket API](https://herdr.dev/docs/socket-api/) | `capabilities` already says what a build can do; the build in `hello` is only used to reload a stale page |
-| After a server restart the processes are gone; the layout is restored | [session state](https://herdr.dev/docs/session-state/) | an engine's state is on disk after every step, so a restart loses at most the step in hand. A terminal is gone, as in herdr; the layout is the window's own and is not kept |
+| After a server restart the processes are gone; the layout is restored | [session state](https://herdr.dev/docs/session-state/) | an engine's state is on disk after every step, so a restart loses at most the step in hand. A terminal is gone, as in herdr; the layout of `askk terminal` is kept by the service in the home (`terminal_layout`, `save_terminal_layout`; the file `terminal-layout.json`) and laid out again by the next window, a pane whose terminal is gone left empty |
 | "A pane is a real terminal": the server renders its output, sends it input, and keeps it running across client detach | [concepts](https://herdr.dev/tui/docs/concepts/) | the same, with one difference: the screen is worked out in the service and handed out as an object, so a page can draw it without a terminal library |
 | A sidebar lists agents with a state (blocked, working, done, idle); "done" is kept per client | [concepts](https://herdr.dev/tui/docs/concepts/), [quick start](https://herdr.dev/tui/docs/quick-start/) | the same list for every UI (`boxes`), and "done" is the window's (`ui/features/boxes.rs`); in `askk terminal` it is the sidebar |
-| Keys after a prefix, `ctrl+b`: `c` new tab, `v` split right, `-` split down, `n` `p` tabs, `w` navigate, `q` detach, `?` help; the mouse does the same | [quick start](https://herdr.dev/tui/docs/quick-start/), [configuration](https://herdr.dev/tui/docs/configuration/) | the same keys (`ui/features/terminals.rs`), fixed, not yet set in a file. Clicks focus a pane, a tab, a box; a border is dragged |
+| Keys after a prefix, `ctrl+b`: `c` new tab, `v` split right, `-` split down, `n` `p` tabs, `w` navigate, `q` detach, `?` help; the mouse does the same | [quick start](https://herdr.dev/tui/docs/quick-start/), [configuration](https://herdr.dev/tui/docs/configuration/) | the same keys by default (`ui/features/keymap.rs`), set in `settings.json` (`keys`) and read again while it runs; `?` lists the keys in force. Clicks focus a pane, a tab, a box; a border is dragged; a drag inside a terminal's pane selects and copies |
+| `prefix+alt+1..9` goes to the agent with that number | [configuration](https://herdr.dev/tui/docs/configuration/) | `ctrl+b 1..9` shows the box with that number, what needs the owner first (blocked first); the tabs by number are `ctrl+b alt+1..9`. Either can be moved in `keys` |
+| Spaces: each workspace with its branch and git state | [concepts](https://herdr.dev/tui/docs/concepts/) | the sidebar groups the boxes by place, each place headed by its branch, ✓ when clean, ● and a count when files changed, ↑ ↓ for ahead and behind (`workspaces`, read with git by the service, kept two seconds, marked on the change feed when it changes) |
 | An agent is "a process Herdr recognizes inside a pane", by the foreground process and by what its screen shows; blocked is "deliberately strict"; an unknown prompt reads as idle | [agents](https://herdr.dev/tui/docs/agents/) | the same idea, much less of it: the program's name, and three or four patterns. The box says the state is a guess. An agent that reports its own state (a harness session, an engine) is known, not guessed |
 | No sandbox of its own; a wrapper may be named with `HERDR_AGENT` | [agents](https://herdr.dev/tui/docs/agents/) | each terminal's program is confined by the build's own sandbox, and the box says how |
 
@@ -151,16 +154,18 @@ grows. The page does not yet say in words that the service is away or was restar
 
 **Where `askk terminal` is not herdr.** Said plainly, so nobody finds out by trying:
 
-- No copy mode: a pane can be looked back up (the wheel, `ctrl+b PageUp`), but nothing is
-  selected or copied out of it by askk; the outer terminal's own selection is taken by the
-  mouse capture (most terminals still select with a modifier key held).
+- Copy mode (`ctrl+b [`, a drag of the mouse) copies through OSC 52, so it reaches the
+  clipboard only where the outer terminal allows that (iTerm2, kitty, WezTerm, Alacritty,
+  tmux with `set-clipboard on`; Terminal.app does not). A selection is by rows of text: no
+  rectangle, no search, no word motions (`w`, `b`); what the program writes while a pane
+  is copied from moves the rows under the cursor.
 - The mouse is the window's, never the program's: a program in a pane that wants clicks
   (an editor, a pager) does not get them. No right-click menus.
-- No workspaces with their branch and git state: boxes are one list, each with its place.
-- The layout lives in the window. A window that opens finds every terminal that runs in a
-  tab of its own again (up to eight), but not the splits it left; herdr's server keeps the
-  whole layout and gives it back.
-- The keys are fixed; there is no config file for them, no themes, no notifications.
+- A place's git state is read only where the place is the top of a repository (it holds
+  `.git`); an engine's place is its parent engine, which is rarely a folder.
+- The layout is kept for the home, one for all windows: two windows open at once keep
+  whichever changed last.
+- No themes, no notifications.
 - A screen is asked for whole each time it changes (about 30 times a second at most), not
   sent as differences. On this machine that is not felt; over a slow link it would be.
 - Agents are recognised by name with a few patterns, against herdr's manifests for twenty

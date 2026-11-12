@@ -30,8 +30,13 @@
 //! | `panes.rs` | the full screen's tabs of split panes, as plain values |
 //! | `events.rs` | what the full screen is told (a key, an answer, a change) and what it asks for |
 //! | `app.rs` | the full screen's whole behaviour: what happened in, what to ask out |
+//! | `kept.rs` | what a window finds when it opens: the layout the service kept, the terminals that ran on |
+//! | `copy.rs` | copy mode: moving over a terminal's pane and its scroll-back, selecting, copying |
 //! | `picture.rs` | the app as the values that are drawn: the panes in view, the tabs, the foot |
 //! | `draw.rs` | the full screen as cells, from values |
+//! | `side.rs` | the sidebar as cells: every box under the place it runs in, with its git state |
+//! | `mouse.rs` | what a click, a drag and the wheel do |
+//! | `heard.rs` | what the service says (the change feed, a screen), taken in |
 //! | `client.rs` | the real terminal (keys, mouse, cells) and the real service, around `app.rs` |
 //!
 //! Nothing here decides what a line says about a run, in which order the boxes come, or what
@@ -42,11 +47,16 @@
 //! plain text, so a script can read them.
 pub mod app;
 pub mod client;
+mod copy;
 pub mod draw;
 pub mod events;
+mod heard;
+mod kept;
 pub mod layout;
+mod mouse;
 pub mod panes;
 mod picture;
+mod side;
 use crate::api::{Busy, ChatTurn};
 use crate::core::caps::Cap;
 use crate::core::run::Run;
