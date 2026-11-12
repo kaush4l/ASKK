@@ -1,27 +1,27 @@
 use super::{LayoutView, ModelsView, ThemeView};
 use crate::ui::components::{Icon, Pane};
+use crate::ui::kit::{Tabs, TabsContent, TabsList, TabsTrigger};
 use dioxus::prelude::*;
 
 /// Tab label for the model connectors page; `defaults/ui.json` and the models route use the same words.
 const MODELS_LABEL: &str = "Model connectors";
 
-/// Settings: theme, models and layout behind one segmented control.
+/// Settings: theme, models and layout behind one set of tabs (the kit's).
 #[component]
 pub fn SettingsView() -> Element {
-    let mut tab = use_signal(|| "models");
     rsx! {
         Pane { class: "settings-app fill",
-            div { class: "segmented glass", role: "tablist", "aria-label": "Settings",
-                for (id, label, icon) in [("models", MODELS_LABEL, "cube"), ("theme", "Theme", "palette"), ("layout", "Layout", "layout")] {
-                    button { class: "seg", role: "tab", "aria-selected": "{tab() == id}", onclick: move |_| tab.set(id),
-                        Icon { name: icon, size: 18 } span { "{label}" }
+            Tabs { default_value: "models", class: "fill",
+                TabsList { class: "glass max-w-full overflow-x-auto",
+                    for (id, label, icon) in [("models", MODELS_LABEL, "cube"), ("theme", "Theme", "palette"), ("layout", "Layout", "layout")] {
+                        TabsTrigger { value: id, class: "px-3",
+                            Icon { name: icon, size: 18 } span { "{label}" }
+                        }
                     }
                 }
-            }
-            match tab() {
-                "theme" => rsx! { ThemeView {} },
-                "layout" => rsx! { LayoutView {} },
-                _ => rsx! { ModelsView {} },
+                TabsContent { value: "models", ModelsView {} }
+                TabsContent { value: "theme", ThemeView {} }
+                TabsContent { value: "layout", LayoutView {} }
             }
         }
     }

@@ -182,6 +182,27 @@ pub fn GlanceView() -> Element {
 | No inline `style:` except a number worked out at run time | the theme changes every page together |
 | A view that grows past one sitting is split by what it shows | see the size rule |
 
+### 5b. The component system: tokens, kit, components, views
+
+One standard set of parts serves every place the app is drawn (browser, Mac app, phone,
+tablet), because they are all the same Rust source.
+
+| layer | where | rule | held by |
+| --- | --- | --- | --- |
+| tokens | `assets/styling/glass.css` (`:root`) | every colour, size and motion is named once | review |
+| kit | `ui/kit/` | standard parts from rust-ui.com, copied in; they know nothing of this app and name tokens, never a colour | `the_kit_is_standard_parts_and_nothing_else` |
+| components | `ui/components/` | this app's own parts, made of kit parts | `looks_live_in_the_stylesheet` |
+| views | `ui/views/` | pages, made of components | `every_view_a_page_may_name_is_drawn` |
+
+The kit is written in Tailwind classes. `tailwind.css` (repository root) loads Tailwind's
+utilities without its reset and maps each colour the kit names (`primary`, `card`,
+`muted`...) onto a glass token; `dx` writes `assets/tailwind.css` from it on every build
+(no Node). That written file is kept in the repository so a plain `cargo` build finds it.
+
+To add a part: see the top of `src/ui/kit/mod.rs`. Today the kit holds button, card, badge
+and tabs; Settings is the first view built on it. Moving the other views over is a debt
+(section 10).
+
 ## 6. A service that never stops
 
 | rule | in practice |

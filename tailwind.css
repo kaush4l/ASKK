@@ -1,0 +1,68 @@
+/* The kit's stylesheet source (src/ui/kit: components taken from rust-ui.com, which are
+   written in Tailwind classes). `dx` reads this file and writes assets/tailwind.css.
+
+   Two rules keep the kit inside this app's own look:
+
+   1. No reset. Only Tailwind's theme and utilities are loaded, so nothing here restyles a
+      page that assets/styling/glass.css already styles.
+   2. No colours of its own. Every colour the kit names (primary, card, muted...) is one of
+      the glass tokens, so a theme change in glass.css changes the kit too. */
+@layer theme, base, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+@source "./src/ui/**/*.rs";
+
+/* The app says "dark" with data-theme on <html>, or leaves it to the system. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+@theme inline {
+  --font-sans: var(--font-face);
+  --font-mono: var(--font-mono);
+
+  --color-background: var(--bg);
+  --color-foreground: var(--fg);
+  --color-card: var(--surface);
+  --color-card-foreground: var(--fg);
+  --color-popover: var(--tint);
+  --color-popover-foreground: var(--fg);
+  --color-primary: var(--press);
+  --color-primary-foreground: var(--press-ink);
+  --color-secondary: var(--surface-hover);
+  --color-secondary-foreground: var(--fg);
+  --color-muted: var(--surface);
+  --color-muted-foreground: var(--muted);
+  --color-accent: var(--surface-hover);
+  --color-accent-foreground: var(--fg);
+  --color-destructive: var(--error);
+  --color-destructive-foreground: var(--press-ink);
+  --color-success: var(--ok);
+  --color-success-foreground: var(--press-ink);
+  --color-success-light: color-mix(in srgb, var(--ok) 18%, transparent);
+  --color-success-dark: var(--ok);
+  --color-warning: var(--warn);
+  --color-warning-foreground: var(--press-ink);
+  --color-warning-light: color-mix(in srgb, var(--warn) 18%, transparent);
+  --color-warning-dark: var(--warn);
+  --color-info-light: color-mix(in srgb, var(--busy) 18%, transparent);
+  --color-info-dark: var(--busy);
+  --color-border: var(--stroke);
+  --color-input: var(--stroke);
+  --color-ring: var(--accent);
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 16px;
+}
+
+/* The one line of the reset the kit cannot do without: a border utility only sets a width,
+   so the line's style and colour are said once here, for kit parts only (each carries a
+   `data-name`). */
+@layer base {
+  :where([data-name], [data-name] *) { border: 0 solid var(--stroke); }
+  /* A browser gives a button its own typeface; a kit part uses the app's. */
+  :where([data-name]) { font-family: inherit; }
+  /* ...and its own grey face and ink; a kit part starts clear and takes the text's colour. */
+  :where(button[data-name]) { background: transparent; color: inherit; }
+}

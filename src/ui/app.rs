@@ -16,6 +16,8 @@ pub enum Route {
 
 const FAVICON: Asset = asset!("/assets/favicon.ico");
 const GLASS_CSS: Asset = asset!("/assets/styling/glass.css");
+/// The kit's looks, written by `dx` from `tailwind.css` (see `ui/kit/mod.rs`).
+const KIT_CSS: Asset = asset!("/assets/tailwind.css");
 const AMARANTE: Asset = asset!("/assets/fonts/amarante-latin-400-normal.woff2");
 
 /// A face without the window's sidebar and top bar (the notch panel provides this).
@@ -32,6 +34,7 @@ pub fn Assets() -> Element {
         document::Link { rel: "icon", href: FAVICON }
         document::Link { rel: "preload", href: AMARANTE, r#as: "font", r#type: "font/woff2", crossorigin: "anonymous" }
         document::Style { "@font-face{{font-family:\"Amarante\";font-style:normal;font-weight:400;font-display:swap;src:url(\"{AMARANTE}\") format(\"woff2\")}}" }
+        document::Link { rel: "stylesheet", href: KIT_CSS }
         document::Link { rel: "stylesheet", href: GLASS_CSS }
     }
 }

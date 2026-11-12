@@ -244,6 +244,35 @@ fn every_view_a_page_may_name_is_drawn() {
 }
 
 #[test]
+fn the_kit_is_standard_parts_and_nothing_else() {
+    // A kit part (ui/kit) is a standard part taken from a registry. It knows nothing of this
+    // app (no api, no core, no component of ours), it says where it came from, and it names
+    // tokens, never a colour of its own, so one theme change reaches every part.
+    let mut wrong = vec![];
+    for (rel, code) in sources() {
+        if !rel.starts_with("ui/kit/") || rel == "ui/kit/mod.rs" {
+            continue;
+        }
+        // The whole file, comments too (`sources` leaves comments out).
+        let whole = std::fs::read_to_string(Path::new("src").join(&rel)).unwrap_or_default();
+        if !whole.starts_with("//! From rust-ui.com") {
+            wrong.push(format!("{rel}: the first line must say where the part came from"));
+        }
+        for banned in ["crate::api", "crate::core", "crate::host", "crate::local", "crate::ui::components", "crate::ui::views"] {
+            if code.contains(banned) {
+                wrong.push(format!("{rel}: a kit part must not know `{banned}`"));
+            }
+        }
+        for colour in ["oklch(", "rgb(", "hsl(", "-[#"] {
+            if code.contains(colour) {
+                wrong.push(format!("{rel}: `{colour}` is a colour of its own; name a token (see tailwind.css)"));
+            }
+        }
+    }
+    assert!(wrong.is_empty(), "{}", wrong.join("\n"));
+}
+
+#[test]
 fn looks_live_in_the_stylesheet() {
     // Inline style is for a number worked out at run time (a position, a size). These files
     // have such numbers; the count may go down, never up, and no other file gets any.
