@@ -69,6 +69,27 @@ impl Boxes {
         document::eval(&format!("try {{ localStorage.setItem('askk-pins', {text}); }} catch (e) {{}}"));
     }
 
+    /// Keep the queue in the browser beside the window, so a reload brings it back.
+    fn keep_queue(&self) {
+        let text = serde_json::to_string(&self.queue.peek().text()).unwrap_or_default();
+        document::eval(&format!("try {{ localStorage.setItem('askk-queue', {text}); }} catch (e) {{}}"));
+    }
+
+    /// Take a waiting message back; gives its text, so it can be written on.
+    pub fn unqueue(&mut self, id: &str, key: u64) -> Option<String> {
+        let text = self.queue.write().remove(id, key);
+        self.keep_queue();
+        text
+    }
+
+    /// Send a waiting message now, before the work is done: an engine finds it in its message
+    /// box at its next step, so it steers the run in hand.
+    pub fn steer(&mut self, id: &str, key: u64) {
+        if let Some(text) = self.unqueue(id, key) {
+            self.send(id.to_string(), text);
+        }
+    }
+
     /// Say `text` to the box `id`. While the box works (or other messages already wait for
     /// it) the message waits in this window and goes when the box is done; else it goes now.
     pub fn say(&mut self, id: String, text: String) {
@@ -77,6 +98,7 @@ impl Boxes {
         let terminal = matches!(inside(&id), Inside::Terminal(_));
         if !terminal && waits(state, self.queue.peek().of(&id).len()) {
             self.queue.write().push(&id, &text);
+            self.keep_queue();
         } else {
             self.send(id, text);
         }
@@ -146,26 +168,39 @@ pub fn use_boxes_provider(engines: String, sessions: String) -> Boxes {
             }
         }
     });
-    // What this window pinned, read once the page is in a browser.
+    let mut queue = use_signal(Queue::default);
+    // What this window pinned, and the messages that waited when it was last open, read once
+    // the page is in a browser.
     use_effect(move || {
         spawn(async move {
             if let Ok(text) = document::eval("try { return localStorage.getItem('askk-pins') || '[]'; } catch (e) { return '[]'; }").await {
                 pins.set(pins_from(text.as_str().unwrap_or_default()));
             }
+            if let Ok(text) = document::eval("try { return localStorage.getItem('askk-queue') || ''; } catch (e) { return ''; }").await {
+                let kept = Queue::from_text(text.as_str().unwrap_or_default());
+                if !kept.waiting().is_empty() {
+                    queue.set(kept);
+                }
+            }
         });
     });
-    let mut boxes = use_context_provider(|| Boxes { list, seen, pins, idle_too: Signal::new(false), queue: Signal::new(Queue::default()), asked, sent_at: Signal::new(BTreeMap::new()), wrong: Signal::new(String::new()) });
+    let mut boxes = use_context_provider(|| Boxes { list, seen, pins, idle_too: Signal::new(false), queue, asked, sent_at: Signal::new(BTreeMap::new()), wrong: Signal::new(String::new()) });
     // Send what waits: for each box something waits for, when the box is done and has taken
     // up what was sent before. Looked at again each time the list was asked for.
     let _ = use_resource(move || {
         let now = asked();
         let waiting = boxes.queue.read().waiting();
         async move {
+            // Until the list has been asked for, no box is known: none is gone yet.
+            if now == 0 {
+                return;
+            }
             for id in waiting {
                 let state = list.peek().iter().find(|b| b.id == id).map(|b| b.state);
                 // A box that is gone takes its queue with it.
                 let Some(state) = state else {
                     while boxes.queue.write().take(&id).is_some() {}
+                    boxes.keep_queue();
                     continue;
                 };
                 if state == State::Working || boxes.sent_at.peek().get(&id).is_some_and(|at| *at >= now) {
@@ -177,6 +212,7 @@ pub fn use_boxes_provider(engines: String, sessions: String) -> Boxes {
                 };
                 if ready(state, unread) {
                     let next = boxes.queue.write().take(&id);
+                    boxes.keep_queue();
                     if let Some(q) = next {
                         boxes.send(id, q.text);
                     }

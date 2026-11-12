@@ -65,7 +65,11 @@ mod run;
 pub use run::{CallRow, Elapsed, RunView, StageRow};
 mod turn;
 #[allow(unused_imports)]
-pub use turn::{SessionThread, Thread, TurnView};
+pub use turn::{SessionThread, Thread, TurnView, Writing};
+mod talks;
+pub use talks::TalkList;
+mod workspace;
+pub use workspace::{DiffView, FilesView};
 mod composer;
 #[allow(unused_imports)]
 pub use composer::{Attached, Composer, ModelChoice, ModelPick, QueueList};

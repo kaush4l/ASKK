@@ -55,6 +55,13 @@ impl crate::core::Infer for ModelsInfer {
             connectors::complete_with(&m, &prompt, &sampling, &media).await
         })
     }
+    fn stream(&self, model: &str, prompt: String, sampling: crate::core::Sampling, media: Vec<crate::core::media::Attachment>, said: crate::core::Said) -> crate::core::Fut<Result<String, String>> {
+        let model = crate::core::param::model(model);
+        Box::pin(async move {
+            let m = bound().find(&model).ok_or_else(|| format!("no model named '{model}' (and no default)"))?.clone();
+            connectors::stream(&m, &prompt, &sampling, &media, Some(&said)).await
+        })
+    }
     fn context(&self, model: &str) -> crate::core::Fut<usize> {
         let model = crate::core::param::model(model);
         Box::pin(async move {

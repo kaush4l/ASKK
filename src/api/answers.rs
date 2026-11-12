@@ -110,6 +110,23 @@ pub async fn workspace_view(path: String) -> Result<IdeView, String> {
     Ok(IdeView { workspace, jobs })
 }
 
+/// What the last run of the engine at `path` that changed files changed in its workspace.
+#[cfg(feature = "server")]
+pub async fn workspace_diff(path: String) -> Result<WorkspaceDiff, String> {
+    let e = find(&path).ok_or_else(|| say(format!("no engine {path}")))?;
+    let Some(spec) = e.specs().into_iter().find(|s| s.kind == "workspace") else { return Ok(WorkspaceDiff::default()) };
+    let (run, files) = crate::elements::workspace::changes_of(spec, &path).map_err(say)?;
+    Ok(WorkspaceDiff { workspace: true, run, files })
+}
+
+/// One file of the engine's workspace, to read (never to write; excluded files are not shown).
+#[cfg(feature = "server")]
+pub async fn workspace_file(path: String, file: String) -> Result<String, String> {
+    let e = find(&path).ok_or_else(|| say(format!("no engine {path}")))?;
+    let spec = e.specs().into_iter().find(|s| s.kind == "workspace").ok_or_else(|| say(format!("{path} has no workspace")))?;
+    crate::elements::workspace::read_of(spec, &file).map_err(say)
+}
+
 pub async fn run_engine(path: String, input: String) -> Result<String, String> {
     let e = find(&path).ok_or_else(|| say(format!("no engine '{path}'")))?;
     e.run(&input).await.map_err(say)

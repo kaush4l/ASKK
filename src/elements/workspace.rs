@@ -136,6 +136,69 @@ pub struct Workspace {
     name: String,
     cfg: Cfg,
     st: St,
+    /// The engine it belongs to, and the run going now (what the files it changes are tied to).
+    engine: String,
+    run: u64,
+}
+
+/// A file a run changed: as it was before the run first changed it (`None`: it did not exist),
+/// and as it is now.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct FileChange {
+    pub path: String,
+    pub before: Option<String>,
+    pub after: String,
+}
+
+/// The files the last run that changed any changed, per engine: `(run, file → before)`. Held in
+/// memory only, so a restart forgets what came before.
+type Touched = std::collections::BTreeMap<String, (u64, std::collections::BTreeMap<String, Option<String>>)>;
+
+fn touched() -> &'static std::sync::Mutex<Touched> {
+    static T: std::sync::OnceLock<std::sync::Mutex<Touched>> = std::sync::OnceLock::new();
+    T.get_or_init(Default::default)
+}
+
+/// Note a file as it is before `run` changes it, the first time that run does.
+fn before_change(engine: &str, run: u64, root: &Path, rel: &str) {
+    use crate::core::held::Held;
+    let mut t = touched().held();
+    let entry = t.entry(engine.to_string()).or_default();
+    if entry.0 != run {
+        *entry = (run, Default::default());
+    }
+    if !entry.1.contains_key(rel) {
+        let full = root.join(rel);
+        let files = crate::core::files::files();
+        entry.1.insert(rel.to_string(), files.is_file(&full).then(|| files.read(&full).unwrap_or_default()));
+    }
+}
+
+/// What the last run of `engine` that changed files changed in the workspace `spec` describes:
+/// the run, and each file before and now.
+pub fn changes_of(spec: Spec, engine: &str) -> Result<(u64, Vec<FileChange>), String> {
+    use crate::core::held::Held;
+    let cfg: Cfg = if spec.config.is_null() { Cfg::default() } else { read(&spec.config)? };
+    let root = base().join(&cfg.root);
+    let Some((run, files)) = touched().held().get(engine).cloned() else { return Ok((0, vec![])) };
+    let out = files
+        .into_iter()
+        .map(|(path, before)| {
+            let after = crate::core::files::files().read(&root.join(&path)).unwrap_or_default();
+            FileChange { path, before, after }
+        })
+        .filter(|c| c.before.as_deref() != Some(c.after.as_str()))
+        .collect();
+    Ok((run, out))
+}
+
+/// One visible file's text, for reading only (excluded files are not shown).
+pub fn read_of(spec: Spec, rel: &str) -> Result<String, String> {
+    let cfg: Cfg = if spec.config.is_null() { Cfg::default() } else { read(&spec.config)? };
+    let r = Rules { root: base().join(&cfg.root), exclude: cfg.exclude, protect: cfg.protect };
+    let rel = r.visible(rel)?;
+    let text = crate::core::files::files().read(&r.root.join(&rel))?;
+    Ok(if text.chars().count() > MAX_CHARS * 10 { format!("{}\n… (cut: the file is longer)", text.chars().take(MAX_CHARS * 10).collect::<String>()) } else { text })
 }
 
 pub fn new(s: Spec) -> Result<Box<dyn Component>, String> {
@@ -143,7 +206,7 @@ pub fn new(s: Spec) -> Result<Box<dyn Component>, String> {
     if cfg.root.split('/').any(|c| c == "..") {
         return Err("root must stay inside the workspace".into());
     }
-    Ok(Box::new(Workspace { name: s.name, cfg, st: read(&s.state)? }))
+    Ok(Box::new(Workspace { name: s.name, cfg, st: read(&s.state)?, engine: String::new(), run: 0 }))
 }
 
 /// The process workspace (`ASKK_WORKSPACE`, else the current folder).
@@ -221,7 +284,7 @@ impl Workspace {
 /// The IDE view's data from a workspace element's spec (config + state).
 pub fn view_of(spec: Spec) -> Result<WorkspaceView, String> {
     let cfg: Cfg = if spec.config.is_null() { Cfg::default() } else { read(&spec.config)? };
-    Ok(Workspace { name: spec.name, cfg, st: read(&spec.state)? }.snapshot_view())
+    Ok(Workspace { name: spec.name, cfg, st: read(&spec.state)?, engine: String::new(), run: 0 }.snapshot_view())
 }
 
 /// `WINDOW` numbered lines around `at` (1-based; 0 = from the top), with a note when cut.
@@ -284,6 +347,8 @@ impl Component for Workspace {
                 }
             }
             Event::Cleared => self.st = St::default(),
+            Event::Bound(p) => self.engine = p.clone(),
+            Event::Started { run } => self.run = *run,
             _ => {}
         }
     }
@@ -307,6 +372,7 @@ impl Component for Workspace {
     fn tools(&self) -> Vec<Arc<dyn Tool>> {
         let r = self.rules();
         let (r1, r2, r3, r4) = (r.clone(), r.clone(), r.clone(), r);
+        let (e2, e3, run) = (self.engine.clone(), self.engine.clone(), self.run);
         let path = |a: &Value| a["path"].as_str().map(String::from).ok_or_else(|| "path missing".to_string());
         vec![
             tool("open_file", "open a file: its current text is shown in the workspace section from now on", json!({"path": "relative path", "line": "optional: show the part around this line (big files show 200 lines)"}), move |a| {
@@ -315,6 +381,7 @@ impl Component for Workspace {
             tool("close_file", "close an open file", json!({"path": "relative path"}), move |a| Rules::clean(&path(&a)?).map(|_| json!(true))),
             tool("write_file", "create or overwrite a file (not excluded or protected paths); it opens", json!({"path": "relative path", "content": "full text"}), move |a| {
                 let p = r2.writable(&path(&a)?)?;
+                before_change(&e2, run, &r2.root, &p);
                 let full = r2.root.join(&p);
                 crate::core::files::files().write(&full, a["content"].as_str().unwrap_or_default())?;
                 Ok(json!(true))
@@ -330,6 +397,7 @@ impl Component for Workspace {
                     0 => return Err(format!("'old' not found in {p}")),
                     n => return Err(format!("'old' is found {n} times in {p}; include more context")),
                 }
+                before_change(&e3, run, &r3.root, &p);
                 crate::core::files::files().write(&full, &text.replacen(old, a["new"].as_str().unwrap_or_default(), 1))?;
                 Ok(json!(true))
             }),
@@ -404,6 +472,20 @@ mod tests {
         assert_eq!(w2.state()["open"], json!(["src/app.rs", "src/new.rs"]), "open files survive a restart");
         call(&tb, &mut w, "close_file", json!({"path": "src/app.rs"})).await.unwrap();
         assert_eq!(w.state()["open"], json!(["src/new.rs"]));
+        // What a run changed: each file as it was before the run first touched it, and now.
+        w.on(&Event::Bound("ws/test".into()));
+        w.on(&Event::Started { run: 7 });
+        let tb = crate::core::Toolbox::new(w.tools());
+        call(&tb, &mut w, "edit_file", json!({"path": "src/app.rs", "old": "fn b()", "new": "fn c()"})).await.unwrap();
+        call(&tb, &mut w, "edit_file", json!({"path": "src/app.rs", "old": "fn c()", "new": "fn d()"})).await.unwrap();
+        call(&tb, &mut w, "write_file", json!({"path": "src/more.rs", "content": "m"})).await.unwrap();
+        let (run, ch) = changes_of(spec(Value::Null), "ws/test").unwrap();
+        assert_eq!(run, 7);
+        assert_eq!(ch.iter().map(|c| (c.path.as_str(), c.before.as_deref(), c.after.as_str())).collect::<Vec<_>>(), [("src/app.rs", Some("fn b() {}\n"), "fn d() {}\n"), ("src/more.rs", None, "m")]);
+        assert_eq!(read_of(spec(Value::Null), "src/app.rs").unwrap(), "fn d() {}\n");
+        assert!(read_of(spec(Value::Null), "secret.env").is_err(), "an excluded file is not shown");
+        w.on(&Event::Started { run: 8 });
+        assert_eq!(changes_of(spec(Value::Null), "ws/test").unwrap().0, 7, "a run that changes nothing leaves the last changes in sight");
         let _ = std::fs::remove_dir_all(root);
     }
 }

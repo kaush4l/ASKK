@@ -49,6 +49,8 @@ pub const ICONS: &[(&str, &str)] = &[
     ("search", "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4"),
     ("folder", "M3 6h6l2 2h10v11H3z"),
     ("keyboard", "M3 6h18v12H3zM7 10h0M11 10h0M15 10h0M7 14h10"),
+    ("plus", "M12 5v14M5 12h14"),
+    ("diff", "M8 3v8M4 7h8M4 17h8M16 13v8M14 3l6 6-6 6"),
     ("dot", "M12 11.5h0"),
 ];
 

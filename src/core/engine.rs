@@ -105,7 +105,7 @@ pub struct Engine {
     /// Held for the whole of a run: whoever asks for a run while one is going (a direct run,
     /// a wake, an alarm, a parent's call) waits its turn, so two runs never share the stages,
     /// the record or the elements.
-    turn: futures::lock::Mutex<()>,
+    pub(crate) turn: futures::lock::Mutex<()>,
     /// An element reads the message box (`Component::receives`); fixed when built, read without locks.
     pub receives: bool,
     /// The engine's key: where it is stored and what it marks in [`super::changes`] when it
@@ -283,7 +283,7 @@ impl Engine {
         self.activity.held().clone()
     }
 
-    fn persist(&self) {
+    pub(crate) fn persist(&self) {
         self.bump();
         if let Some(save) = &self.save {
             save(self);
@@ -575,7 +575,7 @@ impl Engine {
             );
             let shown_media: Vec<(String, String)> = media.iter().map(|m| (format!("shown: {}", m.id), if m.label.is_empty() { m.mime.clone() } else { format!("{} ({})", m.label, m.mime) })).collect();
             self.note(&asked, shown_media);
-            let reply = match self.infer.complete_with(&model, prompt, sampling, media).await {
+            let reply = match self.stream(&model, prompt, sampling, media, step + 1).await {
                 Ok(r) => r,
                 Err(e) => {
                     self.note(&format!("{asked} · failed"), vec![("error".into(), e.clone())]);
@@ -1102,6 +1102,61 @@ pub mod tests {
         assert_eq!(p.len(), 2, "refocus ran first");
         assert!(p[0].contains("## h") && !p[0].contains("## tools") && !p[0].contains("## screen") && !p[0].contains("## response"), "{}", p[0]);
         assert!(p[1].contains("## tools"), "the working prompt keeps everything");
+    }
+
+    /// A runtime that writes its reply in pieces, and notes what the engine says it has heard
+    /// after each one.
+    struct Pieces {
+        pieces: Vec<&'static str>,
+        engine: Arc<std::sync::OnceLock<std::sync::Weak<Engine>>>,
+        seen: Arc<Mutex<Vec<(u64, usize, String)>>>,
+    }
+
+    impl Infer for Pieces {
+        fn complete(&self, _: &str, _: String, _: crate::core::Sampling) -> Fut<Result<String, String>> {
+            let whole = self.pieces.concat();
+            Box::pin(async move { Ok(whole) })
+        }
+        fn stream(&self, _: &str, _: String, _: crate::core::Sampling, _: Vec<crate::core::media::Attachment>, said: crate::core::Said) -> Fut<Result<String, String>> {
+            let (pieces, engine, seen) = (self.pieces.clone(), self.engine.clone(), self.seen.clone());
+            Box::pin(async move {
+                for p in &pieces {
+                    said(p);
+                    if let Some(e) = engine.get().and_then(|w| w.upgrade()) {
+                        let (h, answer) = e.heard();
+                        seen.held().push((h.run, h.step, answer));
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+                }
+                Ok(pieces.concat())
+            })
+        }
+    }
+
+    /// While the model writes, the answer so far can be read (and its key is marked changed);
+    /// the run still ends with the whole answer.
+    #[tokio::test]
+    async fn an_answer_is_heard_while_it_is_written() {
+        let engine: Arc<std::sync::OnceLock<std::sync::Weak<Engine>>> = Arc::default();
+        let seen: Arc<Mutex<Vec<(u64, usize, String)>>> = Arc::default();
+        let infer = Arc::new(Pieces { pieces: vec!["plan: say it\n", "answer: It ", "is ", "ten."], engine: engine.clone(), seen: seen.clone() });
+        let mut e = Engine::new(file("e"), "e".into(), vec![spec("handoff", "handoff", json!({"nudge": "off"})), spec("history", "h", Value::Null)], vec![], vec![], infer).unwrap();
+        e.key = "engines/heard".into();
+        let e = Arc::new(e);
+        engine.set(Arc::downgrade(&e)).unwrap();
+        let before = crate::core::changes::now();
+        assert_eq!(e.run("how much?").await.unwrap(), "It is ten.");
+        let run = e.runs().last().unwrap().id;
+        let got: Vec<String> = seen.held().iter().map(|(r, s, a)| { assert_eq!((*r, *s), (run, 1), "the pieces are tied to their run and step"); a.clone() }).collect();
+        assert_eq!(got, ["", "It ", "It is ", "It is ten."], "the plan is not an answer; the answer grows piece by piece");
+        let (_, keys) = crate::core::changes::since(before);
+        assert!(keys.iter().any(|(k, _)| k == &crate::core::heard::heard_key("engines/heard")), "the arriving reply marks its own key: {keys:?}");
+        // Without an element that reads replies, all of the reply is the answer.
+        let plain = Arc::new(Pieces { pieces: vec!["Hel", "lo"], engine: Arc::default(), seen: Arc::default() });
+        let p = Arc::new(Engine::new(file("p"), "p".into(), vec![], vec![], vec![], plain.clone()).unwrap());
+        plain.engine.set(Arc::downgrade(&p)).unwrap();
+        p.run("hi").await.unwrap();
+        assert_eq!(plain.seen.held().iter().map(|(_, _, a)| a.as_str()).collect::<Vec<_>>(), ["Hel", "Hello"]);
     }
 
     #[tokio::test]

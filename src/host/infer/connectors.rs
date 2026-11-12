@@ -3,7 +3,7 @@
 use crate::core::held::Held;
 use crate::core::media::Attachment;
 use crate::core::models::{Found, Model, INPUTS, OPENAI_URL};
-use crate::core::Sampling;
+use crate::core::{Said, Sampling};
 use serde_json::{json, Value};
 
 /// Context-window fields servers put in a models listing entry.
@@ -89,22 +89,110 @@ pub fn stream_result(printed: &str) -> Result<String, String> {
     }
 }
 
-async fn openai(m: &Model, prompt: &str, s: &Sampling, images: &[Image]) -> Result<String, String> {
+async fn openai(m: &Model, prompt: &str, s: &Sampling, images: &[Image], said: Option<&Said>) -> Result<String, String> {
     let url = format!("{}/chat/completions", base(m));
-    let res = auth(m, reqwest::Client::new().post(&url).json(&body_with(m, prompt, s, images))).send().await.map_err(|e| format!("{url}: {e}"))?;
-    let status = res.status();
-    let v: Value = res.json().await.map_err(|e| format!("{url}: {e}"))?;
-    if !status.is_success() {
-        return Err(format!("{status}: {v}"));
+    let mut body = body_with(m, prompt, s, images);
+    if said.is_some() {
+        body["stream"] = json!(true);
     }
-    v.pointer("/choices/0/message/content").and_then(|x| x.as_str()).map(String::from).ok_or_else(|| format!("no reply: {v}"))
+    let mut res = auth(m, reqwest::Client::new().post(&url).json(&body)).send().await.map_err(|e| format!("{url}: {e}"))?;
+    let status = res.status();
+    let events = res.headers().get(reqwest::header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).is_some_and(|t| t.starts_with("text/event-stream"));
+    let Some(said) = said.filter(|_| events && status.is_success()) else {
+        if said.is_some() && !status.is_success() {
+            // A server that will not stream is asked again the plain way.
+            return Box::pin(openai(m, prompt, s, images, None)).await;
+        }
+        let v: Value = res.json().await.map_err(|e| format!("{url}: {e}"))?;
+        if !status.is_success() {
+            return Err(format!("{status}: {v}"));
+        }
+        let text = v.pointer("/choices/0/message/content").and_then(|x| x.as_str()).map(String::from).ok_or_else(|| format!("no reply: {v}"))?;
+        if let Some(said) = said {
+            said(&text);
+        }
+        return Ok(text);
+    };
+    // Server-sent events: `data: {json}` lines, each with the next piece, then `data: [DONE]`.
+    let mut events = Events::default();
+    while let Some(chunk) = res.chunk().await.map_err(|e| format!("{url}: {e}"))? {
+        for piece in events.feed(&chunk) {
+            said(&piece);
+        }
+        if events.done {
+            break;
+        }
+    }
+    if events.text.is_empty() && !events.error.is_empty() {
+        return Err(events.error);
+    }
+    Ok(events.text)
+}
+
+/// A stream of server-sent events as it arrives, read into the pieces of a reply.
+#[derive(Default)]
+pub struct Events {
+    pending: Vec<u8>,
+    pub text: String,
+    pub error: String,
+    pub done: bool,
+}
+
+impl Events {
+    /// Take the next bytes; gives the pieces of text in the lines they finished.
+    pub fn feed(&mut self, bytes: &[u8]) -> Vec<String> {
+        self.pending.extend_from_slice(bytes);
+        let mut out = vec![];
+        while let Some(at) = self.pending.iter().position(|b| *b == b'\n') {
+            let line: Vec<u8> = self.pending.drain(..=at).collect();
+            let line = String::from_utf8_lossy(&line);
+            let Some(data) = line.trim().strip_prefix("data:").map(str::trim) else { continue };
+            if data == "[DONE]" {
+                self.done = true;
+                break;
+            }
+            let Ok(v) = serde_json::from_str::<Value>(data) else { continue };
+            if let Some(e) = v.get("error") {
+                self.error = e["message"].as_str().map(String::from).unwrap_or_else(|| e.to_string());
+            }
+            if let Some(piece) = v.pointer("/choices/0/delta/content").and_then(Value::as_str).filter(|p| !p.is_empty()) {
+                self.text.push_str(piece);
+                out.push(piece.to_string());
+            }
+        }
+        out
+    }
+}
+
+/// A line of a Claude Code stream, read for the text it adds to the reply.
+fn printed_piece(line: &str, partial: &mut bool) -> Option<String> {
+    let v: Value = serde_json::from_str(line.trim()).ok()?;
+    match v["type"].as_str()? {
+        // With partial messages on, each delta is the next piece.
+        "stream_event" => {
+            let d = &v["event"]["delta"];
+            let t = d["text"].as_str().filter(|_| d["type"] == "text_delta").map(String::from);
+            if t.is_some() {
+                *partial = true;
+            }
+            t
+        }
+        // Without them, each whole message is a piece.
+        "assistant" if !*partial => {
+            let parts = v["message"]["content"].as_array()?;
+            let t: String = parts.iter().filter(|p| p["type"] == "text").filter_map(|p| p["text"].as_str()).collect();
+            (!t.is_empty()).then_some(t)
+        }
+        _ => None,
+    }
 }
 
 /// Any command-line model: fill `{prompt}` / `{model}` in `command`; no `{prompt}` = stdin.
 /// With `input: stream-json` the prompt and the images go to stdin as one message, and the
-/// reply is the result line of the stream the command prints.
-async fn cli(m: &Model, prompt: &str, images: &[Image]) -> Result<String, String> {
-    use tokio::io::AsyncWriteExt;
+/// reply is the result line of the stream the command prints. What it prints is handed to
+/// `said` as it comes (a text model's output itself; a stream's text messages).
+async fn cli(m: &Model, prompt: &str, images: &[Image], said: Option<&Said>) -> Result<String, String> {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let (prog, args) = m.command.split_first().ok_or("cli model needs a command")?;
     if !INPUTS.contains(&m.input.as_str()) {
         return Err(format!("input '{}' is not one of: text (empty), stream-json", m.input));
@@ -124,14 +212,53 @@ async fn cli(m: &Model, prompt: &str, images: &[Image]) -> Result<String, String
         let mut i = child.stdin.take().unwrap();
         i.write_all(if stream { line.as_bytes() } else { prompt.as_bytes() }).await.map_err(|e| e.to_string())?;
     }
-    let out = child.wait_with_output().await.map_err(|e| e.to_string())?;
-    let printed = String::from_utf8_lossy(&out.stdout);
+    // Standard error is read beside, so a command that writes much there never stalls.
+    let mut err_pipe = child.stderr.take().ok_or("no stderr")?;
+    let errors = tokio::spawn(async move {
+        let mut e = vec![];
+        let _ = err_pipe.read_to_end(&mut e).await;
+        String::from_utf8_lossy(&e).trim().to_string()
+    });
+    let mut out_pipe = child.stdout.take().ok_or("no stdout")?;
+    let (mut printed, mut buf, mut cut) = (Vec::<u8>::new(), [0u8; 4096], 0usize);
+    let mut partial = false;
+    loop {
+        let n = out_pipe.read(&mut buf).await.map_err(|e| e.to_string())?;
+        if n == 0 {
+            break;
+        }
+        printed.extend_from_slice(&buf[..n]);
+        let Some(said) = said else { continue };
+        if stream {
+            // Whole lines only.
+            while let Some(at) = printed[cut..].iter().position(|b| *b == b'\n') {
+                let l = String::from_utf8_lossy(&printed[cut..cut + at]).to_string();
+                cut += at + 1;
+                if let Some(p) = printed_piece(&l, &mut partial) {
+                    said(&p);
+                }
+            }
+        } else {
+            // Whole characters only: a piece never ends inside one.
+            let upto = match std::str::from_utf8(&printed[cut..]) {
+                Ok(_) => printed.len(),
+                Err(e) => cut + e.valid_up_to(),
+            };
+            if upto > cut {
+                said(&String::from_utf8_lossy(&printed[cut..upto]));
+                cut = upto;
+            }
+        }
+    }
+    let status = child.wait().await.map_err(|e| e.to_string())?;
+    let stderr = errors.await.unwrap_or_default();
+    let printed = String::from_utf8_lossy(&printed);
     if stream {
         // The stream says what went wrong better than the exit code does.
-        return stream_result(&printed).map_err(|e| if out.status.success() { e } else { format!("{prog}: {e} {}", String::from_utf8_lossy(&out.stderr).trim()) });
+        return stream_result(&printed).map_err(|e| if status.success() { e } else { format!("{prog}: {e} {stderr}") });
     }
-    if !out.status.success() {
-        return Err(format!("{prog}: {}", String::from_utf8_lossy(&out.stderr).trim()));
+    if !status.success() {
+        return Err(format!("{prog}: {stderr}"));
     }
     Ok(printed.trim().to_string())
 }
@@ -143,11 +270,17 @@ pub async fn complete(m: &Model, prompt: &str, s: &Sampling) -> Result<String, S
 /// Ask a model, showing it `media` when its method can (openai: always; cli: with
 /// `input: stream-json`). A model that cannot be shown answers from the prompt alone.
 pub async fn complete_with(m: &Model, prompt: &str, s: &Sampling, media: &[Attachment]) -> Result<String, String> {
+    stream(m, prompt, s, media, None).await
+}
+
+/// The same, handing each piece of the reply to `said` as it arrives (`openai`: the server's
+/// event stream; `cli`: what the command prints, as it prints it).
+pub async fn stream(m: &Model, prompt: &str, s: &Sampling, media: &[Attachment], said: Option<&Said>) -> Result<String, String> {
     let shows = m.method == "openai" || m.input == "stream-json";
     let images = if shows { images(media).await } else { vec![] };
     match m.method.as_str() {
-        "openai" => openai(m, prompt, s, &images).await,
-        "cli" => cli(m, prompt, &images).await,
+        "openai" => openai(m, prompt, s, &images, said).await,
+        "cli" => cli(m, prompt, &images, said).await,
         other => Err(format!("unknown method '{other}' (openai or cli)")),
     }
 }
@@ -204,6 +337,26 @@ mod tests {
         assert_eq!(complete_cli(&m(&["cat"]), "via stdin").await.unwrap(), "via stdin");
         assert!(complete_cli(&m(&["false"]), "x").await.is_err());
         assert!(complete_cli(&m(&[]), "x").await.is_err());
+    }
+
+    /// A reply is handed on piece by piece: a server's events (a line may arrive cut in two),
+    /// a command's output as it prints it, a Claude Code stream's text.
+    #[tokio::test]
+    async fn a_reply_is_handed_on_as_it_arrives() {
+        let mut ev = Events::default();
+        assert_eq!(ev.feed(b"data: {\"choices\":[{\"delta\":{\"content\":\"Hel\"}}]}\n\ndata: {\"choices\":[{\"delta\":{\"con"), ["Hel"]);
+        assert_eq!(ev.feed(b"tent\":\"lo\"}}]}\n\ndata: [DONE]\n"), ["lo"]);
+        assert!(ev.done && ev.text == "Hello");
+        let heard: std::sync::Arc<std::sync::Mutex<Vec<String>>> = Default::default();
+        let h = heard.clone();
+        let said: Said = std::sync::Arc::new(move |p: &str| h.held().push(p.to_string()));
+        let m = |c: &str, input: &str| Model { name: "m".into(), method: "cli".into(), input: input.into(), command: vec!["/bin/sh".into(), "-c".into(), c.into()], ..Default::default() };
+        assert_eq!(stream(&m("printf 'one '; sleep 0.2; printf two", ""), "x", &Sampling::default(), &[], Some(&said)).await.unwrap(), "one two");
+        assert_eq!(*heard.held(), ["one ", "two"], "two prints, two pieces");
+        heard.held().clear();
+        let lines = r#"cat >/dev/null; echo '{"type":"stream_event","event":{"delta":{"type":"text_delta","text":"a"}}}'; sleep 0.2; echo '{"type":"stream_event","event":{"delta":{"type":"text_delta","text":"b"}}}'; echo '{"type":"assistant","message":{"content":[{"type":"text","text":"ab"}]}}'; echo '{"type":"result","result":"ab"}'"#;
+        assert_eq!(stream(&m(lines, "stream-json"), "x", &Sampling::default(), &[], Some(&said)).await.unwrap(), "ab");
+        assert_eq!(*heard.held(), ["a", "b"], "deltas once: the whole message after them is not said again");
     }
 
     #[tokio::test]

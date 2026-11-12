@@ -7,13 +7,14 @@
 //! | --- | --- |
 //! | when does the next one go? | when the box is not working and has read everything sent before ([`ready`]) |
 //! | in which order? | the order they were written |
-//! | where is the queue kept? | in the window: another window has its own, and a reload empties it |
+//! | where is the queue kept? | in the window, and in the browser beside it ([`Queue::text`]): a reload brings it back; another browser has its own |
+//! | can one go before the work is done? | yes, an engine's: sent now, it is in the engine's message box at its next step (the run in hand reads it), so it steers that run |
 #![cfg_attr(feature = "local", allow(dead_code))]
 use crate::core::boxes::State;
 use std::collections::BTreeMap;
 
 /// One message that waits.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Queued {
     /// A number of its own in this window, so it can be taken back.
     pub key: u64,
@@ -21,7 +22,7 @@ pub struct Queued {
 }
 
 /// Every message that waits, by the id of the box it is for.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Queue {
     next: u64,
     by: BTreeMap<String, Vec<Queued>>,
@@ -54,6 +55,16 @@ impl Queue {
     /// The boxes something waits for.
     pub fn waiting(&self) -> Vec<String> {
         self.by.keys().cloned().collect()
+    }
+
+    /// The queue as the text the browser keeps.
+    pub fn text(&self) -> String {
+        serde_json::to_string(self).unwrap_or_default()
+    }
+
+    /// The queue the browser kept; nothing, when what it kept cannot be read.
+    pub fn from_text(text: &str) -> Queue {
+        serde_json::from_str(text).unwrap_or_default()
     }
 
     /// The next message for a box, taken off its queue.
@@ -98,6 +109,9 @@ mod tests {
         assert_eq!(q.take("engine:askk"), None);
         assert_eq!(q.waiting(), ["session:2"], "an empty queue is not waiting");
         assert!(q.of("engine:askk").is_empty());
+        let back = Queue::from_text(&q.text());
+        assert_eq!(back, q, "what the browser keeps is the queue");
+        assert_eq!(Queue::from_text("not a queue"), Queue::default());
     }
 
     #[test]

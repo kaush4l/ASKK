@@ -157,7 +157,25 @@ wire! {
     media_piece(id: String, data: String) -> u64;
     media_done(id: String) -> Chip;
     media_picture(id: String) -> String;
+    run_partial(path: String) -> Arriving;
+    talks(path: String) -> Vec<TalkInfo>;
+    talk_new(path: String) -> u64;
+    talk_open(path: String, id: u64) -> ();
 }
+
+/// The answer an engine is writing now, as far as it has come: the run and step it is for,
+/// the answer so far (what the reply format calls the answer; all of it without one), and how
+/// many characters of reply have come in all (fields and calls too).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Arriving {
+    pub run: u64,
+    pub step: usize,
+    pub said: String,
+    pub chars: usize,
+}
+
+/// One conversation of an engine, as its list shows it.
+pub use crate::core::talks::TalkInfo;
 
 /// An engine at work right now: who it is, what it is doing, and the run it is in.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]

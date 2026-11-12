@@ -60,13 +60,59 @@ async fn ask(t: Target, engine_model: String, prompt: String, s: Sampling) -> Re
 
 pub struct Tab;
 
+/// What the built-in echo answers.
+fn echo(prompt: &str) -> String {
+    let words = prompt.split_whitespace().count();
+    format!("echo: the engine ran in this tab and sent a prompt of {} characters ({words} words).", prompt.len())
+}
+
+#[wasm_bindgen::prelude::wasm_bindgen(inline_js = "export function later(ms, f) { setTimeout(f, ms); }")]
+extern "C" {
+    fn later(ms: u32, f: &wasm_bindgen::closure::Closure<dyn FnMut()>);
+}
+
+/// Wait `ms` on the tab's own loop.
+async fn pause(ms: u32) {
+    let (tx, rx) = futures::channel::oneshot::channel::<()>();
+    let mut tx = Some(tx);
+    let f = wasm_bindgen::closure::Closure::<dyn FnMut()>::new(move || {
+        if let Some(tx) = tx.take() {
+            let _ = tx.send(());
+        }
+    });
+    later(ms, &f);
+    let _ = rx.await;
+    drop(f);
+}
+
 impl crate::core::Infer for Tab {
     fn complete(&self, model: &str, prompt: String, sampling: Sampling) -> Fut<Result<String, String>> {
         let t = crate::core::models::reach();
         if t.base.is_empty() {
-            let words = prompt.split_whitespace().count();
-            return Box::pin(async move { Ok(format!("echo: the engine ran in this tab and sent a prompt of {} characters ({words} words).", prompt.len())) });
+            return Box::pin(async move { Ok(echo(&prompt)) });
         }
         on_tab(ask(t, model.to_string(), prompt, sampling))
+    }
+    /// The echo writes its answer word by word, so the tab shows an answer arriving as a
+    /// machine does. A model server is asked whole (its stream is not read here yet), and its
+    /// answer is said in one piece.
+    fn stream(&self, model: &str, prompt: String, sampling: Sampling, _media: Vec<crate::core::media::Attachment>, said: crate::core::Said) -> Fut<Result<String, String>> {
+        let t = crate::core::models::reach();
+        if t.base.is_empty() {
+            return on_tab(async move {
+                let whole = echo(&prompt);
+                for piece in whole.split_inclusive(' ') {
+                    said(piece);
+                    pause(40).await;
+                }
+                Ok(whole)
+            });
+        }
+        let model = model.to_string();
+        on_tab(async move {
+            let whole = ask(t, model, prompt, sampling).await?;
+            said(&whole);
+            Ok(whole)
+        })
     }
 }

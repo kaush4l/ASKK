@@ -89,7 +89,7 @@ fn SessionTalk(n: u64) -> Element {
                                 }
                             } },
                             on_unqueue: { let id = id.clone(); move |(key, edit): (u64, bool)| {
-                                let text = boxes.queue.write().remove(&id, key);
+                                let text = boxes.unqueue(&id, key);
                                 if let Some(text) = text.filter(|_| edit) { input.set(text); }
                             } },
                         }

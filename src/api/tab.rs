@@ -38,6 +38,14 @@ pub async fn workspace_view(_path: String) -> Result<IdeView, String> {
     Ok(IdeView::default())
 }
 
+pub async fn workspace_diff(_path: String) -> Result<WorkspaceDiff, String> {
+    Err(lacks("A workspace (the files an engine changes)"))
+}
+
+pub async fn workspace_file(_path: String, _file: String) -> Result<String, String> {
+    Err(lacks("A workspace (the files an engine reads)"))
+}
+
 pub async fn media_begin(_name: String, _mime: String) -> Result<String, String> {
     Err(lacks("An attachment"))
 }

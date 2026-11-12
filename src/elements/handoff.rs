@@ -135,6 +135,69 @@ impl Component for Response {
         let names = self.names();
         Some(if self.toon() { parse_toon_with(reply, &names) } else { parse_json_with(reply, &names) })
     }
+    fn partial(&self, so_far: &str) -> Option<String> {
+        Some(answer_so_far(so_far, &self.names()))
+    }
+}
+
+/// The answer in a reply that is still arriving, as far as it has come; empty while what has
+/// come is fields or calls. A reply that is plain prose (no key at its start) is all answer,
+/// as [`parse_toon_with`] would read it whole.
+pub fn answer_so_far(so_far: &str, names: &[String]) -> String {
+    let t = so_far.trim_start();
+    if t.is_empty() {
+        return String::new();
+    }
+    // A JSON object (bare or fenced): the string under "answer", as far as it has come.
+    if t.starts_with('{') || t.starts_with("```") {
+        let Some(at) = t.find("\"answer\"") else { return String::new() };
+        let rest = t[at + 8..].trim_start();
+        let Some(rest) = rest.strip_prefix(':').map(str::trim_start).and_then(|r| r.strip_prefix('"')) else { return String::new() };
+        let mut out = String::new();
+        let mut chars = rest.chars();
+        while let Some(c) = chars.next() {
+            match c {
+                '"' => break,
+                '\\' => match chars.next() {
+                    Some('n') => out.push('\n'),
+                    Some('t') => out.push('\t'),
+                    Some('u') => {
+                        let hex: String = chars.by_ref().take(4).collect();
+                        out.extend(u32::from_str_radix(&hex, 16).ok().and_then(char::from_u32));
+                    }
+                    Some(other) => out.push(other),
+                    None => break,
+                },
+                c => out.push(c),
+            }
+        }
+        return out;
+    }
+    let keyed = |line: &str| {
+        let l = line.trim();
+        ["act:", "calls[", "answer:", "await:"].iter().any(|k| l.starts_with(k)) || names.iter().any(|n| l.starts_with(&format!("{n}:")))
+    };
+    let first = t.lines().next().unwrap_or_default();
+    // The first line is not whole yet and could still become a key: wait for it.
+    if !t.contains('\n') && !first.contains(':') && first.len() < 24 {
+        return String::new();
+    }
+    if !keyed(first) {
+        return t.to_string();
+    }
+    let mut out: Vec<&str> = vec![];
+    let mut inside = false;
+    for line in t.lines() {
+        if let Some(rest) = line.trim_start().strip_prefix("answer:") {
+            inside = true;
+            out.push(rest.trim_start());
+        } else if inside && keyed(line) {
+            break;
+        } else if inside {
+            out.push(line);
+        }
+    }
+    out.join("\n")
 }
 
 /// JSON replies; tolerant of code fences and prose around the object.
@@ -334,6 +397,19 @@ fn one_call(t: &str) -> Option<(String, Value)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_answer_is_read_while_the_reply_arrives() {
+        let names = vec!["plan".to_string()];
+        let read = |t: &str| answer_so_far(t, &names);
+        assert_eq!(read("plan: look it up\nact: [now("), "", "fields and calls are not an answer");
+        assert_eq!(read("plan: done\nanswer: It is ten"), "It is ten");
+        assert_eq!(read("plan: x\nanswer: one\ntwo"), "one\ntwo", "an answer may span lines");
+        assert_eq!(read("{\"plan\":\"x\",\"answer\":\"a \\\"b\\\"\\nc"), "a \"b\"\nc", "JSON, cut mid-string");
+        assert_eq!(read("{\"act\":[\"now()\"]"), "");
+        assert_eq!(read("pla"), "", "the first line could still become a key");
+        assert_eq!(read("Hello there, here is a plain reply\nwith two lines"), "Hello there, here is a plain reply\nwith two lines", "plain prose is all answer");
+    }
 
     #[test]
     fn the_last_reply_fields_are_kept_for_the_ui() {

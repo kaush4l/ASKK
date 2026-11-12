@@ -18,13 +18,15 @@ use std::collections::BTreeMap;
 ///
 /// `runs`: the runs the view holds in full, by id; a turn's run is drawn from there when it is,
 /// else as the outline the turn carries. `pictures`: attachment id → picture, as far as the
-/// view has them. `on_open` says a run was opened (`true`) or closed, by id.
+/// view has them. `writing`: the answer being written now, as far as it has come, with the id
+/// of the run writing it. `on_open` says a run was opened (`true`) or closed, by id.
 #[component]
 pub fn Thread(
     beats: Vec<Beat>,
     #[props(default)] runs: BTreeMap<u64, Run>,
     #[props(default)] pictures: BTreeMap<String, String>,
     #[props(default)] pending: String,
+    #[props(default)] writing: Option<(u64, String)>,
     /// True while the first answer has not arrived: the shape of a conversation is shown.
     #[props(default)] loading: bool,
     on_open: EventHandler<(u64, bool)>,
@@ -39,7 +41,9 @@ pub fn Thread(
                     p { class: "thread-empty", "Say something to begin." }
                 }
                 for (i, b) in beats.into_iter().enumerate() {
-                    TurnView { key: "{i}", full: b.run.as_ref().and_then(|r| runs.get(&r.id).cloned()), pictures: pictures.clone(), turn: b, on_open }
+                    TurnView { key: "{i}", full: b.run.as_ref().and_then(|r| runs.get(&r.id).cloned()), pictures: pictures.clone(),
+                        writing: writing.as_ref().filter(|(run, _)| b.run.as_ref().is_some_and(|r| r.id == *run && r.running())).map(|(_, t)| t.clone()).unwrap_or_default(),
+                        turn: b, on_open }
                 }
                 if !pending.is_empty() {
                     article { class: "turn",
@@ -52,9 +56,10 @@ pub fn Thread(
     }
 }
 
-/// One turn. `full`: the turn's run with its long texts, when the view has it.
+/// One turn. `full`: the turn's run with its long texts, when the view has it. `writing`: the
+/// answer its run is writing now, as far as it has come.
 #[component]
-pub fn TurnView(turn: Beat, #[props(default)] full: Option<Run>, #[props(default)] pictures: BTreeMap<String, String>, on_open: EventHandler<(u64, bool)>) -> Element {
+pub fn TurnView(turn: Beat, #[props(default)] full: Option<Run>, #[props(default)] pictures: BTreeMap<String, String>, #[props(default)] writing: String, on_open: EventHandler<(u64, bool)>) -> Element {
     let run = full.or(turn.run.clone());
     rsx! {
         article { class: "turn",
@@ -82,6 +87,20 @@ pub fn TurnView(turn: Beat, #[props(default)] full: Option<Run>, #[props(default
             for f in turn.figures.iter() { FigureView { node: f.clone() } }
             // What it said is Markdown: headings, lists, tables, code. What was asked is shown as typed.
             for (i, r) in turn.replies.iter().enumerate() { div { key: "{i}", class: "say", Prose { class: "say-text", text: r.clone() } } }
+            if !writing.is_empty() { Writing { text: writing } }
+        }
+    }
+}
+
+/// An answer while it is written: the text so far, drawn as it will be, and a caret where the
+/// next words arrive. A screen reader is told it is still being written, not each word.
+#[component]
+pub fn Writing(text: String) -> Element {
+    rsx! {
+        div { class: "say is-writing", "aria-busy": "true",
+            // The caret is drawn after the last line by the stylesheet (`.is-writing`).
+            Prose { class: "say-text", text }
+            span { class: "visually-hidden", role: "status", "Writing…" }
         }
     }
 }
