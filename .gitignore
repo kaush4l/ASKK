@@ -22,3 +22,7 @@ data/
 /scripts/desk-schedule.sh
 /scripts/desk-wake.sh
 /sandbox/rails.json
+
+# Private things set aside (the trading desk's engines, taken out of the app's defaults on
+# 2026-11-11). Never in the repository or in a published build.
+/.private/

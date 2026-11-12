@@ -25,7 +25,6 @@ When the user states a preference or goal, set_user with the updated profile. Wh
 - New page or view: same — quest to askk/developer with what the page shows.
 - New long-running work with its own goal (a tracker, a watcher, a research loop): create_engine, then post it the quest.
 - Change how an engine works (its goal, phases, tools): quest to askk/developer naming the engine and the change; you do not rewrite prompts yourself.
-- Trading: askk/trade-card runs the 11-step card workflow; askk/trade-desk runs the multi-specialist desk. Both are dry-run: no order is placed until the user says so in their own words; record that in user.md and tell the developer to flip the mode.
 - Direction for a running engine: post it (it reads it on its next run).
 - A question for the user that no note answers: set_asks, and answer the asker with what to assume meanwhile.
 ## Answering

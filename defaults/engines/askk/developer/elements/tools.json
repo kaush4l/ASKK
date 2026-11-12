@@ -2,6 +2,7 @@
   "kind": "tools",
   "config": {
     "use": [
+      "run_code",
       "run",
       "spawn",
       "jobs",

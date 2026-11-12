@@ -135,13 +135,14 @@ loop is read and tuned.
 **Modes of conversation.** The Talk page (`/talk`) offers every engine that names a `mode` in its `engine.json`:
 
 ```json
-{"name": "guru", "mode": "guru", "model": "claude-sonnet-5-5-vision"}
+{"name": "developer", "mode": "developer", "max_steps": 24}
 ```
 
-`askk` is `translator` (it passes work on); `askk/guru` is `guru`: it answers itself, draws on its board
-(`whiteboard` element: `plot`, `graph`, `draw`, `table`, each a checked value the UI draws), reads the user's own
-data (`data_list`, `data_read`, `data_query`; a figure's `from` takes its numbers straight from a file) and is
-shown or told what the user attaches. A new mode is a new engine folder with a `mode`; no code.
+`askk` is `translator` (it passes work on); `askk/developer` is `developer`: it does the work itself, and can
+write a small program and run it (`run_code`). A new mode is a new engine folder with a `mode`; no code. An engine may
+also draw on a board (`whiteboard` element: `plot`, `graph`, `draw`, `table`, each a checked value the UI
+draws), read the user's own data (`data_list`, `data_read`, `data_query`) and be shown what the user attaches;
+no default engine does today.
 
 **What is not text** (`core/media.rs`): an attached file is kept by the host and *sensed* by the commands in
 `senses.json` — an image is made smaller, a recording becomes its words, a video becomes a few stills plus the

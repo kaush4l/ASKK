@@ -1,2 +1,0 @@
-{ "kind": "alert", "config": { "source": { "tool": "quote", "args": { "symbol": "AAPL" } }, "every_ms": 60000,
-  "when": "pct(5) > 1", "wake": "AAPL rose over 1% in 5 polls, now {value}. Say whether momentum looks real." } }

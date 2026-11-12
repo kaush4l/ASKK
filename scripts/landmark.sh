@@ -1,7 +1,7 @@
 #!/bin/sh
 # The landmark of 0.1: one engine loop, whole, on every runtime this version promises.
 #
-# The loop: a question goes to the engine `askk/coder`, the model writes a program, the tool
+# The loop: a question goes to the engine `askk/developer`, the model writes a program, the tool
 # `run_code` runs it on this runtime, the result goes back, the answer comes out, and the
 # conversation is kept. The model is a script (scripts/landmark/model.sh), so the test needs
 # no network and no key, and "30007" in the answer can only come from the program having run.
@@ -97,11 +97,11 @@ until curl -s -o /dev/null "$URL/ask" || [ $n -ge 60 ]; do
 done
 ask() { curl -s -X POST -H 'content-type: application/json' -d "$2" "$URL/ask/$1"; }
 ok=1
-answer=$(ask run_engine "{\"path\":\"askk/coder\",\"input\":\"$QUESTION\"}")
+answer=$(ask run_engine "{\"path\":\"askk/developer\",\"input\":\"$QUESTION\"}")
 has "$answer" "is 30007." "asked over /ask, the service answers with the program's value" || ok=0
-chat=$(ask engine_chat '{"path":"askk/coder"}')
+chat=$(ask engine_chat '{"path":"askk/developer"}')
 has "$chat" "run_code(" "the service kept the program in its history" || ok=0
-page=$(curl -s -o /dev/null -w '%{http_code}' "$URL/e/askk/coder")
+page=$(curl -s -o /dev/null -w '%{http_code}' "$URL/e/askk/developer")
 [ "$page" = 200 ] || { fail "the engine's page in the browser answered $page"; ok=0; }
 # A terminal beside the long-running service sees the same conversation.
 beside=$(printf '/history\n/quit\n' | "$BIN" terminal --to "$URL" 2>&1)

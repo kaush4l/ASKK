@@ -22,6 +22,7 @@
           "open_file",
           "close_file",
           "find_files",
+          "run_code",
           "run",
           "jobs",
           "parallel"
@@ -40,6 +41,7 @@
           "find_files",
           "write_file",
           "edit_file",
+          "run_code",
           "run",
           "parallel"
         ],
@@ -59,6 +61,7 @@
           "open_file",
           "close_file",
           "find_files",
+          "run_code",
           "run",
           "spawn",
           "jobs",
@@ -79,6 +82,7 @@
           "open_file",
           "close_file",
           "find_files",
+          "run_code",
           "run"
         ],
         "budget": 2

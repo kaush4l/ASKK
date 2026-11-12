@@ -75,7 +75,7 @@ again=$(askk start 2>&1)
 has "$again" "askk is already running at $URL (process $PID)" "started twice, it says it already runs, and where" || ok=0
 status=$(askk status 2>&1) || { fail "\`askk status\` ends with 0 while the service runs"; ok=0; }
 has "$status" "askk is running at $URL" "status says it runs" || ok=0
-has "$status" "askk/coder" "status names the engines" || ok=0
+has "$status" "askk/developer" "status names the engines" || ok=0
 has "$status" "can do   store, engines, background" "status says what the service can do" || ok=0
 has "$status" "version  " "status says which version and build" || ok=0
 done_step $ok
@@ -84,12 +84,12 @@ echo "== clients find it: a terminal given no address talks to the running servi
 ok=1
 beside=$(printf '/engines\n/quit\n' | askk terminal 2>&1)
 has "$beside" "a service is running for this home at $URL" "the terminal finds the service by its record" || ok=0
-has "$beside" "askk/coder" "and reads the service's engines instead of booting none of its own" || ok=0
+has "$beside" "askk/developer" "and reads the service's engines instead of booting none of its own" || ok=0
 done_step $ok
 
 echo "== processing is shown: a run is followed on the change feed while it happens"
 ok=1
-run=$(node "$ROOT/scripts/service/follow.mjs" "$URL" askk/coder "$QUESTION" 2>&1)
+run=$(node "$ROOT/scripts/service/follow.mjs" "$URL" askk/developer "$QUESTION" 2>&1)
 has "$run" "is 30007." "asked over /ask, the service answers with the value its program gave" || ok=0
 has "$run" '"thinking think"' "the run was seen while the model was still thinking" || ok=0
 has "$run" '"calling act"' "and while its program was being run" || ok=0
@@ -110,12 +110,12 @@ done_step $ok
 echo "== config in place: a file edited by hand takes effect without a restart"
 ok=1
 # 1. An engine's goal, then \`reload\` on demand: the running engine's next prompt has it.
-printf 'Answer with a program. The word of the day is PURPLE-ELEPHANT.\n' >"$H/data/engines/askk/coder/goal.md"
+printf 'Answer with a program. The word of the day is PURPLE-ELEPHANT.\n' >"$H/data/engines/askk/developer/goal.md"
 reloaded=$(ask reload '{}')
 # (The service looks by itself too. If it looked a moment before we asked, it said so in its log.)
-has "$reloaded $(cat "$LOG")" "engines/askk/coder/goal.md: in the engine's next prompt" "\`reload\` says what it read again" || ok=0
+has "$reloaded $(cat "$LOG")" "engines/askk/developer/goal.md: in the engine's next prompt" "\`reload\` says what it read again" || ok=0
 has "$reloaded" "Read at start only" "and what can never change in place" || ok=0
-has "$(ask engine_prompt '{"path":"askk/coder","input":"hi"}')" "PURPLE-ELEPHANT" "the running engine's next prompt carries the edited goal" || ok=0
+has "$(ask engine_prompt '{"path":"askk/developer","input":"hi"}')" "PURPLE-ELEPHANT" "the running engine's next prompt carries the edited goal" || ok=0
 # 2. The settings, with nobody asking: the service notices the edit by itself. A page at
 #    another address may ask from then on; a new address to listen at waits for a restart.
 allowed() { curl -s -m 5 -i -X OPTIONS -H 'Origin: https://pages.example' "$URL/ask" | tr -d '\r' | grep -ci '^access-control-allow-origin: https://pages.example'; }
@@ -144,8 +144,8 @@ has "$said" "askk is running at $URL" "\`askk restart\` brings the service back 
 after=$(ask hello '{}')
 [ -n "$(number "$after" started)" ] && [ "$(number "$after" started)" != "$(number "$hello" started)" ] || { fail "after a restart hello has a new start time (before: $hello, after: $after)"; ok=0; }
 [ "$(number "$after" pid)" != "$PID" ] || { fail "after a restart the service is a new process"; ok=0; }
-has "$(ask engine_chat '{"path":"askk/coder"}')" "The sum of the squares of the first 20 primes is 30007." "the conversation from before the restart is kept" || ok=0
-has "$(ask engine_prompt '{"path":"askk/coder","input":"hi"}')" "PURPLE-ELEPHANT" "and so is the goal edited by hand" || ok=0
+has "$(ask engine_chat '{"path":"askk/developer"}')" "The sum of the squares of the first 20 primes is 30007." "the conversation from before the restart is kept" || ok=0
+has "$(ask engine_prompt '{"path":"askk/developer","input":"hi"}')" "PURPLE-ELEPHANT" "and so is the goal edited by hand" || ok=0
 done_step $ok
 
 echo "== stop: it finishes when asked, and leaves no record"

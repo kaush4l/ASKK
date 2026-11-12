@@ -1,7 +1,0 @@
-{
-  "name": "coder",
-  "description": "Answers a question by writing a small program, running it, and reading the result. Works the same in a browser tab and on the server.",
-  "max_steps": 6,
-  "icon": "🧮",
-  "mode": "coder"
-}

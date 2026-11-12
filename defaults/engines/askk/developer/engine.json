@@ -2,5 +2,6 @@
   "name": "developer",
   "description": "Takes a feature as a quest and delivers it: triage, change, critique, judge. Post a quest to askk/developer.",
   "max_steps": 24,
-  "icon": "\ud83d\udee0\ufe0f"
+  "icon": "🛠️",
+  "mode": "developer"
 }

@@ -5,17 +5,19 @@
 use crate::api::ChatTurn;
 use crate::core::run::Run;
 
-/// The engine a person talks to when they have not chosen one: the one that answers by
-/// writing and running a program, else the first.
+/// The engine a person talks to when they have not chosen one: the developer, which does
+/// the work itself and can run a program it wrote; else the first.
 pub fn first_choice(engines: &[String]) -> Option<usize> {
     if engines.is_empty() {
         return None;
     }
-    Some(engines.iter().position(|e| e == "askk/coder").unwrap_or(0))
+    Some(engines.iter().position(|e| e == "askk/developer").unwrap_or(0))
 }
 
 /// One run as lines, a line per stage of each step, with the texts the stage kept under it
 /// (the prompt is left out: it is long, and `engine_prompt` shows it).
+// Asked for by the tab's own page (local/page.rs) only, so other builds leave it unused.
+#[cfg_attr(not(feature = "local"), allow(dead_code))]
 pub fn stages(run: &Run) -> Vec<String> {
     let mut lines = vec![];
     for step in &run.steps {
@@ -52,7 +54,7 @@ mod tests {
 
     #[test]
     fn the_first_choice_is_the_engine_that_runs_programs() {
-        assert_eq!(first_choice(&["askk".into(), "askk/coder".into()]), Some(1));
+        assert_eq!(first_choice(&["askk".into(), "askk/developer".into()]), Some(1));
         assert_eq!(first_choice(&["askk".into()]), Some(0));
         assert_eq!(first_choice(&[]), None);
     }
