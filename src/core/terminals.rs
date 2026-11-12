@@ -15,8 +15,8 @@
 //!
 //! What is here besides the port: the limits of a screen's size ([`size`]), a terminal's key
 //! on the change feed ([`key`]), what the service knows of one terminal ([`Terminal`], which
-//! `core/boxes.rs` turns into a box), and the guess at what a recognised agent is doing, read
-//! off the bottom of its screen ([`guess`]).
+//! `core/boxes.rs` turns into a box), a screen looked at further up ([`Scrolled`]), and the
+//! guess at what a recognised agent is doing, read off the bottom of its screen ([`guess`]).
 use super::boxes::State;
 use super::held::Shared;
 use super::screen::Screen;

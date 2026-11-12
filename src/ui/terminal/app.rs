@@ -486,6 +486,8 @@ impl App {
                 vec![]
             }
             Got::Failed(why) => {
+                // A shell that was asked for and did not start is not "starting" any more.
+                self.opening.clear();
                 self.say(why, true);
                 vec![]
             }
@@ -614,6 +616,12 @@ mod tests {
         assert_eq!(app.tabs.at, 1);
         assert_eq!(keys(&mut app, &["ctrl+b", "1"]), [Want::Talk(ENGINE.into())], "a tab that comes into view is asked for again");
         assert_eq!(keys(&mut app, &["ctrl+b", "q"]), [Want::Leave], "q detaches");
+        // A shell that cannot be started says why, and its pane stops saying it is starting.
+        keys(&mut app, &["ctrl+b", "c"]);
+        app.on(Got::Failed("this build holds no terminals".into()));
+        let (rows, _) = drawn(&app);
+        assert!(rows[29].contains("this build holds no terminals") && !rows.iter().any(|r| r.contains("starting a shell")), "{rows:?}");
+        assert!(rows.iter().any(|r| r.contains("This pane shows nothing yet.")));
     }
 
     #[test]

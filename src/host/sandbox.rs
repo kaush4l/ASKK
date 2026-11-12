@@ -103,6 +103,20 @@ impl Sandbox for Landlocked {
     }
 }
 
+/// Linux on a kernel without Landlock: nothing confines, and the box says why.
+#[cfg(target_os = "linux")]
+struct NoLandlock;
+
+#[cfg(target_os = "linux")]
+impl Sandbox for NoLandlock {
+    fn how(&self) -> String {
+        "not confined: this kernel has no Landlock (it came with Linux 5.13), so the program can write wherever you can".into()
+    }
+    fn confine(&self, argv: Vec<String>, _: &Path, _: &[String]) -> Result<Vec<String>, String> {
+        Ok(argv)
+    }
+}
+
 /// Where a confined program may write besides its folder (Linux).
 #[cfg(target_os = "linux")]
 const WRITABLE: &[&str] = &["/dev", "/tmp", "/var/tmp"];
@@ -187,7 +201,10 @@ pub fn start() {
                 crate::core::caps::provided("sandbox", &sandbox.how());
                 crate::core::sandbox::set(sandbox);
             }
-            Ok(_) => eprintln!("askk: this kernel has no Landlock (it came with Linux 5.13), so programs started in a terminal are not confined"),
+            Ok(_) => {
+                eprintln!("askk: this kernel has no Landlock (it came with Linux 5.13), so programs started in a terminal are not confined");
+                crate::core::sandbox::set(std::sync::Arc::new(NoLandlock));
+            }
             Err(e) => eprintln!("askk: this program could not find its own file ({e}), so programs started in a terminal are not confined"),
         }
     }
