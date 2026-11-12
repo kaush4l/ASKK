@@ -27,6 +27,7 @@ cat > "$OUT/index.html" <<HTML
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="DIOXUS_ASSET_ROOT" content="${BASE:-}">
+    <link rel="icon" href="${BASE:-}/assets/favicon.ico">
     <title>askk</title>
   </head>
   <body>
