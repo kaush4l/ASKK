@@ -1,7 +1,7 @@
 //! Terminals: the programs the service holds a terminal for (`core/terminals.rs`), each seen
 //! as the screen it shows (`core/screen.rs`). A terminal is also a box (`boxes`).
 use crate::core::screen::Screen;
-use crate::core::terminals::Scrolled;
+use crate::core::terminals::{Layout, Scrolled};
 use dioxus::prelude::*;
 
 // The answers are plain functions in `answers`; these are their Dioxus form (see `wire!`).
@@ -17,4 +17,6 @@ wire! {
     terminal_type(id: String, keys: String) -> ();
     terminal_resize(id: String, cols: u16, rows: u16) -> ();
     terminal_close(id: String) -> ();
+    terminal_layout() -> Layout;
+    save_terminal_layout(layout: Layout) -> ();
 }

@@ -102,7 +102,7 @@ fn screen_of(s: &vt100::Screen, title: &str, alive: bool, exit: Option<i32>) -> 
         let (row, col) = s.cursor_position();
         (col, row)
     });
-    Screen { cols, rows, lines, cursor, title: title.to_string(), alive, exit }
+    Screen { cols, rows, lines, cursor, title: title.to_string(), alive, exit, bracketed: s.bracketed_paste() }
 }
 
 /// The keys as the program expects them now. A program that draws its own screen (an editor,

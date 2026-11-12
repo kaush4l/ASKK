@@ -1,5 +1,29 @@
 {
   "listen": "127.0.0.1:8090",
   "origins": [],
-  "look_every_ms": 2000
+  "look_every_ms": 2000,
+  "keys": {
+    "prefix": "ctrl+b",
+    "new_tab": "c",
+    "split_right": "v %",
+    "split_down": "- \"",
+    "next_tab": "n",
+    "previous_tab": "p",
+    "sidebar": "w",
+    "focus_left": "Left h",
+    "focus_right": "Right l",
+    "focus_up": "Up k",
+    "focus_down": "Down j",
+    "zoom": "z",
+    "scroll_up": "PageUp",
+    "scroll_down": "PageDown",
+    "copy_mode": "[",
+    "close_pane": "x",
+    "end_terminal": "X",
+    "fold_sidebar": "b",
+    "help": "?",
+    "detach": "q d",
+    "boxes_by_number": "N",
+    "tabs_by_number": "alt+N"
+  }
 }

@@ -113,6 +113,7 @@ pub fn table() -> Vec<Ask> {
         nav_links(),
         // boxes.rs
         boxes(),
+        workspaces(),
         // service.rs
         hello(),
         reload(),
@@ -143,6 +144,8 @@ pub fn table() -> Vec<Ask> {
         terminal_type(id, keys),
         terminal_resize(id, cols, rows),
         terminal_close(id),
+        terminal_layout(),
+        save_terminal_layout(layout),
     ]
 }
 

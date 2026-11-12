@@ -52,3 +52,18 @@ pub async fn terminal_resize(id: String, cols: u16, rows: u16) -> Result<(), Str
 pub async fn terminal_close(id: String) -> Result<(), String> {
     held().close(&id)
 }
+
+/// How `askk terminal` last laid out its tabs of split panes in this home: what each pane
+/// shows (a box's id), how the splits share the room, which pane has the focus. Empty when
+/// none is kept. A window that opens asks this and lays its panes out again; a terminal the
+/// service no longer holds leaves its pane empty.
+pub async fn terminal_layout() -> Result<Layout, String> {
+    Ok(crate::core::terminals::layout(&*crate::core::store::data()))
+}
+
+/// Keep `layout` for the next window of this home (it outlives the window and is kept on
+/// disk, beside the settings). A layout that cannot be laid out is refused in a sentence;
+/// an empty one forgets what was kept.
+pub async fn save_terminal_layout(layout: Layout) -> Result<(), String> {
+    crate::core::terminals::keep_layout(&*crate::core::store::data(), &layout)
+}

@@ -95,6 +95,10 @@ pub struct Screen {
     /// How it ended, once it has.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub exit: Option<i32>,
+    /// The program asked for pasted text to be marked (bracketed paste): a window sends a
+    /// paste between the marks (`ui/features/terminals.rs`, `pasted`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub bracketed: bool,
 }
 
 impl Screen {

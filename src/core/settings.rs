@@ -14,6 +14,7 @@
 //! | `listen` | the address and port the service answers at | at the next start (`askk restart`); `PORT` and `IP` in the environment win over it |
 //! | `origins` | pages at other addresses that may ask this service, beside those in `ASKK_ORIGINS` | at once |
 //! | `look_every_ms` | how often the home is looked at for files edited by hand; 0 = only when `reload` is asked | at once |
+//! | `keys` | which key does what in `askk terminal`, after which prefix (`core/keys.rs`) | at once, in every `askk terminal` |
 //!
 //! A key that is not in this table, or a value of the wrong kind, is refused with a sentence
 //! and the settings in force are kept: a typing mistake never takes the service down.
@@ -34,11 +35,13 @@ pub struct Settings {
     pub origins: Vec<String>,
     /// Milliseconds between two looks at the home for hand edits; 0 = never by itself.
     pub look_every_ms: u64,
+    /// The keys of `askk terminal` (`core/keys.rs`).
+    pub keys: super::keys::Keys,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { listen: "127.0.0.1:8090".into(), origins: vec![], look_every_ms: 2000 }
+        Settings { listen: "127.0.0.1:8090".into(), origins: vec![], look_every_ms: 2000, keys: Default::default() }
     }
 }
 
@@ -57,6 +60,7 @@ impl Settings {
         if s.look_every_ms != 0 && s.look_every_ms < QUICKEST_MS {
             return Err(format!("{key}: `look_every_ms` must be 0 (never) or at least {QUICKEST_MS} (found {})", s.look_every_ms));
         }
+        s.keys.bound().map_err(|e| format!("{key}: {e}"))?;
         Ok(s)
     }
 }
@@ -101,6 +105,9 @@ pub fn take(store: &dyn Store) -> Result<Taken, String> {
             ms => format!("{key}: `look_every_ms`: the home is looked at every {ms} ms"),
         });
     }
+    if new.keys != old.keys {
+        out.in_force.push(format!("{key}: `keys`: every `askk terminal` uses them from now on"));
+    }
     if new.listen != old.listen {
         out.needs_restart.push(format!("{key}: `listen` is now {}, but a running service cannot move: it answers there after `askk restart`", new.listen));
     }
@@ -133,6 +140,9 @@ mod tests {
         assert!(unknown.starts_with("settings.json: unknown field `lissten`"), "{unknown}");
         assert!(Settings::read(&with(r#"{"listen": "8090"}"#)).unwrap_err().contains("like 127.0.0.1:8090"));
         assert!(Settings::read(&with(r#"{"look_every_ms": 5}"#)).unwrap_err().contains("at least 200"));
+        assert_eq!(Settings::read(&with(r#"{"keys": {"prefix": "ctrl+a"}}"#)).unwrap().keys.split_right, "v %", "a key left out of the table keeps its default");
+        assert!(Settings::read(&with(r#"{"keys": {"splt": "v"}}"#)).unwrap_err().contains("unknown field `splt`"));
+        assert_eq!(Settings::read(&with(r#"{"keys": {"zoom": "v"}}"#)).unwrap_err(), "settings.json: `keys.zoom`: 'v' already does `split_right`: one key does one thing");
     }
 
     #[test]
