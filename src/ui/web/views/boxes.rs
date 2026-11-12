@@ -10,7 +10,7 @@
 //! the id away again. The address is the only place that says which box is open, so a
 //! reload, a link and the back button all agree.
 use crate::core::boxes::{SessionBox, State};
-use crate::ui::features::asks::{answer_text, parse_asks, Ask};
+use crate::ui::features::asks::{answer_text, parse_asks, says_yes, Ask};
 use crate::ui::features::boxes::{count, engine_of, link, on_canvas, opened, order, pins_from, pins_text, session_of, Mark, Seen};
 use crate::ui::features::queue::{ready, waits, Queue};
 use crate::ui::features::terminals::{inside, Inside};
@@ -80,14 +80,6 @@ impl Boxes {
         let text = self.queue.write().remove(id, key);
         self.keep_queue();
         text
-    }
-
-    /// Send a waiting message now, before the work is done: an engine finds it in its message
-    /// box at its next step, so it steers the run in hand.
-    pub fn steer(&mut self, id: &str, key: u64) {
-        if let Some(text) = self.unqueue(id, key) {
-            self.send(id.to_string(), text);
-        }
     }
 
     /// Say `text` to the box `id`. While the box works (or other messages already wait for
@@ -350,7 +342,11 @@ pub fn BoxesView() -> Element {
                                 on_pin: move |id: String| boxes.pin(&id),
                                 on_answer: move |(id, question, answer): (String, String, String)| {
                                     spawn(async move {
-                                        let said = say(id.clone(), answer_text(&question, &answer)).await;
+                                        // A call that waits for a yes is answered yes or no; any other question is a message.
+                                        let said = match (crate::core::permit::id_in(&question), engine_of(&id)) {
+                                            (Some(aid), Some(path)) => crate::api::approve(path.to_string(), aid, says_yes(&answer)).await.map_err(|e| e.to_string()),
+                                            _ => say(id.clone(), answer_text(&question, &answer)).await,
+                                        };
                                         sent.write().insert(id, said.map(|_| "Sent".to_string()).unwrap_or_else(|e| format!("error: {e}")));
                                     });
                                 },

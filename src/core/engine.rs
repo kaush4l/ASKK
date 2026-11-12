@@ -42,13 +42,16 @@ pub struct EngineFile {
     /// engine that names one, under that name. Empty = not offered as a mode.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub mode: String,
+    /// What it may do without asking its owner ([`super::permit`]); left out = allow all.
+    #[serde(default, skip_serializing_if = "super::permit::Mode::is_all")]
+    pub permit: super::permit::Mode,
 }
 
 fn is_zero(n: &usize) -> bool {
     *n == 0
 }
 
-const REFOCUS: &str = "The context is nearly full. Summarise, in a few lines, the essentials needed to continue and the lessons learnt (what worked, what failed). Reply with the summary only.";
+pub(crate) const REFOCUS: &str = "The context is nearly full. Summarise, in a few lines, the essentials needed to continue and the lessons learnt (what worked, what failed). Reply with the summary only.";
 
 /// The input as shown at `step`: after the first step the model is reminded that its calls
 /// for this request already ran (their results end the history), so it continues, not restarts.
@@ -265,6 +268,7 @@ impl Engine {
     /// Ask a running engine to stop before its next step.
     pub fn stop(&self) {
         self.stopping.store(true, std::sync::atomic::Ordering::SeqCst);
+        super::permit::deny_all(&self.path);
     }
 
     /// Changes so far, this engine and its sub-engines (readers use [`super::changes`]).
@@ -311,7 +315,7 @@ impl Engine {
         list.extend(els.iter().flat_map(|e| e.tools()));
         list.extend(self.subs().iter().map(|s| Arc::new(EngineTool(s.clone())) as Arc<dyn Tool>));
         list.retain(|t| els.iter().all(|e| e.allows(&t.name())));
-        Toolbox::new(list).logged()
+        Toolbox::new(super::permit::gate(self.file.held().permit, &self.path, &self.key, list)).logged()
     }
 
     /// The prompt as ordered sections: elements by [`super::rank`] of their kind (then name),
@@ -471,6 +475,7 @@ impl Engine {
             self.set_status(&format!("error: {e}"));
         }
         self.end(&out);
+        super::steer::settle(&self.path).into_iter().for_each(|t| { let _ = super::board::board().post("user", &self.path, &t, super::board::Cause::Person); });
         self.persist();
         out
     }
@@ -527,7 +532,7 @@ impl Engine {
                 self.note(&if read.is_empty() { "nothing to re-read".to_string() } else { format!("re-read {}", read.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>().join(", ")) }, read);
             }
             self.at(Stage::Prompt);
-            let shown = continued(input, step);
+            let shown = super::steer::into(&self.path, continued(input, step), self.runs.held().back().map_or(0, |r| r.id), step + 1);
             let mut prompt = self.prompt(&tools, &shown);
             let outline = |e: &Engine| {
                 let secs = e.sections(&tools, &shown);
@@ -742,26 +747,7 @@ pub fn summary(els: &[Box<dyn super::Component>], description: &str) -> String {
     els.iter().find_map(|e| e.summary()).unwrap_or_else(|| description.to_string())
 }
 
-/// An engine as a tool: `{"input": "..."}` → its answer.
-pub struct EngineTool(pub Arc<Engine>);
-
-impl Tool for EngineTool {
-    fn name(&self) -> String {
-        self.0.name()
-    }
-    fn description(&self) -> String {
-        let d = self.0.file.held().description.clone();
-        if d.is_empty() { format!("the {} engine", self.0.name()) } else { d }
-    }
-    fn args(&self) -> Value {
-        serde_json::json!({"input": "text"})
-    }
-    fn invoke(&self, args: Value, _: Toolbox) -> Fut<Result<Value, String>> {
-        let e = self.0.clone();
-        let input = args["input"].as_str().map(String::from).unwrap_or_else(|| text(&args));
-        Box::pin(async move { e.run(&input).await.map(Value::String) })
-    }
-}
+pub use super::tool::EngineTool;
 
 #[cfg(test)]
 pub mod tests {
@@ -792,7 +778,7 @@ pub mod tests {
     }
 
     pub fn file(name: &str) -> EngineFile {
-        EngineFile { name: name.into(), description: String::new(), model: String::new(), max_steps: 8, status: String::new(), context: 0, icon: String::new(), flow: Default::default(), mode: String::new() }
+        EngineFile { name: name.into(), description: String::new(), model: String::new(), max_steps: 8, status: String::new(), context: 0, icon: String::new(), flow: Default::default(), mode: String::new(), permit: Default::default() }
     }
 
     pub fn spec(kind: &str, name: &str, config: Value) -> Spec {

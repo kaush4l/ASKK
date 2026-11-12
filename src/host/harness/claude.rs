@@ -3,9 +3,12 @@
 //! whether it failed (`is_error`) and its own id for the conversation (`session_id`), which
 //! `--resume` takes to go on with it. Checked against the installed program on 2026-11-10.
 //!
-//! No permission flag is passed: in this mode a tool that needs a yes is refused, so a session
-//! can read and answer but changes nothing until permission asks have a way to a person.
+//! The session's permission mode is passed as Claude Code's own (`--permission-mode`): none or
+//! `ask` passes nothing, and in this mode a tool that needs a yes is refused (its prompts have
+//! no way to a person yet), so the session reads and answers but changes nothing; `edits` is
+//! `acceptEdits`; `all` is `bypassPermissions`, still inside the folder askk's sandbox allows.
 use super::{missing, or_stderr, run};
+use crate::core::permit::Mode;
 use crate::core::session::{Harness, Prompt, Reply};
 use crate::core::Fut;
 use serde_json::Value;
@@ -22,6 +25,15 @@ fn parse(out: &str) -> Result<Reply, String> {
         return Err(if text.is_empty() { v["subtype"].as_str().unwrap_or("it failed").to_string() } else { text });
     }
     Ok(Reply { text, native: v["session_id"].as_str().map(String::from) })
+}
+
+/// Claude Code's own name for a permission mode; `None`: pass nothing (its default).
+fn mode(permit: Option<Mode>) -> Option<&'static str> {
+    match permit? {
+        Mode::Ask => None,
+        Mode::Edits => Some("acceptEdits"),
+        Mode::All => Some("bypassPermissions"),
+    }
 }
 
 impl Harness for Claude {
@@ -48,6 +60,7 @@ impl Harness for Claude {
             if !p.model.is_empty() {
                 args.extend(["--model".to_string(), p.model.clone()]);
             }
+            args.extend(mode(p.permit).map(|m| ["--permission-mode".to_string(), m.to_string()]).into_iter().flatten());
             let ran = run(PROGRAM, &args, &p.text, &p.project, state).await?;
             or_stderr(PROGRAM, parse(&ran.out), &ran)
         })
@@ -63,6 +76,11 @@ mod tests {
         // The fields this adapter reads, from a run of the installed program.
         let out = r#"{"type":"result","subtype":"success","is_error":false,"num_turns":1,"result":"pong","session_id":"2da5782a-847b-4520-a25a-029802a254dd","stop_reason":"end_turn"}"#;
         assert_eq!(parse(out).unwrap(), Reply { text: "pong".into(), native: Some("2da5782a-847b-4520-a25a-029802a254dd".into()) });
+    }
+
+    #[test]
+    fn the_owners_mode_is_claudes_own() {
+        assert_eq!([None, Some(Mode::Ask), Some(Mode::Edits), Some(Mode::All)].map(mode), [None, None, Some("acceptEdits"), Some("bypassPermissions")]);
     }
 
     #[test]

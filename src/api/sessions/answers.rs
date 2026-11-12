@@ -29,3 +29,11 @@ pub async fn session_prompt(id: u64, text: String) -> Result<(), String> {
     crate::core::world::world();
     crate::host::harness::prompt(id, &text).map_err(say)
 }
+
+/// Choose what the session's harness may do without asking (`ask`, `edits`, `all`), from its
+/// next prompt on; each harness is given it in its own words (`host/harness/`).
+pub async fn session_permit(id: u64, mode: String) -> Result<Session, String> {
+    crate::core::world::world();
+    let mode = crate::core::permit::Mode::parse(&mode)?;
+    crate::core::session::set_permit(&*crate::core::store::data(), &crate::core::manifest::manifest().sessions, id, mode).map_err(say)
+}

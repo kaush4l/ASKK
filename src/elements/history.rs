@@ -139,6 +139,11 @@ impl Component for History {
                 self.st.log.drain(..n);
             }
             Event::Cleared => self.st = St::default(),
+            Event::Rewound(n) => {
+                if let Some(at) = self.st.turns.iter().enumerate().filter(|(_, t)| t.role == "user").nth(*n).map(|(i, _)| i) {
+                    self.st.turns.truncate(at);
+                }
+            }
             Event::Folded(summary) => {
                 let keep = self.st.turns.len().saturating_sub(4);
                 let rest: Vec<Turn> = self.st.turns.split_off(keep).into_iter().filter(|t| t.role != "summary").collect();

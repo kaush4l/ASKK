@@ -255,3 +255,70 @@
 
 /* a waiting message sent now, into the work in hand */
 .queue-steer { flex: none; gap: var(--space-1); font-size: var(--text-xs); }
+
+/* ---------- the composer's reach: / commands, @ names, # files ---------- */
+.compose { position: relative; }
+/* Solid, not glass: it opens over the composer's own glass (never glass on glass). */
+.compose-menu { position: absolute; left: var(--space-2); right: var(--space-2); bottom: calc(100% + var(--space-2)); z-index: 30; display: flex; flex-direction: column; gap: var(--space-half);
+  max-height: min(18rem, 40dvh); overflow-y: auto; padding: var(--space-1); border-radius: var(--radius-lg); border: 1px solid var(--stroke); background: var(--tint); box-shadow: var(--lift);
+  animation: enter var(--motion-spring) var(--ease-spring) backwards; }
+.compose-item { display: flex; align-items: baseline; gap: var(--space-3); min-height: var(--hit-row); padding: var(--space-1) var(--space-2); border-radius: var(--radius-md); cursor: pointer;
+  color: var(--muted); transition: background var(--motion-fast) var(--ease-out), color var(--motion-fast) var(--ease-out); }
+.compose-item:hover, .compose-item.is-chosen { color: var(--fg); background: color-mix(in srgb, var(--press) 14%, transparent); }
+.compose-item:active { transform: scale(var(--press-scale)); transition-duration: var(--motion-press); }
+.compose-item-label { flex: none; font-family: var(--font-mono); font-size: var(--text-sm); color: var(--fg); }
+.compose-item-detail { min-width: 0; font-size: var(--text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A file held over the composer. */
+.compose.is-drop { border-color: var(--press); box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--press) 50%, transparent), var(--lift); }
+.compose-limits { white-space: normal; width: min(22rem, 70vw); line-height: 1.4; }
+.permit-pick.is-all { color: var(--warn); }
+.compose-voice.is-listening { color: var(--error); animation: listen var(--motion-tick) var(--ease-out) infinite alternate; }
+@keyframes listen { to { opacity: .55; } }
+.compose-stash { flex: none; gap: var(--space-1); font-size: var(--text-xs); color: var(--muted); }
+.talk-note { margin: 0 0 var(--space-2); font-size: var(--text-sm); color: var(--muted); }
+
+/* ---------- steer: a word into the run in hand, and where it landed ---------- */
+.steered { display: flex; flex-direction: column; align-items: flex-end; gap: var(--space-1); padding: 0 var(--space-1) var(--space-2); }
+.steer-line { display: flex; align-items: center; gap: var(--space-2); max-width: 80%; margin: 0; padding: var(--space-1) var(--space-3); border-radius: var(--radius-lg);
+  border: 1px dashed var(--stroke-hi); font-size: var(--text-sm); color: var(--muted); animation: enter var(--motion-spring) var(--ease-spring) backwards; }
+.steer-line.is-landed { border-style: solid; color: var(--fg); }
+.steer-text { min-width: 0; overflow-wrap: anywhere; }
+.steer-said { flex: none; font-family: var(--font-mono); font-size: var(--text-xs); color: var(--muted); }
+
+/* ---------- a call that waits for a yes ---------- */
+.ask-form.approval { --tone: var(--busy); }
+.approval-call { font-family: var(--font-mono); font-size: var(--text-xs); overflow-wrap: anywhere; }
+.approval-row { justify-content: flex-start; }
+
+/* ---------- on a turn: edit from here, cite in composer ---------- */
+.turn-act { display: inline-flex; align-items: center; gap: var(--space-1); align-self: flex-end; min-height: var(--hit-row); padding: 0 var(--space-2); border: 0; border-radius: var(--radius-full);
+  background: none; color: var(--muted); font: inherit; font-size: var(--text-xs); cursor: pointer; opacity: 0;
+  transition: opacity var(--motion-fast) var(--ease-out), color var(--motion-fast) var(--ease-out), background var(--motion-fast) var(--ease-out); }
+.ask:hover .turn-act, .say:hover .turn-act, .turn-act:focus-visible { opacity: 1; }
+.turn-act:hover { color: var(--fg); background: var(--surface-hover); }
+.turn-act:active { transform: scale(var(--press-scale)); transition-duration: var(--motion-press); }
+.turn-act:focus-visible { outline: 2px solid var(--press); outline-offset: 1px; }
+.say { display: flex; flex-direction: column; }
+.say-cite { align-self: flex-start; }
+@media (hover: none) { .turn-act { opacity: 1; } }
+
+/* ---------- conversations: search, settle, archive, rename, undo ---------- */
+.talks-search { display: flex; align-items: center; gap: var(--space-2); min-height: var(--hit-md); padding: 0 var(--space-2); border-radius: var(--radius-md); background: var(--surface-sunk); color: var(--muted); }
+.talks-search input { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--fg); font: inherit; font-size: var(--text-sm); }
+.talks-search input:focus-visible { outline: none; }
+.talks-search:focus-within { outline: 2px solid var(--press); outline-offset: 1px; }
+.talks-section { margin: var(--space-2) 0 0; font-family: var(--font-mono); font-size: var(--text-xs); color: var(--muted); text-transform: lowercase; }
+.talk-item { display: flex; align-items: center; gap: var(--space-1); }
+.talk-item > .talk-row { flex: 1; min-width: 0; }
+.talk-acts { display: flex; flex: none; opacity: 0; transition: opacity var(--motion-fast) var(--ease-out); }
+.talk-item:hover .talk-acts, .talk-item:focus-within .talk-acts { opacity: 1; }
+@media (hover: none) { .talk-acts { opacity: 1; } }
+.talk-hit { flex-wrap: wrap; height: auto; padding-block: var(--space-1); }
+.talk-said { flex-basis: 100%; min-width: 0; padding-left: calc(14px + var(--space-2)); font-size: var(--text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.talk-rename { display: flex; flex: 1; gap: var(--space-2); }
+.talk-rename input { flex: 1; min-width: 0; min-height: var(--hit-sm); padding: 0 var(--space-2); border-radius: var(--radius-md); border: 1px solid var(--stroke-hi); background: var(--surface-sunk); color: var(--fg); font: inherit; font-size: var(--text-sm); }
+.talks-archived { align-self: flex-start; gap: var(--space-1); font-size: var(--text-xs); }
+.undo-note { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-2); padding: var(--space-2) var(--space-3); border-radius: var(--radius-lg);
+  animation: enter var(--motion-spring) var(--ease-spring) backwards; }
+.undo-note p { margin: 0; font-size: var(--text-sm); }
+@media (prefers-contrast: more) { .compose-menu, .steer-line { border-color: var(--fg); } }

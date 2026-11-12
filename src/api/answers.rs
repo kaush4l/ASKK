@@ -58,7 +58,8 @@ pub async fn engine_asks(path: String) -> Result<(String, String), String> {
     if path.split('/').any(|s| s.is_empty() || s == ".." || s == ".") {
         return Err(say("bad engine path"));
     }
-    let asks = store().get(&format!("engines/{path}/asks.md")).unwrap_or_default();
+    // A call that waits for the owner's yes is asked in the same words as a question.
+    let asks = crate::core::permit::lines(&path) + &store().get(&format!("engines/{path}/asks.md")).unwrap_or_default();
     Ok((path, asks))
 }
 

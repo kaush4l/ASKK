@@ -8,6 +8,7 @@ mod changes;
 pub mod canvas_math;
 mod chat;
 mod commands;
+mod compose;
 mod conversation;
 pub mod companion;
 mod dashboard;

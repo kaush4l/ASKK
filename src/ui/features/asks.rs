@@ -30,6 +30,12 @@ pub fn answer_text(question: &str, answer: &str) -> String {
     format!("Answer to: {question}\n{}", answer.trim())
 }
 
+/// Whether an answer to a call that waits for a yes allows it: `yes`, `y`, `allow`, `ok`, `go`.
+pub fn says_yes(answer: &str) -> bool {
+    let a = answer.trim().to_lowercase();
+    ["yes", "y", "allow", "ok", "okay", "go", "sure"].iter().any(|w| a == *w || a.starts_with(&format!("{w} ")) || a.starts_with(&format!("{w},")))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -50,6 +56,12 @@ mod tests {
     fn empty_input_has_no_asks() {
         assert!(parse_asks("").is_empty());
         assert!(parse_asks("\n\nnot a list line\n").is_empty());
+    }
+
+    #[test]
+    fn a_yes_is_told_from_a_no() {
+        assert!(says_yes("Yes") && says_yes(" allow ") && says_yes("ok, go"));
+        assert!(!says_yes("no") && !says_yes("not now") && !says_yes("yesterday"));
     }
 
     #[test]

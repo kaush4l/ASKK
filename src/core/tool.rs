@@ -121,6 +121,29 @@ pub fn text(v: &Value) -> String {
     }
 }
 
+use super::Engine;
+
+/// An engine as a tool: `{"input": "..."}` → its answer.
+pub struct EngineTool(pub Arc<Engine>);
+
+impl Tool for EngineTool {
+    fn name(&self) -> String {
+        self.0.name()
+    }
+    fn description(&self) -> String {
+        let d = self.0.file.held().description.clone();
+        if d.is_empty() { format!("the {} engine", self.0.name()) } else { d }
+    }
+    fn args(&self) -> Value {
+        serde_json::json!({"input": "text"})
+    }
+    fn invoke(&self, args: Value, _: Toolbox) -> Fut<Result<Value, String>> {
+        let e = self.0.clone();
+        let input = args["input"].as_str().map(String::from).unwrap_or_else(|| text(&args));
+        Box::pin(async move { e.run(&input).await.map(Value::String) })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

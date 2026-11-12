@@ -3,7 +3,7 @@
 //! A turn is one exchange ([`Beat`]): what was asked (with what was attached), the run that
 //! answered it, what it drew, what it said. [`Thread`] is the list of turns in one column that
 //! scrolls inside itself. Both are given everything they show.
-use super::{MediaChip, Prose, RunView};
+use super::{Icon, MediaChip, Prose, RunView};
 use crate::api::Beat;
 use crate::core::run::Run;
 use crate::core::session::{Turn, USER};
@@ -30,7 +30,14 @@ pub fn Thread(
     /// True while the first answer has not arrived: the shape of a conversation is shown.
     #[props(default)] loading: bool,
     on_open: EventHandler<(u64, bool)>,
+    /// "Edit from here" on what was asked: the turn's number among the askings. Left out: none.
+    #[props(optional)] on_edit: Option<EventHandler<usize>>,
+    /// "Cite in composer" on what was said: the words chosen in it, or all of it.
+    #[props(optional)] on_cite: Option<EventHandler<String>>,
 ) -> Element {
+    // Each turn's number among the askings (a summary is none, nor is the empty turn a fold leaves).
+    let mut n = 0usize;
+    let asking: Vec<Option<usize>> = beats.iter().map(|b| if b.from == "summary" || (b.text.is_empty() && b.media.is_empty()) { None } else { n += 1; Some(n - 1) }).collect();
     rsx! {
         ScrollArea { id: "thread", class: "thread", aria_label: "Conversation", fade: true,
             div { class: "lane thread-lane", "aria-live": "polite",
@@ -41,9 +48,11 @@ pub fn Thread(
                     p { class: "thread-empty", "Say something to begin." }
                 }
                 for (i, b) in beats.into_iter().enumerate() {
-                    TurnView { key: "{i}", full: b.run.as_ref().and_then(|r| runs.get(&r.id).cloned()), pictures: pictures.clone(),
+                    TurnView { key: "{i}", index: i, full: b.run.as_ref().and_then(|r| runs.get(&r.id).cloned()), pictures: pictures.clone(),
                         writing: writing.as_ref().filter(|(run, _)| b.run.as_ref().is_some_and(|r| r.id == *run && r.running())).map(|(_, t)| t.clone()).unwrap_or_default(),
-                        turn: b, on_open }
+                        turn: b, on_open,
+                        on_edit: match (on_edit, asking[i]) { (Some(h), Some(k)) => Some(EventHandler::new(move |_: ()| h.call(k))), _ => None },
+                        on_cite }
                 }
                 if !pending.is_empty() {
                     article { class: "turn",
@@ -59,7 +68,16 @@ pub fn Thread(
 /// One turn. `full`: the turn's run with its long texts, when the view has it. `writing`: the
 /// answer its run is writing now, as far as it has come.
 #[component]
-pub fn TurnView(turn: Beat, #[props(default)] full: Option<Run>, #[props(default)] pictures: BTreeMap<String, String>, #[props(default)] writing: String, on_open: EventHandler<(u64, bool)>) -> Element {
+pub fn TurnView(
+    turn: Beat,
+    #[props(default)] index: usize,
+    #[props(default)] full: Option<Run>,
+    #[props(default)] pictures: BTreeMap<String, String>,
+    #[props(default)] writing: String,
+    on_open: EventHandler<(u64, bool)>,
+    #[props(optional)] on_edit: Option<EventHandler<()>>,
+    #[props(optional)] on_cite: Option<EventHandler<String>>,
+) -> Element {
     let run = full.or(turn.run.clone());
     rsx! {
         article { class: "turn",
@@ -79,6 +97,11 @@ pub fn TurnView(turn: Beat, #[props(default)] full: Option<Run>, #[props(default
                         }
                     }
                     if !turn.text.is_empty() { p { class: "ask-text", "{turn.text}" } }
+                    if let Some(edit) = on_edit {
+                        button { class: "turn-act ask-edit", r#type: "button", title: "Edit from here: go back to this message, forget what came after, and write it again", onclick: move |_| edit.call(()),
+                            Icon { name: "pencil", size: 12 } "Edit from here"
+                        }
+                    }
                 }
             }
             if let Some(r) = run {
@@ -86,7 +109,26 @@ pub fn TurnView(turn: Beat, #[props(default)] full: Option<Run>, #[props(default
             }
             for f in turn.figures.iter() { FigureView { node: f.clone() } }
             // What it said is Markdown: headings, lists, tables, code. What was asked is shown as typed.
-            for (i, r) in turn.replies.iter().enumerate() { div { key: "{i}", class: "say", Prose { class: "say-text", text: r.clone() } } }
+            for (i, r) in turn.replies.iter().enumerate() {
+                div { key: "{i}", class: "say", id: "say-{index}-{i}",
+                    Prose { class: "say-text", text: r.clone() }
+                    if let Some(cite) = on_cite {
+                        button { class: "turn-act say-cite", r#type: "button", title: "Cite in composer: the words chosen in this answer, or all of it",
+                            // The words chosen, when the choice is inside this answer.
+                            onmousedown: move |e| e.prevent_default(),
+                            onclick: { let (whole, at) = (r.clone(), format!("say-{index}-{i}")); move |_| {
+                                let (whole, at) = (whole.clone(), at.clone());
+                                spawn(async move {
+                                    let js = format!("const s = getSelection(); const el = document.getElementById('{at}'); return (s && el && s.rangeCount && el.contains(s.anchorNode)) ? s.toString() : '';");
+                                    let chosen = document::eval(&js).await.ok().and_then(|v| v.as_str().map(String::from)).unwrap_or_default();
+                                    cite.call(if chosen.trim().is_empty() { whole } else { chosen });
+                                });
+                            } },
+                            Icon { name: "quote", size: 12 } "Cite in composer"
+                        }
+                    }
+                }
+            }
             if !writing.is_empty() { Writing { text: writing } }
         }
     }

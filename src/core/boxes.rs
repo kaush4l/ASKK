@@ -185,7 +185,10 @@ pub fn parts(e: &Engine) -> EngineParts {
     let summary = super::engine::summary(&e.elements.held(), &file.description);
     let mut tools = e.toolbox().names();
     tools.sort();
-    EngineParts { path: e.path.clone(), name: file.name, icon: file.icon, activity: e.activity(), status: file.status, summary, goal: text(GOAL), learning: text(LEARNING), asks: text(ASKS), tools }
+    // A call that waits for the owner's yes is a question like any other: the box is blocked.
+    let waits = super::permit::lines(&e.path);
+    let activity = if waits.is_empty() { e.activity() } else { ("waiting".to_string(), "for your yes".to_string()) };
+    EngineParts { path: e.path.clone(), name: file.name, icon: file.icon, activity, status: file.status, summary, goal: text(GOAL), learning: text(LEARNING), asks: waits + &text(ASKS), tools }
 }
 
 /// A session with another agent's own loop, as a box: askk knows what the harness reports.

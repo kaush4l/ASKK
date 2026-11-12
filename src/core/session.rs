@@ -56,6 +56,10 @@ pub struct Session {
     pub state: State,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub error: String,
+    /// What the owner lets its harness do without asking; `None` is the harness's own
+    /// careful default (it reads and answers, and refuses what needs a yes).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub permit: Option<super::permit::Mode>,
 }
 
 /// What a harness gives back for one prompt.
@@ -78,6 +82,8 @@ pub struct Prompt {
     pub model: String,
     /// The provider the harness is told to use, where it has more than one; empty = its own.
     pub provider: String,
+    /// The permission mode the harness is given, where it takes one (`None`: its careful default).
+    pub permit: Option<super::permit::Mode>,
 }
 
 /// One kind's entry in `harnesses.json`: how this home runs that harness.
@@ -178,7 +184,15 @@ pub fn ask(store: &dyn Store, root: &str, id: u64, text: &str) -> Result<Prompt,
     s.state = State::Busy;
     s.error.clear();
     save(store, root, &s)?;
-    Ok(Prompt { text: text.into(), native: s.native, project: s.project, ..Default::default() })
+    Ok(Prompt { text: text.into(), native: s.native, project: s.project, permit: s.permit, ..Default::default() })
+}
+
+/// Set what the session's harness may do without asking, from its next prompt on.
+pub fn set_permit(store: &dyn Store, root: &str, id: u64, mode: super::permit::Mode) -> Result<Session, String> {
+    let mut s = get(store, root, id)?;
+    s.permit = Some(mode);
+    save(store, root, &s)?;
+    Ok(s)
 }
 
 /// Record how a prompt ended: the answer as a turn, or the reason there is none.
