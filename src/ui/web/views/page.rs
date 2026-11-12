@@ -3,15 +3,18 @@ use crate::ui::web::components::Pane;
 use crate::{api::resolve_route, core::routes::Params};
 use dioxus::prelude::*;
 
-/// `/`: the page in `routes/page.json`.
+/// `/`: the page in `routes/page.json`. `open`: the box the address has open (after `#`);
+/// the canvas reads it from the route itself (`views/boxes.rs`).
 #[component]
-pub fn Home() -> Element {
-    rsx! { RoutePage { segments: Vec::<String>::new() } }
+pub fn Home(open: String) -> Element {
+    rsx! { RoutePage { segments: Vec::<String>::new(), open } }
 }
 
 /// Any URL: find its folder in `data/routes`, draw the page's node tree with its params.
 #[component]
-pub fn RoutePage(segments: ReadSignal<Vec<String>>) -> Element {
+pub fn RoutePage(segments: ReadSignal<Vec<String>>, open: String) -> Element {
+    // The page is the same whichever box is open on it: it is not asked for again.
+    let _ = open;
     let page = use_server_future(move || resolve_route(segments()))?;
     let key = segments().join("/");
     match page() {

@@ -3,9 +3,10 @@
 //! A turn is one exchange ([`Beat`]): what was asked (with what was attached), the run that
 //! answered it, what it drew, what it said. [`Thread`] is the list of turns in one column that
 //! scrolls inside itself. Both are given everything they show.
-use super::{MediaChip, RunView};
+use super::{MediaChip, Prose, RunView};
 use crate::api::Beat;
 use crate::core::run::Run;
+use crate::core::session::{Turn, USER};
 use crate::ui::features::run as words;
 use crate::ui::web::figure::FigureView;
 use crate::ui::web::kit::{ScrollArea, Separator, Skeleton};
@@ -60,7 +61,7 @@ pub fn TurnView(turn: Beat, #[props(default)] full: Option<Run>, #[props(default
             if turn.from == "summary" {
                 div { class: "turn-summary",
                     div { class: "turn-rule", Separator {} span { "earlier, in short" } Separator {} }
-                    p { class: "say-text", "{turn.text}" }
+                    Prose { class: "say-text", text: turn.text.clone() }
                 }
             } else if !turn.text.is_empty() || !turn.media.is_empty() {
                 div { class: "ask",
@@ -79,7 +80,33 @@ pub fn TurnView(turn: Beat, #[props(default)] full: Option<Run>, #[props(default
                 RunView { key: "{r.id}", on_open: move |open| on_open.call((r.id, open)), run: r.clone() }
             }
             for f in turn.figures.iter() { FigureView { node: f.clone() } }
-            for r in turn.replies.iter() { div { class: "say", p { class: "say-text", "{r}" } } }
+            // What it said is Markdown: headings, lists, tables, code. What was asked is shown as typed.
+            for (i, r) in turn.replies.iter().enumerate() { div { key: "{i}", class: "say", Prose { class: "say-text", text: r.clone() } } }
+        }
+    }
+}
+
+/// A session with another agent, as its turns: what the owner said (as typed) and what the
+/// agent answered (as Markdown). `working`: the agent is at it now. `error`: why the last
+/// turn failed, when it did.
+#[component]
+pub fn SessionThread(turns: Vec<Turn>, #[props(default)] agent: String, #[props(default)] working: bool, #[props(default)] error: String) -> Element {
+    rsx! {
+        ScrollArea { id: "thread", class: "thread", aria_label: "Conversation", fade: true,
+            div { class: "lane thread-lane", "aria-live": "polite",
+                if turns.is_empty() && !working { p { class: "thread-empty", "Prompt it to begin." } }
+                for (i, t) in turns.into_iter().enumerate() {
+                    article { key: "{i}", class: "turn",
+                        if t.who == USER {
+                            div { class: "ask", p { class: "ask-text", "{t.text}" } }
+                        } else {
+                            div { class: "say", Prose { class: "say-text", text: t.text } }
+                        }
+                    }
+                }
+                if working { p { class: "sending shimmer", role: "status", "{agent} is working…" } }
+                if !error.is_empty() { p { class: "work-error", role: "alert", "{error}" } }
+            }
         }
     }
 }

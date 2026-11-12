@@ -44,6 +44,11 @@ pub const ICONS: &[(&str, &str)] = &[
     ("panel", "M4 4h16v16H4zM15 4v16"),
     ("trash", "M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13M10 11v5M14 11v5"),
     ("check", "M5 12.5l4.5 4.5L19 7"),
+    ("copy", "M9 9h11v11H9zM5 15V4h11"),
+    ("pin", "M12 16v6M8 3h8l-1 6 3 4H6l3-4z"),
+    ("search", "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4"),
+    ("folder", "M3 6h6l2 2h10v11H3z"),
+    ("keyboard", "M3 6h18v12H3zM7 10h0M11 10h0M15 10h0M7 14h10"),
     ("dot", "M12 11.5h0"),
 ];
 

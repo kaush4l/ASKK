@@ -36,6 +36,7 @@
 //! | `button` | something to press |
 //! | `card` | a surface that holds one thing |
 //! | `collapsible` | a part that opens and closes on a press |
+//! | `dialog` | something over the whole page that is answered or closed before the page is used again |
 //! | `kbd` | a key of the keyboard, as text |
 //! | `scroll_area` | an area that scrolls inside itself |
 //! | `separator` | a thin line between two things |
@@ -49,6 +50,7 @@ mod badge;
 mod button;
 mod card;
 mod collapsible;
+mod dialog;
 mod kbd;
 mod scroll_area;
 mod separator;
@@ -67,6 +69,8 @@ pub use button::{Button, ButtonSize, ButtonVariant};
 pub use card::{Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardItem, CardList, CardSize, CardTitle};
 #[allow(unused_imports)]
 pub use collapsible::{Collapsible, CollapsibleContent, CollapsibleTrigger};
+#[allow(unused_imports)]
+pub use dialog::{Dialog, DialogTitle};
 #[allow(unused_imports)]
 pub use kbd::Kbd;
 #[allow(unused_imports)]
