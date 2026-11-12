@@ -8,7 +8,8 @@
 //!   all that is needed to go on with it after a restart.
 //! - [`Harness`]: the port. One prompt in, one [`Reply`] out. Each kind is one file under
 //!   `host/harness/`; nothing outside that folder names a kind.
-//! - The book ([`open`], [`list`], [`get`], [`ask`], [`settle`], [`recover`]): sessions in the
+//! - The book ([`open`], [`list`], [`get`], [`ask`], [`settle`], [`recover`], and the owner's
+//!   answer to what a harness was refused: [`pending`], [`deny`]): sessions in the
 //!   store, one key each (`<sessions>/<id>.json`). A session takes one turn at a time.
 use super::store::Store;
 use super::Fut;
@@ -17,6 +18,32 @@ use serde::{Deserialize, Serialize};
 /// Who said a turn.
 pub const USER: &str = "user";
 pub const AGENT: &str = "agent";
+/// A turn neither said: what the owner decided about what the harness asked for.
+pub const NOTE: &str = "note";
+
+/// What a harness's last reply said it may not do without the owner's yes: one call it was
+/// refused. The owner allows them (the session is prompted again, with [`Ask::rule`] in
+/// [`Prompt::allowed`]) or denies them.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Ask {
+    /// The harness's own name for the tool: `Bash`, `Edit`.
+    pub tool: String,
+    /// What it would do, short, for a person: the command, the file.
+    pub summary: String,
+    /// How the harness is told it may: its own words for this call (`Bash(touch a.txt)`).
+    pub rule: String,
+}
+
+/// The same call asked for twice is one ask.
+pub fn once(asks: Vec<Ask>) -> Vec<Ask> {
+    let mut out: Vec<Ask> = vec![];
+    for a in asks {
+        if !out.contains(&a) {
+            out.push(a);
+        }
+    }
+    out
+}
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Turn {
@@ -60,6 +87,9 @@ pub struct Session {
     /// careful default (it reads and answers, and refuses what needs a yes).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub permit: Option<super::permit::Mode>,
+    /// What the last reply was refused and waits for the owner's yes; a new prompt clears it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub asks: Vec<Ask>,
 }
 
 /// What a harness gives back for one prompt.
@@ -68,6 +98,8 @@ pub struct Reply {
     pub text: String,
     /// Its id for the conversation, when it gave one.
     pub native: Option<String>,
+    /// The calls it was refused because they need the owner's yes.
+    pub asks: Vec<Ask>,
 }
 
 /// One prompt for a harness.
@@ -84,6 +116,8 @@ pub struct Prompt {
     pub provider: String,
     /// The permission mode the harness is given, where it takes one (`None`: its careful default).
     pub permit: Option<super::permit::Mode>,
+    /// What the owner allowed for this prompt alone, in the harness's own words ([`Ask::rule`]).
+    pub allowed: Vec<String>,
 }
 
 /// One kind's entry in `harnesses.json`: how this home runs that harness.
@@ -183,6 +217,7 @@ pub fn ask(store: &dyn Store, root: &str, id: u64, text: &str) -> Result<Prompt,
     s.turns.push(Turn { who: USER.into(), text: text.into() });
     s.state = State::Busy;
     s.error.clear();
+    s.asks.clear();
     save(store, root, &s)?;
     Ok(Prompt { text: text.into(), native: s.native, project: s.project, permit: s.permit, ..Default::default() })
 }
@@ -203,6 +238,7 @@ pub fn settle(store: &dyn Store, root: &str, id: u64, r: Result<Reply, String>) 
             s.turns.push(Turn { who: AGENT.into(), text: reply.text });
             s.native = reply.native.or(s.native);
             s.state = State::Idle;
+            s.asks = once(reply.asks);
         }
         Err(e) => {
             s.state = State::Failed;
@@ -210,6 +246,30 @@ pub fn settle(store: &dyn Store, root: &str, id: u64, r: Result<Reply, String>) 
         }
     }
     save(store, root, &s)
+}
+
+/// The text a session is prompted with when the owner allows what it asked for.
+pub const ALLOWED: &str = "You may now do what you asked to; go on.";
+
+/// What the owner is asked to allow, in the harness's own words; an error when nothing waits.
+pub fn pending(store: &dyn Store, root: &str, id: u64) -> Result<Vec<String>, String> {
+    let s = get(store, root, id)?;
+    if s.asks.is_empty() {
+        return Err(format!("session {id} waits for no yes"));
+    }
+    Ok(s.asks.iter().map(|a| a.rule.clone()).collect())
+}
+
+/// The owner does not allow what the session asked for: the asks go, and a note says so.
+pub fn deny(store: &dyn Store, root: &str, id: u64) -> Result<Session, String> {
+    let mut s = get(store, root, id)?;
+    if s.asks.is_empty() {
+        return Err(format!("session {id} waits for no yes"));
+    }
+    let what: Vec<String> = s.asks.drain(..).map(|a| if a.summary.is_empty() { a.tool } else { format!("{} {}", a.tool, a.summary) }).collect();
+    s.turns.push(Turn { who: NOTE.into(), text: format!("The owner did not allow: {}", what.join("; ")) });
+    save(store, root, &s)?;
+    Ok(s)
 }
 
 /// After a restart no harness is running: a session left busy says so and can be asked again.
@@ -238,12 +298,50 @@ mod tests {
         let p = ask(&st, "sessions", 1, " hi ").unwrap();
         assert_eq!((p.text.as_str(), p.native), ("hi", None));
         assert_eq!(get(&st, "sessions", 1).unwrap().state, State::Busy);
-        settle(&st, "sessions", 1, Ok(Reply { text: "hello".into(), native: Some("n1".into()) })).unwrap();
+        settle(&st, "sessions", 1, Ok(Reply { text: "hello".into(), native: Some("n1".into()), ..Default::default() })).unwrap();
         let s = get(&st, "sessions", 1).unwrap();
         assert_eq!(s.state, State::Idle);
         assert_eq!(s.turns, [Turn { who: USER.into(), text: "hi".into() }, Turn { who: AGENT.into(), text: "hello".into() }]);
         // The next prompt goes on with the harness's own conversation.
         assert_eq!(ask(&st, "sessions", 1, "more").unwrap().native.as_deref(), Some("n1"));
+    }
+
+    fn asked() -> Vec<Ask> {
+        let a = Ask { tool: "Bash".into(), summary: "touch a.txt".into(), rule: "Bash(touch a.txt)".into() };
+        vec![a.clone(), Ask { tool: "Edit".into(), summary: "b.rs".into(), rule: "Edit".into() }, a]
+    }
+
+    #[test]
+    fn what_a_harness_was_refused_waits_once_until_a_new_prompt() {
+        let st = book();
+        open(&st, "sessions", KINDS, "echo", "", "").unwrap();
+        assert!(pending(&st, "sessions", 1).unwrap_err().contains("no yes"));
+        ask(&st, "sessions", 1, "make a.txt").unwrap();
+        settle(&st, "sessions", 1, Ok(Reply { text: "blocked".into(), native: None, asks: asked() })).unwrap();
+        let s = get(&st, "sessions", 1).unwrap();
+        assert_eq!(s.asks.len(), 2, "the same call asked twice is one ask");
+        assert_eq!(pending(&st, "sessions", 1).unwrap(), ["Bash(touch a.txt)", "Edit"]);
+        // A new prompt (the owner's yes is one) clears them; the next reply says what is left.
+        ask(&st, "sessions", 1, ALLOWED).unwrap();
+        assert!(get(&st, "sessions", 1).unwrap().asks.is_empty());
+        settle(&st, "sessions", 1, Ok(Reply { text: "done".into(), ..Default::default() })).unwrap();
+        assert!(get(&st, "sessions", 1).unwrap().asks.is_empty());
+    }
+
+    #[test]
+    fn a_denied_ask_is_cleared_and_noted() {
+        let st = book();
+        open(&st, "sessions", KINDS, "echo", "", "").unwrap();
+        ask(&st, "sessions", 1, "make a.txt").unwrap();
+        settle(&st, "sessions", 1, Ok(Reply { text: "blocked".into(), native: None, asks: asked() })).unwrap();
+        let s = deny(&st, "sessions", 1).unwrap();
+        assert!(s.asks.is_empty() && get(&st, "sessions", 1).unwrap().asks.is_empty());
+        let last = s.turns.last().unwrap();
+        assert_eq!(last.who, NOTE);
+        assert!(last.text.contains("did not allow") && last.text.contains("Bash touch a.txt"), "{}", last.text);
+        assert!(deny(&st, "sessions", 1).is_err(), "nothing is left to deny");
+        // An empty list is not written into the session's file.
+        assert!(!st.get("sessions/1.json").unwrap().contains("asks"));
     }
 
     #[test]

@@ -27,7 +27,26 @@ pub async fn session_open(harness: String, title: String, project: String) -> Re
 /// Prompt a session and return at once; its answer lands in the session when the harness ends.
 pub async fn session_prompt(id: u64, text: String) -> Result<(), String> {
     crate::core::world::world();
-    crate::host::harness::prompt(id, &text).map_err(say)
+    hand(id, &text, vec![])
+}
+
+/// Settle what the session's harness was refused and waits for the owner's yes. `allow`: the
+/// session is prompted again and told it may (each harness is given the yes in its own words);
+/// otherwise the asks go and the session notes that the owner did not allow them.
+pub async fn session_allow(id: u64, allow: bool) -> Result<Session, String> {
+    crate::core::world::world();
+    let (st, root) = (crate::core::store::data(), crate::core::manifest::manifest().sessions.clone());
+    if !allow {
+        return crate::core::session::deny(&*st, &root, id).map_err(say);
+    }
+    let rules = crate::core::session::pending(&*st, &root, id).map_err(say)?;
+    hand(id, crate::core::session::ALLOWED, rules)?;
+    crate::core::session::get(&*st, &root, id).map_err(say)
+}
+
+/// The one way a prompt reaches a harness from here.
+fn hand(id: u64, text: &str, allowed: Vec<String>) -> Result<(), String> {
+    crate::host::harness::prompt(id, text, allowed).map_err(say)
 }
 
 /// Choose what the session's harness may do without asking (`ask`, `edits`, `all`), from its

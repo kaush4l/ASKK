@@ -28,7 +28,7 @@ One box, four depths. A box shows everything its depth gives and nothing it has 
 | --- | --- | --- | --- | --- |
 | 0 screen | that it runs, and its screen | the service holds its terminal | the live screen, a line to type into | built in the service (`core/terminals.rs`, `host/terminals.rs`) and in `askk terminal`, where a pane shows it and takes typing; the page does not draw it yet |
 | 1 recognised | which agent it is; working, blocked or idle | the process name and what is on the screen | depth 0, with a state mark | built, first cut: the agent is told by its program's name (`host/harness/mod.rs`, `recognise`); the state is read off the bottom of the screen by a handful of patterns (`core/terminals.rs`, `guess`) and the box says it is a guess |
-| 2 reported | each turn, the agent's own id for the conversation, its state as it says it | the agent's own wire or hooks (`core/session.rs`, `host/harness/`: claude, codex, muse) | the conversation, and it can be gone on with after a restart | built, one turn at a time |
+| 2 reported | each turn, the agent's own id for the conversation, its state as it says it | the agent's own wire or hooks (`core/session.rs`, `host/harness/`: claude, codex, opencode, muse) | the conversation, and it can be gone on with after a restart | built, one turn at a time |
 | 3 spec | goal, learnings, tools, and each stage of each run | askk built it: an engine (`core/engine.rs`, its elements) | all of it: goal, notes, tools, the run stage by stage | built |
 
 The state is the same word at every depth, so the pill can count them together:

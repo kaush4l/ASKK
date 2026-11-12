@@ -8,6 +8,7 @@
 mod claude;
 mod codex;
 mod muse;
+mod opencode;
 
 use crate::core::session::{self, Harness, HarnessInfo, Reply, Session};
 use crate::host::sandbox::profile;
@@ -19,7 +20,7 @@ const LIMIT: std::time::Duration = std::time::Duration::from_secs(30 * 60);
 
 /// Every kind of harness, in the order offered.
 pub fn all() -> Vec<Arc<dyn Harness>> {
-    vec![Arc::new(claude::Claude), Arc::new(codex::Codex), Arc::new(muse::Muse)]
+    vec![Arc::new(claude::Claude), Arc::new(codex::Codex), Arc::new(opencode::OpenCode), Arc::new(muse::Muse)]
 }
 
 pub fn infos() -> Vec<HarnessInfo> {
@@ -52,8 +53,11 @@ pub fn recover() {
 
 /// Hand `text` to the session's harness. Returns once the prompt is recorded; the answer (or
 /// why there is none) is recorded when the harness ends.
-pub fn prompt(id: u64, text: &str) -> Result<(), String> {
-    let (h, p) = begin(id, text)?;
+/// `allowed`: what the owner allowed for this prompt alone, in the harness's own words
+/// (`core::session::Ask::rule`); empty for an ordinary prompt.
+pub fn prompt(id: u64, text: &str, allowed: Vec<String>) -> Result<(), String> {
+    let (h, mut p) = begin(id, text)?;
+    p.allowed = allowed;
     tokio::spawn(async move {
         let _ = finish(h, p, id).await;
     });
@@ -74,7 +78,7 @@ pub fn usable() -> Vec<String> {
 /// Agents' programs askk has no harness for, known by name only: a terminal that runs one
 /// can still say which agent it is (`docs/concept.md`, depth 1). The names herdr recognises
 /// (<https://herdr.dev/tui/docs/agents/>), as the programs are called on the command line.
-const BY_NAME: &[&str] = &["aider", "amp", "cline", "copilot", "crush", "cursor-agent", "devin", "droid", "gemini", "goose", "grok", "hermes", "kilo", "kimi", "kiro", "opencode", "pi", "qwen"];
+const BY_NAME: &[&str] = &["aider", "amp", "cline", "copilot", "crush", "cursor-agent", "devin", "droid", "gemini", "goose", "grok", "hermes", "kilo", "kimi", "kiro", "pi", "qwen"];
 
 /// The agent a program is, told by its name alone: the agent's name, and where under the
 /// user's home it keeps its state (known for the kinds askk has a harness for). `None` for
@@ -237,7 +241,8 @@ mod tests {
             let (name, state) = recognise(h.kind()).unwrap();
             assert_eq!((name.as_str(), state.len()), (h.kind(), h.state().len()), "a kind with a harness is known with its state");
         }
-        assert_eq!(recognise("opencode"), Some(("opencode".to_string(), vec![])), "an agent without a harness is known by name");
+        assert_eq!(recognise("aider"), Some(("aider".to_string(), vec![])), "an agent without a harness is known by name");
+        assert!(!recognise("opencode").unwrap().1.is_empty(), "opencode has a harness, and its state with it");
         assert!(recognise("zsh").is_none() && recognise("vim").is_none() && recognise("").is_none());
     }
 

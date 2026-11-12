@@ -12,7 +12,9 @@
 //! reads and answers but changes nothing), `edits` is `workspace-write`, `all` is
 //! `danger-full-access` (still inside the folder askk's own sandbox allows). `exec` never
 //! stops to ask, so these are the whole of it. A resumed session is given the same as a
-//! setting (`-c sandbox_mode=...`).
+//! setting (`-c sandbox_mode=...`). Since it never asks, it is never refused a call that waits
+//! for the owner: its replies carry no asks, and what the owner allowed (`Prompt::allowed`)
+//! is not passed.
 use super::{missing, or_stderr, run};
 use crate::core::permit::Mode;
 use crate::core::session::{Harness, Prompt, Reply};
@@ -41,7 +43,7 @@ fn parse(out: &str) -> Result<Reply, String> {
         }
     }
     match (said.is_empty(), failed) {
-        (false, _) => Ok(Reply { text: said.join("\n\n"), native }),
+        (false, _) => Ok(Reply { text: said.join("\n\n"), native, asks: vec![] }),
         (true, Some(why)) => Err(why),
         (true, None) => Err("it printed no answer".into()),
     }
@@ -101,7 +103,7 @@ mod tests {
     #[test]
     fn the_codex_wire_becomes_a_reply() {
         let out = "{\"type\":\"thread.started\",\"thread_id\":\"01a1c81b-b824-7453-b87e-38a2de870b7e\"}\n{\"type\":\"turn.started\"}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_0\",\"type\":\"agent_message\",\"text\":\"pong\"}}\n{\"type\":\"turn.completed\"}\n";
-        assert_eq!(parse(out).unwrap(), Reply { text: "pong".into(), native: Some("01a1c81b-b824-7453-b87e-38a2de870b7e".into()) });
+        assert_eq!(parse(out).unwrap(), Reply { text: "pong".into(), native: Some("01a1c81b-b824-7453-b87e-38a2de870b7e".into()), asks: vec![] });
     }
 
     #[test]

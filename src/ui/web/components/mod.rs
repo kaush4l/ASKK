@@ -35,7 +35,7 @@ pub use surface::{Glass, Pane};
 mod pill;
 pub use pill::{Pill, PILL_WIDTH};
 mod asks;
-pub use asks::{ApprovalForm, AskForm};
+pub use asks::{ApprovalForm, AskForm, HarnessAsks};
 mod boxes;
 pub use boxes::{BoxRow, BoxTile, OpenHead, Shown};
 mod markdown;

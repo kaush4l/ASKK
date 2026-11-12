@@ -1,9 +1,9 @@
 //! Sessions: talk to another agent's own loop. Left: start one (which harness, a title, a
 //! project folder) and the list. Right: the chosen session's turns and a box to prompt it.
 //! The page follows the store: an answer shows when the harness ends, with no polling.
-use crate::api::{harnesses, session_open, session_prompt, sessions};
-use crate::core::session::{Session, State, USER};
-use crate::ui::web::components::Pane;
+use crate::api::{harnesses, session_allow, session_open, session_prompt, sessions};
+use crate::core::session::{Session, State, NOTE, USER};
+use crate::ui::web::components::{HarnessAsks, Pane};
 use dioxus::prelude::*;
 
 #[component]
@@ -125,10 +125,24 @@ fn Talk(session: Session) -> Element {
             div { class: "bubbles",
                 if session.turns.is_empty() { p { class: "dim", "Prompt it to begin." } }
                 for (i, t) in session.turns.iter().enumerate() {
-                    div { key: "{i}", class: if t.who == USER { "bubble user" } else { "bubble model" },
-                        span { class: "dim", if t.who == USER { "you" } else { "{session.harness}" } }
-                        pre { "{t.text}" }
+                    if t.who == NOTE {
+                        p { key: "{i}", class: "session-note", role: "note", "{t.text}" }
+                    } else {
+                        div { key: "{i}", class: if t.who == USER { "bubble user" } else { "bubble model" },
+                            span { class: "dim", if t.who == USER { "you" } else { "{session.harness}" } }
+                            pre { "{t.text}" }
+                        }
                     }
+                }
+                if !session.asks.is_empty() && !busy {
+                    HarnessAsks { asks: session.asks.clone(), by: session.harness.clone(), on_answer: move |allow: bool| {
+                        spawn(async move {
+                            match session_allow(id, allow).await {
+                                Ok(_) => error.set(String::new()),
+                                Err(e) => error.set(e.to_string()),
+                            }
+                        });
+                    } }
                 }
                 if busy { p { class: "dim", role: "status", "{session.harness} is working…" } }
                 if !session.error.is_empty() { p { class: "chat-error", role: "alert", "{session.error}" } }

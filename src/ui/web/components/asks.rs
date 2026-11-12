@@ -70,3 +70,27 @@ pub fn ApprovalForm(approval: crate::core::permit::Approval, #[props(default)] s
         }
     }
 }
+
+/// What another agent's own harness was refused and waits for the owner's yes (a session's
+/// `asks`): each call it would make, and one Allow or Deny for them all. `by`: the harness.
+#[component]
+pub fn HarnessAsks(asks: Vec<crate::core::session::Ask>, by: String, on_answer: EventHandler<bool>) -> Element {
+    rsx! {
+        div { class: "ask-form approval", role: "group", "aria-label": "Allow what {by} asked to do?",
+            p { class: "ask-form-q",
+                span { class: "ask-form-sign", role: "img", "aria-label": "waits for your yes", "!" }
+                span { if asks.len() == 1 { "{by} asks to do this:" } else { "{by} asks to do these:" } }
+            }
+            ul { class: "approval-list",
+                for (i, a) in asks.iter().enumerate() {
+                    li { key: "{i}", span { class: "approval-tool", "{a.tool}" } " " code { class: "approval-call", "{a.summary}" } }
+                }
+            }
+            p { class: "ask-form-by", "Its own permission mode refused these. Allow them and it goes on with them; deny them and it is told so." }
+            div { class: "ask-form-row approval-row",
+                Button { size: ButtonSize::Sm, class: "approval-yes", onclick: move |_| on_answer.call(true), "Allow" }
+                Button { variant: ButtonVariant::Outline, size: ButtonSize::Sm, class: "approval-no", onclick: move |_| on_answer.call(false), "Deny" }
+            }
+        }
+    }
+}

@@ -105,6 +105,10 @@ pub async fn session_permit(_id: u64, _mode: String) -> Result<Session, String> 
     Err(lacks("Another agent's session"))
 }
 
+pub async fn session_allow(_id: u64, _allow: bool) -> Result<Session, String> {
+    Err(lacks("Another agent's session"))
+}
+
 pub async fn rooms() -> Result<Vec<Room>, String> {
     Ok(vec![])
 }

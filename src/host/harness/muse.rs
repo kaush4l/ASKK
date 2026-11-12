@@ -10,6 +10,8 @@
 //! argument: `exec` does not read it from stdin.
 //!
 //! The model and the provider come from this home's `harnesses.json`; none there = Muse's own.
+//! Its events say nothing of a call refused for want of a yes, so its replies carry no asks
+//! and what the owner allowed (`Prompt::allowed`) is not passed.
 use super::{missing, or_stderr, run};
 use crate::core::session::{Harness, Prompt, Reply};
 use crate::core::Fut;
@@ -35,7 +37,7 @@ fn parse(out: &str) -> Result<Reply, String> {
     if how != "completed" {
         return Err(end["reason"].as_str().filter(|r| !r.is_empty()).map(String::from).unwrap_or_else(|| format!("the run ended as '{how}'")));
     }
-    Ok(Reply { text: end["text"].as_str().unwrap_or_default().to_string(), native })
+    Ok(Reply { text: end["text"].as_str().unwrap_or_default().to_string(), native, asks: vec![] })
 }
 
 impl Harness for Muse {
@@ -80,7 +82,7 @@ mod tests {
 {"schema_version":1,"stream":{"kind":"session","id":"01a1c83d-73a2-7e63-a06e-08e41e0acf03"},"sequence":17,"payload_type":"run.output.delta","payload":{"kind":"run_output_delta","text":"echo: Reply with exactly: pong"}}
 {"schema_version":1,"stream":{"kind":"exec.usage","id":"01a1c83d-73a2-7e63-a06e-08e41e0acf03"},"sequence":1,"payload_type":"run.usage","payload":{"kind":"run_usage","calls":1}}
 {"schema_version":1,"stream":{"kind":"session","id":"01a1c83d-73a2-7e63-a06e-08e41e0acf03"},"sequence":34,"payload_type":"run.terminal.completed","payload":{"kind":"run_terminal","terminal":"completed","text":"echo: Reply with exactly: pong","reason":null}}"#;
-        assert_eq!(parse(out).unwrap(), Reply { text: "echo: Reply with exactly: pong".into(), native: Some("01a1c83d-73a2-7e63-a06e-08e41e0acf03".into()) });
+        assert_eq!(parse(out).unwrap(), Reply { text: "echo: Reply with exactly: pong".into(), native: Some("01a1c83d-73a2-7e63-a06e-08e41e0acf03".into()), asks: vec![] });
     }
 
     #[test]

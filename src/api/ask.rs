@@ -128,6 +128,7 @@ pub fn table() -> Vec<Ask> {
         session_open(harness, title, project),
         session_prompt(id, text),
         session_permit(id, mode),
+        session_allow(id, allow),
         // surfaces.rs
         surfaces(),
         glance(),
