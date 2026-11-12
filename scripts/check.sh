@@ -16,6 +16,7 @@ step() {
         printf '   ok\n'
     else
         printf '   FAILED: %s\n' "$*"
+        [ -z "${GITHUB_ACTIONS:-}" ] || printf '::error title=check.sh::failed: %s\n' "$name"
         failed="$failed\n  $name"
     fi
 }
@@ -42,6 +43,10 @@ quiet() {
         rm -f "$log"
     else
         tail -40 "$log"
+        # On GitHub, also put the end of it where the run's summary shows it.
+        if [ -n "${GITHUB_ACTIONS:-}" ]; then
+            printf '::error title=check.sh: %s::%s\n' "$1 $2" "$(tail -25 "$log" | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"
+        fi
         rm -f "$log"
         return 1
     fi
