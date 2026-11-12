@@ -38,7 +38,7 @@
 .lane { width: min(100%, var(--lane)); margin-inline: auto; }
 
 /* head: who, what it is doing, who else, and the two actions */
-.talk-head { flex: none; display: flex; align-items: center; gap: var(--space-2) var(--space-3); min-height: var(--hit); padding: 0 var(--space-2); min-width: 0; }
+.talk-head { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); min-height: var(--hit); padding: 0 var(--space-2); min-width: 0; }
 .engine-chip { display: flex; align-items: center; gap: var(--space-2); min-width: 0; flex: none; max-width: 60%; }
 .engine-chip .emoji { font-size: var(--text-md); }
 .engine-words { display: flex; flex-direction: column; min-width: 0; line-height: 1.2; }
