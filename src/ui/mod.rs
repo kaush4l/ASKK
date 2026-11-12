@@ -1,18 +1,18 @@
-//! # UI: everything that draws (Dioxus lives here)
+//! # UI: everything a person sees
 //!
-//! | folder | holds |
-//! | --- | --- |
-//! | `app.rs` | the root: assets, router |
-//! | `render.rs` | the one place a `Node` becomes pixels |
-//! | `figure.rs` | the one place a figure (plot, graph, sketch, table) becomes a drawing |
-//! | `kit/` | standard parts (button, card, badge, tabs…), from rust-ui.com |
-//! | `components/` | this app's own building blocks (pane, glass, icon, sidebar…) |
-//! | `views/` | built-in views a page can place by name |
+//! | folder | what it is | builds |
+//! | --- | --- | --- |
+//! | `features/` | what a person can do, as plain values and words: no drawing, no library | all |
+//! | `web/` | pages (Dioxus): browser, Mac app, phone, tablet | all but `local` |
+//! | `terminal/` | lines in a terminal | `server` |
 //!
-//! The UI never touches the host: it asks through `api/`.
-pub mod app;
-pub mod components;
-pub mod figure;
-pub mod kit;
-pub mod render;
-pub mod views;
+//! A feature is decided once (which answers it asks, what the lines say); each kind of UI
+//! only decides how to show it. The page a tab draws for itself (`local/page.rs`) uses the
+//! same features.
+//!
+//! No UI touches the host: it asks through `api/`.
+pub mod features;
+#[cfg(feature = "server")]
+pub mod terminal;
+#[cfg(not(feature = "local"))]
+pub mod web;

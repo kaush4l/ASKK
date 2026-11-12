@@ -1,5 +1,5 @@
-use crate::ui::render::Render;
-use crate::ui::components::Pane;
+use crate::ui::web::render::Render;
+use crate::ui::web::components::Pane;
 use crate::{api::resolve_route, core::routes::Params};
 use dioxus::prelude::*;
 

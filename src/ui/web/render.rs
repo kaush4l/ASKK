@@ -14,8 +14,8 @@ pub fn Render(node: Node) -> Element {
         "object" => rsx! { Object { node: node.clone() } },
         "marks" => rsx! { div { class: "marks", role: "group", "aria-label": "{node.label}", if !node.label.is_empty() { span { class: "marks-label", "{node.label}" } } {kids} } },
         "mark" => rsx! { span { class: "mark", title: "{node.label}", "aria-label": "{node.label}", Art { icon: node.icon.clone(), size: 16 } } },
-        "pane" => rsx! { crate::ui::components::Pane { class: "stack", {kids} } },
-        "glass" => rsx! { crate::ui::components::Glass { class: "stack pad", {kids} } },
+        "pane" => rsx! { crate::ui::web::components::Pane { class: "stack", {kids} } },
+        "glass" => rsx! { crate::ui::web::components::Glass { class: "stack pad", {kids} } },
         "row" => rsx! { div { class: "row", {kids} } },
         "stack" => rsx! { div { class: "stack", {kids} } },
         "grid" => rsx! { div { class: "grid", {kids} } },
@@ -25,10 +25,10 @@ pub fn Render(node: Node) -> Element {
         "badge" => rsx! { span { class: "badge", "{node.text}" } },
         "link" => rsx! { Link { to: node.text.clone(), class: "link", "{node.label}" } },
         "text" => rsx! { p { "{node.text}" } },
-        "stat" => rsx! { crate::ui::components::Stat { label: node.label.clone(), value: node.text.clone() } },
+        "stat" => rsx! { crate::ui::web::components::Stat { label: node.label.clone(), value: node.text.clone() } },
         "button" => rsx! { button { class: "btn", "{node.label}" } },
-        "view" => rsx! { crate::ui::views::Builtin { name: node.text.clone(), arg: node.label.clone() } },
-        "figure" => rsx! { crate::ui::figure::FigureView { node: node.clone() } },
+        "view" => rsx! { crate::ui::web::views::Builtin { name: node.text.clone(), arg: node.label.clone() } },
+        "figure" => rsx! { crate::ui::web::figure::FigureView { node: node.clone() } },
         "use" => rsx! { Use { name: node.text.clone() } },
         "calls" => rsx! { ol { class: "calls", "aria-label": "{node.label}", {kids} } },
         "call" => rsx! {
@@ -57,8 +57,8 @@ pub fn Use(name: String) -> Element {
 /// An icon name from the icon set, or an emoji drawn as text.
 #[component]
 pub fn Art(icon: String, #[props(default = 20)] size: u32) -> Element {
-    if crate::ui::components::ICONS.iter().any(|(n, _)| *n == icon) || icon.is_empty() {
-        rsx! { crate::ui::components::Icon { name: icon, size } }
+    if crate::ui::web::components::ICONS.iter().any(|(n, _)| *n == icon) || icon.is_empty() {
+        rsx! { crate::ui::web::components::Icon { name: icon, size } }
     } else {
         rsx! { span { class: "emoji", style: "font-size:{size}px", "{icon}" } }
     }

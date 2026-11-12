@@ -10,8 +10,8 @@
 //! board (every figure, newest first) or the prompt the engine would send now.
 use crate::api::{media_begin, media_done, media_picture, media_piece, post_message, talk, Chip, Mode};
 use crate::core::media::{b64, token};
-use crate::ui::components::{Icon, Pane};
-use crate::ui::figure::FigureView;
+use crate::ui::web::components::{Icon, Pane};
+use crate::ui::web::figure::FigureView;
 use dioxus::prelude::*;
 
 /// Bytes of a file sent in one piece.
@@ -158,7 +158,7 @@ fn Conversation(path: String) -> Element {
         Pane { class: "chat-log",
             div { class: "row chat-head",
                 match &*me.read() {
-                    Some(Ok(n)) => rsx! { crate::ui::render::Render { node: n.clone() } },
+                    Some(Ok(n)) => rsx! { crate::ui::web::render::Render { node: n.clone() } },
                     _ => rsx! { h2 { "{path}" } },
                 }
                 span { class: "grow" }

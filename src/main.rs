@@ -31,15 +31,25 @@ mod local;
 mod shells;
 #[cfg(test)]
 mod structure;
-#[cfg(not(feature = "local"))]
 mod ui;
 
 #[cfg(not(feature = "local"))]
-pub use ui::app::Route;
+pub use ui::web::app::Route;
 
 fn main() {
     #[cfg(feature = "server")]
-    host::start(std::env::args().collect());
+    {
+        let args: Vec<String> = std::env::args().collect();
+        // `askk terminal`: the same host, shown as lines instead of pages. With `--to` it only
+        // talks to a server that is already running, so no host is started here.
+        if let Some(wanted) = shells::terminal::wanted(&args) {
+            if wanted.to.is_none() {
+                host::start(args);
+            }
+            std::process::exit(shells::terminal::launch(wanted));
+        }
+        host::start(args);
+    }
     // The tab is its own host: no server to ask, so it draws its own page.
     #[cfg(feature = "local")]
     local::launch();

@@ -8,7 +8,7 @@
 use crate::api::{engine_run, engine_runs};
 use crate::core::flow::{about, name, Stage};
 use crate::core::run::{took, Run, Step};
-use crate::ui::components::Icon;
+use crate::ui::web::components::Icon;
 use dioxus::prelude::*;
 
 /// The colour family of a run's status.
@@ -251,7 +251,7 @@ fn RunSteps(run: Run) -> Element {
                             p { class: "run-about", "{about(mk.stage)}" }
                             for (label, text) in mk.detail.iter() {
                                 details { class: "run-text",
-                                    summary { b { "{label}" } span { class: "dim", " {crate::ui::views::prompt::kilo(crate::core::tokens(text))} tokens" } }
+                                    summary { b { "{label}" } span { class: "dim", " {crate::ui::web::views::prompt::kilo(crate::core::tokens(text))} tokens" } }
                                     pre { "{text}" }
                                 }
                             }

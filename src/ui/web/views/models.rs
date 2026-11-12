@@ -1,4 +1,4 @@
-use crate::ui::components::Pane;
+use crate::ui::web::components::Pane;
 use crate::api::models as infer;
 use crate::core::models::{Found, Model, Models};
 use dioxus::prelude::*;
@@ -61,8 +61,8 @@ pub fn ModelsView() -> Element {
                     strong { "{m.name}" }
                     span { class: "dim", "{m.method} {m.base_url} {m.command.join(\" \")}" }
                     if !m.token_env.is_empty() { span { class: "dim", "token: ${m.token_env}" } }
-                    span { class: "badge", "out {crate::ui::views::prompt::kilo(m.max_tokens as usize)}" }
-                    span { class: "badge", if m.context > 0 { "ctx {crate::ui::views::prompt::kilo(m.context as usize)}" } else { "ctx from server" } }
+                    span { class: "badge", "out {crate::ui::web::views::prompt::kilo(m.max_tokens as usize)}" }
+                    span { class: "badge", if m.context > 0 { "ctx {crate::ui::web::views::prompt::kilo(m.context as usize)}" } else { "ctx from server" } }
                     button { class: "btn quiet-danger", onclick: { let n = m.name.clone(); move |_| {
                         let mut all = models.write();
                         all.models.retain(|x| x.name != n);
@@ -100,7 +100,7 @@ pub fn ModelsView() -> Element {
                     for f in found() {
                         button { class: "chip", onclick: { let f = f.clone(); move |_| add(f.name.clone(), f.context) },
                             "+ {f.name}"
-                            if f.context > 0 { span { class: "dim", " {crate::ui::views::prompt::kilo(f.context as usize)}" } }
+                            if f.context > 0 { span { class: "dim", " {crate::ui::web::views::prompt::kilo(f.context as usize)}" } }
                         }
                     }
                 }

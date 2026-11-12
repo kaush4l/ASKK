@@ -162,8 +162,10 @@ fn the_core_does_not_know_the_build() {
 
 #[test]
 fn the_tab_is_a_host_and_nothing_else_knows_it() {
-    for needle in ["crate::host", "crate::ui", "crate::shells"] {
-        never_in("local", needle, "the tab stands where host/ stands: it may use core and elements, and its page asks through api/ like any window");
+    // The page the tab draws for itself may use the features (plain values and words, the
+    // same ones every UI shows), but no other UI's drawing.
+    for needle in ["crate::host", "crate::ui::web", "crate::ui::terminal", "crate::shells"] {
+        never_in("local", needle, "the tab stands where host/ stands: it may use core and elements, and its page asks through api/ and reads ui/features like any window");
     }
     for folder in ["api", "ui", "shells"] {
         never_in(folder, "crate::local", "a window asks through api/, whoever the host is");
@@ -237,20 +239,40 @@ fn a_file_is_read_in_one_sitting() {
 
 #[test]
 fn every_view_a_page_may_name_is_drawn() {
-    let (_, draws) = sources().into_iter().find(|(rel, _)| rel == "ui/views/mod.rs").expect("ui/views/mod.rs");
+    let (_, draws) = sources().into_iter().find(|(rel, _)| rel == "ui/web/views/mod.rs").expect("ui/web/views/mod.rs");
     for name in crate::core::node::VIEWS {
-        assert!(draws.contains(&format!("\"{name}\" =>")), "the view `{name}` is in core::node::VIEWS, so a page may name it, but ui/views/mod.rs (`Builtin`) does not draw it");
+        assert!(draws.contains(&format!("\"{name}\" =>")), "the view `{name}` is in core::node::VIEWS, so a page may name it, but ui/web/views/mod.rs (`Builtin`) does not draw it");
     }
 }
 
 #[test]
+fn a_feature_draws_nothing() {
+    // ui/features says what a person can do, in plain values and words. How it is shown (a
+    // page, lines in a terminal) is decided by the UI that shows it, so no drawing library
+    // and no other UI may be named here.
+    never_in("ui/features/", "dioxus", "a feature is plain values and words; drawing belongs to ui/web");
+    never_in("ui/features/", "rsx!", "a feature is plain values and words; drawing belongs to ui/web");
+    never_in("ui/features/", "crate::ui::web", "a feature does not know which UI shows it");
+    never_in("ui/features/", "crate::ui::terminal", "a feature does not know which UI shows it");
+}
+
+#[test]
+fn the_terminal_is_lines_only() {
+    // The terminal shows the same features as text. It draws no page, knows no other UI, and
+    // like every UI it asks through api/ and never reaches the host itself.
+    never_in("ui/terminal/", "dioxus", "the terminal writes lines; pages belong to ui/web");
+    never_in("ui/terminal/", "crate::ui::web", "the terminal and the pages share features, not each other");
+    never_in("ui/terminal/", "crate::host", "a UI asks through api/");
+}
+
+#[test]
 fn the_kit_is_standard_parts_and_nothing_else() {
-    // A kit part (ui/kit) is a standard part taken from a registry. It knows nothing of this
+    // A kit part (ui/web/kit) is a standard part taken from a registry. It knows nothing of this
     // app (no api, no core, no component of ours), it says where it came from, and it names
     // tokens, never a colour of its own, so one theme change reaches every part.
     let mut wrong = vec![];
     for (rel, code) in sources() {
-        if !rel.starts_with("ui/kit/") || rel == "ui/kit/mod.rs" {
+        if !rel.starts_with("ui/web/kit/") || rel == "ui/web/kit/mod.rs" {
             continue;
         }
         // The whole file, comments too (`sources` leaves comments out).
@@ -258,7 +280,7 @@ fn the_kit_is_standard_parts_and_nothing_else() {
         if !whole.starts_with("//! From rust-ui.com") {
             wrong.push(format!("{rel}: the first line must say where the part came from"));
         }
-        for banned in ["crate::api", "crate::core", "crate::host", "crate::local", "crate::ui::components", "crate::ui::views"] {
+        for banned in ["crate::api", "crate::core", "crate::host", "crate::local", "crate::ui::web::components", "crate::ui::web::views"] {
             if code.contains(banned) {
                 wrong.push(format!("{rel}: a kit part must not know `{banned}`"));
             }
@@ -276,7 +298,7 @@ fn the_kit_is_standard_parts_and_nothing_else() {
 fn looks_live_in_the_stylesheet() {
     // Inline style is for a number worked out at run time (a position, a size). These files
     // have such numbers; the count may go down, never up, and no other file gets any.
-    let debts = [("ui/figure.rs", 11), ("ui/views/canvas.rs", 2), ("ui/views/prompt.rs", 2), ("ui/render.rs", 1), ("ui/app.rs", 1), ("ui/views/companion.rs", 1), ("ui/views/loops.rs", 1), ("ui/views/ide.rs", 1)];
+    let debts = [("ui/web/figure.rs", 11), ("ui/web/views/canvas.rs", 2), ("ui/web/views/prompt.rs", 2), ("ui/web/render.rs", 1), ("ui/web/app.rs", 1), ("ui/web/views/companion.rs", 1), ("ui/web/views/loops.rs", 1), ("ui/web/views/ide.rs", 1)];
     let mut wrong = vec![];
     for (rel, code) in sources() {
         if !rel.starts_with("ui/") {

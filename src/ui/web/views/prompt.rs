@@ -1,5 +1,5 @@
 use crate::api::{engine_budget, engine_prompt};
-use crate::ui::components::{Icon, Pane};
+use crate::ui::web::components::{Icon, Pane};
 use dioxus::prelude::*;
 
 /// The prompt an engine would send now (for `input`): one colour per section kind, a token bar

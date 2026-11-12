@@ -1,6 +1,6 @@
 //! The main window. Closing it hides it: the app stays in the menu bar.
 use crate::core::surfaces::Window;
-use crate::ui::app::GOTO;
+use crate::ui::web::app::GOTO;
 use dioxus::desktop::{window, Config, LogicalSize, WindowBuilder, WindowCloseBehaviour};
 use dioxus::prelude::*;
 

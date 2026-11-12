@@ -11,8 +11,8 @@ use super::bubble::BubbleView;
 use super::live::{use_live, use_live_provider, use_live_server, use_manifest, Live};
 use crate::api::{glance, surfaces};
 use crate::core::companion::{beat, mood, Beat};
-use crate::ui::app::Assets;
-use crate::ui::components::Companion;
+use crate::ui::web::app::Assets;
+use crate::ui::web::components::Companion;
 use dioxus::prelude::*;
 
 /// Provided by a shell that holds the companion in windows of its own: the page draws none.

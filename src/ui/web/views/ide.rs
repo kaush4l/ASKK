@@ -1,5 +1,5 @@
 use crate::api::{workspace_view, IdeView as Ide};
-use crate::ui::components::{Icon, Pane};
+use crate::ui::web::components::{Icon, Pane};
 use dioxus::prelude::*;
 use std::collections::BTreeSet;
 

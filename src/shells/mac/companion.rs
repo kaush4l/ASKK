@@ -5,7 +5,7 @@
 //! What it draws is `ui/views/companion.rs`; where, how big and which engine is the
 //! `companion` value of `surfaces.json`.
 use crate::core::surfaces::{Companion, Corner};
-use crate::ui::views::companion::{BubbleFace, CharacterFace};
+use crate::ui::web::views::companion::{BubbleFace, CharacterFace};
 use dioxus::desktop::tao::platform::macos::WindowBuilderExtMacOS;
 use dioxus::desktop::{window, Config, DesktopContext, LogicalPosition, LogicalSize, WindowBuilder};
 use dioxus::prelude::*;

@@ -1,5 +1,5 @@
 use crate::api::{ui_config, UiConfig};
-use crate::ui::components::{Footer, Sidebar, Topbar, Wall};
+use crate::ui::web::components::{Footer, Sidebar, Topbar, Wall};
 use super::live::{use_live_provider, use_live_server};
 use crate::core::manifest::Manifest;
 use crate::Route;
@@ -27,13 +27,13 @@ pub fn Shell() -> Element {
     let vars: String = theme.read().as_ref().map(|m| m.iter().map(|(k, v)| format!("{k}:{v};")).collect()).unwrap_or_default();
     let go = navigator();
     use_effect(move || {
-        if let Some(p) = crate::ui::app::GOTO() {
+        if let Some(p) = crate::ui::web::app::GOTO() {
             go.push(p.as_str());
-            *crate::ui::app::GOTO.write() = None;
+            *crate::ui::web::app::GOTO.write() = None;
         }
     });
     // A bare face (the notch panel) is the page alone, on a clear background.
-    if try_use_context::<crate::ui::app::Bare>().is_some() {
+    if try_use_context::<crate::ui::web::app::Bare>().is_some() {
         return rsx! {
             document::Style { ":root{{{vars}}} html,body{{background:transparent !important}}" }
             div { class: "face",

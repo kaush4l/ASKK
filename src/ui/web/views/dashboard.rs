@@ -2,7 +2,7 @@ use super::canvas_math::parents;
 use super::chat::ChatView;
 use super::prompt::PromptPanel;
 use crate::api::{engine_cards, CardView};
-use crate::ui::components::{Icon, Pane};
+use crate::ui::web::components::{Icon, Pane};
 use dioxus::prelude::*;
 
 /// Sub-engines per row on the map.

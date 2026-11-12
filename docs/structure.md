@@ -27,26 +27,26 @@ Before keeping a change: `./scripts/check.sh`.
 | a message has the wrong kind, thread or cause | `core/board.rs` (`Act`, `Cause`, `Draft`, `Message::line`) |
 | an engine behaves wrongly | `core/engine.rs` (the loop's stages: `core/flow.rs`); one kind of element: `elements/<kind>.rs` |
 | a page shows the wrong thing | the page's `page.json` in the data folder (`routes/`) |
-| a primitive looks wrong | `ui/render.rs`; a built-in view: `ui/views/<name>.rs` |
-| a figure is drawn wrongly (plot, graph, sketch, table) | `ui/figure.rs`; what a figure may hold: `core/figure.rs` |
+| a primitive looks wrong | `ui/web/render.rs`; a built-in view: `ui/web/views/<name>.rs` |
+| a figure is drawn wrongly (plot, graph, sketch, table) | `ui/web/figure.rs`; what a figure may hold: `core/figure.rs` |
 | a figure is refused, or the board holds the wrong thing | `elements/whiteboard.rs` |
-| a run's record (the loop cards) says the wrong thing | written in `core/engine.rs`, its shape in `core/run.rs`, drawn in `ui/views/loops.rs` |
-| "what is running?" is unclear or wrong | who counts as running: `core/engine.rs` `working`; the list: `api/talk.rs` `busy`; the chip (top bar, notch) and Home's Now strip: `ui/views/loops.rs` |
-| Home shows too many or too few engines | `ui/views/dashboard.rs` (a sub-engine's own engines stay folded until asked for, or until one is at work or has a new message) |
-| the conversation shows the wrong thing | `api/talk.rs` (what a beat is), `ui/views/chat.rs` (how it is drawn) |
+| a run's record (the loop cards) says the wrong thing | written in `core/engine.rs`, its shape in `core/run.rs`, drawn in `ui/web/views/loops.rs` |
+| "what is running?" is unclear or wrong | who counts as running: `core/engine.rs` `working`; the list: `api/talk.rs` `busy`; the chip (top bar, notch) and Home's Now strip: `ui/web/views/loops.rs` |
+| Home shows too many or too few engines | `ui/web/views/dashboard.rs` (a sub-engine's own engines stay folded until asked for, or until one is at work or has a new message) |
+| the conversation shows the wrong thing | `api/talk.rs` (what a beat is), `ui/web/views/chat.rs` (how it is drawn) |
 | an attached image, recording or video is sensed wrongly | the command in `senses.json`; the steps: `host/media.rs`; what the engine is told: `elements/attachments.rs` |
 | the user's data is read wrongly | `host/data.rs` |
 | a model is not shown the images | `host/infer/connectors.rs`; the model's `input` in `models.json` |
 | a model cannot be reached | `host/infer/` |
-| a session with another agent gets no answer, or the wrong one | that kind's file in `host/harness/` (its wire); the path every prompt takes: `host/harness/mod.rs`; what a session is: `core/session.rs`; the page: `ui/views/sessions.rs` |
+| a session with another agent gets no answer, or the wrong one | that kind's file in `host/harness/` (its wire); the path every prompt takes: `host/harness/mod.rs`; what a session is: `core/session.rs`; the page: `ui/web/views/sessions.rs` |
 | a file or command tool misbehaves | `host/workspace.rs` |
 | the data folder is read or written wrongly | `host/store.rs` (contract: `core/store.rs`) |
 | a window gets no answer, or the wrong one | the answer: `api/answers.rs` or `api/<file>/answers.rs`; that it can be asked at all: the `wire!` list beside it |
 | another UI or a script gets no answer, or a question is missing from `GET /ask` | the table in `api/ask.rs` |
 | the tray, Dock, notch, companion or window | `shells/mac/<face>.rs`; what it shows: `surfaces.json` |
-| the companion's mood or look | the rule: `core/companion.rs`; the drawing: `ui/components/companion.rs`; in a page: `ui/views/companion.rs` |
+| the companion's mood or look | the rule: `core/companion.rs`; the drawing: `ui/web/components/companion.rs`; in a page: `ui/web/views/companion.rs` |
 | an engine is woken and nothing runs | who runs background work in this build: `core/tasks.rs` (set in `host/mod.rs`, `local/mod.rs`) |
-| a window does not refresh | the log of changes: `core/changes.rs`; the server's waiting: `host/changes.rs`; the window's side: `ui/views/live.rs` |
+| a window does not refresh | the log of changes: `core/changes.rs`; the server's waiting: `host/changes.rs`; the window's side: `ui/web/views/live.rs` |
 | which engines are running, and why one is not | `core/world.rs` (filled by `host/world.rs`, `local/mod.rs`) |
 | "where is this stored?" | `core/places.rs` (the roots) and `askk.json` (every key) |
 
@@ -149,7 +149,7 @@ can carry them: `openai` always, `cli` with `"input": "stream-json"`.
 **Provider binding** (`host/infer/`): which provider a model name means is read at first use
 and read again only when the models key is marked changed.
 
-**Refresh** (`core/changes.rs` → `api::changes` → `ui/views/live.rs`): every store write marks
+**Refresh** (`core/changes.rs` → `api::changes` → `ui/web/views/live.rs`): every store write marks
 its key; windows wait on one feed and redraw only what shows a changed key. The Mac faces
 count on the same feed.
 

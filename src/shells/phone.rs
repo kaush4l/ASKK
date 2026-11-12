@@ -7,5 +7,5 @@
 pub fn launch() {
     let host: &'static str = Box::leak(crate::core::places::host_url().into_boxed_str());
     dioxus::fullstack::set_server_url(host);
-    dioxus::launch(crate::ui::app::App);
+    dioxus::launch(crate::ui::web::app::App);
 }

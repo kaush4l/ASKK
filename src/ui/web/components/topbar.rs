@@ -5,8 +5,8 @@ use dioxus::prelude::*;
 /// a picker of every engine that opens its page.
 #[component]
 pub fn Topbar(brand: String, title: String) -> Element {
-    let m = crate::ui::views::live::use_manifest();
-    let live = crate::ui::views::live::use_live(move || m.engines.clone());
+    let m = crate::ui::web::views::live::use_manifest();
+    let live = crate::ui::web::views::live::use_live(move || m.engines.clone());
     let engines = use_resource(move || {
         let _ = live();
         crate::api::engine_paths()
@@ -32,7 +32,7 @@ pub fn Topbar(brand: String, title: String) -> Element {
         Glass { class: "topbar",
             div { class: "crumbs grow", span { class: "dim", "{brand}" } span { class: "sep", "aria-hidden": "true", "/" } h1 { "{title}" } }
             // What is running now, on every page.
-            crate::ui::views::loops::NowChip {}
+            crate::ui::web::views::loops::NowChip {}
             select { class: "engine-pick", "aria-label": "Open an engine",
                 onchange: move |e| {
                     let v = e.value();

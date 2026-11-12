@@ -18,7 +18,7 @@ mod window;
 
 use crate::api::{changes, glance, surfaces};
 use crate::core::surfaces::{Glance, Surfaces};
-use crate::ui::app::{Assets, Route};
+use crate::ui::web::app::{Assets, Route};
 use dioxus::prelude::*;
 
 pub fn launch() {
@@ -32,7 +32,7 @@ fn MacApp() -> Element {
     // What the faces show is the host's data. A host that is away or a bad file: the defaults.
     let cfg = use_resource(|| async { surfaces().await.unwrap_or_default() });
     // The companion has windows of its own here, so no page draws one.
-    use_context_provider(|| crate::ui::views::companion::Outside);
+    use_context_provider(|| crate::ui::web::views::companion::Outside);
     let mut numbers = use_signal(Glance::default);
     // Count again whenever the host marks a change (the same live feed the pages use).
     use_future(move || async move {

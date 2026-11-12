@@ -67,7 +67,7 @@ change marks (core/changes.rs)  P8
   mark(key): seq += 1, keys[key] = seq, wake waiters. Sources: Marked store writes; Engine::bump
   (live activity, sub-engines, steps). No object is ever polled.
 
-UI (ui/views/*, ui::render::Render)
+UI (ui/web/views/*, ui::render::Render)
   shell: use_live_provider — ONE listener per tab: api::changes(epoch, seen) parks on the server
          until something is marked → changed keys → one Signal<key → seq>
   view:  use_live(prefix) = memo over that map (prefix by segment); a resource that reads it
@@ -117,7 +117,7 @@ Rigid = changing it ripples everywhere, so it is fixed in one place and guarded 
 | a page | `data/routes/**/page.json`, `create_view` | no |
 | a component (UI) | `data/components/*.json`, `create_component` | no |
 | a conversation mode | an engine folder whose `engine.json` names a `mode`; the Talk page lists it | no |
-| a kind of figure | a variant in `core/figure.rs` (structure + checks), its drawing in `ui/figure.rs`, its tool in `elements/whiteboard.rs` | one enum |
+| a kind of figure | a variant in `core/figure.rs` (structure + checks), its drawing in `ui/web/figure.rs`, its tool in `elements/whiteboard.rs` | one enum |
 | a way to sense an input | a command in `senses.json` (image, hear, frame, sound, length) | no |
 
 Slots, in order: `purpose` (goal) → `knowledge` (learning, notes) → `tools` (toolbox first, then

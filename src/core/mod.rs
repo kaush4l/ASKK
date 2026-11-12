@@ -455,7 +455,7 @@ mod tests {
             assert_eq!(c.render(Size::Small).children.len(), 0, "{kind}: small is only the live icon");
             assert!(!c.render(Size::Small).icon.is_empty(), "{kind} has an icon");
             assert!(["prompt", "action", "live", "model"].contains(&c.category()), "{kind}: unknown category '{}'", c.category());
-            assert!(crate::ui::components::ICONS.iter().any(|(n, _)| *n == c.icon()), "{kind}: icon '{}' is not in ICONS", c.icon());
+            assert!(crate::ui::web::components::ICONS.iter().any(|(n, _)| *n == c.icon()), "{kind}: icon '{}' is not in ICONS", c.icon());
             assert_eq!(build(c.spec()).unwrap().spec(), c.spec(), "{kind} state must survive a restart");
         }
     }

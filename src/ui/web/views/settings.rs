@@ -1,6 +1,6 @@
 use super::{LayoutView, ModelsView, ThemeView};
-use crate::ui::components::{Icon, Pane};
-use crate::ui::kit::{Tabs, TabsContent, TabsList, TabsTrigger};
+use crate::ui::web::components::{Icon, Pane};
+use crate::ui::web::kit::{Tabs, TabsContent, TabsList, TabsTrigger};
 use dioxus::prelude::*;
 
 /// Tab label for the model connectors page; `defaults/ui.json` and the models route use the same words.
@@ -34,9 +34,9 @@ mod tests {
     #[test]
     fn models_label_is_consistent_everywhere() {
         assert_eq!(MODELS_LABEL, "Model connectors");
-        let ui: serde_json::Value = serde_json::from_str(include_str!("../../../defaults/ui.json")).unwrap();
+        let ui: serde_json::Value = serde_json::from_str(include_str!("../../../../defaults/ui.json")).unwrap();
         assert_eq!(ui["text"]["models"], MODELS_LABEL);
-        let page: serde_json::Value = serde_json::from_str(include_str!("../../../defaults/routes/models/page.json")).unwrap();
+        let page: serde_json::Value = serde_json::from_str(include_str!("../../../../defaults/routes/models/page.json")).unwrap();
         assert_eq!(page["title"], MODELS_LABEL);
     }
 }

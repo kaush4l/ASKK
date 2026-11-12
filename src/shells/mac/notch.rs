@@ -2,7 +2,7 @@
 //! page bare (no sidebar, no top bar). `place` says whether it hangs under the menu bar (hides
 //! nothing) or sits on it (covers what is beside the notch).
 use crate::core::surfaces::{Notch, Place};
-use crate::ui::app::{Assets, Bare, Route};
+use crate::ui::web::app::{Assets, Bare, Route};
 use dioxus::desktop::tao::platform::macos::{WindowBuilderExtMacOS, WindowExtMacOS};
 use dioxus::desktop::{window, Config, LogicalPosition, LogicalSize, WindowBuilder};
 use dioxus::history::{History, MemoryHistory};

@@ -36,7 +36,7 @@ mod tests {
 
     #[test]
     fn footer_defaults_ship_no_contact_details() {
-        let cfg: UiConfig = serde_json::from_str(include_str!("../../../defaults/ui.json")).unwrap();
+        let cfg: UiConfig = serde_json::from_str(include_str!("../../../../defaults/ui.json")).unwrap();
         assert!(cfg.contact.values().all(|v| v.trim().is_empty()));
         assert!(cfg.contact_items().is_empty());
     }

@@ -3,6 +3,7 @@
 //! server answers with, called directly because here the host is this tab.
 use super::infer::{self, Target};
 use crate::core::{changes, store, Toolbox};
+use crate::ui::features::talk;
 use dioxus::prelude::*;
 
 /// What one run left behind.
@@ -20,20 +21,12 @@ struct Outcome {
 
 /// The loop's own record of its last run, and the conversation it kept, read through `api/`.
 async fn record(path: String) -> (Vec<String>, Vec<(String, String)>) {
-    let mut steps = vec![];
     let last = crate::api::engine_runs(path.clone()).await.unwrap_or_default().last().map(|r| r.id);
-    if let Some(Ok(run)) = match last {
-        Some(id) => Some(crate::api::engine_run(path.clone(), id).await),
-        None => None,
-    } {
-        for step in &run.steps {
-            for m in &step.marks {
-                let said: Vec<String> = m.detail.iter().filter(|(label, _)| label != "prompt").map(|(label, text)| format!("    {label}: {text}")).collect();
-                steps.push(format!("step {} · {:?} ({} ms): {}{}", step.n, m.stage, m.ms, m.note, if said.is_empty() { String::new() } else { format!("\n{}", said.join("\n")) }));
-            }
-        }
-    }
-    let history = crate::api::engine_chat(path).await.unwrap_or_default().into_iter().map(|t| (t.role, t.text)).collect();
+    let steps = match last {
+        Some(id) => crate::api::engine_run(path.clone(), id).await.map(|run| talk::stages(&run)).unwrap_or_default(),
+        None => vec![],
+    };
+    let history = talk::turns(crate::api::engine_chat(path).await.unwrap_or_default());
     (steps, history)
 }
 
@@ -46,7 +39,7 @@ pub fn Page() -> Element {
     let world = crate::core::world::world();
     let mut pick = use_signal(|| None::<usize>);
     // The engine that answers by writing and running a program is the one to try first.
-    let chosen = pick().unwrap_or_else(|| engines.iter().position(|e| e == "askk/coder").unwrap_or(0));
+    let chosen = pick().or_else(|| talk::first_choice(&engines)).unwrap_or(0);
     let mut input = use_signal(|| "What is the sum of the squares of the first 20 prime numbers?".to_string());
     let mut base = use_signal(String::new);
     let mut model = use_signal(String::new);
@@ -55,6 +48,22 @@ pub fn Page() -> Element {
     let mut out = use_signal(|| None::<Outcome>);
     let mut keys = use_signal(|| store::export(&*store::data(), "").len());
     let mut disk = use_signal(super::store::status);
+
+    // A page opened as `…/?model=<server>&ask=<question>` fills those two in and runs once.
+    // It is how a test (or a link someone shares) asks without a hand on the page.
+    use_future(move || async move {
+        let asked = document::eval(
+            r#"const q = new URLSearchParams(location.search); return [q.get("model") || "", q.get("ask") || ""];"#,
+        );
+        let Ok((server, question)) = asked.join::<(String, String)>().await else { return };
+        if question.is_empty() {
+            return;
+        }
+        base.set(server);
+        input.set(question);
+        // The button's own handler runs the question, once the page has drawn the values.
+        let _ = document::eval(r#"setTimeout(() => document.getElementById("run")?.click(), 300);"#).await;
+    });
 
     let mut language = use_signal(|| "js".to_string());
     let mut code = use_signal(|| "[1, 2, 3].map(x => x * x)".to_string());

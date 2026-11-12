@@ -7,7 +7,7 @@
 use crate::api::{harnesses, room_curation, room_design, room_open, room_say, room_view, rooms};
 use crate::core::room::{Curation, Plan, Room, Rule, SeatPlan, MAX_SEATS, USER};
 use crate::core::session::State;
-use crate::ui::components::Pane;
+use crate::ui::web::components::Pane;
 use dioxus::prelude::*;
 
 #[component]

@@ -1,6 +1,6 @@
 use crate::api::{engine_view, run_engine, workspace_view};
-use crate::ui::render::Render;
-use crate::ui::components::{Icon, Pane};
+use crate::ui::web::render::Render;
+use crate::ui::web::components::{Icon, Pane};
 use dioxus::prelude::*;
 
 /// Where the browser keeps which side the prompt sits on (one choice for every engine page).

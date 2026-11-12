@@ -1,7 +1,7 @@
 use super::canvas_math::{self as m, Camera};
 use crate::api::{engine_object, engine_paths};
-use crate::{core::node::Size, ui::render::Render};
-use crate::ui::components::Pane;
+use crate::{core::node::Size, ui::web::render::Render};
+use crate::ui::web::components::Pane;
 use dioxus::prelude::*;
 
 /// Canvas: every engine (and sub-engine) is a frame in world space, laid out as a tidy tree with

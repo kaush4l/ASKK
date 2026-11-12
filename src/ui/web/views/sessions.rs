@@ -3,7 +3,7 @@
 //! The page follows the store: an answer shows when the harness ends, with no polling.
 use crate::api::{harnesses, session_open, session_prompt, sessions};
 use crate::core::session::{Session, State, USER};
-use crate::ui::components::Pane;
+use crate::ui::web::components::Pane;
 use dioxus::prelude::*;
 
 #[component]

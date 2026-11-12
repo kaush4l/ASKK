@@ -1,5 +1,6 @@
-# Every push: the rules and tests, then the one source built for every machine GitHub offers.
-# What each build is, and what it can do, is in docs/maintenance.md (section "Builds").
+# Every push: the rules, the tests and the landmark, then the one source built for every
+# machine GitHub offers. What each build is: docs/maintenance.md ("Builds"). What the
+# landmark proves: docs/decisions.md (section 4).
 name: ci
 
 on:
@@ -19,31 +20,51 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # The same command a person runs before keeping a change (scripts/check.sh): tests, the
-  # walls in src/structure.rs, and a compile of each build this runner can make.
+  # The same command a person runs before keeping a change (scripts/check.sh): the tests and
+  # the walls in src/structure.rs, a compile of each build, the full app built and started,
+  # and the landmark: the engine loop as a terminal process, as a hosted service, and in a
+  # browser tab. On the two platforms 0.1 promises.
   check:
-    name: check (rules, tests, every build)
-    runs-on: macos-latest
+    name: check and landmark (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-latest, name: "Mac, M-series", target: aarch64-apple-darwin }
+          - { os: ubuntu-latest, name: "Linux", target: x86_64-unknown-linux-gnu }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
           # dx strips the finished program with the toolchain's own tool, which needs these.
           components: llvm-tools
       - uses: Swatinem/rust-cache@v2
-      # dx puts the full app together (the host and its window); the check builds and starts it.
+        with:
+          key: check
+      # The landmark runs an engine's program in node, and drives the browser with it.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      # dx puts the full app together; wasm-bindgen prepares the tab. The second must be the
+      # version the program was built against (named in Cargo.lock).
+      - name: which wasm-bindgen
+        id: bindgen
+        shell: bash
+        run: echo "version=$(awk '/^name = "wasm-bindgen"$/ { getline; gsub(/[^0-9.]/, ""); print; exit }' Cargo.lock)" >> "$GITHUB_OUTPUT"
       - uses: taiki-e/install-action@v2
         with:
-          tool: dioxus-cli@0.7.10
+          tool: dioxus-cli@0.7.10,wasm-bindgen-cli@${{ steps.bindgen.outputs.version }}
       - run: ./scripts/check.sh
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
-          name: askk-app-aarch64-apple-darwin
+          name: askk-app-${{ matrix.target }}
           path: target/dx/askk/release/web
           if-no-files-found: error
 
-  # The host (the server that runs the engines), as released, for each machine.
+  # The host alone (the server that runs the engines), as released, for each machine:
+  # beyond what 0.1 promises, so that the one source is known to still build everywhere.
   host:
     name: host ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
@@ -54,11 +75,11 @@ jobs:
           - { os: ubuntu-latest, target: x86_64-unknown-linux-gnu }
           - { os: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu }
           - { os: macos-latest, target: aarch64-apple-darwin }
-          - { os: macos-15-intel, target: x86_64-apple-darwin }
+          - { os: macos-26-intel, target: x86_64-apple-darwin }
           - { os: windows-latest, target: x86_64-pc-windows-msvc }
           - { os: windows-11-arm, target: aarch64-pc-windows-msvc }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
@@ -71,7 +92,7 @@ jobs:
         # The tests start real programs (`sh`, `cp`); Windows has none of them yet.
         if: runner.os != 'Windows'
         run: cargo test --features server --target ${{ matrix.target }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: askk-host-${{ matrix.target }}
           path: |
@@ -91,7 +112,7 @@ jobs:
           - { build: web, flags: "--features web" }
           - { build: local, flags: "--no-default-features --features local" }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown

@@ -37,6 +37,10 @@ elements/ the kinds of object an engine is made of
 core/     what things are and how they behave
 ```
 
+Inside `ui/`: `features/` (what a person can do, as plain values and words), `web/` (pages:
+kit, components, views) and `terminal/` (lines). Which decision belongs to which folder, and
+whether the code follows it today, is one list: [decisions.md](decisions.md).
+
 Dependencies point down only. `host/` and `local/` stand at the same level: each is a full
 host for the same core, and neither knows the other.
 
@@ -145,12 +149,12 @@ object says how it looks as such a tree. So a new UI is three things:
 
 | a UI must | Dioxus (today) | a terminal UI | a JS framework (Next, Svelte, …) |
 | --- | --- | --- | --- |
-| draw the primitives | `ui/render.rs` | one function per primitive | one component per primitive |
+| draw the primitives | `ui/web/render.rs` | one function per primitive | one component per primitive |
 | ask the host | generated server functions (`wire!`); in the tab, the plain functions themselves | `api::ask::ask(name, args)` in the server's process | `POST /ask/<name>` with a JSON object; `GET /ask` lists every question and its arguments |
-| hear changes | `ui/views/live.rs` | `core::changes::listen` | `POST /ask/changes`, held open until something changes |
+| hear changes | `ui/web/views/live.rs` | `core::changes::listen` | `POST /ask/changes`, held open until something changes |
 
 What does **not** carry over for free is the 13 *built-in views* (`chat`, `ide`, `rooms`, …):
-they are Rust code in `ui/views/`. So the direction is fixed: **when a view can be said as
+they are Rust code in `ui/web/views/`. So the direction is fixed: **when a view can be said as
 nodes, say it as nodes.** Each view moved from code to nodes appears in every UI at once.
 A built-in view is kept only for what primitives cannot say (a text editor, a canvas).
 
@@ -196,7 +200,7 @@ pub fn GlanceView() -> Element {
 | --- | --- |
 | A view asks only through `api/` | the same view works whoever the host is |
 | A view decides nothing about the domain ("is this engine running?" is answered by the core) | a second UI would otherwise answer it differently |
-| What repeats becomes a component in `ui/components/`, one file each | one place to fix a look |
+| What repeats becomes a component in `ui/web/components/`, one file each | one place to fix a look |
 | No inline `style:` except a number worked out at run time | the theme changes every page together |
 | A view that grows past one sitting is split by what it shows | see the size rule |
 
@@ -208,9 +212,9 @@ tablet), because they are all the same Rust source.
 | layer | where | rule | held by |
 | --- | --- | --- | --- |
 | tokens | `assets/styling/glass.css` (`:root`) | every colour, size and motion is named once | review |
-| kit | `ui/kit/` | standard parts from rust-ui.com, copied in; they know nothing of this app and name tokens, never a colour | `the_kit_is_standard_parts_and_nothing_else` |
-| components | `ui/components/` | this app's own parts, made of kit parts | `looks_live_in_the_stylesheet` |
-| views | `ui/views/` | pages, made of components | `every_view_a_page_may_name_is_drawn` |
+| kit | `ui/web/kit/` | standard parts from rust-ui.com, copied in; they know nothing of this app and name tokens, never a colour | `the_kit_is_standard_parts_and_nothing_else` |
+| components | `ui/web/components/` | this app's own parts, made of kit parts | `looks_live_in_the_stylesheet` |
+| views | `ui/web/views/` | pages, made of components | `every_view_a_page_may_name_is_drawn` |
 
 The kit is written in Tailwind classes. `tailwind.css` (repository root) loads Tailwind's
 utilities without its reset and maps each colour the kit names (`primary`, `card`,
@@ -260,7 +264,7 @@ file answers two, it becomes two files.
 | a tool | the host that can do it (`host/tools.rs`, `local/code.rs`) | `core/` |
 | a capability | a port in `core/` + its "nothing" form, then each host (section 3) | `ui/` |
 | a page | a `page.json` in the store | any Rust |
-| a built-in view | `ui/views/<name>.rs`, its name in `core::node::VIEWS`, its arm in `ui/views/mod.rs` | `core/` beyond that name |
+| a built-in view | `ui/web/views/<name>.rs`, its name in `core::node::VIEWS`, its arm in `ui/web/views/mod.rs` | `core/` beyond that name |
 | a question a window asks | a plain function in an `answers.rs`, one line in that file's `wire!`, one line in the table in `api/ask.rs` | `ui/` reaching into `host/` |
 | a host (a phone, a device) | a new top-level folder beside `host/` and `local/`, added to the map in `main.rs` first | `core/`, `elements/` |
 | a UI | section 4 | `core/`, `host/` |
@@ -288,7 +292,7 @@ Counted by the tests; this table is a reading of them, not a second source.
 | --- | --- | --- |
 | places that stop the program instead of returning an error | core 10, elements 1, host 10, api 4. Most are "turn this value into JSON", which does not fail in practice; `api/mod.rs:274` and the three `take().unwrap()` on a child process can | `errors_are_returned_not_thrown` |
 | a file too long to read at once | `core/engine.rs`, 608 lines of code (limit 450) | `a_file_is_read_in_one_sitting` |
-| inline styles | 20 across 8 files, 11 of them in `ui/figure.rs` | `looks_live_in_the_stylesheet` |
+| inline styles | 20 across 8 files, 11 of them in `ui/web/figure.rs` | `looks_live_in_the_stylesheet` |
 | answers that name the host | 17 lines in 5 files | `the_answers_ask_the_core_not_the_host` |
 
 Not yet countable, in the order they should be done:
@@ -299,7 +303,7 @@ Not yet countable, in the order they should be done:
    other 36 are answered in the tab too. Each needs a port in `core/`, as the running
    engines (`core/world.rs`) and the user's tables (`core/tables.rs`) now have.
 1b. **The real UI does not run in the tab yet**, though it could now ask. What is left is in
-   `ui/`: `ui/views/live.rs` starts from a server-rendered value (`use_server_future`), and
+   `ui/`: `ui/web/views/live.rs` starts from a server-rendered value (`use_server_future`), and
    the stylesheets are bundled by `dx`, which the tab build does not use.
 2. *(done: `core/caps.rs`, the `capabilities` question.)* It is not shown in the real UI's
    Settings page yet.
@@ -316,7 +320,7 @@ Not yet countable, in the order they should be done:
 
 | when | do |
 | --- | --- |
-| before keeping any change | `./scripts/check.sh` (tests, every build, then the built app is started and asked) |
+| before keeping any change | `./scripts/check.sh` (tests, every build, the built app started and asked, then the landmark: the loop on every runtime) |
 | a debt number can go down | lower it in `structure.rs` in the same change |
 | a new top-level folder, port, view or build | add it to the map (`main.rs`, this file) first |
 | each release | read section 10 against the tests; move finished items out |

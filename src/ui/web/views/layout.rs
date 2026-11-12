@@ -1,5 +1,5 @@
 use crate::api::{engine_paths, kinds, layout, save_layout, Layout};
-use crate::ui::components::Pane;
+use crate::ui::web::components::Pane;
 use dioxus::prelude::*;
 
 /// Layout: dashboard columns, engine order, hidden element kinds. Saved to data/layout.json.

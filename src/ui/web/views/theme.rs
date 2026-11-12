@@ -1,5 +1,5 @@
 use crate::api::{save_theme, theme};
-use crate::ui::components::Pane;
+use crate::ui::web::components::Pane;
 use dioxus::prelude::*;
 use std::collections::BTreeMap;
 
