@@ -38,6 +38,9 @@ pub mod param;
 pub mod places;
 pub mod reread;
 pub mod routes;
+// Drawn by the terminal boxes that come next (docs/concept.md, step 3).
+#[allow(dead_code)]
+pub mod screen;
 pub mod room;
 pub mod run;
 pub mod service;
