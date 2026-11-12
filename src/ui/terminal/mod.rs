@@ -1,13 +1,20 @@
-//! # Terminal: askk as lines in a terminal
+//! # Terminal: askk in a terminal
 //!
-//! The same questions a page asks, shown as text. It asks through a [`Door`]:
+//! The same questions a page asks, shown in a terminal, in one of two ways:
+//!
+//! | way | when | what it is |
+//! | --- | --- | --- |
+//! | the full screen | a person sits at a real terminal (`askk terminal`) | a client of the service like herdr's: a sidebar of every box, tabs of split panes, a terminal box live in a pane, keys after `ctrl+b`, the mouse; leaving it leaves everything running |
+//! | lines | the lines go to a pipe or a file, a question is given on the command line, or `--lines` is said | what you type is a question or a command, and the answer is written under it: what a script reads |
+//!
+//! Both ask through a [`Door`]:
 //!
 //! | door | who answers | use |
 //! | --- | --- | --- |
 //! | [`Door::Here`] | this process: it is the host (`askk terminal`) | the app as one terminal process |
 //! | [`Door::There`] | a running askk server, over `/ask` (`askk terminal --to http://127.0.0.1:8090`) | a terminal beside the long-running service |
 //!
-//! What you type is a question for the chosen engine, or a command:
+//! In lines, what you type is a question for the chosen engine, or a command:
 //!
 //! ```text
 //! /engines        every engine          /history   the conversation kept
@@ -18,15 +25,26 @@
 //!
 //! | file | holds |
 //! | --- | --- |
-//! | this file | the door, the session (what is asked, in which order), the loop that reads lines |
+//! | this file | the door, the lines session (what is asked, in which order), the loop that reads lines |
 //! | `layout.rs` | what every line looks like: head, run, answer, commands; with colour or plain |
+//! | `panes.rs` | the full screen's tabs of split panes, as plain values |
+//! | `events.rs` | what the full screen is told (a key, an answer, a change) and what it asks for |
+//! | `app.rs` | the full screen's whole behaviour: what happened in, what to ask out |
+//! | `draw.rs` | the full screen as cells, from values |
+//! | `client.rs` | the real terminal (keys, mouse, cells) and the real service, around `app.rs` |
 //!
-//! Nothing here decides what a line says about a run: that is `ui/features/` (`talk.rs`, `run.rs`).
+//! Nothing here decides what a line says about a run, in which order the boxes come, or what
+//! a key sends: that is `ui/features/` (`talk.rs`, `run.rs`, `boxes.rs`, `terminals.rs`).
 //!
 //! Colour and emphasis are used only when the lines go to a terminal a person is looking at.
 //! Sent to a file or another program (a pipe), or with `NO_COLOR` set, the same lines are
 //! plain text, so a script can read them.
+pub mod app;
+pub mod client;
+pub mod draw;
+pub mod events;
 pub mod layout;
+pub mod panes;
 use crate::api::{Busy, ChatTurn};
 use crate::core::caps::Cap;
 use crate::core::run::Run;
@@ -54,13 +72,20 @@ pub enum Door {
     There(String),
 }
 
+/// The one connection to a server: asked again and again (every key typed is a question),
+/// it stays open between questions.
+fn http() -> &'static reqwest::Client {
+    static HTTP: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    HTTP.get_or_init(reqwest::Client::new)
+}
+
 impl Door {
-    async fn ask<T: serde::de::DeserializeOwned>(&self, name: &str, args: Value) -> Result<T, String> {
+    pub(crate) async fn ask<T: serde::de::DeserializeOwned>(&self, name: &str, args: Value) -> Result<T, String> {
         let v = match self {
             Door::Here => crate::api::ask::ask(name, args).await?,
             Door::There(base) => {
                 let at = format!("{}/ask/{name}", base.trim_end_matches('/').trim_end_matches("/ask"));
-                let res = reqwest::Client::new().post(&at).json(&args).send().await.map_err(|e| format!("no askk server answered at {base} ({e}). Start one with ./scripts/run.sh"))?;
+                let res = http().post(&at).json(&args).send().await.map_err(|e| format!("no askk server answered at {base} ({e}). Start one with ./scripts/run.sh"))?;
                 let v: Value = res.json().await.map_err(|e| format!("the server's reply could not be read: {e}"))?;
                 match v.get("error").and_then(Value::as_str) {
                     Some(e) => return Err(e.to_string()),
@@ -192,6 +217,24 @@ impl Session {
             }
         }
     }
+}
+
+/// Be the full screen for a person at a real terminal, until they leave (`client.rs`). The
+/// first pane shows the engine named, else the one a person talks to first.
+pub fn full_screen(rt: &tokio::runtime::Runtime, door: Door, engine: Option<String>) -> Result<(), String> {
+    let host = match &door {
+        Door::Here => "this terminal is the host".to_string(),
+        Door::There(base) => base.trim_start_matches("http://").trim_start_matches("https://").trim_end_matches('/').to_string(),
+    };
+    rt.block_on(async {
+        let engines: Vec<String> = door.ask("engine_paths", json!({})).await?;
+        let first = match engine {
+            Some(path) if engines.contains(&path) => Some(path),
+            Some(path) => return Err(format!("no engine '{path}'. There are: {}", engines.join(", "))),
+            None => talk::first_choice(&engines).and_then(|i| engines.get(i).cloned()),
+        };
+        client::run(door, first.map(|path| crate::ui::features::terminals::engine_box(&path)).unwrap_or_default(), host).await
+    })
 }
 
 /// Read lines until the input ends or the person leaves. An error is said and the session

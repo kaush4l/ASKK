@@ -257,12 +257,33 @@ fn a_feature_draws_nothing() {
 }
 
 #[test]
-fn the_terminal_is_lines_only() {
-    // The terminal shows the same features as text. It draws no page, knows no other UI, and
-    // like every UI it asks through api/ and never reaches the host itself.
-    never_in("ui/terminal/", "dioxus", "the terminal writes lines; pages belong to ui/web");
+fn the_terminal_draws_in_a_terminal_and_asks_through_the_api() {
+    // The terminal shows the same features in a terminal: as lines, or as a full screen of
+    // panes. It draws no page, knows no other UI, and like every UI it asks through api/ and
+    // never reaches the host itself.
+    never_in("ui/terminal/", "dioxus", "the terminal draws in a terminal; pages belong to ui/web");
     never_in("ui/terminal/", "crate::ui::web", "the terminal and the pages share features, not each other");
     never_in("ui/terminal/", "crate::host", "a UI asks through api/");
+    // Only the terminal draws cells, and no feature, page or shell learns its library.
+    only_in("ratatui", &["ui/terminal"], "cells in a terminal are drawn by ui/terminal and nobody else");
+    // Inside it, each file keeps to its part. Lines stay lines: what a script reads names
+    // no cell. The full screen's behaviour and its drawing are values in and values out, so
+    // a test can read them: only `client.rs` reads the real keys and asks the real service.
+    let all = sources();
+    let code = |file: &str| all.iter().find(|(rel, _)| rel == file).map(|(_, code)| code.clone()).unwrap_or_else(|| panic!("{file} is where this rule looks"));
+    for (file, banned, why) in [
+        ("ui/terminal/layout.rs", vec!["ratatui"], "a line is text: the same in a pipe as on a screen"),
+        ("ui/terminal/panes.rs", vec!["Door", "tokio", "crossterm", "std::thread"], "the panes are plain values"),
+        ("ui/terminal/events.rs", vec!["Door", "tokio", "crossterm", "std::thread"], "what happened and what is wanted are plain values"),
+        ("ui/terminal/app.rs", vec!["Door", "tokio", "crossterm", "std::thread", ".await"], "what the full screen does is decided without a terminal or a service: it says what it wants asked"),
+        ("ui/terminal/draw.rs", vec!["Door", "tokio", "crossterm", "std::thread", ".await"], "drawing asks nothing: it is given the picture"),
+    ] {
+        for needle in banned {
+            if let Some(n) = code(file).lines().position(|l| l.contains(needle)) {
+                panic!("{file}:{}: `{needle}` does not belong here: {why}", n + 1);
+            }
+        }
+    }
 }
 
 /// The questions (functions) of `crate::api` that `code` names. A shape (`ChatTurn`, `Mode`)
