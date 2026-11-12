@@ -285,7 +285,11 @@ if command -v python3 >/dev/null; then
 $again
 $session
 $session_again"
-    if [ -n "${SHOW:-}" ]; then printf '%s\n' "$drove"; elif [ $ok != 1 ]; then printf '%s\n' "$drove" | tail -45; fi
+    if [ -n "${SHOW:-}" ]; then printf '%s\n' "$drove"; elif [ $ok != 1 ]; then
+        # What a walk did not see comes first: the screens below it can be long.
+        printf '%s\n' "$drove" | grep -E '^(NOT|STILL) seen' | cut -c1-300
+        printf '%s\n' "$drove" | tail -45
+    fi
     done_step $ok
 else
     echo "   not checked: python3 is not installed (it gives the test a real terminal)"

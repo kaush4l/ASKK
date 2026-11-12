@@ -203,6 +203,21 @@ def main():
         os.write(fd, keys.encode())
         read(0.2)
 
+    def settle(quiet=0.6, seconds=15):
+        """Wait until the program has drawn nothing new for `quiet` seconds: a shell that has
+        printed its line and its prompt again, so a cursor taken from it is where it rests."""
+        end = time.time() + seconds
+        while time.time() < end:
+            count = len(written)
+            if not read(quiet) or len(written) == count:
+                return
+
+    def copy_mode():
+        """ctrl+b [ on a pane at rest, and wait until copy mode says its keys."""
+        settle()
+        press("\x02[")
+        wait(r"copy · v selects", "the pane in copy mode")
+
     def leave():
         """ctrl+b q: detach. The program leaves with 0; what it opened is not its business."""
         press("\x02q")
@@ -485,20 +500,23 @@ def main():
     # Copy mode by words, by a find, and a rectangle, in the shell on the right.
     press("echo alpha beta gamma\r")
     wait(r"│alpha beta gamma", "the words to go over")
-    press(prefix + "[")
-    press("k0wvey")
+    copy_mode()
+    for key in "k0wvey":
+        press(key)
     copied("beta")
     print("saw: copy mode went by words (w e) and copied a word")
-    press(prefix + "[")
+    copy_mode()
     press("/gamma\r")
     wait(r"found 'gamma'", "the foot saying the text was found")
-    press("vey")
+    for key in "vey":
+        press(key)
     copied("gamma")
     print("saw: copy mode found a text with / and copied it")
     press("printf 'abcd\\nefgh\\n'\r")
     wait(r"│efgh", "two rows to take a rectangle of")
-    press(prefix + "[")
-    press("kk0\x16lj")
+    copy_mode()
+    for key in "kk0\x16lj":
+        press(key)
     wait(r"y copies the rectangle", "the pane saying a rectangle is selected")
     show("a rectangle in copy mode")
     press("y")
