@@ -65,4 +65,46 @@
   :where([data-name]) { font-family: inherit; }
   /* ...and its own grey face and ink; a kit part starts clear and takes the text's colour. */
   :where(button[data-name]) { background: transparent; color: inherit; }
+
+  /* The tabs' one sliding mark, placed without measuring and without a script. It slides on
+     the app's spring (no overshoot: nothing threw it).
+
+     Everywhere: the tabs of a row are columns of one width, so the mark is one column wide and
+     its place is the chosen tab's number. Both numbers are read here from the tabs themselves
+     (how many there are, which one is chosen). */
+  [role="tablist"]:has(> [data-name="TabsTrigger"]:nth-child(2)) { --n: 2; }
+  [role="tablist"]:has(> [data-name="TabsTrigger"]:nth-child(3)) { --n: 3; }
+  [role="tablist"]:has(> [data-name="TabsTrigger"]:nth-child(4)) { --n: 4; }
+  [role="tablist"]:has(> [data-name="TabsTrigger"]:nth-child(5)) { --n: 5; }
+  [role="tablist"]:has(> [data-name="TabsTrigger"]:nth-child(6)) { --n: 6; }
+  [role="tablist"]:has(> [data-name="TabsTrigger"]:nth-child(7)) { --n: 7; }
+  [role="tablist"]:has(> [data-name="TabsTrigger"]:nth-child(8)) { --n: 8; }
+  [role="tablist"]:has(> [data-name="TabsTrigger"]:nth-child(2)[data-state="Active"]) { --i: 1; }
+  [role="tablist"]:has(> [data-name="TabsTrigger"]:nth-child(3)[data-state="Active"]) { --i: 2; }
+  [role="tablist"]:has(> [data-name="TabsTrigger"]:nth-child(4)[data-state="Active"]) { --i: 3; }
+  [role="tablist"]:has(> [data-name="TabsTrigger"]:nth-child(5)[data-state="Active"]) { --i: 4; }
+  [role="tablist"]:has(> [data-name="TabsTrigger"]:nth-child(6)[data-state="Active"]) { --i: 5; }
+  [role="tablist"]:has(> [data-name="TabsTrigger"]:nth-child(7)[data-state="Active"]) { --i: 6; }
+  [role="tablist"]:has(> [data-name="TabsTrigger"]:nth-child(8)[data-state="Active"]) { --i: 7; }
+  [data-name="TabsIndicator"] { width: calc(100% / var(--n, 1)); translate: calc(var(--i, 0) * 100%) 0; opacity: 0;
+    transition: translate var(--motion-spring) var(--ease-spring), opacity var(--motion-fast) var(--ease-out); }
+  [role="tablist"]:has(> [data-state="Active"]) > [data-name="TabsIndicator"] { opacity: 1; }
+  /* The page behind a tab arrives: it fades in and settles a step up. */
+  [data-name="TabsContent"]:not(.hidden) { animation: kit-enter var(--motion-spring) var(--ease-spring) backwards; }
 }
+
+/* Where the browser can tie one element's place to another's: each tab is as wide as its own
+   words (the longest gets room first when the row is squeezed), and the mark takes the chosen
+   tab's place and width. Outside the layers, so it wins over the row's own equal columns. */
+@supports (anchor-scope: --tab-on) {
+  [role="tablist"][aria-orientation="horizontal"] { anchor-scope: --tab-on; grid-auto-columns: minmax(0, auto); }
+  [data-name="TabsTrigger"][data-state="Active"] { anchor-name: --tab-on; }
+  [data-name="TabsIndicator"] { translate: none; left: anchor(--tab-on left); width: anchor-size(--tab-on width);
+    transition: left var(--motion-spring) var(--ease-spring), width var(--motion-spring) var(--ease-spring), opacity var(--motion-fast) var(--ease-out); }
+}
+
+/* The kit's few motions. Their times and distances are glass tokens; with "reduce motion" on,
+   glass.css stops them all. */
+@keyframes kit-enter { from { opacity: 0; translate: 0 var(--enter-y); } }
+@keyframes kit-breathe { 50% { opacity: .5; } }
+@keyframes kit-spin { to { rotate: 360deg; } }

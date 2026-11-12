@@ -1,0 +1,177 @@
+/* Askk talk: the conversation with an engine (src/ui/web/views/chat.rs and the parts it is made
+   of in src/ui/web/components). Loaded after glass.css; every colour, size and time here is a
+   token named there, and "reduce motion" / "reduce transparency" are answered there too.
+
+   The screen: head | thread (one column, --lane wide) | composer, and a panel beside them.
+   Density follows the tools people already use for this (docs/components.md, "The talk screen"). */
+
+/* ---------- motion: how things arrive ---------- */
+/* A surface arrives a step lower and a little smaller, on the spring that does not overshoot.
+   An arrival starts from its first frame (`backwards`) and holds nothing once it is over: a
+   held animation would make its element the frame of anything fixed inside it (the sheet). */
+@keyframes enter { from { opacity: 0; translate: 0 var(--enter-y); scale: var(--enter-scale); } }
+@keyframes fade-in { from { opacity: 0; } }
+/* A line of text that is still being worked on: light runs through it. */
+@keyframes shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+.shimmer { color: transparent; background: linear-gradient(90deg, var(--muted) 0 35%, var(--fg) 50%, var(--muted) 65% 100%) 0 0 / 200% 100%;
+  -webkit-background-clip: text; background-clip: text; animation: shimmer var(--motion-shimmer) linear infinite; }
+/* A page arrives when its route is opened. */
+.page > * { animation: enter var(--motion-spring) var(--ease-spring) backwards; }
+/* The little arrow of anything that opens: it turns to point down. */
+.chev { display: inline-grid; place-items: center; flex: none; color: var(--muted); transition: rotate var(--motion-fast) var(--ease-out); }
+[data-name="CollapsibleTrigger"][data-state="open"] .chev { rotate: 90deg; }
+
+/* ---------- glass: thickness by size ---------- */
+/* What floats over the whole page is thicker than a pane; a chip is thinner. */
+.sidebar, .talk-side { -webkit-backdrop-filter: blur(var(--blur-thick)) saturate(var(--saturate)); backdrop-filter: blur(var(--blur-thick)) saturate(var(--saturate)); }
+.now-chip, .compose-attach { -webkit-backdrop-filter: blur(var(--blur-thin)); backdrop-filter: blur(var(--blur-thin)); }
+/* Pressing a link in the panel answers at once, like every control. */
+.nav-item { transition: background var(--motion-base) var(--ease-out), color var(--motion-base) var(--ease-out), transform var(--motion-fast) var(--ease-out); }
+
+/* ---------- the screen ---------- */
+.talk { --side-w: clamp(320px, 34vw, 460px); display: grid; grid-template-columns: minmax(0, 1fr) var(--side-w); gap: var(--space-4); min-height: 0;
+  transition: grid-template-columns var(--motion-spring) var(--ease-spring), gap var(--motion-spring) var(--ease-spring); }
+.talk.side-closed { grid-template-columns: minmax(0, 1fr) 0px; gap: 0px; }
+.talk-main { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; min-height: 0; }
+.lane { width: min(100%, var(--lane)); margin-inline: auto; }
+
+/* head: who, what it is doing, who else, and the two actions */
+.talk-head { flex: none; display: flex; align-items: center; gap: var(--space-2) var(--space-3); min-height: var(--hit); padding: 0 var(--space-2); min-width: 0; }
+.engine-chip { display: flex; align-items: center; gap: var(--space-2); min-width: 0; flex: none; max-width: 60%; }
+.engine-chip .emoji { font-size: var(--text-md); }
+.engine-words { display: flex; flex-direction: column; min-width: 0; line-height: 1.2; }
+.engine-name { font-size: var(--text-md); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.engine-doing { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.engine-chip:not(.act-idle):not(.act-stopped) .engine-doing { color: var(--tone); }
+.engine-dot { background: var(--tone); box-shadow: 0 0 0 2px var(--tint); }
+.engine-dot.working { animation: halo var(--motion-pulse) var(--ease-calm) infinite; }
+.engine-pick-row { display: flex; gap: var(--space-1); min-width: 0; overflow-x: auto; scrollbar-width: none; padding: var(--space-half); }
+.pick { border-radius: var(--radius-full); color: var(--muted); flex: none; }
+.pick.is-on { color: var(--fg); background: color-mix(in srgb, var(--press) 14%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--press) 35%, transparent); }
+.talk-head [data-name="Button"] { border-radius: var(--radius-full); }
+
+/* thread: one column that scrolls inside itself */
+.thread { flex: 1 1 0; padding: 0 var(--space-3); border-radius: var(--radius-lg); }
+.thread-lane { display: flex; flex-direction: column; gap: var(--space-5); padding-block: var(--space-5) var(--space-6); min-height: 100%; }
+.thread-empty { margin: auto; color: var(--muted); font-size: var(--text-lg); }
+.sk-ask { align-self: flex-end; width: 46%; height: var(--control-lg); border-radius: var(--radius-lg); }
+.sk-say { width: 78%; height: calc(var(--control-lg) * 2); border-radius: var(--radius-lg); }
+
+/* a turn: asked (right), the run, what was drawn, what was said (plain, no box) */
+.turn { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; animation: enter var(--motion-spring) var(--ease-spring) backwards; }
+.ask { align-self: flex-end; max-width: 80%; min-width: 0; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg) var(--radius-lg) var(--radius-sm) var(--radius-lg); border: 1px solid color-mix(in srgb, var(--press) 30%, var(--stroke));
+  background: var(--sheen), color-mix(in srgb, var(--press) 16%, var(--surface)); box-shadow: inset 0 1px 0 var(--hi), var(--elev-1); }
+.ask.pending { opacity: .6; }
+.ask-who { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--muted); }
+.ask-text, .say-text { white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--text-md); line-height: 1.6; }
+.say { padding: 0 var(--space-1); animation: fade-in var(--motion-stream) var(--ease-out) backwards; }
+.turn > .fig { max-width: 100%; }
+.sending { align-self: flex-start; padding: 0 var(--space-2); font-size: var(--text-sm); }
+.turn-summary { display: flex; flex-direction: column; gap: var(--space-2); color: var(--muted); }
+.turn-rule { display: flex; align-items: center; gap: var(--space-3); font-family: var(--font-mono); font-size: var(--text-xs); white-space: nowrap; }
+.turn-rule [data-name="Separator"] { flex: 1 1 0; width: auto; }
+.turn-summary .say-text { font-size: var(--text-sm); }
+
+/* a run: one line that opens into its stages */
+.work { --tone-c: var(--neutral); min-width: 0; }
+.work.tone-busy { --tone-c: var(--busy); } .work.tone-ok { --tone-c: var(--ok); } .work.tone-warn { --tone-c: var(--warn); } .work.tone-error { --tone-c: var(--error); }
+.work-head, .stage-head, .toolcall-head, .kept-head { display: flex; align-items: center; gap: var(--space-2); width: 100%; min-width: 0; border: 0; font: inherit; }
+.work-head { min-height: var(--hit-sm); padding: 0 var(--space-2); border-radius: var(--radius-md); color: var(--muted); font-size: var(--text-sm); }
+.work-head:hover, .stage-head:hover, .kept-head:hover { color: var(--fg); background: var(--surface-hover); }
+.work-mark { flex: none; width: var(--space-2); height: var(--space-2); border-radius: var(--radius-full); background: var(--tone-c); }
+.tone-busy .work-mark { animation: run-pulse var(--motion-pulse) ease-in-out infinite; }
+.work-words { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.work-time { font-family: var(--font-mono); font-size: var(--text-xs); }
+.work-asked { flex: 1 1 0; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: var(--text-xs); opacity: .8; }
+.work-head .chev { margin-left: auto; }
+.work-body { margin-left: calc(var(--space-2) + var(--space-1) - 1px); padding: var(--space-1) 0 var(--space-2) var(--space-2); border-left: 1px solid var(--stroke); }
+.work-error { margin: var(--space-2) var(--space-2) 0; color: var(--error); font-size: var(--text-sm); overflow-wrap: anywhere; }
+.stages { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.stage-step { padding: var(--space-2) var(--space-2) var(--space-1); font-family: var(--font-mono); font-size: var(--text-xs); color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+.stage { --name-w: 4.5rem; min-width: 0; }
+.stage-head { min-height: var(--hit-row); padding: 0 var(--space-2); border-radius: var(--radius-sm); font-size: var(--text-sm); color: var(--fg); }
+.stage-name { flex: none; width: var(--name-w); font-family: var(--font-mono); font-size: var(--text-xs); color: var(--sg, var(--muted)); }
+.stage-note { flex: 1 1 0; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: color-mix(in srgb, var(--fg) 85%, transparent); }
+.stage-time { flex: none; font-family: var(--font-mono); font-size: var(--text-xs); color: var(--muted); }
+.stage.now .stage-name { animation: run-pulse var(--motion-pulse) ease-in-out infinite; }
+.stage-body { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-1) var(--space-2) var(--space-2) calc(var(--name-w) + var(--space-4)); }
+.stage-about { font-size: var(--text-xs); color: var(--muted); }
+.kept-head { min-height: var(--hit-row); padding: 0 var(--space-1); border-radius: var(--radius-sm); font-size: var(--text-xs); color: var(--muted); }
+.kept-head b { color: var(--fg); }
+.kept-size { font-family: var(--font-mono); }
+/* a tool call: the tool, a glance at the result; open, the program and the result in full */
+.toolcall { margin: var(--space-1) var(--space-2) var(--space-2) calc(var(--name-w) + var(--space-4)); border: 1px solid var(--stroke); border-radius: var(--radius-md);
+  background: var(--surface-sunk); overflow: hidden; }
+.toolcall.failed { border-color: color-mix(in srgb, var(--error) 45%, var(--stroke)); }
+.toolcall-head { min-height: var(--hit-sm); padding: 0 var(--space-3); font-family: var(--font-mono); font-size: var(--text-xs); color: var(--muted); }
+.toolcall-head:hover { color: var(--fg); }
+.toolcall-name { flex: none; color: var(--accent); }
+.toolcall-glance { flex: 1 1 0; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.toolcall.failed .toolcall-glance { color: var(--error); }
+.toolcall-body { display: flex; flex-direction: column; gap: var(--space-1); padding: 0 var(--space-3) var(--space-3); }
+.toolcall-label { font-size: var(--text-xs); color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+.code { font-size: var(--text-xs); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; max-height: min(18rem, 50dvh); overflow: auto; padding: var(--space-2);
+  border-radius: var(--radius-sm); border: 1px solid var(--stroke); background: var(--surface-sunk); }
+.code.bad { color: var(--error); }
+
+/* composer: a pane of glass under the thread */
+.talk-foot { flex: none; padding: 0 var(--space-3) var(--space-2); }
+.talk-error { color: var(--error); font-size: var(--text-sm); padding: 0 var(--space-2) var(--space-2); overflow-wrap: anywhere; }
+.compose { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-2); border-radius: calc(var(--radius-lg) + var(--space-1));
+  transition: border-color var(--motion-base) var(--ease-out), box-shadow var(--motion-base) var(--ease-out); }
+.compose:focus-within { border-color: var(--stroke-hi); box-shadow: inset 0 1px 0 var(--hi), var(--lift), 0 0 0 3px color-mix(in srgb, var(--press) 18%, transparent); }
+.compose-text { border: 0; background: transparent; box-shadow: none; resize: none; min-height: var(--hit); max-height: 30dvh; padding: var(--space-3) var(--space-2) var(--space-1);
+  font-family: var(--font-face); font-size: var(--text-md); line-height: 1.5; color: var(--fg); }
+.compose-text:focus-visible { outline: none; box-shadow: none; border: 0; }
+.compose-text::placeholder { color: var(--muted); opacity: 1; }
+.compose-bar { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.compose-attach { display: inline-grid; place-items: center; flex: none; width: var(--hit-md); height: var(--hit-md); border-radius: var(--radius-full); color: var(--muted); cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-out), color var(--motion-fast) var(--ease-out), transform var(--motion-fast) var(--ease-out); }
+.compose-attach:hover { color: var(--fg); background: var(--surface-hover); }
+.compose-attach:active { transform: scale(var(--press-scale)); transition-duration: var(--motion-press); }
+.compose-attach:focus-within { outline: 2px solid var(--press); outline-offset: 2px; }
+.compose-hint { display: flex; align-items: center; gap: var(--space-1); font-size: var(--text-xs); color: var(--muted); white-space: nowrap; overflow: hidden; }
+.compose-hint .sep { padding: 0 var(--space-1); }
+.compose-send, .compose-stop { border-radius: var(--radius-full); flex: none; }
+.compose-media { padding: var(--space-1); }
+
+/* the panel beside: the board, the loop, the prompt */
+.talk-side { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; padding: var(--space-3);
+  box-shadow: inset 0 1px 0 var(--hi), var(--elev-3); transition: opacity var(--motion-base) var(--ease-out), visibility 0s linear 0s; }
+.talk.side-closed .talk-side { opacity: 0; visibility: hidden; padding-inline: 0; border-width: 0; transition: opacity var(--motion-fast) var(--ease-exit), visibility 0s linear var(--motion-fast); }
+.talk-tabs { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.talk-side-head { flex: none; display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); min-width: 0; }
+.talk-side-head .count { margin-left: var(--space-1); font-family: var(--font-mono); font-size: var(--text-xs); opacity: .8; }
+.talk-panel:not(.hidden) { display: flex; flex-direction: column; gap: var(--space-3); min-height: 0; overflow: auto; padding: var(--space-1); }
+.talk-panel .prompt { padding: 0; border: 0; background: none; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+.side-close, .talk-scrim { display: none; }
+
+/* A medium screen or a phone: the panel is a sheet from the right, over a dimmed page. It
+   leaves the way it came. */
+@media (max-width: 1199px) {
+  .talk, .talk.side-open, .talk.side-closed { grid-template-columns: minmax(0, 1fr); gap: 0px; }
+  .talk-side, .talk.side-closed .talk-side { position: fixed; z-index: 60; top: var(--space-3); right: var(--space-3); bottom: var(--space-3);
+    width: min(460px, calc(100vw - 2 * var(--space-3))); padding: var(--space-3); border-width: 1px; background: var(--sheen), color-mix(in srgb, var(--tint) 92%, transparent);
+    translate: calc(100% + var(--sheet-y)) 0; opacity: 0; visibility: hidden;
+    transition: translate var(--motion-base) var(--ease-exit), opacity var(--motion-base) var(--ease-exit), visibility 0s linear var(--motion-base); }
+  .talk.side-open .talk-side { translate: 0 0; opacity: 1; visibility: visible;
+    transition: translate var(--motion-spring) var(--ease-spring), opacity var(--motion-fast) var(--ease-out), visibility 0s linear 0s; }
+  .talk.side-open .talk-scrim { display: block; position: fixed; inset: 0; z-index: 55; background: color-mix(in srgb, var(--bg) var(--scrim-alpha), transparent);
+    animation: fade-in var(--motion-base) var(--ease-out) backwards; }
+  .side-close { display: inline-flex; }
+}
+/* A phone: the head takes two lines, text keeps its size, hints for a keyboard are left out. */
+@media (max-width: 767px) {
+  /* the header says where you are; the brand is in the navigation sheet */
+  .crumbs > .dim, .crumbs > .sep { display: none; }
+  .talk-head { flex-wrap: wrap; padding: 0; }
+  .engine-pick-row { order: 5; flex: 1 0 100%; }
+  .thread { padding: 0 var(--space-1); }
+  .talk-foot { padding: 0 0 var(--space-1); }
+  .ask { max-width: 88%; }
+  .stage { --name-w: 3.75rem; }
+  .toolcall { margin-left: var(--space-2); }
+  .stage-body { padding-left: var(--space-2); }
+}
+@media (max-width: 767px), (pointer: coarse) { .compose-hint { display: none; } }

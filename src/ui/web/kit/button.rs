@@ -1,4 +1,4 @@
-//! From rust-ui.com (MIT, see LICENSE-rust-ui beside this file). The code is ours now: unchanged but for the `data-name` that marks it as kit.
+//! From rust-ui.com (MIT, see LICENSE-rust-ui beside this file). The code is ours now: changed in three ways. The root carries the `data-name` that marks it as kit. Its motion names the app's tokens: the press sinks at once (`--press-scale`, `--motion-press`) and only colour, shadow and size move, never everything. And its heights are the app's control sizes (`--hit-*`), which grow to a finger's width on a touch screen. A button that stays pressed (a switch between choices) can say so (`aria_pressed`).
 use dioxus::prelude::*;
 use tw_merge::tw_merge;
 
@@ -51,11 +51,11 @@ impl ButtonSize {
     #[must_use]
     pub const fn as_str(&self) -> &'static str {
         match self {
-            Self::Default => "h-9 px-4 py-2 has-[>svg]:px-3",
-            Self::Sm => "h-8 rounded-md gap-1.5 px-3 has-[>svg]:px-2.5",
-            Self::Lg => "h-10 rounded-md px-6 has-[>svg]:px-4",
-            Self::Icon => "size-9",
-            Self::IconSm => "size-8 rounded-md",
+            Self::Default => "h-[var(--hit-md)] px-4 py-2 has-[>svg]:px-3",
+            Self::Sm => "h-[var(--hit-sm)] rounded-md gap-1.5 px-3 has-[>svg]:px-2.5",
+            Self::Lg => "h-[var(--hit)] rounded-md px-6 has-[>svg]:px-4",
+            Self::Icon => "size-[var(--hit-md)]",
+            Self::IconSm => "size-[var(--hit-sm)] rounded-md",
             Self::IconXs => "size-6 rounded-md",
         }
     }
@@ -77,11 +77,13 @@ pub fn Button(
     #[props(optional)] onpointerleave: Option<EventHandler<PointerEvent>>,
     #[props(optional)] onpointercancel: Option<EventHandler<PointerEvent>>,
     #[props(into, optional)] aria_label: Option<String>,
+    /// For a button that stays pressed: whether it is (a switch between choices).
+    #[props(optional)] aria_pressed: Option<bool>,
     #[props(into, optional)] title: Option<String>,
     children: Element,
 ) -> Element {
     let merged_class = tw_merge!(
-        "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive w-fit hover:cursor-pointer active:scale-[0.98] active:opacity-100 touch-manipulation [-webkit-tap-highlight-color:transparent] select-none [-webkit-touch-callout:none]",
+        "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-[transform,background-color,border-color,color,box-shadow,opacity] duration-[var(--motion-fast)] ease-[var(--ease-out)] disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive w-fit hover:cursor-pointer active:scale-[var(--press-scale)] active:duration-[var(--motion-press)] active:opacity-100 touch-manipulation [-webkit-tap-highlight-color:transparent] select-none [-webkit-touch-callout:none]",
         variant.as_str(),
         size.as_str(),
         class.as_deref().unwrap_or("")
@@ -108,6 +110,7 @@ pub fn Button(
                 r#type: button_type.as_deref().unwrap_or("button"),
                 disabled,
                 "aria-label": aria_label.as_deref(),
+                "aria-pressed": aria_pressed.map(|p| if p { "true" } else { "false" }),
                 title: title.as_deref(),
                 onclick: move |e| {
                     if let Some(handler) = &onclick {
