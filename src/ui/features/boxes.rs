@@ -10,6 +10,9 @@
 //! | what is "done"? | a box this window saw working and now sees idle, until it is looked at ([`Seen`]) |
 //! | what does the folded pill say? | how many are in each state ([`count`]) |
 //! | how is a box one line? | [`line`] |
+//! | which box is open? | the one the address names after `#` ([`opened`], [`link`]), so a reload and the back button keep it |
+//! | which boxes did the owner pin? | a list this window keeps ([`pins_from`], [`pins_text`]); a pinned box is on the canvas even when idle ([`on_canvas`]) |
+//! | how is the pill searched and grouped? | [`found`], [`by_place`] |
 // The page draws these (ui/web/views/boxes.rs); the terminal comes to say them as lines.
 #![allow(dead_code)]
 use crate::core::boxes::{Depth, SessionBox, State};
@@ -110,6 +113,11 @@ impl Seen {
         self.done.remove(id);
     }
 
+    /// Whether this box finished and has not been looked at since.
+    pub fn is_done(&self, id: &str) -> bool {
+        self.done.contains(id)
+    }
+
     /// The mark this window shows for a box.
     pub fn mark(&self, b: &SessionBox) -> Mark {
         match b.state {
@@ -151,6 +159,88 @@ pub fn line(b: &SessionBox, seen: &Seen) -> String {
     let place = if b.place.is_empty() { String::new() } else { format!(" in {}", b.place) };
     let last = if b.last.is_empty() { String::new() } else { format!(": {}", b.last) };
     format!("{} {} ({}{place}, {}){last}", mark.sign(), b.title, b.kind, mark.word())
+}
+
+/// The address that opens a box in place on the canvas: the home page, the box after `#`.
+pub fn link(id: &str) -> String {
+    format!("/#{id}")
+}
+
+/// The box an address names after its `#`, when it names one (`engine:askk/developer`,
+/// `session:12`). The address may have been written with `%` escapes.
+pub fn opened(hash: &str) -> Option<String> {
+    let mut out = Vec::new();
+    let bytes = hash.trim().trim_start_matches('#').as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        let hex = (bytes[i] == b'%').then(|| bytes.get(i + 1..i + 3)).flatten().and_then(|h| std::str::from_utf8(h).ok()).and_then(|h| u8::from_str_radix(h, 16).ok());
+        match hex {
+            Some(b) => {
+                out.push(b);
+                i += 3;
+            }
+            None => {
+                out.push(bytes[i]);
+                i += 1;
+            }
+        }
+    }
+    let id = String::from_utf8(out).ok()?;
+    let (kind, name) = id.split_once(':')?;
+    let ok = !kind.is_empty() && kind.chars().all(|c| c.is_ascii_lowercase()) && !name.is_empty() && !name.chars().any(|c| c.is_whitespace() || c.is_control() || c == '%');
+    ok.then_some(id)
+}
+
+/// The engine a box is, by its path, when it is one.
+pub fn engine_of(id: &str) -> Option<&str> {
+    id.strip_prefix("engine:").filter(|p| !p.is_empty())
+}
+
+/// The session a box is, by its number, when it is one.
+pub fn session_of(id: &str) -> Option<u64> {
+    id.strip_prefix("session:")?.parse().ok()
+}
+
+/// The pinned boxes as a window keeps them between visits (a JSON list of ids). Text that is
+/// not such a list is no pins.
+pub fn pins_from(text: &str) -> BTreeSet<String> {
+    serde_json::from_str::<Vec<String>>(text).map(|v| v.into_iter().collect()).unwrap_or_default()
+}
+
+/// The text a window keeps for [`pins_from`].
+pub fn pins_text(pins: &BTreeSet<String>) -> String {
+    serde_json::to_string(&pins.iter().collect::<Vec<_>>()).unwrap_or_else(|_| "[]".into())
+}
+
+/// Whether a box belongs on the canvas: it runs, or the owner pinned it there.
+pub fn on_canvas(b: &SessionBox, seen: &Seen, pins: &BTreeSet<String>) -> bool {
+    running(b, seen) || pins.contains(&b.id)
+}
+
+/// Whether a box answers what was typed into the pill's find field: every word is in its
+/// name, its kind, its place or its last line.
+pub fn found(b: &SessionBox, typed: &str) -> bool {
+    let hay = format!("{} {} {} {}", b.title, b.kind, b.place, b.last).to_lowercase();
+    typed.to_lowercase().split_whitespace().all(|w| hay.contains(w))
+}
+
+/// Things in groups by their place, each group in the order its first member came; inside a
+/// group the order is kept. `place` reads a thing's place; no place groups under `""`.
+pub fn by_place<T>(things: Vec<T>, place: impl Fn(&T) -> String) -> Vec<(String, Vec<T>)> {
+    let mut out: Vec<(String, Vec<T>)> = vec![];
+    for t in things {
+        let p = place(&t);
+        match out.iter_mut().find(|(name, _)| *name == p) {
+            Some((_, group)) => group.push(t),
+            None => out.push((p, vec![t])),
+        }
+    }
+    out
+}
+
+/// The heading of a group of boxes in the pill.
+pub fn place_word(place: &str) -> &str {
+    if place.is_empty() { "no place" } else { place }
 }
 
 #[cfg(test)]
@@ -202,5 +292,42 @@ mod tests {
         assert_eq!(line(&a("s", State::Blocked), &Seen::default()), "? s (engine, waits for you)");
         let signs: BTreeSet<&str> = [Mark::Blocked, Mark::Failed, Mark::Done, Mark::Working, Mark::Idle, Mark::Unknown].iter().map(|m| m.sign()).collect();
         assert_eq!(signs.len(), 6, "every state has its own sign");
+    }
+
+    #[test]
+    fn the_address_names_the_open_box_and_nothing_else_opens_one() {
+        assert_eq!(link("engine:askk/developer"), "/#engine:askk/developer");
+        assert_eq!(opened("engine:askk/developer"), Some("engine:askk/developer".into()));
+        assert_eq!(opened("#session:12"), Some("session:12".into()));
+        assert_eq!(opened("engine%3Aaskk%2Fdeveloper"), Some("engine:askk/developer".into()), "written with escapes");
+        for none in ["", "#", "top", "engine:", ":x", "Engine:x", "engine:a b", "engine:%zz", "engine:%0a"] {
+            assert_eq!(opened(none), None, "{none:?}");
+        }
+        assert_eq!((engine_of("engine:askk/developer"), engine_of("session:3"), engine_of("engine:")), (Some("askk/developer"), None, None));
+        assert_eq!((session_of("session:12"), session_of("session:x"), session_of("engine:1")), (Some(12), None, None));
+    }
+
+    #[test]
+    fn a_pinned_box_is_on_the_canvas_even_when_idle_and_pins_survive_as_text() {
+        let seen = Seen::default();
+        let mut pins = pins_from("not json");
+        assert!(pins.is_empty());
+        assert!(!on_canvas(&a("idle", State::Idle), &seen, &pins) && on_canvas(&a("works", State::Working), &seen, &pins));
+        pins.insert("idle".into());
+        pins.insert("b".into());
+        assert!(on_canvas(&a("idle", State::Idle), &seen, &pins));
+        assert_eq!(pins_text(&pins), r#"["b","idle"]"#);
+        assert_eq!(pins_from(&pins_text(&pins)), pins);
+    }
+
+    #[test]
+    fn the_pill_is_searched_by_words_and_grouped_by_place() {
+        let mut b = a("coder", State::Working);
+        b.place = "askk".into();
+        b.last = "calling run_code".into();
+        assert!(found(&b, "") && found(&b, "COD") && found(&b, "askk run_code") && found(&b, "engine") && !found(&b, "coder claude"));
+        let groups = by_place(vec![("x", "askk"), ("y", ""), ("z", "askk"), ("w", "site")], |t| t.1.to_string());
+        assert_eq!(groups, [("askk".to_string(), vec![("x", "askk"), ("z", "askk")]), (String::new(), vec![("y", "")]), ("site".to_string(), vec![("w", "site")])]);
+        assert_eq!((place_word(""), place_word("askk")), ("no place", "askk"));
     }
 }

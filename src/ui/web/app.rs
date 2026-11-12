@@ -1,5 +1,10 @@
 //! The root of every window: assets, then the router. Which page sits at which URL is data
 //! (`core/routes.rs`).
+//!
+//! What follows the `#` of an address names the box that is open on the canvas
+//! (`/#engine:askk/developer`; `ui/features/boxes.rs`, `opened`). It is part of the route, so
+//! a reload, a link and the back button all open the same box, and the page under it is not
+//! asked for again when a box opens or closes.
 use super::views::{Home, RoutePage, Shell};
 use dioxus::prelude::*;
 
@@ -8,10 +13,10 @@ use dioxus::prelude::*;
 pub enum Route {
     #[layout(Shell)]
         // Every URL is resolved against the page folders in the store (see core/routes.rs).
-        #[route("/")]
-        Home {},
-        #[route("/:..segments")]
-        RoutePage { segments: Vec<String> },
+        #[route("/#:open")]
+        Home { open: String },
+        #[route("/:..segments#:open")]
+        RoutePage { segments: Vec<String>, open: String },
 }
 
 const FAVICON: Asset = asset!("/assets/favicon.ico");

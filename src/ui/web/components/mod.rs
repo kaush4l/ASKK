@@ -12,7 +12,7 @@
 //! | `wall.rs`, `surface.rs` | the backdrop; a calm pane; a pane of glass | — |
 //! | `icon.rs` | a line icon | its name |
 //! | `pill.rs` | the pill on the left: folded, marks; open, the dashboard | the brand, the boxes, the pages, a line about the service |
-//! | `boxes.rs` | a session as a box: its mark, its row, its tile | a `Shown` (the box, its mark, where it opens) |
+//! | `boxes.rs` | a session as a box: its mark, its row, its tile, its head when open | a `Shown` (the box, its mark, where it opens, whether it is pinned), its open questions |
 //! | `topbar.rs` | the page header | the title, the engines, the theme in use |
 //! | `footer.rs` | the contact line | the entries |
 //! | `stat.rs` | one number with its label | both |
@@ -21,15 +21,31 @@
 //! | `turn.rs` | the conversation and each turn of it | `Beat`s, the runs held in full |
 //! | `run.rs` | a run, its stages, its tool calls | a `Run`, a `Mark`, a `Call` |
 //! | `media.rs` | an attachment | a `Chip`, its picture |
-//! | `composer.rs` | the message box | the text, the attachments, whether the engine works |
+//! | `composer.rs` | the message box, the messages that wait, the choice of model | the text, the attachments, whether the engine works, the queue, the models |
+//! | `markdown.rs` | an answer as headings, lists, tables, links; a block of code with a copy button | the blocks read from the text; a program and its language |
+//! | `asks.rs` | a question that waits for the owner, with a field to answer it | an `Ask` |
+//! | `spec.rs` | what an engine is made to do: its goal, its learnings, its tools | the three texts |
+//! | `palette.rs` | "go to anything"; the list of shortcuts | every entry, whether it is open |
+//! | `terminal.rs` | a terminal: the grid, the colours, the cursor, how it ended | a `Screen` |
 mod wall;
 pub use wall::Wall;
 mod surface;
 pub use surface::{Glass, Pane};
 mod pill;
-pub use pill::Pill;
+pub use pill::{Pill, PILL_WIDTH};
+mod asks;
+pub use asks::AskForm;
 mod boxes;
-pub use boxes::{BoxRow, BoxTile, Shown};
+pub use boxes::{BoxRow, BoxTile, OpenHead, Shown};
+mod markdown;
+#[allow(unused_imports)]
+pub use markdown::{CodeBlock, Markdown, Prose};
+mod spec;
+pub use spec::SpecView;
+mod palette;
+pub use palette::{Palette, Shortcuts};
+mod terminal;
+pub use terminal::TerminalView;
 mod topbar;
 pub use topbar::{engine_of, next_theme, Topbar};
 mod footer;
@@ -49,6 +65,7 @@ mod run;
 pub use run::{CallRow, Elapsed, RunView, StageRow};
 mod turn;
 #[allow(unused_imports)]
-pub use turn::{Thread, TurnView};
+pub use turn::{SessionThread, Thread, TurnView};
 mod composer;
-pub use composer::{Attached, Composer};
+#[allow(unused_imports)]
+pub use composer::{Attached, Composer, ModelChoice, ModelPick, QueueList};

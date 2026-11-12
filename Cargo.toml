@@ -15,6 +15,9 @@ serde_json = "1"
 futures = "0.3"
 # Joins the class lists of kit parts (src/ui/kit), the later class winning.
 tw_merge = "0.1"
+# Markdown in answers, read into plain values (ui/features/markdown.rs). The parser alone:
+# no HTML writer, no command line.
+pulldown-cmark = { version = "0.13", default-features = false }
 # Clocks that also work in a browser tab (std's panic there); std itself on native.
 web-time = "1"
 # The `local` build runs the engine inside the tab: its futures run on the tab's own loop.
