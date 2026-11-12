@@ -184,11 +184,17 @@ impl App {
         vec![Want::Open { pane, cols, rows }]
     }
 
-    /// Every terminal in view is asked to be the size of its pane, once per size.
+    /// Every terminal in view is asked to be the size of its pane, once per size. A terminal
+    /// shown in two panes at once takes the size of the first: asked to be both, it would
+    /// be resized for ever.
     fn fit(&mut self) -> Vec<Want> {
         let mut wants = vec![];
+        let mut fitted = BTreeSet::new();
         for (_, at, box_id) in self.tabs.shown(self.main()) {
             let Inside::Terminal(id) = inside(box_id) else { continue };
+            if !fitted.insert(id.clone()) {
+                continue;
+            }
             let (cols, rows) = Self::room(at);
             if self.screens.get(&id).is_some_and(|s| s.alive) && self.sized.get(&id) != Some(&(cols, rows)) {
                 self.sized.insert(id.clone(), (cols, rows));
@@ -449,13 +455,15 @@ impl App {
                 vec![]
             }
             Got::Scrolled(id, screen, back) => {
-                // No further up than there is: at 0 the pane is at its end again.
+                // No further up than there is: at 0 the pane is at its end again. A look
+                // back that arrives after the pane returned to its end is late.
                 if back == 0 {
                     self.backs.remove(&id);
+                    self.screens.insert(id, screen);
                 } else if self.backs.contains_key(&id) {
                     self.backs.insert(id.clone(), back);
+                    self.screens.insert(id, screen);
                 }
-                self.screens.insert(id, screen);
                 vec![]
             }
             Got::Talk(box_id, lines) => {
@@ -752,6 +760,26 @@ mod tests {
         assert!(drawn(&talk).0[25].contains("│line 46") && drawn(&talk).0[26].contains("14 rows below"), "{:?}", &drawn(&talk).0[24..28]);
         assert_eq!(talk.on(Got::Mouse(Mouse::Wheel(false, 60, 10))), []);
         assert!(drawn(&talk).0[25].contains("│line 49"));
+    }
+
+    #[test]
+    fn a_terminal_shown_in_two_panes_of_two_sizes_is_resized_once_not_for_ever() {
+        let mut app = App::new("h", "terminal:7", 120, 30);
+        app.on(Got::Boxes(boxes()));
+        app.on(Got::Screen("7".into(), screen(&["$ "], 86, 26)));
+        // A second pane beside the first, then the same terminal in it, then the border moved:
+        // the two panes now ask for two different sizes of one terminal.
+        let wants = keys(&mut app, &["ctrl+b", "v"]);
+        assert_eq!(wants, [Want::Open { pane: 2, cols: 42, rows: 26 }, Want::Resize { id: "7".into(), cols: 42, rows: 26 }]);
+        app.on(Got::Mouse(Mouse::Down(5, 4)));
+        assert_eq!((app.tabs.shown_in(1), app.tabs.shown_in(2)), ("terminal:7", "terminal:7"));
+        app.on(Got::Mouse(Mouse::Down(76, 10)));
+        assert_eq!(app.on(Got::Mouse(Mouse::Drag(62, 10))), [Want::Resize { id: "7".into(), cols: 28, rows: 26 }], "it takes the size of the first pane it is in");
+        app.on(Got::Mouse(Mouse::Up));
+        for _ in 0..3 {
+            assert_eq!(app.on(Got::Changed(vec!["terminals/7".into()])), [Want::Boxes, Want::Screen("7".into())], "and is not resized again, whatever comes");
+            assert_eq!(app.on(Got::Screen("7".into(), screen(&["$ "], 28, 26))), []);
+        }
     }
 
     #[test]
