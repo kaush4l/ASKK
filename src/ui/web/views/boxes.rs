@@ -13,6 +13,7 @@ use crate::core::boxes::{SessionBox, State};
 use crate::ui::features::asks::{answer_text, parse_asks, Ask};
 use crate::ui::features::boxes::{count, engine_of, link, on_canvas, opened, order, pins_from, pins_text, session_of, Mark, Seen};
 use crate::ui::features::queue::{ready, waits, Queue};
+use crate::ui::features::terminals::{inside, Inside};
 use crate::ui::web::components::{BoxTile, Pane, Shown};
 use crate::ui::web::kit::{Button, ButtonSize, ButtonVariant};
 use crate::Route;
@@ -72,7 +73,9 @@ impl Boxes {
     /// it) the message waits in this window and goes when the box is done; else it goes now.
     pub fn say(&mut self, id: String, text: String) {
         let state = self.list.peek().iter().find(|b| b.id == id).map(|b| b.state).unwrap_or_default();
-        if waits(state, self.queue.peek().of(&id).len()) {
+        // A terminal takes what is typed at once; only an engine or a session waits its turn.
+        let terminal = matches!(inside(&id), Inside::Terminal(_));
+        if !terminal && waits(state, self.queue.peek().of(&id).len()) {
             self.queue.write().push(&id, &text);
         } else {
             self.send(id, text);
@@ -106,8 +109,17 @@ async fn say(id: String, text: String) -> Result<(), String> {
     match (engine_of(&id), session_of(&id)) {
         (Some(path), _) => crate::api::post_message(path.to_string(), text).await.map(|_| ()).map_err(|e| e.to_string()),
         (_, Some(n)) => crate::api::session_prompt(n, text).await.map_err(|e| e.to_string()),
-        _ => Err(format!("'{id}' cannot be spoken to from here yet")),
+        _ => match inside(&id) {
+            Inside::Terminal(t) => crate::api::terminal_type(t, format!("{text}\r")).await.map_err(|e| e.to_string()),
+            _ => Err(format!("'{id}' cannot be spoken to from here yet")),
+        },
     }
+}
+
+/// Start the person's own shell in a terminal the service holds, and open its box.
+async fn new_terminal() -> Result<String, String> {
+    let id = crate::api::terminal_open(String::new(), String::new(), 100, 30).await.map_err(|e| e.to_string())?;
+    Ok(crate::ui::features::terminals::terminal_box(&id))
 }
 
 /// Ask for the boxes, again whenever an engine or a session is marked changed, and provide
@@ -115,12 +127,14 @@ async fn say(id: String, text: String) -> Result<(), String> {
 pub fn use_boxes_provider(engines: String, sessions: String) -> Boxes {
     let on_engines = super::live::use_live(move || engines.clone());
     let on_sessions = super::live::use_live(move || sessions.clone());
+    // A terminal opened, closed or changed its screen.
+    let on_terminals = super::live::use_live(|| "terminals".to_string());
     let mut list = use_signal(Vec::<SessionBox>::new);
     let mut seen = use_signal(Seen::default);
     let mut pins = use_signal(BTreeSet::<String>::new);
     let mut asked = use_signal(|| 0u64);
     let _ = use_resource(move || {
-        let changed = (on_engines(), on_sessions());
+        let changed = (on_engines(), on_sessions(), on_terminals());
         async move {
             let _ = changed;
             if let Ok(now) = crate::api::boxes().await {
@@ -259,6 +273,18 @@ pub fn BoxesView() -> Element {
                         for (m, n) in counts {
                             span { key: "{m.key()}", class: "pill-count is-{m.key()}", "{m.sign()} {n} {m.word()}" }
                         }
+                    }
+                    Button { variant: ButtonVariant::Ghost, size: ButtonSize::Sm,
+                        onclick: move |_| {
+                            let mut wrong = boxes.wrong;
+                            spawn(async move {
+                                match new_terminal().await {
+                                    Ok(id) => from_tile(&id),
+                                    Err(e) => wrong.set(e),
+                                }
+                            });
+                        },
+                        "New terminal"
                     }
                     if hidden > 0 {
                         Button { variant: ButtonVariant::Ghost, size: ButtonSize::Sm, aria_pressed: idle_too(), onclick: move |_| idle_too.toggle(),

@@ -4,14 +4,14 @@
 //! | --- | --- | --- |
 //! | an engine | its conversation, each run stage by stage, its goal, learnings and tools behind one touch, what it waits for, the composer | [`super::conversation::Conversation`] |
 //! | a session with another agent | its turns, and a line to prompt it | `SessionThread`, `Composer` |
-//! | a terminal | its screen, and typing | `TerminalView` (the service does not hold terminals in this build yet: the box says so) |
+//! | a terminal | its screen, and typing | `TerminalView`, redrawn when the change feed names `terminals/<id>`; a build that holds no terminals says so |
 //!
 //! This file asks (a session's turns) and hands down. The head is the same for every kind.
 use super::boxes::Boxes;
 use super::conversation::Conversation;
 use crate::core::session::{Session, State};
 use crate::ui::features::boxes::{engine_of, session_of};
-use crate::ui::web::components::{Composer, OpenHead, Pane, SessionThread, Shown};
+use crate::ui::web::components::{Composer, OpenHead, Pane, SessionThread, Shown, TerminalView};
 use dioxus::prelude::*;
 
 /// The address a box is put back to: the page it is on, with no box named.
@@ -33,11 +33,9 @@ pub fn OpenBox(shown: Shown) -> Element {
             match (engine_of(&id), session_of(&id)) {
                 (Some(path), _) => rsx! { Conversation { path: path.to_string(), boxed: true } },
                 (_, Some(n)) => rsx! { SessionTalk { n } },
-                _ => rsx! {
-                    Pane { class: "open-none",
-                        p { "This build's service does not hold terminals yet, so there is no screen to show for this box." }
-                        p { class: "dim", "What a terminal box looks like is in Settings, under Parts." }
-                    }
+                _ => match crate::ui::features::terminals::inside(&id) {
+                    crate::ui::features::terminals::Inside::Terminal(t) => rsx! { TerminalBox { id: t, title: title.clone() } },
+                    _ => rsx! { Pane { class: "open-none", p { "This window does not know how to show “{id}”." } } },
                 },
             }
         }
@@ -99,5 +97,38 @@ fn SessionTalk(n: u64) -> Element {
                 }
             }
         }
+    }
+}
+
+/// A terminal the service holds, open: its screen, asked again whenever the change feed names
+/// it, and every key typed sent to its program.
+#[component]
+fn TerminalBox(id: String, title: String) -> Element {
+    let key = id.clone();
+    let live = super::live::use_live(move || format!("terminals/{key}"));
+    let asked = id.clone();
+    let screen = use_resource(move || {
+        let _ = live();
+        let id = asked.clone();
+        async move { crate::api::terminal_screen(id).await.map_err(|e| e.to_string()) }
+    });
+    // Keep the last screen while the next is fetched, so the terminal never blinks.
+    let mut held = use_signal(|| None::<Result<crate::core::screen::Screen, String>>);
+    use_effect(move || {
+        if let Some(now) = &*screen.read() {
+            held.set(Some(now.clone()));
+        }
+    });
+    match held() {
+        None => rsx! { p { class: "dim open-none", role: "status", "Reading the terminal…" } },
+        Some(Err(e)) => rsx! { Pane { class: "open-none", p { role: "alert", "{e}" } } },
+        Some(Ok(s)) => rsx! {
+            TerminalView { screen: s, label: title,
+                on_type: move |keys: String| {
+                    let id = id.clone();
+                    spawn(async move { let _ = crate::api::terminal_type(id, keys).await; });
+                },
+            }
+        },
     }
 }
