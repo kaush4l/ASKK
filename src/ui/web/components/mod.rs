@@ -27,6 +27,7 @@
 //! | `spec.rs` | what an engine is made to do: its goal, its learnings, its tools | the three texts |
 //! | `palette.rs` | "go to anything"; the list of shortcuts | every entry, whether it is open |
 //! | `terminal.rs` | a terminal: the grid, the colours, the cursor, how it ended | a `Screen` |
+//! | `edge.rs` | the edge of the panel beside a conversation, dragged to make it wider | its width |
 mod wall;
 pub use wall::Wall;
 mod surface;
@@ -68,6 +69,8 @@ mod turn;
 pub use turn::{SessionThread, Thread, TurnView, Writing};
 mod talks;
 pub use talks::TalkList;
+mod edge;
+pub use edge::{SideEdge, SIDE_WIDTH};
 mod workspace;
 pub use workspace::{DiffView, FilesView};
 mod composer;

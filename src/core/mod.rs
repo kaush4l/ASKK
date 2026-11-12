@@ -83,6 +83,8 @@ pub struct Spec {
 pub enum Event {
     /// A run begins; `run` is its id ([`run::Run::id`]). Sent before the input.
     Started { run: u64 },
+    /// The run `run` has ended (done, stopped or failed). Sent after its record is closed.
+    Ended { run: u64 },
     Input(String),
     Reply(String),
     Called { tool: String, args: Value, result: String },

@@ -381,8 +381,9 @@ fn looks_live_in_the_stylesheet() {
     // have such numbers; the count may go down, never up, and no other file gets any.
     // A terminal draws the colours its program chose (`#rrggbb`, the 240 beyond the base 16):
     // exact values that arrive at run time, in one place.
-    // The pill is as wide as the owner dragged it: a number kept by the window.
-    let debts = [("ui/web/components/terminal.rs", 1), ("ui/web/views/shell.rs", 1), ("ui/web/figure.rs", 11), ("ui/web/views/canvas.rs", 2), ("ui/web/views/prompt.rs", 2), ("ui/web/render.rs", 1), ("ui/web/app.rs", 1), ("ui/web/views/companion.rs", 1), ("ui/web/views/loops.rs", 1), ("ui/web/views/ide.rs", 1)];
+    // The pill is as wide as the owner dragged it: a number kept by the window. So is the
+    // panel beside a conversation.
+    let debts = [("ui/web/components/terminal.rs", 1), ("ui/web/views/shell.rs", 1), ("ui/web/figure.rs", 11), ("ui/web/views/canvas.rs", 2), ("ui/web/views/prompt.rs", 2), ("ui/web/render.rs", 1), ("ui/web/app.rs", 1), ("ui/web/views/companion.rs", 1), ("ui/web/views/loops.rs", 1), ("ui/web/views/ide.rs", 1), ("ui/web/views/conversation.rs", 1)];
     let mut wrong = vec![];
     for (rel, code) in sources() {
         if !rel.starts_with("ui/") {

@@ -143,6 +143,7 @@ pub fn table() -> Vec<Ask> {
         talks(path),
         talk_new(path),
         talk_open(path, id),
+        talk_saved(path, id),
         // terminals.rs
         terminal_open(command, place, cols, rows),
         terminal_screen(id),

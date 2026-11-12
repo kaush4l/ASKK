@@ -15,11 +15,11 @@ pub fn DiffView(diff: WorkspaceDiff) -> Element {
         return rsx! { p { class: "dim", "This engine has no workspace, so no run of it changes files." } };
     }
     if diff.files.is_empty() {
-        return rsx! { p { class: "dim", "No run has changed a file since askk started." } };
+        return rsx! { p { class: "dim", "No run has changed a file yet." } };
     }
     let n = diff.files.len();
     rsx! {
-        p { class: "dim", "What the last run that wrote files changed: {n} file" if n != 1 { "s" } ", each as it was before the run and as it is now." }
+        p { class: "dim", "What the last run that changed files changed, with its tools or the programs it ran: {n} file" if n != 1 { "s" } ", each as it was before the run and as it is now." }
         ul { class: "change-list",
             for f in diff.files.iter() {
                 {
@@ -31,6 +31,7 @@ pub fn DiffView(diff: WorkspaceDiff) -> Element {
                                 Icon { name: "file", size: 14 }
                                 span { class: "mono grow", title: "{f.path}", "{f.path}" }
                                 if f.before.is_none() { span { class: "change-new", "new" } }
+                                if f.gone { span { class: "change-gone-file", "gone" } }
                                 span { class: "change-add", "+{added}" }
                                 span { class: "change-gone", "−{gone}" }
                             }

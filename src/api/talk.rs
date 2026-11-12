@@ -161,6 +161,7 @@ wire! {
     talks(path: String) -> Vec<TalkInfo>;
     talk_new(path: String) -> u64;
     talk_open(path: String, id: u64) -> ();
+    talk_saved(path: String, id: u64) -> Talk;
 }
 
 /// The answer an engine is writing now, as far as it has come: the run and step it is for,

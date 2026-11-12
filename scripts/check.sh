@@ -55,6 +55,9 @@ if command -v dx >/dev/null; then
     # The landmark of 0.1: the engine loop, whole, as a terminal process, as a hosted service
     # and in a browser tab. On CI every runtime must be checked; here a missing browser is said.
     step "landmark 0.1: the loop on every runtime (scripts/landmark.sh)" quiet env LANDMARK_ALL="${CI:+1}" ./scripts/landmark.sh
+    # An answer streams from a real OpenAI-style server and is seen before it ends; a file a
+    # program the engine ran wrote is in its Diff.
+    step "an answer streams, end to end (scripts/stream.sh)" quiet ./scripts/stream.sh
     # The service and its clients: started in the background, found, followed while it works,
     # given a hand edit without a restart, restarted, stopped (docs/service.md).
     step "the service: background, clients, hand edits, restart (scripts/service.sh)" quiet ./scripts/service.sh
@@ -70,7 +73,7 @@ if [ -n "$failed" ]; then
     printf '\nnot ready:%b\n' "$failed"
     exit 1
 fi
-printf '\nready: every rule holds, every build compiles, the built app runs, the loop works on every runtime, the service runs in the background, and it holds terminals\n'
+printf '\nready: every rule holds, every build compiles, the built app runs, the loop works on every runtime, an answer streams, the service runs in the background, and it holds terminals\n'
 if [ "${1:-}" = --shots ]; then
     printf '\n== the screens of every UI (scripts/shots.sh)\n'
     ./scripts/shots.sh

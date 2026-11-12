@@ -19,13 +19,8 @@ fn drawn(f: &crate::core::figure::Figure) -> Node {
     }
 }
 
-/// Everything the chat shows for the engine at `path`.
-pub async fn talk(path: String) -> Result<Talk, String> {
-    let e = crate::core::world::find(&path).ok_or_else(|| say(format!("no engine '{path}'")))?;
-    let (turns, shown) = {
-        let els = e.elements.held();
-        (els.iter().flat_map(|c| c.transcript()).collect::<Vec<_>>(), els.iter().flat_map(|c| c.figures()).collect::<Vec<_>>())
-    };
+/// The chat's view of a conversation whose turns and drawings are `turns` and `shown`.
+fn talk_of(e: &crate::core::Engine, turns: Vec<(String, String)>, shown: Vec<crate::core::figure::Shown>) -> Talk {
     let runs = e.runs();
     let port = crate::core::media::senses();
     let mut beats = beats(&turns, &runs, |raw| said(&e.parse(raw)), |id| Chip::of(id, port.sensed(id)));
@@ -36,7 +31,31 @@ pub async fn talk(path: String) -> Result<Talk, String> {
         }
     }
     let (activity, detail) = e.activity();
-    Ok(Talk { beats, board: figures.into_iter().map(|(_, n)| n).collect(), runs: runs.iter().map(Run::outline).collect(), activity, detail })
+    Talk { beats, board: figures.into_iter().map(|(_, n)| n).collect(), runs: runs.iter().map(Run::outline).collect(), activity, detail }
+}
+
+/// Everything the chat shows for the engine at `path`.
+pub async fn talk(path: String) -> Result<Talk, String> {
+    let e = crate::core::world::find(&path).ok_or_else(|| say(format!("no engine '{path}'")))?;
+    let (turns, shown) = {
+        let els = e.elements.held();
+        (els.iter().flat_map(|c| c.transcript()).collect::<Vec<_>>(), els.iter().flat_map(|c| c.figures()).collect::<Vec<_>>())
+    };
+    Ok(talk_of(&e, turns, shown))
+}
+
+/// A conversation of the engine at `path` that is put aside, to read, without bringing it back
+/// (so it can be read while the engine works in the one open now). The open one's id gives
+/// the open one.
+pub async fn talk_saved(path: String, id: u64) -> Result<Talk, String> {
+    let e = crate::core::world::find(&path).ok_or_else(|| say(format!("no engine '{path}'")))?;
+    if id == e.current_talk() {
+        return talk(path).await;
+    }
+    let parts = e.talk_parts(id).ok_or_else(|| say(format!("{path} has no conversation {id}")))?;
+    let turns = parts.iter().flat_map(|c| c.transcript()).collect();
+    let shown = parts.iter().flat_map(|c| c.figures()).collect();
+    Ok(talk_of(&e, turns, shown))
 }
 
 /// One run in full: every stage with the texts it kept (the prompt, the reply, each result).

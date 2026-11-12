@@ -446,12 +446,10 @@ impl Engine {
             Ok(a) => ("done", a.clone()),
         };
         let (ms, total) = self.lap();
-        self.record(|r| {
-            r.close(ms);
-            r.status = how.into();
-            r.answer = super::run::cut(&answer);
-            r.ms = total;
-        });
+        self.record(|r| { r.close(ms); r.status = how.into(); r.answer = super::run::cut(&answer); r.ms = total; });
+        // Told after the record is closed (the workspace compares its files now).
+        let run = self.runs.held().back().map_or(0, |r| r.id);
+        self.dispatch(&Event::Ended { run });
     }
 
     /// The stages of the current (or last) run, in the order they were entered.

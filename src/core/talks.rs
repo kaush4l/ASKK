@@ -154,6 +154,30 @@ impl Engine {
         Ok(id)
     }
 
+    /// The conversation `id` as its parts would be, without bringing it back: read only, so it
+    /// can be looked at while a run goes on in the one open now. `None`: there is no such one.
+    pub fn talk_parts(&self, id: u64) -> Option<Vec<Box<dyn Component>>> {
+        let saved: Saved = store::data().get(&self.talk_key(id)).and_then(|s| serde_json::from_str(&s).ok())?;
+        let specs: Vec<Spec> = self.elements.held().iter().map(|e| e.spec()).collect();
+        let parts = specs
+            .into_iter()
+            .filter_map(|mut spec| {
+                // A part it does not name was empty when it was put aside.
+                let state = saved.states.get(&spec.name).cloned();
+                let mut e = build(spec.clone()).ok()?;
+                e.on(&Event::Bound(self.path.clone()));
+                e.on(&Event::Cleared);
+                if let Some(state) = state {
+                    spec.state = state;
+                    e = build(spec).ok()?;
+                    e.on(&Event::Bound(self.path.clone()));
+                }
+                Some(e)
+            })
+            .collect();
+        Some(parts)
+    }
+
     /// Bring back the conversation `id`; the one open now is put aside. Refused while a run goes.
     pub fn open_talk(&self, id: u64) -> Result<(), String> {
         let _turn = self.turn.try_lock().ok_or("it is at work: stop it, or wait until it is done")?;
@@ -201,6 +225,12 @@ mod tests {
         e.run("from user: the sky?").await.unwrap();
         let all = e.talks();
         assert_eq!(all.iter().map(|t| (t.title.as_str(), t.current)).collect::<Vec<_>>(), [("the sky?", true), ("two and two?", false)]);
+        // Read while it is put aside, without bringing it back.
+        let parts = e.talk_parts(FIRST).expect("the first is kept");
+        let seen: Vec<(String, String)> = parts.iter().flat_map(|c| c.transcript()).collect();
+        assert!(seen.iter().any(|(_, t)| t.contains("two and two")) && !seen.iter().any(|(_, t)| t.contains("sky")), "{seen:?}");
+        assert!(e.transcript().iter().any(|(_, t)| t.contains("sky")), "the open one is untouched");
+        assert!(e.talk_parts(999).is_none());
         e.open_talk(FIRST).unwrap();
         assert!(e.transcript().iter().any(|(_, t)| t.contains("two and two")), "the first is back: {:?}", e.transcript());
         assert!(!e.transcript().iter().any(|(_, t)| t.contains("sky")));

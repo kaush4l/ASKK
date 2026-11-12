@@ -51,6 +51,9 @@ impl crate::core::files::Files for Disk {
         }
         std::fs::write(file, text).map_err(|e| e.to_string())
     }
+    fn size(&self, file: &Path) -> Option<u64> {
+        std::fs::metadata(file).ok().map(|m| m.len())
+    }
 }
 
 pub type Fire = Arc<dyn Fn(String, String) + Send + Sync>;

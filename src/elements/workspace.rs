@@ -141,55 +141,37 @@ pub struct Workspace {
     run: u64,
 }
 
+mod changes;
+
 /// A file a run changed: as it was before the run first changed it (`None`: it did not exist),
-/// and as it is now.
+/// and as it is now (`gone`: it is no longer there).
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct FileChange {
     pub path: String,
     pub before: Option<String>,
     pub after: String,
+    #[serde(default)]
+    pub gone: bool,
 }
 
-/// The files the last run that changed any changed, per engine: `(run, file → before)`. Held in
-/// memory only, so a restart forgets what came before.
-type Touched = std::collections::BTreeMap<String, (u64, std::collections::BTreeMap<String, Option<String>>)>;
-
-fn touched() -> &'static std::sync::Mutex<Touched> {
-    static T: std::sync::OnceLock<std::sync::Mutex<Touched>> = std::sync::OnceLock::new();
-    T.get_or_init(Default::default)
-}
-
-/// Note a file as it is before `run` changes it, the first time that run does.
-fn before_change(engine: &str, run: u64, root: &Path, rel: &str) {
-    use crate::core::held::Held;
-    let mut t = touched().held();
-    let entry = t.entry(engine.to_string()).or_default();
-    if entry.0 != run {
-        *entry = (run, Default::default());
-    }
-    if !entry.1.contains_key(rel) {
-        let full = root.join(rel);
-        let files = crate::core::files::files();
-        entry.1.insert(rel.to_string(), files.is_file(&full).then(|| files.read(&full).unwrap_or_default()));
-    }
-}
-
-/// What the last run of `engine` that changed files changed in the workspace `spec` describes:
-/// the run, and each file before and now.
+/// What the last run of `engine` that changed files changed in the workspace `spec` describes
+/// (through its tools or through the programs it ran): the run, and each file before and now.
 pub fn changes_of(spec: Spec, engine: &str) -> Result<(u64, Vec<FileChange>), String> {
-    use crate::core::held::Held;
     let cfg: Cfg = if spec.config.is_null() { Cfg::default() } else { read(&spec.config)? };
     let root = base().join(&cfg.root);
-    let Some((run, files)) = touched().held().get(engine).cloned() else { return Ok((0, vec![])) };
-    let out = files
+    let Some(last) = changes::last(engine) else { return Ok((0, vec![])) };
+    let files = crate::core::files::files();
+    let out = last
+        .before
         .into_iter()
         .map(|(path, before)| {
-            let after = crate::core::files::files().read(&root.join(&path)).unwrap_or_default();
-            FileChange { path, before, after }
+            let full = root.join(&path);
+            let gone = !files.is_file(&full);
+            FileChange { after: files.read(&full).unwrap_or_default(), path, before, gone }
         })
-        .filter(|c| c.before.as_deref() != Some(c.after.as_str()))
+        .filter(|c| c.gone || c.before.as_deref() != Some(c.after.as_str()))
         .collect();
-    Ok((run, out))
+    Ok((last.run, out))
 }
 
 /// One visible file's text, for reading only (excluded files are not shown).
@@ -348,7 +330,15 @@ impl Component for Workspace {
             }
             Event::Cleared => self.st = St::default(),
             Event::Bound(p) => self.engine = p.clone(),
-            Event::Started { run } => self.run = *run,
+            Event::Started { run } => {
+                self.run = *run;
+                let r = self.rules();
+                changes::begin(&self.engine, *run, &r.root, &r.exclude);
+            }
+            Event::Ended { run } => {
+                let r = self.rules();
+                changes::end(&self.engine, *run, &r.root, &r.exclude);
+            }
             _ => {}
         }
     }
@@ -381,7 +371,7 @@ impl Component for Workspace {
             tool("close_file", "close an open file", json!({"path": "relative path"}), move |a| Rules::clean(&path(&a)?).map(|_| json!(true))),
             tool("write_file", "create or overwrite a file (not excluded or protected paths); it opens", json!({"path": "relative path", "content": "full text"}), move |a| {
                 let p = r2.writable(&path(&a)?)?;
-                before_change(&e2, run, &r2.root, &p);
+                changes::before_change(&e2, run, &r2.root, &p);
                 let full = r2.root.join(&p);
                 crate::core::files::files().write(&full, a["content"].as_str().unwrap_or_default())?;
                 Ok(json!(true))
@@ -397,7 +387,7 @@ impl Component for Workspace {
                     0 => return Err(format!("'old' not found in {p}")),
                     n => return Err(format!("'old' is found {n} times in {p}; include more context")),
                 }
-                before_change(&e3, run, &r3.root, &p);
+                changes::before_change(&e3, run, &r3.root, &p);
                 crate::core::files::files().write(&full, &text.replacen(old, a["new"].as_str().unwrap_or_default(), 1))?;
                 Ok(json!(true))
             }),
@@ -484,8 +474,31 @@ mod tests {
         assert_eq!(ch.iter().map(|c| (c.path.as_str(), c.before.as_deref(), c.after.as_str())).collect::<Vec<_>>(), [("src/app.rs", Some("fn b() {}\n"), "fn d() {}\n"), ("src/more.rs", None, "m")]);
         assert_eq!(read_of(spec(Value::Null), "src/app.rs").unwrap(), "fn d() {}\n");
         assert!(read_of(spec(Value::Null), "secret.env").is_err(), "an excluded file is not shown");
+        w.on(&Event::Ended { run: 7 });
         w.on(&Event::Started { run: 8 });
+        w.on(&Event::Ended { run: 8 });
         assert_eq!(changes_of(spec(Value::Null), "ws/test").unwrap().0, 7, "a run that changes nothing leaves the last changes in sight");
+        // A program the run ran changes files without a tool: seen when the run ends.
+        w.on(&Event::Started { run: 9 });
+        std::fs::write(root.join("src/app.rs"), "fn e() {}\n").unwrap();
+        std::fs::write(root.join("made.txt"), "by a program").unwrap();
+        std::fs::remove_file(root.join("src/more.rs")).unwrap();
+        std::fs::create_dir_all(root.join("target")).unwrap();
+        std::fs::write(root.join("target/out.txt"), "never looked at").unwrap();
+        std::fs::write(root.join("big.bin"), [0u8, 1, 2]).unwrap();
+        assert_eq!(changes_of(spec(Value::Null), "ws/test").unwrap().0, 7, "until it ends, the last run's changes stay");
+        w.on(&Event::Ended { run: 9 });
+        let seen = |ch: Vec<FileChange>| ch.iter().map(|c| (c.path.clone(), c.before.clone(), c.after.clone(), c.gone)).collect::<Vec<_>>();
+        let (run, ch) = changes_of(spec(Value::Null), "ws/test").unwrap();
+        let want = vec![
+            ("made.txt".to_string(), None, "by a program".to_string(), false),
+            ("src/app.rs".to_string(), Some("fn d() {}\n".to_string()), "fn e() {}\n".to_string(), false),
+            ("src/more.rs".to_string(), Some("m".to_string()), String::new(), true),
+        ];
+        assert_eq!((run, seen(ch)), (9, want.clone()), "a program's changes, not target/ and not a file that is not text");
+        // A restart forgets what memory held; the store still has the earlier text.
+        changes::forget("ws/test");
+        assert_eq!(seen(changes_of(spec(Value::Null), "ws/test").unwrap().1), want, "kept across a restart");
         let _ = std::fs::remove_dir_all(root);
     }
 }
