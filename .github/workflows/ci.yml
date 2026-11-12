@@ -30,7 +30,16 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
+      # dx puts the full app together (the host and its window); the check builds and starts it.
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: dioxus-cli@0.7.10
       - run: ./scripts/check.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: askk-app-aarch64-apple-darwin
+          path: target/dx/askk/release/web
+          if-no-files-found: error
 
   # The host (the server that runs the engines), as released, for each machine.
   host:
@@ -43,7 +52,7 @@ jobs:
           - { os: ubuntu-latest, target: x86_64-unknown-linux-gnu }
           - { os: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu }
           - { os: macos-latest, target: aarch64-apple-darwin }
-          - { os: macos-13, target: x86_64-apple-darwin }
+          - { os: macos-15-intel, target: x86_64-apple-darwin }
           - { os: windows-latest, target: x86_64-pc-windows-msvc }
           - { os: windows-11-arm, target: aarch64-pc-windows-msvc }
     steps:

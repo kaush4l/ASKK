@@ -27,7 +27,10 @@ tokio = { version = "1", features = ["fs", "process", "io-util", "sync", "time",
 default = ["web"]
 # Spike: the engine runs in the browser tab itself (no server, so not `web`).
 # Build: `scripts/local.sh` (dx would add `web`).
-local = ["dioxus/web", "dep:reqwest", "dep:wasm-bindgen-futures", "dep:wasm-bindgen"]
+local = ["in-browser", "dep:reqwest", "dep:wasm-bindgen-futures", "dep:wasm-bindgen"]
+# Only "draws in a browser". Kept apart from `local` because dx turns on every feature that
+# names `dioxus/web` directly when it builds the window, and `local` must never ride along.
+in-browser = ["dioxus/web"]
 # The feature that are only required for the web = ["dioxus/web"] build target should be optional and only enabled in the web = ["dioxus/web"] feature
 web = ["dioxus/web", "dioxus/fullstack"]
 # The feature that are only required for the desktop = ["dioxus/desktop", "dep:objc2"] build target should be optional and only enabled in the desktop = ["dioxus/desktop", "dep:objc2"] feature

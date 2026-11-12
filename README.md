@@ -21,7 +21,19 @@ project/
 
 ### Serving Your App
 
-Run the following command in the root of your project to start developing with the default platform:
+To run the whole app (the host that runs the engines, and its window), built as released:
+
+```bash
+./scripts/run.sh
+```
+
+To check a change before keeping it (tests, every build, then the built app is started and asked):
+
+```bash
+./scripts/check.sh
+```
+
+While developing, with rebuild on save:
 
 ```bash
 dx serve --platform web

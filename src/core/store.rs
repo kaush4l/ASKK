@@ -75,6 +75,12 @@ pub fn join(a: &str, b: &str) -> String {
 /// How a [`Bundle`] is saved after a write (the host writes one JSON file).
 pub type Save = Box<dyn Fn(&BTreeMap<String, String>) -> Result<(), String> + Send + Sync>;
 
+/// The defaults this program was built with (packed by `build.rs`): what a first home is
+/// made from when there is no defaults folder to read.
+pub fn packed() -> Bundle {
+    Bundle::memory(serde_json::from_str(include_str!(concat!(env!("OUT_DIR"), "/defaults.json"))).unwrap_or_default())
+}
+
 /// Every key in one map (a backup, a template pack, a test world). Reads come from memory;
 /// with a [`Save`], every write hands the whole map to it.
 pub struct Bundle {

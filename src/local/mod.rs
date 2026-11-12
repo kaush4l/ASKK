@@ -39,8 +39,7 @@ fn start() -> World {
         return World { error: "another tab is running this world; close it, then load this page again".into(), ..Default::default() };
     }
     let data = data::data();
-    let packed: std::collections::BTreeMap<String, String> = serde_json::from_str(include_str!(concat!(env!("OUT_DIR"), "/defaults.json"))).unwrap_or_default();
-    let defaults = data::Bundle::memory(packed);
+    let defaults = crate::core::store::packed();
     let mut errors = vec![];
     if let Err(e) = boot::seed(&defaults, &*data) {
         errors.push(format!("seed: {e}"));

@@ -34,8 +34,27 @@ else
 fi
 step "build: local (the engine inside a browser tab)" cargo check --quiet --target $WASM --no-default-features --features local
 
+# The app as a person runs it (scripts/run.sh): dx puts the host and its window together, and
+# chooses features itself, so only this step shows whether that choice still compiles.
+quiet() {
+    log=$(mktemp)
+    if "$@" >"$log" 2>&1; then
+        rm -f "$log"
+    else
+        tail -40 "$log"
+        rm -f "$log"
+        return 1
+    fi
+}
+if command -v dx >/dev/null; then
+    step "build: the full app, as scripts/run.sh builds it" quiet dx build --release --platform web
+    step "the built app runs (scripts/smoke.sh)" quiet ./scripts/smoke.sh
+else
+    printf '== build: the full app\n   not checked: dx is not installed (cargo install dioxus-cli)\n'
+fi
+
 if [ -n "$failed" ]; then
     printf '\nnot ready:%b\n' "$failed"
     exit 1
 fi
-printf '\nready: every rule holds and every build compiles\n'
+printf '\nready: every rule holds, every build compiles, and the built app runs\n'

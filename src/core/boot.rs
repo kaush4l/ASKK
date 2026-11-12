@@ -207,6 +207,15 @@ mod tests {
     use crate::core::engine::tests::Scripted;
     use serde_json::json;
 
+    /// A host started anywhere, with no defaults folder, still boots its engines.
+    #[test]
+    fn the_program_alone_can_make_a_first_home() {
+        let data = crate::core::store::Bundle::memory(Default::default());
+        seed(&crate::core::store::packed(), &data).unwrap();
+        let snap = load(&data).unwrap();
+        assert!(!snap.engines.is_empty(), "the defaults packed into the program hold no engine");
+    }
+
     #[test]
     fn a_page_shipped_later_reaches_an_older_home_and_its_own_pages_stay() {
         let mem = |keys: &[(&str, &str)]| crate::core::store::Bundle::memory(keys.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect());

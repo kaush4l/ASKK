@@ -13,12 +13,17 @@ use crate::core::{boot, store, Engine};
 use std::sync::Arc;
 
 /// The defaults store: `ASKK_DEFAULTS` (default the folder `defaults`; a `.json` path is a
-/// one-file bundle).
+/// one-file bundle). With no such place on this machine, the defaults the program was built
+/// with, so the program alone can make a first home.
 pub fn defaults() -> Arc<dyn store::Store> {
     let at = crate::core::places::defaults();
+    if !std::path::Path::new(&at).exists() {
+        eprintln!("askk: no defaults at `{at}`; using the ones this program was built with");
+        return Arc::new(store::packed());
+    }
     crate::host::store::open(&at).unwrap_or_else(|e| {
-        eprintln!("askk: defaults: {e}");
-        Arc::new(store::Bundle::memory(Default::default()))
+        eprintln!("askk: defaults: {e}; using the ones this program was built with");
+        Arc::new(store::packed())
     })
 }
 

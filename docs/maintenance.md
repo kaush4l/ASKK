@@ -88,6 +88,12 @@ shell (what holds the window); the core is the same in all of them.
 
 `local` cannot be combined with another build; trying is a compile error that says so.
 
+**The fullest build is one command:** `./scripts/run.sh` builds the host and its window as
+released and starts them at `http://127.0.0.1:8090`. The program carries the defaults it was
+built with, so it makes a first home anywhere, with no `defaults` folder beside it.
+`./scripts/smoke.sh` proves that: it starts the built program in an empty folder and asks it
+for its engines, its capabilities, every page and a wrong question.
+
 **What a build can do is not written in this table.** Each host notes what it provides, on
 the line beside where it fills the port (`core/caps.rs`), and the app answers for itself:
 the `capabilities` question (`POST /ask/capabilities`, and the list at the top of the tab's
@@ -271,7 +277,7 @@ Not yet countable, in the order they should be done:
 
 | when | do |
 | --- | --- |
-| before keeping any change | `./scripts/check.sh` |
+| before keeping any change | `./scripts/check.sh` (tests, every build, then the built app is started and asked) |
 | a debt number can go down | lower it in `structure.rs` in the same change |
 | a new top-level folder, port, view or build | add it to the map (`main.rs`, this file) first |
 | each release | read section 10 against the tests; move finished items out |

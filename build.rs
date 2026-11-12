@@ -1,5 +1,6 @@
-//! The `local` build has no disk to seed from, so the defaults folder is packed into one
-//! bundle (keys → text, the store's standard form) and compiled in. Other builds do nothing.
+//! The defaults folder is packed into one bundle (keys → text, the store's standard form) and
+//! compiled into every build, so a program on its own can still make a first home: the tab has
+//! no disk to seed from, and a host started away from this repository has no `defaults` folder.
 use std::collections::BTreeMap;
 use std::path::Path;
 
@@ -22,9 +23,6 @@ fn walk(dir: &Path, key: &str, out: &mut BTreeMap<String, String>) {
 
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
-    if std::env::var_os("CARGO_FEATURE_LOCAL").is_none() {
-        return;
-    }
     println!("cargo:rerun-if-changed=defaults");
     let mut keys = BTreeMap::new();
     walk(&Path::new(&std::env::var("CARGO_MANIFEST_DIR").unwrap()).join("defaults"), "", &mut keys);
