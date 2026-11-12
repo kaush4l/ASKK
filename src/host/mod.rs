@@ -14,6 +14,8 @@
 //! | `media.rs` | what the user attached (images, sound, video) and the commands that sense it |
 //! | `tools.rs` | the tools every engine shares |
 //! | `changes.rs` | sleeping until something changes (the windows' one feed) |
+//! | `service.rs` | the service as a background process: start, record, find, stop |
+//! | `watch.rs` | noticing a file a person edited by hand in the data folder |
 //!
 //! The host also names who runs background work ([`crate::core::tasks`]): the server's runtime.
 pub mod changes;
@@ -24,15 +26,37 @@ pub mod infer;
 pub mod market;
 pub mod media;
 pub mod room;
+pub mod service;
 pub mod store;
 pub mod tools;
+pub mod watch;
 pub mod workspace;
 pub mod world;
 
-/// Start the host: read the command line, boot the world.
-pub fn start(args: Vec<String>) {
-    crate::core::places::take_args(&args);
+/// What every start begins with: read the command line, note that this run has begun, open
+/// the data place.
+fn begin(args: &[String]) {
+    crate::core::places::take_args(args);
+    crate::core::service::began(std::process::id());
     store::start();
+}
+
+/// Start the host as the service: it will listen, so once booted it leaves a record that
+/// windows, terminals and `askk status` find it by (`service.rs`).
+pub fn serve(args: Vec<String>) {
+    begin(&args);
+    service::serves();
+    boot();
+}
+
+/// Start the host for this process alone (`askk terminal` on its own home): boot the world.
+pub fn start(args: Vec<String>) {
+    begin(&args);
+    boot();
+}
+
+/// Fill the core's ports with this machine, then boot the world.
+fn boot() {
     crate::core::files::set(std::sync::Arc::new(workspace::Disk));
     crate::core::media::set(std::sync::Arc::new(media::Kept));
     crate::core::tasks::set(std::sync::Arc::new(Runtime));

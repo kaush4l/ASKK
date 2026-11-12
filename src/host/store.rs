@@ -2,7 +2,8 @@
 //!
 //! The two file forms of [`crate::core::store::Store`]: a folder ([`Folder`]: a key is a path
 //! under its root) and one JSON file holding every key ([`bundle`]). [`open`] picks by
-//! location; [`start`] opens the data place and hands it to the core.
+//! location; [`start`] opens the data place and hands it to the core. A data folder is
+//! opened through `watch.rs`, so that a file a person edits by hand is noticed.
 use crate::core::store::{Bundle, Entry, Store};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -21,6 +22,28 @@ impl Folder {
         }
         Ok(self.0.join(key))
     }
+    /// What the file at `key` looks like from outside, without reading it: when it was last
+    /// written (nanoseconds since 1970) and how long it is. `None` when there is no such file.
+    pub fn stamp(&self, key: &str) -> Option<(u128, u64)> {
+        let m = std::fs::metadata(self.path(key).ok()?).ok()?;
+        let at = m.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok()?.as_nanos();
+        m.is_file().then_some((at, m.len()))
+    }
+}
+
+/// A file that is only ever added to (the service's log), made with its folder when missing.
+pub fn appended(file: &Path) -> Result<std::fs::File, String> {
+    if let Some(d) = file.parent().filter(|d| !d.as_os_str().is_empty()) {
+        std::fs::create_dir_all(d).map_err(|e| format!("{}: {e}", d.display()))?;
+    }
+    std::fs::OpenOptions::new().create(true).append(true).open(file).map_err(|e| format!("{}: {e}", file.display()))
+}
+
+/// The last `lines` lines of a text file (the end of the log, for a person to read).
+pub fn tail(file: &Path, lines: usize) -> String {
+    let text = std::fs::read_to_string(file).unwrap_or_default();
+    let all: Vec<&str> = text.lines().collect();
+    all[all.len().saturating_sub(lines)..].join("\n")
 }
 
 impl Store for Folder {
@@ -89,10 +112,12 @@ pub fn open(location: &str) -> Result<Arc<dyn Store>, String> {
     }
 }
 
-/// Open the data place (`core/places.rs`) and make it the app's data store.
+/// Open the data place (`core/places.rs`) and make it the app's data store. A folder is kept
+/// under watch (`watch.rs`); one file holding every key is read at start only.
 pub fn start() {
     let at = crate::core::places::data();
-    match open(&at.to_string_lossy()) {
+    let opened = if at.to_string_lossy().ends_with(".json") { open(&at.to_string_lossy()) } else { Ok(super::watch::open(at.clone())) };
+    match opened {
         Ok(s) => crate::core::store::set_data(s),
         Err(e) => eprintln!("askk: data store: {e} (nothing will be saved)"),
     }

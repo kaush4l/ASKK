@@ -111,6 +111,11 @@ pub fn table() -> Vec<Ask> {
         // routes.rs
         resolve_route(path),
         nav_links(),
+        // service.rs
+        hello(),
+        reload(),
+        service_settings(),
+        stop_service(),
         // sessions.rs
         harnesses(),
         sessions(),
@@ -142,12 +147,13 @@ pub async fn ask(name: &str, args: Value) -> Result<Value, String> {
 
 /// The plain HTTP form, added to the server's own routes.
 /// The headers that let a page from `origin` read the answer, when that origin is one the
-/// owner named (`ASKK_ORIGINS`); for any other page none, and its browser refuses the answer.
+/// owner named (`ASKK_ORIGINS`, or `origins` in settings.json, which holds as soon as it is
+/// saved); for any other page none, and its browser refuses the answer.
 fn allow(headers: &dioxus::server::axum::http::HeaderMap) -> dioxus::server::axum::http::HeaderMap {
     use dioxus::server::axum::http::{HeaderMap, HeaderValue};
     let mut out = HeaderMap::new();
     let Some(origin) = headers.get("origin").and_then(|o| o.to_str().ok()) else { return out };
-    if !crate::core::places::origins().iter().any(|o| o == origin) {
+    if !crate::core::settings::origins().iter().any(|o| o == origin) {
         return out;
     }
     if let Ok(v) = HeaderValue::from_str(origin) {

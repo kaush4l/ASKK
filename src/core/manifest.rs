@@ -12,8 +12,9 @@
 //!  "rooms": "rooms"}
 //! ```
 //!
-//! Two keys are the store's own and fixed in code, because they are needed before the manifest
-//! can be read: `askk.json` (this file) and `askk.pid` (the one-writer lock, `store::LOCK`).
+//! Three keys are the store's own and fixed in code, because they are needed before the manifest
+//! can be read: `askk.json` (this file), `askk.pid` (the one-writer lock, `store::LOCK`) and
+//! `settings.json` (how the service runs, read before boot: `settings::KEY`).
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 

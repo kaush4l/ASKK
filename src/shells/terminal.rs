@@ -1,8 +1,9 @@
 //! The terminal shell: `askk terminal`.
 //!
 //! ```text
-//! askk terminal                         talk, in this process (it is the host)
-//! askk terminal --to http://127.0.0.1:8090   talk to a running askk server
+//! askk terminal                         talk to the service running for this home (`askk start`);
+//!                                       with none running, this process is the host
+//! askk terminal --to http://127.0.0.1:8090   talk to the askk server at that address
 //! askk terminal --engine askk/coder     choose the engine
 //! askk terminal What is 17 * 23?        ask once, print what the loop did and the answer, leave
 //! ```
@@ -40,6 +41,20 @@ pub fn wanted(args: &[String]) -> Option<Wanted> {
     }
     w.question = words.join(" ");
     Some(w)
+}
+
+/// Decide where this terminal asks. A server named with `--to` is the one asked. With none
+/// named, a service already `running` for this home is asked (its address): the terminal
+/// talks to it instead of trying to be a second host of the same home, which would boot no
+/// engines. With neither, this process is the host.
+pub fn attach(mut w: Wanted, running: Option<String>) -> Wanted {
+    if w.to.is_none() {
+        if let Some(address) = running {
+            eprintln!("askk: a service is running for this home at {address}; this terminal talks to it");
+            w.to = Some(address);
+        }
+    }
+    w
 }
 
 /// Run the terminal; the number is the process's exit code (0 = it went well).
@@ -89,5 +104,14 @@ mod tests {
         let w = wanted(&args("askk terminal --to http://h:1 --engine askk/coder --desk d What is 2 + 2?")).unwrap();
         assert_eq!((w.to.as_deref(), w.engine.as_deref(), w.question.as_str()), (Some("http://h:1"), Some("askk/coder"), "What is 2 + 2?"));
         assert!(wanted(&args("askk terminal")).unwrap().question.is_empty());
+    }
+
+    #[test]
+    fn a_terminal_talks_to_the_running_service_unless_told_where_to_ask() {
+        let args = |s: &str| s.split(' ').map(String::from).collect::<Vec<_>>();
+        let running = || Some("http://127.0.0.1:8090".to_string());
+        assert_eq!(attach(wanted(&args("askk terminal")).unwrap(), running()).to.as_deref(), Some("http://127.0.0.1:8090"), "a running service is asked");
+        assert_eq!(attach(wanted(&args("askk terminal --to http://h:1")).unwrap(), running()).to.as_deref(), Some("http://h:1"), "a named server wins");
+        assert!(attach(wanted(&args("askk terminal")).unwrap(), None).to.is_none(), "with no service, this process is the host");
     }
 }

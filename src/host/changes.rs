@@ -54,4 +54,60 @@ mod tests {
         tokio::time::timeout(std::time::Duration::from_secs(2), t).await.expect("woken by the mark, not the 10 s timer").unwrap();
         assert!(started.elapsed() < std::time::Duration::from_secs(2));
     }
+
+    /// A model that takes a moment to reply, as real ones do.
+    struct Slow;
+
+    impl crate::core::Infer for Slow {
+        fn complete(&self, _: &str, _: String, _: crate::core::Sampling) -> crate::core::Fut<Result<String, String>> {
+            Box::pin(async {
+                tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+                Ok("answer: done".to_string())
+            })
+        }
+    }
+
+    /// The processing is shown through the one feed: a window that only waits for changes
+    /// (it never asks on a timer) sees a run while it is still going, at the stage it is in,
+    /// and sees it end. Every stage entered is a mark, and the record it reads holds them all.
+    #[tokio::test]
+    async fn a_run_in_progress_is_followed_on_the_change_feed_stage_by_stage() {
+        use crate::core::engine::tests::{file, reply};
+        use crate::core::flow::Stage;
+        let e = std::sync::Arc::new(crate::core::Engine::new(file("follow"), "test-follow".into(), vec![reply()], vec![], vec![], std::sync::Arc::new(Slow)).unwrap());
+        let mut seen = now();
+        let runner = {
+            let e = e.clone();
+            tokio::spawn(async move { e.run("hi").await })
+        };
+        let started = std::time::Instant::now();
+        let mut saw: Vec<(String, Option<Stage>)> = vec![];
+        let mut wakes = 0;
+        loop {
+            let (n, keys) = wait(seen, std::time::Duration::from_secs(10)).await;
+            seen = n;
+            assert!(started.elapsed() < std::time::Duration::from_secs(5), "the run was not seen to end: {saw:?}");
+            if !keys.iter().any(|(k, _)| k == "test-follow") {
+                continue;
+            }
+            wakes += 1;
+            let Some(run) = e.runs().pop() else { continue };
+            let at = (run.status.clone(), run.stage());
+            if saw.last() != Some(&at) {
+                saw.push(at);
+            }
+            if !run.running() {
+                break;
+            }
+        }
+        assert_eq!(runner.await.unwrap().unwrap(), "done");
+        assert!(saw.contains(&("running".to_string(), Some(Stage::Think))), "the run was seen while the model was still thinking: {saw:?}");
+        assert_eq!(saw.last(), Some(&("done".to_string(), Some(Stage::Save))), "and it was seen to end: {saw:?}");
+        assert!(wakes >= 2, "each look was caused by a mark, not by a timer");
+        let run = e.runs().pop().unwrap();
+        let stages: Vec<Stage> = run.steps.iter().flat_map(|s| s.marks.iter().map(|m| m.stage)).collect();
+        for stage in [Stage::Prompt, Stage::Think, Stage::Parse, Stage::Save] {
+            assert!(stages.contains(&stage), "the record a window reads holds the stage {stage:?}: {stages:?}");
+        }
+    }
 }

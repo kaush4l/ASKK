@@ -41,12 +41,16 @@ mod components;
 pub mod models;
 mod rooms;
 mod routes;
+mod service;
 mod sessions;
 mod surfaces;
 mod talk;
 pub use components::*;
 pub use rooms::*;
 pub use routes::*;
+// No page asks these yet (other UIs do, over `ask.rs`): see docs/service.md.
+#[allow(unused_imports)]
+pub use service::*;
 pub use sessions::*;
 pub use surfaces::*;
 pub use talk::*;

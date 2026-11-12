@@ -11,6 +11,8 @@
 //! | media | `ASKK_MEDIA` | `<home>/media`, else `media` | what the user attached (images, sound, video) and what was sensed in it (`host/media.rs`) |
 //! | defaults | `ASKK_DEFAULTS` | `defaults` | copied into data at boot for anything missing |
 //! | host | `ASKK_HOST` | `http://127.0.0.1:8090` | where a shell (Mac app) finds the running host |
+//! | service | none | `<home>/service`, else `<data>/.service` | the running service's own record and log ([`service`]); never part of the state |
+//! | listen | `IP`, `PORT` | what `settings.json` says | where the service listens ([`listen`]); the environment wins over the file |
 //!
 //! With `ASKK_HOME` set (`scripts/sandboxed.sh` does it), the sandbox profile lets the process
 //! write there and nowhere else, so the home is the whole of the app's memory and work: move the folder
@@ -60,6 +62,44 @@ pub fn origins() -> Vec<String> {
 pub fn data() -> PathBuf {
     place(DATA, "data", || "data".into())
 }
+
+/// Where the running service keeps its own record (address, process number, since when) and
+/// its log. It goes with the data, one service per data place: the folder `service` in the
+/// home when the home holds the data; else the hidden folder `.service` inside the data
+/// folder (beside it, when the data is one file). It is not state: a name that begins with
+/// a dot is no key of the store, so a backup leaves it out, and it is made again at start.
+pub fn service() -> PathBuf {
+    let data = data();
+    match home() {
+        Some(home) if data == home.join("data") => home.join("service"),
+        _ if data.extension().is_some_and(|x| x == "json") => {
+            let name = data.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            data.with_file_name(format!("{name}.service"))
+        }
+        _ => data.join(".service"),
+    }
+}
+
+/// Where the environment says the service listens: `IP` and `PORT`, each only when set.
+/// (The web library reads the same two names when it opens the door.)
+pub fn listen() -> (Option<String>, Option<u16>) {
+    (var("IP"), var("PORT").and_then(|p| p.parse().ok()))
+}
+
+/// Settle where this process listens, for a name the environment left unsaid: the web
+/// library reads the same two names when it opens the door, so both then agree.
+pub fn listen_at(ip: &str, port: u16) {
+    if var("IP").is_none() {
+        std::env::set_var("IP", ip);
+    }
+    if var("PORT").is_none() {
+        std::env::set_var("PORT", port.to_string());
+    }
+}
+
+/// The build id: one short name for exactly the source this program was made from
+/// (`build.rs` works it out). The service and the page it serves carry the same one.
+pub const BUILD: &str = env!("ASKK_BUILD");
 
 /// The defaults store location.
 pub fn defaults() -> String {

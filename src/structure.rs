@@ -382,3 +382,34 @@ fn the_answers_ask_the_core_not_the_host() {
     }
     assert!(wrong.is_empty(), "\n{}\nAsk through a port in core/ (as `core/world.rs`, `core/tables.rs` do) and let each host provide it", wrong.join("\n"));
 }
+
+// ---- Rules for the service and its clients (docs/service.md) ----
+
+#[test]
+fn the_service_is_found_and_ended_in_one_place() {
+    // A client learns where the service is from its record, and the record has one reader and
+    // one writer. Nothing may stop the service but its owner: the program is ended on purpose
+    // only where the command line is read, and where `askk stop` is answered.
+    only_in("\"service.json\"", &["host/service.rs"], "the service's record has one reader and writer: ask host/service.rs (`record`, `running`)");
+    only_in("process::exit", &["main.rs", "host/service.rs"], "the service runs for as long as the machine does: return the error as a sentence; only `askk stop` (host/service.rs) ends it");
+}
+
+#[test]
+fn a_hand_edit_is_noticed_and_read_again_in_one_place() {
+    // Whether a file was changed by a person is decided by looking at it from outside
+    // (host/watch.rs, through the store on disk), and what a changed file means is decided
+    // once (core/reread.rs). A second way of noticing would disagree with the first.
+    only_in(".stamp(", &["host/watch.rs", "host/store.rs"], "ask `core::reread::reload()`: it looks, reads again, and marks the change for every window");
+    only_in("reread::apply(", &["core/reread.rs"], "every reader of the home goes through `core::reread::reload()`, so each change is read and told once");
+}
+
+#[test]
+fn what_a_new_hello_means_is_decided_once() {
+    // Same service, restarted, rebuilt or gone: every UI must decide alike, so no UI compares
+    // two hellos itself. It asks `ui/features/service.rs` (`seen`).
+    for folder in ["ui/web", "ui/terminal", "shells", "local"] {
+        for needle in [".started !=", ".build !=", ".started ==", ".build =="] {
+            never_in(folder, needle, "hold the two hellos against each other with `ui::features::service::seen`, as every other UI does");
+        }
+    }
+}

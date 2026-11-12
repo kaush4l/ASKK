@@ -43,6 +43,8 @@ pub fn boot_now() {
                 e.subs().iter().for_each(wake_pending);
             }
             w.engines.iter().for_each(wake_pending);
+            // From here on the home is looked at for hand edits, and a service can be found.
+            crate::host::service::booted();
             std::future::pending::<()>().await
         });
     });

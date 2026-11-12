@@ -40,15 +40,23 @@ fn main() {
     #[cfg(feature = "server")]
     {
         let args: Vec<String> = std::env::args().collect();
-        // `askk terminal`: the same host, shown as lines instead of pages. With `--to` it only
-        // talks to a server that is already running, so no host is started here.
+        // `askk start | stop | status | restart`: the service in the background. This process
+        // only starts, asks or stops it, says how that went, and leaves.
+        if let Some(verb) = shells::service::wanted(&args) {
+            std::process::exit(shells::service::tell(verb, host::service::act(verb, &args)));
+        }
+        // `askk terminal`: the same host, shown as lines instead of pages. With `--to`, or
+        // with a service already running for this home, it only talks to that one, so no
+        // host is started here.
         if let Some(wanted) = shells::terminal::wanted(&args) {
+            let wanted = shells::terminal::attach(wanted, host::service::running(&args));
             if wanted.to.is_none() {
                 host::start(args);
             }
             std::process::exit(shells::terminal::launch(wanted));
         }
-        host::start(args);
+        // Anything else is the service itself: it listens, so it leaves a record to be found by.
+        host::serve(args);
     }
     // The tab is its own host: no server to ask, so it draws its own page.
     #[cfg(feature = "local")]

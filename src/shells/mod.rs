@@ -9,10 +9,13 @@
 //! | `mac/` | `desktop` on macOS | window, tray, dock, notch, companion — one file each |
 //! | `phone.rs` | `mobile` (iPhone, iPad) | the page, with the companion inside it |
 //! | `terminal.rs` | `server`, started as `askk terminal` | lines in a terminal (`ui/terminal`) |
+//! | `service.rs` | `server`, started as `askk start`, `stop`, `status`, `restart` | none: a few lines about the service, then it leaves |
 #[cfg(all(feature = "desktop", target_os = "macos"))]
 pub mod mac;
 #[cfg(feature = "mobile")]
 pub mod phone;
+#[cfg(feature = "server")]
+pub mod service;
 #[cfg(feature = "server")]
 pub mod terminal;
 pub mod web;
