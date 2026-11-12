@@ -63,6 +63,10 @@ if command -v dx >/dev/null; then
     # The service and its clients: started in the background, found, followed while it works,
     # given a hand edit without a restart, restarted, stopped (docs/service.md).
     step "the service: background, clients, hand edits, restart (scripts/service.sh)" quiet ./scripts/service.sh
+    # The multiplexer: terminals the service holds with nobody attached, each a screen and a
+    # box, confined to its folder; and the full-screen terminal driven under a real terminal
+    # (docs/concept.md, sections 6 and 7).
+    step "the terminals: held by the service, confined, the full screen (scripts/terminals.sh)" quiet ./scripts/terminals.sh
 else
     printf '== build: the full app\n   not checked: dx is not installed (cargo install dioxus-cli)\n'
 fi
@@ -71,4 +75,4 @@ if [ -n "$failed" ]; then
     printf '\nnot ready:%b\n' "$failed"
     exit 1
 fi
-printf '\nready: every rule holds, every build compiles, the built app runs, the loop works on every runtime, and the service runs in the background\n'
+printf '\nready: every rule holds, every build compiles, the built app runs, the loop works on every runtime, the service runs in the background, and it holds terminals\n'

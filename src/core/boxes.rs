@@ -6,17 +6,19 @@
 //!
 //! | [`Depth`] | askk knows | because |
 //! | --- | --- | --- |
-//! | `Screen` | that it runs, and its screen | the service holds its terminal (not built yet) |
-//! | `Recognised` | which agent it is, and a guess at its state | its process and its screen (not built yet) |
+//! | `Screen` | that it runs, and its screen | the service holds its terminal ([`super::terminals`]) |
+//! | `Recognised` | which agent it is, and a guess at its state | its program's name, and the bottom of its screen |
 //! | `Reported` | each turn and its state, as the agent says them | a harness ([`super::session`]) |
 //! | `Spec` | its goal, its learnings, its tools, every stage of every run | askk built it: an engine |
 //!
 //! Every UI draws a [`SessionBox`] and nothing else, so this file is the one place that says
-//! what an engine or a session is as a box: its state, its depth, its last line, its facts.
+//! what an engine, a session or a terminal is as a box: its state, its depth, its last line,
+//! its facts.
 //! "Done and not yet looked at" is not here: that is a window's own knowledge, not the
 //! service's (`ui/features/boxes.rs`).
 use super::held::Held;
 use super::session::{self, Session};
+use super::terminals::{self, Terminal};
 use super::Engine;
 use serde::{Deserialize, Serialize};
 
@@ -62,9 +64,10 @@ fn fact(label: &str, value: impl Into<String>) -> Fact {
 /// A session as every UI is given it.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct SessionBox {
-    /// Its kind and its own name within that kind: `engine:askk/coder`, `session:12`.
+    /// Its kind and its own name within that kind: `engine:askk/coder`, `session:12`, `terminal:3`.
     pub id: String,
-    /// `engine`, or the harness a session is with (`claude`, `codex`...).
+    /// `engine`, the harness a session is with (`claude`, `codex`...), or the program in a
+    /// terminal (`zsh`; the agent's name when the program is recognised as one).
     pub kind: String,
     pub depth: Depth,
     pub state: State,
@@ -211,7 +214,48 @@ pub fn session_box(s: &Session) -> SessionBox {
     }
 }
 
-/// Every box there is: the engines depth first, then the sessions oldest first.
+/// A terminal the service holds, as a box. askk sees its screen and nothing behind it, so it
+/// is working for as long as its program runs. A program recognised as an agent by its name
+/// gets a state read off its screen, and a fact says that this is a guess.
+pub fn terminal_box(t: &Terminal) -> SessionBox {
+    let recognised = !t.agent.is_empty();
+    let state = match (t.alive, t.exit) {
+        (true, _) if recognised => terminals::guess(&t.bottom),
+        (true, _) => State::Working,
+        (false, Some(0)) => State::Idle,
+        (false, _) => State::Failed,
+    };
+    let mut facts = vec![];
+    match (t.alive, t.exit) {
+        (true, _) => {}
+        (false, Some(0)) => facts.push(fact("ended", "with 0: it went well")),
+        (false, Some(code)) => facts.push(fact("error", format!("its program ended with {code}"))),
+        (false, None) => facts.push(fact("error", "its program ended without saying how")),
+    }
+    if recognised && t.alive {
+        facts.push(fact("its state", "a guess, read off its screen"));
+    }
+    facts.push(fact("command", if t.command.is_empty() { format!("your shell ({})", t.program) } else { first_line(&t.command) }));
+    facts.push(fact("place", if t.place.is_empty() { "the workspace".to_string() } else { t.place.clone() }));
+    facts.push(fact("size", format!("{} × {}", t.cols, t.rows)));
+    facts.push(fact("confined", t.confined.clone()));
+    facts.push(fact("after a restart", "lost: the terminal ends with the service"));
+    let title = [t.title.trim(), t.command.trim(), t.program.as_str()].into_iter().find(|n| !n.is_empty()).unwrap_or("terminal");
+    SessionBox {
+        id: format!("terminal:{}", t.id),
+        kind: if recognised { t.agent.clone() } else { t.program.clone() },
+        depth: if recognised { Depth::Recognised } else { Depth::Screen },
+        state,
+        title: first_line(title),
+        icon: String::new(),
+        place: t.place.clone(),
+        last: first_line(&t.last),
+        facts,
+    }
+}
+
+/// Every box there is: the engines depth first, then the sessions oldest first, then the
+/// terminals oldest first.
 pub fn all() -> Vec<SessionBox> {
     fn walk(e: &Engine, out: &mut Vec<SessionBox>) {
         out.push(engine_box(&parts(e)));
@@ -221,6 +265,7 @@ pub fn all() -> Vec<SessionBox> {
     super::world::world().engines.iter().for_each(|e| walk(e, &mut out));
     let store = super::store::data();
     out.extend(session::list(&*store, &super::manifest::manifest().sessions).iter().map(session_box));
+    out.extend(terminals::terminals().all().iter().map(terminal_box));
     out
 }
 
@@ -276,6 +321,42 @@ mod tests {
         assert_eq!(b.facts[2].value, "goes on where it was");
         s.state = session::State::Busy;
         assert_eq!(session_box(&s).state, State::Working);
+    }
+
+    #[test]
+    fn a_terminal_is_a_box_that_works_while_its_program_runs_and_says_how_it_is_confined() {
+        let mut t = Terminal { id: "3".into(), command: "vim notes.md".into(), program: "vim".into(), place: "askk".into(), cols: 80, rows: 24, alive: true, last: "-- INSERT --".into(), confined: "not confined".into(), ..Default::default() };
+        let b = terminal_box(&t);
+        assert_eq!((b.id.as_str(), b.kind.as_str(), b.depth, b.state), ("terminal:3", "vim", Depth::Screen, State::Working));
+        assert_eq!((b.title.as_str(), b.place.as_str(), b.last.as_str()), ("vim notes.md", "askk", "-- INSERT --"));
+        let said: Vec<(&str, &str)> = b.facts.iter().map(|f| (f.label.as_str(), f.value.as_str())).collect();
+        assert_eq!(said, [("command", "vim notes.md"), ("place", "askk"), ("size", "80 × 24"), ("confined", "not confined"), ("after a restart", "lost: the terminal ends with the service")]);
+        (t.alive, t.exit) = (false, Some(0));
+        assert_eq!((terminal_box(&t).state, terminal_box(&t).facts[0].clone()), (State::Idle, fact("ended", "with 0: it went well")));
+        t.exit = Some(2);
+        assert_eq!((terminal_box(&t).state, terminal_box(&t).facts[0].clone()), (State::Failed, fact("error", "its program ended with 2")));
+        t.exit = None;
+        assert_eq!(terminal_box(&t).state, State::Failed, "an end nobody can explain is not a good one");
+        // The shell, with no command named and a title the program set.
+        let shell = Terminal { id: "4".into(), program: "zsh".into(), title: "~/work".into(), alive: true, ..Default::default() };
+        let b = terminal_box(&shell);
+        assert_eq!((b.title.as_str(), b.facts[0].clone(), b.facts[1].clone()), ("~/work", fact("command", "your shell (zsh)"), fact("place", "the workspace")));
+    }
+
+    #[test]
+    fn an_agent_recognised_in_a_terminal_is_named_and_its_state_is_said_to_be_a_guess() {
+        let mut t = Terminal { id: "5".into(), command: "agentx".into(), program: "agentx".into(), agent: "agentx".into(), alive: true, bottom: vec!["✻ Thinking… (esc to interrupt)".into()], ..Default::default() };
+        let b = terminal_box(&t);
+        assert_eq!((b.kind.as_str(), b.depth, b.state), ("agentx", Depth::Recognised, State::Working));
+        assert_eq!(b.facts[0], fact("its state", "a guess, read off its screen"));
+        t.bottom = vec!["Do you want to run this command?".into(), "❯ 1. Yes".into()];
+        assert_eq!(terminal_box(&t).state, State::Blocked, "a question on its screen waits for the owner");
+        t.bottom = vec!["> ".into()];
+        assert_eq!(terminal_box(&t).state, State::Idle);
+        (t.alive, t.exit) = (false, Some(1));
+        let b = terminal_box(&t);
+        assert_eq!(b.state, State::Failed, "how it ended is known, not guessed");
+        assert!(b.facts.iter().all(|f| f.label != "its state"), "{:?}", b.facts);
     }
 
     #[test]

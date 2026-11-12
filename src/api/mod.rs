@@ -46,6 +46,7 @@ mod service;
 mod sessions;
 mod surfaces;
 mod talk;
+mod terminals;
 pub use boxes::*;
 pub use components::*;
 pub use rooms::*;
@@ -56,6 +57,9 @@ pub use service::*;
 pub use sessions::*;
 pub use surfaces::*;
 pub use talk::*;
+// Asked by the terminal UI over `ask.rs`; a page comes to ask them for a terminal box.
+#[allow(unused_imports)]
+pub use terminals::*;
 
 pub use crate::core::routes::NavLink;
 use crate::core::node::Node;

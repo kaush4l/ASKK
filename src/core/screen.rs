@@ -13,7 +13,8 @@
 //!
 //! The questions about a terminal (`api/`): `terminal_open(command, place, cols, rows)` gives
 //! its id; `terminal_screen(id)` gives this object; `terminal_type(id, keys)` types;
-//! `terminal_resize(id, cols, rows)`; `terminal_close(id)`. A terminal is also a box
+//! `terminal_resize(id, cols, rows)`; `terminal_close(id)`; `terminal_scrolled(id, back)`
+//! gives this object as it was `back` rows up. A terminal is also a box
 //! (`terminal:<id>`, `core/boxes.rs`), and its key on the change feed is `terminals/<id>`.
 use serde::{Deserialize, Serialize};
 

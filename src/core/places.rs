@@ -139,10 +139,22 @@ pub fn path() -> Vec<PathBuf> {
     std::env::var_os("PATH").map(|p| std::env::split_paths(&p).collect()).unwrap_or_default()
 }
 
+/// The person's own shell: what a terminal runs when no command is named. `SHELL` where
+/// there is one (Mac, Linux), else the system's command line (`COMSPEC` on Windows).
+pub fn shell() -> String {
+    var("SHELL").or_else(|| var("COMSPEC")).unwrap_or_else(|| if cfg!(windows) { "cmd.exe".into() } else { "/bin/sh".into() })
+}
+
 /// Whether the person, or their terminal, asked for lines without colour: `NO_COLOR` set
 /// (the convention of no-color.org), or a terminal that says it cannot (`TERM=dumb`).
 pub fn plain_lines() -> bool {
     var("NO_COLOR").is_some() || var("TERM").as_deref() == Some("dumb")
+}
+
+/// Whether the terminal says it cannot be drawn on as a full screen (`TERM=dumb`): then the
+/// terminal UI writes lines.
+pub fn dumb_terminal() -> bool {
+    var("TERM").as_deref() == Some("dumb")
 }
 
 /// A secret by the name of the env var that holds it.

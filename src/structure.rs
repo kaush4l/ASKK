@@ -257,12 +257,34 @@ fn a_feature_draws_nothing() {
 }
 
 #[test]
-fn the_terminal_is_lines_only() {
-    // The terminal shows the same features as text. It draws no page, knows no other UI, and
-    // like every UI it asks through api/ and never reaches the host itself.
-    never_in("ui/terminal/", "dioxus", "the terminal writes lines; pages belong to ui/web");
+fn the_terminal_draws_in_a_terminal_and_asks_through_the_api() {
+    // The terminal shows the same features in a terminal: as lines, or as a full screen of
+    // panes. It draws no page, knows no other UI, and like every UI it asks through api/ and
+    // never reaches the host itself.
+    never_in("ui/terminal/", "dioxus", "the terminal draws in a terminal; pages belong to ui/web");
     never_in("ui/terminal/", "crate::ui::web", "the terminal and the pages share features, not each other");
     never_in("ui/terminal/", "crate::host", "a UI asks through api/");
+    // Only the terminal draws cells, and no feature, page or shell learns its library.
+    only_in("ratatui", &["ui/terminal"], "cells in a terminal are drawn by ui/terminal and nobody else");
+    // Inside it, each file keeps to its part. Lines stay lines: what a script reads names
+    // no cell. The full screen's behaviour and its drawing are values in and values out, so
+    // a test can read them: only `client.rs` reads the real keys and asks the real service.
+    let all = sources();
+    let code = |file: &str| all.iter().find(|(rel, _)| rel == file).map(|(_, code)| code.clone()).unwrap_or_else(|| panic!("{file} is where this rule looks"));
+    for (file, banned, why) in [
+        ("ui/terminal/layout.rs", vec!["ratatui"], "a line is text: the same in a pipe as on a screen"),
+        ("ui/terminal/panes.rs", vec!["Door", "tokio", "crossterm", "std::thread"], "the panes are plain values"),
+        ("ui/terminal/events.rs", vec!["Door", "tokio", "crossterm", "std::thread"], "what happened and what is wanted are plain values"),
+        ("ui/terminal/app.rs", vec!["Door", "tokio", "crossterm", "std::thread", ".await"], "what the full screen does is decided without a terminal or a service: it says what it wants asked"),
+        ("ui/terminal/picture.rs", vec!["Door", "tokio", "crossterm", "std::thread", ".await", "&mut self"], "the picture is the app, read: nothing is asked and nothing changes"),
+        ("ui/terminal/draw.rs", vec!["Door", "tokio", "crossterm", "std::thread", ".await"], "drawing asks nothing: it is given the picture"),
+    ] {
+        for needle in banned {
+            if let Some(n) = code(file).lines().position(|l| l.contains(needle)) {
+                panic!("{file}:{}: `{needle}` does not belong here: {why}", n + 1);
+            }
+        }
+    }
 }
 
 /// The questions (functions) of `crate::api` that `code` names. A shape (`ChatTurn`, `Mode`)
@@ -463,6 +485,45 @@ fn a_hand_edit_is_noticed_and_read_again_in_one_place() {
     // once (core/reread.rs). A second way of noticing would disagree with the first.
     only_in(".stamp(", &["host/watch.rs", "host/store.rs"], "ask `core::reread::reload()`: it looks, reads again, and marks the change for every window");
     only_in("reread::apply(", &["core/reread.rs"], "every reader of the home goes through `core::reread::reload()`, so each change is read and told once");
+}
+
+// ---- Rules for the terminals the service holds (docs/concept.md, sections 6 and 7) ----
+
+#[test]
+fn a_program_is_given_a_terminal_in_one_place_and_a_window_gets_only_its_screen() {
+    // The service turns a program's bytes into a screen once (host/terminals.rs), and every
+    // window is handed that screen as an object (core/screen.rs). So the two libraries that
+    // know terminals from the inside are named in that one file: no UI, and no answer, ever
+    // holds a program's bytes or a terminal of its own.
+    only_in("portable_pty", &["host/terminals.rs"], "a terminal is opened and held by the service: ask through core/terminals.rs");
+    only_in("vt100", &["host/terminals.rs"], "the screen is worked out once, in the service: draw core::screen::Screen");
+}
+
+#[test]
+fn the_sandbox_is_chosen_by_the_build_in_one_place() {
+    // Which system a program is built for decides what can confine a program it starts. That
+    // choice is made in host/sandbox.rs at compile time and nowhere else: the core says only
+    // what is asked (core/sandbox.rs), and names no system.
+    for folder in ["core", "elements", "api", "ui"] {
+        never_in(folder, "target_os", "what differs per system sits behind a port, and the host for that system fills it");
+    }
+    only_in("landlock::", &["host/sandbox.rs"], "Linux's sandbox is one file's business");
+    only_in("sandbox-exec", &["host/sandbox.rs", "host/harness/mod.rs"], "macOS's sandbox is started by the host's sandbox (and, until it goes through the port too, by a session's harness)");
+}
+
+#[test]
+fn the_service_answers_nothing_before_it_knows_who_asks() {
+    // The service starts programs when asked. Every request (a question, a server function,
+    // a page) is first held against who may ask (`api::ask::guarded`): wherever the server
+    // is started, its routes are wrapped in it.
+    let mut served = 0;
+    for (rel, code) in sources() {
+        for (n, l) in code.lines().enumerate().filter(|(_, l)| l.contains("dioxus::serve(")) {
+            served += 1;
+            assert!(l.contains("ask::guarded("), "{rel}:{}: the server is started without `api::ask::guarded` around its routes, so a request under a foreign name would be answered", n + 1);
+        }
+    }
+    assert!(served > 0, "the line that starts the server was not found where this rule looks (`dioxus::serve(`)");
 }
 
 #[test]

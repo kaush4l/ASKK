@@ -16,6 +16,7 @@
 //! | `queue.rs` | messages written while a box works: they wait, in order, and can be taken back |
 //! | `asks.rs` | what an engine waits for the owner to say, and the answer as a message |
 //! | `terminal.rs` | a terminal's screen as cells to draw; a key as the bytes a program reads |
+//! | `terminals.rs` | a box that is a screen: what a key sends, what a pane shows, the keys that work the panes |
 pub mod asks;
 pub mod boxes;
 pub mod code;
@@ -27,3 +28,4 @@ pub mod run;
 pub mod service;
 pub mod talk;
 pub mod terminal;
+pub mod terminals;

@@ -16,6 +16,8 @@
 //! | `changes.rs` | sleeping until something changes (the windows' one feed) |
 //! | `service.rs` | the service as a background process: start, record, find, stop |
 //! | `watch.rs` | noticing a file a person edited by hand in the data folder |
+//! | `terminals.rs` | the multiplexer: a real terminal per program, held for the program's whole life |
+//! | `sandbox.rs` | what this system has to keep a program inside its folder (chosen when built) |
 //!
 //! The host also names who runs background work ([`crate::core::tasks`]): the server's runtime.
 pub mod changes;
@@ -26,8 +28,10 @@ pub mod infer;
 pub mod market;
 pub mod media;
 pub mod room;
+pub mod sandbox;
 pub mod service;
 pub mod store;
+pub mod terminals;
 pub mod tools;
 pub mod watch;
 pub mod workspace;
@@ -75,6 +79,15 @@ fn boot() {
     if code::found() {
         crate::core::code::set(std::sync::Arc::new(code::Node));
         provided("code", "node on this machine, in an empty context (JavaScript)");
+    }
+    // The sandbox first: a terminal's program is started through it.
+    sandbox::start();
+    match terminals::found() {
+        Ok(()) => {
+            crate::core::terminals::set(std::sync::Arc::new(terminals::Ptys));
+            provided("terminals", "real terminals on this machine, held by this process");
+        }
+        Err(e) => eprintln!("askk: this machine gives no terminal ({e}), so no program can be started in one"),
     }
     world::boot_now();
 }

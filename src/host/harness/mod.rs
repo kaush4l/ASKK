@@ -10,6 +10,7 @@ mod codex;
 mod muse;
 
 use crate::core::session::{self, Harness, HarnessInfo, Reply, Session};
+use crate::host::sandbox::profile;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -68,6 +69,21 @@ pub async fn turn(id: u64, text: &str) -> Result<String, String> {
 /// The names of the kinds that can run on this machine now.
 pub fn usable() -> Vec<String> {
     all().iter().filter(|h| h.missing().is_none()).map(|h| h.kind().to_string()).collect()
+}
+
+/// Agents' programs askk has no harness for, known by name only: a terminal that runs one
+/// can still say which agent it is (`docs/concept.md`, depth 1). The names herdr recognises
+/// (<https://herdr.dev/tui/docs/agents/>), as the programs are called on the command line.
+const BY_NAME: &[&str] = &["aider", "amp", "cline", "copilot", "crush", "cursor-agent", "devin", "droid", "gemini", "goose", "grok", "hermes", "kilo", "kimi", "kiro", "opencode", "pi", "qwen"];
+
+/// The agent a program is, told by its name alone: the agent's name, and where under the
+/// user's home it keeps its state (known for the kinds askk has a harness for). `None` for
+/// any other program.
+pub fn recognise(program: &str) -> Option<(String, Vec<String>)> {
+    if let Some(h) = all().into_iter().find(|h| h.kind() == program) {
+        return Some((h.kind().to_string(), h.state().iter().map(|s| s.to_string()).collect()));
+    }
+    BY_NAME.contains(&program).then(|| (program.to_string(), vec![]))
 }
 
 /// Record the prompt in the session; its harness and what to hand it come back.
@@ -134,28 +150,6 @@ const TEMP: &[&str] = &["/dev", "/private/var/folders"];
 /// Under the user's home, what every harness needs besides its own state: the login keychain
 /// (its sign-in is refreshed there) and caches.
 const SHARED: &[&str] = &["Library/Keychains", "Library/Caches"];
-
-/// A path as a quoted string in a sandbox profile.
-fn quoted(p: &std::path::Path) -> String {
-    format!("\"{}\"", p.to_string_lossy().replace('\\', "\\\\").replace('"', "\\\""))
-}
-
-/// The sandbox a session's program runs in (macOS): it may read and run as the user can, but
-/// it may **write** only in its own folder (`dir`), in `temp`, and under `home` where a path
-/// begins with one of `state`. So one project's agent cannot change another project, the
-/// app's data, or the user's files.
-fn profile(dir: &std::path::Path, home: &std::path::Path, state: &[&str], temp: &[&str]) -> String {
-    let mut p = format!("(version 1)\n(allow default)\n(deny file-write*)\n(allow file-write* (subpath {}))\n", quoted(dir));
-    for t in temp {
-        p.push_str(&format!("(allow file-write* (subpath {}))\n", quoted(std::path::Path::new(t))));
-    }
-    for s in state {
-        // A prefix, not a folder: `.claude` covers `.claude/` and `.claude.json`.
-        let at: String = home.join(s).to_string_lossy().chars().flat_map(|c| if c.is_ascii_alphanumeric() || c == '/' { vec![c] } else { vec!['\\', c] }).collect();
-        p.push_str(&format!("(allow file-write* (regex #\"^{at}\"))\n"));
-    }
-    p
-}
 
 /// Run `name args…` in the project folder with `input` on stdin, to its end, confined to that
 /// folder and the program's own `state` ([`profile`]). The process dies with its task (a
@@ -238,11 +232,13 @@ mod tests {
     }
 
     #[test]
-    fn a_state_path_is_a_prefix_and_cannot_break_out_of_the_profile() {
-        let p = profile(std::path::Path::new("/w/a \"b\""), std::path::Path::new("/Users/me"), &[".claude"], &[]);
-        assert!(p.contains(r#"(subpath "/w/a \"b\"")"#), "{p}");
-        assert!(p.contains(r#"(regex #"^/Users/me/\.claude")"#), "{p}");
-        assert!(p.starts_with("(version 1)\n(allow default)\n(deny file-write*)\n"));
+    fn an_agent_is_recognised_by_its_programs_name_and_nothing_else_is() {
+        for h in all() {
+            let (name, state) = recognise(h.kind()).unwrap();
+            assert_eq!((name.as_str(), state.len()), (h.kind(), h.state().len()), "a kind with a harness is known with its state");
+        }
+        assert_eq!(recognise("opencode"), Some(("opencode".to_string(), vec![])), "an agent without a harness is known by name");
+        assert!(recognise("zsh").is_none() && recognise("vim").is_none() && recognise("").is_none());
     }
 
     #[test]
