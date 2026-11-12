@@ -27,7 +27,7 @@ pub fn TalkList(
     let mut show_archived = use_signal(|| false);
     let mut renaming = use_signal(|| None::<(u64, String)>);
     let archived = talks.iter().filter(|t| t.archived).count();
-    let shown: Vec<TalkInfo> = talks.iter().filter(|t| !t.archived || show_archived()).cloned().collect();
+    let shown: Vec<TalkInfo> = talks.iter().filter(|t| !t.archived || t.current || show_archived()).cloned().collect();
     let (settled, open): (Vec<TalkInfo>, Vec<TalkInfo>) = shown.into_iter().partition(|t| t.settled && !t.current);
     let n = talks.len() - archived;
     let mark = move |x: (u64, String, String)| if let Some(h) = &on_mark { h.call(x) };

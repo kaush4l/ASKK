@@ -72,7 +72,7 @@ fn use_side_width(boxed: bool) -> (Signal<Option<u32>>, Signal<u32>, impl FnMut(
 pub fn Conversation(path: String, #[props(default)] engines: Vec<Mode>, #[props(optional)] on_pick: Option<EventHandler<String>>, #[props(default)] boxed: bool) -> Element {
     let mut input = use_signal(String::new);
     // The message just sent, shown until the conversation holds it: (text, turns when sent).
-    let pending = use_signal(|| (String::new(), 0usize));
+    let mut pending = use_signal(|| (String::new(), 0usize));
     let mut error = use_signal(String::new);
     let mut confirm = use_signal(|| false);
     // The panel beside the conversation: `None` leaves it to the screen (shown when wide).
@@ -377,7 +377,7 @@ pub fn Conversation(path: String, #[props(default)] engines: Vec<Mode>, #[props(
                         let path = path.clone();
                         spawn(async move {
                             match crate::api::rewind(path, n).await {
-                                Ok(asked) => { input.set(asked); full.write().clear(); conv.restart(); document::eval("document.getElementById('composer')?.focus()"); }
+                                Ok(asked) => { pending.set((String::new(), 0)); input.set(asked); full.write().clear(); conv.restart(); document::eval("document.getElementById('composer')?.focus()"); }
                                 Err(e) => error.set(e.to_string()),
                             }
                         });
@@ -425,7 +425,7 @@ pub fn Conversation(path: String, #[props(default)] engines: Vec<Mode>, #[props(
                         if reading().is_none() {
                             super::compose::Foot { path: path.clone(), input, pending, error, t: t.clone(), talks: talk_list.clone(),
                                 on_sent: move |_| conv.restart(),
-                                on_reset: move |_| { full.write().clear(); opened.write().clear(); conv.restart(); talks.restart(); },
+                                on_reset: move |_| { pending.set((String::new(), 0)); full.write().clear(); opened.write().clear(); conv.restart(); talks.restart(); },
                             }
                         }
                     }

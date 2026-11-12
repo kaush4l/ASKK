@@ -298,8 +298,7 @@
 .turn-act:hover { color: var(--fg); background: var(--surface-hover); }
 .turn-act:active { transform: scale(var(--press-scale)); transition-duration: var(--motion-press); }
 .turn-act:focus-visible { outline: 2px solid var(--press); outline-offset: 1px; }
-.say { display: flex; flex-direction: column; }
-.say-cite { align-self: flex-start; }
+.say-cite { margin-top: var(--space-1); }
 @media (hover: none) { .turn-act { opacity: 1; } }
 
 /* ---------- conversations: search, settle, archive, rename, undo ---------- */
@@ -322,3 +321,6 @@
   animation: enter var(--motion-spring) var(--ease-spring) backwards; }
 .undo-note p { margin: 0; font-size: var(--text-sm); }
 @media (prefers-contrast: more) { .compose-menu, .steer-line { border-color: var(--fg); } }
+/* The bar keeps its choices whole; the key hints give way first. */
+.compose-bar .model-pick, .compose-bar .compose-stash { flex-shrink: 0; }
+.compose-hint { min-width: 0; flex: 0 1 auto; }

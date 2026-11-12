@@ -157,20 +157,22 @@ what it is handed is allowed: that is the object.
 | component | file | the object it is given | events it sends up |
 | --- | --- | --- | --- |
 | `Thread` | `turn.rs` | `Vec<Beat>`, the runs held in full, the pictures of attachments, the message just sent, the answer being written (run id, text) | `on_open(run id, open)` |
-| `TurnView` | `turn.rs` | one `Beat` (what was asked, its run, figures, replies) | `on_open` |
+| `TurnView` | `turn.rs` | one `Beat` (what was asked, its run, figures, replies) | `on_open`, `on_edit` ("edit from here"), `on_cite(the words chosen in an answer, or all of it)` |
 | `RunView` | `run.rs` | one `core::run::Run` (an outline, or in full). It is open while the run goes and closes when it ends, unless the person chose | `on_open(open)` |
 | `StageRow` | `run.rs` | one `core::run::Mark` | — |
 | `CallRow` | `run.rs` | one `features::run::Call` (tool, the program, the result) | — |
 | `EngineChip` | `engine_chip.rs` | a `Mode` (the engine), its activity and detail | — |
 | `EnginePick` | `engine_chip.rs` | `Vec<Mode>`, the chosen path | `on_pick(path)` |
-| `Composer` | `composer.rs` | the text (a signal the view owns), `Vec<Attached>`, `working`, `busy`, the messages that wait (`Vec<Queued>`), the models (`ModelChoice`) | `on_send`, `on_stop`, `on_attach`, `on_remove`, `on_unqueue(key, write on it again)`, `on_model(name)` |
-| `QueueList` | `composer.rs` | `Vec<Queued>`: what waits until the box is done; whether one may go now (`steer`) | `on_unqueue`, `on_steer(key)` |
+| `Composer` | `composer.rs` | the text (a signal the view owns), `Vec<Attached>`, `working`, `busy`, the messages that wait (`Vec<Queued>`), what was steered into the run (`Vec<SteerLine>`), the models (`ModelChoice`), the permission mode, what `@` and `#` reach and the prompts sent before (`Reach`), how much is put aside, whether the browser can hear. It opens the `/ @ #` menu itself from what is typed (`features/compose.rs`) | `on_send`, `on_stop`, `on_attach`, `on_remove`, `on_unqueue(key, write on it again)`, `on_steer(key)`, `on_model(name)`, `on_permit(mode)`, `on_stash(text or none)`, `on_voice` |
+| `QueueList` | `composer.rs` | `Vec<Queued>`: what waits until the box is done; whether one may be steered into the run (`steer`) | `on_unqueue`, `on_steer(key)` |
+| `PermitPick` | `composer.rs` | the mode: ask every time, allow edits, allow all | `on_pick(mode)` |
+| `ApprovalForm` | `asks.rs` | one `core::permit::Approval`: a call that waits for the owner's yes | `on_answer(yes)` |
 | `Writing` | `turn.rs` | the answer a run is writing, as far as it has come | — |
-| `TalkList` | `talks.rs` | `Vec<TalkInfo>`: an engine's conversations; whether it is at work; the one being read | `on_open(id)`, `on_new` |
+| `TalkList` | `talks.rs` | `Vec<TalkInfo>`: an engine's conversations (named, settled, archived); whether it is at work; the one being read; what is searched for and the `Vec<TalkHit>` found | `on_open(id)`, `on_new`, `on_mark(id, archive / settle / name:…)`, `on_query(text)` |
 | `SideEdge` | `edge.rs` | the panel's width (`SIDE_WIDTH` bounds it) | `on_width((width, last))` |
 | `DiffView` | `workspace.rs` | a `WorkspaceDiff`: the files the last run changed (with its tools or the programs it ran), before and now | — |
 | `FilesView` | `workspace.rs` | the workspace root, its files, the one chosen, its text or why not | `on_open(file)` |
-| `ModelPick` | `composer.rs` | a `ModelChoice`: every model, the default, the one the engine names itself | `on_pick(name)` |
+| `ModelPick` | `composer.rs` | a `ModelChoice`: every model, the default, the one the engine names itself; a pick names this engine's own (empty: follow the default) | `on_pick(name)` |
 | `Prose` | `markdown.rs` | a text in Markdown; it reads it once (`features/markdown.rs`) | — |
 | `Markdown` | `markdown.rs` | `Vec<Block>`: the text already read, with what is safe already decided | — |
 | `CodeBlock` | `markdown.rs` | a program and the word after its fence; it colours it (`features/code.rs`) and copies it | — |
@@ -190,6 +192,10 @@ what it is handed is allowed: that is the object.
 Before this rule the top bar asked for the engines itself, the footer read the shared
 settings, and an attachment fetched its own picture. All three now take them; the debt list
 in the test is empty and may not grow.
+
+The foot of a conversation (`views/compose.rs`) is a view of its own: it asks for the permission
+mode and what waits for a yes, the engine's model, where steers landed, and the workspace's files
+once `#` is typed, and runs the `/` commands.
 
 One conversation, two places: `views/conversation.rs` is the talk with an engine, and both
 the Talk page (`views/chat.rs`) and an engine's box open on the canvas (`views/open.rs`)
@@ -310,7 +316,7 @@ terminal, files, browser); a terminal drawer at the bottom.
 | tool calls | consecutive calls fold into one summary row; open, a list of rows (24px, small text); each row opens to a mono body | `RunView`: one line (`Worked for 3.2s · 2 steps · 1 call`) that opens to a `StageRow` per stage; under `act`, a `CallRow` per call showing the program and its result | same idea; askk shows every stage of the loop, not only the calls |
 | "Working for N" | a live line with a shimmer and a timer | the run's line while it runs: shimmer, timer, the stage it is in; the engine's dot pulses | same |
 | stop / send | round send button; Stop while working | `Composer`: round Send, Stop beside it while the engine works | same |
-| composer | glass, `rounded-2xl`, grows, attachments strip, model and effort pickers, permission mode, dictation | glass, grows, attachments strip, Enter sends and Shift+Enter breaks the line, a model choice | **the model choice sets the default model, for every engine that names none** (an engine that names its own shows it and cannot be changed here: the service has no answer that writes an engine's file); **no effort or permission pickers, no dictation** |
+| composer | glass, `rounded-2xl`, grows, attachments strip, model and effort pickers, permission mode, dictation | glass, grows, attachments strip, Enter sends and Shift+Enter breaks the line, a model choice | the model choice names this engine's own model (`set_engine_model`), the permission mode is chosen beside it, `/ @ #` open a menu, voice where the browser hears (2026-11-12); **no effort picker** |
 | queued messages | a message sent while working waits, can be edited or steered | `QueueList`: a message sent while the box works waits in sight, in order, goes when the box is done and has read the one before; it can be taken back or written on again, and (an engine at work) **sent now**: it lands in the engine's message box, and the run in hand reads it at its next step. The queue is kept in the browser beside the window (`askk-queue` in localStorage), so a reload brings it back | same; **steering reaches an engine with an inbox at its next step, not mid-reply**, and another browser has its own queue |
 | approvals | an inline row, never hidden | `AskForm`: a blocked box shows its question with a field to answer, in its tile and when open | same for an engine's questions; **a harness's own permission prompts are not seen** (`docs/sessions/009`) |
 | changed files, diff | a card in the reply, a diff tab | a fenced `diff` in an answer is coloured; the panel's **Diff** tab shows what the last run that wrote files changed (`workspace_diff`): each file before the run first touched it and now, `+n −m`, a unified diff (`features/diff.rs`) coloured by the same reader | **no card in the reply**; only changes made through the workspace's `write_file`/`edit_file` are seen (a program a run starts that writes files is not), and they are held in memory: a restart forgets them |
@@ -337,8 +343,8 @@ Not on par with T3 Code, in one list (2026-11-11, after the work above):
 - An answer arrives whole: nothing streams word by word.
 - Code is coloured by one small reader for six languages, not by a grammar; no math, no
   Mermaid, no pictures in an answer.
-- The model choice changes the default model only; no effort or permission pickers, no
-  dictation.
+- The model choice names one engine's own model and the permission mode is chosen per engine
+  (2026-11-12); no effort picker; dictation only where the browser has speech.
 - A waiting message cannot be steered into the run in hand, and the queue is lost on reload.
 - A harness's own permission prompts are not seen; only an engine's questions are answered
   in place.

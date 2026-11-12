@@ -127,14 +127,12 @@ pub fn Foot(path: String, mut input: Signal<String>, mut pending: Signal<(String
     });
     let running = t.runs.iter().rev().find(|r| r.running()).map(|r| r.id);
     let last_run = t.runs.last().map(|r| r.id).unwrap_or_default();
-    let steered: Vec<SteerLine> = steers
-        .read()
-        .as_ref()
-        .and_then(|r| r.as_ref().ok())
-        .cloned()
-        .unwrap_or_default()
+    let all_steers = steers.read().as_ref().and_then(|r| r.as_ref().ok()).cloned().unwrap_or_default();
+    // The newest that came too late for its run is said once, until another steer is sent.
+    let newest = all_steers.iter().map(|s| s.id).max();
+    let steered: Vec<SteerLine> = all_steers
         .into_iter()
-        .filter(|s| (!s.landed() && !s.posted && running.is_some()) || (s.landed() && (Some(s.run) == running || s.run == last_run)))
+        .filter(|s| (!s.landed() && !s.posted && running.is_some()) || (s.landed() && (Some(s.run) == running || s.run == last_run)) || (s.posted && Some(s.id) == newest))
         .map(|s| SteerLine { id: s.id, said: steer_line(s.landed().then_some(s.step), s.posted), landed: s.landed(), text: s.text })
         .collect();
     // `#` reaches the workspace's files: asked once the sign is typed.
@@ -338,7 +336,7 @@ pub fn Foot(path: String, mut input: Signal<String>, mut pending: Signal<(String
                         if let Some(fin) = v["fin"].as_str() { heard.push_str(fin); }
                         let mid = v["mid"].as_str().unwrap_or_default();
                         input.set(format!("{heard}{mid}"));
-                        if let Some(e) = v["error"].as_str() { note.set(format!("Voice: {e}")); }
+                        if let Some(e) = v["error"].as_str() { note.set(format!("Voice: {e} (the browser did not let it hear; nothing was heard)")); }
                         if v["end"].as_bool() == Some(true) { break; }
                     }
                     hears.set(Some(false));
