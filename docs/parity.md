@@ -1,41 +1,82 @@
-# Parity with the archived build (archive/docs)
+# Parity: the page against T3 Code, the terminal against herdr
 
-| archived feature | new build | status |
-| --- | --- | --- |
-| Engines folder → objects at boot | `core/boot.rs` scan/init, boot at process start | done |
-| Element kinds with config + state, saved each step | `core::Component`, `elements/*` | done (8 kinds) |
-| Restart resumes; crash → `interrupted` | save hook + `init` | done |
-| Models file, default model, runtime switch | `host/infer/`, `data/models.json` | done |
-| Methods: openai (any compatible server, base url + token env), cli | `host/infer/connectors.rs` | done |
-| Sampling presets per engine / phase, switch tool | `elements/sampling.rs` | done |
-| Discover models from a URL | Models page *Find models* | done |
-| Tools trait + registry | `core/tool.rs`, shared tools in `host/tools.rs` | done |
-| TOON / JSON reply, several calls per reply | `elements/handoff.rs` | done |
-| Phases steer focus and gate tools | `elements/phase.rs` | done |
-| Sub-engines | folders; engine is a tool | done |
-| UI from object views, primitives only | `ui::render::Render`, `view()` | done |
-| Glass design (wall → pane → glass) | `assets/styling/glass.css` | done (tokens in CSS, not yet editable) |
-| Live artifacts, alerts, scripts | `elements/artifact|alert|script.rs` | new |
-| Non-blocking calls | all calls of a reply start together; `await: any` continues after the first (rest cancelled) | done |
-| Refocus at 90% context | tokens: engine override, else model `context`, else discovered from the server listing; model summarises essentials + lessons; history keeps summary + last 4 turns; refocus at 90% of input budget, prompt/history shares observed (context − max_tokens), refocus prompt keeps notes/phase/state/history only | done |
-| Stop a running engine | `stop()` before next step, status `stopped`; Stop button | done |
-| Live updates | long-poll `wait_change` on a per-engine change counter | done |
-| Theme editing from the UI | `data/theme.json` → `:root` vars; Theme page | done; layout too: `data/layout.json` (columns, engine order, hidden kinds), Layout page |
-| sandbox-exec for the server | `sandbox/server.sb`, `scripts/sandboxed.sh` | done (boot, pages, HTTPS quotes, claude CLI call verified) |
-| Desktop | `dx serve --platform desktop` builds Askk.app; server boots | built + launched; window check skipped by owner (web is the target for now) |
-| Folder routing | `data/routes/**/page.json`, `[param]`, `[...rest]`, nav from pages; `create_view` tool | done |
-| Max tokens 32k | `models.json max_tokens` → `{max_tokens}` in bodies | done |
-| Real model | default `claude` (cli runtime) answers live: askk ran create_view, set_phase, stamp script against it | done |
-| Prompt order | `core::Slot`: purpose → knowledge → tools → format → position → world → conversation → other → input → nudge (`Component::nudge`; config `nudge`, "off" = none); each element picks its slot, by name within; `Engine::sections` | done |
-| Phases as focus | `phase`: ordered phases with focus, instructions, expect (outcomes), goal, tools?, elements?; `phase_done {met}` advances one step only with evidence; `repeat`; separate `focus` note retired | done |
-| Default developer tools | `src/host/workspace.rs`: read_file, write_file, list_dir, run, spawn/jobs/stop, alarm, create_script, parallel; rooted at `ASKK_WORKSPACE` | done; askk ran parallel(list_dir, run), spawn → jobs → stop live via claude CLI |
-| Load another desk | `--desk <dir>` (or `ASKK_DATA`) points engines, models, routes and theme at another folder | done |
-| Chat dashboard | `/` = `view chat`: askk chat beside its current prompt (colour per section kind, token bar, sections, full text); old dashboard at `/engines` | done |
-| Engine state files | `notes` element + `config.file`: goal.md, focus.md, learning.md (sections via `learn`) | done; askk set focus.md and learnt into learning.md live |
-| TOON replies | `handoff` default `toon`; tolerant parser; JSON fallback | done; claude CLI replied in TOON live |
-| Object views + live activity | `render(size)` icon/small/medium/large on every component and engine; engine activity idle/thinking/calling/refocusing/stopped/error with CSS effects; catalog by category | done; chat header showed idle → thinking → calling run → thinking → idle live |
-| Responsive glass shell | panel / icon rail / phone routes button + sheet; collapse lives in the panel header; nav icons from page.json; design rules (AAA contrast, 44px targets, focus ring, motion) | done; checked at 1440, 1000, 390px |
-| Sizes small/medium/large on archive design rules | live icon with orb, 6×4 card with ability icons, full state view; Amarante; long-press layout edit; Home/Chat/PRs/Components/Settings | done; checked in browser |
-| Short history (last 25 inputs/replies, tool results shown once) + list notes (`note`/`done`) | `elements/history.rs`, `elements/notes.rs` | done |
-| Configurable reply fields (plan first, custom `{name, about}`) | `elements/handoff.rs` | done |
-| Core free of kind names; engine templates | `Component::category/icon/slot` + roles; `create_engine` copies `data/templates/<name>`; see architecture.md | done |
+The owner's bar (2026-11-11): the UI on par with T3 Code, the terminal on par with herdr.
+Checked on 2026-11-12 against each one's own docs, row by row. **built** means it is in
+`rust` and there is a proof (a test, a script step, or a screen seen); **part** means a
+smaller form is built; **no** means it is not built.
+
+Sources: T3 Code [README](https://github.com/pingdotgg/t3code),
+[composer](https://github.com/pingdotgg/t3code/blob/main/docs/user/composer.md),
+[thread sidebar](https://github.com/pingdotgg/t3code/blob/main/docs/user/thread-sidebar.md);
+herdr [concepts](https://herdr.dev/tui/docs/concepts/),
+[configuration](https://herdr.dev/tui/docs/configuration/),
+[agents](https://herdr.dev/tui/docs/agents/).
+
+## T3 Code
+
+| T3 Code | askk | state | proof |
+| --- | --- | --- | --- |
+| a server in the background, a web app and a desktop app on it | `askk start`, the page, the Mac window | built | `scripts/service.sh` |
+| app and server kept in step on update | `hello` carries the build; a page of another build loads itself again | built | seen 2026-11-12: a swapped build reloaded an open page once (`a9723ca`) |
+| answers stream as they are written | `Infer::stream`, `run_partial`, a caret on the reply | built | `scripts/stream.sh` (a real OpenAI-style server, 21 partials seen) |
+| threads: several per project, start, switch | several conversations per engine; read another while one works | built | stream C and E screens; `core/talks.rs` tests |
+| queued messages, Send now, edit/remove | queue kept across a reload, Send now, take back | built | stream C screens; `ui/features/queue.rs` tests |
+| steer into the running turn | Send now reaches the engine at its next step, not mid-reply | part | — |
+| diff of what the agent changed | Diff tab: files written by tools and by programs, kept across a restart | built | `scripts/stream.sh` step 2 |
+| files of the project | Files tab, read only | built | stream C screens |
+| command palette (`mod+K`), keyboard shortcuts | palette over boxes, pages, actions; `?` lists keys | built | stream B; `ui/features/keys.rs`, `palette.rs` tests |
+| pin, find, group by project | pin, find and group by place in the pill | built | stream B screens |
+| attachments (images, files, large paste) | attachments sensed by programs on the machine | part | no large-paste-to-file, no drag of many files |
+| model picker | default model only; one engine's model cannot be changed from the page | part | — |
+| Markdown, code colouring | Markdown, six languages, copy button | built | `ui/features/markdown.rs`, `code.rs` tests |
+| answers the agent asks for (approvals) | an engine's asks answered in its tile | part | a harness's own permission prompts are not seen |
+| permission modes | — | no | — |
+| `@` mentions, `/` commands, `$` skills | — | no | — |
+| `/goal` across turns | an engine has a goal by design (`goal.md`) | part | not set from the composer |
+| settle, snooze, archive, undo | — | no | — |
+| prompt stash, ArrowUp recall, cite a reply, edit from here | — | no | — |
+| voice input | — | no | — |
+| remote access, phone app | the service listens on this machine only, by decision | no (by decision) | `docs/decisions.md` |
+| several providers (Claude Code, Codex, OpenCode…) | harnesses: claude, codex, muse sessions | part | `host/harness/` |
+
+## herdr
+
+| herdr | askk | state | proof |
+| --- | --- | --- | --- |
+| a server owns the terminals; clients attach and detach (`ctrl+b q`) | the service holds them; `askk terminal` attaches, `ctrl+b q` leaves them running | built | `scripts/terminals.sh` |
+| panes split right or down, zoom, drag borders, mouse | the same | built | `scripts/terminals/tui.py` walk; `target/shots` frames |
+| tabs | tabs, restored with their splits after a window closes | built | `terminals.sh` (layout restored) |
+| workspaces with git state | panes grouped by place, branch and changed count | built | `workspaces` answer; walk |
+| agent states blocked, working, done, idle, unknown; done per client | the same words; done kept per window | built | `ui/features/boxes.rs` tests |
+| agent detection from the screen | depth 1: by program name and screen patterns, said to be a guess | built | `terminals.sh` (stand-in agent working, blocked, idle) |
+| copy mode, selection, paste | `ctrl+b [`, `v`, `y` (OSC 52), mouse drag, bracketed paste | built | walk decodes the OSC 52 bytes; a real clipboard is not checked |
+| keys from config, read live | `keys` in `settings.json`, read again in seconds | built | walk (prefix changed to `ctrl+a` live) |
+| jump to an agent by number | `ctrl+b 1..9` by priority | built | walk |
+| several named sessions (`herdr session attach`) | one service per home; another home is another session | part | — |
+| right-click menus | — | no | — |
+| navigate mode | — | no | — |
+| rename panes, read a pane's output and send it input from the CLI | `terminal_screen` / `terminal_type` over `/ask` | part | no rename |
+| notifications | — | no | — |
+| themes | the page has themes; the terminal does not | part | — |
+
+## The glass and its motion
+
+From the Apple design skill (springs that do not overshoot, a bounce only where a flick
+carries momentum, materials that blur what is behind them), in `assets/styling/glass.css`.
+Read off the running page on 2026-11-12:
+
+| what | measured |
+| --- | --- |
+| the pill and bars | `backdrop-filter: blur(40px) saturate(1.8)`, a 4% fill, an inset highlight, radius 20px |
+| a box opening | `scale` over 440ms on `--ease-spring` (a `linear()` curve, damping 1.0); its contents enter on the same spring |
+| the canvas leaving under it | opacity 150ms and scale 200ms on `--ease-exit` |
+| a press | `transform: scale(var(--press-scale))` in 100ms |
+| reduced motion, reduced transparency | springs fall back to 200ms ease, travel to none; glass to a solid fill (seen by stream B) |
+
+## What this says
+
+Both have their spine on par: a background server that owns the work, clients that
+attach, detach and refresh in place, live state per box, streaming, threads, a diff,
+a palette, panes and copy mode. Neither is whole: the **no** rows above are the next
+work, smallest first: permission modes and `/` commands on the page; right-click menus,
+navigate mode and notifications in the terminal.
