@@ -76,7 +76,7 @@ jobs:
             { echo "### check.sh ended with $status"; echo '```'; tail -80 check.log; echo; df -h . /tmp; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
             # A summary is shown only to the signed in; an annotation to everyone. Its message is
             # one line, so the line breaks are written as GitHub reads them.
-            echo "::error title=check.sh ended with $status::$( { grep -E '^(NOT|STILL) seen' check.log | cut -c1-300; tail -45 check.log; df -h . | tail -1; } | sed 's/%/%25/g; s/\r//g' | awk '{printf "%s%%0A", $0}')"
+            echo "::error title=check.sh ended with $status::$( { tail -40 check.log; df -h . | tail -1; grep -E '^(NOT|STILL) seen' check.log | cut -c1-300; } | sed 's/%/%25/g; s/\r//g' | awk '{printf "%s%%0A", $0}')"
           fi
           exit "$status"
       - uses: actions/upload-artifact@v7

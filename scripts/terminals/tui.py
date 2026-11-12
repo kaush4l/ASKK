@@ -498,10 +498,14 @@ def main():
     print("saw: the tab and the pane were renamed")
 
     # Copy mode by words, by a find, and a rectangle, in the shell on the right.
-    press("echo alpha beta gamma\r")
+    # Each lands first with / on a known text, so where the shell's cursor rests (a prompt's
+    # own rows differ from one machine to the next) does not count.
+    press("printf '%s %s %s\\n' alpha beta gamma\r")
     wait(r"│alpha beta gamma", "the words to go over")
     copy_mode()
-    for key in "k0wvey":
+    press("/alpha\r")  # the output's row, or the command's: w goes to beta from either
+    wait(r"found 'alpha'", "the foot saying the word was found")
+    for key in "0wvey":
         press(key)
     copied("beta")
     print("saw: copy mode went by words (w e) and copied a word")
@@ -512,10 +516,12 @@ def main():
         press(key)
     copied("gamma")
     print("saw: copy mode found a text with / and copied it")
-    press("printf 'abcd\\nefgh\\n'\r")
+    press("printf 'ab%sd\\nef%sh\\n' c g\r")
     wait(r"│efgh", "two rows to take a rectangle of")
     copy_mode()
-    for key in "kk0\x16lj":
+    press("/abcd\r")
+    wait(r"found 'abcd'", "the foot saying the rows were found")
+    for key in "0\x16lj":
         press(key)
     wait(r"y copies the rectangle", "the pane saying a rectangle is selected")
     show("a rectangle in copy mode")
