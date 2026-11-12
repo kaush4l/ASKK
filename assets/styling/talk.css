@@ -175,3 +175,64 @@
   .stage-body { padding-left: var(--space-2); }
 }
 @media (max-width: 767px), (pointer: coarse) { .compose-hint { display: none; } }
+
+/* ---------- an answer while it is written ---------- */
+/* The text so far, drawn as it will be, and a caret where the next words arrive. The caret
+   blinks; with "reduce motion" the blink stops (glass.css stops every animation) and it stays. */
+@keyframes caret { 0%, 45% { opacity: 1; } 55%, 100% { opacity: 0; } }
+.say.is-writing { animation: none; }
+.say.is-writing .prose > :last-child::after { content: ""; display: inline-block; width: .55ch; height: 1.1em; margin-left: var(--space-half); vertical-align: text-bottom;
+  border-radius: var(--radius-sm); background: var(--accent); animation: caret var(--motion-quick) steps(1, end) infinite; }
+
+/* ---------- conversations: which one is open, the others, a new one ---------- */
+.talks-toggle { min-width: 0; max-width: 16rem; }
+.talks-now { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.talks-toggle .count { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--muted); }
+.talks { flex: none; display: flex; flex-direction: column; gap: var(--space-2); width: min(100%, var(--lane)); margin-inline: auto; padding: var(--space-3);
+  border-radius: var(--radius-lg); box-shadow: inset 0 1px 0 var(--hi), var(--lift); animation: enter var(--motion-spring) var(--ease-spring) backwards; }
+.talks-head { display: flex; align-items: center; gap: var(--space-2); }
+.talks-count { margin: 0; font-family: var(--font-mono); font-size: var(--text-xs); color: var(--muted); }
+.talks-note { margin: 0; font-size: var(--text-sm); }
+.talks-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-half); max-height: 40dvh; overflow-y: auto; }
+.talk-row { display: flex; align-items: center; gap: var(--space-2); width: 100%; min-height: var(--hit-sm); padding: 0 var(--space-2); border: 0; border-radius: var(--radius-md);
+  background: none; color: var(--muted); font: inherit; font-size: var(--text-sm); text-align: left; cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-out), color var(--motion-fast) var(--ease-out), transform var(--motion-fast) var(--ease-out); }
+.talk-row:hover:not(:disabled) { color: var(--fg); background: var(--surface-hover); }
+.talk-row:active:not(:disabled) { transform: scale(var(--press-scale)); transition-duration: var(--motion-press); }
+.talk-row:focus-visible { outline: 2px solid var(--press); outline-offset: 1px; }
+.talk-row:disabled { cursor: default; opacity: .55; }
+.talk-row.is-current { color: var(--fg); background: color-mix(in srgb, var(--press) 14%, transparent); box-shadow: inset 0 0 0 1px var(--stroke-hi); cursor: default; }
+.talk-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.talk-turns { font-family: var(--font-mono); font-size: var(--text-xs); }
+@media (max-width: 767px) { .talks-toggle { max-width: 9rem; } }
+
+/* ---------- the panel's workspace tabs: what changed, and the files ---------- */
+.change-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-3); }
+.change-file { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
+.change-name { display: flex; align-items: center; gap: var(--space-2); margin: 0; min-width: 0; font-size: var(--text-sm); }
+.change-name .mono { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
+.change-add, .change-gone, .change-new { flex: none; font-family: var(--font-mono); font-size: var(--text-xs); }
+.change-add { color: var(--ok); }
+.change-gone { color: var(--error); }
+.change-new { padding: 0 var(--space-1); border-radius: var(--radius-full); color: var(--busy); box-shadow: inset 0 0 0 1px currentColor; }
+.ws-files { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
+.files-root { display: flex; gap: var(--space-1); margin: 0; min-width: 0; font-size: var(--text-xs); white-space: nowrap; }
+.files-count { flex: none; }
+.files-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; direction: rtl; text-align: left; }
+.files-tree { list-style: none; margin: 0; padding: 0; max-height: 40dvh; overflow-y: auto; }
+.file-row { display: flex; align-items: center; gap: var(--space-1); width: 100%; min-height: var(--hit-row); padding: 0 var(--space-2); border: 0; border-radius: var(--radius-sm);
+  background: none; color: var(--muted); font: inherit; font-size: var(--text-sm); text-align: left; cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-out), color var(--motion-fast) var(--ease-out); }
+.file-row:hover { color: var(--fg); background: var(--surface-hover); }
+.file-row:focus-visible { outline: 2px solid var(--press); outline-offset: -2px; }
+.file-row.is-chosen { color: var(--fg); background: color-mix(in srgb, var(--press) 14%, transparent); }
+.file-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tree-d1 { padding-left: calc(var(--space-2) + 1 * var(--space-4)); } .tree-d2 { padding-left: calc(var(--space-2) + 2 * var(--space-4)); }
+.tree-d3 { padding-left: calc(var(--space-2) + 3 * var(--space-4)); } .tree-d4 { padding-left: calc(var(--space-2) + 4 * var(--space-4)); }
+.tree-d5 { padding-left: calc(var(--space-2) + 5 * var(--space-4)); } .tree-d6 { padding-left: calc(var(--space-2) + 6 * var(--space-4)); }
+.tree-d7 { padding-left: calc(var(--space-2) + 7 * var(--space-4)); } .tree-d8 { padding-left: calc(var(--space-2) + 8 * var(--space-4)); }
+.file-read { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
+.read-head { margin: 0; font-size: var(--text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* a waiting message sent now, into the work in hand */
+.queue-steer { flex: none; gap: var(--space-1); font-size: var(--text-xs); }

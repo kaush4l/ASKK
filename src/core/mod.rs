@@ -27,6 +27,7 @@ pub mod changes;
 pub mod companion;
 pub mod figure;
 pub mod held;
+pub mod heard;
 pub mod files;
 pub mod flow;
 pub mod manifest;
@@ -52,6 +53,7 @@ pub mod boot;
 pub mod store;
 pub mod surfaces;
 pub mod tables;
+pub mod talks;
 pub mod tasks;
 pub mod terminals;
 pub mod workspaces;
@@ -197,6 +199,12 @@ pub trait Component: Send + Sync {
     fn parse(&self, _reply: &str) -> Option<Reply> {
         None
     }
+    /// The answer in a reply that is still arriving, as far as it has come: `Some("")` when
+    /// nothing of it is an answer yet (calls or fields are being written). Only an element that
+    /// reads replies (`parse`) says; with none, the reply so far is the answer so far.
+    fn partial(&self, _so_far: &str) -> Option<String> {
+        None
+    }
     /// A call whose result becomes this component's snapshot before each step (live artifact).
     fn refresh(&self) -> Option<Call> {
         None
@@ -319,6 +327,10 @@ pub struct Sampling {
     pub top_p: Option<f32>,
 }
 
+/// Where the pieces of a reply go while it arrives ([`Infer::stream`]): each call is the next
+/// piece, never the whole so far.
+pub type Said = Arc<dyn Fn(&str) + Send + Sync>;
+
 /// Model access, implemented once per runtime (HTTP APIs, CLIs, test fakes).
 pub trait Infer: Send + Sync {
     fn complete(&self, model: &str, prompt: String, sampling: Sampling) -> Fut<Result<String, String>>;
@@ -326,6 +338,11 @@ pub trait Infer: Send + Sync {
     /// cannot show them answers from the prompt alone.
     fn complete_with(&self, model: &str, prompt: String, sampling: Sampling, _media: Vec<media::Attachment>) -> Fut<Result<String, String>> {
         self.complete(model, prompt, sampling)
+    }
+    /// The same, handing each piece of the reply to `said` as it arrives; the whole reply is
+    /// still the answer. A runtime that cannot stream answers whole and says nothing on the way.
+    fn stream(&self, model: &str, prompt: String, sampling: Sampling, media: Vec<media::Attachment>, _said: Said) -> Fut<Result<String, String>> {
+        self.complete_with(model, prompt, sampling, media)
     }
     /// The model's context window in tokens; 0 = unknown (no refocus).
     fn context(&self, _model: &str) -> Fut<usize> {

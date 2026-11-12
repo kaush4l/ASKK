@@ -150,6 +150,8 @@ wire! {
     pack_import(path: String, files: Vec<(String, String)>) -> Vec<(String, String)>;
     inbox(path: String) -> Vec<crate::core::board::Message>;
     workspace_view(path: String) -> IdeView;
+    workspace_diff(path: String) -> WorkspaceDiff;
+    workspace_file(path: String, file: String) -> String;
     run_engine(path: String, input: String) -> String;
     clear_history(path: String) -> ();
     engine_prompt(path: String, input: String) -> Vec<crate::core::Section>;
@@ -185,6 +187,15 @@ pub struct JobView {
 pub struct IdeView {
     pub workspace: Option<crate::elements::workspace::WorkspaceView>,
     pub jobs: Vec<JobView>,
+}
+
+/// What the last run of an engine that changed files changed in its workspace: the run, and
+/// each file before (none: it was new) and now. `workspace`: the engine has one at all.
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct WorkspaceDiff {
+    pub workspace: bool,
+    pub run: u64,
+    pub files: Vec<crate::elements::workspace::FileChange>,
 }
 
 /// One chat line: `role` is user | model | tool.

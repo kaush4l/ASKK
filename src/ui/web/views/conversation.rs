@@ -3,12 +3,13 @@
 //!
 //! | region | what it shows | made of |
 //! | --- | --- | --- |
-//! | head | who is being talked to and what it is doing now; the other engines to talk to; its spec behind one touch | `EngineChip`, `EnginePick`, `SpecView` |
-//! | thread | every turn: what was asked, the run that answered (it opens stage by stage, each tool call with its program and result), what was drawn, what was said | `Thread` → `TurnView` → `RunView` |
+//! | head | who is being talked to and what it is doing now; the other engines to talk to; its spec behind one touch; its conversations, and a new one | `EngineChip`, `EnginePick`, `SpecView`, `TalkList` |
+//! | thread | every turn: what was asked, the run that answered (it opens stage by stage, each tool call with its program and result), what was drawn, what was said, and the answer being written now, as it comes | `Thread` → `TurnView` → `RunView`, `Writing` |
 //! | foot | what the engine waits for the owner to say; the messages that wait until it is done; the message being written, what is attached, which model answers; Send, Stop | `AskForm`, `Composer` |
 //!
-//! Beside them, a panel that opens and closes: the board (every figure), the loop (every run)
-//! or the prompt the engine would send now.
+//! Beside them, a panel that opens and closes: the board (every figure), the loop (every run),
+//! the prompt the engine would send now, what the last run changed in its workspace (Diff) and
+//! the workspace's files (Files, `changes.rs`).
 //!
 //! This file only asks and hands down. Every part it draws with is given its values
 //! (`ui/web/components`).
@@ -19,7 +20,7 @@ use crate::core::media::token;
 use crate::core::run::Run;
 use crate::ui::features::asks::{answer_text, parse_asks};
 use crate::ui::features::run as words;
-use crate::ui::web::components::{AskForm, Attached, Composer, EngineChip, EnginePick, Icon, ModelChoice, RunView, SpecView, Thread};
+use crate::ui::web::components::{AskForm, Attached, Composer, EngineChip, EnginePick, Icon, ModelChoice, RunView, SpecView, TalkList, Thread};
 use crate::ui::web::figure::FigureView;
 use crate::ui::web::kit::{Button, ButtonSize, ButtonVariant, Collapsible, CollapsibleContent, CollapsibleTrigger, Tabs, TabsContent, TabsList, TabsTrigger};
 use dioxus::prelude::*;
@@ -82,7 +83,25 @@ pub fn Conversation(path: String, #[props(default)] engines: Vec<Mode>, #[props(
     let id = format!("engine:{path}");
     let (p1, p2, p3, p4, p5) = (path.clone(), path.clone(), path.clone(), path.clone(), path.clone());
     let m = super::live::use_manifest();
+    // The answer being written arrives under a key of its own, so the rest is not asked again
+    // for every piece of it.
+    let heard_key = crate::core::heard::heard_key(&m.engine(&path));
     let live = super::live::use_live(move || m.engine(&p1));
+    let on_heard = super::live::use_live(move || heard_key.clone());
+    let p6 = path.clone();
+    let arriving = use_resource(move || {
+        let _ = on_heard();
+        crate::api::run_partial(p6.clone())
+    });
+    let writing = arriving.read().as_ref().and_then(|r| r.as_ref().ok()).filter(|a| !a.said.is_empty()).map(|a| (a.run, a.said.clone()));
+    // Its conversations: the open one first.
+    let p7 = path.clone();
+    let mut talks = use_resource(move || {
+        let _ = live();
+        crate::api::talks(p7.clone())
+    });
+    let talk_list = talks.read().as_ref().and_then(|r| r.as_ref().ok()).cloned().unwrap_or_default();
+    let mut show_talks = use_signal(|| false);
     let mut conv = use_resource(move || {
         let _ = live();
         talk(p2.clone())
@@ -147,9 +166,10 @@ pub fn Conversation(path: String, #[props(default)] engines: Vec<Mode>, #[props(
     });
     let part = |name: &str| spec.read().as_ref().and_then(|r| r.as_ref().ok()).and_then(|s| s.iter().find(|x| x.name == name).map(|x| x.body.clone())).unwrap_or_default();
     let (model, on_model) = use_models(path.clone());
-    // Keep the newest message in sight.
+    // Keep the newest message in sight, and the answer being written as it grows.
     use_effect(move || {
         let _ = (shown.read().as_ref().map(|t| (t.beats.len(), t.beats.last().map(|b| b.replies.len() + b.figures.len()))), pending.read().0.len());
+        let _ = arriving.read().as_ref().and_then(|r| r.as_ref().ok()).map(|a| a.said.len());
         // Twice: turns far off screen are not laid out until they come near (`content-visibility`),
         // so the first jump lands on an estimate and the second on the true end.
         document::eval("const end = () => { const b = document.getElementById('thread'); if (b) b.scrollTop = b.scrollHeight; }; requestAnimationFrame(() => { end(); requestAnimationFrame(end); });");
@@ -208,6 +228,31 @@ pub fn Conversation(path: String, #[props(default)] engines: Vec<Mode>, #[props(
             });
         }
     };
+    // Begin a new conversation (`None`) or bring back one put aside.
+    let switch = {
+        let path = path.clone();
+        move |id: Option<u64>| {
+            let path = path.clone();
+            spawn(async move {
+                let done = match id {
+                    Some(id) => crate::api::talk_open(path, id).await,
+                    None => crate::api::talk_new(path).await.map(|_| ()),
+                };
+                match done {
+                    Err(e) => error.set(e.to_string()),
+                    Ok(()) => {
+                        error.set(String::new());
+                        full.write().clear();
+                        opened.write().clear();
+                        show_talks.set(false);
+                        conv.restart();
+                        talks.restart();
+                    }
+                }
+            });
+        }
+    };
+    let current_title = talk_list.iter().find(|t| t.current).map(|t| t.title.clone()).filter(|t| !t.is_empty()).unwrap_or_else(|| "New conversation".to_string());
     let answer = {
         let path = path.clone();
         move |(question, said): (String, String)| {
@@ -243,6 +288,16 @@ pub fn Conversation(path: String, #[props(default)] engines: Vec<Mode>, #[props(
                         EngineChip { engine: who(&engines, &path), activity: t.activity.clone(), detail: t.detail.clone() }
                         if let Some(pick) = on_pick.filter(|_| engines.len() > 1) { EnginePick { engines: engines.clone(), chosen: path.clone(), on_pick: pick } }
                         span { class: "grow" }
+                        // Its conversations: which is open, the others behind one touch, and a new one.
+                        Button { variant: ButtonVariant::Ghost, size: ButtonSize::Sm, class: "talks-toggle", aria_pressed: show_talks(), aria_label: "Conversations: {current_title}", title: "Every conversation with it",
+                            onclick: move |_| show_talks.toggle(),
+                            Icon { name: "history", size: 16 } span { class: "talks-now", "{current_title}" }
+                            if talk_list.len() > 1 { span { class: "count", "{talk_list.len()}" } }
+                        }
+                        Button { variant: ButtonVariant::Ghost, size: ButtonSize::Icon, disabled: working, aria_label: "New conversation", title: if working { "It is at work: a new conversation can begin when it is done" } else { "Begin a new conversation; this one is kept" },
+                            onclick: { let switch = switch.clone(); move |_| switch(None) },
+                            Icon { name: "plus", size: 18 }
+                        }
                         // Its goal, its learnings and its tools, behind one touch.
                         CollapsibleTrigger { class: "spec-toggle", aria_label: "Goal, learnings and tools of {path}",
                             Icon { name: "flag", size: 16 } span { class: "spec-toggle-word", "Spec" } span { class: "chev", "aria-hidden": "true", Icon { name: "chevron", size: 12 } }
@@ -255,7 +310,7 @@ pub fn Conversation(path: String, #[props(default)] engines: Vec<Mode>, #[props(
                                 Icon { name: "trash", size: 18 }
                             }
                         }
-                        Button { variant: ButtonVariant::Ghost, size: ButtonSize::Icon, class: "panel-toggle", aria_label: "Board, loop and prompt", title: "Show or hide the board, the loop and the prompt", onclick: toggle_side,
+                        Button { variant: ButtonVariant::Ghost, size: ButtonSize::Icon, class: "panel-toggle", aria_label: "Board, loop, prompt, diff and files", title: "Show or hide the board, the loop, the prompt, what changed and the files", onclick: toggle_side,
                             Icon { name: "panel", size: 18 }
                         }
                     }
@@ -263,7 +318,13 @@ pub fn Conversation(path: String, #[props(default)] engines: Vec<Mode>, #[props(
                         SpecView { goal: part(GOAL), learnings: part(LEARNING), tools: part(crate::core::TOOLBOX) }
                     }
                 }
-                Thread { beats: t.beats.clone(), runs: runs.clone(), pictures: pictures(), pending: if waiting { pending.read().0.clone() } else { String::new() }, loading,
+                if show_talks() {
+                    TalkList { talks: talk_list.clone(), busy: working,
+                        on_open: { let switch = switch.clone(); move |id| switch(Some(id)) },
+                        on_new: { let switch = switch.clone(); move |_| switch(None) },
+                    }
+                }
+                Thread { beats: t.beats.clone(), runs: runs.clone(), pictures: pictures(), pending: if waiting { pending.read().0.clone() } else { String::new() }, loading, writing,
                     on_open: move |(id, open): (u64, bool)| {
                         if open { opened.write().insert(id); } else { opened.write().remove(&id); }
                     },
@@ -285,22 +346,25 @@ pub fn Conversation(path: String, #[props(default)] engines: Vec<Mode>, #[props(
                             on_attach: move |e: FormEvent| { spawn(super::upload::upload(e.files(), attached, next_key)); },
                             on_remove: move |key| attached.write().retain(|a| a.key != key),
                             on_unqueue: { let id = id.clone(); move |(key, edit): (u64, bool)| {
-                                let text = boxes.queue.write().remove(&id, key);
+                                let text = boxes.unqueue(&id, key);
                                 if let Some(text) = text.filter(|_| edit) { input.set(text); }
                             } },
+                            on_steer: { let id = id.clone(); move |key: u64| boxes.steer(&id, key) },
                             on_model: move |name| on_model.call(name),
                         }
                     }
                 }
             }
             div { class: "talk-scrim", onclick: move |_| side.set(Some(false)) }
-            aside { class: "talk-side glass", "aria-label": "Board, loop and prompt",
+            aside { class: "talk-side glass", "aria-label": "Board, loop, prompt, diff and files",
                 Tabs { default_value: "board", class: "fill talk-tabs",
                     div { class: "talk-side-head",
                         TabsList {
                             TabsTrigger { value: "board", class: "px-3", Icon { name: "chart", size: 16 } "Board" if !t.board.is_empty() { span { class: "count", "{t.board.len()}" } } }
                             TabsTrigger { value: "loop", class: "px-3", Icon { name: "refresh", size: 16 } "Loop" }
                             TabsTrigger { value: "prompt", class: "px-3", Icon { name: "layers", size: 16 } "Prompt" }
+                            TabsTrigger { value: "diff", class: "px-3", Icon { name: "diff", size: 16 } "Diff" }
+                            TabsTrigger { value: "files", class: "px-3", Icon { name: "folder", size: 16 } "Files" }
                         }
                         Button { variant: ButtonVariant::Ghost, size: ButtonSize::Icon, class: "side-close", aria_label: "Close the panel", onclick: move |_| side.set(Some(false)), Icon { name: "close", size: 18 } }
                     }
@@ -319,6 +383,13 @@ pub fn Conversation(path: String, #[props(default)] engines: Vec<Mode>, #[props(
                     }
                     TabsContent { value: "prompt", class: "talk-panel",
                         super::prompt::PromptView { path: path.clone(), input }
+                    }
+                    // Drawn only while chosen, so they ask only then.
+                    TabsContent { value: "diff", class: "talk-panel",
+                        super::changes::DiffTab { path: path.clone() }
+                    }
+                    TabsContent { value: "files", class: "talk-panel",
+                        super::changes::FilesTab { path: path.clone() }
                     }
                 }
             }

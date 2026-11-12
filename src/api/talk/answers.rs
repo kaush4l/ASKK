@@ -45,6 +45,32 @@ pub async fn engine_run(path: String, id: u64) -> Result<Run, String> {
     e.runs().into_iter().find(|r| r.id == id).ok_or_else(|| say(format!("run {id} of {path} is no longer kept")))
 }
 
+/// The answer the engine at `path` is writing now, as far as it has come. Its key in the change
+/// feed is `said/<engine key>`, marked as the pieces come.
+pub async fn run_partial(path: String) -> Result<Arriving, String> {
+    let e = crate::core::world::find(&path).ok_or_else(|| say(format!("no engine '{path}'")))?;
+    let (h, said) = e.heard();
+    Ok(Arriving { run: h.run, step: h.step, said, chars: h.text.chars().count() })
+}
+
+/// Every conversation of the engine at `path`: the open one first, then the others, last open first.
+pub async fn talks(path: String) -> Result<Vec<TalkInfo>, String> {
+    let e = crate::core::world::find(&path).ok_or_else(|| say(format!("no engine '{path}'")))?;
+    Ok(e.talks())
+}
+
+/// Begin a new conversation with the engine at `path` (the open one is put aside); its id.
+pub async fn talk_new(path: String) -> Result<u64, String> {
+    let e = crate::core::world::find(&path).ok_or_else(|| say(format!("no engine '{path}'")))?;
+    e.new_talk().map_err(say)
+}
+
+/// Bring back the conversation `id` of the engine at `path` (the open one is put aside).
+pub async fn talk_open(path: String, id: u64) -> Result<(), String> {
+    let e = crate::core::world::find(&path).ok_or_else(|| say(format!("no engine '{path}'")))?;
+    e.open_talk(id).map_err(say)
+}
+
 /// The last runs of an engine as outlines, oldest first.
 pub async fn engine_runs(path: String) -> Result<Vec<Run>, String> {
     let e = crate::core::world::find(&path).ok_or_else(|| say(format!("no engine '{path}'")))?;

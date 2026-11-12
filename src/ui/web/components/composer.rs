@@ -63,13 +63,15 @@ pub fn Composer(
     #[props(optional)] on_remove: Option<EventHandler<u64>>,
     /// A waiting message was taken back: `(its key, true to write on it again)`.
     #[props(optional)] on_unqueue: Option<EventHandler<(u64, bool)>>,
+    /// A waiting message is to go now, into the work in hand. Left out, none can.
+    #[props(optional)] on_steer: Option<EventHandler<u64>>,
     #[props(optional)] on_model: Option<EventHandler<String>>,
 ) -> Element {
     let nothing = value.read().trim().is_empty() && attached.iter().all(|a| a.chip.is_none());
     let waits = working || !queued.is_empty();
     rsx! {
         if !queued.is_empty() {
-            QueueList { queued, on_unqueue: move |x| if let Some(h) = &on_unqueue { h.call(x) } }
+            QueueList { queued, steer: working && on_steer.is_some(), on_unqueue: move |x| if let Some(h) = &on_unqueue { h.call(x) }, on_steer: move |k| if let Some(h) = &on_steer { h.call(k) } }
         }
         form { class: "compose glass", "aria-label": "Message {to}",
             onsubmit: move |e| {
@@ -145,9 +147,10 @@ pub fn Composer(
 }
 
 /// The messages that wait, above the composer: each as it will be sent, with a way to write
-/// on it again and a way to take it back.
+/// on it again and a way to take it back, and (`steer`) a way to send it now, into the work
+/// in hand.
 #[component]
-pub fn QueueList(queued: Vec<Queued>, on_unqueue: EventHandler<(u64, bool)>) -> Element {
+pub fn QueueList(queued: Vec<Queued>, #[props(default)] steer: bool, on_unqueue: EventHandler<(u64, bool)>, #[props(default)] on_steer: EventHandler<u64>) -> Element {
     let n = queued.len();
     rsx! {
         section { class: "queue", "aria-label": "{heading(n)}",
@@ -156,6 +159,11 @@ pub fn QueueList(queued: Vec<Queued>, on_unqueue: EventHandler<(u64, bool)>) -> 
                 for (i, q) in queued.into_iter().enumerate() {
                     li { key: "{q.key}", class: "queue-item", "aria-label": "Waiting message {i + 1} of {n}, not sent",
                         p { class: "queue-text", "{q.text}" }
+                        if steer {
+                            Button { variant: ButtonVariant::Ghost, size: ButtonSize::Sm, class: "queue-steer", aria_label: "Send this message now, into the work in hand", title: "Send now: it reaches the run in hand at its next step", onclick: move |_| on_steer.call(q.key),
+                                Icon { name: "send", size: 14 } span { "Send now" }
+                            }
+                        }
                         Button { variant: ButtonVariant::Ghost, size: ButtonSize::IconSm, aria_label: "Write on this message again", title: "Write on it again", onclick: move |_| on_unqueue.call((q.key, true)),
                             Icon { name: "pencil", size: 14 }
                         }

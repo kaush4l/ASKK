@@ -4,6 +4,7 @@ mod asks;
 pub mod boxes;
 mod bubble;
 mod canvas;
+mod changes;
 pub mod canvas_math;
 mod chat;
 mod commands;
