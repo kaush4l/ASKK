@@ -225,12 +225,26 @@ pub fn BoxesView() -> Element {
     // The open box stays drawn while it leaves, so it leaves the way it came.
     let mut held = use_signal(|| None::<Shown>);
     let now = open.clone();
+    let mut focused = use_signal(String::new);
     use_effect(use_reactive!(|now| {
+        let id = now.as_ref().map(|s| s.b.id.clone()).unwrap_or_default();
         if let Some(s) = now {
             boxes.looked(&s.b.id);
             if held.peek().as_ref() != Some(&s) {
                 held.set(Some(s));
             }
+        }
+        // The focus follows the box: into it when it opens, back to its tile when it is put
+        // back. Only when the box changed, never while the same one is redrawn.
+        let was = focused.peek().clone();
+        if was != id {
+            let tile = serde_json::to_string(&format!("tile-{was}")).unwrap_or_default();
+            document::eval(&if id.is_empty() {
+                format!("requestAnimationFrame(() => document.getElementById({tile})?.querySelector('.box-title')?.focus({{ preventScroll: true }}));")
+            } else {
+                "requestAnimationFrame(() => document.querySelector('.box-open.is-open .open-title')?.focus({ preventScroll: true }));".to_string()
+            });
+            focused.set(id);
         }
     }));
     let missing = named.filter(|_| !is_open && !all.is_empty());

@@ -126,7 +126,7 @@ pub fn NowChip() -> Element {
     match list.as_slice() {
         [] => rsx! {},
         [b] => rsx! {
-            Link { class: "now-chip", to: format!("/e/{}", b.path), title: "{b.path} is running: {doing(b)}. Open it.",
+            Link { class: "now-chip", to: crate::ui::features::boxes::link(&format!("engine:{}", b.path)), title: "{b.path} is running: {doing(b)}. Open it.",
                 span { class: "run-dot", "aria-hidden": "true" }
                 b { "{b.name}" }
                 span { class: "now-doing", "{doing(b)}" }

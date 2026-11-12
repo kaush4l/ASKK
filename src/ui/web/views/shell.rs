@@ -115,10 +115,10 @@ pub fn Shell() -> Element {
         };
     }
     rsx! {
-        // The owner's own tokens; the pill's width is one of them, kept by this window.
-        document::Style { ":root{{{vars}--width-panel:{pill_width}px;}}" }
+        document::Style { ":root{{{vars}}}" }
         Wall {}
-        div { class: if collapsed() { "shell collapsed" } else { "shell" }, "inert": modal().then_some("true"),
+        // The pill's width is a number this window keeps: the one look written on the element.
+        div { class: if collapsed() { "shell collapsed" } else { "shell" }, style: "--width-panel:{pill_width}px", "inert": modal().then_some("true"),
             Pill { brand: cfg.brand.clone(), boxes: boxes.shown(), counts: boxes.counts(), items: links.clone(), service: live.service(), open_box: open_box.clone(),
                 grouped: grouped(), width: pill_width(), collapsed, open,
                 on_look: move |id: String| super::boxes::from_tile(&id),
@@ -138,10 +138,13 @@ pub fn Shell() -> Element {
                     brand: cfg.brand.clone(),
                     title: links.iter().find(|l| l.to == here).map(|l| l.label.clone()).unwrap_or_else(|| here.rsplit('/').find(|s| !s.is_empty()).unwrap_or_default().to_string()),
                     engines: engine_list,
-                    current: engine_of(&here),
+                    current: crate::ui::features::boxes::engine_of(&open_box).map(String::from).or(engine_of(&here)),
                     light: look() == "light",
+                    // An engine is a box: it opens in place on the canvas.
                     on_engine: move |path: String| {
-                        navigator().push(format!("/e/{path}"));
+                        let id = format!("engine:{path}");
+                        super::boxes::from_tile(&id);
+                        navigator().push(crate::ui::features::boxes::link(&id));
                     },
                     on_theme: move |_| switch_theme.call(()),
                     // What is running now, on every page.

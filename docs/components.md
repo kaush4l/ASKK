@@ -4,7 +4,7 @@
 `architecture.md`.)
 
 Two things are called a component here. Sections 1 to 7 are about the parts an **engine** is
-made of (history, notes, tools...). Sections 8 to 11 are about the parts a **page** is made
+made of (history, notes, tools...). Sections 8 to 12 are about the parts a **page** is made
 of: the layers (tokens → kit → components → views), the rule that a component is given what
 it shows, how things move, the talk screen, and the terminal.
 
@@ -118,7 +118,7 @@ come from `data/ui.json`; design tokens from `data/theme.json` (Theme page). The
 | `src/host/tools.rs` | the shared-tool registry, `create_engine` (from a template), `dismiss_engine` |
 | `src/host/market.rs` | market tools (`quote`) |
 | `src/api/mod.rs` | server functions only |
-| `src/ui/features/` | what a person can do and what the words say (`talk.rs`, `run.rs`); no drawing |
+| `src/ui/features/` | what a person can do and what the words say (`talk.rs`, `run.rs`, `boxes.rs`, `markdown.rs`, `code.rs`, `keys.rs`, `palette.rs`, `queue.rs`, `asks.rs`, `terminal.rs`); no drawing |
 | `src/ui/web/kit/` | standard parts from rust-ui.com (section 8) |
 | `src/ui/web/components/` | this app's own parts, each given what it shows (section 8) |
 | `src/ui/web/views/` | pages: Dashboard, EngineView, ChatView (the talk screen), Models, Shell... |
@@ -135,7 +135,7 @@ they are all the same Rust source.
 | layer | where | what it is | the rule | held by |
 | --- | --- | --- | --- | --- |
 | tokens | `assets/styling/glass.css` (`:root`, at the top) | every colour, size, time and curve, named once | nothing else writes a colour or a time | review |
-| kit | `src/ui/web/kit/` | standard parts copied from rust-ui.com (MIT): avatar, badge, button, card, collapsible, kbd, scroll_area, separator, skeleton, spinner, tabs, textarea, tooltip | knows nothing of this app; names tokens, never a colour; says where it came from and what we changed | `the_kit_is_standard_parts_and_nothing_else` |
+| kit | `src/ui/web/kit/` | standard parts copied from rust-ui.com (MIT): avatar, badge, button, card, collapsible, dialog, kbd, scroll_area, separator, skeleton, spinner, tabs, textarea, tooltip | knows nothing of this app; names tokens, never a colour; says where it came from and what we changed | `the_kit_is_standard_parts_and_nothing_else` |
 | components | `src/ui/web/components/` | this app's own parts, made of kit parts | **is given the object and the values it shows** | `a_component_only_shows_what_it_is_given`, `looks_live_in_the_stylesheet` |
 | views | `src/ui/web/views/` | pages, made of components | asks through `api/`, hands the answers down, decides nothing about the domain | `every_view_a_page_may_name_is_drawn` |
 | words | `src/ui/features/` | what a run or a state reads as, for every UI | no drawing | `a_feature_draws_nothing` |
@@ -163,17 +163,36 @@ what it is handed is allowed: that is the object.
 | `CallRow` | `run.rs` | one `features::run::Call` (tool, the program, the result) | — |
 | `EngineChip` | `engine_chip.rs` | a `Mode` (the engine), its activity and detail | — |
 | `EnginePick` | `engine_chip.rs` | `Vec<Mode>`, the chosen path | `on_pick(path)` |
-| `Composer` | `composer.rs` | the text (a signal the view owns), `Vec<Attached>`, `working`, `busy` | `on_send`, `on_stop`, `on_attach`, `on_remove` |
+| `Composer` | `composer.rs` | the text (a signal the view owns), `Vec<Attached>`, `working`, `busy`, the messages that wait (`Vec<Queued>`), the models (`ModelChoice`) | `on_send`, `on_stop`, `on_attach`, `on_remove`, `on_unqueue(key, write on it again)`, `on_model(name)` |
+| `QueueList` | `composer.rs` | `Vec<Queued>`: what waits until the box is done | `on_unqueue` |
+| `ModelPick` | `composer.rs` | a `ModelChoice`: every model, the default, the one the engine names itself | `on_pick(name)` |
+| `Prose` | `markdown.rs` | a text in Markdown; it reads it once (`features/markdown.rs`) | — |
+| `Markdown` | `markdown.rs` | `Vec<Block>`: the text already read, with what is safe already decided | — |
+| `CodeBlock` | `markdown.rs` | a program and the word after its fence; it colours it (`features/code.rs`) and copies it | — |
+| `AskForm` | `asks.rs` | one `Ask` (a question that waits for the owner), what became of the last answer | `on_answer(text)` |
+| `SpecView` | `spec.rs` | an engine's goal, learnings and tools, as the three texts it holds | — |
+| `SessionThread` | `turn.rs` | a session's `Vec<Turn>`, whether the agent works, why it failed | — |
+| `Palette` | `palette.rs` | whether it is open, every `Entry` (`features/palette.rs`) | `on_pick(Pick)`, `on_close` |
+| `Shortcuts` | `palette.rs` | whether it is open, whether this is a Mac (the keys' names) | `on_close` |
+| `TerminalView` | `terminal.rs` | a `core::screen::Screen`, a label | `on_type(the bytes a program reads)` |
 | `MediaChip` | `media.rs` | a `Chip`, its picture | — |
 | `Topbar` | `topbar.rs` | brand, title, every engine's path, the current one, the theme in use | `on_engine`, `on_theme` |
 | `Footer` | `footer.rs` | the contact entries | — |
-| `Pill` | `pill.rs` | brand, every box as a `Shown`, the count per state, `Vec<NavLink>`, a line about the service, two signals the shell owns (folded, open) | the box that was looked at |
-| `BoxMark`, `BoxRow`, `BoxTile` | `boxes.rs` | a `Shown`: the `SessionBox`, the mark this window shows for it, the page it opens to | the box looked at; what was said into it |
+| `Pill` | `pill.rs` | brand, every box as a `Shown`, the count per state, `Vec<NavLink>`, a line about the service, the id of the open box, whether it is grouped, its width, two signals the shell owns (folded, open). It keeps what is typed into its find field | the box that was looked at, `on_group`, `on_width(px, let go)` |
+| `BoxMark`, `BoxRow`, `BoxTile`, `OpenHead` | `boxes.rs` | a `Shown`: the `SessionBox`, the mark this window shows for it, the address that opens it in place, whether it is pinned; a tile also its open questions and how many messages wait for it | the box looked at; what was said into it; `on_pin`; `on_answer(box, question, answer)` |
 | `Stat`, `Icon`, `Companion`, `Pane`, `Glass`, `Wall` | one file each | their values | — |
 
 Before this rule the top bar asked for the engines itself, the footer read the shared
 settings, and an attachment fetched its own picture. All three now take them; the debt list
 in the test is empty and may not grow.
+
+One conversation, two places: `views/conversation.rs` is the talk with an engine, and both
+the Talk page (`views/chat.rs`) and an engine's box open on the canvas (`views/open.rs`)
+place it. Nothing of it is drawn twice.
+
+Two looks are written on an element, because each is a number that arrives at run time:
+the colours a terminal's program chose (`components/terminal.rs`) and the width the owner
+dragged the pill to (`views/shell.rs`). The test lists both and no others.
 
 Not moved yet (said plainly): `views/loops.rs` (`RunCard`, `RunPanel`, `NowChip`) and
 `views/prompt.rs` are views that still draw and ask in one place; the dashboard, engine,
@@ -189,7 +208,10 @@ collapsible got `aria-expanded`/`aria-controls`, draws nothing while closed and 
 tabbed into; textarea got a value, events and a label (the original could not be typed
 into usefully); spinner draws its own ring and says what is awaited; scroll_area uses the
 browser's own bar and can be reached by keyboard; tooltip also shows on keyboard focus;
-button got a pressed state and the app's control sizes. To add a part: the recipe is at
+button got a pressed state and the app's control sizes; dialog is opened by its parent (so
+a key can open it: the original could only be opened by its own button, through a script
+it wrote into the page), says it is a dialog, takes the focus, keeps Tab inside, closes on
+Escape and gives the focus back. To add a part: the recipe is at
 the top of `src/ui/web/kit/mod.rs`.
 
 Kit looks are Tailwind classes; `tailwind.css` maps the kit's colour names onto glass
@@ -232,9 +254,27 @@ WWDC design talks put in web terms). Only its design guidance is used.
 | `--motion-stream` | 600ms | an answer fading in |
 | `--motion-tick` … `--motion-drift` | 700ms … 28s | what repeats while something works or rests |
 | `--ease-spring`, `--ease-bounce`, `--ease-out`, `--ease-exit` | curves | see rules 2 and 4 |
-| `--press-scale`, `--hover-y`, `--enter-y`, `--enter-scale`, `--sheet-y` | .97, -2px, 8px, .98, 24px | how far things move |
+| `--press-scale`, `--hover-y`, `--enter-y`, `--enter-scale`, `--sheet-y`, `--open-scale` | .97, -2px, 8px, .98, 24px, .94 | how far things move; `--open-scale` is how small a box is when it begins to open from its tile |
 | `--hit`, `--hit-md`, `--hit-sm`, `--hit-row` | 44, 36, 32, 28px | a control's height for a pointer; on a phone or any touched screen all four are 44px |
 | `--lane` | 46rem | the width of the conversation's column |
+
+What was added with the box that opens in place, and where each rule holds:
+
+| what moves | how | rule |
+| --- | --- | --- |
+| a box opens from its tile and goes back to it | `.box-open` grows from `--open-scale` at the tile's own place (`--from-x`, `--from-y`, measured at the touch) on `--ease-spring`; it leaves to the same place on `--ease-exit`. Both are transitions: a second touch mid-way turns it round. It is drawn until it has left, and what is not shown is `inert` | 2, 3, 4 |
+| the tiles under an open box | fade and shrink a step toward the same place, and come back | 4, 6 |
+| "go to anything" and the shortcuts | the kit's dialog: a step up and a little smaller on `--ease-spring`, out on `--ease-exit`; the page is dimmed because they are modal | 2, 4, 5 |
+| the pill's edge while it is dragged | follows the pointer exactly: the shell's own easing is off for as long as it is held | 1 |
+| a message put in the queue | arrives like a turn (`enter`) | 2 |
+| a press on a tile's head, the way back, a line of the palette | sinks to `--press-scale` in `--motion-press` | 1 |
+
+Seen with "reduce motion" on (headless Chrome, `--force-prefers-reduced-motion`, and the
+media feature set over the DevTools protocol): the distances are zero, no keyframes run,
+and the box, the tiles and the dialogs still fade in 150ms. Seen with "reduce
+transparency": the pill, the tiles and the palette are solid `--tint` with no blur, the
+wall's lights are off. With "more contrast" as well, the new parts get an edge in the text
+colour.
 
 Not taken, and why: dragging with the finger, handing the finger's speed to a spring,
 throwing, rubber-banding at an edge (rules 2, 5, 6 and 9 of the skill) need a surface a
@@ -258,20 +298,54 @@ terminal, files, browser); a terminal drawer at the bottom.
 | --- | --- | --- | --- |
 | centred lane | `--chat-content-max-width: 46rem` | `--lane: 46rem` | same |
 | user message | right-aligned bubble, `max-w-[80%] rounded-2xl p-3` | `.ask`, 80% wide, right | same |
-| assistant message | plain prose, no bubble, fades in as it streams (600ms) | `.say`, plain, fades in (`--motion-stream`) | same, but text is plain: **no Markdown, no code highlighting** |
+| assistant message | Markdown, no bubble, fades in as it streams (600ms) | `Prose`: headings, lists, tasks, quotes, tables, links, inline code; fades in (`--motion-stream`) | same for what is drawn; **the answer arrives whole, not word by word** (the engine does not stream) |
+| code blocks | highlighted (Shiki), a copy button, the language | `CodeBlock`: a copy button, the language, colours for Rust, JavaScript and TypeScript, Python, JSON, shell and a diff from one small reader (`features/code.rs`) | same idea; **six languages, coloured by word and not by grammar**; any other language is plain |
+| links, raw HTML | sanitised; links open outside | decided once where the text is read: only `http`, `https`, `mailto`; raw HTML is text; a picture is a link and is never loaded | safer than drawing it; **no pictures in an answer** |
+| math, Mermaid, file and thread links | drawn | — | **none** |
 | tool calls | consecutive calls fold into one summary row; open, a list of rows (24px, small text); each row opens to a mono body | `RunView`: one line (`Worked for 3.2s · 2 steps · 1 call`) that opens to a `StageRow` per stage; under `act`, a `CallRow` per call showing the program and its result | same idea; askk shows every stage of the loop, not only the calls |
 | "Working for N" | a live line with a shimmer and a timer | the run's line while it runs: shimmer, timer, the stage it is in; the engine's dot pulses | same |
 | stop / send | round send button; Stop while working | `Composer`: round Send, Stop beside it while the engine works | same |
-| composer | glass, `rounded-2xl`, grows, attachments strip, model and effort pickers, permission mode, dictation | glass, grows, attachments strip, Enter sends | **no model, effort or permission pickers; no dictation** |
-| queued messages | a message sent while working waits, can be edited or steered | a message is posted to the engine's box and runs after | **no queue to see or edit** |
-| approvals | an inline row, never hidden | — | **none** (asks live on their own page) |
-| changed files, diff | a card in the reply, a diff tab | — | **none on this screen** (the IDE view is elsewhere) |
-| right panel | tabs: diff, terminal, files, browser; resizable | tabs: Board, Loop, Prompt; opens and closes, a sheet under 1200px | **not resizable; no terminal or diff tab** |
-| thread list | sections, status, timer | a row of engines to talk to (`EnginePick`); the page header says what runs | **one conversation per engine, no thread list** |
+| composer | glass, `rounded-2xl`, grows, attachments strip, model and effort pickers, permission mode, dictation | glass, grows, attachments strip, Enter sends and Shift+Enter breaks the line, a model choice | **the model choice sets the default model, for every engine that names none** (an engine that names its own shows it and cannot be changed here: the service has no answer that writes an engine's file); **no effort or permission pickers, no dictation** |
+| queued messages | a message sent while working waits, can be edited or steered | `QueueList`: a message sent while the box works waits in sight, in order, goes when the box is done and has read the one before; it can be taken back or written on again | same, except **no steering** (a waiting message cannot be pushed into the run in hand), and **the queue lives in the window**: a reload empties it |
+| approvals | an inline row, never hidden | `AskForm`: a blocked box shows its question with a field to answer, in its tile and when open | same for an engine's questions; **a harness's own permission prompts are not seen** (`docs/sessions/009`) |
+| changed files, diff | a card in the reply, a diff tab | a fenced `diff` in an answer is coloured | **no changed-files card, no diff tab** (the IDE view is elsewhere) |
+| right panel | tabs: diff, terminal, files, browser; resizable | tabs: Board, Loop, Prompt; opens and closes, a sheet under 1200px | **not resizable; no terminal, diff, files or browser tab** |
+| thread list | a sidebar of threads in sections, status, timer; pinned; search | the pill: every session as a row with its state mark and last line, what needs the owner first; a find field; groups by place; boxes pinned to the canvas; its width dragged | same idea, as boxes; **one conversation per engine** (an engine has one thread), **no timers, no snooze, no sections by state** |
+| opening a thread | the thread fills the main part; the URL names it | a box opens in place and fills the canvas; the address names it after `#`, so a reload, a link and the back button agree | same |
 | minimap, find in thread | ticks per message, `mod+f` | — | **none** |
-| keyboard | `mod+k` palette, `mod+b` sidebar, `mod+j` terminal and more | Enter / Shift+Enter; arrow keys in tabs | **no shortcuts beyond those** |
-| phone | sidebar and right panel become sheets; composer stays at the bottom; touch targets grow | navigation and the panel are sheets; composer at the bottom; every control 44px | same |
-| virtualised list | long threads stay fast | every turn is drawn | **not virtualised** |
+| keyboard | `mod+k` palette, `mod+b` sidebar, `mod+j` terminal and many more; rebindable | `mod+k` "go to anything" (every box, page and action), `mod+b` folds the pill, `/` writes, `?` lists the keys, Escape closes what is open, arrows move in the pill and the palette | **a short fixed list; not rebindable; no `mod+n`, no `mod+j`** |
+| command palette | threads, projects, actions, themes, sub-pages | `Palette`: sessions, pages, actions (fold, theme, idle, new session, keys); a combobox over a listbox for a screen reader | same idea; **flat: no sub-pages, no recent list** |
+| terminal | a drawer and a tab, a real terminal (xterm) | `TerminalView` draws a `Screen` the service worked out and sends keys back; shown with made-up screens (Settings, Parts) | **the part is built, not wired**: the service's terminals are another stream's work (section 12) |
+| phone | sidebar and right panel become sheets; composer stays at the bottom; touch targets grow | the pill and the panel are sheets; a box opens to the whole canvas; composer at the bottom; every control 44px | same |
+| virtualised list | long threads stay fast: only rows in sight exist | every turn is in the page, but a turn far off screen is not laid out or painted (`content-visibility: auto`, its last height remembered) | **not virtualised, skipped**: measured below |
+| other browsers | Chrome, Safari, Firefox | Chrome (headless, every screen at three widths, dark and light, console empty) | **Safari and Firefox not seen** (neither could be driven on the build machine without installing something) |
+
+Long threads, measured (2026-11-11, headless Chrome, release build, 1440×900, made-up
+turns each with a heading-less answer, a code block and a list; Settings → Parts): laying
+out the thread again after its width changed took 0.29 ms for 500 turns and 1.33 ms for 2000
+with far turns skipped, against 3.9 ms and 18.1 ms with every turn laid out. Putting 2000
+turns on the page took 184 ms. An engine keeps its last 25 exchanges, so its own thread is
+never that long; a session with another agent can be.
+
+Not on par with T3 Code, in one list (2026-11-11, after the work above):
+
+- An answer arrives whole: nothing streams word by word.
+- Code is coloured by one small reader for six languages, not by a grammar; no math, no
+  Mermaid, no pictures in an answer.
+- The model choice changes the default model only; no effort or permission pickers, no
+  dictation.
+- A waiting message cannot be steered into the run in hand, and the queue is lost on reload.
+- A harness's own permission prompts are not seen; only an engine's questions are answered
+  in place.
+- No changed-files card, no diff, files, browser or terminal tab in the right panel, and the
+  panel cannot be resized.
+- One conversation per engine; no timers, snooze or sections by state in the list.
+- No find in a thread, no minimap.
+- A short fixed list of keys, not rebindable; the palette is flat.
+- The terminal box is drawn and typed into with made-up screens only: it is not wired to
+  the service.
+- Long threads are skipped off screen, not virtualised.
+- Safari and Firefox were not looked at.
 
 Density taken from it: the 46rem lane, the 80% bubble, small text and 28px rows for work,
 11–12px mono for programs and results with a capped height (`min(18rem, 50dvh)`),. Motion: T3 Code uses plain 150–200ms eases and no springs; askk follows
@@ -314,6 +388,35 @@ test checks that the coloured text with its colour removed *is* the plain text.
 Not on par with herdr, said plainly: no panes, no tabs, no sidebar, no keys beyond typed
 commands, no mouse; one engine at a time; a run's stages are listed when it ends (while
 it goes there is one live line).
+
+## 12. A terminal box on a page
+
+The service holds a terminal and works its screen out (`core/screen.rs`); a page only draws
+that object. `TerminalView` is the part that does:
+
+| | |
+| --- | --- |
+| it is given | a `Screen` (rows of spans, cursor, title, alive, exit) and a label |
+| it draws | one row per screen row in the data face; each span in its colours; the cell under the cursor on its own (a frame, and a blinking block once the terminal has the focus); bold, dim, slanted, underlined, ink and ground changed over; a line under it with the title, or how the program ended (`■ ended with code 1`) |
+| colours | `""` is the terminal's own. `"0"`..`"15"` are tokens (`--term-0` … `--term-15`, named from the palette, so they follow light and dark). `"16"`..`"255"` and `#rrggbb` are worked out (`features/terminal.rs`, `ink`) and drawn exactly as given |
+| it sends up | `on_type(String)`: text as it is, Enter `\r`, Backspace `\x7f`, Tab `\t`, Escape `\x1b`, arrows `\x1b[A`…`D`, Home/End/Delete/PageUp/PageDown/F1–F12 as their sequences, Control+letter as its control byte, Alt+key as Escape then the key. Command+key is left to the window |
+| the focus | a field under the screen holds it, so a phone raises its keyboard and an input method can compose; the screen is that field's label, so a touch focuses it. Shift+Tab leaves the terminal. While it has the focus the keys of section 10 are not heard: Control+K belongs to a shell |
+| proved by | `features/terminal.rs` tests (colours, cells, the cursor cut on letters, a dead terminal, every key), and Settings → Parts: three made-up screens, with what is typed written out as bytes |
+
+To wire it to a real terminal (a view does this; the part stays as it is):
+
+```rust
+// in views/open.rs, for a box whose id is `terminal:<id>`
+let live = use_live(move || format!("terminals/{id}"));           // its key on the change feed
+let screen = use_resource(move || { let _ = live(); crate::api::terminal_screen(id) });
+rsx! { TerminalView { screen: screen().and_then(Result::ok).unwrap_or_default(), label: title,
+    on_type: move |keys: String| { spawn(async move { let _ = crate::api::terminal_type(id, keys).await; }); } } }
+```
+
+Not there yet, said plainly: the part does not tell the service its size (`terminal_resize`
+needs the cell's measured width), it does not scroll back (the `Screen` has no history), a
+selection cannot be copied with a key, and wide letters (CJK, emoji) are trusted to be two
+cells wide in the data face.
 
 ## Tokens (of a model)
 

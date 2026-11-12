@@ -231,7 +231,7 @@ pub fn samples() -> Vec<(&'static str, Screen)> {
         cols: 64,
         rows: 7,
         lines: vec![
-            line((0..8).map(|n| Span { text: format!(" {n} "), fg: "15".into(), bg: n.to_string(), ..Default::default() }).chain((8..16).map(|n| Span { text: format!(" {n} "), fg: "0".into(), bg: n.to_string(), ..Default::default() })).collect()),
+            line((0..16).map(|n| Span { text: format!(" {n} "), fg: if n == 0 || n == 8 { "15".into() } else { "0".into() }, bg: n.to_string(), ..Default::default() }).collect()),
             line((0..16).map(|n| c("Aa ", &n.to_string())).collect()),
             line((16..80).map(|n: u16| block(1, n.to_string())).collect()),
             line((80..144).map(|n: u16| block(1, n.to_string())).collect()),

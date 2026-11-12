@@ -13,6 +13,7 @@
     --text-base: 1rem;
     --text-base--line-height: calc(1.5 / 1);
     --text-lg: 1.125rem;
+    --text-lg--line-height: calc(1.75 / 1.125);
     --text-xl: 1.25rem;
     --font-weight-medium: 500;
     --font-weight-semibold: 600;
@@ -66,6 +67,9 @@
   .top-1\/2 {
     top: calc(1/2 * 100%);
   }
+  .top-\[12dvh\] {
+    top: 12dvh;
+  }
   .top-full {
     top: 100%;
   }
@@ -98,6 +102,12 @@
   }
   .z-\[1\] {
     z-index: 1;
+  }
+  .z-\[70\] {
+    z-index: 70;
+  }
+  .z-\[71\] {
+    z-index: 71;
   }
   .container {
     width: 100%;
@@ -210,6 +220,9 @@
   .h-full {
     height: 100%;
   }
+  .max-h-\[76dvh\] {
+    max-height: 76dvh;
+  }
   .min-h-0 {
     min-height: calc(var(--spacing) * 0);
   }
@@ -221,6 +234,9 @@
   }
   .w-\[1px\] {
     width: 1px;
+  }
+  .w-\[min\(40rem\,calc\(100vw-2rem\)\)\] {
+    width: min(40rem, calc(100vw - 2rem));
   }
   .w-fit {
     width: fit-content;
@@ -523,6 +539,10 @@
     font-size: var(--text-base);
     line-height: var(--tw-leading, var(--text-base--line-height));
   }
+  .text-lg {
+    font-size: var(--text-lg);
+    line-height: var(--tw-leading, var(--text-lg--line-height));
+  }
   .text-sm {
     font-size: var(--text-sm);
     line-height: var(--tw-leading, var(--text-sm--line-height));
@@ -603,6 +623,12 @@
   .lowercase {
     text-transform: lowercase;
   }
+  .italic {
+    font-style: italic;
+  }
+  .underline {
+    text-decoration-line: underline;
+  }
   .underline-offset-4 {
     text-underline-offset: 4px;
   }
@@ -681,6 +707,11 @@
     transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));
     transition-duration: var(--tw-duration, var(--default-transition-duration));
   }
+  .transition-\[opacity\,translate\,scale\] {
+    transition-property: opacity,translate,scale;
+    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));
+    transition-duration: var(--tw-duration, var(--default-transition-duration));
+  }
   .transition-\[opacity\,translate\] {
     transition-property: opacity,translate;
     transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));
@@ -705,6 +736,15 @@
     transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to;
     transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));
     transition-duration: var(--tw-duration, var(--default-transition-duration));
+  }
+  .transition-opacity {
+    transition-property: opacity;
+    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));
+    transition-duration: var(--tw-duration, var(--default-transition-duration));
+  }
+  .duration-\[var\(--motion-base\)\] {
+    --tw-duration: var(--motion-base);
+    transition-duration: var(--motion-base);
   }
   .duration-\[var\(--motion-calm\)\] {
     --tw-duration: var(--motion-calm);
@@ -1188,6 +1228,22 @@
       height: calc(var(--spacing) * 6);
     }
   }
+  .data-\[state\=closed\]\:pointer-events-none {
+    &[data-state="closed"] {
+      pointer-events: none;
+    }
+  }
+  .data-\[state\=closed\]\:translate-y-\[var\(--enter-y\)\] {
+    &[data-state="closed"] {
+      --tw-translate-y: var(--enter-y);
+      translate: var(--tw-translate-x) var(--tw-translate-y);
+    }
+  }
+  .data-\[state\=closed\]\:scale-\[var\(--enter-scale\)\] {
+    &[data-state="closed"] {
+      scale: var(--enter-scale);
+    }
+  }
   .data-\[state\=closed\]\:grid-rows-\[0fr\] {
     &[data-state="closed"] {
       grid-template-rows: 0fr;
@@ -1196,6 +1252,18 @@
   .data-\[state\=closed\]\:opacity-0 {
     &[data-state="closed"] {
       opacity: 0%;
+    }
+  }
+  .data-\[state\=closed\]\:duration-\[var\(--motion-base\)\] {
+    &[data-state="closed"] {
+      --tw-duration: var(--motion-base);
+      transition-duration: var(--motion-base);
+    }
+  }
+  .data-\[state\=closed\]\:ease-\[var\(--ease-exit\)\] {
+    &[data-state="closed"] {
+      --tw-ease: var(--ease-exit);
+      transition-timing-function: var(--ease-exit);
     }
   }
   .data-\[state\=open\]\:grid-rows-\[1fr\] {

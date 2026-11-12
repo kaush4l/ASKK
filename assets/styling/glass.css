@@ -1070,7 +1070,9 @@ dialog.run-panel::backdrop { background: color-mix(in srgb, var(--ink-shade) var
 .open-back:hover { color: var(--fg); background: var(--surface-hover); }
 .open-back:active, .box-title:active { transform: scale(var(--press-scale)); transition-duration: var(--motion-press); }
 .open-none { margin: var(--space-4); }
-.talk.is-boxed .talk-head { padding-top: 0; }
+/* the box's head already says who this is: the conversation's head keeps only what it is doing */
+.talk.is-boxed .engine-chip [data-name="Avatar"], .talk.is-boxed .engine-name { display: none; }
+.talk.is-boxed .engine-doing { font-size: var(--text-sm); }
 @media (max-width: 767px) { .open-where { display: none; } .open-head { padding: 0; } }
 
 /* a tile: the hint that it opens, the pin, what it waits for, what waits for it */
@@ -1086,7 +1088,7 @@ dialog.run-panel::backdrop { background: color-mix(in srgb, var(--ink-shade) var
 .box-row-pin { display: inline-grid; flex: none; margin-left: auto; color: var(--muted); }
 .ask-form { --tone: var(--warn); display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; padding: var(--space-3); border-radius: var(--radius-md);
   border: 1px solid color-mix(in srgb, var(--tone) 45%, var(--stroke)); background: color-mix(in srgb, var(--tone) 8%, var(--surface-sunk)); }
-.talk-foot .ask-form { margin-bottom: var(--space-2); }
+.asks-here { display: flex; flex-direction: column; gap: var(--space-2); max-height: min(28dvh, 15rem); overflow-y: auto; margin-bottom: var(--space-2); scrollbar-width: thin; }
 .ask-form-q { display: flex; align-items: baseline; gap: var(--space-2); margin: 0; font-size: var(--text-sm); overflow-wrap: anywhere; }
 .ask-form.is-small .ask-form-q > span:last-child { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden; }
 .ask-form-sign { display: inline-grid; place-items: center; flex: none; width: var(--space-5); height: var(--space-5); border-radius: var(--radius-full); font-family: var(--font-mono);
@@ -1165,9 +1167,9 @@ dialog.run-panel::backdrop { background: color-mix(in srgb, var(--ink-shade) var
 /* ══ the composer: what waits, and which model ══ */
 .queue { display: flex; flex-direction: column; align-items: flex-end; gap: var(--space-2); padding: 0 var(--space-1) var(--space-2); }
 .queue-head { display: flex; align-items: center; gap: var(--space-1); margin: 0; font-family: var(--font-mono); font-size: var(--text-xs); color: var(--muted); }
-.queue-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; align-items: flex-end; gap: var(--space-2); max-width: 100%; max-height: 30dvh; overflow-y: auto; }
+.queue-list { list-style: none; width: 100%; margin: 0; padding: 0; display: flex; flex-direction: column; align-items: flex-end; gap: var(--space-2); max-width: 100%; max-height: 30dvh; overflow-y: auto; }
 /* a dashed edge: written, not sent */
-.queue-item { display: flex; align-items: center; gap: var(--space-1); max-width: min(80%, 100%); padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3);
+.queue-item { display: flex; align-items: center; gap: var(--space-1); max-width: 80%; padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3);
   border-radius: var(--radius-lg) var(--radius-lg) var(--radius-sm) var(--radius-lg); border: 1px dashed color-mix(in srgb, var(--press) 45%, var(--stroke));
   background: color-mix(in srgb, var(--press) 8%, var(--surface)); animation: enter var(--motion-spring) var(--ease-spring) backwards; }
 .queue-text { flex: 1; min-width: 0; margin: 0; font-size: var(--text-sm); white-space: pre-wrap; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
@@ -1183,7 +1185,7 @@ dialog.run-panel::backdrop { background: color-mix(in srgb, var(--ink-shade) var
 .talk-top { flex: none; min-width: 0; }
 .spec-toggle { display: inline-flex; align-items: center; gap: var(--space-1); flex: none; min-height: var(--hit-md); padding: 0 var(--space-3); border-radius: var(--radius-full); color: var(--muted); font-size: var(--text-sm); }
 .spec-toggle:hover, .spec-toggle[data-state="open"] { color: var(--fg); background: var(--surface-hover); }
-.talk-spec > .spec { max-height: min(42dvh, 26rem); overflow: auto; margin: var(--space-1) var(--space-2) var(--space-2); padding: var(--space-3) var(--space-4);
+.talk-spec > .spec { max-height: min(34dvh, 22rem); overflow: auto; margin: var(--space-1) var(--space-2) var(--space-2); padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-md); border: 1px solid var(--stroke); background: var(--surface-sunk); }
 .spec { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; font-size: var(--text-sm); }
 .spec-name { margin: 0 0 var(--space-1); font-size: var(--text-xs); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
@@ -1245,6 +1247,10 @@ dialog.run-panel::backdrop { background: color-mix(in srgb, var(--ink-shade) var
 .term-state { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .term-state.is-dead { color: var(--error); }
 .term.is-dead .term-screen { cursor: default; opacity: .8; }
+
+/* with "reduce transparency" what floats over the page is solid, like every other surface */
+@media (prefers-reduced-transparency: reduce) { .palette, .shortcuts { background: var(--tint); } }
+@media (prefers-contrast: more) { .palette, .shortcuts, .term, .md-code, .ask-form, .queue-item { border-color: var(--fg); } .palette-item.is-on { box-shadow: inset 0 0 0 2px var(--fg); } }
 
 /* the parts catalogue (Settings, Parts) */
 .parts { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }

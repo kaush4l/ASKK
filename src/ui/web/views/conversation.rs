@@ -273,8 +273,12 @@ pub fn Conversation(path: String, #[props(default)] engines: Vec<Mode>, #[props(
                         if !error.read().is_empty() { p { class: "talk-error", role: "alert", "{error}" } }
                         if !fetch_error.is_empty() { p { class: "talk-error", role: "alert", "{fetch_error}" } }
                         // What it waits for is answered here, where it is seen.
-                        for ask in open_asks {
-                            AskForm { key: "{ask.question}", sent: answered(), on_answer: { let (q, answer) = (ask.question.clone(), answer.clone()); move |a| answer((q.clone(), a)) }, ask }
+                        if !open_asks.is_empty() {
+                            div { class: "asks-here", role: "group", "aria-label": "It waits for you",
+                                for ask in open_asks {
+                                    AskForm { key: "{ask.question}", sent: answered(), on_answer: { let (q, answer) = (ask.question.clone(), answer.clone()); move |a| answer((q.clone(), a)) }, ask }
+                                }
+                            }
                         }
                         Composer { value: input, to: path.clone(), attached: attached(), pictures: pictures(), working, busy: busy() || sending, queued, model,
                             on_send: send, on_stop: { let act = act.clone(); move |_| act(false) },
