@@ -2,54 +2,40 @@ use super::{Glass, Icon};
 use dioxus::prelude::*;
 
 /// The page header: where you are (the current page's title) under the brand, and on the right
-/// a picker of every engine that opens its page.
+/// a picker of every engine and the switch between light and dark.
+///
+/// It is given everything it shows: `engines` (every engine's path), `current` (the one this
+/// page is about, if any) and `light` (which theme is on). It says what the person chose
+/// (`on_engine`, `on_theme`); going there and changing the theme are the shell's to do. What
+/// the shell wants shown between the title and the picker (what is running now) goes inside.
 #[component]
-pub fn Topbar(brand: String, title: String) -> Element {
-    let m = crate::ui::web::views::live::use_manifest();
-    let live = crate::ui::web::views::live::use_live(move || m.engines.clone());
-    let engines = use_resource(move || {
-        let _ = live();
-        crate::api::engine_paths()
-    });
-    let here = use_route::<crate::Route>().to_string();
-    let current = engine_of(&here);
-    let list = engines.read().as_ref().and_then(|r| r.as_ref().ok()).cloned().unwrap_or_default();
-    let mut theme = use_signal(|| "dark".to_string());
-    // On mount: apply the saved choice, else the OS preference, and sync the button to it.
-    use_effect(move || {
-        spawn(async move {
-            let mut ev = document::eval(
-                r#"let t = localStorage.getItem('askk-theme');
-                if (t !== 'light' && t !== 'dark') { t = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'; }
-                document.documentElement.dataset.theme = t;
-                dioxus.send(t);"#,
-            );
-            if let Ok(t) = ev.recv::<String>().await { theme.set(t); }
-        });
-    });
-    let is_light = theme() == "light";
+pub fn Topbar(
+    brand: String,
+    title: String,
+    #[props(default)] engines: Vec<String>,
+    #[props(default)] current: Option<String>,
+    #[props(default)] light: bool,
+    on_engine: EventHandler<String>,
+    on_theme: EventHandler<()>,
+    children: Element,
+) -> Element {
     rsx! {
         Glass { class: "topbar",
             div { class: "crumbs grow", span { class: "dim", "{brand}" } span { class: "sep", "aria-hidden": "true", "/" } h1 { "{title}" } }
-            // What is running now, on every page.
-            crate::ui::web::views::loops::NowChip {}
+            {children}
             select { class: "engine-pick", "aria-label": "Open an engine",
                 onchange: move |e| {
                     let v = e.value();
-                    if !v.is_empty() { navigator().push(format!("/e/{v}")); }
+                    if !v.is_empty() { on_engine.call(v); }
                 },
                 option { value: "", selected: current.is_none(), disabled: true, "Engines…" }
-                for p in list {
+                for p in engines {
                     option { key: "{p}", value: "{p}", selected: current.as_deref() == Some(p.as_str()), "{p}" }
                 }
             }
-            button { class: "icon-btn theme-toggle", r#type: "button", "aria-label": "Switch to light or dark theme", "aria-pressed": "{is_light}",
-                onclick: move |_| {
-                    let next = next_theme(&theme());
-                    theme.set(next.to_string());
-                    let _ = document::eval(&format!("document.documentElement.dataset.theme = '{next}'; localStorage.setItem('askk-theme', '{next}');"));
-                },
-                Icon { name: if is_light { "sun" } else { "moon" } }
+            button { class: "icon-btn theme-toggle", r#type: "button", "aria-label": "Switch to light or dark theme", "aria-pressed": "{light}",
+                onclick: move |_| on_theme.call(()),
+                Icon { name: if light { "sun" } else { "moon" } }
             }
         }
     }

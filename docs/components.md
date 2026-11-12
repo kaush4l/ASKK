@@ -3,6 +3,11 @@
 (The whole shape — principles, flow to code, rigid vs open places, open gaps — is in
 `architecture.md`.)
 
+Two things are called a component here. Sections 1 to 7 are about the parts an **engine** is
+made of (history, notes, tools...). Sections 8 to 11 are about the parts a **page** is made
+of: the layers (tokens → kit → components → views), the rule that a component is given what
+it shows, how things move, the talk screen, and the terminal.
+
 ## 1. One contract
 Every component is **defined behaviour + configuration + state + UI** (`src/core/mod.rs`, `Component`).
 
@@ -113,11 +118,203 @@ come from `data/ui.json`; design tokens from `data/theme.json` (Theme page). The
 | `src/host/tools.rs` | the shared-tool registry, `create_engine` (from a template), `dismiss_engine` |
 | `src/host/market.rs` | market tools (`quote`) |
 | `src/api/mod.rs` | server functions only |
-| `src/ui/components/` | layout primitives (Wall, Pane, Glass, Sidebar, Topbar, Stat) |
-| `src/ui/views/` | pages: Dashboard, EngineView, Models, Components, Shell |
+| `src/ui/features/` | what a person can do and what the words say (`talk.rs`, `run.rs`); no drawing |
+| `src/ui/web/kit/` | standard parts from rust-ui.com (section 8) |
+| `src/ui/web/components/` | this app's own parts, each given what it shows (section 8) |
+| `src/ui/web/views/` | pages: Dashboard, EngineView, ChatView (the talk screen), Models, Shell... |
+| `src/ui/terminal/` | the same features as lines (section 11) |
+| `assets/styling/` | `glass.css` (tokens, every page), `talk.css` (the talk screen, arrivals) |
 | `defaults/` | the starting configuration |
 
-## Tokens
+## 8. The UI's parts: tokens → kit → components → views (2026-11-11)
+
+"Component" above means a part of an engine. From here on it means a part of a page. One
+set of parts draws every place the app is shown (browser, Mac app, phone, tablet), because
+they are all the same Rust source.
+
+| layer | where | what it is | the rule | held by |
+| --- | --- | --- | --- | --- |
+| tokens | `assets/styling/glass.css` (`:root`, at the top) | every colour, size, time and curve, named once | nothing else writes a colour or a time | review |
+| kit | `src/ui/web/kit/` | standard parts copied from rust-ui.com (MIT): avatar, badge, button, card, collapsible, kbd, scroll_area, separator, skeleton, spinner, tabs, textarea, tooltip | knows nothing of this app; names tokens, never a colour; says where it came from and what we changed | `the_kit_is_standard_parts_and_nothing_else` |
+| components | `src/ui/web/components/` | this app's own parts, made of kit parts | **is given the object and the values it shows** | `a_component_only_shows_what_it_is_given`, `looks_live_in_the_stylesheet` |
+| views | `src/ui/web/views/` | pages, made of components | asks through `api/`, hands the answers down, decides nothing about the domain | `every_view_a_page_may_name_is_drawn` |
+| words | `src/ui/features/` | what a run or a state reads as, for every UI | no drawing | `a_feature_draws_nothing` |
+
+### The rule: a component takes the object and the values to show
+
+A component never asks the service (`crate::api::…()`), never waits for an answer
+(`use_resource`, `use_server_future`), never listens for changes, never reaches into a view,
+and reads nothing shared behind its back (`use_context`). It is handed a value and draws it;
+what the person did goes back up as an event. Naming a *shape* from `api/` or `core/` for
+what it is handed is allowed: that is the object.
+
+| who | does | example |
+| --- | --- | --- |
+| the view | asks, keeps what was asked for, acts | `views/chat.rs` asks `talk(path)`, and `engine_run(path, id)` when a run is opened |
+| the component | draws what it is given, says what was pressed | `RunView { run, on_open }` |
+| the feature | says what the words are | `features/run.rs`: `headline(&run)` → `Worked for 3.2s · 2 steps · 1 call` |
+
+| component | file | the object it is given | events it sends up |
+| --- | --- | --- | --- |
+| `Thread` | `turn.rs` | `Vec<Beat>`, the runs held in full, the pictures of attachments, the message just sent | `on_open(run id, open)` |
+| `TurnView` | `turn.rs` | one `Beat` (what was asked, its run, figures, replies) | `on_open` |
+| `RunView` | `run.rs` | one `core::run::Run` (an outline, or in full). It is open while the run goes and closes when it ends, unless the person chose | `on_open(open)` |
+| `StageRow` | `run.rs` | one `core::run::Mark` | — |
+| `CallRow` | `run.rs` | one `features::run::Call` (tool, the program, the result) | — |
+| `EngineChip` | `engine_chip.rs` | a `Mode` (the engine), its activity and detail | — |
+| `EnginePick` | `engine_chip.rs` | `Vec<Mode>`, the chosen path | `on_pick(path)` |
+| `Composer` | `composer.rs` | the text (a signal the view owns), `Vec<Attached>`, `working`, `busy` | `on_send`, `on_stop`, `on_attach`, `on_remove` |
+| `MediaChip` | `media.rs` | a `Chip`, its picture | — |
+| `Topbar` | `topbar.rs` | brand, title, every engine's path, the current one, the theme in use | `on_engine`, `on_theme` |
+| `Footer` | `footer.rs` | the contact entries | — |
+| `Sidebar` | `sidebar.rs` | brand, `Vec<NavLink>`, two signals the shell owns (folded, open) | — |
+| `Stat`, `Icon`, `Companion`, `Pane`, `Glass`, `Wall` | one file each | their values | — |
+
+Before this rule the top bar asked for the engines itself, the footer read the shared
+settings, and an attachment fetched its own picture. All three now take them; the debt list
+in the test is empty and may not grow.
+
+Not moved yet (said plainly): `views/loops.rs` (`RunCard`, `RunPanel`, `NowChip`) and
+`views/prompt.rs` are views that still draw and ask in one place; the dashboard, engine,
+rooms and sessions pages still use page classes (`.btn`, `.seg`) instead of kit parts.
+
+### The kit: what we changed in our copies
+
+Each file's first line says it. In short: tabs got roles, arrow keys and one sliding mark
+(placed by the stylesheet alone: where the browser can tie one element's place to another's,
+CSS anchor positioning, the mark takes the chosen tab's place and width; elsewhere the tabs
+are columns of one width and the mark's place is the tab's number);
+collapsible got `aria-expanded`/`aria-controls`, draws nothing while closed and cannot be
+tabbed into; textarea got a value, events and a label (the original could not be typed
+into usefully); spinner draws its own ring and says what is awaited; scroll_area uses the
+browser's own bar and can be reached by keyboard; tooltip also shows on keyboard focus;
+button got a pressed state and the app's control sizes. To add a part: the recipe is at
+the top of `src/ui/web/kit/mod.rs`.
+
+Kit looks are Tailwind classes; `tailwind.css` maps the kit's colour names onto glass
+tokens and holds the kit's few motions. The stylesheets load in this order:
+`assets/tailwind.css` (written by `dx`), `glass.css` (tokens and every page), `talk.css`
+(the talk screen and how things arrive). glass.css and talk.css are plain CSS outside any
+layer, so a page class always wins over a kit utility; bare `input`/`textarea` rules
+leave kit parts alone (`:not([data-name])`).
+
+Two traps this makes, both met while building the talk screen:
+
+- **A short page class shadows a kit utility of the same name.** glass.css has `.grid`,
+  `.grow`, `.row`, `.stack`. A kit part that needs such a utility writes it out
+  (`[display:grid]`, `inline-grid`).
+- **A new page class may already mean something.** `.call` and `.side-toggle` did. Before
+  naming a class, search glass.css for it.
+
+## 9. Motion and glass: the rules, and where each lives
+
+Taken from the apple-design skill the owner chose
+(<https://github.com/emilkowalski/skills/blob/main/skills/apple-design/SKILL.md>, Apple's
+WWDC design talks put in web terms). Only its design guidance is used.
+
+| # | rule from the skill | here |
+| --- | --- | --- |
+| 1 | **Answer on the press, at once.** "Respond on pointer-down, not on release." | every control sinks to `--press-scale` (.97) in `--motion-press` (100ms) on `:active`; nothing waits for a transition before it reacts |
+| 2 | **Springs, not fixed animations. No overshoot by default** (damping 1.0, response 0.3–0.4); bounce (damping ~0.8) only when a flick carried momentum. | `--ease-spring` is that spring, sampled into a `linear()` curve; `--motion-spring` 440ms is response 0.3, `--motion-spring-slow` 590ms is response 0.4. `--ease-bounce`/`--motion-bounce` (damping 0.8) exist and are used nowhere: nothing here is thrown yet |
+| 3 | **Anything can be interrupted.** Start from where the thing is now. | what a person can reverse is a CSS *transition* (the side panel, a collapsible, the tabs' mark, the phone's navigation sheet): pressed again mid-way it turns round from where it is. Keyframes are only for arrivals nobody can grab, and an arrival holds nothing once it is over (`backwards`, never `both`: a held animation makes its element the frame of anything fixed inside it) |
+| 4 | **Leave the way you came.** Enter and exit on the same path, anchored to the source. | the panel slides in from the right and out to the right; a collapsible closes the way it opened (and stays drawn until it has); a tooltip steps out from the side it sits on; exits use the mirrored curve `--ease-exit` |
+| 5 | **Glass shows hierarchy.** Bigger surfaces are thicker; never glass on glass; a bright top edge; dim the page only for something modal; fade at a scroll edge instead of a line. | `--blur-thin` 12 / `--blur` 24 / `--blur-thick` 40px with `--saturate`; `--elev-1` / `--lift` / `--elev-3`; `--hi` top edge; the panel is a sheet with a scrim on a phone and a plain neighbour on a wide screen; `ScrollArea { fade }` |
+| 6 | **Move only what is cheap.** `transform` and `opacity`. | so everywhere, except a collapsible's height (grid rows) |
+| 7 | **Less motion is not no feedback.** Replace travel and springs with short fades; with "reduce transparency" make surfaces solid; with "more contrast" give them a clear edge. | `prefers-reduced-motion`: the distance tokens become zero, loops stop, colour and opacity still change in `--motion-fast`. `prefers-reduced-transparency`: the surface and blur tokens go solid, so every surface does. `prefers-contrast: more`: solid surfaces, borders in the text colour |
+| 8 | **Feedback has four kinds:** status, completion, warning, error. | status: the working line and the engine's dot; completion: the run's line turns to "Worked for…"; warning and error: a sentence in the error colour with `role="alert"` |
+
+| token | value | for |
+| --- | --- | --- |
+| `--motion-press` | 100ms | the press |
+| `--motion-fast` / `-base` / `-calm` / `-slow` | 150 / 200 / 260 / 300ms | colour, hover, small moves |
+| `--motion-spring` / `-spring-slow` | 440 / 590ms | arrivals, the panel, a collapsible, the tabs' mark |
+| `--motion-stream` | 600ms | an answer fading in |
+| `--motion-tick` … `--motion-drift` | 700ms … 28s | what repeats while something works or rests |
+| `--ease-spring`, `--ease-bounce`, `--ease-out`, `--ease-exit` | curves | see rules 2 and 4 |
+| `--press-scale`, `--hover-y`, `--enter-y`, `--enter-scale`, `--sheet-y` | .97, -2px, 8px, .98, 24px | how far things move |
+| `--hit`, `--hit-md`, `--hit-sm`, `--hit-row` | 44, 36, 32, 28px | a control's height for a pointer; on a phone or any touched screen all four are 44px |
+| `--lane` | 46rem | the width of the conversation's column |
+
+Not taken, and why: dragging with the finger, handing the finger's speed to a spring,
+throwing, rubber-banding at an edge (rules 2, 5, 6 and 9 of the skill) need a surface a
+person drags, and there is none yet (the panel opens by a button). Sound and haptics: none.
+Type tracking by size: the app's face (Amarante) is one weight with one tracking.
+
+## 10. The talk screen, measured against T3 Code
+
+T3 Code (<https://github.com/pingdotgg/t3code>, <https://t3.codes>) is an open-source
+"agent harness control surface" by Theo's company: a web, desktop and phone app that
+drives coding agents already installed on the machine (Claude Code, Codex, Cursor and
+others). Its source and docs were read on 2026-11-11 (`apps/web/src/components/`,
+`docs/user/`); nothing was installed, and no screenshot was looked at.
+
+Its main screen: a sidebar of threads in sections (pinned, active, working, snoozed,
+settled) each with a status word and a timer; a header with the project and thread title;
+the timeline in one centred column; a glass composer; a right panel with tabs (diff,
+terminal, files, browser); a terminal drawer at the bottom.
+
+| T3 Code part | what it does | askk | state |
+| --- | --- | --- | --- |
+| centred lane | `--chat-content-max-width: 46rem` | `--lane: 46rem` | same |
+| user message | right-aligned bubble, `max-w-[80%] rounded-2xl p-3` | `.ask`, 80% wide, right | same |
+| assistant message | plain prose, no bubble, fades in as it streams (600ms) | `.say`, plain, fades in (`--motion-stream`) | same, but text is plain: **no Markdown, no code highlighting** |
+| tool calls | consecutive calls fold into one summary row; open, a list of rows (24px, small text); each row opens to a mono body | `RunView`: one line (`Worked for 3.2s · 2 steps · 1 call`) that opens to a `StageRow` per stage; under `act`, a `CallRow` per call showing the program and its result | same idea; askk shows every stage of the loop, not only the calls |
+| "Working for N" | a live line with a shimmer and a timer | the run's line while it runs: shimmer, timer, the stage it is in; the engine's dot pulses | same |
+| stop / send | round send button; Stop while working | `Composer`: round Send, Stop beside it while the engine works | same |
+| composer | glass, `rounded-2xl`, grows, attachments strip, model and effort pickers, permission mode, dictation | glass, grows, attachments strip, Enter sends | **no model, effort or permission pickers; no dictation** |
+| queued messages | a message sent while working waits, can be edited or steered | a message is posted to the engine's box and runs after | **no queue to see or edit** |
+| approvals | an inline row, never hidden | — | **none** (asks live on their own page) |
+| changed files, diff | a card in the reply, a diff tab | — | **none on this screen** (the IDE view is elsewhere) |
+| right panel | tabs: diff, terminal, files, browser; resizable | tabs: Board, Loop, Prompt; opens and closes, a sheet under 1200px | **not resizable; no terminal or diff tab** |
+| thread list | sections, status, timer | a row of engines to talk to (`EnginePick`); the page header says what runs | **one conversation per engine, no thread list** |
+| minimap, find in thread | ticks per message, `mod+f` | — | **none** |
+| keyboard | `mod+k` palette, `mod+b` sidebar, `mod+j` terminal and more | Enter / Shift+Enter; arrow keys in tabs | **no shortcuts beyond those** |
+| phone | sidebar and right panel become sheets; composer stays at the bottom; touch targets grow | navigation and the panel are sheets; composer at the bottom; every control 44px | same |
+| virtualised list | long threads stay fast | every turn is drawn | **not virtualised** |
+
+Density taken from it: the 46rem lane, the 80% bubble, small text and 28px rows for work,
+11–12px mono for programs and results with a capped height (`min(18rem, 50dvh)`),. Motion: T3 Code uses plain 150–200ms eases and no springs; askk follows
+the skill (section 9) instead.
+
+## 11. The terminal, laid out like herdr
+
+herdr (<https://github.com/herdrdev/herdr>, <https://herdr.dev>; Rust, one binary) is "the
+runtime your coding agents live on": a terminal application that runs agents in panes,
+with a background server a thin client attaches to and detaches from, and a mark beside
+each agent saying whether it is working, blocked, done or idle. Its source was read on
+2026-11-11 (`src/client/shell/`, `src/ui/sidebar/`); it was not run. (`docs/sessions/009`
+compares it with two others for a different question.)
+
+How its screen is laid out: a sidebar of workspaces and agents under dim bold lowercase
+headings (` spaces`, ` agents`) with a `─` rule between sections; each row is a state mark,
+one space, the name, then dim fields joined by ` · `; a bar of key hints where the key is
+bold in the accent colour and its meaning is dim, two spaces between pairs. Marks: working
+`◐` yellow, blocked `×` red, done `✓` teal, idle `○` green, unknown `·` dim. It has a
+16-colour theme beside its truecolor one.
+
+askk's terminal is lines, not a full screen, so it borrows the *grammar*, not the panes
+(`src/ui/terminal/layout.rs`, every function a test can read):
+
+| herdr | askk terminal |
+| --- | --- |
+| a row: mark, name, dim fields joined by ` · ` | the head: ` askk  ○ askk/coder · ready · 6 engines`; a run: ` ✓ Worked for 41ms · 2 steps · 1 call` |
+| state marks and their colours | `○` ready (green), `◐` working (yellow), `✓` done (teal), `×` failed (red), `!` ended early (yellow) |
+| dim lowercase headings, `─` rules | ` run`, ` answer`, a rule before the answer and before the commands |
+| a row and its continuation lines, indented | a stage: name, what it did, its time; under it the note the model wrote first (`summary: …`); under `act` each call: `→ run_code(…)` and its result |
+| key hints: key bright, meaning dim, two spaces | ` /engines list  /use <path> choose  /history read  /steps last run  /can build  /quit leave` |
+| 16-colour theme | the only palette: bold, dim, blue, green, cyan, yellow, red |
+| attach to a background server | `askk terminal --to <address>` (it does not detach: it is lines) |
+| live state | while a run goes, one line written over itself says the step and stage |
+
+Colour is used only when the lines go to a terminal a person is looking at. Sent to a pipe
+or a file, with `NO_COLOR` set, or with `TERM=dumb`, the same lines are written plain: a
+test checks that the coloured text with its colour removed *is* the plain text.
+
+Not on par with herdr, said plainly: no panes, no tabs, no sidebar, no keys beyond typed
+commands, no mouse; one engine at a time; a run's stages are listed when it ends (while
+it goes there is one live line).
+
+## Tokens (of a model)
 
 `models.json` per model: `max_tokens` (default 32000, sent as `max_tokens`) and `context` (window in
 tokens; 0 = read once from `GET {base_url}/models`, fields `context_length`, `context_window`,
@@ -139,8 +336,8 @@ for none) closes the prompt, so the format is the last thing the model reads.
 
 So the same engine and input always render the same text (`core::render`). After the first
 step the input carries a reminder that this request's calls already ran (`engine::continued`).
-The chat page (`/`) shows these sections live: one colour per kind, a token bar, each section,
-and the full rendered text.
+The talk screen's side panel (Prompt) shows these sections live: one colour per kind, a token
+bar, each section, and the full rendered text.
 
 ## Default developer tools (`src/host/workspace.rs`)
 
@@ -210,9 +407,11 @@ glass. Over busy content (the phone sheet) glass goes near-opaque so text stays 
 1. **Type**: system stack (SF Pro on Apple), tight headings, tabular numbers in code and diffs.
 2. **Contrast**: text meets AAA (7:1) in dark and light; `prefers-contrast: more` raises it further.
 3. **Focus**: one visible ring on `:focus-visible`, none for pointer clicks.
-4. **Targets**: every control is at least 44px tall (`--hit`).
-5. **Motion**: quick feedback, spring arrivals, press scales to .96; `prefers-reduced-motion`
-   removes it; `prefers-reduced-transparency` removes blur.
+4. **Targets**: on a phone or any touched screen every control is at least 44px tall (`--hit`);
+   with a pointer, controls are denser (`--hit-md`, `--hit-sm`, `--hit-row`).
+5. **Motion**: the rules and their tokens are in section 9 (the press answers at once and
+   sinks to .97; arrivals ride a spring that does not overshoot; "reduce motion" keeps the
+   feedback and drops the travel; "reduce transparency" makes every surface solid).
 6. **Disabled** always reads as disabled.
 
 Navigation panel by screen: **wide** (≥1200px) full panel, folded to an icon rail by the button
@@ -237,7 +436,7 @@ busy, calling accent, refocusing warn, armed ok, fired warn, error error.
 
 Home (`/`) is the dashboard: every top engine at its own size. Press and hold the board (450ms)
 or press Edit layout: cards jiggle, drag to reorder, S/M/L per engine; saved in
-`data/layout.json` (`order`, `sizes`). Routes: Home, Chat, Components, Settings (Models,
+`data/layout.json` (`order`, `sizes`). Routes: Home, Canvas, Talk, Sessions, Rooms, Settings (Models,
 Theme, Layout as tabs).
 
 ## Design note (in progress, 2026-11-08)
@@ -275,7 +474,7 @@ We are still fine-tuning the look; these are the current decisions, not final on
 answer, so a model reasons first instead of answering straight away. Default: `thinking`. Add
 `plan`, `risks`, `confidence`, … or set `[]` for none. Names `calls`, `answer`, `await`, `tool`,
 `args` are reserved. TOON: `name: text` (may span lines, until the next key); JSON: keys of the
-object. Parsed into `Reply.fields`; Chat shows each as a collapsible note above the reply; calls
+object. Parsed into `Reply.fields`; the talk screen shows each inside the run, under the stage that read the reply (`parse`); calls
 show as `→ tool(args)`. A model's native reasoning channel (`reasoning_content`) is separate and
 not sent back.
 

@@ -1,4 +1,4 @@
-//! From rust-ui.com (MIT, see LICENSE-rust-ui beside this file). The code is ours now: unchanged but for the `data-name` that marks it as kit.
+//! From rust-ui.com (MIT, see LICENSE-rust-ui beside this file). The code is ours now: changed in two ways: the root carries the `data-name` that marks it as kit, and its colour change takes the app's own time (`--motion-fast`).
 use dioxus::prelude::*;
 use tw_merge::tw_merge;
 
@@ -60,7 +60,7 @@ pub fn Badge(
     children: Element,
 ) -> Element {
     let merged = tw_merge!(
-        "inline-flex items-center font-semibold rounded-md border transition-colors focus:outline-hidden focus:ring-2 focus:ring-ring focus:ring-offset-2 w-fit",
+        "inline-flex items-center font-semibold rounded-md border transition-colors duration-[var(--motion-fast)] ease-[var(--ease-out)] focus:outline-hidden focus:ring-2 focus:ring-ring focus:ring-offset-2 w-fit",
         variant.as_str(),
         size.as_str(),
         class.as_deref().unwrap_or("")

@@ -1,4 +1,4 @@
-//! From rust-ui.com (MIT, see LICENSE-rust-ui beside this file). The code is ours now: unchanged.
+//! From rust-ui.com (MIT, see LICENSE-rust-ui beside this file). The code is ours now: changed in two ways. A card is the app's glass: it blurs what is behind it and casts the app's own shadow (`--blur`, `--lift`). And a card that can be pressed says so with `lift`: it rises a little under the pointer and sinks on the press, in the app's own time.
 use dioxus::prelude::*;
 use tw_merge::tw_merge;
 
@@ -13,6 +13,8 @@ pub enum CardSize {
 pub fn Card(
     #[props(into, optional)] class: Option<String>,
     #[props(default = CardSize::default())] size: CardSize,
+    /// True for a card a person can press: it rises under the pointer and sinks on the press.
+    #[props(default = false)] lift: bool,
     children: Element,
 ) -> Element {
     let size_classes = match size {
@@ -24,7 +26,12 @@ pub fn Card(
         CardSize::Sm => "sm",
     };
     let merged_class = tw_merge!(
-        "bg-card text-card-foreground flex flex-col rounded-xl border shadow-sm",
+        "bg-card text-card-foreground flex flex-col rounded-xl border shadow-[var(--lift)] backdrop-blur-[var(--blur)] backdrop-saturate-[var(--saturate)]",
+        if lift {
+            "cursor-pointer transition-[transform,box-shadow,border-color] duration-[var(--motion-calm)] ease-[var(--ease-out)] hover:translate-y-[var(--hover-y)] hover:shadow-[var(--elev-3)] active:scale-[var(--press-scale)] active:duration-[var(--motion-press)]"
+        } else {
+            ""
+        },
         size_classes,
         class.as_deref().unwrap_or("")
     );

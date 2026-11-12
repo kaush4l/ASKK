@@ -265,6 +265,65 @@ fn the_terminal_is_lines_only() {
     never_in("ui/terminal/", "crate::host", "a UI asks through api/");
 }
 
+/// The questions (functions) of `crate::api` that `code` names. A shape (`ChatTurn`, `Mode`)
+/// starts with a capital letter and is not a question; a function does not.
+fn asks(code: &str) -> Vec<String> {
+    let mut out = vec![];
+    for (at, _) in code.match_indices("crate::api::") {
+        let rest = &code[at + "crate::api::".len()..];
+        // `crate::api::{a, B}` names several things; `crate::api::a` names one.
+        let names: Vec<&str> = match rest.strip_prefix('{') {
+            Some(list) => list.split('}').next().unwrap_or_default().split(',').collect(),
+            None => vec![rest.split(|c: char| !(c.is_alphanumeric() || c == '_')).next().unwrap_or_default()],
+        };
+        out.extend(names.into_iter().map(str::trim).filter(|n| n.chars().next().is_some_and(|c| c.is_lowercase())).map(String::from));
+    }
+    out
+}
+
+#[test]
+fn a_component_only_shows_what_it_is_given() {
+    // A component (ui/web/components) and a kit part (ui/web/kit) are given the object and the
+    // values they show, and draw them. They do not ask the service, do not wait for an answer,
+    // do not reach into a view, and a component reads nothing shared behind its back. A view
+    // asks and hands the answer down. Naming a shape from api/ or core/ for what a component
+    // is given (`Run`, `Mode`, `Chip`) is not asking, and is allowed.
+    //
+    // A debt list, the same way as the others: a file's number may go down, never up.
+    let debts: [(&str, usize); 0] = [];
+    let mut wrong = vec![];
+    for (rel, code) in sources() {
+        let component = rel.starts_with("ui/web/components/");
+        if !component && !rel.starts_with("ui/web/kit/") {
+            continue;
+        }
+        let mut found: Vec<String> = asks(&code).into_iter().map(|q| format!("asks `crate::api::{q}`")).collect();
+        for (needle, why) in [
+            ("use_server_future", "waits for an answer from the service"),
+            ("use_resource", "waits for an answer"),
+            ("use_live", "listens to the service"),
+            ("crate::ui::web::views", "reaches into a view"),
+            ("GlobalSignal", "reads something shared by the whole app"),
+            ("Signal::global", "reads something shared by the whole app"),
+        ] {
+            found.extend(code.lines().filter(|l| l.contains(needle)).map(|_| format!("{why} (`{needle}`)")));
+        }
+        // A kit part made of several pieces shares its own state between them; a component of
+        // this app is handed what it needs.
+        if component {
+            found.extend(code.lines().filter(|l| l.contains("use_context")).map(|_| "reads something shared behind its back (`use_context`)".to_string()));
+        }
+        let most = debts.iter().find(|(f, _)| *f == rel).map(|(_, m)| *m).unwrap_or(0);
+        if found.len() > most {
+            wrong.push(format!("{rel} breaks the rule in {} places (most: {most}):\n    {}", found.len(), found.join("\n    ")));
+        } else if found.len() < most {
+            wrong.push(format!("{rel} is down to {} such places: lower its number in structure.rs", found.len()));
+        }
+    }
+    assert!(wrong.is_empty(), "\n{}\nA component takes the object and the values to show as its props. Ask in the view (ui/web/views) and hand the answer down; take the words about a run from ui/features", wrong.join("\n"));
+    assert_eq!(asks("use crate::api::{media_picture, Chip};\nlet a = crate::api::engine_paths();\nuse crate::api::Mode;"), ["media_picture", "engine_paths"], "the check itself tells a question from a shape");
+}
+
 #[test]
 fn the_kit_is_standard_parts_and_nothing_else() {
     // A kit part (ui/web/kit) is a standard part taken from a registry. It knows nothing of this
