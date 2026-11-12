@@ -148,7 +148,7 @@ A box's head says how it is confined. herdr and Rex leave this to whoever starts
 | step | what | proves | state |
 | --- | --- | --- | --- |
 | 1 | `SessionBox` and `boxes()` over engines and sessions | one list, tested | **built** |
-| 2 | the pill, the dashboard, the canvas of tiles; `/boxes` in the terminal | the screen of section 4 on phone, tablet and wide, light and dark | **built**, first cut: a box opens to its own page instead of filling the canvas; nothing can be pinned; the pill is not grouped by place |
+| 2 | the pill, the dashboard, the canvas of tiles; `/boxes` in the terminal | the screen of section 4 on phone, tablet and wide, light and dark | **built**: a box opens in place (`/#<box id>`), boxes can be pinned, the pill groups by place, finds, and is resized |
 | 3 | depth 0: a terminal held by the service, its screen as an object, typing | a shell in a box, in the page and in `askk terminal` | not started |
 | 4 | depth 1: recognising an agent in a terminal | a state mark on a terminal box, said to be a guess | not started |
 | 5 | the sandbox port, macOS then Linux | a box that cannot write outside its folder, as a test | not started |
