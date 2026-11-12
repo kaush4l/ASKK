@@ -122,11 +122,13 @@ pub struct Tab {
     root: Node,
     pub focus: Pane,
     pub zoomed: bool,
+    /// The name a person gave the tab; empty: it is called after the box in focus.
+    pub name: String,
 }
 
 impl Tab {
     pub fn new(pane: Pane) -> Tab {
-        Tab { root: Node::Leaf(pane), focus: pane, zoomed: false }
+        Tab { root: Node::Leaf(pane), focus: pane, zoomed: false, name: String::new() }
     }
 
     /// Every pane and where it is in `area`, in reading order; all of them, zoomed or not.
@@ -227,12 +229,14 @@ pub struct Tabs {
     next: Pane,
     /// The id of the box each pane shows; a pane not in here shows nothing yet.
     shows: BTreeMap<Pane, String>,
+    /// The names a person gave panes.
+    names: BTreeMap<Pane, String>,
 }
 
 impl Tabs {
     /// One tab with one pane, showing `box_id` (empty = nothing yet).
     pub fn new(box_id: &str) -> Tabs {
-        let mut t = Tabs { tabs: vec![Tab::new(1)], at: 0, next: 2, shows: BTreeMap::new() };
+        let mut t = Tabs { tabs: vec![Tab::new(1)], at: 0, next: 2, shows: BTreeMap::new(), names: BTreeMap::new() };
         t.show(1, box_id);
         t
     }
@@ -260,6 +264,38 @@ impl Tabs {
             self.shows.remove(&pane);
         } else {
             self.shows.insert(pane, box_id.to_string());
+        }
+    }
+
+    /// The name a person gave `pane`, if any.
+    pub fn pane_name(&self, pane: Pane) -> Option<&str> {
+        self.names.get(&pane).map(String::as_str)
+    }
+
+    /// Name `pane` (empty: it has no name again).
+    pub fn name_pane(&mut self, pane: Pane, name: &str) {
+        match name.trim() {
+            "" => self.names.remove(&pane),
+            n => self.names.insert(pane, n.to_string()),
+        };
+    }
+
+    /// Close the tab at `i` (from 0) and its panes; the last tab is not closed but emptied
+    /// to one pane that shows nothing.
+    pub fn close_tab(&mut self, i: usize) {
+        let Some(tab) = self.tabs.get(i) else { return };
+        for p in tab.panes() {
+            self.shows.remove(&p);
+            self.names.remove(&p);
+        }
+        if self.tabs.len() == 1 {
+            let pane = self.fresh();
+            self.tabs[0] = Tab::new(pane);
+            return;
+        }
+        self.tabs.remove(i);
+        if self.at > i || self.at >= self.tabs.len() {
+            self.at = self.at.saturating_sub(1);
         }
     }
 
@@ -292,6 +328,7 @@ impl Tabs {
     /// last pane of the last tab, which stays (empty): there is always somewhere to look.
     pub fn close(&mut self) -> bool {
         let gone = self.focus();
+        self.names.remove(&gone);
         if self.tab_mut().close() {
             self.shows.remove(&gone);
             return true;
@@ -340,7 +377,17 @@ impl Tabs {
                 Node::Split { dir, share, first, second } => Laid::Split { down: *dir == Dir::Down, share: *share, first: Box::new(node(first, shows)), second: Box::new(node(second, shows)) },
             }
         }
-        let tabs = self.tabs.iter().map(|t| LaidTab { panes: node(&t.root, &self.shows), focus: t.panes().iter().position(|p| *p == t.focus).unwrap_or(0), zoomed: t.zoomed }).collect();
+        let tabs = self
+            .tabs
+            .iter()
+            .map(|t| {
+                let mut names: Vec<String> = t.panes().iter().map(|p| self.names.get(p).cloned().unwrap_or_default()).collect();
+                while names.last().is_some_and(String::is_empty) {
+                    names.pop();
+                }
+                LaidTab { panes: node(&t.root, &self.shows), focus: t.panes().iter().position(|p| *p == t.focus).unwrap_or(0), zoomed: t.zoomed, name: t.name.clone(), names }
+            })
+            .collect();
         Layout { tabs, at: self.at.min(self.tabs.len().saturating_sub(1)) }
     }
 
@@ -362,11 +409,14 @@ impl Tabs {
         if layout.tabs.is_empty() {
             return None;
         }
-        let mut t = Tabs { tabs: vec![], at: 0, next: 1, shows: BTreeMap::new() };
+        let mut t = Tabs { tabs: vec![], at: 0, next: 1, shows: BTreeMap::new(), names: BTreeMap::new() };
         for laid in &layout.tabs {
             let root = node(&laid.panes, &mut t);
-            let mut tab = Tab { root, focus: 0, zoomed: laid.zoomed };
+            let mut tab = Tab { root, focus: 0, zoomed: laid.zoomed, name: laid.name.clone() };
             let panes = tab.panes();
+            for (p, name) in panes.iter().zip(&laid.names) {
+                t.name_pane(*p, name);
+            }
             tab.focus = panes.get(laid.focus).or(panes.first()).copied().unwrap_or(0);
             t.tabs.push(tab);
         }
@@ -498,14 +548,23 @@ mod tests {
         let d = tabs.new_tab();
         tabs.show(d, "session:4");
         tabs.tab_mut().zoomed = true;
+        tabs.tab_mut().name = "agents".into();
         tabs.go_to(1);
+        tabs.name_pane(b, "logs");
         let laid = tabs.laid();
+        assert_eq!((laid.tabs[0].names.clone(), laid.tabs[1].name.as_str()), (vec![String::new(), "logs".to_string()], "agents"), "the names are kept, the panes' in reading order");
         assert_eq!((laid.tabs.len(), laid.at, laid.tabs[0].focus, laid.tabs[1].zoomed), (2, 0, 1, true));
         let again = Tabs::from_laid(&laid).unwrap();
         assert_eq!(again.laid(), laid, "laid out again, it is the same layout");
         assert_eq!(again.tab().shown(AREA).iter().map(|(_, r)| *r).collect::<Vec<_>>(), tabs.tab().shown(AREA).iter().map(|(_, r)| *r).collect::<Vec<_>>(), "every pane where it was");
         assert_eq!(again.shown_in(again.focus()), "terminal:1", "the focus where it was");
         assert_eq!(again.every().iter().map(|(_, b)| *b).collect::<Vec<_>>(), ["engine:askk", "terminal:1", "terminal:2", "session:4"]);
+        assert_eq!((again.tabs[1].name.as_str(), again.pane_name(again.tabs[0].panes()[1])), ("agents", Some("logs")), "and given back");
         assert_eq!(Tabs::from_laid(&Layout::default()), None);
+        let mut closing = again.clone();
+        closing.close_tab(0);
+        assert_eq!((closing.tabs.len(), closing.at, closing.shown_in(closing.focus())), (1, 0, "session:4"), "a tab closed by its menu");
+        closing.close_tab(0);
+        assert_eq!((closing.tabs.len(), closing.shown_in(closing.focus())), (1, ""), "the last one is emptied, not closed");
     }
 }

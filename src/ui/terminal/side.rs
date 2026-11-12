@@ -59,6 +59,16 @@ pub fn side_row(side: Rect, open: bool, heads: &[usize], boxes: usize, chosen: u
     }
 }
 
+/// The place whose heading is drawn at row `y` of the sidebar, as the how-manieth place.
+pub fn side_head(side: Rect, open: bool, heads: &[usize], boxes: usize, chosen: usize, y: u16) -> Option<usize> {
+    let (all, first, room) = side_window(side, open, heads, boxes, chosen);
+    let row = usize::from(y.checked_sub(side.y + SIDE_HEAD)?);
+    match all.get(first + row).filter(|_| row < room) {
+        Some(Slot::Head(g)) => Some(*g),
+        _ => None,
+    }
+}
+
 pub(super) fn sidebar(buf: &mut Buffer, side: Rect, p: &Picture) {
     let end = side.x + side.width.saturating_sub(1);
     // The line between the sidebar and the rest.
@@ -97,8 +107,14 @@ pub(super) fn sidebar(buf: &mut Buffer, side: Rect, p: &Picture) {
                 if p.foot == Foot::Side && i == p.side_at {
                     buf.set_style(Rect { x: side.x, y, width: side.width.saturating_sub(1), height: 1 }, Style::new().add_modifier(Modifier::REVERSED));
                 }
-                // The box the pane in focus shows carries a bar at the edge.
-                put(buf, side.x, y, end, if b.id == p.shown { "▎" } else { " " }, KEY);
+                // The box the pane in focus shows carries a bar at the edge; one told of
+                // that nobody has looked at since, a diamond.
+                let edge = match () {
+                    _ if b.id == p.shown => "▎",
+                    _ if p.rung.contains(&b.id.as_str()) => "◆",
+                    _ => " ",
+                };
+                put(buf, side.x, y, end, edge, if edge == "◆" { mark_style(mark).add_modifier(Modifier::BOLD) } else { KEY });
                 let x = put(buf, side.x + 1, y, end, mark.sign(), mark_style(mark));
                 if p.side_open {
                     let x = put(buf, x, y, end, &format!(" {}", b.title), STRONG);
@@ -111,7 +127,7 @@ pub(super) fn sidebar(buf: &mut Buffer, side: Rect, p: &Picture) {
     let more = if all.len() > room { p.boxes.len().saturating_sub(last + 1) } else { 0 };
     if more > 0 && side.height > 0 {
         let y = side.y + side.height - 1;
-        put(buf, side.x, y, end, &if p.side_open { format!(" +{more} more (w, then ↓)") } else { format!("+{more}") }, DIM);
+        put(buf, side.x, y, end, &if p.side_open { format!(" +{more} more ({}, then ↓)", p.navigate) } else { format!("+{more}") }, DIM);
     }
 }
 

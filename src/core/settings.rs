@@ -15,6 +15,7 @@
 //! | `origins` | pages at other addresses that may ask this service, beside those in `ASKK_ORIGINS` | at once |
 //! | `look_every_ms` | how often the home is looked at for files edited by hand; 0 = only when `reload` is asked | at once |
 //! | `keys` | which key does what in `askk terminal`, after which prefix (`core/keys.rs`) | at once, in every `askk terminal` |
+//! | `terminal` | how `askk terminal` looks (`theme`, `colours`), tells (`notify`), and which session it opens (`session`): [`Terminal`] | at once, in every `askk terminal` (`session` at its next start) |
 //!
 //! A key that is not in this table, or a value of the wrong kind, is refused with a sentence
 //! and the settings in force are kept: a typing mistake never takes the service down.
@@ -37,11 +38,64 @@ pub struct Settings {
     pub look_every_ms: u64,
     /// The keys of `askk terminal` (`core/keys.rs`).
     pub keys: super::keys::Keys,
+    /// How `askk terminal` looks and tells: its colours, its notifications, its session.
+    pub terminal: Terminal,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { listen: "127.0.0.1:8090".into(), origins: vec![], look_every_ms: 2000, keys: Default::default() }
+        Settings { listen: "127.0.0.1:8090".into(), origins: vec![], look_every_ms: 2000, keys: Default::default(), terminal: Default::default() }
+    }
+}
+
+/// The table `terminal` of `settings.json`:
+///
+/// | key | means | values |
+/// | --- | --- | --- |
+/// | `theme` | the colours of the sidebar, tabs, frames and the foot, and of a program's 16 base colours | `glass-dark`, `glass-light` (the page's glass palette), `terminal` (the outer terminal's own) |
+/// | `colours` | how a colour is sent | `truecolor`, or `256` for a terminal that has only those |
+/// | `notify` | how a box that comes to wait for the owner, or ends, while it is not shown is told | `bell`, `osc9`, `osc777`, with a space between them; `off` |
+/// | `session` | the named session a window opens when none is said (`askk terminal --session <name>`) | empty: the one without a name |
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Terminal {
+    pub theme: String,
+    pub colours: String,
+    pub notify: String,
+    pub session: String,
+}
+
+impl Default for Terminal {
+    fn default() -> Self {
+        Terminal { theme: "glass-dark".into(), colours: "truecolor".into(), notify: "bell osc9".into(), session: String::new() }
+    }
+}
+
+/// The themes `askk terminal` has.
+pub const THEMES: [&str; 3] = ["glass-dark", "glass-light", "terminal"];
+/// The ways it can tell.
+pub const TELLS: [&str; 3] = ["bell", "osc9", "osc777"];
+
+impl Terminal {
+    /// Whether the table can be used, or the sentence why not.
+    pub fn check(&self) -> Result<(), String> {
+        if !THEMES.contains(&self.theme.as_str()) {
+            return Err(format!("`terminal.theme` is one of {} (found '{}')", THEMES.join(", "), self.theme));
+        }
+        if self.colours != "truecolor" && self.colours != "256" {
+            return Err(format!("`terminal.colours` is truecolor or 256 (found '{}')", self.colours));
+        }
+        if self.notify.trim() != "off" {
+            if let Some(w) = self.notify.split_whitespace().find(|w| !TELLS.contains(w)) {
+                return Err(format!("`terminal.notify` is off, or some of {} with a space between (found '{w}')", TELLS.join(", ")));
+            }
+        }
+        super::terminals::session_key(&self.session).map(|_| ()).map_err(|e| format!("`terminal.session`: {e}"))
+    }
+
+    /// Whether it tells in this way (`bell`, `osc9`, `osc777`).
+    pub fn tells(&self, how: &str) -> bool {
+        self.notify.split_whitespace().any(|w| w == how)
     }
 }
 
@@ -61,6 +115,7 @@ impl Settings {
             return Err(format!("{key}: `look_every_ms` must be 0 (never) or at least {QUICKEST_MS} (found {})", s.look_every_ms));
         }
         s.keys.bound().map_err(|e| format!("{key}: {e}"))?;
+        s.terminal.check().map_err(|e| format!("{key}: {e}"))?;
         Ok(s)
     }
 }
@@ -108,6 +163,9 @@ pub fn take(store: &dyn Store) -> Result<Taken, String> {
     if new.keys != old.keys {
         out.in_force.push(format!("{key}: `keys`: every `askk terminal` uses them from now on"));
     }
+    if new.terminal != old.terminal {
+        out.in_force.push(format!("{key}: `terminal`: every `askk terminal` looks and tells as it says from now on"));
+    }
     if new.listen != old.listen {
         out.needs_restart.push(format!("{key}: `listen` is now {}, but a running service cannot move: it answers there after `askk restart`", new.listen));
     }
@@ -143,6 +201,13 @@ mod tests {
         assert_eq!(Settings::read(&with(r#"{"keys": {"prefix": "ctrl+a"}}"#)).unwrap().keys.split_right, "v %", "a key left out of the table keeps its default");
         assert!(Settings::read(&with(r#"{"keys": {"splt": "v"}}"#)).unwrap_err().contains("unknown field `splt`"));
         assert_eq!(Settings::read(&with(r#"{"keys": {"zoom": "v"}}"#)).unwrap_err(), "settings.json: `keys.zoom`: 'v' already does `split_right`: one key does one thing");
+        let t = Settings::read(&with(r#"{"terminal": {"theme": "glass-light", "notify": "off"}}"#)).unwrap().terminal;
+        assert_eq!((t.theme.as_str(), t.colours.as_str(), t.tells("bell")), ("glass-light", "truecolor", false));
+        assert!(Settings::read(&with(r#"{"terminal": {"theme": "pink"}}"#)).unwrap_err().contains("`terminal.theme` is one of glass-dark, glass-light, terminal"));
+        assert!(Settings::read(&with(r#"{"terminal": {"notify": "bell siren"}}"#)).unwrap_err().contains("(found 'siren')"));
+        assert!(Settings::read(&with(r#"{"terminal": {"colours": "16"}}"#)).is_err());
+        assert!(Settings::read(&with(r#"{"terminal": {"session": "My Work"}}"#)).unwrap_err().contains("`terminal.session`"));
+        assert!(Terminal::default().tells("osc9") && !Terminal::default().tells("osc777"));
     }
 
     #[test]

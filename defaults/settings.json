@@ -23,7 +23,16 @@
     "fold_sidebar": "b",
     "help": "?",
     "detach": "q d",
+    "menu": "m",
+    "rename_tab": "T",
+    "rename_pane": "P",
     "boxes_by_number": "N",
     "tabs_by_number": "alt+N"
+  },
+  "terminal": {
+    "theme": "glass-dark",
+    "colours": "truecolor",
+    "notify": "bell osc9",
+    "session": ""
   }
 }

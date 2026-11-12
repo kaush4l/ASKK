@@ -7,6 +7,7 @@
 use super::panes::Pane;
 use crate::core::boxes::SessionBox;
 use crate::core::keys::Keys;
+use crate::core::settings::Terminal;
 use crate::core::screen::Screen;
 use crate::core::terminals::Layout;
 use crate::core::workspaces::Workspace;
@@ -35,6 +36,8 @@ pub enum Mouse {
     Down(u16, u16),
     Drag(u16, u16),
     Up,
+    /// The right button, pressed over a cell: a menu.
+    Right(u16, u16),
     /// The wheel, turned up (`true`) or down, over a cell.
     Wheel(bool, u16, u16),
 }
@@ -54,6 +57,8 @@ pub enum Got {
     Layout(Layout),
     /// The keys table of the settings in force.
     Keys(Keys),
+    /// The settings in force: the keys, and how the terminal looks and tells.
+    Settings(Keys, Terminal),
     /// A terminal's screen, by the terminal's id.
     Screen(String, Screen),
     /// A terminal's screen as it was this many rows up.
@@ -96,6 +101,9 @@ pub enum Want {
     Type { id: String, keys: String },
     Resize { id: String, cols: u16, rows: u16 },
     Close(String),
+    /// Tell the outer terminal that a box needs the owner: ring it, ask it for a desktop
+    /// notification (OSC 9, OSC 777), or both (`tell.rs`).
+    Tell { bell: bool, osc9: bool, osc777: bool, title: String, body: String },
     /// Speak into an engine or a session.
     Say { box_id: String, text: String },
     Leave,

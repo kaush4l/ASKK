@@ -36,7 +36,8 @@ pub enum Action {
     Tab(usize),
     /// Show the box with this number, from 1, in the order of what needs the owner first.
     Box(usize),
-    /// Go to the sidebar to choose a box.
+    /// Navigate mode: arrows and h j k l go over the boxes, the places, the panes and the
+    /// tabs without the prefix each time, until Esc.
     Navigate,
     /// Move to the pane on that side.
     Focus(Way),
@@ -57,16 +58,21 @@ pub enum Action {
     Detach,
     /// Send the prefix key itself to the program.
     SendPrefix,
+    /// The menu of the pane in focus, as a right-click opens it.
+    Menu,
+    /// Give the tab shown a name, and the pane in focus.
+    RenameTab,
+    RenamePane,
 }
 
 /// Each entry of the keys table: what it does, and the words for it.
-const ENTRIES: [(&str, Action, &str); 19] = [
+const ENTRIES: [(&str, Action, &str); 22] = [
     ("new_tab", Action::NewTab, "a new tab, with a shell in it"),
     ("split_right", Action::SplitRight, "split to the right, with a shell in the new pane"),
     ("split_down", Action::SplitDown, "split downwards, with a shell in the new pane"),
     ("next_tab", Action::NextTab, "the next tab"),
     ("previous_tab", Action::PreviousTab, "the previous tab"),
-    ("sidebar", Action::Navigate, "the sidebar: arrows choose a box, Enter shows it in the pane"),
+    ("sidebar", Action::Navigate, "navigate mode: ↑ ↓ box, [ ] place, h j k l pane, n p tab, no prefix; Esc leaves"),
     ("focus_left", Action::Focus(Way::Left), "move to the pane on the left"),
     ("focus_right", Action::Focus(Way::Right), "move to the pane on the right"),
     ("focus_up", Action::Focus(Way::Up), "move to the pane above"),
@@ -80,10 +86,13 @@ const ENTRIES: [(&str, Action, &str); 19] = [
     ("fold_sidebar", Action::FoldSidebar, "fold the sidebar to marks, and open it again"),
     ("help", Action::Help, "this help"),
     ("detach", Action::Detach, "detach: leave, and everything keeps running"),
+    ("menu", Action::Menu, "the pane's menu (a right-click opens one on a pane, tab, box or place)"),
+    ("rename_tab", Action::RenameTab, "give the tab a name (kept with the layout)"),
+    ("rename_pane", Action::RenamePane, "give the pane a name (kept with the layout)"),
 ];
 
 /// The entries the foot names while nothing is pressed, with its short word for each.
-const HINTS: [(Action, &str); 7] = [(Action::NewTab, "tab"), (Action::SplitRight, "split right"), (Action::SplitDown, "split down"), (Action::Navigate, "boxes"), (Action::Zoom, "zoom"), (Action::Help, "help"), (Action::Detach, "detach")];
+const HINTS: [(Action, &str); 8] = [(Action::NewTab, "tab"), (Action::SplitRight, "split right"), (Action::SplitDown, "split down"), (Action::Navigate, "navigate"), (Action::Zoom, "zoom"), (Action::Menu, "menu"), (Action::Help, "help"), (Action::Detach, "detach")];
 
 /// A key as a person reads it: `ctrl+b`, `c`, `←`, `PgUp`.
 pub fn shown(c: &Chord) -> String {
@@ -222,7 +231,8 @@ mod tests {
         assert_eq!(k.after_prefix("2", false, true, false), Some(Action::Tab(2)), "alt and a digit: that tab");
         assert_eq!((k.after_prefix("b", true, false, false), after("b"), after("y"), after("[")), (Some(Action::SendPrefix), Some(Action::FoldSidebar), None, Some(Action::CopyMode)));
         assert_eq!((after("PageUp"), after("PageDown"), after("X"), after("x")), (Some(Action::Scroll(true)), Some(Action::Scroll(false)), Some(Action::EndTerminal), Some(Action::ClosePane)));
-        assert_eq!(k.hints().iter().map(|(key, w)| format!("{key} {w}")).collect::<Vec<_>>().join("  "), "c tab  v split right  - split down  w boxes  z zoom  ? help  q detach");
+        assert_eq!((after("m"), after("T"), after("P"), after("t")), (Some(Action::Menu), Some(Action::RenameTab), Some(Action::RenamePane), None), "herdr's shift+t and shift+p rename");
+        assert_eq!(k.hints().iter().map(|(key, w)| format!("{key} {w}")).collect::<Vec<_>>().join("  "), "c tab  v split right  - split down  w navigate  z zoom  m menu  ? help  q detach");
         assert_eq!((k.prefix(), k.says(Action::EndTerminal)), ("ctrl+b".to_string(), "ctrl+b X".to_string()));
         let help = k.help();
         assert!(help.contains(&("v %".into(), "split to the right, with a shell in the new pane")) && help.contains(&("← h".into(), "move to the pane on the left")));

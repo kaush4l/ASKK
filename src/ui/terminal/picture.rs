@@ -4,12 +4,13 @@
 //! which panes are in view and what each holds, the names of the tabs, the sidebar's groups,
 //! the foot. Nothing is asked and nothing changes: it is the app, read.
 use super::app::{App, Mode};
-use super::draw::{Body, CopyView, Foot, Head, PaneView, Picture};
+use super::draw::{Body, CopyView, Foot, Head, MenuView, PaneView, Picture};
+use super::navigate::Named;
 use crate::ui::features::terminals::{inside, Action, Inside};
 
 impl App {
     pub(super) fn tab_names(&self) -> Vec<String> {
-        self.tabs.tabs.iter().map(|t| self.name_of(self.tabs.shown_in(t.focus))).collect()
+        self.tabs.tabs.iter().map(|t| if t.name.is_empty() { self.name_of(self.tabs.shown_in(t.focus)) } else { t.name.clone() }).collect()
     }
 
     fn name_of(&self, box_id: &str) -> String {
@@ -95,7 +96,7 @@ impl App {
                             let back = self.backs.get(&id).copied().unwrap_or(0);
                             if let Some(c) = self.copy.as_ref().filter(|c| c.id == id && pane == focus) {
                                 let seen = |(col, row): (u16, i32)| (col, row + i32::from(back));
-                                copy = Some(CopyView { cursor: seen(c.at), from: c.mark.map(seen), back });
+                                copy = Some(CopyView { cursor: seen(c.at), from: c.mark.map(seen), back, block: c.block, query: c.query.clone() });
                             }
                             Body::Screen(screen, back)
                         }
@@ -108,11 +109,14 @@ impl App {
                     Inside::Other if self.opening.contains_key(&pane) => words(&["starting a shell…".into()]),
                     Inside::Other => words(&empty),
                 };
-                let head = match b {
+                let mut head = match b {
                     Some(b) => format!("{} · {}", b.title, b.kind),
                     None => self.name_of(box_id),
                 };
-                PaneView { at, focused: pane == focus && self.mode != Mode::Side, head, mark: b.map(|b| self.seen.mark(b)), zoomed, body, copy }
+                if let Some(name) = self.tabs.pane_name(pane) {
+                    head = format!("{name} ({head})");
+                }
+                PaneView { at, focused: pane == focus, head, mark: b.map(|b| self.seen.mark(b)), zoomed, body, copy }
             })
             .collect();
         Picture {
@@ -127,6 +131,7 @@ impl App {
             tab: self.tabs.at,
             panes,
             foot: match self.mode {
+                _ if self.naming.is_some() => Foot::Naming,
                 Mode::Pane => Foot::Pane,
                 Mode::Prefix => Foot::Prefix,
                 Mode::Side => Foot::Side,
@@ -139,6 +144,17 @@ impl App {
             note: &self.note,
             note_bad: self.note_bad,
             help: self.help,
+            menu: self.menu.as_ref().map(|m| MenuView { at: m.rect(self.area), title: m.title.clone(), items: m.items.iter().map(|(l, _)| l.clone()).collect(), chosen: m.chosen }),
+            naming: self.naming.as_ref().map(|n| {
+                let what = match n.what {
+                    Named::Tab(i) => format!("tab {}", i + 1),
+                    Named::Pane(_) => "the pane".to_string(),
+                };
+                (what, n.text.clone())
+            }),
+            rung: self.rung.iter().map(String::as_str).collect(),
+            navigate: self.keys.says(Action::Navigate),
+            theme: super::theme::Theme::from(&self.look_of),
         }
     }
 }

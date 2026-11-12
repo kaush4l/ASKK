@@ -19,4 +19,7 @@ wire! {
     terminal_close(id: String) -> ();
     terminal_layout() -> Layout;
     save_terminal_layout(layout: Layout) -> ();
+    terminal_sessions() -> Vec<String>;
+    session_layout(session: String) -> Layout;
+    save_session_layout(session: String, layout: Layout) -> ();
 }

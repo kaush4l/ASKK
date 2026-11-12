@@ -76,6 +76,7 @@ fn happened(e: Event) -> Option<Got> {
         Event::Resize(cols, rows) => Got::Size(cols, rows),
         Event::Mouse(m) => Got::Mouse(match m.kind {
             MouseEventKind::Down(MouseButton::Left) => Mouse::Down(m.column, m.row),
+            MouseEventKind::Down(MouseButton::Right) => Mouse::Right(m.column, m.row),
             MouseEventKind::Drag(MouseButton::Left) => Mouse::Drag(m.column, m.row),
             MouseEventKind::Up(_) => Mouse::Up,
             MouseEventKind::ScrollUp => Mouse::Wheel(true, m.column, m.row),
@@ -119,17 +120,31 @@ async fn talk_lines(door: &Door, box_id: &str) -> Result<Vec<String>, String> {
     Ok(lines.iter().flat_map(|l| l.split('\n')).map(String::from).collect())
 }
 
+/// The question that keeps `layout` for `session`: the session without a name is kept by
+/// the question every service has had (`save_terminal_layout`).
+fn keep(session: &str, layout: &Layout) -> (&'static str, serde_json::Value) {
+    match session {
+        "" => ("save_terminal_layout", json!({"layout": layout})),
+        name => ("save_session_layout", json!({"session": name, "layout": layout})),
+    }
+}
+
 /// Ask what the app wants, and say what came of it. `None`: it went well and there is
 /// nothing to show for it.
-async fn answer(door: &Door, want: Want) -> Result<Option<Got>, String> {
+async fn answer(door: &Door, session: &str, want: Want) -> Result<Option<Got>, String> {
     Ok(match want {
         Want::Boxes => Some(Got::Boxes(door.ask::<Vec<SessionBox>>("boxes", json!({})).await?)),
         Want::Places => Some(Got::Places(door.ask::<Vec<Workspace>>("workspaces", json!({})).await?)),
         // A service that keeps no layout (an older one) is one with none kept.
-        Want::Layout => Some(Got::Layout(door.ask::<Layout>("terminal_layout", json!({})).await.unwrap_or_default())),
-        Want::Keys => Some(Got::Keys(door.ask::<Settings>("service_settings", json!({})).await?.keys)),
+        Want::Layout if session.is_empty() => Some(Got::Layout(door.ask::<Layout>("terminal_layout", json!({})).await.unwrap_or_default())),
+        Want::Layout => Some(Got::Layout(door.ask::<Layout>("session_layout", json!({"session": session})).await?)),
+        Want::Keys => {
+            let s = door.ask::<Settings>("service_settings", json!({})).await?;
+            Some(Got::Settings(s.keys, s.terminal))
+        }
         Want::Keep(layout) => {
-            door.ask::<()>("save_terminal_layout", json!({"layout": layout})).await?;
+            let (name, args) = keep(session, &layout);
+            door.ask::<()>(name, args).await?;
             None
         }
         Want::Screen(id) => Some(Got::Screen(id.clone(), door.ask::<Screen>("terminal_screen", json!({"id": id})).await?)),
@@ -159,7 +174,7 @@ async fn answer(door: &Door, want: Want) -> Result<Option<Got>, String> {
             }
             _ => None,
         },
-        Want::Type { .. } | Want::Copy(_) | Want::Leave => None,
+        Want::Type { .. } | Want::Copy(_) | Want::Tell { .. } | Want::Leave => None,
     })
 }
 
@@ -180,6 +195,7 @@ fn read(want: &Want) -> Option<String> {
 /// Who asks the service for the app.
 struct Asker {
     door: Arc<Door>,
+    session: Arc<String>,
     landed: UnboundedSender<Landed>,
     typed: UnboundedSender<(String, String)>,
     /// The reads under way, and the ones asked for again meanwhile.
@@ -205,10 +221,10 @@ impl Asker {
         if want == Want::Boxes {
             self.ask(Want::Places, after);
         }
-        let (door, landed) = (self.door.clone(), self.landed.clone());
+        let (door, landed, session) = (self.door.clone(), self.landed.clone(), self.session.clone());
         tokio::spawn(async move {
             tokio::time::sleep(after).await;
-            let got = match answer(&door, want).await {
+            let got = match answer(&door, &session, want).await {
                 Ok(Some(got)) => got,
                 Ok(None) if name.is_none() => return,
                 // A read that brought nothing still has to be told as landed.
@@ -279,6 +295,25 @@ fn to_clipboard(text: &str) {
     let _ = out.flush();
 }
 
+/// Tell the terminal the person sits at that a box needs them (`tell.rs`): BEL rings it;
+/// OSC 9 and OSC 777 ask it for a desktop notification. What is told carries no control
+/// characters, and no `;` where OSC 777 takes one as its separator.
+fn tell(bell: bool, osc9: bool, osc777: bool, title: &str, body: &str) {
+    use std::io::Write;
+    let clean = |s: &str, semi: bool| s.chars().filter(|c| !c.is_control() && !(semi && *c == ';')).collect::<String>();
+    let mut out = std::io::stdout();
+    if bell {
+        let _ = write!(out, "\x07");
+    }
+    if osc9 {
+        let _ = write!(out, "\x1b]9;{}: {}\x07", clean(title, false), clean(body, false));
+    }
+    if osc777 {
+        let _ = write!(out, "\x1b]777;notify;{};{}\x07", clean(title, true), clean(body, true));
+    }
+    let _ = out.flush();
+}
+
 /// Follow the change feed for as long as the window is open.
 async fn feed(door: Arc<Door>, landed: UnboundedSender<Landed>) {
     let (mut epoch, mut seen, mut away) = (0u64, 0u64, false);
@@ -307,8 +342,9 @@ async fn feed(door: Arc<Door>, landed: UnboundedSender<Landed>) {
 }
 
 /// Be the full screen until the person leaves. `first` is the box the first pane shows;
-/// `host` says who answers, for the head of the sidebar.
-pub async fn run(door: Door, first: String, host: String) -> Result<(), String> {
+/// `host` says who answers, for the head of the sidebar; `session` is the named session
+/// whose layout is laid out and kept (empty: the one without a name).
+pub async fn run(door: Door, first: String, host: String, session: String) -> Result<(), String> {
     use ratatui::crossterm::execute;
     let door = Arc::new(door);
     let mut terminal = ratatui::try_init().map_err(|e| format!("this terminal cannot be drawn on as a full screen ({e}); `askk terminal --lines` writes lines instead"))?;
@@ -324,7 +360,7 @@ pub async fn run(door: Door, first: String, host: String) -> Result<(), String> 
         }
     });
     tokio::spawn(feed(door.clone(), landed.clone()));
-    let mut asker = Asker { typed: typist(door.clone(), landed.clone()), door, landed, flying: BTreeSet::new(), again: BTreeMap::new() };
+    let mut asker = Asker { typed: typist(door.clone(), landed.clone()), door, session: Arc::new(session), landed, flying: BTreeSet::new(), again: BTreeMap::new() };
     let mut app = App::new(&host, &first, size.0, size.1);
     app.start().into_iter().for_each(|want| asker.ask(want, Duration::ZERO));
     let outcome = loop {
@@ -355,6 +391,7 @@ pub async fn run(door: Door, first: String, host: String) -> Result<(), String> 
                 match want {
                     Want::Leave => leave = true,
                     Want::Copy(text) => to_clipboard(&text),
+                    Want::Tell { bell, osc9, osc777, title, body } => tell(bell, osc9, osc777, &title, &body),
                     want => asker.ask(want, Duration::ZERO),
                 }
             }
@@ -362,7 +399,8 @@ pub async fn run(door: Door, first: String, host: String) -> Result<(), String> 
         // The layout as it is now is kept for the next window; on leaving, before it goes.
         if let Some(layout) = app.to_keep() {
             if leave {
-                let _ = asker.door.ask::<()>("save_terminal_layout", json!({"layout": layout})).await;
+                let (name, args) = keep(&asker.session, &layout);
+                let _ = asker.door.ask::<()>(name, args).await;
             } else {
                 asker.ask(Want::Keep(layout), Duration::ZERO);
             }

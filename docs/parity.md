@@ -49,15 +49,16 @@ herdr [concepts](https://herdr.dev/tui/docs/concepts/),
 | workspaces with git state | panes grouped by place, branch and changed count | built | `workspaces` answer; walk |
 | agent states blocked, working, done, idle, unknown; done per client | the same words; done kept per window | built | `ui/features/boxes.rs` tests |
 | agent detection from the screen | depth 1: by program name and screen patterns, said to be a guess | built | `terminals.sh` (stand-in agent working, blocked, idle) |
-| copy mode, selection, paste | `ctrl+b [`, `v`, `y` (OSC 52), mouse drag, bracketed paste | built | walk decodes the OSC 52 bytes; a real clipboard is not checked |
+| copy mode, selection, paste | `ctrl+b [`, `v`, `y` (OSC 52), mouse drag, bracketed paste; `w` `b` `e` by words, `/` finds upwards into the scroll-back (`n` `N`), `ctrl+v` a rectangle | built | walk decodes the OSC 52 bytes of a word, a found text and a rectangle; `copy_mode_goes_by_words_and_finds_a_text_up_into_what_scrolled_off`; a real clipboard is not checked; a word is vim's `W` |
 | keys from config, read live | `keys` in `settings.json`, read again in seconds | built | walk (prefix changed to `ctrl+a` live) |
 | jump to an agent by number | `ctrl+b 1..9` by priority | built | walk |
-| several named sessions (`herdr session attach`) | one service per home; another home is another session | part | — |
-| right-click menus | — | no | — |
-| navigate mode | — | no | — |
-| rename panes, read a pane's output and send it input from the CLI | `terminal_screen` / `terminal_type` over `/ask` | part | no rename |
-| notifications | — | no | — |
-| themes | the page has themes; the terminal does not | part | — |
+| several named sessions (`herdr session attach`, `session list`) | `askk terminal --session <name>` (or `terminal.session` in `settings.json`) lays out and keeps a layout of its own, in one home; `--sessions` lists them (`session_layout`, `save_session_layout`, `terminal_sessions`) | built | `terminals.sh`: a session `work` opened, named in the sidebar's head, its tab and split kept apart from the session without a name, listed, and laid out again; `a_named_session_keeps_a_layout_of_its_own`. A session is a layout, not a server: the terminals are the home's |
+| right-click menus | on a pane (split, zoom, rename, copy mode, copy what it shows, open in a new tab, close, end its terminal), a tab (new, rename, close), a box in the sidebar (show, open in a new tab, split right with it, copy its name or last line, end), a place's heading; `ctrl+b m`, and `m` in navigate mode; ↑ ↓ Enter, Esc or q, a click | built | `terminals.sh` walk: a pane's menu opened by a right-click, closed by Esc, its line copying the pane (OSC 52); a tab's and a box's menus; `a_right_click_opens_a_menu_on_a_pane_a_tab_a_box_and_keys_or_a_click_work_it`; `target/shots` frames |
+| navigate mode | `ctrl+b w` until Esc: ↑ ↓ a box, `[` `]` a place, h j k l a pane, n p and 1-9 a tab, z, m; the foot says NAVIGATE | built | walk (l moved the focus without the prefix, Esc left); `navigate_mode_goes_over_boxes_places_panes_and_tabs_until_esc`; `target/shots` frames |
+| rename panes, read a pane's output and send it input from the CLI | `ctrl+b T` and `ctrl+b P` (and the menus) name a tab and a pane, kept in the layout; `askk terminal --read <id>`, `--send <id> <keys>` | built | walk renames both and the next window finds the names; `terminals.sh` reads a terminal and types into it from the command line. A place is not renamed |
+| notifications | a box that comes to wait, fail or be done while no pane in view shows it: a sentence in the foot, `◆` on its row until looked at, and the outer terminal told as `terminal.notify` says (`bell`, `osc9`, `osc777`, `off`); per window | built | walk: the stand-in agent opened by another client came to wait, and the bytes BEL and `OSC 9;askk: … waits for you` were written, the row marked; `a_box_that_comes_to_wait_while_it_is_not_shown_is_told_and_marked_until_it_is_looked_at`. Whether a desktop shows it is the outer terminal's choice; no sounds of herdr's own |
+| themes | `terminal.theme`: the page's glass, dark or light (`assets/styling/glass.css`, its 16 terminal colours too), or the outer terminal's own; `terminal.colours`: true colour or 256 | built | walk: the accent `38;2;184;174;240` and the ground written, then the light ground `48;2;247;243;236` at once after an edit of `settings.json`; `the_palettes_are_the_pages_glass_dark_and_light` reads the stylesheet. No named themes beyond these, no custom colours |
+| a sidebar that does not fit says how to see the rest | `+N more (ctrl+b w, then ↓)`, the key in force | built | `the_sidebar_counts_what_does_not_fit_and_a_click_finds_the_row_it_shows` |
 
 ## The glass and its motion
 
@@ -77,6 +78,7 @@ Read off the running page on 2026-11-12:
 
 Both have their spine on par: a background server that owns the work, clients that
 attach, detach and refresh in place, live state per box, streaming, threads, a diff,
-a palette, panes and copy mode. Neither is whole: the **no** rows above are the next
-work, smallest first: permission modes and `/` commands on the page; right-click menus,
-navigate mode and notifications in the terminal.
+a palette, panes and copy mode. The terminal's herdr rows are built (2026-11-12); what is
+left there is said in each row's proof and in `docs/service.md` ("Where `askk terminal`
+is not herdr"). The page is not whole: its **no** rows above are the next work, smallest
+first: permission modes and `/` commands.
