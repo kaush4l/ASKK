@@ -1,11 +1,11 @@
 use crate::api::{ui_config, UiConfig};
-use crate::ui::web::components::{engine_of, next_theme, Footer, Sidebar, Topbar, Wall};
+use crate::ui::web::components::{engine_of, next_theme, Footer, Pill, Topbar, Wall};
 use super::live::{use_live_provider, use_live_server};
 use crate::core::manifest::Manifest;
 use crate::Route;
 use dioxus::prelude::*;
 
-/// Layout: wall + sidebar + topbar around the routed page. Brand from `ui.json`; nav is the
+/// Layout: wall + the pill + topbar around the routed page. Brand from `ui.json`; nav is the
 /// route folders that set `nav`. Starts the tab's one live listener ([`super::live`]); brand,
 /// nav and theme re-read when their keys are marked changed.
 #[component]
@@ -13,7 +13,7 @@ pub fn Shell() -> Element {
     let collapsed = use_signal(|| false);
     let open = use_signal(|| false);
     let here = use_route::<Route>().to_string();
-    use_live_provider();
+    let live = use_live_provider();
     let mf = use_server_future(crate::api::manifest)?;
     let m: Manifest = mf.read().as_ref().and_then(|r| r.as_ref().ok()).cloned().unwrap_or_default();
     use_context_provider(|| m.clone());
@@ -25,6 +25,8 @@ pub fn Shell() -> Element {
     let links = nav().unwrap_or_default();
     let theme = use_live_server(move || kt.clone(), crate::api::theme)?;
     let vars: String = theme.read().as_ref().map(|m| m.iter().map(|(k, v)| format!("{k}:{v};")).collect()).unwrap_or_default();
+    // Every session as a box, for the pill and the canvas (`views/boxes.rs`).
+    let mut boxes = super::boxes::use_boxes_provider(m.engines.clone(), m.sessions.clone());
     // Every engine, for the header's picker; asked again when an engine comes or goes.
     let ke = m.engines.clone();
     let engines_live = super::live::use_live(move || ke.clone());
@@ -68,7 +70,9 @@ pub fn Shell() -> Element {
         document::Style { ":root{{{vars}}}" }
         Wall {}
         div { class: if collapsed() { "shell collapsed" } else { "shell" },
-            Sidebar { brand: cfg.brand.clone(), items: links.clone(), collapsed, open }
+            Pill { brand: cfg.brand.clone(), boxes: boxes.shown(), counts: boxes.counts(), items: links.clone(), service: live.service(), collapsed, open,
+                on_look: move |id: String| boxes.looked(&id),
+            }
             main { class: "main",
                 Topbar {
                     brand: cfg.brand.clone(),

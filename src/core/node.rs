@@ -16,7 +16,7 @@ pub const PRIMITIVES: &[&str] =
     &["object", "marks", "mark", "pane", "glass", "row", "stack", "grid", "tile", "heading", "text", "muted", "badge", "link", "stat", "button", "view", "use", "summary", "expand", "calls", "call", "figure"];
 
 /// Built-in views a page can place with a `view` node.
-pub const VIEWS: &[&str] = &["chat", "canvas", "settings", "dashboard", "engine", "ide", "models", "theme", "layout", "asks", "glance", "sessions", "rooms"];
+pub const VIEWS: &[&str] = &["chat", "boxes", "canvas", "settings", "dashboard", "engine", "ide", "models", "theme", "layout", "asks", "glance", "sessions", "rooms"];
 
 /// Every node is a known primitive, every `view` a known view; glass never nests inside glass.
 pub fn validate_node(n: &Node) -> Result<(), String> {

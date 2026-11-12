@@ -11,7 +11,8 @@
 //! | --- | --- | --- |
 //! | `wall.rs`, `surface.rs` | the backdrop; a calm pane; a pane of glass | — |
 //! | `icon.rs` | a line icon | its name |
-//! | `sidebar.rs` | the navigation panel | the brand, the links |
+//! | `pill.rs` | the pill on the left: folded, marks; open, the dashboard | the brand, the boxes, the pages, a line about the service |
+//! | `boxes.rs` | a session as a box: its mark, its row, its tile | a `Shown` (the box, its mark, where it opens) |
 //! | `topbar.rs` | the page header | the title, the engines, the theme in use |
 //! | `footer.rs` | the contact line | the entries |
 //! | `stat.rs` | one number with its label | both |
@@ -25,8 +26,10 @@ mod wall;
 pub use wall::Wall;
 mod surface;
 pub use surface::{Glass, Pane};
-mod sidebar;
-pub use sidebar::Sidebar;
+mod pill;
+pub use pill::Pill;
+mod boxes;
+pub use boxes::{BoxRow, BoxTile, Shown};
 mod topbar;
 pub use topbar::{engine_of, next_theme, Topbar};
 mod footer;

@@ -46,8 +46,6 @@ mod service;
 mod sessions;
 mod surfaces;
 mod talk;
-// The page comes to ask this next (docs/concept.md, step 2); other UIs ask it over `ask.rs`.
-#[allow(unused_imports)]
 pub use boxes::*;
 pub use components::*;
 pub use rooms::*;

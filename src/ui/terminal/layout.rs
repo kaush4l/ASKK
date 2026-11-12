@@ -121,7 +121,7 @@ pub fn has_line(look: Look, caps: &[Cap]) -> String {
 }
 
 /// Each command and what it does, in the order a person needs them.
-pub const COMMANDS: [(&str, &str); 6] = [("/engines", "list"), ("/use <path>", "choose"), ("/history", "read"), ("/steps", "last run"), ("/can", "build"), ("/quit", "leave")];
+pub const COMMANDS: [(&str, &str); 7] = [("/engines", "list"), ("/use <path>", "choose"), ("/history", "read"), ("/steps", "last run"), ("/boxes", "sessions"), ("/can", "build"), ("/quit", "leave")];
 
 /// The commands in one line: the key bright, its meaning dim, two spaces between pairs.
 pub fn commands(look: Look) -> String {
@@ -293,7 +293,7 @@ mod tests {
     fn the_head_says_who_and_how_and_the_last_line_lists_the_commands() {
         assert_eq!(header(PLAIN, "askk/coder", "ready", false, 6), " askk  ○ askk/coder · ready · 6 engines");
         assert_eq!(header(PLAIN, "askk", "thinking · step 2", true, 1), " askk  ◐ askk · thinking · step 2 · 1 engine");
-        assert_eq!(commands(PLAIN), " /engines list  /use <path> choose  /history read  /steps last run  /can build  /quit leave");
+        assert_eq!(commands(PLAIN), " /engines list  /use <path> choose  /history read  /steps last run  /boxes sessions  /can build  /quit leave");
         assert_eq!(turn_lines(PLAIN, &[("user".into(), "What is 2 + 2?".into())]), ["user: What is 2 + 2?"]);
         assert_eq!(engine_lines(PLAIN, &["askk".into(), "askk/coder".into()], Some(1)), ["  askk", "→ askk/coder"]);
         assert_eq!(failed(PLAIN, "no engine 'x'. /engines lists them"), "× could not: no engine 'x'. /engines lists them");

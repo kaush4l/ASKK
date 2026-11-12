@@ -131,7 +131,7 @@ back to the model, and the answer, each stage of the run and the conversation ar
 
 | part | where | server | tab |
 | --- | --- | --- | --- |
-| the engine | `defaults/engines/askk/coder` | same files | same files (packed in) |
+| the engine | `defaults/engines/askk/developer` | same files | same files (packed in) |
 | the tool | `core/code.rs` (`run_code`) | `host/code.rs`: `node`, empty context | `local/code.rs`: sandboxed frame and worker |
 | the model | `core::Infer` | `models.json` connectors | `fetch`: an OpenAI-style server, or an askk server's `/ask/infer` |
 | what is kept | history element, `core/run.rs` | data folder | IndexedDB |
@@ -221,9 +221,12 @@ utilities without its reset and maps each colour the kit names (`primary`, `card
 `muted`...) onto a glass token; `dx` writes `assets/tailwind.css` from it on every build
 (no Node). That written file is kept in the repository so a plain `cargo` build finds it.
 
-To add a part: see the top of `src/ui/kit/mod.rs`. Today the kit holds button, card, badge
-and tabs; Settings is the first view built on it. Moving the other views over is a debt
-(section 10).
+To add a part: see the top of `src/ui/web/kit/mod.rs`. Today the kit holds avatar, badge,
+button, card, collapsible, kbd, scroll_area, separator, skeleton, spinner, tabs, textarea and
+tooltip. Settings, Talk and the canvas of boxes are built on it; moving the other views over
+is a debt (section 10). A component is given the object it shows and asks nothing itself
+(`a_component_only_shows_what_it_is_given`); what a run or a box reads as is said in
+`ui/features/` (`run.rs`, `boxes.rs`). The parts and what each is given: [components.md](components.md).
 
 ## 6. A service that never stops
 
@@ -241,7 +244,7 @@ An error message is written for the person who will read it at a bad moment. Its
 
 ```text
 what failed          where                why
-engine 'askk/guru':  element 'history':   unknown key 'max_turn'
+engine 'askk/developer':  element 'history':   unknown key 'max_turn'
 ```
 
 - Say the thing by the name the user knows (the engine's path, the file's key), not the

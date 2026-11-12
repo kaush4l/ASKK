@@ -97,7 +97,7 @@ terminal is all either has. Depth 2 and 3 are what askk adds.
 - **Tiles, not a free plane (my call):** the canvas today (`views/canvas.rs`) is a plane to
   pan and zoom, with a line from each engine to its sub-engines. Tiles read on every screen
   and are what both herdr and Rex do; the tree stays as a second view of the same boxes.
-- **The rule for every part** (already a test, `a_component_only_shows_what_it_is_given`): a
+- **The rule for every part** (a test, `a_component_only_shows_what_it_is_given`): a
   component is given the box and draws it. It asks nothing itself.
 
 ## 5. One object, one answer
@@ -105,15 +105,16 @@ terminal is all either has. Depth 2 and 3 are what askk adds.
 Every UI draws the same thing, so it is asked for once.
 
 ```text
-core/boxes.rs       SessionBox { id, kind, depth, state, title, place, last, facts }
+core/boxes.rs       SessionBox { id, kind, depth, state, title, icon, place, last, facts }
                     made from an engine or from a session; nothing else decides state or depth
 api  boxes()        every box; marked on the change feed when one changes
 ui/features/boxes   the order (blocked first), the words for each state, what counts as running
-ui/web              Pill, Dashboard, Canvas, BoxTile, BoxOpen: given boxes, draw them
+ui/web              Pill (folded: marks; open: the dashboard), BoxRow, BoxTile: given boxes, draw them;
+                    views/boxes.rs asks once for both and is the canvas (the view named `boxes`)
 ui/terminal         /boxes: the same list as lines
 ```
 
-The id says the kind (`engine:askk/coder`, `session:12`), as `docs/sessions/010` R3 asks.
+The id says the kind (`engine:askk/developer`, `session:12`), as `docs/sessions/010` R3 asks.
 
 ## 6. The multiplexer
 
@@ -144,13 +145,13 @@ A box's head says how it is confined. herdr and Rex leave this to whoever starts
 
 ## 8. Order of work
 
-| step | what | proves |
-| --- | --- | --- |
-| 1 | `SessionBox` and `boxes()` over engines and sessions | one list, tested |
-| 2 | the pill, the dashboard, the canvas of tiles; `/boxes` in the terminal | the screen of section 4 on phone, tablet and wide, light and dark |
-| 3 | depth 0: a terminal held by the service, its screen as an object, typing | a shell in a box, in the page and in `askk terminal` |
-| 4 | depth 1: recognising an agent in a terminal | a state mark on a terminal box, said to be a guess |
-| 5 | the sandbox port, macOS then Linux | a box that cannot write outside its folder, as a test |
+| step | what | proves | state |
+| --- | --- | --- | --- |
+| 1 | `SessionBox` and `boxes()` over engines and sessions | one list, tested | **built** |
+| 2 | the pill, the dashboard, the canvas of tiles; `/boxes` in the terminal | the screen of section 4 on phone, tablet and wide, light and dark | **built**, first cut: a box opens to its own page instead of filling the canvas; nothing can be pinned; the pill is not grouped by place |
+| 3 | depth 0: a terminal held by the service, its screen as an object, typing | a shell in a box, in the page and in `askk terminal` | not started |
+| 4 | depth 1: recognising an agent in a terminal | a state mark on a terminal box, said to be a guess | not started |
+| 5 | the sandbox port, macOS then Linux | a box that cannot write outside its folder, as a test | not started |
 
 ## 9. For the owner to say
 

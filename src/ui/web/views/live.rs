@@ -30,12 +30,26 @@ pub struct Live {
     reset: Signal<u64>,
     /// Whether the last ask got no answer (the host is away).
     away: Signal<bool>,
+    /// Who answered the last `hello`.
+    hello: Signal<Option<Hello>>,
 }
 
 impl Live {
     /// Whether the host is away. Reading it subscribes.
     pub fn away(&self) -> bool {
         (self.away)()
+    }
+
+    /// One line about the service for a person: who answers, or that nothing does. Reading it
+    /// subscribes.
+    pub fn service(&self) -> String {
+        if self.away() {
+            return Seen::Gone.todo().to_string();
+        }
+        match (self.hello)() {
+            Some(h) => format!("askk {} · build {}", h.version, h.build.chars().take(7).collect::<String>()),
+            None => String::new(),
+        }
     }
 }
 
@@ -54,7 +68,8 @@ pub fn use_live_provider() -> Live {
     let mut keys = use_signal(BTreeMap::<String, u64>::new);
     let mut reset = use_signal(|| 0u64);
     let mut away = use_signal(|| false);
-    let live = use_context_provider(|| Live { keys, reset, away });
+    let mut hello = use_signal(|| None::<Hello>);
+    let live = use_context_provider(|| Live { keys, reset, away, hello });
     use_future(move || async move {
         let (mut epoch, mut seen) = (0u64, 0u64);
         // Who answered last time this page asked.
@@ -81,6 +96,9 @@ pub fn use_live_provider() -> Live {
                             load_again(&h.build);
                         }
                         known = now.or(known);
+                        if *hello.peek() != known {
+                            hello.set(known.clone());
+                        }
                     }
                     if again {
                         keys.write().clear();

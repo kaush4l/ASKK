@@ -101,6 +101,12 @@ pub fn first_line(text: &str) -> String {
     format!("{}…", cut.trim_end())
 }
 
+/// What `text` is about in one line: its first line that is not a heading, else its heading.
+pub fn gist(text: &str) -> String {
+    let body = text.lines().find(|l| !l.trim().is_empty() && !l.trim_start().starts_with('#')).unwrap_or_default();
+    first_line(if body.is_empty() { text } else { body })
+}
+
 /// How many lines of `text` say something.
 fn said(text: &str) -> usize {
     text.lines().filter(|l| !l.trim().is_empty()).count()
@@ -149,7 +155,7 @@ pub fn engine_box(p: &EngineParts) -> SessionBox {
         facts.push(fact("asks", format!("{asks} for you")));
     }
     if !p.goal.trim().is_empty() {
-        facts.push(fact("goal", first_line(&p.goal)));
+        facts.push(fact("goal", gist(&p.goal)));
     }
     facts.push(fact("learnings", said(&p.learning).to_string()));
     facts.push(fact(super::TOOLBOX, if p.tools.is_empty() { "none".to_string() } else { p.tools.join(", ") }));
@@ -233,7 +239,7 @@ mod tests {
         assert_eq!((b.id.as_str(), b.kind.as_str(), b.depth, b.state), ("engine:askk/coder", "engine", Depth::Spec, State::Idle));
         assert_eq!((b.place.as_str(), b.last.as_str()), ("askk", "Adds numbers"));
         let said: Vec<(&str, &str)> = b.facts.iter().map(|f| (f.label.as_str(), f.value.as_str())).collect();
-        assert_eq!(said, [("goal", "Goal"), ("learnings", "2"), ("tools", "now, run_code")]);
+        assert_eq!(said, [("goal", "Write a program and run it."), ("learnings", "2"), ("tools", "now, run_code")]);
     }
 
     #[test]
@@ -279,6 +285,7 @@ mod tests {
         assert_eq!(cut.chars().count(), LINE);
         assert!(cut.ends_with('…'));
         assert_eq!(first_line("\n\n## Heading \nrest"), "Heading");
+        assert_eq!((gist("# Goal\n\nDo it well.\n"), gist("# Only a heading\n")), ("Do it well.".to_string(), "Only a heading".to_string()));
         assert!(Depth::Screen < Depth::Recognised && Depth::Reported < Depth::Spec, "a later depth knows more");
     }
 }

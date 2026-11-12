@@ -12,7 +12,8 @@
 //! ```text
 //! /engines        every engine          /history   the conversation kept
 //! /use <path>     choose an engine      /steps     what the last run did
-//! /can            what this build can do  /quit
+//! /can            what this build can do  /boxes     every session, what needs you first
+//! /quit
 //! ```
 //!
 //! | file | holds |
@@ -29,6 +30,8 @@ pub mod layout;
 use crate::api::{Busy, ChatTurn};
 use crate::core::caps::Cap;
 use crate::core::run::Run;
+use crate::core::boxes::SessionBox;
+use crate::ui::features::boxes::{line as box_line, order, Seen};
 use crate::ui::features::{run as words, talk};
 use layout::Look;
 use serde_json::{json, Value};
@@ -41,8 +44,7 @@ const LOOK_EVERY_MS: u64 = 200;
 /// person asked for none (`NO_COLOR`, the convention of no-color.org) or the terminal says it
 /// cannot (`TERM=dumb`). The environment is read through the one door for it.
 fn look() -> Look {
-    let named = |name: &str| crate::core::places::secret(name);
-    Look { styled: std::io::stdout().is_terminal() && named("NO_COLOR").is_none() && named("TERM").as_deref() != Some("dumb") }
+    Look { styled: std::io::stdout().is_terminal() && !crate::core::places::plain_lines() }
 }
 
 /// Where the terminal asks.
@@ -138,11 +140,17 @@ impl Session {
             },
             "/can" => self.door.ask::<Vec<Cap>>("capabilities", json!({})).await.map(|caps| layout::cap_lines(self.look, &caps).join("\n")),
             "/steps" => self.steps().await.map(|l| l.join("\n")),
+            // The same list the page's pill shows, in the same order. A terminal keeps no
+            // memory of what it saw, so nothing here is "done": it is idle or it is not.
+            "/boxes" => self.door.ask::<Vec<SessionBox>>("boxes", json!({})).await.map(|boxes| {
+                let seen = Seen::default();
+                order(&boxes, &seen).iter().map(|b| format!(" {}", box_line(b, &seen))).collect::<Vec<_>>().join("\n")
+            }),
             "/history" => match self.engine() {
                 Ok(path) => self.door.ask::<Vec<ChatTurn>>("engine_chat", json!({"path": path})).await.map(|chat| layout::turn_lines(self.look, &talk::turns(chat)).join("\n")),
                 Err(e) => Err(e),
             },
-            w if w.starts_with('/') => Err(format!("'{w}' is not a command. There are: /engines /use <path> /history /steps /can /quit")),
+            w if w.starts_with('/') => Err(format!("'{w}' is not a command. There are: /engines /use <path> /history /steps /boxes /can /quit")),
             // After an answer, the commands again: the last line always says what can be typed.
             _ => self.question(line).await.map(|said| format!("{said}\n{}\n{}", layout::rule(self.look), layout::commands(self.look))),
         })

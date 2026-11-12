@@ -965,3 +965,72 @@ dialog.run-panel::backdrop { background: color-mix(in srgb, var(--ink-shade) var
 .map.big .map-node { min-width: 0; }
 @media (max-width: 1199px) { .map.big .map-row { grid-template-columns: repeat(2, minmax(0, 360px)); } }
 @media (max-width: 767px) { .map.big .map-row { grid-template-columns: minmax(0, 1fr); } .map.big .big-card { max-width: none; } }
+
+/* ══ boxes: every session is a box (docs/concept.md). Its mark, the pill on the left, the canvas of tiles ══ */
+:is(.box-mark, .box-row, .box-tile, .pill-count) { --tone: var(--neutral); }
+:is(.box-mark, .box-row, .box-tile, .pill-count).is-blocked { --tone: var(--warn); }
+:is(.box-mark, .box-row, .box-tile, .pill-count).is-failed { --tone: var(--error); }
+:is(.box-mark, .box-row, .box-tile, .pill-count).is-done { --tone: var(--ok); }
+:is(.box-mark, .box-row, .box-tile, .pill-count).is-working { --tone: var(--busy); }
+.box-mark { display: inline-grid; place-items: center; flex: none; width: var(--space-5); height: var(--space-5); border-radius: var(--radius-full);
+  font-family: var(--font-mono); font-size: var(--text-xs); line-height: 1; color: var(--tone);
+  background: color-mix(in srgb, var(--tone) 16%, transparent); border: 1px solid color-mix(in srgb, var(--tone) 42%, transparent); }
+.box-mark.is-working { animation: box-pulse var(--motion-pulse) ease-in-out infinite; }
+/* the pill */
+.pill { gap: var(--space-2); transition: border-radius var(--motion-calm) var(--ease-calm); }
+.pill-part { display: flex; flex-direction: column; gap: var(--space-1); }
+.pill-boxes { flex: 1 1 auto; min-height: 0; overflow: hidden auto; scrollbar-width: thin; padding-top: var(--space-2); border-top: 1px solid var(--stroke); }
+.pill-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin: 0; padding: 0 var(--space-3); min-height: var(--control-sm);
+  font-size: var(--text-xs); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.pill-counts { display: inline-flex; gap: var(--space-2); }
+.pill-count { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--tone); white-space: nowrap; letter-spacing: 0; text-transform: none; }
+.box-row { min-height: var(--control-lg); }
+.nav-item .box-row-words { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+.box-row-title, .box-row-last { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.box-row-title { color: var(--fg); }
+.box-row.is-idle .box-row-title { color: var(--muted); }
+.box-row-last { font-size: var(--text-xs); color: var(--muted); }
+.box-row.active .box-row-title, .box-row.active .box-row-last { color: inherit; }
+.pill-foot { margin: 0; padding: var(--space-2) var(--space-3) 0; border-top: 1px solid var(--stroke); font-size: var(--text-xs); color: var(--muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pill-foot:empty { display: none; }
+/* folded: marks only, and it is a pill that holds what it has */
+.shell.collapsed .pill { align-self: start; height: auto; max-height: calc(100dvh - 2 * var(--space-3)); border-radius: var(--radius-full); padding-block: var(--space-4); }
+.shell.collapsed .pill .label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.shell.collapsed .box-row.is-idle { display: none; }
+.shell.collapsed .pill-boxes { flex: none; overflow: visible; border-top: 0; padding-top: 0; }
+.shell.collapsed .pill-boxes:not(:has(.box-row:not(.is-idle))) { display: none; }
+@media (min-width: 768px) and (max-width: 1199px) {
+  .shell .pill { align-self: start; height: auto; max-height: calc(100dvh - 2 * var(--space-3)); border-radius: var(--radius-full); padding-block: var(--space-4); }
+  .shell .pill .label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .shell .box-row.is-idle { display: none; }
+  .shell .pill-boxes { flex: none; overflow: visible; border-top: 0; padding-top: 0; }
+  .shell .pill-boxes:not(:has(.box-row:not(.is-idle))) { display: none; }
+}
+@media (max-width: 767px) { .pill-boxes { flex: none; overflow: visible; } }
+/* the canvas */
+.box-bar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-2) var(--space-3); min-height: var(--control-md); }
+.box-counts { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-4); margin: 0; }
+.box-counts .pill-count { font-size: var(--text-sm); }
+.box-wrong { margin: 0; color: var(--error); }
+.box-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: var(--space-4); align-items: start; }
+.box-tile { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; padding: var(--space-4);
+  border-color: color-mix(in srgb, var(--tone) 38%, var(--stroke)); animation: box-in var(--motion-spring) var(--ease-spring) both;
+  transition: border-color var(--motion-base) var(--ease-calm); }
+.box-tile.is-idle { border-color: var(--stroke); }
+.box-head { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.box-title { display: flex; align-items: center; gap: var(--space-2); flex: 1; min-width: 0; min-height: var(--control-lg); color: var(--fg); text-decoration: none;
+  border-radius: var(--radius-control); }
+.box-title h3 { margin: 0; font-size: var(--text-lg); font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.box-title:hover h3 { text-decoration: underline; text-underline-offset: 3px; }
+.box-where { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3); margin: 0; font-size: var(--text-xs); color: var(--muted); }
+.box-last { margin: 0; font-size: var(--text-sm); overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+.box-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--space-1) var(--space-3); margin: 0; font-size: var(--text-sm); }
+.box-facts > div { display: contents; }
+.box-facts dt { color: var(--muted); }
+.box-facts dd { margin: 0; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.box-say { display: flex; align-items: center; gap: var(--space-2); margin-top: auto; }
+.box-say-line { flex: 1; min-width: 0; }
+@keyframes box-in { from { opacity: 0; transform: translateY(var(--enter-y)) scale(var(--enter-scale)); } }
+@keyframes box-pulse { 50% { opacity: .45; } }
+@media (prefers-reduced-motion: reduce) { .box-tile, .box-mark.is-working { animation: none; } .pill { transition: none; } }

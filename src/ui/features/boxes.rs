@@ -10,9 +10,9 @@
 //! | what is "done"? | a box this window saw working and now sees idle, until it is looked at ([`Seen`]) |
 //! | what does the folded pill say? | how many are in each state ([`count`]) |
 //! | how is a box one line? | [`line`] |
-// The page and the terminal come to draw these next (docs/concept.md, step 2).
+// The page draws these (ui/web/views/boxes.rs); the terminal comes to say them as lines.
 #![allow(dead_code)]
-use crate::core::boxes::{SessionBox, State};
+use crate::core::boxes::{Depth, SessionBox, State};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// A box's state as a window shows it: the service's five, and the window's own "done".
@@ -26,7 +26,29 @@ pub enum Mark {
     Unknown,
 }
 
+/// How deep askk sees into a box, as the end of the sentence "askk sees ...".
+pub fn sees(depth: Depth) -> &'static str {
+    match depth {
+        Depth::Screen => "its screen",
+        Depth::Recognised => "its screen, and guesses its state",
+        Depth::Reported => "what its agent reports",
+        Depth::Spec => "its goal, learnings, tools and every run",
+    }
+}
+
 impl Mark {
+    /// One plain word that names the mark where a word may not have spaces (a style's name).
+    pub fn key(self) -> &'static str {
+        match self {
+            Mark::Blocked => "blocked",
+            Mark::Failed => "failed",
+            Mark::Done => "done",
+            Mark::Working => "working",
+            Mark::Idle => "idle",
+            Mark::Unknown => "unknown",
+        }
+    }
+
     /// The word a person is shown.
     pub fn word(self) -> &'static str {
         match self {

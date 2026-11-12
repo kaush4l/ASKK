@@ -139,6 +139,12 @@ pub fn path() -> Vec<PathBuf> {
     std::env::var_os("PATH").map(|p| std::env::split_paths(&p).collect()).unwrap_or_default()
 }
 
+/// Whether the person, or their terminal, asked for lines without colour: `NO_COLOR` set
+/// (the convention of no-color.org), or a terminal that says it cannot (`TERM=dumb`).
+pub fn plain_lines() -> bool {
+    var("NO_COLOR").is_some() || var("TERM").as_deref() == Some("dumb")
+}
+
 /// A secret by the name of the env var that holds it.
 pub fn secret(name: &str) -> Option<String> {
     (!name.is_empty()).then(|| var(name)).flatten()

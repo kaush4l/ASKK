@@ -167,7 +167,8 @@ what it is handed is allowed: that is the object.
 | `MediaChip` | `media.rs` | a `Chip`, its picture | — |
 | `Topbar` | `topbar.rs` | brand, title, every engine's path, the current one, the theme in use | `on_engine`, `on_theme` |
 | `Footer` | `footer.rs` | the contact entries | — |
-| `Sidebar` | `sidebar.rs` | brand, `Vec<NavLink>`, two signals the shell owns (folded, open) | — |
+| `Pill` | `pill.rs` | brand, every box as a `Shown`, the count per state, `Vec<NavLink>`, a line about the service, two signals the shell owns (folded, open) | the box that was looked at |
+| `BoxMark`, `BoxRow`, `BoxTile` | `boxes.rs` | a `Shown`: the `SessionBox`, the mark this window shows for it, the page it opens to | the box looked at; what was said into it |
 | `Stat`, `Icon`, `Companion`, `Pane`, `Glass`, `Wall` | one file each | their values | — |
 
 Before this rule the top bar asked for the engines itself, the footer read the shared

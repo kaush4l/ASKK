@@ -1,6 +1,7 @@
 //! Views: pages assembled from components. What they show comes from the backend.
 //! Which view sits at which URL is data: see [`crate::core::routes`].
 mod asks;
+pub mod boxes;
 mod bubble;
 mod canvas;
 pub mod canvas_math;
@@ -43,6 +44,7 @@ use dioxus::prelude::*;
 pub fn Builtin(name: String, #[props(default)] arg: String) -> Element {
     match name.as_str() {
         "chat" => rsx! { ChatView { arg } },
+        "boxes" => rsx! { boxes::BoxesView {} },
         "canvas" => rsx! { CanvasView {} },
         "settings" => rsx! { SettingsView {} },
         "dashboard" => rsx! { Dashboard {} },
