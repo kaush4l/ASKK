@@ -55,7 +55,14 @@ impl Store for Folder {
         if let Some(d) = p.parent() {
             std::fs::create_dir_all(d).map_err(|e| format!("{}: {e}", d.display()))?;
         }
-        std::fs::write(&p, text).map_err(|e| format!("{}: {e}", p.display()))
+        // Written beside the file and then put in its place in one move: a process that ends
+        // in the middle of a write leaves the old text whole, never an empty or half file.
+        let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let beside = p.with_file_name(format!(".{name}.{}.writing", std::process::id()));
+        std::fs::write(&beside, text).and_then(|()| std::fs::rename(&beside, &p)).map_err(|e| {
+            let _ = std::fs::remove_file(&beside);
+            format!("{}: {e}", p.display())
+        })
     }
     fn list(&self, key: &str) -> Vec<Entry> {
         let Ok(p) = self.path(key) else { return vec![] };
@@ -140,6 +147,20 @@ pub fn temp(tag: &str) -> (Arc<dyn Store>, PathBuf) {
 mod tests {
     use super::*;
     use crate::core::store::{copy, export, lock, Marked, LOCK};
+
+    #[test]
+    fn a_write_replaces_the_whole_file_and_leaves_nothing_beside_it() {
+        let (s, root) = temp("whole");
+        s.put("a/b.json", "one").unwrap();
+        s.put("a/b.json", "two, and longer").unwrap();
+        assert_eq!(s.get("a/b.json").unwrap(), "two, and longer");
+        let left: Vec<String> = std::fs::read_dir(root.join("a")).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+        assert_eq!(left, ["b.json"], "the file written beside it was moved into place");
+        // A write cut off before the move leaves the old text: what is beside it is not listed.
+        std::fs::write(root.join("a/.b.json.1.writing"), "").unwrap();
+        assert_eq!((s.get("a/b.json").unwrap().as_str(), s.list("a").len()), ("two, and longer", 1));
+        let _ = std::fs::remove_dir_all(root);
+    }
 
     #[test]
     fn one_live_process_holds_the_store() {
