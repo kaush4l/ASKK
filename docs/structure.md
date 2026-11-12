@@ -47,6 +47,9 @@ Before keeping a change: `./scripts/check.sh`.
 | the companion's mood or look | the rule: `core/companion.rs`; the drawing: `ui/web/components/companion.rs`; in a page: `ui/web/views/companion.rs` |
 | an engine is woken and nothing runs | who runs background work in this build: `core/tasks.rs` (set in `host/mod.rs`, `local/mod.rs`) |
 | a window does not refresh | the log of changes: `core/changes.rs`; the server's waiting: `host/changes.rs`; the window's side: `ui/web/views/live.rs` |
+| askk does not start in the background, is not found by a terminal, or does not stop | `host/service.rs` (start, record, stop); what a record means: `core/service.rs`; the commands: `shells/service.rs`; the words of `askk status`: `ui/features/service.rs`. The whole of it: [service.md](service.md) |
+| a file edited by hand does not take effect, or the wrong thing happens when it does | that it is noticed: `host/watch.rs`; what the file means once read again: `core/reread.rs`; the service's own settings: `core/settings.rs` |
+| a window does not notice that askk was restarted or built again | the answer: `hello` (`api/service/answers.rs`); what it means: `ui/features/service.rs` (`seen`) |
 | which engines are running, and why one is not | `core/world.rs` (filled by `host/world.rs`, `local/mod.rs`) |
 | "where is this stored?" | `core/places.rs` (the roots) and `askk.json` (every key) |
 

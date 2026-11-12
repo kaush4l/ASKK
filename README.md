@@ -27,13 +27,21 @@ To run the whole app (the host that runs the engines, and its window), built as 
 ./scripts/run.sh
 ```
 
+To leave it running in the background instead, and ask or end it later
+([docs/service.md](docs/service.md)):
+
+```bash
+./scripts/run.sh start     # also: status, restart, stop
+```
+
 To use it as lines in a terminal instead of pages (the same engines, the same home):
 
 ```bash
 ./target/run/askk terminal
 ```
 
-Add `--to http://127.0.0.1:8090` to talk to a service that is already running, or a
+With a service running for the same home the terminal talks to it; with none, it runs the
+engines itself. Add `--to http://127.0.0.1:8090` to name the service to talk to, or a
 question after `terminal` to ask once and leave. What is decided where:
 [docs/decisions.md](docs/decisions.md).
 
