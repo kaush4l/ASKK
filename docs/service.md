@@ -46,6 +46,7 @@ look (`core/terminals.rs`, `host/terminals.rs`; `./scripts/terminals.sh` proves 
 | --- | --- |
 | who holds a terminal | the service, for the program's whole life. It reads what the program writes whether or not anyone looks, and keeps the screen those bytes make |
 | what a window gets | the screen as an object (`core/screen.rs`: rows of text with their looks, the cursor, the title, whether the program runs), asked for when the change feed names `terminals/<id>`; never the bytes |
+| looking back | `terminal_scrolled(id, back)`: the screen as it was `back` rows up. A thousand rows that scrolled off the top are kept; a program that draws its own screen (an editor) has none |
 | typing | `terminal_type(id, keys)`: the bytes a terminal sends for the keys (`ui/features/terminals.rs`, `typed`). The service turns the arrow keys for a program that asked for the other form |
 | where it starts | in a folder under the workspace (`place`, a plain folder name, made if missing); the person's own shell when no command is named |
 | what it may touch | it reads and runs what the owner can, and writes only in its folder, in temp, and in its agent's own state, where the build's system can confine it (`core/sandbox.rs`): macOS by the system's sandbox, Linux by Landlock, nothing on Windows. The box's fact `confined` says which |
@@ -150,12 +151,15 @@ grows. The page does not yet say in words that the service is away or was restar
 
 **Where `askk terminal` is not herdr.** Said plainly, so nobody finds out by trying:
 
-- No scrolling back and no copy mode: a pane shows the terminal's screen as it is now.
+- No copy mode: a pane can be looked back up (the wheel, `ctrl+b PageUp`), but nothing is
+  selected or copied out of it by askk; the outer terminal's own selection is taken by the
+  mouse capture (most terminals still select with a modifier key held).
 - The mouse is the window's, never the program's: a program in a pane that wants clicks
   (an editor, a pager) does not get them. No right-click menus.
 - No workspaces with their branch and git state: boxes are one list, each with its place.
-- The layout (tabs, splits) lives in the window and is gone when it closes; herdr's server
-  keeps it and gives it back.
+- The layout lives in the window. A window that opens finds every terminal that runs in a
+  tab of its own again (up to eight), but not the splits it left; herdr's server keeps the
+  whole layout and gives it back.
 - The keys are fixed; there is no config file for them, no themes, no notifications.
 - A screen is asked for whole each time it changes (about 30 times a second at most), not
   sent as differences. On this machine that is not felt; over a slow link it would be.

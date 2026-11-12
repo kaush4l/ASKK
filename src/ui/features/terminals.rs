@@ -147,6 +147,8 @@ pub enum Action {
     Focus(Way),
     /// Let the pane fill the tab, and back.
     Zoom,
+    /// Look further up in the pane (`true`), or back down towards the end.
+    Scroll(bool),
     /// Take the pane away; its box keeps running.
     ClosePane,
     /// End the terminal in the pane, and its program with it.
@@ -171,6 +173,8 @@ pub fn after_prefix(key: &str, ctrl: bool) -> Option<Action> {
         "p" => Action::PreviousTab,
         "w" => Action::Navigate,
         "z" => Action::Zoom,
+        "PageUp" => Action::Scroll(true),
+        "PageDown" => Action::Scroll(false),
         "x" => Action::ClosePane,
         "X" => Action::EndTerminal,
         "b" => Action::FoldSidebar,
@@ -186,7 +190,7 @@ pub fn after_prefix(key: &str, ctrl: bool) -> Option<Action> {
 }
 
 /// Every key after the prefix and what it does, in the order a person needs them.
-pub const HELP: [(&str, &str); 14] = [
+pub const HELP: [(&str, &str); 15] = [
     ("c", "a new tab, with a shell in it"),
     ("v", "split to the right, with a shell in the new pane"),
     ("-", "split downwards, with a shell in the new pane"),
@@ -195,6 +199,7 @@ pub const HELP: [(&str, &str); 14] = [
     ("w", "the sidebar: arrows choose a box, Enter shows it in the pane"),
     ("arrows", "move to the pane on that side (also h j k l)"),
     ("z", "zoom: the pane fills the tab, and back"),
+    ("PgUp PgDn", "look back up a pane, and down again (the wheel does too)"),
     ("x", "close the pane; its box keeps running"),
     ("X", "end the terminal in the pane, and its program"),
     ("b", "fold the sidebar to marks, and open it again"),
@@ -262,10 +267,11 @@ mod tests {
         assert_eq!((after("n"), after("p"), after("w"), after("q"), after("?")), (Some(Action::NextTab), Some(Action::PreviousTab), Some(Action::Navigate), Some(Action::Detach), Some(Action::Help)));
         assert_eq!((after("3"), after("0"), after("ArrowLeft"), after("j")), (Some(Action::Tab(3)), None, Some(Action::Focus(Way::Left)), Some(Action::Focus(Way::Down))));
         assert_eq!((after_prefix("b", true), after("b"), after("y")), (Some(Action::SendPrefix), Some(Action::FoldSidebar), None));
+        assert_eq!((after("PageUp"), after("PageDown")), (Some(Action::Scroll(true)), Some(Action::Scroll(false))));
         // Every key the help lists does something, and the foot's hints are in the help.
         for (keys, words) in HELP {
             assert!(!words.is_empty());
-            for key in keys.split_whitespace().filter(|k| !["1-9", "arrows", "ctrl+b"].contains(k)) {
+            for key in keys.split_whitespace().filter(|k| !["1-9", "arrows", "ctrl+b", "PgUp", "PgDn"].contains(k)) {
                 assert!(after(key).is_some(), "the help lists `{key}`, which does nothing");
             }
         }

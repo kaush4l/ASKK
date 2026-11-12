@@ -47,6 +47,8 @@ pub enum Got {
     Boxes(Vec<SessionBox>),
     /// A terminal's screen, by the terminal's id.
     Screen(String, Screen),
+    /// A terminal's screen as it was this many rows up.
+    Scrolled(String, Screen, u16),
     /// An engine's or a session's lines, by the box's id.
     Talk(String, Vec<String>),
     /// The shell asked for this pane runs, in the terminal with this id.
@@ -68,6 +70,8 @@ pub enum Got {
 pub enum Want {
     Boxes,
     Screen(String),
+    /// A terminal's screen as it was `back` rows up.
+    Scrolled { id: String, back: u16 },
     Talk(String),
     /// A new shell for this pane, in a terminal of this size.
     Open { pane: Pane, cols: u16, rows: u16 },

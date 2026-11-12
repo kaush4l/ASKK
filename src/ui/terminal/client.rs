@@ -19,6 +19,7 @@ use crate::core::boxes::SessionBox;
 use crate::core::run::Run;
 use crate::core::screen::Screen;
 use crate::core::session::{self, Session};
+use crate::core::terminals::Scrolled;
 use crate::ui::features::talk;
 use crate::ui::features::terminals::{inside, Inside};
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
@@ -122,6 +123,10 @@ async fn answer(door: &Door, want: Want) -> Result<Option<Got>, String> {
     Ok(match want {
         Want::Boxes => Some(Got::Boxes(door.ask::<Vec<SessionBox>>("boxes", json!({})).await?)),
         Want::Screen(id) => Some(Got::Screen(id.clone(), door.ask::<Screen>("terminal_screen", json!({"id": id})).await?)),
+        Want::Scrolled { id, back } => {
+            let up: Scrolled = door.ask("terminal_scrolled", json!({"id": id, "back": back})).await?;
+            Some(Got::Scrolled(id, up.screen, up.back))
+        }
         Want::Talk(box_id) => Some(Got::Talk(box_id.clone(), talk_lines(door, &box_id).await?)),
         // The person's own shell, in the workspace.
         Want::Open { pane, cols, rows } => Some(Got::Opened(pane, door.ask::<String>("terminal_open", json!({"command": "", "place": "", "cols": cols, "rows": rows})).await?)),
@@ -152,7 +157,7 @@ async fn answer(door: &Door, want: Want) -> Result<Option<Got>, String> {
 fn read(want: &Want) -> Option<String> {
     match want {
         Want::Boxes => Some("boxes".into()),
-        Want::Screen(id) => Some(format!("screen {id}")),
+        Want::Screen(id) | Want::Scrolled { id, .. } => Some(format!("screen {id}")),
         Want::Talk(box_id) => Some(format!("talk {box_id}")),
         _ => None,
     }

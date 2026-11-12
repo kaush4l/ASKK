@@ -20,6 +20,7 @@
 use super::boxes::State;
 use super::held::Shared;
 use super::screen::Screen;
+use serde::{Deserialize, Serialize};
 use std::sync::{Arc, RwLock};
 
 /// What a build that holds no terminals answers.
@@ -73,6 +74,16 @@ pub struct Terminal {
     pub agent: String,
 }
 
+/// A terminal's screen as it was further up: what has scrolled off the top is kept for a
+/// while (a thousand rows), and a window may look back at it.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Scrolled {
+    /// The rows in view, in the same shape as the live screen; it has no cursor.
+    pub screen: Screen,
+    /// How many rows up this really is: less than was asked for when there is no more.
+    pub back: u16,
+}
+
 /// How many rows from the bottom of a screen a guess is read from.
 pub const BOTTOM: usize = 12;
 
@@ -100,6 +111,8 @@ pub trait Terminals: Send + Sync {
     fn open(&self, command: &str, place: &str, cols: u16, rows: u16) -> Result<String, String>;
     /// The screen as it stands now.
     fn screen(&self, id: &str) -> Result<Screen, String>;
+    /// The screen as it was `back` rows up (0 = as it stands now).
+    fn scrolled(&self, id: &str, back: u16) -> Result<Scrolled, String>;
     /// Type `keys`: the bytes a terminal sends for them (`\r` for Enter, `\u{1b}[A` for up).
     fn type_keys(&self, id: &str, keys: &str) -> Result<(), String>;
     fn resize(&self, id: &str, cols: u16, rows: u16) -> Result<(), String>;
@@ -117,6 +130,9 @@ impl Terminals for Nothing {
         Err(NONE.into())
     }
     fn screen(&self, _: &str) -> Result<Screen, String> {
+        Err(NONE.into())
+    }
+    fn scrolled(&self, _: &str, _: u16) -> Result<Scrolled, String> {
         Err(NONE.into())
     }
     fn type_keys(&self, _: &str, _: &str) -> Result<(), String> {
@@ -154,6 +170,7 @@ mod tests {
         let none = Nothing;
         assert_eq!(none.open("", "", 80, 24).unwrap_err(), NONE);
         assert_eq!(none.screen("1").unwrap_err(), NONE);
+        assert_eq!(none.scrolled("1", 3).unwrap_err(), NONE);
         assert_eq!(none.type_keys("1", "x").unwrap_err(), NONE);
         assert_eq!(none.resize("1", 80, 24).unwrap_err(), NONE);
         assert_eq!(none.close("1").unwrap_err(), NONE);

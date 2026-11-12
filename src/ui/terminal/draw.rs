@@ -101,8 +101,8 @@ pub fn tab_at(tabs: Rect, names: &[String], x: u16) -> Option<usize> {
 
 /// What a pane holds.
 pub enum Body<'a> {
-    /// A terminal's screen.
-    Screen(&'a Screen),
+    /// A terminal's screen, and how many rows up it is looked at (0 = at its end).
+    Screen(&'a Screen, u16),
     /// An engine's or a session's lines, and the line being typed. `back`: rows scrolled up.
     Talk { lines: &'a [String], input: &'a str, back: usize },
     /// Nothing to show but a few words.
@@ -320,7 +320,7 @@ fn tab_line(buf: &mut Buffer, tabs: Rect, p: &Picture) {
 
 /// A terminal's screen inside `room`. A screen taller than the room shows its last rows:
 /// that is where a program writes. The cursor's cell comes back when it is in view.
-fn screen_body(buf: &mut Buffer, room: Rect, s: &Screen) -> Option<(u16, u16)> {
+fn screen_body(buf: &mut Buffer, room: Rect, s: &Screen, back: u16) -> Option<(u16, u16)> {
     let skip = s.lines.len().saturating_sub(usize::from(room.height));
     let end = room.x + room.width;
     for (row, line) in s.lines.iter().skip(skip).enumerate() {
@@ -328,6 +328,11 @@ fn screen_body(buf: &mut Buffer, room: Rect, s: &Screen) -> Option<(u16, u16)> {
         for span in &line.spans {
             x = put(buf, x, room.y + row as u16, end, &span.text, look(span));
         }
+    }
+    if back > 0 && room.height > 0 {
+        let y = room.y + room.height - 1;
+        put(buf, room.x, y, end, &format!(" ↑ {back} rows up · wheel down or type to return "), KEY.add_modifier(Modifier::REVERSED));
+        return None;
     }
     if !s.alive && room.height > 0 {
         let y = room.y + room.height - 1;
@@ -383,7 +388,7 @@ fn pane(buf: &mut Buffer, v: &PaneView) -> Option<(u16, u16)> {
     Block::bordered().border_style(if v.focused { KEY } else { DIM }).title(Line::from(title)).render(v.at, buf);
     let room = inner(v.at);
     let cursor = match &v.body {
-        Body::Screen(s) => screen_body(buf, room, s),
+        Body::Screen(s, back) => screen_body(buf, room, s, *back),
         Body::Talk { lines, input, back } => talk_body(buf, room, lines, input, *back),
         Body::Words(words) => {
             for (i, line) in words.iter().take(usize::from(room.height)).enumerate() {
@@ -500,7 +505,7 @@ pub mod tests {
         let at = parts(area, false).main;
         let seen = Seen::default();
         let mut buf = Buffer::empty(area);
-        let view = PaneView { at, focused: true, head: "sh · sh".into(), mark: Some(Mark::Working), zoomed: false, body: Body::Screen(&screen) };
+        let view = PaneView { at, focused: true, head: "sh · sh".into(), mark: Some(Mark::Working), zoomed: false, body: Body::Screen(&screen, 0) };
         let folded = |panes| Picture { side_open: false, ..picture(&[], &seen, panes) };
         let cursor = draw(&mut buf, area, &folded(vec![view]));
         let room = inner(at);
@@ -515,11 +520,16 @@ pub mod tests {
         // A screen taller than the pane shows its last rows, where the program writes.
         let tall = Screen { cols: 20, rows: 30, lines: (1..=30).map(|n| Row { spans: vec![Span::plain(format!("row {n}"))] }).collect(), cursor: Some((0, 29)), alive: true, ..Default::default() };
         let mut buf = Buffer::empty(area);
-        let view = PaneView { at, focused: false, head: "sh".into(), mark: None, zoomed: false, body: Body::Screen(&tall) };
+        let view = PaneView { at, focused: false, head: "sh".into(), mark: None, zoomed: false, body: Body::Screen(&tall, 0) };
         assert_eq!(draw(&mut buf, area, &folded(vec![view])), None, "a pane that is not in focus has no cursor");
         let drawn = rows(&buf);
         assert!(drawn[usize::from(room.y + room.height - 1)].contains("│row 30") && !drawn.iter().any(|r| r.contains("│row 1 ")), "{drawn:?}");
         assert_eq!(buf[(at.x, at.y)].fg, Color::DarkGray);
+        // Looked back in, the pane says how far up it is and how to return, and has no cursor.
+        let mut buf = Buffer::empty(area);
+        let view = PaneView { at, focused: true, head: "sh".into(), mark: None, zoomed: false, body: Body::Screen(&screen, 12) };
+        assert_eq!(draw(&mut buf, area, &folded(vec![view])), None);
+        assert!(rows(&buf)[usize::from(room.y + room.height - 1)].contains("↑ 12 rows up · wheel down or type to return"), "{:?}", rows(&buf));
     }
 
     #[test]

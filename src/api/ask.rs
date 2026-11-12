@@ -139,6 +139,7 @@ pub fn table() -> Vec<Ask> {
         // terminals.rs
         terminal_open(command, place, cols, rows),
         terminal_screen(id),
+        terminal_scrolled(id, back),
         terminal_type(id, keys),
         terminal_resize(id, cols, rows),
         terminal_close(id),

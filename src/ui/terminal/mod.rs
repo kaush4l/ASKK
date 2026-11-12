@@ -30,6 +30,7 @@
 //! | `panes.rs` | the full screen's tabs of split panes, as plain values |
 //! | `events.rs` | what the full screen is told (a key, an answer, a change) and what it asks for |
 //! | `app.rs` | the full screen's whole behaviour: what happened in, what to ask out |
+//! | `picture.rs` | the app as the values that are drawn: the panes in view, the tabs, the foot |
 //! | `draw.rs` | the full screen as cells, from values |
 //! | `client.rs` | the real terminal (keys, mouse, cells) and the real service, around `app.rs` |
 //!
@@ -45,6 +46,7 @@ pub mod draw;
 pub mod events;
 pub mod layout;
 pub mod panes;
+mod picture;
 use crate::api::{Busy, ChatTurn};
 use crate::core::caps::Cap;
 use crate::core::run::Run;
@@ -223,7 +225,7 @@ impl Session {
 /// first pane shows the engine named, else the one a person talks to first.
 pub fn full_screen(rt: &tokio::runtime::Runtime, door: Door, engine: Option<String>) -> Result<(), String> {
     let host = match &door {
-        Door::Here => "this terminal is the host".to_string(),
+        Door::Here => "its own host".to_string(),
         Door::There(base) => base.trim_start_matches("http://").trim_start_matches("https://").trim_end_matches('/').to_string(),
     };
     rt.block_on(async {

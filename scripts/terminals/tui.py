@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Drive the full-screen terminal UI once, as a person at a real terminal would.
 
-    python3 tui.py <askk program>
+    python3 tui.py <askk program>          the whole walk below
+    python3 tui.py <askk program> again    come back after a detach: what is found
 
 `askk terminal` is started in a pseudo-terminal of 140 x 40 (so it draws its full screen,
 not lines), in the environment it is called with (the home, the port). The script presses
@@ -12,8 +13,14 @@ keys and reads the screen, and says each thing it saw on a line of its own:
     saw: a terminal box shows its live screen
     saw: a shell in a new tab ran what was typed
     "shell": 12345                      (the shell's process number, for the caller)
+    saw: the wheel looked back up the shell's pane, and typing returned to its end
     saw: a split pane beside it, and a click moved the focus
     saw: a click on a box in the sidebar showed it in the pane
+    saw: detached with 0
+
+and with `again`:
+
+    saw: attached again, every terminal has its tab
     saw: detached with 0
 
 A full-screen program does not write lines: it places the cursor and writes the cells that
@@ -133,9 +140,33 @@ def main():
                     pass
                 sys.exit(1)
 
+    def gone(pattern, what, seconds=30):
+        """Wait until no row of the screen holds `pattern` any more."""
+        end = time.time() + seconds
+        while any(re.search(pattern, row) for row in screen.rows()):
+            if time.time() > end or not read(0.1):
+                print(f"STILL seen: {what} (looked for {pattern!r}). The screen:")
+                print("\n".join(screen.rows()))
+                os.kill(pid, 15)
+                sys.exit(1)
+
     def press(keys):
         os.write(fd, keys.encode())
         read(0.2)
+
+    def leave():
+        """ctrl+b q: detach. The program leaves with 0; what it opened is not its business."""
+        press("\x02q")
+        end = time.time() + 15
+        while time.time() < end:
+            done, status = os.waitpid(pid, os.WNOHANG)
+            if done:
+                print(f"saw: detached with {os.waitstatus_to_exitcode(status)}")
+                return
+            read(0.1)
+        print("NOT seen: the terminal UI left after ctrl+b q")
+        os.kill(pid, 15)
+        sys.exit(1)
 
     def click(col, row):
         """Press and let go of the left button over a cell (counted from 0)."""
@@ -151,6 +182,14 @@ def main():
 
     prefix = "\x02"  # ctrl+b
 
+    if sys.argv[2:] == ["again"]:
+        # Coming back: the terminals that ran on while nobody looked each have a tab again.
+        wait(r"│ 1 \S+  2 sh -c 'echo hello-  3 sh  4 sh", "a tab for the service's first terminal and for each of the two shells")
+        print("saw: attached again, every terminal has its tab")
+        show("attached again")
+        leave()
+        return
+
     # 1. The first screen: the sidebar with every box, and a pane on an engine.
     wait(r"^ boxes", "the sidebar's heading")
     wait(r"^.[○●?!✓·] .* · engine", "an engine as a row of the sidebar")
@@ -159,6 +198,7 @@ def main():
     wait(r"┌ ○ \S+ · engine ─", "a pane whose frame names an engine and its state")
     wait(r"│> ", "the line to speak into, in that pane")
     wait(r"^ ctrl\+b  then  c tab  v split right", "the foot with the keys")
+    wait(r"│ 1 \S+  2 sh -c 'echo hello", "a second tab, for the terminal that already ran")
     print("saw: a pane shows the engine")
     show("the first screen")
 
@@ -178,16 +218,30 @@ def main():
     wait(r"┌ ● sh · sh ─", "the new pane, with the shell as its box")
     press("echo tui-$((40+2)) shell-$$\r")
     found = wait(r"│tui-42 shell-(\d+)", "what the shell printed for the typed line")
-    wait(r" 2 sh( |$)", "the second tab, named after the shell")
+    wait(r" 3 sh( |$)", "the third tab, named after the shell")
     print("saw: a shell in a new tab ran what was typed")
     print(f'"shell": {found.group(1)}')
     show("a shell in a new tab")
+
+    # More rows than the pane has: the wheel looks back up at what scrolled off, and the
+    # next key typed returns to the end.
+    press("i=1; while [ $i -le 80 ]; do echo line-$i; i=$((i+1)); done\r")
+    wait(r"│line-80", "the last of eighty lines")
+    for _ in range(4):
+        press("\x1b[<64;80;10M")
+    wait(r"↑ 12 rows up", "the pane saying how far up it is looked at")
+    wait(r"│line-3[0-9]", "lines that had scrolled off the top")
+    show("looked back up")
+    press("\r")
+    gone(r"rows up", "the pane still looked back in after a key was typed")
+    wait(r"│line-80", "the end of the shell's screen again")
+    print("saw: the wheel looked back up the shell's pane, and typing returned to its end")
 
     # 4. ctrl+b v: a second shell beside the first. A click on the left pane takes the focus
     #    there: what is typed next lands in the first shell, not in the new one.
     press(prefix + "v")
     wait(r"┌ ● sh · sh ─+┐┌ ● sh · sh ─", "two panes side by side, each with a shell")
-    row, col = where(r"│tui-42 shell-", "the first shell's pane")
+    row, col = where(r"│line-\d+", "the first shell's pane")
     click(col + 5, row)
     press("echo left-$((1+1))\r")
     wait(r"^.{%d}│left-2" % col, "the typed line's answer in the left pane")
@@ -201,20 +255,7 @@ def main():
     print("saw: a click on a box in the sidebar showed it in the pane")
     show("an engine beside a shell")
 
-    # 6. ctrl+b q: detach. The program leaves with 0; what it opened is not its business.
-    press(prefix + "q")
-    end = time.time() + 15
-    status = None
-    while time.time() < end:
-        done, status = os.waitpid(pid, os.WNOHANG)
-        if done:
-            break
-        read(0.1)
-    else:
-        print("NOT seen: the terminal UI left after ctrl+b q")
-        os.kill(pid, 15)
-        sys.exit(1)
-    print(f"saw: detached with {os.waitstatus_to_exitcode(status)}")
-
+    # 6. ctrl+b q: detach.
+    leave()
 
 main()

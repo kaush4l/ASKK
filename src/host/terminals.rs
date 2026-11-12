@@ -20,7 +20,7 @@
 use crate::core::changes;
 use crate::core::held::Held;
 use crate::core::screen::{Line, Screen, Span};
-use crate::core::terminals::{self, Terminal, Terminals};
+use crate::core::terminals::{self, Scrolled, Terminal, Terminals};
 use portable_pty::{native_pty_system, ChildKiller, CommandBuilder, MasterPty, PtySize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::{Read, Write};
@@ -33,6 +33,8 @@ use std::time::{Duration, Instant};
 const PACE: Duration = Duration::from_millis(33);
 /// How many terminals this process holds at most: a mistake in a script must not fill the machine.
 const MOST: usize = 64;
+/// How many rows that scrolled off the top of a screen are kept, to be looked back at.
+const KEPT_ROWS: usize = 1000;
 /// How long the name of the program in front is believed before the system is asked again.
 const FRONT_FOR: Duration = Duration::from_millis(500);
 
@@ -397,7 +399,7 @@ impl Terminals for Ptys {
             place: place.to_string(),
             confined: sandbox.how(),
             wrapper,
-            parser: Mutex::new(vt100::Parser::new_with_callbacks(rows_n, cols_n, 0, Heard::default())),
+            parser: Mutex::new(vt100::Parser::new_with_callbacks(rows_n, cols_n, KEPT_ROWS, Heard::default())),
             killer: Mutex::new(child.clone_killer()),
             pid: child.process_id(),
             master: Mutex::new(Some(pair.master)),
@@ -417,6 +419,21 @@ impl Terminals for Ptys {
 
     fn screen(&self, id: &str) -> Result<Screen, String> {
         Ok(find(id)?.screen())
+    }
+
+    fn scrolled(&self, id: &str, back: u16) -> Result<Scrolled, String> {
+        let live = find(id)?;
+        let (alive, exit) = *live.ended.held();
+        let mut p = live.parser.held();
+        // Look further up for the length of this one answer; the terminal itself stays where it is.
+        p.screen_mut().set_scrollback(usize::from(back));
+        let reached = p.screen().scrollback().min(usize::from(u16::MAX)) as u16;
+        let mut screen = screen_of(p.screen(), &p.callbacks().title, alive, exit);
+        p.screen_mut().set_scrollback(0);
+        if reached > 0 {
+            screen.cursor = None;
+        }
+        Ok(Scrolled { screen, back: reached })
     }
 
     fn type_keys(&self, id: &str, keys: &str) -> Result<(), String> {
@@ -520,7 +537,7 @@ mod tests {
         assert!(Ptys.resize(&id, 0, 5).unwrap_err().contains("0 × 5 was asked for"));
         // Closed, it is gone, and every question about it says so.
         Ptys.close(&id).unwrap();
-        for said in [Ptys.screen(&id).map(|_| ()), Ptys.type_keys(&id, "x"), Ptys.resize(&id, 80, 24), Ptys.close(&id)] {
+        for said in [Ptys.screen(&id).map(|_| ()), Ptys.scrolled(&id, 1).map(|_| ()), Ptys.type_keys(&id, "x"), Ptys.resize(&id, 80, 24), Ptys.close(&id)] {
             assert_eq!(said.unwrap_err(), no(&id));
         }
         assert!(Ptys.all().iter().all(|t| t.id != id));
@@ -537,6 +554,23 @@ mod tests {
         assert_eq!(until(&well, "the end of the program", |s| !s.alive).exit, Some(0));
         Ptys.close(&failed).unwrap();
         Ptys.close(&well).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn what_scrolled_off_the_top_can_be_looked_back_at() {
+        let id = Ptys.open("i=1; while [ $i -le 30 ]; do echo row-$i; i=$((i+1)); done; cat", "", 40, 10).unwrap();
+        let live = until(&id, "the last row printed", |s| s.text().contains("row-30"));
+        assert_eq!(live.lines[0].text(), "row-22", "ten rows: the last nine printed, and the cursor's own");
+        let back = Ptys.scrolled(&id, 5).unwrap();
+        assert_eq!((back.back, back.screen.lines[0].text().as_str(), back.screen.cursor), (5, "row-17", None), "five rows up, and no cursor there");
+        assert_eq!(back.screen.lines.len(), 10);
+        let all = Ptys.scrolled(&id, 500).unwrap();
+        assert_eq!((all.back, all.screen.lines[0].text().as_str()), (21, "row-1"), "asked further than there is, it stops at the first row");
+        let now = Ptys.scrolled(&id, 0).unwrap();
+        assert_eq!((now.back, now.screen), (0, Ptys.screen(&id).unwrap()), "nothing up is the live screen");
+        assert_eq!(Ptys.screen(&id).unwrap().lines[0].text(), "row-22", "looking back moved nothing");
+        Ptys.close(&id).unwrap();
     }
 
     #[cfg(unix)]

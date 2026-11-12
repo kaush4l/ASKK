@@ -106,4 +106,6 @@ Mac app compiles; they are not part of 0.1.
   that only this machine may ask.
 - Terminals on Windows compile (ConPTY) but were never run, and are not confined there.
   On Linux only files are confined (no call filter); on no system is the network confined.
-- A terminal's screen is what is on it now: no scrolling back, no copying out of it.
+- A terminal can be looked back up a thousand rows, but nothing is selected or copied out
+  of it; and the splits of a window are gone when it closes (its terminals get a tab each
+  again when one opens).

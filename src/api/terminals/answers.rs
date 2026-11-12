@@ -28,6 +28,14 @@ pub async fn terminal_screen(id: String) -> Result<Screen, String> {
     held().screen(&id)
 }
 
+/// The terminal's screen as it was `back` rows up: what has scrolled off the top is kept
+/// (a thousand rows). The answer says how far up it really is, which is less than was asked
+/// for when there is no more. A window asks this while a person scrolls back, and
+/// `terminal_screen` again when they are back at the end.
+pub async fn terminal_scrolled(id: String, back: u16) -> Result<Scrolled, String> {
+    held().scrolled(&id, back)
+}
+
 /// Type into the terminal. `keys` is what a terminal sends for them: the letters themselves,
 /// `\r` for Enter, `\u{7f}` for Backspace, `\u{3}` for Ctrl-C, `\u{1b}[A` for the up arrow
 /// (`ui/features/terminals.rs` has the whole table).

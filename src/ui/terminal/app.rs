@@ -14,7 +14,7 @@
 //!
 //! The keys are herdr's (`ui/features/terminals.rs`). A pane on a terminal box sends every
 //! other key to its program; a pane on an engine or a session has one line to speak into.
-use super::draw::{self, Body, Foot, PaneView, Picture};
+use super::draw;
 pub use super::events::{Got, Key, Mouse, Want};
 use super::panes::{Dir, Pane, Tabs};
 use crate::core::boxes::SessionBox;
@@ -25,7 +25,7 @@ use ratatui::layout::Rect;
 use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-enum Mode {
+pub(super) enum Mode {
     Pane,
     Prefix,
     Side,
@@ -33,39 +33,42 @@ enum Mode {
 
 /// What a pane on an engine or a session holds.
 #[derive(Clone, Debug, Default, PartialEq)]
-struct Talking {
-    lines: Vec<String>,
-    input: String,
+pub(super) struct Talking {
+    pub(super) lines: Vec<String>,
+    pub(super) input: String,
     /// Rows scrolled up from the end.
-    back: usize,
+    pub(super) back: usize,
 }
 
+/// How many terminals that were already running get a tab of their own when a window opens.
+const TABS_BACK: usize = 8;
+
 pub struct App {
-    host: String,
-    area: Rect,
-    boxes: Vec<SessionBox>,
+    pub(super) host: String,
+    pub(super) area: Rect,
+    pub(super) boxes: Vec<SessionBox>,
     /// Every box this window was ever told of: one that is no longer listed is gone, one
     /// that was never listed is only new.
-    known: BTreeSet<String>,
-    seen: Seen,
-    side_open: bool,
-    side_at: usize,
+    pub(super) known: BTreeSet<String>,
+    pub(super) seen: Seen,
+    pub(super) side_open: bool,
+    pub(super) side_at: usize,
     pub tabs: Tabs,
-    mode: Mode,
-    help: bool,
-    note: String,
-    note_bad: bool,
-    screens: BTreeMap<String, Screen>,
-    talks: BTreeMap<String, Talking>,
+    pub(super) mode: Mode,
+    pub(super) help: bool,
+    pub(super) note: String,
+    pub(super) note_bad: bool,
+    pub(super) screens: BTreeMap<String, Screen>,
+    /// How many rows up each terminal is looked at; one that is not in here is at its end.
+    pub(super) backs: BTreeMap<String, u16>,
+    pub(super) talks: BTreeMap<String, Talking>,
     /// The size this window last asked each terminal to be.
     sized: BTreeMap<String, (u16, u16)>,
     /// The size asked for a shell that has not answered yet, by its pane.
-    opening: BTreeMap<Pane, (u16, u16)>,
+    pub(super) opening: BTreeMap<Pane, (u16, u16)>,
     /// Where a border was last held, while it is dragged.
     dragging: Option<(u16, u16)>,
 }
-
-const EMPTY: [&str; 4] = ["This pane shows nothing yet.", "", "ctrl+b w   choose a box in the sidebar (or click one)", "ctrl+b c   a new tab with a shell"];
 
 impl App {
     /// A window of `cols` × `rows` whose first pane shows `first` (a box's id; empty = nothing).
@@ -84,6 +87,7 @@ impl App {
             note: String::new(),
             note_bad: false,
             screens: BTreeMap::new(),
+            backs: BTreeMap::new(),
             talks: BTreeMap::new(),
             sized: BTreeMap::new(),
             opening: BTreeMap::new(),
@@ -98,12 +102,12 @@ impl App {
         wants
     }
 
-    fn main(&self) -> Rect {
+    pub(super) fn main(&self) -> Rect {
         draw::parts(self.area, self.side_open).main
     }
 
     /// The box the pane in focus shows.
-    fn shown(&self) -> &str {
+    pub(super) fn shown(&self) -> &str {
         self.tabs.shown_in(self.tabs.focus())
     }
 
@@ -111,12 +115,42 @@ impl App {
         (self.note, self.note_bad) = (note.into(), bad);
     }
 
+    /// A terminal's screen where this window looks at it: at its end, or further up.
+    fn screen(&self, id: String) -> Want {
+        match self.backs.get(&id) {
+            Some(back) => Want::Scrolled { back: *back, id },
+            None => Want::Screen(id),
+        }
+    }
+
     /// What must be asked so that `box_id` can be drawn.
-    fn content(box_id: &str) -> Option<Want> {
+    fn content(&self, box_id: &str) -> Option<Want> {
         match inside(box_id) {
-            Inside::Terminal(id) => Some(Want::Screen(id)),
+            Inside::Terminal(id) => Some(self.screen(id)),
             Inside::Engine(_) | Inside::Session(_) => Some(Want::Talk(box_id.to_string())),
             Inside::Other => None,
+        }
+    }
+
+    /// Look `by` rows further up (or down) in what `box_id` shows.
+    fn scroll(&mut self, box_id: &str, up: bool, by: u16) -> Vec<Want> {
+        match inside(box_id) {
+            Inside::Terminal(id) => {
+                let now = self.backs.get(&id).copied().unwrap_or(0);
+                let back = if up { now.saturating_add(by) } else { now.saturating_sub(by) };
+                if back == 0 {
+                    self.backs.remove(&id);
+                } else {
+                    self.backs.insert(id.clone(), back);
+                }
+                vec![self.screen(id)]
+            }
+            _ => {
+                if let Some(t) = self.talks.get_mut(box_id) {
+                    t.back = if up { t.back + usize::from(by) } else { t.back.saturating_sub(usize::from(by)) };
+                }
+                vec![]
+            }
         }
     }
 
@@ -125,7 +159,7 @@ impl App {
     fn look(&mut self) -> Vec<Want> {
         let shown = self.shown().to_string();
         self.seen.looked(&shown);
-        self.tabs.shown(self.main()).iter().filter_map(|(_, _, b)| Self::content(b)).collect()
+        self.tabs.shown(self.main()).iter().filter_map(|(_, _, b)| self.content(b)).collect()
     }
 
     /// Show `box_id` in the pane in focus.
@@ -190,6 +224,10 @@ impl App {
             }
             Action::Focus(way) => self.tabs.tab_mut().go(way, main),
             Action::Zoom => self.tabs.tab_mut().zoomed ^= true,
+            Action::Scroll(up) => {
+                let (shown, page) = (self.shown().to_string(), (main.height / 2).max(1));
+                return self.scroll(&shown, up, page);
+            }
             Action::ClosePane => {
                 if !self.tabs.close() {
                     self.say(format!("the last pane stays, and shows nothing now: {PREFIX} q leaves"), false);
@@ -224,10 +262,16 @@ impl App {
                     self.say(format!("its program has ended: {PREFIX} X forgets it, {PREFIX} w chooses another box"), false);
                     return vec![];
                 }
-                typed(&k.name, k.ctrl, k.alt, k.shift).map(|keys| Want::Type { id, keys }).into_iter().collect()
+                // Typing is at the end: a pane that was looked back in returns there.
+                let Some(keys) = typed(&k.name, k.ctrl, k.alt, k.shift) else { return vec![] };
+                let back = self.backs.remove(&id).map(|_| Want::Screen(id.clone()));
+                [Want::Type { id, keys }].into_iter().chain(back).collect()
             }
             Inside::Engine(_) | Inside::Session(_) => {
-                let page = usize::from(self.main().height / 2).max(1);
+                let page = (self.main().height / 2).max(1);
+                if k.name == "PageUp" || k.name == "PageDown" {
+                    return self.scroll(&box_id, k.name == "PageUp", page);
+                }
                 let t = self.talks.entry(box_id.clone()).or_default();
                 match k.name.as_str() {
                     "Enter" if !t.input.trim().is_empty() => {
@@ -240,8 +284,6 @@ impl App {
                         t.input.pop();
                     }
                     "u" if k.ctrl => t.input.clear(),
-                    "PageUp" => t.back += page,
-                    "PageDown" => t.back = t.back.saturating_sub(page),
                     name if !k.ctrl && !k.alt && name.chars().count() == 1 => t.input.push_str(name),
                     _ => {}
                 }
@@ -337,9 +379,7 @@ impl App {
             Mouse::Up => self.dragging = None,
             Mouse::Wheel(up, x, y) => {
                 let over = self.tabs.tab().at(at.main, x, y).map(|p| self.tabs.shown_in(p).to_string()).unwrap_or_default();
-                if let Some(t) = self.talks.get_mut(&over) {
-                    t.back = if up { t.back + 3 } else { t.back.saturating_sub(3) };
-                }
+                return self.scroll(&over, up, 3);
             }
             _ => {}
         }
@@ -355,7 +395,7 @@ impl App {
         let other = keys.iter().any(|k| !k.starts_with("terminals/"));
         for (_, _, box_id) in self.tabs.shown(self.main()) {
             match inside(box_id) {
-                Inside::Terminal(id) if keys.iter().any(|k| *k == crate::core::terminals::key(&id)) => wants.push(Want::Screen(id)),
+                Inside::Terminal(id) if keys.iter().any(|k| *k == crate::core::terminals::key(&id)) => wants.push(self.screen(id)),
                 Inside::Engine(_) | Inside::Session(_) if other => wants.push(Want::Talk(box_id.to_string())),
                 _ => {}
             }
@@ -383,6 +423,16 @@ impl App {
                 vec![]
             }
             Got::Boxes(list) => {
+                // A window that opens on a service finds what already runs there: each
+                // terminal gets a tab of its own again, as it had before the last one left.
+                if self.known.is_empty() {
+                    let shown = self.shown().to_string();
+                    for b in list.iter().filter(|b| matches!(inside(&b.id), Inside::Terminal(_)) && b.id != shown).take(TABS_BACK) {
+                        let pane = self.tabs.new_tab();
+                        self.tabs.show(pane, &b.id);
+                    }
+                    self.tabs.go_to(1);
+                }
                 self.seen.take(&list);
                 let shown = self.shown().to_string();
                 self.seen.looked(&shown);
@@ -392,6 +442,19 @@ impl App {
                 vec![]
             }
             Got::Screen(id, screen) => {
+                // A screen of the end that arrives while the pane is looked back in is late.
+                if !self.backs.contains_key(&id) {
+                    self.screens.insert(id, screen);
+                }
+                vec![]
+            }
+            Got::Scrolled(id, screen, back) => {
+                // No further up than there is: at 0 the pane is at its end again.
+                if back == 0 {
+                    self.backs.remove(&id);
+                } else if self.backs.contains_key(&id) {
+                    self.backs.insert(id.clone(), back);
+                }
                 self.screens.insert(id, screen);
                 vec![]
             }
@@ -433,68 +496,6 @@ impl App {
         wants.extend(self.fit());
         wants.dedup();
         wants
-    }
-
-    fn tab_names(&self) -> Vec<String> {
-        self.tabs.tabs.iter().map(|t| self.name_of(self.tabs.shown_in(t.focus))).collect()
-    }
-
-    fn name_of(&self, box_id: &str) -> String {
-        match self.boxes.iter().find(|b| b.id == box_id) {
-            Some(b) => b.title.clone(),
-            None if box_id.is_empty() => "empty".into(),
-            None => box_id.to_string(),
-        }
-    }
-
-    /// The screen as it stands, for `draw`.
-    pub fn picture(&self) -> Picture<'_> {
-        let focus = self.tabs.focus();
-        let zoomed = self.tabs.tab().zoomed;
-        let words = |lines: &[&str]| Body::Words(lines.iter().map(|l| l.to_string()).collect());
-        let panes = self
-            .tabs
-            .shown(self.main())
-            .into_iter()
-            .map(|(pane, at, box_id)| {
-                let b = self.boxes.iter().find(|b| b.id == box_id);
-                let gone = b.is_none() && self.known.contains(box_id);
-                let body = match inside(box_id) {
-                    _ if gone => words(&["This box is gone: its terminal was closed, or the service was restarted.", "", "ctrl+b w   choose another box", "ctrl+b x   close this pane"]),
-                    Inside::Terminal(id) => self.screens.get(&id).map(Body::Screen).unwrap_or_else(|| words(&["…"])),
-                    Inside::Engine(_) | Inside::Session(_) => match self.talks.get(box_id) {
-                        Some(t) => Body::Talk { lines: &t.lines, input: &t.input, back: t.back },
-                        None => words(&["…"]),
-                    },
-                    Inside::Other if self.opening.contains_key(&pane) => words(&["starting a shell…"]),
-                    Inside::Other => words(&EMPTY),
-                };
-                let head = match b {
-                    Some(b) => format!("{} · {}", b.title, b.kind),
-                    None => self.name_of(box_id),
-                };
-                PaneView { at, focused: pane == focus && self.mode != Mode::Side, head, mark: b.map(|b| self.seen.mark(b)), zoomed, body }
-            })
-            .collect();
-        Picture {
-            host: &self.host,
-            boxes: &self.boxes,
-            seen: &self.seen,
-            side_open: self.side_open,
-            side_at: self.side_at,
-            shown: self.shown(),
-            tabs: self.tab_names(),
-            tab: self.tabs.at,
-            panes,
-            foot: match self.mode {
-                Mode::Pane => Foot::Pane,
-                Mode::Prefix => Foot::Prefix,
-                Mode::Side => Foot::Side,
-            },
-            note: &self.note,
-            note_bad: self.note_bad,
-            help: self.help,
-        }
     }
 }
 
@@ -544,6 +545,9 @@ mod tests {
     fn open() -> App {
         let mut app = App::new("127.0.0.1:8090", ENGINE, 120, 30);
         assert_eq!(app.start(), [Want::Boxes, Want::Talk(ENGINE.into())], "it asks for the boxes and for what its pane shows");
+        // The terminal is started a moment after the window opened (one that ran before it
+        // opened would get a tab of its own: see the test for that).
+        app.on(Got::Boxes(boxes().into_iter().filter(|b| b.id != "terminal:7").collect()));
         app.on(Got::Boxes(boxes()));
         app.on(Got::Talk(ENGINE.into(), vec!["user: What is 17 * 23?".into(), "model: 17 * 23 is 391.".into()]));
         app
@@ -699,6 +703,55 @@ mod tests {
         assert!(rows.iter().any(|r| r.contains("its program ended well (0) · ctrl+b X forgets it")), "{rows:?}");
         assert_eq!(cursor, None);
         assert_eq!(keys(&mut app, &["x"]), [], "and nothing is typed into it");
+    }
+
+    #[test]
+    fn a_window_that_opens_on_a_service_finds_its_terminals_in_tabs_again() {
+        let mut app = App::new("h", ENGINE, 120, 30);
+        app.start();
+        let mut list = boxes();
+        list.push(a("terminal:9", "vim", "vim", State::Working));
+        assert_eq!(app.on(Got::Boxes(list.clone())), [], "the tab in view is still the first");
+        let (rows, _) = drawn(&app);
+        assert!(rows[0].contains("│ 1 developer  2 sh  3 vim"), "each terminal that already ran has a tab: {}", rows[0]);
+        assert_eq!(keys(&mut app, &["ctrl+b", "n"]), [Want::Screen("7".into())], "and going there asks for its screen");
+        // Only when the window opens: a terminal that appears later is a row of the sidebar.
+        list.push(a("terminal:10", "top", "top", State::Working));
+        app.on(Got::Boxes(list));
+        assert_eq!(app.tabs.tabs.len(), 3);
+    }
+
+    #[test]
+    fn a_terminals_pane_is_looked_back_in_by_the_wheel_and_typing_returns_to_its_end() {
+        let mut app = App::new("h", "terminal:7", 120, 30);
+        app.on(Got::Boxes(boxes()));
+        app.on(Got::Screen("7".into(), screen(&["row 40", "$ "], 86, 26)));
+        assert_eq!(app.on(Got::Mouse(Mouse::Wheel(true, 60, 10))), [Want::Scrolled { id: "7".into(), back: 3 }]);
+        assert_eq!(app.on(Got::Mouse(Mouse::Wheel(true, 60, 10))), [Want::Scrolled { id: "7".into(), back: 6 }]);
+        // There were only four rows above: the service says so, and the pane is four up.
+        app.on(Got::Scrolled("7".into(), screen(&["row 36"], 86, 26), 4));
+        let (rows, cursor) = drawn(&app);
+        assert!(rows[2].contains("│row 36") && rows[27].contains("↑ 4 rows up"), "{rows:?}");
+        assert_eq!(cursor, None);
+        // What the program writes meanwhile is asked for where the pane looks, and a screen
+        // of the end that arrives late does not pull it down.
+        assert_eq!(app.on(Got::Changed(vec!["terminals/7".into()])), [Want::Boxes, Want::Scrolled { id: "7".into(), back: 4 }]);
+        app.on(Got::Screen("7".into(), screen(&["row 41", "$ "], 86, 26)));
+        assert!(drawn(&app).0[2].contains("│row 36"));
+        assert_eq!(app.on(Got::Mouse(Mouse::Wheel(false, 60, 10))), [Want::Scrolled { id: "7".into(), back: 1 }]);
+        assert_eq!(app.on(Got::Mouse(Mouse::Wheel(false, 60, 10))), [Want::Screen("7".into())], "wheeled down to the end, it is live again");
+        // ctrl+b PageUp looks back half a pane; a key typed goes to the program and returns.
+        assert_eq!(keys(&mut app, &["ctrl+b", "PageUp"]), [Want::Scrolled { id: "7".into(), back: 14 }]);
+        assert_eq!(keys(&mut app, &["l"]), [Want::Type { id: "7".into(), keys: "l".into() }, Want::Screen("7".into())]);
+        assert_eq!(app.on(Got::Changed(vec!["terminals/7".into()])), [Want::Boxes, Want::Screen("7".into())]);
+        // An engine's pane scrolls its own lines, and asks nothing for it.
+        let mut talk = open();
+        talk.on(Got::Talk(ENGINE.into(), (1..=60).map(|n| format!("line {n}")).collect()));
+        assert!(drawn(&talk).0[25].contains("│line 60"));
+        assert_eq!(keys(&mut talk, &["PageUp"]), []);
+        assert!(drawn(&talk).0[25].contains("│line 46") && drawn(&talk).0[26].contains("14 rows below"), "{:?}", &drawn(&talk).0[24..28]);
+        assert_eq!(talk.on(Got::Mouse(Mouse::Wheel(false, 60, 10))), []);
+        assert!(drawn(&talk).0[25].contains("│line 49"));
     }
 
     #[test]

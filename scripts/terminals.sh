@@ -210,12 +210,18 @@ if command -v python3 >/dev/null; then
     has "$drove" "saw: a pane shows the engine" "and a pane with the engine to talk to" || ok=0
     has "$drove" "saw: a terminal box shows its live screen" "a terminal box chosen in the sidebar shows its live screen in the pane" || ok=0
     has "$drove" "saw: a shell in a new tab ran what was typed" "ctrl+b c opens a shell in a new tab, and typing reaches it" || ok=0
+    has "$drove" "saw: the wheel looked back up the shell's pane, and typing returned to its end" "the wheel looks back at what scrolled off a terminal's pane" || ok=0
     has "$drove" "saw: a split pane beside it, and a click moved the focus" "ctrl+b v splits the pane, and a click on a pane takes the focus there" || ok=0
     has "$drove" "saw: a click on a box in the sidebar showed it in the pane" "a click on a row of the sidebar shows that box" || ok=0
     has "$drove" "saw: detached with 0" "ctrl+b q detaches" || ok=0
     SHELL_PID=$(number "$drove" shell)
     kill -0 "${SHELL_PID:-0}" 2>/dev/null || { fail "after the terminal UI detached, the shell it opened still runs (process ${SHELL_PID:-unknown})"; ok=0; }
     has "$(ask boxes '{}')" '{"label":"command","value":"your shell (sh)"}' "and it is still one of the service's boxes" || ok=0
+    # A second window, later: it finds what ran on, each terminal in a tab of its own.
+    again=$(cd "$H" && ASKK_HOME="$H" PORT=$PORT IP=127.0.0.1 SHELL=/bin/sh python3 "$ROOT/scripts/terminals/tui.py" "$BIN" again 2>&1)
+    has "$again" "saw: attached again, every terminal has its tab" "\`askk terminal\`, started again, shows every terminal that ran on in a tab" || ok=0
+    drove="$drove
+$again"
     if [ -n "${SHOW:-}" ]; then printf '%s\n' "$drove"; elif [ $ok != 1 ]; then printf '%s\n' "$drove" | tail -45; fi
     done_step $ok
 else
