@@ -17,6 +17,7 @@
 //!
 //! The host also names who runs background work ([`crate::core::tasks`]): the server's runtime.
 pub mod changes;
+pub mod code;
 pub mod data;
 pub mod harness;
 pub mod infer;
@@ -47,6 +48,10 @@ pub fn start(args: Vec<String>) {
     provided("tables", "the user's personal folder");
     provided("models", "model servers and command-line models");
     provided("sessions", "other agents' programs (harnesses)");
+    if code::found() {
+        crate::core::code::set(std::sync::Arc::new(code::Node));
+        provided("code", "node on this machine, in an empty context (JavaScript)");
+    }
     world::boot_now();
 }
 

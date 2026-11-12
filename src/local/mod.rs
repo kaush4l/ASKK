@@ -60,7 +60,8 @@ fn start() -> World {
     provided("models", "any model server the tab can reach (typed in on the page)");
     provided("code", "programs run in the browser's sandbox (JavaScript, Python)");
     let infer: Arc<dyn crate::core::Infer> = Arc::new(infer::Tab);
-    let shared = code::tools();
+    crate::core::code::set(Arc::new(code::Sandbox));
+    let shared: Vec<Arc<dyn crate::core::Tool>> = vec![Arc::new(crate::core::code::RunCode)];
     let mut engines = vec![];
     for t in snap.engines {
         match boot::init(t, data.clone(), &shared, infer.clone()) {

@@ -119,6 +119,24 @@ program (`build.rs`), and that program is public on GitHub Pages. So `defaults/`
 what may be public. One person's own engines, accounts and rules stay on the machine: they
 are named in `.gitignore`, so they are in neither the repository nor any published build.
 
+### 3c. The basic loop, on every build
+
+The smallest whole thing the app does is the same on the server and in a tab: a question
+goes to an engine, the model writes a program, the tool `run_code` runs it, the result goes
+back to the model, and the answer, each stage of the run and the conversation are kept.
+
+| part | where | server | tab |
+| --- | --- | --- | --- |
+| the engine | `defaults/engines/askk/coder` | same files | same files (packed in) |
+| the tool | `core/code.rs` (`run_code`) | `host/code.rs`: `node`, empty context | `local/code.rs`: sandboxed frame and worker |
+| the model | `core::Infer` | `models.json` connectors | `fetch`: an OpenAI-style server, or an askk server's `/ask/infer` |
+| what is kept | history element, `core/run.rs` | data folder | IndexedDB |
+| how it is read | `engine_chat`, `engine_runs`, `engine_run` | windows, `/ask` | the tab's page |
+
+A tab asking an askk server is a page from another address asking this machine. The server
+answers such a page only if its origin is named in `ASKK_ORIGINS` (none by default). A page
+named there can ask everything a window can, so name only pages you trust.
+
 ## 4. Any UI: what a new front end has to do
 
 The core already describes every screen as data: a page is a tree of *nodes*

@@ -16,6 +16,7 @@
 //! | `files` | `core/files.rs` | no project files can be read or written |
 //! | `senses` | `core/media.rs` | attached images, sound and video are not understood |
 //! | `tables` | `core/tables.rs` | a figure cannot take numbers from the user's files |
+//! | `code` | `core/code.rs` | an engine cannot run a program it wrote |
 use super::held::Held;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -39,6 +40,7 @@ const KNOWN: &[(&str, &str)] = &[
     ("files", "no project files can be read or written"),
     ("senses", "attached images, sound and video are not understood"),
     ("tables", "a figure cannot take numbers from the user's own files"),
+    ("code", "an engine cannot run a program it wrote"),
 ];
 
 /// What has been provided: name → by whom. Names outside [`KNOWN`] are a host's extras.

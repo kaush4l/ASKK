@@ -141,21 +141,45 @@ pub async fn ask(name: &str, args: Value) -> Result<Value, String> {
 }
 
 /// The plain HTTP form, added to the server's own routes.
+/// The headers that let a page from `origin` read the answer, when that origin is one the
+/// owner named (`ASKK_ORIGINS`); for any other page none, and its browser refuses the answer.
+fn allow(headers: &dioxus::server::axum::http::HeaderMap) -> dioxus::server::axum::http::HeaderMap {
+    use dioxus::server::axum::http::{HeaderMap, HeaderValue};
+    let mut out = HeaderMap::new();
+    let Some(origin) = headers.get("origin").and_then(|o| o.to_str().ok()) else { return out };
+    if !crate::core::places::origins().iter().any(|o| o == origin) {
+        return out;
+    }
+    if let Ok(v) = HeaderValue::from_str(origin) {
+        out.insert("access-control-allow-origin", v);
+        out.insert("vary", HeaderValue::from_static("Origin"));
+        out.insert("access-control-allow-methods", HeaderValue::from_static("GET, POST"));
+        out.insert("access-control-allow-headers", HeaderValue::from_static("content-type"));
+        // A page on the internet asking a server on this machine: the browser asks this too.
+        out.insert("access-control-allow-private-network", HeaderValue::from_static("true"));
+    }
+    out
+}
+
 pub fn routes(router: dioxus::server::axum::Router) -> dioxus::server::axum::Router {
-    use dioxus::server::axum::{extract::Path, http::StatusCode, routing, Json};
-    async fn list() -> Json<Value> {
-        Json(table().iter().map(|q| serde_json::json!({"name": q.name, "args": q.args})).collect())
+    use dioxus::server::axum::{extract::Path, http::HeaderMap, http::StatusCode, routing, Json};
+    async fn list(headers: HeaderMap) -> (HeaderMap, Json<Value>) {
+        (allow(&headers), Json(table().iter().map(|q| serde_json::json!({"name": q.name, "args": q.args})).collect()))
     }
     // The body must be sent as JSON (`content-type: application/json`): a page from another
-    // site cannot send that to this address without the browser asking first, and is refused.
-    async fn call(Path(name): Path<String>, Json(args): Json<Value>) -> (StatusCode, Json<Value>) {
+    // site cannot send that to this address without the browser asking first (`may`), and
+    // the browser is told yes only for the origins the owner named.
+    async fn call(Path(name): Path<String>, headers: HeaderMap, Json(args): Json<Value>) -> (StatusCode, HeaderMap, Json<Value>) {
         let known = table().iter().any(|q| q.name == name);
         match ask(&name, args).await {
-            Ok(v) => (StatusCode::OK, Json(serde_json::json!({"ok": v}))),
-            Err(e) => (if known { StatusCode::BAD_REQUEST } else { StatusCode::NOT_FOUND }, Json(serde_json::json!({"error": e}))),
+            Ok(v) => (StatusCode::OK, allow(&headers), Json(serde_json::json!({"ok": v}))),
+            Err(e) => (if known { StatusCode::BAD_REQUEST } else { StatusCode::NOT_FOUND }, allow(&headers), Json(serde_json::json!({"error": e}))),
         }
     }
-    router.route("/ask", routing::get(list)).route("/ask/{name}", routing::post(call))
+    async fn may(headers: HeaderMap) -> (StatusCode, HeaderMap) {
+        (StatusCode::NO_CONTENT, allow(&headers))
+    }
+    router.route("/ask", routing::get(list).options(may)).route("/ask/{name}", routing::post(call).options(may))
 }
 
 #[cfg(test)]

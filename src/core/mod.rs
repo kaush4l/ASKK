@@ -21,6 +21,7 @@ use std::{future::Future, pin::Pin, sync::Arc};
 
 pub mod board;
 pub mod caps;
+pub mod code;
 pub mod changes;
 pub mod companion;
 pub mod figure;

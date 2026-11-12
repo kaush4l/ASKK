@@ -24,6 +24,7 @@ pub fn shared() -> Vec<Arc<dyn Tool>> {
         crate::core::routes::CreateView(data.clone(), m.routes.clone()).into_tool(),
         crate::core::routes::ListViews(data.clone(), m.routes.clone()).into_tool(),
         crate::host::market::Quote.into_tool(),
+        crate::core::code::RunCode.into_tool(),
     ]
     .into_iter()
     .chain(crate::host::workspace::all(crate::host::workspace::workspace(), data, m.engines.clone(), Arc::new(|engine, input| {

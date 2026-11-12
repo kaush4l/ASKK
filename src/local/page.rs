@@ -12,6 +12,29 @@ struct Outcome {
     ms: u64,
     /// Store keys written during the run.
     wrote: Vec<String>,
+    /// What the loop did, a line per stage of each step (`step 1 · Act: run_code → …`).
+    steps: Vec<String>,
+    /// The engine's conversation after the run: `(who, text)`, oldest first.
+    history: Vec<(String, String)>,
+}
+
+/// The loop's own record of its last run, and the conversation it kept, read through `api/`.
+async fn record(path: String) -> (Vec<String>, Vec<(String, String)>) {
+    let mut steps = vec![];
+    let last = crate::api::engine_runs(path.clone()).await.unwrap_or_default().last().map(|r| r.id);
+    if let Some(Ok(run)) = match last {
+        Some(id) => Some(crate::api::engine_run(path.clone(), id).await),
+        None => None,
+    } {
+        for step in &run.steps {
+            for m in &step.marks {
+                let said: Vec<String> = m.detail.iter().filter(|(label, _)| label != "prompt").map(|(label, text)| format!("    {label}: {text}")).collect();
+                steps.push(format!("step {} · {:?} ({} ms): {}{}", step.n, m.stage, m.ms, m.note, if said.is_empty() { String::new() } else { format!("\n{}", said.join("\n")) }));
+            }
+        }
+    }
+    let history = crate::api::engine_chat(path).await.unwrap_or_default().into_iter().map(|t| (t.role, t.text)).collect();
+    (steps, history)
 }
 
 #[component]
@@ -21,8 +44,10 @@ pub fn Page() -> Element {
     let caps = use_resource(|| async { crate::api::capabilities().await.unwrap_or_default() });
     let glance = use_resource(|| async { crate::api::glance().await.unwrap_or_default() });
     let world = crate::core::world::world();
-    let mut pick = use_signal(|| 0usize);
-    let mut input = use_signal(|| "Say hello in one short line.".to_string());
+    let mut pick = use_signal(|| None::<usize>);
+    // The engine that answers by writing and running a program is the one to try first.
+    let chosen = pick().unwrap_or_else(|| engines.iter().position(|e| e == "askk/coder").unwrap_or(0));
+    let mut input = use_signal(|| "What is the sum of the squares of the first 20 prime numbers?".to_string());
     let mut base = use_signal(String::new);
     let mut model = use_signal(String::new);
     let mut token = use_signal(String::new);
@@ -41,7 +66,7 @@ pub fn Page() -> Element {
         let args = serde_json::json!({"language": language(), "code": code()});
         spawn(async move {
             let t = web_time::Instant::now();
-            let text = match Toolbox::new(super::code::tools()).call("run_code", args).await {
+            let text = match Toolbox::new(vec![crate::core::IntoTool::into_tool(crate::core::code::RunCode)]).call("run_code", args).await {
                 Ok(v) => format!("{v:#}"),
                 Err(e) => format!("error: {e}"),
             };
@@ -53,20 +78,22 @@ pub fn Page() -> Element {
     let run = {
         let engines = engines.clone();
         move |_| {
-            let Some(path) = engines.get(pick()).cloned() else { return };
+            let Some(path) = engines.get(chosen).cloned() else { return };
             infer::set(Target { base: base(), model: model(), token: token() });
             busy.set(true);
             let text = input();
             spawn(async move {
                 let seen = changes::now();
                 let t = web_time::Instant::now();
-                let answer = match crate::api::run_engine(path, text).await {
+                let answer = match crate::api::run_engine(path.clone(), text).await {
                     Ok(a) => a,
                     Err(err) => format!("error: {err}"),
                 };
                 let mut wrote: Vec<String> = changes::since(seen).1.into_iter().map(|(k, _)| k).collect();
                 wrote.sort();
-                out.set(Some(Outcome { answer, ms: t.elapsed().as_millis() as u64, wrote }));
+                let ms = t.elapsed().as_millis() as u64;
+                let (steps, history) = record(path).await;
+                out.set(Some(Outcome { answer, ms, wrote, steps, history }));
                 keys.set(store::export(&*store::data(), "").len());
                 disk.set(super::store::status());
                 busy.set(false);
@@ -105,14 +132,14 @@ pub fn Page() -> Element {
                 pre { id: "boot-error", style: "color: #b00; white-space: pre-wrap;", "{world.error}" }
             }
             label { "engine " }
-            select { id: "engine", onchange: move |e| pick.set(e.value().parse().unwrap_or(0)),
+            select { id: "engine", onchange: move |e| pick.set(e.value().parse().ok()),
                 for (i, e) in engines.iter().enumerate() {
-                    option { value: "{i}", "{e}" }
+                    option { value: "{i}", selected: i == chosen, "{e}" }
                 }
             }
-            p { style: "margin-bottom: 4px;", "model server (empty = built-in echo; the token stays in memory)" }
+            p { style: "margin-bottom: 4px;", "model server: an askk server (http://127.0.0.1:8090/ask) or an OpenAI-style one (https://…/v1). Empty = built-in echo; a token stays in memory" }
             div { style: "display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 8px;",
-                input { id: "base", placeholder: "https://…/v1", value: base, oninput: move |e| base.set(e.value()) }
+                input { id: "base", placeholder: "http://127.0.0.1:8090/ask", value: base, oninput: move |e| base.set(e.value()) }
                 input { id: "model", placeholder: "model", value: model, oninput: move |e| model.set(e.value()) }
                 input { id: "token", r#type: "password", placeholder: "token", value: token, oninput: move |e| token.set(e.value()) }
             }
@@ -121,6 +148,14 @@ pub fn Page() -> Element {
             if let Some(o) = out() {
                 h2 { style: "font-size: 15px;", "answer ({o.ms} ms)" }
                 pre { id: "answer", style: "white-space: pre-wrap; background: #f4f4f4; padding: 12px;", "{o.answer}" }
+                h2 { style: "font-size: 15px;", "what the loop did ({o.steps.len()} stages)" }
+                pre { id: "steps", style: "white-space: pre-wrap; background: #f4f4f4; padding: 12px;", {o.steps.join("\n")} }
+                h2 { style: "font-size: 15px;", "history ({o.history.len()} turns)" }
+                div { id: "history",
+                    for (who, text) in o.history.iter() {
+                        p { style: "margin: 4px 0; white-space: pre-wrap;", b { "{who}: " } "{text}" }
+                    }
+                }
                 h2 { style: "font-size: 15px;", "store keys written by this run ({o.wrote.len()})" }
                 pre { id: "wrote", style: "white-space: pre-wrap;", {o.wrote.join("\n")} }
             }

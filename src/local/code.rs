@@ -11,9 +11,9 @@
 //! | `js` | the browser's own engine | at once |
 //! | `python` | Pyodide (CPython as wasm), from its CDN | a download of several MB, then kept |
 use super::on_tab;
-use crate::core::{Fut, Tool, Toolbox};
-use serde_json::{json, Value};
-use std::sync::Arc;
+use crate::core::code::Code;
+use crate::core::Fut;
+use serde_json::Value;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen(module = "/src/local/code.js")]
@@ -22,45 +22,19 @@ extern "C" {
     async fn run_code(language: String, code: String, timeout: u32) -> Result<JsValue, JsValue>;
 }
 
-/// A run's limit when the caller sets none, and the most it may ask for.
-const TIMEOUT_MS: u64 = 10_000;
-const MAX_TIMEOUT_MS: u64 = 120_000;
-
 async fn run(language: String, code: String, timeout: u32) -> Result<Value, String> {
     let reply = run_code(language, code, timeout).await.map_err(|e| format!("sandbox: {e:?}"))?;
-    let v: Value = reply.as_string().and_then(|s| serde_json::from_str(&s).ok()).ok_or("sandbox: unreadable reply")?;
-    let stdout = v["stdout"].as_str().unwrap_or_default();
-    if v["ok"].as_bool() == Some(true) {
-        return Ok(json!({"result": v["result"], "stdout": stdout}));
-    }
-    let error = v["error"].as_str().unwrap_or("failed");
-    Err(if stdout.is_empty() { error.to_string() } else { format!("{error}\nstdout:\n{stdout}") })
+    reply.as_string().and_then(|s| serde_json::from_str(&s).ok()).ok_or_else(|| "sandbox: unreadable reply".to_string())
 }
 
-pub struct RunCode;
+/// The tab's place to run a program ([`crate::core::code`]).
+pub struct Sandbox;
 
-impl Tool for RunCode {
-    fn name(&self) -> String {
-        "run_code".into()
+impl Code for Sandbox {
+    fn languages(&self) -> Vec<String> {
+        vec!["js".into(), "python".into()]
     }
-    fn description(&self) -> String {
-        "run a program in the browser's sandbox (no files, no network); gives the value of its last expression and what it printed".into()
+    fn run(&self, language: String, code: String, timeout_ms: u64) -> Fut<Result<Value, String>> {
+        on_tab(run(language, code, timeout_ms as u32))
     }
-    fn args(&self) -> Value {
-        json!({"language": "js | python", "code": "text", "timeout_ms": "number, optional"})
-    }
-    fn invoke(&self, args: Value, _: Toolbox) -> Fut<Result<Value, String>> {
-        let language = args["language"].as_str().unwrap_or("js").to_string();
-        let code = args["code"].as_str().unwrap_or_default().to_string();
-        let timeout = args["timeout_ms"].as_u64().unwrap_or(TIMEOUT_MS).clamp(1, MAX_TIMEOUT_MS) as u32;
-        if code.trim().is_empty() {
-            return Box::pin(async { Err("no code".into()) });
-        }
-        on_tab(run(language, code, timeout))
-    }
-}
-
-/// The tools only a tab can offer.
-pub fn tools() -> Vec<Arc<dyn Tool>> {
-    vec![Arc::new(RunCode)]
 }

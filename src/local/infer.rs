@@ -13,7 +13,8 @@ use crate::core::{Fut, Sampling};
 use serde_json::{json, Value};
 use std::sync::Mutex;
 
-/// An OpenAI-style server (`base` ends before `/chat/completions`). Empty `base` = echo.
+/// Where the tab asks a model: an OpenAI-style server (`base` ends before
+/// `/chat/completions`), or an askk server (`base` ends in `/ask`). Empty `base` = echo.
 #[derive(Clone, Default, PartialEq)]
 pub struct Target {
     pub base: String,
@@ -27,7 +28,25 @@ pub fn set(t: Target) {
     *TARGET.held() = t;
 }
 
+/// Ask an askk server (`base` ends in `/ask`): it resolves the model by name with its own
+/// connectors and keys, so nothing secret is typed into the tab.
+async fn ask_service(t: Target, engine_model: String, prompt: String) -> Result<String, String> {
+    let body = json!({"model": if t.model.is_empty() { engine_model } else { t.model.clone() }, "prompt": prompt});
+    let res = reqwest::Client::new().post(format!("{}/infer", t.base.trim_end_matches('/'))).json(&body).send().await.map_err(|e| {
+        format!("the askk server at {} did not answer ({e}). It must be running, and must be told to let this page ask (see `origins` in core/places.rs)", t.base)
+    })?;
+    let v: Value = res.json().await.map_err(|e| format!("the askk server's reply could not be read: {e}"))?;
+    match (v["ok"].as_str(), v["error"].as_str()) {
+        (Some(text), _) => Ok(text.to_string()),
+        (_, Some(e)) => Err(e.to_string()),
+        _ => Err(format!("the askk server's reply has no text: {v}")),
+    }
+}
+
 async fn ask(t: Target, engine_model: String, prompt: String, s: Sampling) -> Result<String, String> {
+    if t.base.trim_end_matches('/').ends_with("/ask") {
+        return ask_service(t, engine_model, prompt).await;
+    }
     let mut body = json!({
         "model": if t.model.is_empty() { engine_model } else { t.model.clone() },
         "messages": [{"role": "user", "content": prompt}],

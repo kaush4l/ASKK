@@ -29,6 +29,7 @@ const PERSONAL: &str = "ASKK_PERSONAL";
 const MEDIA: &str = "ASKK_MEDIA";
 #[cfg_attr(not(feature = "desktop"), allow(dead_code))]
 const HOST: &str = "ASKK_HOST";
+const ORIGINS: &str = "ASKK_ORIGINS";
 
 fn var(name: &str) -> Option<String> {
     std::env::var(name).ok().filter(|v| !v.is_empty())
@@ -46,6 +47,13 @@ pub fn home() -> Option<PathBuf> {
 /// A place: its own variable, else its folder in the home, else `fallback`.
 fn place(own: &str, in_home: &str, fallback: impl FnOnce() -> PathBuf) -> PathBuf {
     var(own).map(PathBuf::from).or_else(|| home().map(|h| h.join(in_home))).unwrap_or_else(fallback)
+}
+
+/// The web pages, by origin (`https://kaush4l.github.io`), that may ask this server from a
+/// browser: `ASKK_ORIGINS`, separated by commas. None by default: a page on another site can
+/// then not ask at all. Name only pages you trust; one named here can do what you can.
+pub fn origins() -> Vec<String> {
+    var(ORIGINS).map(|v| v.split(',').map(|o| o.trim().trim_end_matches('/').to_string()).filter(|o| !o.is_empty()).collect()).unwrap_or_default()
 }
 
 /// The data folder (or a `.json` bundle path).
