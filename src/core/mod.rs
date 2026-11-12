@@ -38,11 +38,12 @@ pub mod param;
 pub mod places;
 pub mod reread;
 pub mod routes;
-// Drawn by the terminal boxes that come next (docs/concept.md, step 3).
+// A page comes to draw a screen too; until it does, two of its helpers are read by tests only.
 #[allow(dead_code)]
 pub mod screen;
 pub mod room;
 pub mod run;
+pub mod sandbox;
 pub mod service;
 pub mod session;
 pub mod settings;
@@ -51,6 +52,7 @@ pub mod store;
 pub mod surfaces;
 pub mod tables;
 pub mod tasks;
+pub mod terminals;
 pub mod world;
 pub mod engine;
 pub mod tool;

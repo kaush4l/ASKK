@@ -40,6 +40,13 @@ fn main() {
     #[cfg(feature = "server")]
     {
         let args: Vec<String> = std::env::args().collect();
+        // `askk confine <folder> -- <program>`: how the service starts a terminal's program
+        // on Linux. This process gives up its right to write outside the folder and becomes
+        // the program, so it only comes back here when that could not be done.
+        if args.get(1).map(String::as_str) == Some(host::sandbox::CONFINE) {
+            eprintln!("askk: {}", host::sandbox::confined(&args[2..]));
+            std::process::exit(126);
+        }
         // `askk start | stop | status | restart`: the service in the background. This process
         // only starts, asks or stops it, says how that went, and leaves.
         if let Some(verb) = shells::service::wanted(&args) {

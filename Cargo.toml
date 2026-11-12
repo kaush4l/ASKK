@@ -24,6 +24,20 @@ wasm-bindgen = { version = "0.2", optional = true }
 objc2 = { version = "0.6", optional = true }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"], optional = true }
 tokio = { version = "1", features = ["fs", "process", "io-util", "sync", "time", "rt", "rt-multi-thread"], optional = true }
+# The service holds real terminals (host/terminals.rs): the pseudo-terminal a program runs in
+# (ConPTY on Windows), and the screen its bytes make (core/screen.rs is what leaves the service).
+portable-pty = { version = "0.9", optional = true }
+vt100 = { version = "0.18", optional = true }
+# `askk terminal` on a real terminal draws a full screen (ui/terminal): panes, tabs, a sidebar.
+# The library that reads keys and the mouse (crossterm) comes with it, at the version it needs.
+ratatui = { version = "0.30", default-features = false, features = ["crossterm"], optional = true }
+# How many cells a letter takes (a wide one takes two), for wrapping a line in a pane.
+unicode-width = { version = "0.2", optional = true }
+
+# A terminal's program is confined by what the system has (host/sandbox.rs). On Linux that is
+# Landlock; macOS has its own program for it (sandbox-exec), which needs no library.
+[target.'cfg(target_os = "linux")'.dependencies]
+landlock = { version = "0.4", optional = true }
 
 [features]
 default = ["web"]
@@ -40,7 +54,7 @@ desktop = ["dioxus/desktop", "dep:objc2", "dioxus/fullstack"]
 # The feature that are only required for the mobile = ["dioxus/mobile"] build target should be optional and only enabled in the mobile = ["dioxus/mobile"] feature
 mobile = ["dioxus/mobile", "dioxus/fullstack"]
 # The feature that are only required for the server = ["dioxus/server", "dep:reqwest", "dep:tokio"] build target should be optional and only enabled in the server = ["dioxus/server", "dep:reqwest", "dep:tokio"] feature
-server = ["dioxus/server", "dep:reqwest", "dep:tokio", "dioxus/fullstack"]
+server = ["dioxus/server", "dep:reqwest", "dep:tokio", "dioxus/fullstack", "dep:portable-pty", "dep:vt100", "dep:ratatui", "dep:unicode-width", "dep:landlock"]
 
 [build-dependencies]
 serde_json = "1"

@@ -136,6 +136,12 @@ pub fn table() -> Vec<Ask> {
         media_piece(id, data),
         media_done(id),
         media_picture(id),
+        // terminals.rs
+        terminal_open(command, place, cols, rows),
+        terminal_screen(id),
+        terminal_type(id, keys),
+        terminal_resize(id, cols, rows),
+        terminal_close(id),
     ]
 }
 
@@ -169,6 +175,46 @@ fn allow(headers: &dioxus::server::axum::http::HeaderMap) -> dioxus::server::axu
     out
 }
 
+/// The name in a `Host` header or an origin, without scheme and port, in small letters:
+/// `LocalHost:8090` and `http://localhost:8090` are `localhost`; `[::1]:8090` is `[::1]`.
+fn host_name(host: &str) -> String {
+    let h = host.trim().to_ascii_lowercase();
+    let h = h.split_once("://").map(|(_, rest)| rest).unwrap_or(&h);
+    let h = h.split('/').next().unwrap_or_default();
+    let name = if h.starts_with('[') { h.split_inclusive(']').next() } else { h.split(':').next() };
+    name.unwrap_or_default().trim_end_matches('.').to_string()
+}
+
+/// The names this machine is asked by from itself, with any port.
+const THIS_MACHINE: [&str; 3] = ["127.0.0.1", "localhost", "[::1]"];
+
+/// Whether a request that names `host` (its `Host` header) asks this service as itself: as
+/// this machine, or as the host of an origin the owner named. A page on the internet can
+/// point a name of its own at 127.0.0.1 and so reach this address from the owner's browser;
+/// such a request still carries the page's name, and is refused here.
+pub fn asked_as_this_service(host: &str, origins: &[String]) -> bool {
+    let name = host_name(host);
+    !name.is_empty() && (THIS_MACHINE.contains(&name.as_str()) || origins.iter().any(|o| host_name(o) == name))
+}
+
+/// Refuse every request that does not ask this service as itself ([`asked_as_this_service`]),
+/// whatever it asks for: `/ask`, a server function, a page. The service starts programs
+/// (`terminal_open`), so who may ask is checked before anything is answered.
+pub fn guarded(router: dioxus::server::axum::Router) -> dioxus::server::axum::Router {
+    use dioxus::server::axum::{extract::Request, http::StatusCode, middleware, response::IntoResponse, response::Response, Json};
+    async fn guard(req: Request, next: middleware::Next) -> Response {
+        // The name the request was sent to: its `Host` line, or the address itself where the
+        // connection carries it there instead.
+        let host = req.headers().get("host").and_then(|h| h.to_str().ok()).map(String::from).or_else(|| req.uri().authority().map(|a| a.to_string())).unwrap_or_default();
+        if asked_as_this_service(&host, &crate::core::settings::origins()) {
+            return next.run(req).await;
+        }
+        let said = format!("askk answers only when it is asked as this machine (127.0.0.1, localhost) or as a host its owner named in `origins` (settings.json); this request named '{host}'");
+        (StatusCode::FORBIDDEN, Json(serde_json::json!({"error": said}))).into_response()
+    }
+    router.layer(middleware::from_fn(guard))
+}
+
 pub fn routes(router: dioxus::server::axum::Router) -> dioxus::server::axum::Router {
     use dioxus::server::axum::{extract::Path, http::HeaderMap, http::StatusCode, routing, Json};
     async fn list(headers: HeaderMap) -> (HeaderMap, Json<Value>) {
@@ -199,6 +245,42 @@ mod tests {
         assert_eq!(ask("nope", serde_json::json!({})).await.unwrap_err(), "no question is called 'nope' (GET /ask lists them)");
         assert_eq!(ask("engine_view", serde_json::json!({})).await.unwrap_err(), "'engine_view' needs the argument 'path'");
         assert!(ask("engine_budget", serde_json::json!({"path": 7})).await.unwrap_err().starts_with("'engine_budget': the argument 'path' is not what is expected"));
+    }
+
+    #[test]
+    fn only_a_request_that_names_this_machine_or_a_host_the_owner_named_is_answered() {
+        let none: Vec<String> = vec![];
+        for here in ["127.0.0.1:8090", "127.0.0.1", "localhost:3000", "LocalHost:8090", "localhost.:8090", "[::1]:8090", "[::1]"] {
+            assert!(asked_as_this_service(here, &none), "{here} is this machine");
+        }
+        // A name of somebody else's that resolves to this machine, and near misses.
+        for foreign in ["evil.example:8090", "127.0.0.1.evil.example", "localhost.evil.example:8090", "evil.example", "", "   ", "[::2]:8090", "0.0.0.0:8090", "192.168.1.5:8090"] {
+            assert!(!asked_as_this_service(foreign, &none), "'{foreign}' is not this machine");
+        }
+        let named = vec!["https://pages.example".to_string(), "http://192.168.1.5:8090/".to_string()];
+        assert!(asked_as_this_service("192.168.1.5:8090", &named), "the host of a named origin is the owner's own");
+        assert!(asked_as_this_service("pages.example", &named));
+        assert!(!asked_as_this_service("other.example", &named) && !asked_as_this_service("pages.example.evil.example", &named));
+    }
+
+    /// The rule as the service applies it: asked through the real router, a request under a
+    /// foreign name gets 403 and one sentence, and the same request as this machine is let
+    /// through to the answer.
+    #[tokio::test]
+    async fn a_request_under_a_foreign_name_is_refused_before_anything_is_answered() {
+        use dioxus::server::axum::{routing, Router};
+        let app = guarded(Router::new().route("/ask", routing::get(|| async { "answered" })));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let at = listener.local_addr().unwrap();
+        tokio::spawn(async move { dioxus::server::axum::serve(listener, app).await });
+        let ask = |host: &'static str| async move {
+            let res = reqwest::Client::new().get(format!("http://{at}/ask")).header("host", host).send().await.unwrap();
+            (res.status().as_u16(), res.text().await.unwrap())
+        };
+        assert_eq!(ask("localhost:8090").await, (200, "answered".to_string()));
+        let (status, said) = ask("evil.example:8090").await;
+        assert_eq!(status, 403);
+        assert!(said.contains("this request named 'evil.example:8090'") && said.contains("`origins`"), "{said}");
     }
 
     #[test]

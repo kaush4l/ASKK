@@ -17,6 +17,8 @@
 //! | `senses` | `core/media.rs` | attached images, sound and video are not understood |
 //! | `tables` | `core/tables.rs` | a figure cannot take numbers from the user's files |
 //! | `code` | `core/code.rs` | an engine cannot run a program it wrote |
+//! | `terminals` | `core/terminals.rs` | no program can be started in a terminal of its own |
+//! | `sandbox` | `core/sandbox.rs` | a program started in a terminal is not confined to its folder |
 use super::held::Held;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -41,6 +43,8 @@ const KNOWN: &[(&str, &str)] = &[
     ("senses", "attached images, sound and video are not understood"),
     ("tables", "a figure cannot take numbers from the user's own files"),
     ("code", "an engine cannot run a program it wrote"),
+    ("terminals", "no program can be started in a terminal of its own: the boxes are engines and agents' sessions only"),
+    ("sandbox", "a program started in a terminal is not confined: it can write wherever you can"),
 ];
 
 /// What has been provided: name → by whom. Names outside [`KNOWN`] are a host's extras.
