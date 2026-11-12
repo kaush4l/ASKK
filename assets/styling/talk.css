@@ -324,3 +324,9 @@
 /* The bar keeps its choices whole; the key hints give way first. */
 .compose-bar .model-pick, .compose-bar .compose-stash { flex-shrink: 0; }
 .compose-hint { min-width: 0; flex: 0 1 auto; }
+
+/* The hint's keys and words never squeeze into each other; what does not fit is cut at its
+   end, and the whole hint goes when the composer is narrow. */
+.compose-hint > * { flex: none; }
+.compose-bar { container-type: inline-size; }
+@container (max-width: 620px) { .compose-hint { display: none; } }
