@@ -56,7 +56,18 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: dioxus-cli@0.7.10,wasm-bindgen-cli@${{ steps.bindgen.outputs.version }}
-      - run: ./scripts/check.sh
+      # A run's log needs a login to read; its summary does not. When the check fails, the end
+      # of what it said and the disk's room go there.
+      - name: check
+        shell: bash
+        run: |
+          set -o pipefail
+          ./scripts/check.sh 2>&1 | tee check.log
+          status=$?
+          if [ "$status" != 0 ]; then
+            { echo "### check.sh ended with $status"; echo '```'; tail -80 check.log; echo; df -h . /tmp; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit "$status"
       - uses: actions/upload-artifact@v7
         with:
           name: askk-app-${{ matrix.target }}
