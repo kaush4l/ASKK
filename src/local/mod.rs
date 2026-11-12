@@ -69,18 +69,36 @@ fn start() -> World {
             Err(e) => errors.push(e),
         }
     }
+    // A post wakes its engine, as on a machine.
+    crate::core::world::wire_board();
     World { engines, report, error: errors.join("\n") }
 }
 
-/// Draw the spike's page. This build leaves `dioxus/fullstack` out (see `Cargo.toml`): with it
-/// the web renderer always hydrates, and no server rendered anything here.
+/// The address's query (`?model=…&ask=…`), read before anything is drawn.
+#[wasm_bindgen::prelude::wasm_bindgen(inline_js = "export function query() { return location.search; }")]
+extern "C" {
+    fn query() -> String;
+}
+
+/// Draw `app`: the same window as a page served by askk, handed in by `main.rs` (the tab does
+/// not know who draws), its questions answered by this tab. An address that asks a question
+/// (`?ask=…`, how `scripts/landmark.sh` and a shared link ask with no hand on the page) gets
+/// the bare page that runs it once (`page.rs`).
 ///
-/// The disk is read first (it cannot be read synchronously), then boot is the usual one.
-pub fn launch() {
-    wasm_bindgen_futures::spawn_local(async {
+/// This build leaves `dioxus/fullstack` out (see `Cargo.toml`): with it the web renderer always
+/// hydrates, and no server rendered anything here. The disk is read first (it cannot be read
+/// synchronously), then boot is the usual one.
+pub fn launch(app: fn() -> dioxus::prelude::Element) {
+    wasm_bindgen_futures::spawn_local(async move {
         store::open().await;
         crate::core::world::boots_with(start);
-        dioxus::launch(page::Page);
+        // Messages left from before the tab was closed are still new.
+        crate::core::world::wake_pending();
+        if query().contains("ask=") {
+            dioxus::launch(page::Page);
+        } else {
+            dioxus::launch(app);
+        }
     });
 }
 

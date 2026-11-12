@@ -264,6 +264,9 @@ pub fn BoxesView() -> Element {
     let missing = named.filter(|_| !is_open && !all.is_empty());
     let queue = boxes.queue.read().clone();
     let wrong = (boxes.wrong)();
+    // Only a build that holds terminals offers to start one (the tab does not: core/caps.rs).
+    let caps = use_resource(|| async { crate::api::capabilities().await.unwrap_or_default() });
+    let terminals = caps.read().as_ref().is_some_and(|c| c.iter().any(|c| c.name == "terminals" && c.here));
     rsx! {
         div { class: if is_open { "canvas fill has-open" } else { "canvas fill" },
             div { class: "canvas-tiles", "inert": is_open.then_some("true"),
@@ -274,7 +277,7 @@ pub fn BoxesView() -> Element {
                             span { key: "{m.key()}", class: "pill-count is-{m.key()}", "{m.sign()} {n} {m.word()}" }
                         }
                     }
-                    Button { variant: ButtonVariant::Ghost, size: ButtonSize::Sm,
+                    if terminals { Button { variant: ButtonVariant::Ghost, size: ButtonSize::Sm,
                         onclick: move |_| {
                             let mut wrong = boxes.wrong;
                             spawn(async move {
@@ -287,7 +290,7 @@ pub fn BoxesView() -> Element {
                             });
                         },
                         "New terminal"
-                    }
+                    } }
                     if hidden > 0 {
                         Button { variant: ButtonVariant::Ghost, size: ButtonSize::Sm, aria_pressed: idle_too(), onclick: move |_| idle_too.toggle(),
                             if idle_too() { "Only what runs or is pinned" } else { "Show the {hidden} idle too" }

@@ -32,6 +32,6 @@ shell = "desktop"
 features = []
 
 [tab]
-about = "the whole app inside one browser tab, no server: no terminals, programs run in the browser's sandbox"
+about = "the same window inside one browser tab, no server: no terminals, programs run in the browser's sandbox"
 shell = "local"
 features = []

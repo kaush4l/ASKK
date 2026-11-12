@@ -42,7 +42,8 @@ jobs:
         with:
           tool: wasm-bindgen-cli@${{ steps.bindgen.outputs.version }}
       - name: build the tab
-        run: ./scripts/local.sh
+        # Pages serves it under the repository's name.
+        run: BASE=/${{ github.event.repository.name }} ./scripts/local.sh
       # GitHub Pages would otherwise skip folders it takes for templates.
       - run: touch target/local/.nojekyll
       - uses: peaceiris/actions-gh-pages@v4

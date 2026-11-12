@@ -37,6 +37,11 @@ pub(crate) fn say(e: impl ToString) -> String {
 
 #[cfg(feature = "server")]
 pub mod ask;
+// The tab's answers to what only a machine can do (no wire there: the views ask these directly).
+#[cfg(feature = "local")]
+mod tab;
+#[cfg(feature = "local")]
+pub use tab::*;
 mod boxes;
 mod components;
 pub mod models;

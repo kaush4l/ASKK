@@ -14,6 +14,8 @@ use crate::core::companion::{beat, mood, Beat};
 use crate::ui::web::app::Assets;
 use crate::ui::web::components::Companion;
 use dioxus::prelude::*;
+#[cfg(feature = "local")]
+use crate::ui::web::tab::*;
 
 /// Provided by a shell that holds the companion in windows of its own: the page draws none.
 #[cfg_attr(not(feature = "desktop"), allow(dead_code))]

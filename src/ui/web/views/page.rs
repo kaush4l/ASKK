@@ -2,6 +2,8 @@ use crate::ui::web::render::Render;
 use crate::ui::web::components::Pane;
 use crate::{api::resolve_route, core::routes::Params};
 use dioxus::prelude::*;
+#[cfg(feature = "local")]
+use crate::ui::web::tab::*;
 
 /// `/`: the page in `routes/page.json`. `open`: the box the address has open (after `#`);
 /// the canvas reads it from the route itself (`views/boxes.rs`).

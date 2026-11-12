@@ -7,25 +7,16 @@
 //! Where to ask is set on the page ([`set`]) and held in memory only: a token typed here is
 //! never written to the store. With no address set, [`Tab`] answers itself (`echo`), so the
 //! engine loop can be seen working without any model.
-use crate::core::held::Held;
 use super::on_tab;
 use crate::core::{Fut, Sampling};
 use serde_json::{json, Value};
-use std::sync::Mutex;
 
-/// Where the tab asks a model: an OpenAI-style server (`base` ends before
-/// `/chat/completions`), or an askk server (`base` ends in `/ask`). Empty `base` = echo.
-#[derive(Clone, Default, PartialEq)]
-pub struct Target {
-    pub base: String,
-    pub model: String,
-    pub token: String,
-}
-
-static TARGET: Mutex<Target> = Mutex::new(Target { base: String::new(), model: String::new(), token: String::new() });
+/// Where the tab asks: core's [`Reach`](crate::core::models::Reach), set in the window's
+/// settings and held in memory only.
+pub use crate::core::models::Reach as Target;
 
 pub fn set(t: Target) {
-    *TARGET.held() = t;
+    crate::core::models::set_reach(t);
 }
 
 /// Ask an askk server (`base` ends in `/ask`): it resolves the model by name with its own
@@ -71,7 +62,7 @@ pub struct Tab;
 
 impl crate::core::Infer for Tab {
     fn complete(&self, model: &str, prompt: String, sampling: Sampling) -> Fut<Result<String, String>> {
-        let t = TARGET.held().clone();
+        let t = crate::core::models::reach();
         if t.base.is_empty() {
             let words = prompt.split_whitespace().count();
             return Box::pin(async move { Ok(format!("echo: the engine ran in this tab and sent a prompt of {} characters ({words} words).", prompt.len())) });

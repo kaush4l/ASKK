@@ -9,6 +9,8 @@ use crate::core::room::{Curation, Plan, Room, Rule, SeatPlan, MAX_SEATS, USER};
 use crate::core::session::State;
 use crate::ui::web::components::Pane;
 use dioxus::prelude::*;
+#[cfg(feature = "local")]
+use crate::ui::web::tab::*;
 
 #[component]
 pub fn RoomsView() -> Element {

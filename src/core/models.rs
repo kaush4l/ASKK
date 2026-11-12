@@ -92,3 +92,34 @@ impl Models {
         self.models.iter().find(|m| m.name == *name)
     }
 }
+
+// Only the tab build reaches a model this way.
+#[cfg_attr(not(feature = "local"), allow(dead_code))]
+/// Where a build with no connectors of its own (the browser tab) reaches a model: one server,
+/// set by the person in that window. Held in memory only, so a token typed there is never
+/// written to the store and is gone when the window closes.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Reach {
+    /// An askk server (ends in `/ask`) or an OpenAI-style one (ends before
+    /// `/chat/completions`); empty = the built-in echo.
+    pub base: String,
+    pub model: String,
+    pub token: String,
+}
+
+#[cfg_attr(not(feature = "local"), allow(dead_code))]
+static REACH: std::sync::Mutex<Reach> = std::sync::Mutex::new(Reach { base: String::new(), model: String::new(), token: String::new() });
+
+/// Where it reaches now.
+#[cfg_attr(not(feature = "local"), allow(dead_code))]
+pub fn reach() -> Reach {
+    use super::held::Held;
+    REACH.held().clone()
+}
+
+/// Set where it reaches.
+#[cfg_attr(not(feature = "local"), allow(dead_code))]
+pub fn set_reach(r: Reach) {
+    use super::held::Held;
+    *REACH.held() = r;
+}

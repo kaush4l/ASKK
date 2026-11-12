@@ -5,6 +5,8 @@ use dioxus::prelude::*;
 // The answers are plain functions in `answers`; these are their Dioxus form (see `wire!`).
 #[cfg(feature = "server")]
 mod answers;
+#[cfg(feature = "local")]
+pub use super::tab::{discover_models, infer, list_models, save_models};
 
 wire! {
     list_models() -> Models;

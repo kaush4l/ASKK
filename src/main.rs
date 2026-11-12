@@ -33,7 +33,6 @@ mod shells;
 mod structure;
 mod ui;
 
-#[cfg(not(feature = "local"))]
 pub use ui::web::app::Route;
 
 fn main() {
@@ -67,7 +66,7 @@ fn main() {
     }
     // The tab is its own host: no server to ask, so it draws its own page.
     #[cfg(feature = "local")]
-    local::launch();
+    local::launch(ui::web::app::App);
     #[cfg(not(feature = "local"))]
     shells::launch();
 }

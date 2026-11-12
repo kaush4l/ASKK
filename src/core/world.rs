@@ -47,3 +47,52 @@ pub fn find(path: &str) -> Option<Arc<Engine>> {
     let root = path.split('/').next().unwrap_or_default();
     world().engines.iter().find(|e| e.path == root).and_then(|e| e.find(path))
 }
+
+/// Wire the board to the world: a post wakes the engine it is for (it runs on its own task, so
+/// the poster never waits), and the board's directory is every engine that reads its box. The
+/// same for every host (a machine, the browser tab).
+pub fn wire_board() {
+    use super::held::Held;
+    crate::core::board::board().set_wake(std::sync::Arc::new(|to: &str| {
+        let Some(w) = crate::core::world::started() else { return false };
+        let root = to.split('/').next().unwrap_or_default();
+        match w.engines.iter().find(|e| e.path == root).and_then(|e| e.find(to)) {
+            Some(e) => {
+                e.wake();
+                true
+            }
+            None => false,
+        }
+    }));
+    crate::core::board::board().set_directory(std::sync::Arc::new(|| {
+        fn walk(e: &super::Engine, out: &mut Vec<(String, String)>) {
+            // Only engines with an element that reads the box can be posted to.
+            if e.receives {
+                let d = e.file.held().description.clone();
+                out.push((e.path.clone(), d));
+            }
+            for s in e.subs() {
+                walk(&s, out);
+            }
+        }
+        let mut out = vec![];
+        if let Some(w) = crate::core::world::started() {
+            for e in &w.engines {
+                walk(e, &mut out);
+            }
+        }
+        out
+    }));
+}
+
+/// Messages that arrived before a restart (or before a tab was closed) are still new: wake
+/// each engine that has one. Boots the world if it has not booted.
+pub fn wake_pending() {
+    fn wake(e: &Arc<Engine>) {
+        if !crate::core::board::board().new_for(&e.path).is_empty() {
+            e.wake();
+        }
+        e.subs().iter().for_each(wake);
+    }
+    world().engines.iter().for_each(wake);
+}

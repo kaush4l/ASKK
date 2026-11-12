@@ -65,7 +65,7 @@ build does without it, and a window hides what it cannot do. The base feature ke
 | `lean` | web | none | engines and agents' sessions only, no process held |
 | `open-terminals` | web | terminals | terminals where the system's sandbox gets in the way; each box says it is not confined |
 | `mac` | desktop | none | the Mac window, asking a service started by `askk start` |
-| `tab` | local | none | the app in one browser tab (`scripts/local.sh`, published to Pages) |
+| `tab` | local | none | the app in one browser tab (`scripts/local.sh`, published to Pages): the same window as the served page (`ui/web`), its questions answered by the tab (`api/tab.rs` for what needs a machine); the model server is set under Settings and a token stays in the tab's memory; `?ask=` gives the bare page `landmark.sh` drives |
 
 ```sh
 ./scripts/build.sh                 # the presets

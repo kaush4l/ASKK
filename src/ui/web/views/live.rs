@@ -20,6 +20,8 @@ use crate::core::manifest::Manifest;
 use crate::core::service::Hello;
 use crate::ui::features::service::{made_for, seen as held_against, Seen};
 use dioxus::prelude::*;
+#[cfg(feature = "local")]
+use crate::ui::web::tab::*;
 use std::collections::BTreeMap;
 
 /// The keys changed in this tab's lifetime (key → sequence of its last change), and a reset

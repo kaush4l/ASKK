@@ -1257,3 +1257,13 @@ dialog.run-panel::backdrop { background: color-mix(in srgb, var(--ink-shade) var
 .parts-term { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
 .parts-typed { margin: 0; font-size: var(--text-xs); overflow-wrap: anywhere; }
 .parts-thread .thread { flex: none; height: min(60dvh, 36rem); }
+
+/* The tab's model server (settings, tab build): one field per row on a phone, a row of three
+   and the button on a wide screen. */
+.tab-model { display: grid; gap: var(--space-3, 12px); max-width: 880px; }
+.tab-model-form { display: grid; gap: var(--space-3, 12px); grid-template-columns: 1fr; align-items: end; }
+.tab-model-form label { display: grid; gap: 4px; font-size: 0.85em; color: var(--muted); }
+.tab-model-form input { width: 100%; min-height: 40px; padding: 0 12px; border-radius: var(--radius-md, 10px); border: 1px solid var(--border, rgba(127, 127, 127, 0.3)); background: var(--tint); color: inherit; font: inherit; }
+@media (min-width: 760px) {
+  .tab-model-form { grid-template-columns: 2fr 1fr 1fr auto; }
+}

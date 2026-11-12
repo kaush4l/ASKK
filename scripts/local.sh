@@ -15,21 +15,27 @@ BINDGEN="$HOME/.dx/tools/wasm-bindgen-$VERSION/wasm-bindgen"
 cargo build --release --target wasm32-unknown-unknown --no-default-features --features local
 mkdir -p "$OUT"
 "$BINDGEN" --target web --no-typescript --out-dir "$OUT" --out-name askk target/wasm32-unknown-unknown/release/askk.wasm
-cat > "$OUT/index.html" <<'HTML'
+# The page's own looks: dx bundles them for the served page; here they are copied as they are.
+rm -rf "$OUT/assets" && cp -R assets "$OUT/assets"
+# BASE: the path the tab is served under (`/ASKK` on GitHub Pages); empty at a site's root.
+cat > "$OUT/index.html" <<HTML
 <!doctype html>
 <html>
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>askk (local)</title>
+    <meta name="DIOXUS_ASSET_ROOT" content="${BASE:-}">
+    <title>askk</title>
   </head>
   <body>
     <div id="main"></div>
     <script type="module">
-      import init from "./askk.js";
+      import init from "${BASE:-}/askk.js";
       init();
     </script>
   </body>
 </html>
 HTML
+# A deep link (a page's own address) is served this same page on GitHub Pages.
+cp "$OUT/index.html" "$OUT/404.html"
 echo "built $OUT: $(wc -c < "$OUT/askk_bg.wasm") bytes of wasm, $(gzip -9c "$OUT/askk_bg.wasm" | wc -c) gzipped"

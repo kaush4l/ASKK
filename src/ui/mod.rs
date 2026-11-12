@@ -14,5 +14,4 @@
 pub mod features;
 #[cfg(feature = "server")]
 pub mod terminal;
-#[cfg(not(feature = "local"))]
 pub mod web;

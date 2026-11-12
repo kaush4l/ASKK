@@ -7,7 +7,6 @@
 //! board at the manifest's key. Nothing here is built from values written in code: what exists
 //! and where it lives is the snapshot's.
 //! The result is kept by the core ([`crate::core::world`]), where the rest of the app reads it.
-use crate::core::held::Held;
 use crate::core::world::World;
 use crate::core::{boot, store, Engine};
 use std::sync::Arc;
@@ -36,13 +35,7 @@ pub fn boot_now() {
             let w = crate::core::world::world();
             eprintln!("askk: booted {} top-level engine(s) ({}){}", w.engines.len(), w.report, if w.error.is_empty() { String::new() } else { format!("; errors: {}", w.error) });
             // Messages that arrived before a restart are still new: handle them now.
-            fn wake_pending(e: &Arc<Engine>) {
-                if !crate::core::board::board().new_for(&e.path).is_empty() {
-                    e.wake();
-                }
-                e.subs().iter().for_each(wake_pending);
-            }
-            w.engines.iter().for_each(wake_pending);
+            crate::core::world::wake_pending();
             // From here on the home is looked at for hand edits, and a service can be found.
             crate::host::service::booted();
             std::future::pending::<()>().await
@@ -92,36 +85,7 @@ pub fn start() -> World {
     }
     // A post wakes the engine it is for; it runs on its own task, so the poster never waits.
     crate::core::board::init(data, &m.board);
-    crate::core::board::board().set_wake(Arc::new(|to: &str| {
-        let Some(w) = crate::core::world::started() else { return false };
-        let root = to.split('/').next().unwrap_or_default();
-        match w.engines.iter().find(|e| e.path == root).and_then(|e| e.find(to)) {
-            Some(e) => {
-                e.wake();
-                true
-            }
-            None => false,
-        }
-    }));
-    crate::core::board::board().set_directory(Arc::new(|| {
-        fn walk(e: &Engine, out: &mut Vec<(String, String)>) {
-            // Only engines with an element that reads the box can be posted to.
-            if e.receives {
-                let d = e.file.held().description.clone();
-                out.push((e.path.clone(), d));
-            }
-            for s in e.subs() {
-                walk(&s, out);
-            }
-        }
-        let mut out = vec![];
-        if let Some(w) = crate::core::world::started() {
-            for e in &w.engines {
-                walk(e, &mut out);
-            }
-        }
-        out
-    }));
+    crate::core::world::wire_board();
     World { engines, report, error: errors.join("\n") }
 }
 
