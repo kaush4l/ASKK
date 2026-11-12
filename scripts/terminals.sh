@@ -202,7 +202,24 @@ has "$(cat "$WORK/reply")" "this request named 'evil.example:$PORT'" "the refusa
 [ "$(as "127.0.0.1:$PORT" boxes '{}')" = 200 ] || { fail "asked as 127.0.0.1, it answers"; ok=0; }
 done_step $ok
 
-echo "== the full-screen terminal: a sidebar, a pane, a shell in a new tab, detach"
+echo "== a place is a workspace: its branch and how it stands, read with git by the service"
+ok=1
+if command -v git >/dev/null; then
+    D=$H/projects/demo
+    git -C "$D" init -q -b main && git -C "$D" -c user.name=askk -c user.email=askk@localhost commit -q --allow-empty -m first
+    printf 'not committed\n' >"$D/notes.txt"
+    places=$(ask workspaces '{}')
+    # (The answer's keys come in the order of their names: git before place.)
+    has "$places" '"branch":"main","changed":' "\`workspaces\` names the place of the first terminal with its branch, and how many files changed (it said: $places)" || ok=0
+    has "$places" '},"place":"demo"}' "that git state is the place demo's" || ok=0
+    has "$places" '{"place":""}' "the workspace itself, where the engines and the shells run, is a place too; it is no repository of its own, so it has no git state" || ok=0
+    done_step $ok
+else
+    echo "   not checked: git is not installed"
+    unchecked="$unchecked\n  the places' git state"
+fi
+
+echo "== the full-screen terminal: a sidebar, a pane, a shell in a new tab, copy, paste, places, keys, detach"
 if command -v python3 >/dev/null; then
     ok=1
     drove=$(cd "$H" && ASKK_HOME="$H" PORT=$PORT IP=127.0.0.1 SHELL=/bin/sh python3 "$ROOT/scripts/terminals/tui.py" "$BIN" 2>&1)
@@ -211,15 +228,25 @@ if command -v python3 >/dev/null; then
     has "$drove" "saw: a terminal box shows its live screen" "a terminal box chosen in the sidebar shows its live screen in the pane" || ok=0
     has "$drove" "saw: a shell in a new tab ran what was typed" "ctrl+b c opens a shell in a new tab, and typing reaches it" || ok=0
     has "$drove" "saw: the wheel looked back up the shell's pane, and typing returned to its end" "the wheel looks back at what scrolled off a terminal's pane" || ok=0
+    has "$drove" "saw: copy mode moved up the shell's pane and copied a line (OSC 52)" "ctrl+b [ is copy mode: it moves up into the scroll-back, v selects, y copies to the outer terminal's clipboard" || ok=0
+    has "$drove" "saw: a drag over the shell's pane selected and copied (OSC 52)" "a drag of the mouse over a terminal's pane selects, and letting go copies" || ok=0
+    has "$drove" "saw: a paste reached the program between the marks it asked for" "a paste reaches a program that asked for bracketed paste between the marks" || ok=0
     has "$drove" "saw: a split pane beside it, and a click moved the focus" "ctrl+b v splits the pane, and a click on a pane takes the focus there" || ok=0
     has "$drove" "saw: a click on a box in the sidebar showed it in the pane" "a click on a row of the sidebar shows that box" || ok=0
+    if command -v git >/dev/null; then
+        has "$drove" "saw: the sidebar groups the boxes by place, with the place's branch and git state" "the sidebar groups the boxes by place, each with its branch and changes" || ok=0
+    fi
+    has "$drove" "saw: the help lists the keys in force" "ctrl+b ? lists the keys in force, the numbers and copy mode among them" || ok=0
+    has "$drove" "saw: an edit of the keys in settings.json held at once, and back" "keys written in settings.json hold in a running \`askk terminal\` at once" || ok=0
     has "$drove" "saw: detached with 0" "ctrl+b q detaches" || ok=0
     SHELL_PID=$(number "$drove" shell)
     kill -0 "${SHELL_PID:-0}" 2>/dev/null || { fail "after the terminal UI detached, the shell it opened still runs (process ${SHELL_PID:-unknown})"; ok=0; }
     has "$(ask boxes '{}')" '{"label":"command","value":"your shell (sh)"}' "and it is still one of the service's boxes" || ok=0
-    # A second window, later: it finds what ran on, each terminal in a tab of its own.
+    # A second window, later: the service kept the layout, and the terminals come back in it.
+    has "$(ask terminal_layout '{}')" '"split":{"down":false' "the service keeps the layout the window left (\`terminal_layout\`)" || ok=0
     again=$(cd "$H" && ASKK_HOME="$H" PORT=$PORT IP=127.0.0.1 SHELL=/bin/sh python3 "$ROOT/scripts/terminals/tui.py" "$BIN" again 2>&1)
-    has "$again" "saw: attached again, every terminal has its tab" "\`askk terminal\`, started again, shows every terminal that ran on in a tab" || ok=0
+    has "$again" "saw: attached again, the tabs and splits laid out as they were left" "\`askk terminal\`, started again, lays out the tabs and splits the last one left, with each terminal in its pane" || ok=0
+    has "$again" "saw: ctrl+b 1 showed the box that needs the owner first" "ctrl+b and a number shows that box, what needs the owner first" || ok=0
     drove="$drove
 $again"
     if [ -n "${SHOW:-}" ]; then printf '%s\n' "$drove"; elif [ $ok != 1 ]; then printf '%s\n' "$drove" | tail -45; fi

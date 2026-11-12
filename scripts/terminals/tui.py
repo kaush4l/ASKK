@@ -14,20 +14,31 @@ keys and reads the screen, and says each thing it saw on a line of its own:
     saw: a shell in a new tab ran what was typed
     "shell": 12345                      (the shell's process number, for the caller)
     saw: the wheel looked back up the shell's pane, and typing returned to its end
+    saw: copy mode moved up the shell's pane and copied a line (OSC 52)
+    saw: a drag over the shell's pane selected and copied (OSC 52)
+    saw: a paste reached the program between the marks it asked for
     saw: a split pane beside it, and a click moved the focus
     saw: a click on a box in the sidebar showed it in the pane
+    saw: the sidebar groups the boxes by place, with the place's branch and git state
+    saw: the help lists the keys in force
+    saw: an edit of the keys in settings.json held at once, and back
     saw: detached with 0
 
 and with `again`:
 
-    saw: attached again, every terminal has its tab
+    saw: attached again, the tabs and splits laid out as they were left
+    saw: ctrl+b 1 showed the box that needs the owner first
     saw: detached with 0
+
+What is copied goes to the outer terminal as OSC 52; the script reads it off what is written.
 
 A full-screen program does not write lines: it places the cursor and writes the cells that
 changed. So this script keeps the screen those writes make (`Screen`, below: just enough of
 a terminal for that) and looks at its rows. With SHOW=1 it prints the screen after each step.
 """
+import base64
 import fcntl
+import json
 import os
 import pty
 import re
@@ -64,7 +75,7 @@ class Screen:
                     # Cut off in the middle: wait for the rest (a lone escape is never drawn).
                     self.rest = text[at:]
                     return
-                self.control(found.group(1) or "", found.group(2))
+                self.control(found.group(1) or "", found.group(2) or "")
                 at = found.end()
                 continue
             at += 1
@@ -101,6 +112,7 @@ def main():
     fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", ROWS, COLS, 0, 0))
     screen = Screen()
     decode = __import__("codecs").getincrementaldecoder("utf-8")("replace")
+    written = []  # everything the program wrote, for what it put on the clipboard
 
     def read(seconds):
         """Read what is drawn for a moment. False once the program has ended."""
@@ -114,8 +126,23 @@ def main():
                     return False
                 if not data:
                     return False
-                screen.write(decode.decode(data))
+                text = decode.decode(data)
+                written.append(text)
+                screen.write(text)
         return True
+
+    def copied(what, seconds=10):
+        """Wait until the program has put `what` on the clipboard (OSC 52)."""
+        end = time.time() + seconds
+        while True:
+            found = [base64.b64decode(b).decode("utf-8", "replace") for b in re.findall(r"\x1b\]52;c;([A-Za-z0-9+/=]*)\x07", "".join(written))]
+            if what in found:
+                return
+            if time.time() > end or not read(0.1):
+                print(f"NOT seen: {what!r} put on the clipboard (OSC 52); what was: {found!r}. The screen:")
+                print("\n".join(screen.rows()))
+                os.kill(pid, 15)
+                sys.exit(1)
 
     def show(step):
         if os.environ.get("SHOW"):
@@ -183,10 +210,19 @@ def main():
     prefix = "\x02"  # ctrl+b
 
     if sys.argv[2:] == ["again"]:
-        # Coming back: the terminals that ran on while nobody looked each have a tab again.
-        wait(r"│ 1 \S+  2 sh -c 'echo hello-  3 sh  4 sh", "a tab for the service's first terminal and for each of the two shells")
-        print("saw: attached again, every terminal has its tab")
+        # Coming back: the service kept the layout. The tabs are as they were left, the tab in
+        # view is the split one (an engine beside a shell), and the shell that was replaced
+        # by the engine has a tab of its own at the end.
+        wait(r"│ 1 sh -c 'echo hello-  2 sh -c 'echo hello-  3 \S+  4 sh", "the four tabs, the first two on the service's first terminal")
+        wait(r"┌ ○ \S+ · engine ─+┐┌ ● sh · sh ─", "the split tab: the engine beside the second shell, as it was left")
+        wait(r"laid out again", "the foot saying the layout was laid out again")
+        print("saw: attached again, the tabs and splits laid out as they were left")
         show("attached again")
+        # ctrl+b 1: the box that needs the owner first (a terminal that works, the oldest).
+        press(prefix + "1")
+        wait(r"┌ ● sh -c 'echo hello.* · sh ─", "the service's first terminal in the pane in focus")
+        print("saw: ctrl+b 1 showed the box that needs the owner first")
+        show("ctrl+b 1")
         leave()
         return
 
@@ -237,6 +273,46 @@ def main():
     wait(r"│line-80", "the end of the shell's screen again")
     print("saw: the wheel looked back up the shell's pane, and typing returned to its end")
 
+    # Copy mode: ctrl+b [ stops the pane; the cursor goes up a row (what was printed), to its
+    # start, v selects, $ to its end, y copies; up and up again reaches what scrolled off.
+    press("echo copy-me-$((2+3))\r")
+    wait(r"│copy-me-5", "what the shell printed to be copied")
+    press(prefix + "[")
+    wait(r"copy · v selects · esc leaves", "the pane in copy mode, saying its keys")
+    show("copy mode")
+    press("k0v$y")
+    copied("copy-me-5")
+    wait(r"copied 9 characters to the clipboard", "the foot saying what was copied")
+    press(prefix + "[")
+    press("k" * 40)
+    wait(r"copy · v selects · esc leaves · ↑ \d+ rows up", "copy mode looking up into what scrolled off")
+    show("copy mode, up in the scroll-back")
+    press("\x1b")
+    gone(r"copy · ", "copy mode after Esc")
+    print("saw: copy mode moved up the shell's pane and copied a line (OSC 52)")
+
+    # A drag over the pane selects; letting go copies.
+    press("echo drag-me-please\r")
+    row, col = where(r"│drag-me-please", "the line to drag over")
+    press(f"\x1b[<0;{col + 2};{row + 1}M")
+    press(f"\x1b[<32;{col + 2 + 6};{row + 1}M")
+    press(f"\x1b[<32;{col + 2 + 13};{row + 1}M")
+    show("dragged over a line")
+    press(f"\x1b[<0;{col + 2 + 13};{row + 1}m")
+    copied("drag-me-please")
+    print("saw: a drag over the shell's pane selected and copied (OSC 52)")
+
+    # Bracketed paste: a program that asks for it gets a paste between the marks. `cat -v`
+    # shows the marks as ^[[200~ and ^[[201~.
+    press("printf '\\033[?2004h'; cat -v\r")
+    read(0.5)
+    press("\x1b[200~pasted-text\x1b[201~")
+    press("\r")
+    wait(r"\^\[\[200~pasted-text\^\[\[201~", "the paste between its marks, as cat -v shows them")
+    press("\x03")
+    press("printf '\\033[?2004l'; echo line-0\r")
+    print("saw: a paste reached the program between the marks it asked for")
+
     # 4. ctrl+b v: a second shell beside the first. A click on the left pane takes the focus
     #    there: what is typed next lands in the first shell, not in the new one.
     press(prefix + "v")
@@ -254,6 +330,42 @@ def main():
     wait(r"┌ ○ \S+ · engine ─", "the engine in the pane that was clicked into")
     print("saw: a click on a box in the sidebar showed it in the pane")
     show("an engine beside a shell")
+
+    # The places: the service's first terminal runs in `demo`, a repository (made by
+    # scripts/terminals.sh) with a file not yet committed; the shells in the workspace.
+    wait(r"^ demo main ● \d+", "the place `demo` with its branch and its changes")
+    wait(r"^ workspace", "the workspace as a place of its own")
+    print("saw: the sidebar groups the boxes by place, with the place's branch and git state")
+
+    # The help: every key in force, the numbers and copy mode among them.
+    press(prefix + "?")
+    wait(r"keys, each after ctrl\+b", "the help's title")
+    wait(r"1-9 .*blocked first", "the numbers that show a box")
+    wait(r"\[ .*copy mode", "copy mode")
+    show("the keys")
+    press("\x1b")
+    gone(r"keys, each after", "the help after a key")
+    print("saw: the help lists the keys in force")
+
+    # The keys are the owner's: settings.json says another prefix, and it holds at once.
+    settings = os.path.join(os.environ["ASKK_HOME"], "data", "settings.json")
+    before = open(settings).read() if os.path.exists(settings) else None
+    mine = json.loads(before) if before else {}
+    mine["keys"] = {"prefix": "ctrl+a", "split_right": "|"}
+    with open(settings, "w") as f:
+        json.dump(mine, f)
+    wait(r" ctrl\+a  then  c tab  \| split right", "the foot with the new prefix, read from settings.json", seconds=15)
+    press("\x01?")
+    wait(r"keys, each after ctrl\+a", "the help with the new prefix")
+    show("the owner's keys")
+    press("\x1b")
+    if before is None:
+        os.remove(settings)
+    else:
+        with open(settings, "w") as f:
+            f.write(before)
+    wait(r" ctrl\+b  then  c tab  v split right", "the foot with ctrl+b again", seconds=15)
+    print("saw: an edit of the keys in settings.json held at once, and back")
 
     # 6. ctrl+b q: detach.
     leave()

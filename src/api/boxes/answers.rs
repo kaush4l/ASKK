@@ -10,3 +10,12 @@ use super::*;
 pub async fn boxes() -> Result<Vec<SessionBox>, String> {
     Ok(crate::core::boxes::all())
 }
+
+/// Every place a box runs in (its project folder; empty is the workspace itself), in the
+/// order the boxes first name it, with the state of its git where it is a repository of its
+/// own: the branch, how many files changed, how far ahead and behind. Read with git by the
+/// service and kept for two seconds; when a place's state changes, `workspaces` is marked
+/// on the change feed. A window groups its boxes by these places, as herdr's Spaces.
+pub async fn workspaces() -> Result<Vec<crate::core::workspaces::Workspace>, String> {
+    Ok(crate::core::workspaces::all())
+}

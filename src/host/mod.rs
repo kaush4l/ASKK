@@ -17,12 +17,14 @@
 //! | `service.rs` | the service as a background process: start, record, find, stop |
 //! | `watch.rs` | noticing a file a person edited by hand in the data folder |
 //! | `terminals.rs` | the multiplexer: a real terminal per program, held for the program's whole life |
+//! | `git.rs` | a place's repository: its branch and how it differs, read with `git` |
 //! | `sandbox.rs` | what this system has to keep a program inside its folder (chosen when built) |
 //!
 //! The host also names who runs background work ([`crate::core::tasks`]): the server's runtime.
 pub mod changes;
 pub mod code;
 pub mod data;
+pub mod git;
 pub mod harness;
 pub mod infer;
 pub mod market;
@@ -66,6 +68,7 @@ fn boot() {
     crate::core::media::set(std::sync::Arc::new(media::Kept));
     crate::core::tasks::set(std::sync::Arc::new(Runtime));
     crate::core::tables::set(std::sync::Arc::new(data::Personal));
+    crate::core::workspaces::set(std::sync::Arc::new(git::Repo));
     crate::core::world::boots_with(world::start);
     // What this build can do, noted beside the lines that make it so (core/caps.rs).
     use crate::core::caps::provided;

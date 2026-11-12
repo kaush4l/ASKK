@@ -225,6 +225,7 @@ pub fn samples() -> Vec<(&'static str, Screen)> {
         title: "zsh".into(),
         alive: true,
         exit: None,
+        bracketed: false,
     };
     let block = |n: usize, bg: String| Span { text: " ".repeat(n), bg, ..Default::default() };
     let colours = Screen {
@@ -243,6 +244,7 @@ pub fn samples() -> Vec<(&'static str, Screen)> {
         title: "colours".into(),
         alive: true,
         exit: None,
+        bracketed: false,
     };
     let ended = Screen {
         cols: 64,
@@ -252,6 +254,7 @@ pub fn samples() -> Vec<(&'static str, Screen)> {
         title: "node".into(),
         alive: false,
         exit: Some(1),
+        bracketed: false,
     };
     vec![("A shell at work", shell), ("Every colour", colours), ("A program that ended badly", ended)]
 }
