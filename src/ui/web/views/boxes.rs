@@ -279,7 +279,9 @@ pub fn BoxesView() -> Element {
                             let mut wrong = boxes.wrong;
                             spawn(async move {
                                 match new_terminal().await {
-                                    Ok(id) => from_tile(&id),
+                                    Ok(id) => {
+                                        navigator().push(link(&id));
+                                    }
                                     Err(e) => wrong.set(e),
                                 }
                             });

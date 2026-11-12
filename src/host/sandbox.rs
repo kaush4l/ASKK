@@ -25,6 +25,27 @@ const TEMP: &[&str] = &["/dev", "/private/var/folders", "/private/tmp"];
 #[cfg(target_os = "macos")]
 const SHARED: &[&str] = &["Library/Keychains", "Library/Caches"];
 
+/// What each shell writes under the user's home for itself: its history, its completion
+/// cache, its saved sessions and the caches its plugins keep. Without these a confined shell
+/// starts with a screen of "Operation not permitted". None of it is another project's, the
+/// app's, or a sign-in (a shell does not get the keychain an agent gets).
+const SHELLS: &[(&[&str], &[&str])] = &[
+    (&["zsh"], &[".zsh_history", ".zsh_sessions", ".zcompdump", ".cache", ".local/state"]),
+    (&["bash", "sh"], &[".bash_history", ".bash_sessions", ".cache", ".local/state"]),
+    (&["fish"], &[".local/share/fish", ".cache", ".local/state"]),
+];
+
+/// The state a shell named `program` may write; empty for a program that is not a shell.
+pub fn shell_state(program: &str) -> Vec<String> {
+    let name = program.rsplit('/').next().unwrap_or(program).trim_start_matches('-');
+    SHELLS.iter().find(|(names, _)| names.contains(&name)).map(|(_, s)| s.iter().map(|x| x.to_string()).collect()).unwrap_or_default()
+}
+
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn is_shell_state(state: &[String]) -> bool {
+    SHELLS.iter().any(|(_, s)| s.len() == state.len() && s.iter().zip(state).all(|(a, b)| a == b))
+}
+
 /// A path as a quoted string in a sandbox profile.
 fn quoted(p: &Path) -> String {
     format!("\"{}\"", p.to_string_lossy().replace('\\', "\\\\").replace('"', "\\\""))
@@ -64,7 +85,7 @@ impl Sandbox for Seatbelt {
         let home = crate::core::places::user_home().unwrap_or_else(|| "/var/empty".into());
         // A program with state of its own is an agent: it also needs what every agent needs.
         let mut all: Vec<&str> = state.iter().map(String::as_str).collect();
-        if !all.is_empty() {
+        if !all.is_empty() && !is_shell_state(state) {
             all.extend(SHARED);
         }
         let mut out = vec![SANDBOX_EXEC.to_string(), "-p".to_string(), profile(folder, &home, &all, TEMP)];
@@ -285,5 +306,14 @@ mod tests {
     fn the_word_that_confines_says_what_it_needs() {
         let said = confined(&["only-a-folder".to_string()]);
         assert!(said.contains("askk confine"), "{said}");
+    }
+
+    #[test]
+    fn a_shell_may_keep_its_history_but_gets_no_keychain() {
+        let zsh = shell_state("/bin/zsh");
+        assert!(zsh.iter().any(|s| s == ".zsh_history"));
+        assert!(is_shell_state(&zsh));
+        assert!(shell_state("python3").is_empty());
+        assert!(!is_shell_state(&[".claude".to_string()]), "an agent's state is not a shell's");
     }
 }

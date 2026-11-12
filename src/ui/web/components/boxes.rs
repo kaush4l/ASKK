@@ -80,7 +80,9 @@ pub fn BoxTile(
     let Shown { b, mark, to, pinned } = shown;
     let mut draft = use_signal(String::new);
     let (look_id, say_id, pin_id) = (b.id.clone(), b.id.clone(), b.id.clone());
-    let working = mark == Mark::Working;
+    // A terminal takes a line at once, so nothing waits for it to be done.
+    let terminal = matches!(crate::ui::features::terminals::inside(&b.id), crate::ui::features::terminals::Inside::Terminal(_));
+    let working = mark == Mark::Working && !terminal;
     let more = asks.len().saturating_sub(1);
     let waits = crate::ui::features::queue::heading(waiting);
     rsx! {
@@ -125,9 +127,9 @@ pub fn BoxTile(
                     }
                 },
                 input { class: "box-say-line", r#type: "text", "aria-label": if working { "Say to {b.title}; it is sent when it is done" } else { "Say to {b.title}" },
-                    placeholder: if working { "it works: what you say waits" } else { "say something" },
+                    placeholder: if terminal { "type a line" } else if working { "it works: what you say waits" } else { "say something" },
                     value: "{draft}", oninput: move |e| draft.set(e.value()) }
-                Button { variant: ButtonVariant::Secondary, size: ButtonSize::Sm, button_type: "submit", if working { "Queue" } else { "Send" } }
+                Button { variant: ButtonVariant::Secondary, size: ButtonSize::Sm, button_type: "submit", if terminal { "Type" } else if working { "Queue" } else { "Send" } }
             }
             if waiting > 0 { p { class: "box-waiting", role: "status", Icon { name: "clock", size: 12 } "{waits}" } }
         }

@@ -369,7 +369,7 @@ impl Terminals for Ptys {
         let dir = crate::host::workspace::project(place)?;
         let dir = dir.canonicalize().unwrap_or(dir);
         let (argv, program) = argv(command, &crate::core::places::shell());
-        let state = crate::host::harness::recognise(&program).map(|(_, state)| state).unwrap_or_default();
+        let state = crate::host::harness::recognise(&program).map(|(_, state)| state).unwrap_or_else(|| crate::host::sandbox::shell_state(&program));
         let sandbox = crate::core::sandbox::sandbox();
         let asked = argv[0].clone();
         let argv = sandbox.confine(argv, &dir, &state)?;
@@ -676,3 +676,4 @@ mod tests {
         assert_eq!((line[0].as_str(), program.as_str()), ("/bin/zsh", "zsh"), "no command is the person's own shell");
     }
 }
+
