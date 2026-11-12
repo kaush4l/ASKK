@@ -48,7 +48,7 @@ mod talk;
 pub use components::*;
 pub use rooms::*;
 pub use routes::*;
-// No page asks these yet (other UIs do, over `ask.rs`): see docs/service.md.
+// A page asks `hello` (ui/web/views/live.rs); the rest are asked by other UIs over `ask.rs`.
 #[allow(unused_imports)]
 pub use service::*;
 pub use sessions::*;

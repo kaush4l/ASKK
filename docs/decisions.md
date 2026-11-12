@@ -61,7 +61,7 @@ VS Code and herdr for it: [service.md](service.md).
 | always running | a first home is made from the defaults the program carries, anywhere | `core/store.rs` (`packed`) | yes | `the_program_alone_can_make_a_first_home`, `scripts/smoke.sh` |
 | always running | it runs in the background, and ends on purpose only when its owner asks (`askk stop`); it finishes the write in hand first | `host/service.rs`, `host/watch.rs` (`settle`) | yes on Mac and Linux; on Windows the commands say they are not there | `the_service_is_found_and_ended_in_one_place`, `scripts/service.sh` |
 | always running | a file edited by hand takes effect without a restart; a file that cannot be read is refused and what was in force is kept; what cannot change in place says so | `core/reread.rs`, `host/watch.rs` | yes | `what_cannot_change_in_place_says_so`, `a_hand_edit_is_noticed_and_read_again_in_one_place`, `scripts/service.sh` |
-| always running | a client outlives the service: by asking `hello` it tells the same service from a restarted one (ask for everything again) and a rebuilt one (load itself again) | `core/service.rs`, `ui/features/service.rs` | partly: decided and tested, and the service answers; the pages do not ask it yet | `a_window_tells_the_same_service_from_a_restarted_a_rebuilt_and_a_silent_one`, `what_a_new_hello_means_is_decided_once` |
+| always running | a client outlives the service: by asking `hello` it tells the same service from a restarted one (ask for everything again) and a rebuilt one (load itself again) | `core/service.rs`, `ui/features/service.rs` | yes: the page's listener asks it (`ui/web/views/live.rs`), and `askk terminal` attaches by the record | `a_window_tells_the_same_service_from_a_restarted_a_rebuilt_and_a_silent_one`, `what_a_new_hello_means_is_decided_once` |
 | always running | what the service is doing is shown through the one change feed: a run marks a change at every stage it enters | `core/engine.rs` (`at`), `host/changes.rs` | yes | `a_run_in_progress_is_followed_on_the_change_feed_stage_by_stage`, `scripts/service.sh` |
 
 ## 4. The landmark of 0.1
@@ -88,7 +88,7 @@ Mac app compiles; they are not part of 0.1.
 - Safari and Firefox are not tested; the tab landmark runs in Chrome only.
 - An existing home does not receive engines added to the defaults later.
 - Rows marked "review" above have no test.
-- The pages do not ask `hello` yet, so a page left open across a rebuild is not reloaded by
-  itself. The decision is in `ui/features/service.rs`; see [service.md](service.md).
+- A page does not yet say in words that the service is away or was restarted; it only acts
+  on it (asks again, or loads itself again). See [service.md](service.md).
 - `askk start`, `stop`, `status` and `restart` are for Mac and Linux. On Windows they say so.
 - An engine folder copied into a running home is booted at the next start, not in place.

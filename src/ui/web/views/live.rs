@@ -9,8 +9,16 @@
 //! prefix, that only moves when a matching key does. A resource that reads it re-runs then and
 //! only then — the dashboard does not refetch when the theme changes, an engine page does not
 //! refetch when another engine thinks.
+//!
+//! A page outlives one run of the service. Whenever the listener has been away, or the change
+//! feed started over, it asks `hello` and holds the answer against the one it had; what that
+//! means is decided once for every UI (`ui/features/service.rs`), and done here: a service
+//! that restarted is asked for everything again, a service that was built again makes the
+//! page load itself again, so that page and service are always the same build.
 use crate::core::changes::matches;
 use crate::core::manifest::Manifest;
+use crate::core::service::Hello;
+use crate::ui::features::service::{made_for, seen as held_against, Seen};
 use dioxus::prelude::*;
 use std::collections::BTreeMap;
 
@@ -31,6 +39,16 @@ impl Live {
     }
 }
 
+/// Load this page again, because the service that answers was made from other source than
+/// this page (`build` names the service's). Once per build of the service and no more: a
+/// browser that keeps handing out the old page must not make it load for ever.
+fn load_again(build: &str) {
+    let build = serde_json::to_string(build).unwrap_or_default();
+    let _ = document::eval(&format!(
+        "try {{ const k = 'askk-loaded-for', b = {build}; if (sessionStorage.getItem(k) !== b) {{ sessionStorage.setItem(k, b); location.reload(); }} }} catch (e) {{}}"
+    ));
+}
+
 /// Start the tab's one listener and provide [`Live`] to every view below.
 pub fn use_live_provider() -> Live {
     let mut keys = use_signal(BTreeMap::<String, u64>::new);
@@ -39,13 +57,32 @@ pub fn use_live_provider() -> Live {
     let live = use_context_provider(|| Live { keys, reset, away });
     use_future(move || async move {
         let (mut epoch, mut seen) = (0u64, 0u64);
+        // Who answered last time this page asked.
+        let mut known: Option<Hello> = None;
         loop {
             match crate::api::changes(epoch, seen).await {
                 Ok(c) => {
-                    if *away.peek() {
+                    let back = *away.peek();
+                    if back {
                         away.set(false);
                     }
-                    if epoch != 0 && c.epoch != epoch {
+                    let mut again = epoch != 0 && c.epoch != epoch;
+                    // First answer, back from being away, or the feed started over: is this
+                    // still the askk this page was made for and was talking to?
+                    if known.is_none() || back || again {
+                        let now = crate::api::hello().await.ok();
+                        match held_against(known.as_ref(), now.as_ref()) {
+                            Seen::Rebuilt => load_again(now.as_ref().map(|h| h.build.as_str()).unwrap_or_default()),
+                            Seen::Restarted => again = true,
+                            Seen::Same | Seen::Gone => {}
+                        }
+                        // A browser may have kept a page from before the service was built.
+                        if let Some(h) = now.as_ref().filter(|h| known.is_none() && !made_for(crate::core::places::BUILD, h)) {
+                            load_again(&h.build);
+                        }
+                        known = now.or(known);
+                    }
+                    if again {
                         keys.write().clear();
                         reset += 1;
                     }

@@ -13,7 +13,8 @@
 //! | [`Seen::Gone`] | nothing answers | keeps what it shows, says the service is away, tries again |
 //!
 //! `askk status` is said here too ([`lines`]), so a page can show the same words.
-// The pages do not ask `hello` yet (docs/service.md), so `seen` waits for its first caller.
+// A page asks `seen` and `made_for` (ui/web/views/live.rs); the lines of `askk status` are
+// only said where there is a command line, so a browser build leaves them unused.
 #![allow(dead_code)]
 use crate::core::run::took;
 use crate::core::service::{Hello, Status};

@@ -110,7 +110,11 @@ Both facts that steer askk (see [decisions.md](decisions.md)) make it simpler th
 - A restart is ordinary. State is written after every step, a run cut off is read back as
   `interrupted`, and clients tell a restart from a rebuild by one question.
 
-**Not there yet.** On Windows the four commands say they are not there. The page does not
-ask `hello` yet (the decision is written and tested in `ui/features/service.rs`; drawing it
-belongs to `ui/web`). A new engine folder copied into the home is booted at the next start,
-not in place. The log is one file that grows.
+**The page does it too.** A page's one listener (`ui/web/views/live.rs`) asks `hello` on
+its first answer, each time it comes back from being away, and each time the change feed
+starts over. Restarted: every view asks again, the page stays. Rebuilt: the page loads
+itself again, once per build of the service, so page and service are always the same build.
+
+**Not there yet.** On Windows the four commands say they are not there. A new engine folder
+copied into the home is booted at the next start, not in place. The log is one file that
+grows. The page does not yet say in words that the service is away or was restarted.
