@@ -1,10 +1,9 @@
-use crate::api::UiConfig;
 use dioxus::prelude::*;
 
-/// Site footer from the `contact` entry of `ui.json`. Renders nothing while no field has a value.
+/// Site footer: the contact entries it is given, each `(label, value)` (the `contact` entry of
+/// `ui.json`, read by the shell). Renders nothing when there are none.
 #[component]
-pub fn Footer() -> Element {
-    let items = use_context::<UiConfig>().contact_items();
+pub fn Footer(items: Vec<(String, String)>) -> Element {
     if items.is_empty() {
         return rsx! {};
     }
@@ -44,7 +43,7 @@ mod tests {
     #[test]
     fn footer_is_in_the_shared_layout() {
         let shell = include_str!("../views/shell.rs");
-        assert!(shell.contains("Footer {}"));
-        assert!(shell.find("div { class: \"page\"").unwrap() < shell.find("Footer {}").unwrap());
+        assert!(shell.contains("Footer { items:"));
+        assert!(shell.find("div { class: \"page\"").unwrap() < shell.find("Footer { items:").unwrap());
     }
 }
