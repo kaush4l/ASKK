@@ -1,0 +1,32 @@
+/* Plain-CSS fallback for the Tailwind classes used in src/lib.rs.
+   When `dx serve` runs, Tailwind is built from input.css and this file
+   is the fallback underneath it. Keep the class names in sync. */
+.min-h-screen { min-height: 100vh; }
+.bg-slate-100 { background: #f1f5f9; }
+.text-slate-900 { color: #0f172a; }
+.text-slate-600 { color: #475569; }
+.text-slate-500 { color: #64748b; }
+.mx-auto { margin-left: auto; margin-right: auto; }
+.max-w-2xl { max-width: 42rem; }
+.p-6 { padding: 1.5rem; }
+.px-4 { padding-left: 1rem; padding-right: 1rem; }
+.py-2 { padding-top: 0.5rem; padding-bottom: 0.5rem; }
+.mt-2 { margin-top: 0.5rem; }
+.mt-4 { margin-top: 1rem; }
+.mt-6 { margin-top: 1.5rem; }
+.text-3xl { font-size: 1.875rem; line-height: 2.25rem; }
+.text-xl { font-size: 1.25rem; line-height: 1.75rem; }
+.text-sm { font-size: 0.875rem; line-height: 1.25rem; }
+.font-bold { font-weight: 700; }
+.rounded { border-radius: 0.25rem; }
+.bg-white { background: #fff; }
+.bg-violet-600 { background: #7c3aed; }
+.bg-slate-200 { background: #e2e8f0; }
+.text-white { color: #fff; }
+.shadow { box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.flex { display: flex; }
+.gap-2 { gap: 0.5rem; }
+.inline-block { display: inline-block; }
+body { margin: 0; font-family: system-ui, sans-serif; }
+button { cursor: pointer; border: none; }
+a { text-decoration: none; }

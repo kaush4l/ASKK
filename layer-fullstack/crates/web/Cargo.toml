@@ -1,0 +1,34 @@
+[package]
+name = "layer-web"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# Dioxus shell — web + router + Tailwind + fullstack.
+# Dioxus 0.7.10 pinned (=, not ^): the 0.x line breaks.
+# `fullstack` is what makes `#[server]` / `#[get]` functions work:
+# on the server build the body runs, on the WASM build the call
+# becomes an HTTP call to the Axum server. `server` (Axum) is NOT
+# enabled here — only the server crate enables `dioxus/server`, so
+# the WASM build stays free of Axum/tokio.
+[lib]
+name = "layer_web"
+path = "src/lib.rs"
+
+[[bin]]
+name = "layer-web"
+path = "src/main.rs"
+
+# The `server` feature must be *declared* here, even when it is off:
+# the `#[get]` server-function macro checks for a `server` feature
+# in this crate and fails the build without it. The server crate
+# enables it; the WASM build does not.
+[features]
+default = []
+server = ["dioxus/server"]
+web = ["dioxus/web"]
+
+[dependencies]
+layer-shared = { path = "../shared" }
+dioxus = { workspace = true, features = ["fullstack"] }
+serde.workspace = true
