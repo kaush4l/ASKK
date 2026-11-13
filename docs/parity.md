@@ -82,7 +82,7 @@ Seen 2026-11-12 with Playwright's own engines, headless, against a built service
 | --- | --- |
 | Chromium (the Browser pane, `scripts/shots.sh`) | every screen, phone to desktop, dark and light |
 | WebKit (Safari's engine, build 2227) | Home and Talk at 1440 and 390, dark and light: `backdrop-filter` and `linear()` springs supported, 3–5 glass surfaces, no sideways scroll, the `/` menu opens, no page errors; `$` skills and snooze worked. It showed the composer's model picker running off a 390-wide phone (its row reached 502px); fixed in `talk.css`, the row now fits at 320 and 390 |
-| Firefox (build 1497) | not seen: this build cannot draw on this macOS (its compositor finds no framebuffer, in or out of a sandbox); a newer one is a download, left to the owner |
+| Firefox (159, on the Linux runner: `.github/workflows/firefox.yml`, `scripts/firefox/check.mjs`) | the published tab, every screen (Home, Talk, Sessions, Settings) at 1440 and 390, dark and light: 16 of 16 right on 2026-11-13 (`ed44d9f`): `backdrop-filter` and `linear()` supported, 3–5 glass surfaces, no sideways scroll, `/` opens the menu, no page errors. It first found the tab blank in Firefox: it waited for `navigator.storage.persist()`, which Firefox asks the person about; fixed (`74ba6e2`). Firefox 148 and 1497 do not start on this macOS 27 (headless: no framebuffer; with a window: never comes up), so it is seen there, not here |
 | Safari itself | not seen: the owner kept the screen to themselves |
 
 ## What this says
