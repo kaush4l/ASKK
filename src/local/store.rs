@@ -151,12 +151,13 @@ pub async fn open() {
             Default::default()
         }
     };
-    let persisted = persist().await.ok().and_then(|v| v.as_bool()).unwrap_or(false);
-    {
-        let mut s = STATUS.held();
-        s.restored = keys.len();
-        s.persisted = persisted;
-    }
+    STATUS.held().restored = keys.len();
+    // Firefox asks the person before it keeps a site's data for good, and the promise waits
+    // for their answer (headless, for ever): the app comes up without waiting for it.
+    wasm_bindgen_futures::spawn_local(async {
+        let persisted = persist().await.ok().and_then(|v| v.as_bool()).unwrap_or(false);
+        STATUS.held().persisted = persisted;
+    });
     let kept = Arc::new(Kept { mem: Bundle::memory(keys), dirty: Default::default(), flushing: AtomicBool::new(false) });
     let _ = KEPT.set(kept.clone());
     crate::core::store::set_data(kept);
