@@ -26,7 +26,7 @@ for (const [name, path] of pages) {
       p.on("pageerror", (e) => errors.push(String(e).slice(0, 200)));
       p.on("console", (m) => m.type() !== "debug" && said.push(`${m.type()}: ${m.text().slice(0, 160)}`));
       await p.goto(site + path, { waitUntil: "load" });
-      await p.waitForSelector(".glass", { timeout: 30000 }).catch(() => errors.push("no glass surface in 30 s"));
+      await p.waitForSelector(".glass", { state: "attached", timeout: 30000 }).catch(() => errors.push("no glass surface in 30 s"));
       await p.waitForTimeout(1000);
       const f = await p.evaluate(() => ({
         backdrop: CSS.supports("backdrop-filter", "blur(4px)"),
@@ -62,7 +62,7 @@ for (const [name, path] of pages) {
               return `init threw after ${Math.round(performance.now() - t0)} ms: ${e && e.stack ? e.stack.slice(0, 400) : e}; wasm ${wasm}`;
             }
           }, new URL(site).pathname).catch((e) => "evaluate: " + e);
-          f.glassAfter = await p.waitForSelector(".glass", { timeout: 60000 }).then(() => true).catch(() => false);
+          f.glassAfter = await p.waitForSelector(".glass", { state: "attached", timeout: 60000 }).then(() => true).catch(() => false);
         }
       }
       const key = `${name}--${size}-${scheme}`;
