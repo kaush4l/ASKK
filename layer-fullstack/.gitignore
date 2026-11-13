@@ -1,0 +1,5 @@
+/target
+# Generated wasm-bindgen output — rebuilt by the README's web commands.
+# crates/web/public/index.html (the page template) is committed.
+crates/web/public/layer-web*
+crates/web/public/snippets/
