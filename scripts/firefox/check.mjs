@@ -47,6 +47,23 @@ for (const [name, path] of pages) {
         // Why it did not come up: what the console said, and what the page shows.
         f.console = said.slice(0, 6);
         f.text = (await p.evaluate(() => document.body.innerText)).slice(0, 120);
+        // The page starts the app with a bare `init()`: start it again here, and say what it
+        // gave back or threw, with a minute more (a large wasm compiles slowly).
+        if (name === "home" && size === "desktop" && scheme === "dark") {
+          f.init = await p.evaluate(async (base) => {
+            const t0 = performance.now();
+            let wasm = "";
+            try {
+              wasm = await fetch(base + "askk_bg.wasm").then((r) => `${r.status} ${r.headers.get("content-type")} ${r.headers.get("content-length")}`).catch((e) => "fetch: " + e);
+              const m = await import(base + "askk.js");
+              await m.default();
+              return `init ok in ${Math.round(performance.now() - t0)} ms; wasm ${wasm}`;
+            } catch (e) {
+              return `init threw after ${Math.round(performance.now() - t0)} ms: ${e && e.stack ? e.stack.slice(0, 400) : e}; wasm ${wasm}`;
+            }
+          }, new URL(site).pathname).catch((e) => "evaluate: " + e);
+          f.glassAfter = await p.waitForSelector(".glass", { timeout: 60000 }).then(() => true).catch(() => false);
+        }
       }
       const key = `${name}--${size}-${scheme}`;
       await p.screenshot({ path: `${out}/firefox--${key}.png` });
