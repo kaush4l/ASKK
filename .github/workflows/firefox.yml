@@ -1,0 +1,62 @@
+# The published tab, seen in Firefox (scripts/firefox/check.mjs): every screen at a desktop
+# and a phone width, dark and light. Firefox does not start on the owner's macOS, so it is
+# seen here. It waits for the Pages publish of the same commit, then looks at the site.
+# What it saw is an annotation (readable signed out); the frames are an artifact.
+name: firefox
+
+on:
+  push:
+    branches: [main, rust]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  screens:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: wait for the site of this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for i in $(seq 90); do
+            s=$(gh run list -R "$GITHUB_REPOSITORY" --workflow pages --commit "$GITHUB_SHA" --json status,conclusion -q '.[0] | "\(.status) \(.conclusion)"')
+            echo "pages: $s"
+            case "$s" in "completed success") exit 0 ;; completed*) echo "::error::the site was not published: $s"; exit 1 ;; esac
+            sleep 20
+          done
+          echo "::error::the site of this commit was not published in 30 minutes"; exit 1
+      - name: firefox
+        run: |
+          mkdir -p "$RUNNER_TEMP/pw" && cd "$RUNNER_TEMP/pw" && npm init -y >/dev/null && npm i --no-save playwright@1.48.0 >/dev/null
+          npx playwright install --with-deps firefox
+          cp "$GITHUB_WORKSPACE/scripts/firefox/check.mjs" "$RUNNER_TEMP/pw/"
+      - name: look
+        shell: bash
+        run: |
+          set +e -o pipefail
+          sleep 60   # GitHub's cache in front of Pages
+          site="https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/"
+          node "$RUNNER_TEMP/pw/check.mjs" "$site" frames > report.json 2> err.log
+          status=$?
+          summary=$(python3 -c "
+          import json; r=json.load(open('report.json'))
+          print(r['engine'], '-', len(r['frames']), 'frames,', r['wrong'], 'wrong')
+          for k, f in r['frames'].items():
+              print(('ok   ' if f['ok'] else 'WRONG'), k, {x: f[x] for x in f if x != 'ok' and f[x] not in ([], None)})
+          " 2>&1 || { tail -20 err.log; tail -c 800 report.json; })
+          echo "$summary"
+          level=notice; [ "$status" != 0 ] && level=error
+          echo "::$level title=firefox saw the site::$(printf '%s\n' "$summary" | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"
+          exit "$status"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: firefox-frames
+          path: frames
