@@ -22,7 +22,9 @@ for (const [name, path] of pages) {
     for (const scheme of ["dark", "light"]) {
       const p = await browser.newPage({ viewport: { width: w, height: h }, colorScheme: scheme });
       const errors = [];
+      const said = [];
       p.on("pageerror", (e) => errors.push(String(e).slice(0, 200)));
+      p.on("console", (m) => m.type() !== "debug" && said.push(`${m.type()}: ${m.text().slice(0, 160)}`));
       await p.goto(site + path, { waitUntil: "load" });
       await p.waitForSelector(".glass", { timeout: 30000 }).catch(() => errors.push("no glass surface in 30 s"));
       await p.waitForTimeout(1000);
@@ -41,6 +43,11 @@ for (const [name, path] of pages) {
         await p.keyboard.press("Escape");
       }
       f.errors = errors;
+      if (errors.length) {
+        // Why it did not come up: what the console said, and what the page shows.
+        f.console = said.slice(0, 6);
+        f.text = (await p.evaluate(() => document.body.innerText)).slice(0, 120);
+      }
       const key = `${name}--${size}-${scheme}`;
       await p.screenshot({ path: `${out}/firefox--${key}.png` });
       const bad = !f.backdrop || !f.linear || f.glass === 0 || f.overflowX || f.slashMenu === false || errors.length > 0;

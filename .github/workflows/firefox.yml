@@ -34,7 +34,7 @@ jobs:
           echo "::error::the site of this commit was not published in 30 minutes"; exit 1
       - name: firefox
         run: |
-          mkdir -p "$RUNNER_TEMP/pw" && cd "$RUNNER_TEMP/pw" && npm init -y >/dev/null && npm i --no-save playwright@1.48.0 >/dev/null
+          mkdir -p "$RUNNER_TEMP/pw" && cd "$RUNNER_TEMP/pw" && npm init -y >/dev/null && npm i --no-save playwright@latest >/dev/null
           npx playwright install --with-deps firefox
           cp "$GITHUB_WORKSPACE/scripts/firefox/check.mjs" "$RUNNER_TEMP/pw/"
       - name: look
